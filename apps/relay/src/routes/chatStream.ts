@@ -2,7 +2,7 @@ import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@m
 import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload } from '../persistence.js'
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
-import { platformAgent } from '../mastra/index.js'
+import { platformAgent, mastra } from '../mastra/index.js'
 import { pmAgent } from '../mastra/agents/pmAgent.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
@@ -135,6 +135,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const assistantMessageId = crypto.randomUUID()
   // Artifact produced during this turn (set when a save tool completes)
   let pendingArtifactRef: ArtifactRefPayload | null = null
+  // Mastra HITL workflow run info — set after PRD saved, included in done event
+  let pmRunId: string | undefined
+  let pmStepId: string | undefined
   const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks'])
 
   const flushMetrics = (): void => {
@@ -293,6 +296,23 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (prdData) {
             planResult = { summary: fullText, dodPassed: true, prdData }
             console.log(`[sse:${sessionId}] plan JSON extracted from agent response`)
+          }
+
+          // Start Mastra HITL pm-workflow after PRD is saved so frontend gets runId for approval gate
+          if (pendingArtifactRef?.type === 'prd') {
+            try {
+              const wf  = mastra.getWorkflow('pm-workflow')
+              const run = wf.createRun()
+              const res = await run.start({ inputData: { prdId: pendingArtifactRef.entityId }, requestContext })
+              if (res.status === 'suspended') {
+                pmRunId  = run.runId
+                pmStepId = 'prd-approval-gate'
+                pendingArtifactRef = { ...pendingArtifactRef, pmRunId, pmStepId }
+                console.log(`[sse:${sessionId}] pmWorkflow started runId=${pmRunId}`)
+              }
+            } catch (pmErr) {
+              console.error(`[sse:${sessionId}] pmWorkflow start failed:`, (pmErr as Error).message)
+            }
           }
 
           sendEvent('done', { text: fullText, conversationId, messageId, planResult, artifactRef: pendingArtifactRef ?? undefined })

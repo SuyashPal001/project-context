@@ -69,6 +69,9 @@ export interface ArtifactRef {
     entityId: string;
     title: string;
     content: string;
+    // Mastra HITL: approval-gate resumption data persisted on the message
+    pmRunId?: string;
+    pmStepId?: string;
 }
 
 export interface Message {

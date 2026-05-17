@@ -65,6 +65,9 @@ export interface ArtifactRefPayload {
   type: 'prd' | 'roadmap' | 'tasks'
   entityId: string
   title: string
+  // Mastra HITL: workflow runId + current suspended stepId for approval-gate resumption
+  pmRunId?: string
+  pmStepId?: string
 }
 
 export function saveAssistantMessage(

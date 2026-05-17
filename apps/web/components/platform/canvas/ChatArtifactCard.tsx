@@ -15,7 +15,7 @@ const TYPE_LABELS = {
   tasks:   'Task List',
 };
 
-export function ChatArtifactCard({ type, entityId, title, content }: ArtifactRef) {
+export function ChatArtifactCard({ type, entityId, title, content, pmRunId, pmStepId }: ArtifactRef) {
   const handleClick = () => {
     (window as any).__openCanvas?.();
     (window as any).__canvasUpdate?.('artifact_load', {
@@ -23,6 +23,8 @@ export function ChatArtifactCard({ type, entityId, title, content }: ArtifactRef
       artifactTitle: title,
       entityId,
       chunk: content,
+      // Pass HITL data so Canvas can show the correct approval button
+      entityMeta: pmRunId ? { pmRunId, pmStepId } : undefined,
     });
   };
 

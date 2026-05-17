@@ -63,11 +63,22 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
 
         onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown) => {
             if (artifactToolActiveRef.current) {
-                handleCanvasUpdate('artifact_done', { entityId: undefined, entityMeta: undefined });
+                const aref = artifactRefRef.current;
+                handleCanvasUpdate('artifact_done', {
+                    entityId: aref?.entityId ?? undefined,
+                    entityMeta: { pmRunId: aref?.pmRunId, pmStepId: aref?.pmStepId },
+                });
                 artifactToolActiveRef.current = null;
             }
             artifactRefRef.current = null;
             const artifactRef = artifactRefRaw as ArtifactRef | undefined ?? undefined;
+            // If relay attached pmRunId/pmStepId (HITL workflow started), push them into Canvas state
+            if (artifactRef?.pmRunId && artifactRef?.pmStepId) {
+                handleCanvasUpdate('artifact_done', {
+                    entityId: artifactRef.entityId,
+                    entityMeta: { pmRunId: artifactRef.pmRunId, pmStepId: artifactRef.pmStepId },
+                });
+            }
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
                 const idx = data.findIndex(m => m.id === messageId);
@@ -124,7 +135,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             const normTool2 = toolName.toLowerCase().replace(/_/g, '-');
             const artifactType = normTool2 === 'saveprd' ? 'prd' : normTool2 === 'saveplan' ? 'roadmap' : 'tasks';
             const artifactTitle = String(result.title ?? artifactType.toUpperCase());
-            if (entityId) artifactRefRef.current = { type: artifactType as ArtifactRef['type'], entityId, title: artifactTitle, content };
+            if (entityId) artifactRefRef.current = { type: artifactType as ArtifactRef['type'], entityId, title: artifactTitle, content, pmRunId: undefined, pmStepId: undefined };
 
             // Clear ref immediately so subsequent text-delta from parent agent goes to chat only
             artifactToolActiveRef.current = null;
