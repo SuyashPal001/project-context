@@ -7,6 +7,9 @@ const MESSAGE_TYPES = [
   'task.completed',
   'task.needs_clarification',
   'task.failed',
+  'prd.created',
+  'roadmap.created',
+  'tasks.created',
 ] as const;
 
 export async function provisionNotificationWorkflows(

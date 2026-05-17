@@ -1,5 +1,5 @@
 import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
-import { saveUserMessage, saveAssistantMessage, type ArtifactRefPayload } from '../persistence.js'
+import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload } from '../persistence.js'
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { platformAgent } from '../mastra/index.js'
@@ -299,6 +299,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
           saveUserMessage(idToken, conversationId, message, atts)
           saveAssistantMessage(idToken, conversationId, fullText, messageId, pendingArtifactRef)
+          if (pendingArtifactRef) {
+            fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
+          }
 
           pendingMetrics = { conversationId, tenantId, ragFired, ragChunksRetrieved, responseTimeMs, totalTokens, inputTokens, outputTokens, userMessageCount: 1, costUsd }
           if (ragFired) pendingEval = { conversationId, messageId, tenantId, question: message, retrievedChunks: ragChunks, answer: fullText }

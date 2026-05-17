@@ -54,6 +54,13 @@ export function saveUserMessage(
   })
 }
 
+function serviceKeyHeaders(): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
+  }
+}
+
 export interface ArtifactRefPayload {
   type: 'prd' | 'roadmap' | 'tasks'
   entityId: string
@@ -87,5 +94,24 @@ export function saveAssistantMessage(
     }
   }).catch((err: Error) => {
     console.error('[persistence] saveAssistantMessage error:', err.message)
+  })
+}
+
+export function fireArtifactNotification(
+  tenantId: string,
+  userId: string,
+  artifact: ArtifactRefPayload,
+): void {
+  fetch(`${API_BASE}/api/v1/internal/artifacts/notify`, {
+    method: 'POST',
+    headers: serviceKeyHeaders(),
+    body: JSON.stringify({ tenantId, userId, artifactType: artifact.type, entityId: artifact.entityId, title: artifact.title }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] fireArtifactNotification status: ${res.status} body: ${body}`)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] fireArtifactNotification error:', err.message)
   })
 }
