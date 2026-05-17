@@ -36,7 +36,7 @@ export function TaskDetailView() {
     const newLinkInputRef = useRef<HTMLInputElement>(null)
     const referenceTextRef = useRef<HTMLTextAreaElement>(null)
     const previousStepsRef = useRef<Record<string, {
-        liveActivity?: any[]
+        liveActivity?: Step['liveActivity']
         liveText?: string
         agentThinking?: boolean
     }>>({})
@@ -52,7 +52,7 @@ export function TaskDetailView() {
             ...raw,
             data: {
                 ...raw.data,
-                steps: raw.data.steps.map((step: any) => {
+                steps: raw.data.steps.map((step) => {
                     const prev = previousStepsRef.current[step.id]
                     if (!prev) return step
                     return {
@@ -103,7 +103,7 @@ export function TaskDetailView() {
     // ── Live fields ref sync — preserve WS-written fields across server refetches ─
     useEffect(() => {
         if (!steps) return
-        steps.forEach((step: any) => {
+        steps.forEach((step) => {
             if (['done', 'failed', 'skipped'].includes(step.status)) {
                 delete previousStepsRef.current[step.id]
             } else if (step.liveActivity || step.liveText || step.agentThinking) {

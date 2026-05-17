@@ -31,7 +31,7 @@ interface ChatInputProps {
     onSend: (content: string, attachments?: Attachment[]) => void;
     onStop?: () => void;
     onVoiceClick?: () => void;
-    onMediaClick?: (type: 'image' | 'video') => void;
+    onMediaClick?: (type: 'image' | 'video' | 'audio' | 'document') => void;
     disabled?: boolean;
     isLoading?: boolean;
     isStreaming?: boolean;
@@ -90,7 +90,7 @@ export function ChatInput({
     const handleMediaClick = (type: 'image' | 'video' | 'audio' | 'document') => {
         uploadTypeRef.current = type;
         fileInputRef.current?.click();
-        onMediaClick?.(type as any);
+        onMediaClick?.(type);
     };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {

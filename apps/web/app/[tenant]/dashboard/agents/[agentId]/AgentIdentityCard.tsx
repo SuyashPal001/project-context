@@ -4,7 +4,7 @@ import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -54,8 +54,11 @@ export function AgentIdentityCard({
             setIsDirty(false);
             toast.success("Agent updated");
         },
-        onError: (error: any) => {
-            toast.error(error.data?.message || error.message || "Failed to update agent");
+        onError: (err) => {
+            const msg = err instanceof ApiError
+                ? (err.data?.message || err.message)
+                : err instanceof Error ? err.message : "Failed to update agent";
+            toast.error(msg);
         },
     });
 

@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -75,8 +75,11 @@ export function AgentSkillSection({ agentId, isOwner, brandingEnabled, tenantSlu
             setIsPromptDirty(false);
             toast.success("Prompt saved");
         },
-        onError: (error: any) => {
-            toast.error(error.data?.message || error.message || "Failed to save prompt");
+        onError: (err) => {
+            const msg = err instanceof ApiError
+                ? (err.data?.message || err.message)
+                : err instanceof Error ? err.message : "Failed to save prompt";
+            toast.error(msg);
         },
     });
 

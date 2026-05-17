@@ -4,9 +4,15 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { validateAttachment } from '@/lib/attachmentValidation'
-import type { Task } from '@/types/task'
+import type { Task, TaskDetailResponse } from '@/types/task'
+
+function errorMessage(err: unknown, fallback: string): string {
+    if (err instanceof ApiError) return err.data?.error || err.data?.message || err.message || fallback
+    if (err instanceof Error) return err.message || fallback
+    return fallback
+}
 
 export type TaskPatch = Partial<{
     title: string
@@ -32,13 +38,13 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
     const patchTask = useMutation({
         mutationFn: (updates: TaskPatch) => api.patch(`/api/v1/tasks/${taskId}`, updates),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
-        onError: (err: any) => toast.error(err.message || 'Failed to save change'),
+        onError: (err) => toast.error(errorMessage(err, 'Failed to save change')),
     })
 
     const voteMutation = useMutation({
         mutationFn: (type: 'up' | 'down') => api.post(`/api/v1/tasks/${taskId}/vote`, { type }),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
-        onError: (err: any) => toast.error(err.message || 'Failed to vote'),
+        onError: (err) => toast.error(errorMessage(err, 'Failed to vote')),
     })
 
     const deleteTaskMutation = useMutation({
@@ -48,7 +54,7 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
             toast.success('Task deleted')
             router.push(`/${tenantSlug}/dashboard/board`)
         },
-        onError: (err: Error) => toast.error(err.message || 'Failed to delete task'),
+        onError: (err) => toast.error(errorMessage(err, 'Failed to delete task')),
     })
 
     const approvePlanMutation = useMutation({
@@ -61,7 +67,7 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
         },
         onSuccess: (_, variables) => {
             if (!variables.approved) {
-                queryClient.setQueryData(['task', taskId], (old: any) => {
+                queryClient.setQueryData<TaskDetailResponse>(['task', taskId], (old) => {
                     if (!old?.data) return old
                     return {
                         ...old,
@@ -74,7 +80,7 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
             }
             toast.success(variables.approved ? 'Plan approved' : 'Feedback sent, agent is replanning.')
         },
-        onError: (err: Error) => toast.error(err.message || 'Failed to send feedback'),
+        onError: (err) => toast.error(errorMessage(err, 'Failed to send feedback')),
     })
 
     const clarifyMutation = useMutation({
@@ -83,7 +89,7 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
             // Clear steps immediately — the backend has not yet deleted old steps when this
             // fires, so invalidateQueries would refetch stale steps and undo the WS-driven
             // status=planning clear. New steps arrive via task.step.created WS events.
-            queryClient.setQueryData(['task', taskId], (old: any) => {
+            queryClient.setQueryData<TaskDetailResponse>(['task', taskId], (old) => {
                 if (!old?.data) return old
                 return {
                     ...old,
@@ -92,13 +98,13 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
             })
             toast.success('Answer sent — agent is planning')
         },
-        onError: (err: Error) => toast.error(err.message || 'Failed to send answer'),
+        onError: (err) => toast.error(errorMessage(err, 'Failed to send answer')),
     })
 
     const generatePlanMutation = useMutation({
         mutationFn: () => api.post(`/api/v1/tasks/${taskId}/plan`),
         onSuccess: () => {
-            queryClient.setQueryData(['task', taskId], (old: any) => {
+            queryClient.setQueryData<TaskDetailResponse>(['task', taskId], (old) => {
                 if (!old?.data) return old
                 return {
                     ...old,
@@ -110,7 +116,7 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
                 }
             })
         },
-        onError: (err: any) => toast.error(err?.data?.error || 'Failed to generate plan'),
+        onError: (err) => toast.error(errorMessage(err, 'Failed to generate plan')),
     })
 
     const handleAttachmentUpload = async (file: File) => {
@@ -134,8 +140,8 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
             await api.post(`/api/v1/files/${fileData.fileId}/confirm`, { size: file.size })
             patchTask.mutate({ attachmentFileIds: [...(task?.attachmentFileIds ?? []), fileData.fileId] })
             toast.success('File attached')
-        } catch (err: any) {
-            toast.error(err.message || 'Failed to upload attachment')
+        } catch (err) {
+            toast.error(errorMessage(err, 'Failed to upload attachment'))
         } finally {
             setIsUploadingAttachment(false)
         }

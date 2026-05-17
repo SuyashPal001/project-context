@@ -39,7 +39,7 @@ export function useTaskPolling(taskId: string, task: Task | undefined) {
                 // preserve WS-streamed steps if DB hasn't committed them yet (freshSteps
                 // empty while cache already has steps from task.step.created events).
                 if (newStatus !== 'planning') {
-                    const current = queryClient.getQueryData<any>(['task', taskId])
+                    const current = queryClient.getQueryData<TaskDetailResponse>(['task', taskId])
                     const cachedSteps = current?.data?.steps ?? []
                     const freshSteps = fresh.data?.steps ?? []
                     const mergedSteps = freshSteps.length > 0 ? freshSteps : cachedSteps
