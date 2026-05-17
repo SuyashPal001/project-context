@@ -29,6 +29,7 @@ import { roadmapAgent } from './agents/roadmapAgent.js'
 import { taskAgent } from './agents/taskAgent.js'
 import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { taskWorkflow } from './workflows/taskWorkflow.js'
+import { pmWorkflow } from './workflows/pmWorkflow.js'
 import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 // ---------------------------------------------------------------------------
@@ -38,7 +39,7 @@ import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 export const mastra = new Mastra({
   agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent, pm: pmAgent, roadmap: roadmapAgent, task: taskAgent },
-  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow, roadmap: roadmapWorkflow, tasks: taskWorkflow },
+  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow, roadmap: roadmapWorkflow, tasks: taskWorkflow, pm: pmWorkflow },
   storage: getMastraStore(),
   scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer, roadmapCompleteness: roadmapCompletenessScorer, taskCompleteness: taskCompletenessScorer },
   editor: new MastraEditor(),

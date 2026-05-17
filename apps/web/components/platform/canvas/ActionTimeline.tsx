@@ -27,6 +27,7 @@ const actionIcons: Record<CanvasAction, React.ElementType> = {
   artifact_start: FileText,
   artifact_chunk: FileText,
   artifact_done: FileText,
+  artifact_load: FileText,
 };
 
 const actionLabels: Record<CanvasAction, string> = {
@@ -39,6 +40,7 @@ const actionLabels: Record<CanvasAction, string> = {
   artifact_start: 'Artifact started',
   artifact_chunk: 'Artifact chunk',
   artifact_done: 'Artifact saved',
+  artifact_load: 'Artifact loaded',
 };
 
 export function ActionTimeline({ events, maxItems = 10 }: ActionTimelineProps) {

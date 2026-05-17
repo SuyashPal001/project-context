@@ -54,11 +54,40 @@ export function saveUserMessage(
   })
 }
 
-export function saveAssistantMessage(idToken: string, conversationId: string, content: string): void {
+function serviceKeyHeaders(): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
+  }
+}
+
+export interface ArtifactRefPayload {
+  type: 'prd' | 'roadmap' | 'tasks'
+  entityId: string
+  title: string
+  // Mastra HITL: workflow runId + current suspended stepId for approval-gate resumption
+  pmRunId?: string
+  pmStepId?: string
+}
+
+export function saveAssistantMessage(
+  idToken: string,
+  conversationId: string,
+  content: string,
+  messageId?: string,
+  artifactRef?: ArtifactRefPayload | null,
+): void {
+  const payload: Record<string, unknown> = {
+    role: 'assistant',
+    content,
+    createdAt: new Date(Date.now() + 1000).toISOString(),
+  }
+  if (messageId) payload.id = messageId
+  if (artifactRef) payload.artifactRef = artifactRef
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
     method: 'POST',
     headers: authHeaders(idToken),
-    body: JSON.stringify({ role: 'assistant', content, createdAt: new Date(Date.now() + 1000).toISOString() }),
+    body: JSON.stringify(payload),
   }).then(async (res) => {
     if (!res.ok) {
       const body = await res.text().catch(() => '')
@@ -68,5 +97,24 @@ export function saveAssistantMessage(idToken: string, conversationId: string, co
     }
   }).catch((err: Error) => {
     console.error('[persistence] saveAssistantMessage error:', err.message)
+  })
+}
+
+export function fireArtifactNotification(
+  tenantId: string,
+  userId: string,
+  artifact: ArtifactRefPayload,
+): void {
+  fetch(`${API_BASE}/api/v1/internal/artifacts/notify`, {
+    method: 'POST',
+    headers: serviceKeyHeaders(),
+    body: JSON.stringify({ tenantId, userId, artifactType: artifact.type, entityId: artifact.entityId, title: artifact.title }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] fireArtifactNotification status: ${res.status} body: ${body}`)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] fireArtifactNotification error:', err.message)
   })
 }

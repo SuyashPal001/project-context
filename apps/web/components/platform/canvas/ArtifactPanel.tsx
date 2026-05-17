@@ -59,16 +59,34 @@ export function ArtifactPanel({ artifact, onApprove, onContentLoaded }: Artifact
   const scrollRef = useRef<HTMLDivElement>(null);
   const showFooter = !artifact.isStreaming && artifact.entityId !== null;
 
-  // Fetch PRD content from DB when artifact_done fires (streaming chunks don't carry content)
+  // Fetch PRD content from DB when artifact has no content (post-refresh restore)
   useEffect(() => {
     if (!artifact.entityId || artifact.isStreaming || artifact.content) return;
-    if (artifact.type !== 'prd') return;
-    api.get<{ data: { content: string } }>(`/api/v1/prds/${artifact.entityId}`)
-      .then(res => {
-        const content = res.data?.content;
-        if (typeof content === 'string' && content) onContentLoaded(content);
-      })
-      .catch(() => { /* silently ignore — content stays empty */ });
+    if (artifact.type === 'prd') {
+      api.get<{ data: { content: string } }>(`/api/v1/prds/${artifact.entityId}`)
+        .then(res => { const c = res.data?.content; if (typeof c === 'string' && c) onContentLoaded(c); })
+        .catch(() => {});
+    } else if (artifact.type === 'roadmap') {
+      Promise.all([
+        api.get<{ data: { title: string; description?: string | null } }>(`/api/v1/plans/${artifact.entityId}`),
+        api.get<{ data: Array<{ title: string; description?: string | null; priority: string }> }>(`/api/v1/plans/${artifact.entityId}/milestones`),
+      ]).then(([planRes, msRes]) => {
+        const plan = planRes.data;
+        const milestones = msRes.data ?? [];
+        const lines: string[] = [`# ${plan.title}`];
+        if (plan.description) lines.push(`\n${plan.description}\n`);
+        if (milestones.length > 0) {
+          lines.push('## Milestones\n');
+          milestones.forEach((m, i) => {
+            lines.push(`### ${i + 1}. ${m.title}`);
+            lines.push(`**Priority:** ${m.priority}`);
+            if (m.description) lines.push(`\n${m.description}`);
+            lines.push('');
+          });
+        }
+        onContentLoaded(lines.join('\n'));
+      }).catch(() => {});
+    }
   }, [artifact.entityId, artifact.isStreaming, artifact.type]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll to bottom as content streams in

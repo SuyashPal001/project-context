@@ -12,6 +12,9 @@ export interface ArtifactState {
   entityId: string | null
   entityMeta: Record<string, unknown> | null
   approveStatus: 'idle' | 'loading' | 'done' | 'error'
+  // Mastra HITL: approval-gate resumption data (from message artifactRef)
+  pmRunId?: string
+  pmStepId?: string
 }
 
 export type CanvasAction =
@@ -24,6 +27,7 @@ export type CanvasAction =
   | 'artifact_start'
   | 'artifact_chunk'
   | 'artifact_done'
+  | 'artifact_load'
 
 export interface CanvasEvent {
   id: string;

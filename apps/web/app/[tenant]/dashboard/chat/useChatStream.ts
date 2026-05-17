@@ -5,16 +5,10 @@ import { api } from '@/lib/api';
 import { useChat } from '@/hooks/useChat';
 import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
-import type { ToolCall, CompletedToolCall, Message, MessagesResponse } from '@/components/platform/chat/types';
+import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
 
-const AGENT_ARTIFACT_META: Record<string, { type: ArtifactType; titlePrefix: string }> = {
-    'agent-prdagent':        { type: 'prd',     titlePrefix: 'PRD' },
-    'agent-roadmapagent':    { type: 'roadmap', titlePrefix: 'Roadmap' },
-    'agent-taskagent':       { type: 'tasks',   titlePrefix: 'Tasks' },
-    'workflow-prdworkflow':  { type: 'prd',     titlePrefix: 'PRD' },
-};
 // Relay emits tool names using the JS variable name as key (e.g. savePRD, not save-prd)
 // normTool lowercases and replaces _ with - so savePRD → saveprd, save-prd → save-prd
 const SAVE_TOOL_NAMES = new Set(['save-prd', 'save-plan', 'save-tasks', 'saveprd', 'saveplan', 'savetasks']);
@@ -40,6 +34,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
     const artifactToolActiveRef = useRef<string | null>(null);
+    const artifactRefRef = useRef<ArtifactRef | null>(null);
 
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
         const call = activeToolCalls.get(toolCallId);
@@ -66,23 +61,37 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             });
         }, [queryClient, activeToolCalls, handleToolDone]),
 
-        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown) => {
+        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown) => {
             if (artifactToolActiveRef.current) {
-                handleCanvasUpdate('artifact_done', { entityId: undefined, entityMeta: undefined });
+                const aref = artifactRefRef.current;
+                handleCanvasUpdate('artifact_done', {
+                    entityId: aref?.entityId ?? undefined,
+                    entityMeta: { pmRunId: aref?.pmRunId, pmStepId: aref?.pmStepId },
+                });
                 artifactToolActiveRef.current = null;
+            }
+            artifactRefRef.current = null;
+            const artifactRef = artifactRefRaw as ArtifactRef | undefined ?? undefined;
+            // If relay attached pmRunId/pmStepId (HITL workflow started), push them into Canvas state
+            if (artifactRef?.pmRunId && artifactRef?.pmStepId) {
+                handleCanvasUpdate('artifact_done', {
+                    entityId: artifactRef.entityId,
+                    entityMeta: { pmRunId: artifactRef.pmRunId, pmStepId: artifactRef.pmStepId },
+                });
             }
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
                 const idx = data.findIndex(m => m.id === messageId);
                 const plan = planResult ? { planResult: planResult as Message['planResult'] } : {};
+                const aref = artifactRef ? { artifactRef: artifactRef as ArtifactRef } : {};
                 if (idx >= 0) {
-                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan };
+                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref };
                 } else {
                     const zIdx = data.findIndex(m => m.isStreaming === true);
                     if (zIdx >= 0) {
-                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan };
+                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref };
                     } else if (fullText) {
-                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan });
+                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref });
                     }
                 }
                 return { data: [...data].sort(sortByDate) };
@@ -106,14 +115,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             const query = String(args?.query ?? args?.filename ?? args?.subject ?? '');
             setActiveToolCalls(prev => { const next = new Map(prev); next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query }); return next; });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
-            const agentMeta = AGENT_ARTIFACT_META[normTool];
-            if (agentMeta) {
-                artifactToolActiveRef.current = toolName;
-                openCanvas();
-                handleCanvasUpdate('artifact_start', { artifactType: agentMeta.type, artifactTitle: agentMeta.titlePrefix });
-            }
-            if (SAVE_TOOL_NAMES.has(normTool) && !artifactToolActiveRef.current) {
-                // artifact_start not yet fired (agent-prdAgent didn't appear first) — open panel now
+            // Only open canvas when an actual save tool fires — this is the definitive signal
+            // that a PRD/roadmap/tasks artifact is being persisted. Never open on agent delegation
+            // events (agent-prdagent etc.) because those also fire during clarifying questions.
+            if (SAVE_TOOL_NAMES.has(normTool)) {
                 const type = normTool === 'saveprd' ? 'prd' : normTool === 'saveplan' ? 'roadmap' : 'tasks';
                 artifactToolActiveRef.current = normTool;
                 openCanvas();
@@ -126,7 +131,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             if (!SAVE_TOOL_NAMES.has(toolName.toLowerCase().replace(/_/g, '-')) || !artifactToolActiveRef.current) return;
 
             const content = typeof result.content === 'string' ? result.content : '';
-            const entityId = (result?.prdId ?? result?.planId) as string | undefined;
+            const entityId = (result?.prdId ?? result?.planId ?? result?.taskBoardId) as string | undefined;
+            const normTool2 = toolName.toLowerCase().replace(/_/g, '-');
+            const artifactType = normTool2 === 'saveprd' ? 'prd' : normTool2 === 'saveplan' ? 'roadmap' : 'tasks';
+            const artifactTitle = String(result.title ?? artifactType.toUpperCase());
+            if (entityId) artifactRefRef.current = { type: artifactType as ArtifactRef['type'], entityId, title: artifactTitle, content, pmRunId: undefined, pmStepId: undefined };
 
             // Clear ref immediately so subsequent text-delta from parent agent goes to chat only
             artifactToolActiveRef.current = null;

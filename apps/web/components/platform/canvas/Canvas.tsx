@@ -8,7 +8,7 @@ import { FileCreatedCard } from './FileCreatedCard';
 import { api } from '@/lib/api';
 import type {
   CanvasState, CanvasEvent, CanvasOverlay, CanvasEventData,
-  CanvasAction, ArtifactState,
+  CanvasAction, ArtifactState, ArtifactType,
 } from './types';
 
 interface CanvasProps {
@@ -18,6 +18,7 @@ interface CanvasProps {
   onExpand?: () => void;
   tenantSlug: string;
   flushPending: () => void;
+  agentId?: string;
 }
 
 const initialState: CanvasState = {
@@ -30,11 +31,34 @@ const initialState: CanvasState = {
 
 const OVERLAY_DURATION = 2000;
 
-export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending }: CanvasProps) {
+export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending, agentId }: CanvasProps) {
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
   const [artifact, setArtifact] = useState<ArtifactState | null>(null);
   const [activeTab, setActiveTab] = useState<'artifact' | 'knowledge'>('artifact');
+
+  // Restore latest PRD from DB when agentId changes (e.g. page refresh or conversation switch)
+  useEffect(() => {
+    if (!agentId) return;
+    api.get<{ data: Array<{ id: string; title: string; content: string; status: string; version: number }> }>(
+      `/api/v1/prds?agentId=${agentId}`
+    ).then(res => {
+      const prd = res.data?.[0];
+      if (!prd) return;
+      setArtifact({
+        type: 'prd',
+        title: prd.title,
+        content: prd.content,
+        isStreaming: false,
+        entityId: prd.id,
+        entityMeta: { version: prd.version },
+        approveStatus: prd.status === 'approved' ? 'done' : 'idle',
+      });
+      setActiveTab('artifact');
+      // Open the canvas panel so the restored artifact is visible
+      (window as any).__openCanvas?.();
+    }).catch(() => {});
+  }, [agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clean up expired overlays
   useEffect(() => {
@@ -76,12 +100,36 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     }
 
     if (action === 'artifact_done') {
+      const meta = data.entityMeta ?? null;
       setArtifact(prev => prev ? {
         ...prev,
         isStreaming: false,
-        entityId: data.entityId ?? null,
-        entityMeta: data.entityMeta ?? null,
+        entityId: data.entityId ?? prev.entityId,
+        entityMeta: meta,
+        pmRunId: (meta as any)?.pmRunId ?? prev.pmRunId,
+        pmStepId: (meta as any)?.pmStepId ?? prev.pmStepId,
       } : prev);
+      onActivity?.();
+      return;
+    }
+
+    if (action === 'artifact_load') {
+      const { artifactType, artifactTitle, entityId, chunk: content, entityMeta } = data;
+      const type = artifactType!;
+      const title = String(artifactTitle ?? type?.toUpperCase() ?? '');
+      const pmRunId = (entityMeta as any)?.pmRunId as string | undefined;
+      const pmStepId = (entityMeta as any)?.pmStepId as string | undefined;
+      const base = { type, title, isStreaming: false, entityId: entityId ?? null, entityMeta: entityMeta ?? null, approveStatus: 'idle' as const, pmRunId, pmStepId };
+      if (content) {
+        setArtifact({ ...base, content: String(content) });
+      } else if (type === 'prd' && entityId) {
+        api.get<{ data: { content: string } }>(`/api/v1/prds/${entityId}`)
+          .then(res => { const c = res.data?.content; if (c) setArtifact({ ...base, content: c }); })
+          .catch(() => {});
+      } else {
+        setArtifact({ ...base, content: '' });
+      }
+      setActiveTab('artifact');
       onActivity?.();
       return;
     }
@@ -155,12 +203,58 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     if (!artifact) return;
     setArtifact(prev => prev ? { ...prev, approveStatus: 'loading' } : prev);
     try {
+      // Mastra HITL path: resume the pm-workflow suspension
+      if (artifact.pmRunId && artifact.pmStepId) {
+        const relayBase = (process.env.NEXT_PUBLIC_AGENT_WS_URL ?? 'wss://agent-saas.fitnearn.com')
+          .replace(/^wss?:\/\//, 'https://');
+        const cookies = document.cookie.split('; ');
+        const accessToken = cookies.find(r => r.startsWith('platform_access_token='))?.split('=')[1] ?? '';
+        const isConfirm = artifact.type === 'tasks';
+        const body: Record<string, unknown> = {
+          runId: artifact.pmRunId,
+          stepId: artifact.pmStepId,
+          ...(isConfirm ? { confirmed: true } : { approved: true }),
+        };
+        const res = await fetch(`${relayBase}/pm/resume`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(`pm/resume ${res.status}`);
+        const data = await res.json() as {
+          phase: string; runId?: string; stepId?: string;
+          planId?: string; title?: string; taskCount?: number;
+        };
+        if (data.phase === 'done') {
+          setArtifact(prev => prev ? { ...prev, approveStatus: 'done', pmRunId: undefined, pmStepId: undefined } : prev);
+          return;
+        }
+        // Move to next artifact (roadmap or tasks)
+        const nextType = data.phase === 'roadmap' ? 'roadmap' : 'tasks';
+        const nextTitle = data.title ?? nextType.toUpperCase();
+        const nextEntityId = data.planId ?? null;
+        setArtifact({
+          type: nextType as ArtifactType,
+          title: nextTitle,
+          content: '',
+          isStreaming: false,
+          entityId: nextEntityId,
+          entityMeta: data.taskCount != null ? { taskCount: data.taskCount } : null,
+          approveStatus: 'idle',
+          pmRunId: data.runId,
+          pmStepId: data.stepId,
+        });
+        setActiveTab('artifact');
+        // Open canvas so new artifact is visible
+        (window as any).__openCanvas?.();
+        return;
+      }
+      // Legacy fallback: direct PATCH (no HITL workflow)
       if (artifact.type === 'prd' && artifact.entityId) {
         await api.patch(`/api/v1/prds/${artifact.entityId}/approve`, {});
       } else if (artifact.type === 'roadmap' && artifact.entityId) {
         await api.patch(`/api/v1/plans/${artifact.entityId}/approve`, {});
       }
-      // tasks: no API call needed — just mark done
       setArtifact(prev => prev ? { ...prev, approveStatus: 'done' } : prev);
     } catch {
       setArtifact(prev => prev ? { ...prev, approveStatus: 'error' } : prev);

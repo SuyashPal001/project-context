@@ -76,7 +76,8 @@ export function useChatPage() {
         queryKey: ['messages', conversationId],
         queryFn: async () => {
             const res = await api.get<MessagesResponse>(`/api/v1/conversations/${conversationId}/messages`);
-            return { ...res, data: [...res.data].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) };
+            const sorted = [...res.data].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            return { ...res, data: sorted };
         },
         enabled: !!conversationId,
     });
