@@ -22,25 +22,21 @@ export function isPmSession(conversationId: string): boolean {
 
 const PM_SIGNALS = [
   // PRD
-  'create a prd',
-  'write a prd',
-  'product requirements',
-  'prd for',
-  'requirements document',
-  'i need a prd',
+  'create a prd', 'write a prd', 'draft a prd', 'generate a prd',
+  'product requirements', 'prd for', 'requirements document', 'i need a prd',
+  'product spec', 'feature spec',
   // Roadmap / plan
-  'create a roadmap',
-  'build a roadmap',
-  'write a roadmap',
-  'create a plan',
-  'build a plan',
-  'project plan',
-  'release plan',
+  'create a roadmap', 'build a roadmap', 'write a roadmap',
+  'generate a roadmap', 'generate roadmap', 'make a roadmap',
+  'roadmap from', 'roadmap for',
+  'create a plan', 'build a plan', 'generate a plan', 'generate plan',
+  'project plan', 'release plan', 'execution plan',
+  'create milestones', 'generate milestones', 'build milestones',
+  'now generate', 'next step', 'next phase',
   // Tasks
-  'create tasks',
-  'generate tasks',
-  'break down into tasks',
-  'create a task list',
+  'create tasks', 'generate tasks', 'break down into tasks',
+  'create a task list', 'generate a task list', 'break it down',
+  'create subtasks', 'break down the', 'task breakdown',
 ]
 
 export function isPmIntent(msg: string): boolean {
@@ -63,12 +59,13 @@ function getPmPool(): pg.Pool {
 export async function fetchPrdDraft(
   agentId: string,
   tenantId: string,
-): Promise<{ id: string; content: string } | null> {
+): Promise<{ id: string; content: string; status: string } | null> {
   const client = await getPmPool().connect()
   try {
-    const { rows } = await client.query<{ id: string; content: string }>(
-      `SELECT id, content FROM agent_prds
-       WHERE agent_id = $1 AND tenant_id = $2 AND status = 'draft'
+    // Include 'approved' so post-approval roadmap requests still route to pmAgent
+    const { rows } = await client.query<{ id: string; content: string; status: string }>(
+      `SELECT id, content, status FROM agent_prds
+       WHERE agent_id = $1 AND tenant_id = $2 AND status IN ('draft', 'approved')
        ORDER BY updated_at DESC LIMIT 1`,
       [agentId, tenantId],
     )

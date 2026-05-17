@@ -194,6 +194,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       if (draft) {
         requestContext.set('existingPrdDraft', draft.content)
         requestContext.set('existingPrdId', draft.id)
+        requestContext.set('existingPrdStatus', draft.status)
       }
       console.log(`[sse:${sessionId}] PM routing — intent=${isPmIntent(message)} session=${pmSession} draft=${!!draft}`)
       agentStream = await pmAgent.stream(mastraMessage, {
