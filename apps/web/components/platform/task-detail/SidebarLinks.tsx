@@ -7,7 +7,7 @@ import { extractDomain } from './outputHelpers'
 import { copyToClipboard, truncateUrl } from './_sidebarHelpers'
 
 interface SidebarLinksProps {
-    links: string[] | undefined
+    links: string[]
     isEditing: boolean
     newLinkInputRef: React.RefObject<HTMLInputElement | null>
     onAddLink: (url: string) => void
@@ -26,7 +26,7 @@ export function SidebarLinks({ links, isEditing, newLinkInputRef, onAddLink, onR
                 </div>
             </div>
             <div className="space-y-1.5 mb-2">
-                {links?.map((link, i) => (
+                {links.map((link, i) => (
                     <div key={i} className="flex items-center gap-1.5 group/link rounded px-1 py-0.5 hover:bg-white/5 transition-all">
                         <img
                             src={`https://www.google.com/s2/favicons?domain=${extractDomain(link)}&sz=16`}
@@ -68,7 +68,7 @@ export function SidebarLinks({ links, isEditing, newLinkInputRef, onAddLink, onR
                         </div>
                     </div>
                 ))}
-                {(!links || links.length === 0) && (
+                {links.length === 0 && (
                     <span className="text-[11px] text-muted-foreground/40 italic">No links added</span>
                 )}
             </div>

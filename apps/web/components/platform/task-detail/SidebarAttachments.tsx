@@ -7,14 +7,14 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 
 interface SidebarAttachmentsProps {
-    attachmentFileIds: string[] | undefined
+    attachmentFileIds: string[]
     isUploading: boolean
     attachFileInputRef: React.RefObject<HTMLInputElement | null>
     onRemoveAttachment: (fileId: string) => void
 }
 
 export function SidebarAttachments({ attachmentFileIds, isUploading, attachFileInputRef, onRemoveAttachment }: SidebarAttachmentsProps) {
-    const hasAttachments = (attachmentFileIds?.length ?? 0) > 0
+    const hasAttachments = attachmentFileIds.length > 0
 
     const { data: filesData } = useQuery({
         queryKey: ['files'],
@@ -46,7 +46,7 @@ export function SidebarAttachments({ attachmentFileIds, isUploading, attachFileI
             </div>
             {hasAttachments ? (
                 <div className="space-y-1">
-                    {attachmentFileIds!.map((fileId, i) => (
+                    {attachmentFileIds.map((fileId, i) => (
                         <div key={fileId} className="flex items-center justify-between group/att">
                             <button
                                 className="text-[11px] text-primary hover:underline truncate flex-1 text-left"
