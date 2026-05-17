@@ -112,6 +112,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
     }
 
     const schema = z.object({
+        id: z.string().uuid().optional(),
         content: z.string().min(0),
         role: z.enum(['user', 'assistant']),
         attachments: z.array(z.object({
@@ -120,6 +121,11 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             type: z.string(),
             size: z.number().optional(),
         })).nullish(),
+        artifactRef: z.object({
+            type: z.enum(['prd', 'roadmap', 'tasks']),
+            entityId: z.string(),
+            title: z.string(),
+        }).nullish(),
         createdAt: z.string().datetime().optional(),
     });
 
@@ -168,11 +174,13 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
     const [message] = await db
         .insert(messages)
         .values({
+            ...(result.data.id ? { id: result.data.id } : {}),
             conversationId: conversationId || (null as any),
             tenantId: tenantId || (null as any),
             role: result.data.role,
             content: result.data.content,
             attachments: result.data.attachments ?? null,
+            artifactRef: result.data.artifactRef ?? null,
             createdAt: result.data.createdAt ? new Date(result.data.createdAt) : undefined,
         })
         .returning();

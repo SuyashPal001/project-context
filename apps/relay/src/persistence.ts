@@ -54,11 +54,30 @@ export function saveUserMessage(
   })
 }
 
-export function saveAssistantMessage(idToken: string, conversationId: string, content: string): void {
+export interface ArtifactRefPayload {
+  type: 'prd' | 'roadmap' | 'tasks'
+  entityId: string
+  title: string
+}
+
+export function saveAssistantMessage(
+  idToken: string,
+  conversationId: string,
+  content: string,
+  messageId?: string,
+  artifactRef?: ArtifactRefPayload | null,
+): void {
+  const payload: Record<string, unknown> = {
+    role: 'assistant',
+    content,
+    createdAt: new Date(Date.now() + 1000).toISOString(),
+  }
+  if (messageId) payload.id = messageId
+  if (artifactRef) payload.artifactRef = artifactRef
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
     method: 'POST',
     headers: authHeaders(idToken),
-    body: JSON.stringify({ role: 'assistant', content, createdAt: new Date(Date.now() + 1000).toISOString() }),
+    body: JSON.stringify(payload),
   }).then(async (res) => {
     if (!res.ok) {
       const body = await res.text().catch(() => '')

@@ -67,18 +67,18 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             });
         }, [queryClient, activeToolCalls, handleToolDone]),
 
-        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown) => {
+        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown) => {
             if (artifactToolActiveRef.current) {
                 handleCanvasUpdate('artifact_done', { entityId: undefined, entityMeta: undefined });
                 artifactToolActiveRef.current = null;
             }
-            const artifactRef = artifactRefRef.current;
             artifactRefRef.current = null;
+            const artifactRef = artifactRefRaw as ArtifactRef | undefined ?? undefined;
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
                 const idx = data.findIndex(m => m.id === messageId);
                 const plan = planResult ? { planResult: planResult as Message['planResult'] } : {};
-                const aref = artifactRef ? { artifactRef } : {};
+                const aref = artifactRef ? { artifactRef: artifactRef as ArtifactRef } : {};
                 if (idx >= 0) {
                     data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref };
                 } else {

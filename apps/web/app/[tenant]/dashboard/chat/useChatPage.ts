@@ -77,12 +77,6 @@ export function useChatPage() {
         queryFn: async () => {
             const res = await api.get<MessagesResponse>(`/api/v1/conversations/${conversationId}/messages`);
             const sorted = [...res.data].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-            // Preserve client-only fields (artifactRef, planResult) that the API doesn't return
-            const prev = queryClient.getQueryData<MessagesResponse>(['messages', conversationId]);
-            if (prev?.data.length) {
-                const prevMap = new Map(prev.data.map(m => [m.id, m]));
-                return { ...res, data: sorted.map(m => { const p = prevMap.get(m.id); return p?.artifactRef ? { ...m, artifactRef: p.artifactRef } : m; }) };
-            }
             return { ...res, data: sorted };
         },
         enabled: !!conversationId,

@@ -1,5 +1,5 @@
 import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
-import { saveUserMessage, saveAssistantMessage } from '../persistence.js'
+import { saveUserMessage, saveAssistantMessage, type ArtifactRefPayload } from '../persistence.js'
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { platformAgent } from '../mastra/index.js'
@@ -131,6 +131,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   // Cache toolCallId → toolName so tool-result events can resolve the name
   // (Mastra's tool-result stream parts don't always include toolName)
   const toolCallNames = new Map<string, string>()
+  // Pre-generate the assistant messageId so relay and DB share the same UUID
+  const assistantMessageId = crypto.randomUUID()
+  // Artifact produced during this turn (set when a save tool completes)
+  let pendingArtifactRef: ArtifactRefPayload | null = null
+  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks'])
 
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
@@ -247,6 +252,20 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const result = (p.result ?? p.output ?? {}) as Record<string, unknown>
           console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
           sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
+
+          // Capture artifact ref when a save tool completes so we can persist it on the message
+          const normName = resolvedToolName.toLowerCase().replace(/_/g, '-')
+          if (SAVE_TOOL_NAMES.has(normName)) {
+            const entityId = (result.prdId ?? result.planId ?? result.taskBoardId) as string | undefined
+            if (entityId) {
+              const artifactType = normName.includes('prd') ? 'prd' : normName.includes('plan') ? 'roadmap' : 'tasks'
+              pendingArtifactRef = {
+                type: artifactType as ArtifactRefPayload['type'],
+                entityId,
+                title: String(result.title ?? artifactType.toUpperCase()),
+              }
+            }
+          }
           break
         }
         case 'finish': {
@@ -256,7 +275,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           totalTokens = inputTokens + outputTokens
 
           // Fire done immediately — don't wait for memory:save (~2.5s)
-          const messageId = crypto.randomUUID()
+          const messageId = assistantMessageId
           const responseTimeMs = Date.now() - startTime
 
           const cached = lastRagResult.get(tenantId)
@@ -275,11 +294,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             console.log(`[sse:${sessionId}] plan JSON extracted from agent response`)
           }
 
-          sendEvent('done', { text: fullText, conversationId, messageId, planResult })
+          sendEvent('done', { text: fullText, conversationId, messageId, planResult, artifactRef: pendingArtifactRef ?? undefined })
 
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
           saveUserMessage(idToken, conversationId, message, atts)
-          saveAssistantMessage(idToken, conversationId, fullText)
+          saveAssistantMessage(idToken, conversationId, fullText, messageId, pendingArtifactRef)
 
           pendingMetrics = { conversationId, tenantId, ragFired, ragChunksRetrieved, responseTimeMs, totalTokens, inputTokens, outputTokens, userMessageCount: 1, costUsd }
           if (ragFired) pendingEval = { conversationId, messageId, tenantId, question: message, retrievedChunks: ragChunks, answer: fullText }

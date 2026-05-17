@@ -89,7 +89,7 @@ export interface UseChatOptions {
   conversationId?: string;
   agentId?: string;
   onDelta?: (delta: string, messageId: string, conversationId?: string) => void;
-  onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown) => void;
+  onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown) => void;
   onError?: (code: string, message: string) => void;
   onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
   onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
@@ -327,6 +327,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               const finalText = (payload.text as string) ?? accumulatedText;
               const msgId = currentMessageId ?? (payload.messageId as string) ?? crypto.randomUUID();
               const planResult = payload.planResult;
+              const artifactRef = payload.artifactRef;
               // Successful response — clear any pending retry state
               clearRetry();
               onDoneRef.current?.(
@@ -334,6 +335,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 msgId,
                 (payload.conversationId as string) ?? conversationIdRef.current,
                 planResult,
+                artifactRef,
               );
               currentMessageId = null;
               accumulatedText = '';

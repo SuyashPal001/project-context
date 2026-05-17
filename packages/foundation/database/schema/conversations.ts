@@ -49,6 +49,7 @@ export const messages = pgTable('messages', {
   tokenCount: integer('token_count'),
   model: text('model'),
   attachments: jsonb('attachments'),
+  artifactRef: jsonb('artifact_ref'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
