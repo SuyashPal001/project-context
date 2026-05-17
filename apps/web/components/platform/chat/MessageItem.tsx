@@ -13,6 +13,7 @@ import { StreamingMessage } from "./StreamingMessage";
 import { MessageAudioPlayer } from "./MessageAudioPlayer";
 import { MessageFeedback } from "./MessageFeedback";
 import { PlanCard } from "./PlanCard";
+import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
 
 interface MessageItemProps {
     message: Message;
@@ -72,6 +73,10 @@ export function MessageItem({
                     <span className="text-[10px] font-mono tracking-[0.08em] text-[#444] uppercase select-none mb-1 block">
                         SAARTHI
                     </span>
+                )}
+
+                {isAssistant && message.artifactRef && (
+                    <ChatArtifactCard {...message.artifactRef} />
                 )}
 
                 {isAssistant && message.planResult && (

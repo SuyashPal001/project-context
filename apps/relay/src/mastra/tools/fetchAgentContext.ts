@@ -41,7 +41,7 @@ export const fetchAgentContext = createTool({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Service-Key': serviceKey,
+          'x-internal-service-key': serviceKey,
         },
         body: JSON.stringify({ query, tenantId, limit: 5, scoreThreshold: 0.3 }),
       })

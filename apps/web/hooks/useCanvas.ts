@@ -38,8 +38,8 @@ export function useCanvas() {
   const handleCanvasUpdate = useCallback((action: CanvasAction, data: CanvasEventData) => {
     console.log('[canvas] handleCanvasUpdate:', action, data);
     console.log('[canvas] window.__canvasUpdate exists:', !!(window as any).__canvasUpdate);
-    // Auto-open canvas when browser automation or artifact streaming starts
-    if (!isCanvasOpen && (action === 'screenshot' || action === 'artifact_start')) {
+    // Auto-open canvas when browser automation or artifact streaming starts/loads
+    if (!isCanvasOpen && (action === 'screenshot' || action === 'artifact_start' || action === 'artifact_load')) {
       setIsCanvasOpen(true);
     }
 

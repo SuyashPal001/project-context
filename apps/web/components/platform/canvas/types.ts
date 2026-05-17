@@ -24,6 +24,7 @@ export type CanvasAction =
   | 'artifact_start'
   | 'artifact_chunk'
   | 'artifact_done'
+  | 'artifact_load'
 
 export interface CanvasEvent {
   id: string;

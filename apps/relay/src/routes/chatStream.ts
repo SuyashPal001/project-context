@@ -128,6 +128,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const costUsd: number | undefined = undefined
   let pendingMetrics: Parameters<typeof fireMetrics>[0] | null = null
   let pendingEval: Parameters<typeof fireAutoEval>[0] | null = null
+  // Cache toolCallId → toolName so tool-result events can resolve the name
+  // (Mastra's tool-result stream parts don't always include toolName)
+  const toolCallNames = new Map<string, string>()
 
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
@@ -213,11 +216,23 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           sendEvent('delta', { text, conversationId })
           break
         }
+        // Delegated sub-agent (e.g. prdAgent) text — Mastra wraps inner stream parts
+        // as agent-execution-event-{inner.type}. Forward text deltas so the artifact
+        // panel streams in real time instead of waiting for the outer finish event.
+        case 'agent-execution-event-text-delta': {
+          const text = (part.payload?.textDelta ?? part.payload?.text ?? '') as string
+          if (text) {
+            fullText += text
+            sendEvent('delta', { text, conversationId })
+          }
+          break
+        }
         case 'tool-call': {
           const p = part.payload ?? part
           const toolName = (p.toolName ?? '') as string
           const args = (p.args ?? {}) as Record<string, unknown>
           const toolCallId = (p.toolCallId ?? toolName) as string
+          if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
           sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           if (toolName === 'retrieve_documents') ragFired = true
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
@@ -226,9 +241,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         case 'tool-result': {
           const p = part.payload ?? part
           const toolCallId = (p.toolCallId ?? '') as string
-          const toolName   = (p.toolName ?? '') as string
-          const result     = (p.result ?? p.output ?? {}) as Record<string, unknown>
-          sendEvent('tool_done', { toolCallId, toolName, result, conversationId })
+          const rawToolName = (p.toolName ?? '') as string
+          const resolvedToolName = rawToolName || toolCallNames.get(toolCallId) || ''
+          toolCallNames.delete(toolCallId)
+          const result = (p.result ?? p.output ?? {}) as Record<string, unknown>
+          console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
+          sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
           break
         }
         case 'finish': {

@@ -64,6 +64,13 @@ export interface PlanResult {
     prdData: PrdData;
 }
 
+export interface ArtifactRef {
+    type: 'prd' | 'roadmap' | 'tasks';
+    entityId: string;
+    title: string;
+    content: string;
+}
+
 export interface Message {
     id: string;
     conversationId: string;
@@ -75,6 +82,7 @@ export interface Message {
     isStreaming?: boolean;
     attachments?: MessageAttachment[];
     planResult?: PlanResult;
+    artifactRef?: ArtifactRef;
 }
 
 export interface Conversation {

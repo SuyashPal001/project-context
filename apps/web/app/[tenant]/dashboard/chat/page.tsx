@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, Suspense } from "react";
+import { useCallback, Suspense, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
@@ -56,6 +56,11 @@ function ChatPage() {
     const { isModalOpen, session, openVoice, closeVoice, handleTap } = useVoice({ conversationId: conversationId || undefined });
 
     const noopActivity = useCallback(() => {}, []);
+
+    useEffect(() => {
+        (window as any).__openCanvas = openCanvas;
+        return () => { delete (window as any).__openCanvas; };
+    }, [openCanvas]);
 
     const handleApprove = useCallback(async (messageId: string, approvalId: string) => {
         const ok = await sendApproval(approvalId, 'approved');
@@ -168,7 +173,7 @@ function ChatPage() {
 
                     {/* Canvas Panel */}
                     <div className={cn("transition-all overflow-hidden h-full z-10 bg-background", isCanvasExpanded ? "w-full flex-1" : (isCanvasOpen ? "w-1/2 border-l border-border" : "w-0"))}>
-                        <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={noopActivity} tenantSlug={tenantSlug} flushPending={flushPending} />
+                        <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={noopActivity} tenantSlug={tenantSlug} flushPending={flushPending} agentId={selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id} />
                     </div>
                 </div>
             </div>

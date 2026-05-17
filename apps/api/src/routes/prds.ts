@@ -1,11 +1,37 @@
 import { Hono } from 'hono';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne, desc } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentPrds } from '@serverless-saas/database/schema/pm';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const prdsRoutes = new Hono<AppEnv>();
+
+// GET /prds?agentId=X — latest non-rejected PRD for the agent (used to restore canvas on refresh)
+prdsRoutes.get('/', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'project_plans', 'read'))
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+    const agentId = c.req.query('agentId');
+    if (!agentId) return c.json({ data: [] });
+
+    const prds = await db
+        .select()
+        .from(agentPrds)
+        .where(and(
+            eq(agentPrds.tenantId, tenantId),
+            eq(agentPrds.agentId, agentId),
+            ne(agentPrds.status, 'rejected'),
+        ))
+        .orderBy(desc(agentPrds.createdAt))
+        .limit(1);
+
+    return c.json({ data: prds });
+});
 
 // GET /prds/:id
 prdsRoutes.get('/:id', async (c) => {

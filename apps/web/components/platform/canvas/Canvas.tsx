@@ -18,6 +18,7 @@ interface CanvasProps {
   onExpand?: () => void;
   tenantSlug: string;
   flushPending: () => void;
+  agentId?: string;
 }
 
 const initialState: CanvasState = {
@@ -30,11 +31,34 @@ const initialState: CanvasState = {
 
 const OVERLAY_DURATION = 2000;
 
-export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending }: CanvasProps) {
+export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending, agentId }: CanvasProps) {
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
   const [artifact, setArtifact] = useState<ArtifactState | null>(null);
   const [activeTab, setActiveTab] = useState<'artifact' | 'knowledge'>('artifact');
+
+  // Restore latest PRD from DB when agentId changes (e.g. page refresh or conversation switch)
+  useEffect(() => {
+    if (!agentId) return;
+    api.get<{ data: Array<{ id: string; title: string; content: string; status: string; version: number }> }>(
+      `/api/v1/prds?agentId=${agentId}`
+    ).then(res => {
+      const prd = res.data?.[0];
+      if (!prd) return;
+      setArtifact({
+        type: 'prd',
+        title: prd.title,
+        content: prd.content,
+        isStreaming: false,
+        entityId: prd.id,
+        entityMeta: { version: prd.version },
+        approveStatus: prd.status === 'approved' ? 'done' : 'idle',
+      });
+      setActiveTab('artifact');
+      // Open the canvas panel so the restored artifact is visible
+      (window as any).__openCanvas?.();
+    }).catch(() => {});
+  }, [agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clean up expired overlays
   useEffect(() => {
@@ -82,6 +106,24 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         entityId: data.entityId ?? null,
         entityMeta: data.entityMeta ?? null,
       } : prev);
+      onActivity?.();
+      return;
+    }
+
+    if (action === 'artifact_load') {
+      const { artifactType, artifactTitle, entityId, chunk: content } = data;
+      const type = artifactType!;
+      const title = String(artifactTitle ?? type?.toUpperCase() ?? '');
+      if (content) {
+        setArtifact({ type, title, content: String(content), isStreaming: false, entityId: entityId ?? null, entityMeta: null, approveStatus: 'idle' });
+      } else if (type === 'prd' && entityId) {
+        api.get<{ data: { content: string } }>(`/api/v1/prds/${entityId}`)
+          .then(res => { const c = res.data?.content; if (c) setArtifact({ type, title, content: c, isStreaming: false, entityId: entityId ?? null, entityMeta: null, approveStatus: 'idle' }); })
+          .catch(() => {});
+      } else {
+        setArtifact({ type, title, content: '', isStreaming: false, entityId: entityId ?? null, entityMeta: null, approveStatus: 'idle' });
+      }
+      setActiveTab('artifact');
       onActivity?.();
       return;
     }

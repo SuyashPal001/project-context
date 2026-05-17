@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useChat } from '@/hooks/useChat';
 import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
-import type { ToolCall, CompletedToolCall, Message, MessagesResponse } from '@/components/platform/chat/types';
+import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
 
@@ -40,6 +40,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
     const artifactToolActiveRef = useRef<string | null>(null);
+    const artifactRefRef = useRef<ArtifactRef | null>(null);
 
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
         const call = activeToolCalls.get(toolCallId);
@@ -71,18 +72,21 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
                 handleCanvasUpdate('artifact_done', { entityId: undefined, entityMeta: undefined });
                 artifactToolActiveRef.current = null;
             }
+            const artifactRef = artifactRefRef.current;
+            artifactRefRef.current = null;
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
                 const idx = data.findIndex(m => m.id === messageId);
                 const plan = planResult ? { planResult: planResult as Message['planResult'] } : {};
+                const aref = artifactRef ? { artifactRef } : {};
                 if (idx >= 0) {
-                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan };
+                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref };
                 } else {
                     const zIdx = data.findIndex(m => m.isStreaming === true);
                     if (zIdx >= 0) {
-                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan };
+                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref };
                     } else if (fullText) {
-                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan });
+                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref });
                     }
                 }
                 return { data: [...data].sort(sortByDate) };
@@ -126,7 +130,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             if (!SAVE_TOOL_NAMES.has(toolName.toLowerCase().replace(/_/g, '-')) || !artifactToolActiveRef.current) return;
 
             const content = typeof result.content === 'string' ? result.content : '';
-            const entityId = (result?.prdId ?? result?.planId) as string | undefined;
+            const entityId = (result?.prdId ?? result?.planId ?? result?.taskBoardId) as string | undefined;
+            const normTool2 = toolName.toLowerCase().replace(/_/g, '-');
+            const artifactType = normTool2 === 'saveprd' ? 'prd' : normTool2 === 'saveplan' ? 'roadmap' : 'tasks';
+            const artifactTitle = String(result.title ?? artifactType.toUpperCase());
+            if (entityId) artifactRefRef.current = { type: artifactType as ArtifactRef['type'], entityId, title: artifactTitle, content };
 
             // Clear ref immediately so subsequent text-delta from parent agent goes to chat only
             artifactToolActiveRef.current = null;
