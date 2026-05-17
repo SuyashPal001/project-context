@@ -9,12 +9,6 @@ import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRe
 import type { Conversation } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
 
-const AGENT_ARTIFACT_META: Record<string, { type: ArtifactType; titlePrefix: string }> = {
-    'agent-prdagent':        { type: 'prd',     titlePrefix: 'PRD' },
-    'agent-roadmapagent':    { type: 'roadmap', titlePrefix: 'Roadmap' },
-    'agent-taskagent':       { type: 'tasks',   titlePrefix: 'Tasks' },
-    'workflow-prdworkflow':  { type: 'prd',     titlePrefix: 'PRD' },
-};
 // Relay emits tool names using the JS variable name as key (e.g. savePRD, not save-prd)
 // normTool lowercases and replaces _ with - so savePRD → saveprd, save-prd → save-prd
 const SAVE_TOOL_NAMES = new Set(['save-prd', 'save-plan', 'save-tasks', 'saveprd', 'saveplan', 'savetasks']);
@@ -110,14 +104,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             const query = String(args?.query ?? args?.filename ?? args?.subject ?? '');
             setActiveToolCalls(prev => { const next = new Map(prev); next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query }); return next; });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
-            const agentMeta = AGENT_ARTIFACT_META[normTool];
-            if (agentMeta) {
-                artifactToolActiveRef.current = toolName;
-                openCanvas();
-                handleCanvasUpdate('artifact_start', { artifactType: agentMeta.type, artifactTitle: agentMeta.titlePrefix });
-            }
-            if (SAVE_TOOL_NAMES.has(normTool) && !artifactToolActiveRef.current) {
-                // artifact_start not yet fired (agent-prdAgent didn't appear first) — open panel now
+            // Only open canvas when an actual save tool fires — this is the definitive signal
+            // that a PRD/roadmap/tasks artifact is being persisted. Never open on agent delegation
+            // events (agent-prdagent etc.) because those also fire during clarifying questions.
+            if (SAVE_TOOL_NAMES.has(normTool)) {
                 const type = normTool === 'saveprd' ? 'prd' : normTool === 'saveplan' ? 'roadmap' : 'tasks';
                 artifactToolActiveRef.current = normTool;
                 openCanvas();
