@@ -92,16 +92,23 @@ function AgentSection({ agent, conversations, selectedId, onSelect, onNewChat, o
 }) {
     return (
         <div className="mb-4">
-            <div className="flex items-center justify-between px-2 mb-1">
-                <div className="flex items-center gap-1.5">
-                    <Bot className="h-3 w-3 text-muted-foreground/50" />
-                    <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider">
-                        {agent.name}
-                    </span>
+            <div className="flex items-start justify-between px-2 mb-1">
+                <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-1.5">
+                        <Bot className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                        <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider truncate">
+                            {agent.name}
+                        </span>
+                    </div>
+                    {agent.description && (
+                        <p className="text-[10px] text-muted-foreground/40 mt-0.5 pl-4 leading-snug line-clamp-1">
+                            {agent.description}
+                        </p>
+                    )}
                 </div>
                 <Button
                     variant="ghost" size="icon"
-                    className="h-5 w-5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-accent/50"
+                    className="h-5 w-5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-accent/50 shrink-0 mt-0.5"
                     onClick={() => onNewChat(agent.id)}
                     title={`New chat with ${agent.name}`}
                 >

@@ -49,7 +49,7 @@ export function AgentSelector({ open, onOpenChange, onSelect }: AgentSelectorPro
                                 <Button
                                     key={agent.id}
                                     variant="outline"
-                                    className="flex items-center justify-start gap-3 h-14 w-full text-left"
+                                    className="flex items-center justify-start gap-3 h-auto py-3 w-full text-left"
                                     onClick={() => onSelect(agent)}
                                 >
                                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -57,7 +57,9 @@ export function AgentSelector({ open, onOpenChange, onSelect }: AgentSelectorPro
                                     </div>
                                     <div className="flex flex-col items-start overflow-hidden">
                                         <span className="font-medium truncate w-full">{agent.name}</span>
-                                        <span className="text-xs text-muted-foreground capitalize">{agent.type} Agent</span>
+                                        <span className="text-xs text-muted-foreground line-clamp-2 whitespace-normal">
+                                            {agent.description ?? agent.type + ' agent'}
+                                        </span>
                                     </div>
                                 </Button>
                             ))

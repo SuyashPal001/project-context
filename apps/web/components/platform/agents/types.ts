@@ -22,6 +22,7 @@ export interface Agent {
     model: string | null;
     llmProviderId: string | null;
     isInternal: boolean;
+    description: string | null;
     createdAt: string;
 }
 
