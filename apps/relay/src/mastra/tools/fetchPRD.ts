@@ -30,10 +30,11 @@ const requestContextSchema = z.object({
 
 export const fetchPRD = createTool({
   id: 'fetch-prd',
-  description: 'Reads an agent_prds record by id. Returns null with a reason if not found or status is not approved.',
+  description: 'Reads an agent_prds record by id. By default requires approved status; set allowDraft=true to read drafts too. Returns null with a reason if not found.',
   requestContextSchema,
   inputSchema: z.object({
     prdId: z.string(),
+    allowDraft: z.boolean().optional().describe('Set true to read draft PRDs (for editing). Defaults to false (approved only).'),
   }),
   outputSchema: z.object({
     prd: prdRowSchema.nullable(),
@@ -41,6 +42,7 @@ export const fetchPRD = createTool({
   }),
   execute: async (inputData, execContext) => {
     const prdId = inputData?.prdId ?? ''
+    const allowDraft = (inputData as any)?.allowDraft ?? false
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const client = await getPool().connect()
     try {
@@ -63,7 +65,7 @@ export const fetchPRD = createTool({
 
       const row = rows[0]
 
-      if (row.status !== 'approved') {
+      if (row.status !== 'approved' && !allowDraft) {
         return {
           prd: null,
           reason: `PRD "${row.title}" has status "${row.status}" — it must be approved before generating a roadmap`,

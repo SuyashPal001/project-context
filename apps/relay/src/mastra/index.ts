@@ -39,7 +39,7 @@ import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 export const mastra = new Mastra({
   agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent, pm: pmAgent, roadmap: roadmapAgent, task: taskAgent },
-  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow, roadmap: roadmapWorkflow, tasks: taskWorkflow, pm: pmWorkflow },
+  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow, roadmap: roadmapWorkflow, tasks: taskWorkflow, 'pm-workflow': pmWorkflow },
   storage: getMastraStore(),
   scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer, roadmapCompleteness: roadmapCompletenessScorer, taskCompleteness: taskCompletenessScorer },
   editor: new MastraEditor(),

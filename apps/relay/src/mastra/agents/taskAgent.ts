@@ -9,7 +9,7 @@ import { taskCompletenessScorer } from '../scorers/taskCompleteness.js'
 export const taskAgent = new Agent({
   id: 'saarthi-task',
   name: 'Saarthi Task',
-  description: 'Specialist agent that breaks approved project milestones into concrete engineering tasks.',
+  description: 'Breaks approved project milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates. Call this agent when the user wants to generate tasks, create a task breakdown, or decompose milestones into work items. Requires a plan ID. Returns the saved tasks grouped by milestone.',
   instructions: `You are a task breakdown specialist.
 
 Steps to follow every time:

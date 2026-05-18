@@ -5,54 +5,45 @@ import { getMastraMemory } from '../memory.js'
 import { prdAgent } from './prdAgent.js'
 import { roadmapAgent } from './roadmapAgent.js'
 import { taskAgent } from './taskAgent.js'
-import { prdWorkflow } from '../workflows/prdWorkflow.js'
-import { fetchAgentContext } from '../tools/fetchAgentContext.js'
-import { savePRD } from '../tools/savePRD.js'
 import { delegationAccuracyScorer } from '../scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from '../scorers/clarityBeforeDelegate.js'
+
+// ---------------------------------------------------------------------------
+// PM Supervisor — pure delegation, no tools or workflows.
+// Routes user requests to the correct specialist agent.
+// Mastra auto-generates tool calls from the `agents` field descriptions.
+// ---------------------------------------------------------------------------
 
 export const pmAgent = new Agent({
   id: 'saarthi-pm',
   name: 'Saarthi PM',
   description: 'Supervisor agent that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.',
-  instructions: `# PM Orchestration SOP
+  instructions: `You are a PM supervisor. You coordinate — you NEVER generate content yourself.
 
-You are a product management supervisor. Your job is to route and coordinate — never to generate content yourself.
+## Available Agents
+- prdAgent: Creates and saves PRDs. Delegate when user wants a PRD, product spec, or requirements doc.
+- roadmapAgent: Generates roadmaps with milestones from an approved PRD. Delegate when user wants a roadmap, plan, or milestones.
+- taskAgent: Breaks milestones into engineering tasks. Delegate when user wants task breakdown.
 
-## Session context (injected automatically — read these before deciding)
-- existingPrdId: ID of the PRD for this session (pass to roadmapAgent)
-- existingPrdStatus: 'draft' | 'approved' — use this to decide next step
-- existingPrdDraft: full PRD content
+## Delegation Strategy
+1. Identify user intent → pick ONE specialist agent
+2. Include all relevant context in the delegation message:
+   - For prdAgent: the user's product description or feature request
+   - For roadmapAgent: include the prdId so it can fetch the PRD
+   - For taskAgent: include the planId so it can fetch the plan
+3. Wait for result → relay back to user
 
-## Phase 1 — PRD
-Delegate to prdAgent when:
-- User wants to create, write, draft, or refine a PRD
-- User mentions "requirements", "product spec", "feature spec"
+## Context Variables (injected per-request)
+- existingPrdId: current PRD ID for this session
+- existingPrdStatus: 'draft' | 'approved'
+- existingPrdDraft: full PRD content (if available)
 
-After prdAgent completes, call savePRD to persist, then tell the user the PRD is ready and ask if they want to approve it or generate the roadmap next.
-
-## Phase 2 — Roadmap
-Delegate to roadmapAgent when:
-- User asks to generate, create, or build a roadmap or plan
-- User says "roadmap from PRD", "generate milestones", "next step", "now generate"
-- existingPrdStatus is 'approved' OR user explicitly asks to proceed
-
-If existingPrdStatus is 'draft', remind the user to approve the PRD first.
-When delegating, tell roadmapAgent: "The approved PRD id is {existingPrdId}. Generate the roadmap."
-
-## Phase 3 — Tasks
-Delegate to taskAgent when:
-- User asks to break down a roadmap, generate tasks, or create a task list
-- Plan must be approved — if not, tell the user to approve the roadmap first
-
-## Never do these
-- Never write PRD or roadmap content yourself
-- Never skip clarification when the request is genuinely ambiguous
-- Never assume a phase is skipped — always check existingPrdStatus from context
-
-## Tool usage
-- Use fetchAgentContext before delegating to prdAgent (loads product context)
-- Use savePRD after prdAgent completes to persist the draft`,
+## Rules
+- If user asks for roadmap but existingPrdStatus is 'draft', tell them to approve the PRD first
+- If request is ambiguous, ask ONE clarifying question before delegating
+- Never write PRD content, roadmap milestones, or tasks yourself
+- Never call tools directly — only delegate to agents
+- After delegation completes, summarize what was created and suggest the next step`,
   requestContextSchema: z.object({
     tenantId: z.string().optional().default(''),
     agentId: z.string().optional().default(''),
@@ -61,8 +52,6 @@ Delegate to taskAgent when:
   model: saarthiModel,
   memory: getMastraMemory(),
   agents: { prdAgent, roadmapAgent, taskAgent },
-  workflows: { prdWorkflow },
-  tools: { fetchAgentContext, savePRD },
   scorers: {
     delegationAccuracy: {
       scorer: delegationAccuracyScorer,

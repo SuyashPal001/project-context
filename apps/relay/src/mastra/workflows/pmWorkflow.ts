@@ -85,7 +85,7 @@ export const prdApprovalGate = createStep({
   resumeSchema: z.object({ approved: z.boolean() }),
   suspendSchema: z.object({ phase: z.literal('prd'), prdId: z.string() }),
   execute: async ({ inputData, suspend }) => {
-    const resumeData = await suspend({ phase: 'prd', prdId: inputData.prdId })
+    const resumeData = await suspend({ phase: 'prd', prdId: inputData.prdId }, { timeout: 7 * 24 * 60 * 60 * 1000 })
     if (!resumeData?.approved) throw new Error('PRD approval declined')
     return { prdId: inputData.prdId }
   },
@@ -109,7 +109,7 @@ export const roadmapGenStep = createStep({
     if (!prd) throw new Error(`PRD ${inputData.prdId} not found for tenant ${tenantId}`)
 
     // Run roadmapWorkflow (analyze → plan → format)
-    const wf  = mastra.getWorkflow('roadmap-workflow')
+    const wf  = mastra.getWorkflow('roadmap')
     const run = wf.createRun()
     const res = await run.start({ inputData: { prdContent: prd.content }, requestContext })
     if (res.status !== 'success') throw new Error(`roadmapWorkflow failed: ${res.status}`)
@@ -117,7 +117,7 @@ export const roadmapGenStep = createStep({
     const prdData = (res as any).result?.prdData as PrdData
     const planResult = await createPlanFromPrd(tenantId, userId, prdData)
 
-    const resumeData = await suspend({ phase: 'roadmap', planId: planResult.planId, title: prdData.plan.title })
+    const resumeData = await suspend({ phase: 'roadmap', planId: planResult.planId, title: prdData.plan.title }, { timeout: 7 * 24 * 60 * 60 * 1000 })
     if (!resumeData?.approved) throw new Error('Roadmap approval declined')
 
     return { planId: planResult.planId, title: prdData.plan.title }
@@ -150,7 +150,7 @@ export const tasksGenStep = createStep({
     const taskData = (res as any).result?.taskData
     const taskCount = await persistTaskData(tenantId, userId, agentId, taskData)
 
-    const resumeData = await suspend({ phase: 'tasks', planId: inputData.planId, taskCount })
+    const resumeData = await suspend({ phase: 'tasks', planId: inputData.planId, taskCount }, { timeout: 7 * 24 * 60 * 60 * 1000 })
     if (!resumeData?.confirmed) throw new Error('Tasks confirmation declined')
 
     return { planId: inputData.planId, taskCount }
@@ -163,6 +163,15 @@ export const pmWorkflow = createWorkflow({
   id: 'pm-workflow',
   inputSchema: workflowInputSchema,
   outputSchema: z.object({ planId: z.string(), taskCount: z.number() }),
+  retryConfig: {
+    attempts: 3,
+    delay: 2000,
+  },
+  options: {
+    onError: async (errorInfo) => {
+      console.error(`[pmWorkflow] failed runId=${errorInfo.runId}:`, errorInfo.error?.message ?? errorInfo.error)
+    },
+  },
 })
   .then(prdApprovalGate)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

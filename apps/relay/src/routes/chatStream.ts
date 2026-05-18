@@ -201,9 +201,49 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       }
       console.log(`[sse:${sessionId}] PM routing — intent=${isPmIntent(message)} session=${pmSession} draft=${!!draft}`)
       agentStream = await pmAgent.stream(mastraMessage, {
-        maxSteps: 10,
+        maxSteps: 5,
+        memory: { thread: conversationId, resource: tenantId },
         requestContext,
-        delegation: { onDelegationStart: async () => ({ proceed: true }) },
+        onIterationComplete: async (context) => {
+          // Stop after the supervisor produces a text response following a delegation
+          if (context.finishReason === 'stop' && context.iteration > 1) {
+            return { continue: false }
+          }
+          // Hard cap — never exceed 4 iterations
+          if (context.iteration >= 4) {
+            return { continue: false }
+          }
+          return { continue: true }
+        },
+        delegation: {
+          onDelegationStart: async (context) => {
+            if (context.iteration > 3) {
+              return { proceed: false, rejectionReason: 'Max delegations reached. Summarize current results for the user.' }
+            }
+            let modifiedPrompt = context.prompt
+            if (draft) {
+              const isPrdDelegate = context.primitiveId === 'saarthi-prd'
+              // For prdAgent edits: inject full content so it can apply targeted changes
+              // For others (roadmap/task): inject only the ID and status
+              if (isPrdDelegate && draft.content) {
+                modifiedPrompt += `\n\n[Session Context] prdId=${draft.id} | prdStatus=${draft.status}\n\n[Existing PRD Content]\n${draft.content}`
+              } else {
+                modifiedPrompt += `\n\n[Session Context] prdId=${draft.id} | prdStatus=${draft.status}`
+              }
+            }
+            return { proceed: true, modifiedPrompt, modifiedMaxSteps: 3 }
+          },
+          onDelegationComplete: async (context) => {
+            if (context.error) {
+              console.error(`[sse:${sessionId}] delegation to ${context.primitiveId} failed:`, context.error)
+              context.bail()
+              return { feedback: `Delegation to ${context.primitiveId} failed: ${context.error}. Inform the user of the error.` }
+            }
+          },
+          messageFilter: ({ messages }) => {
+            return messages.slice(-5)
+          },
+        },
       })
     } else {
       agentStream = await (platformAgent as any).stream(mastraMessage, {
