@@ -199,6 +199,39 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     };
   }, [handleCanvasUpdate, handleReset, flushPending]);
 
+  const handleRevise = useCallback(async (instructions: string) => {
+    if (!artifact?.pmRunId || !artifact?.pmStepId) return;
+    setArtifact(prev => prev ? { ...prev, approveStatus: 'loading' } : prev);
+    try {
+      const relayBase = (process.env.NEXT_PUBLIC_AGENT_WS_URL ?? 'wss://agent-saas.fitnearn.com')
+        .replace(/^wss?:\/\//, 'https://');
+      const cookies = document.cookie.split('; ');
+      const accessToken = cookies.find(r => r.startsWith('platform_access_token='))?.split('=')[1] ?? '';
+      const res = await fetch(`${relayBase}/pm/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+        body: JSON.stringify({ runId: artifact.pmRunId, stepId: artifact.pmStepId, revise: instructions }),
+      });
+      if (!res.ok) throw new Error(`pm/resume ${res.status}`);
+      const data = await res.json() as { phase: string; prdId?: string; title?: string; runId?: string; stepId?: string };
+      if (data.phase === 'prd' && data.prdId) {
+        // Fetch the revised content and update the canvas
+        const prdRes = await api.get<{ data: { content: string } }>(`/api/v1/prds/${data.prdId}`);
+        const content = prdRes.data?.content ?? '';
+        setArtifact(prev => prev ? {
+          ...prev,
+          title: data.title ?? prev.title,
+          content,
+          approveStatus: 'idle',
+          pmRunId: data.runId,
+          pmStepId: data.stepId,
+        } : prev);
+      }
+    } catch {
+      setArtifact(prev => prev ? { ...prev, approveStatus: 'error' } : prev);
+    }
+  }, [artifact]);
+
   const handleApprove = useCallback(async () => {
     if (!artifact) return;
     setArtifact(prev => prev ? { ...prev, approveStatus: 'loading' } : prev);
@@ -338,7 +371,9 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
               <ArtifactPanel
                 artifact={artifact}
                 onApprove={handleApprove}
+                onRevise={handleRevise}
                 onContentLoaded={(content) => setArtifact(prev => prev ? { ...prev, content } : prev)}
+                tenantSlug={tenantSlug}
               />
             </div>
           ) : (
