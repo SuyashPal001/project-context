@@ -1,10 +1,9 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
 import { z } from 'zod'
 
-// Import agents directly (not via index.js) to avoid circular dependency:
-// prdAgent → prdWorkflow → index → prdAgent
 import { prdAgent } from '../agents/prdAgent.js'
 import { formatterAgent } from '../agents/formatterAgent.js'
+import { savePRD } from '../tools/savePRD.js'
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -41,8 +40,15 @@ const prdSchema = z.object({
   openQuestions: z.array(z.string()),
 })
 
+// prdText passed through so saveStep can persist the markdown content
 const formatOutputSchema = z.object({
   prd: prdSchema,
+  prdText: z.string(),
+})
+
+const saveOutputSchema = z.object({
+  prdId: z.string(),
+  prdContent: z.string(),
 })
 
 // ─── Step 1: gatherStep ───────────────────────────────────────────────────────
@@ -172,7 +178,7 @@ export const formatStep = createStep({
       })
       if (result.object) {
         console.log('[formatStep] structured PRD produced successfully')
-        return result.object as z.infer<typeof formatOutputSchema>
+        return { ...(result.object as z.infer<typeof formatOutputSchema>), prdText }
       }
     } catch (err) {
       console.error('[formatStep] error:', (err as Error).message)
@@ -190,6 +196,33 @@ export const formatStep = createStep({
         successMetrics: [],
         openQuestions: [],
       },
+      prdText,
+    }
+  },
+})
+
+// ─── Step 4: saveStep ─────────────────────────────────────────────────────────
+// Persists the PRD to agent_prds via savePRD tool. Returns prdId so the
+// owning agent (prdAgent) can pass it to pmAgent or the next workflow step.
+
+export const saveStep = createStep({
+  id: 'save-prd',
+  inputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
+  execute: async ({ inputData, requestContext }) => {
+    const { prd, prdText } = inputData
+    const title = prd.tldr?.slice(0, 100) || 'Product Requirements Document'
+
+    try {
+      const result = await savePRD.execute!(
+        { title, content: prdText, contentType: 'markdown' as const },
+        { requestContext },
+      )
+      console.log(`[saveStep:prd] saved prdId=${result.prdId}`)
+      return { prdId: result.prdId, prdContent: prdText }
+    } catch (err) {
+      console.error('[saveStep:prd] error:', (err as Error).message)
+      throw err
     }
   },
 })
@@ -199,11 +232,13 @@ export const formatStep = createStep({
 export const prdWorkflow = createWorkflow({
   id: 'prd-workflow',
   inputSchema: workflowInputSchema,
-  outputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
 })
   .then(gatherStep)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(writeStep as any)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(formatStep as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  .then(saveStep as any)
   .commit()

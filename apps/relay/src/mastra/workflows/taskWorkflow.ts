@@ -4,6 +4,7 @@ import { resolve } from 'path'
 import { z } from 'zod'
 
 import { formatterAgent } from '../agents/formatterAgent.js'
+import { saveTasks } from '../tools/saveTasks.js'
 
 // Load skill content once at module init — injected into generateText prompts
 // so workflow steps get the same context taskAgent.generate() used to provide
@@ -52,9 +53,12 @@ const formatOutputSchema = z.object({
   taskData: taskGenerationDataSchema,
 })
 
+const saveOutputSchema = z.object({
+  planId: z.string(),
+  taskCount: z.number(),
+})
+
 // ─── Step 1: analyzeStep ─────────────────────────────────────────────────────
-// taskAgent summarizes the scope, priority, and AC of each milestone in the
-// plan. Plain text output only — no JSON, no tasks yet.
 
 export const analyzeStep = createStep({
   id: 'analyze-milestones',
@@ -96,9 +100,6 @@ export const analyzeStep = createStep({
 })
 
 // ─── Step 2: generateStep ─────────────────────────────────────────────────────
-// taskAgent generates 3–7 tasks per milestone following the task-breakdown
-// SKILL.md SOP. Uses getInitData() to access milestone IDs from the original
-// plan. Plain text output for formatStep to parse.
 
 export const generateStep = createStep({
   id: 'generate-tasks',
@@ -257,16 +258,42 @@ export const formatStep = createStep({
   },
 })
 
+// ─── Step 4: saveStep ─────────────────────────────────────────────────────────
+// Persists all tasks to agent_tasks via saveTasks tool.
+// Returns planId + taskCount so the owning agent can report back to pmAgent.
+
+export const saveStep = createStep({
+  id: 'save-tasks',
+  inputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
+  execute: async ({ inputData, requestContext }) => {
+    const { taskData } = inputData
+    try {
+      const result = await saveTasks.execute!(
+        { taskData },
+        { requestContext },
+      )
+      console.log(`[saveStep:tasks] saved tasksCreated=${result.tasksCreated} planId=${taskData.planId}`)
+      return { planId: taskData.planId, taskCount: result.tasksCreated }
+    } catch (err) {
+      console.error('[saveStep:tasks] error:', (err as Error).message)
+      throw err
+    }
+  },
+})
+
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 
 export const taskWorkflow = createWorkflow({
   id: 'task-workflow',
   inputSchema: workflowInputSchema,
-  outputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
 })
   .then(analyzeStep)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(generateStep as any)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(formatStep as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  .then(saveStep as any)
   .commit()

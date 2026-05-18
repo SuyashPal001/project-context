@@ -4,6 +4,8 @@ import { resolve } from 'path'
 import { z } from 'zod'
 
 import { formatterAgent } from '../agents/formatterAgent.js'
+import { createPlanFromPrd } from '../../services/planService.js'
+import type { PrdData } from '../../services/planService.js'
 
 // Load skill content once at module init — injected into generateText prompts
 // so workflow steps get the same context roadmapAgent.generate() used to provide
@@ -49,6 +51,11 @@ const prdDataSchema = z.object({
 
 const formatOutputSchema = z.object({
   prdData: prdDataSchema,
+})
+
+const saveOutputSchema = z.object({
+  planId: z.string(),
+  title: z.string(),
 })
 
 // ─── Step 1: analyzeStep ─────────────────────────────────────────────────────
@@ -207,16 +214,42 @@ export const formatStep = createStep({
   },
 })
 
+// ─── Step 4: saveStep ─────────────────────────────────────────────────────────
+// Persists the roadmap to project_plans + project_milestones via planService.
+// Returns planId so prdAgent/pmAgent can pass it to the next phase.
+
+export const saveStep = createStep({
+  id: 'save-roadmap',
+  inputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
+  execute: async ({ inputData, requestContext }) => {
+    const { prdData } = inputData
+    const tenantId = requestContext?.get('tenantId') as string ?? ''
+    const userId   = requestContext?.get('userId')   as string ?? ''
+
+    try {
+      const result = await createPlanFromPrd(tenantId, userId, prdData as PrdData)
+      console.log(`[saveStep:roadmap] saved planId=${result.planId} milestones=${result.milestoneCount}`)
+      return { planId: result.planId, title: prdData.plan.title }
+    } catch (err) {
+      console.error('[saveStep:roadmap] error:', (err as Error).message)
+      throw err
+    }
+  },
+})
+
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 
 export const roadmapWorkflow = createWorkflow({
   id: 'roadmap-workflow',
   inputSchema: workflowInputSchema,
-  outputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
 })
   .then(analyzeStep)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(planStep as any)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(formatStep as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  .then(saveStep as any)
   .commit()
