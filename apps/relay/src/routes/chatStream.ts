@@ -1,15 +1,29 @@
+import { z } from 'zod'
 import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
 import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload } from '../persistence.js'
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { platformAgent, mastra } from '../mastra/index.js'
-import { pmAgent } from '../mastra/agents/pmAgent.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { fetchAgentSkill } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
-import { isPmIntent, fetchPrdDraft, markPmSession, isPmSession } from './pmRouting.js'
+import { isPmIntent } from './pmRouting.js'
+
+// ─── Pending PM workflow sessions (Option B: chat-based approval/revision) ────
+// Tracks workflows suspended mid-run so the user can approve or revise via chat.
+// In-memory: cleared on restart (acceptable — user can re-trigger from UI).
+
+type PendingPmPhase = 'prd-clarify' | 'prd' | 'roadmap' | 'tasks'
+interface PendingPmSession { pmRunId: string; pmStepId: string; phase: PendingPmPhase }
+const pendingPmSessions = new Map<string, PendingPmSession>()
+
+const APPROVAL_WORDS = ['approve', 'approved', 'yes', 'lgtm', 'looks good', 'go ahead', 'proceed', 'accept', 'perfect', 'great', 'confirm', 'confirmed']
+function isApprovalMessage(msg: string): boolean {
+  const lower = msg.toLowerCase().trim()
+  return APPROVAL_WORDS.some(w => lower === w || lower.startsWith(w + ' ') || lower.startsWith(w + ','))
+}
 
 export interface ChatStreamOpts {
   message: string
@@ -183,28 +197,116 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
     let agentStream: any
+    let isPmWorkflow = false
 
-    // Route to pmAgent if:
-    //   1. explicit PM intent keywords in message, OR
-    //   2. in-process session flag (tracks clarifying-questions phase before draft is saved), OR
-    //   3. existing draft in DB (handles cross-session "continue my PRD" scenarios)
-    const pmSession = isPmSession(conversationId)
-    const draft = (isPmIntent(message) || pmSession) ? await fetchPrdDraft(agentId, tenantId) : null
-    const usePmAgent = isPmIntent(message) || pmSession || !!draft
+    // ── Option B: chat-based PM workflow resume ──────────────────────────────
+    // If a PM workflow is suspended for this conversation, intercept the chat
+    // message and resume the workflow (answers, revision, or approval) instead
+    // of routing to the platform agent or starting a new workflow.
+    const pendingPm = pendingPmSessions.get(conversationId)
+    if (pendingPm) {
+      const { pmRunId: existingRunId, pmStepId: existingStepId, phase } = pendingPm
+      const approval = isApprovalMessage(message)
 
-    if (usePmAgent) {
-      markPmSession(conversationId)  // keep session alive through clarifying questions
-      if (draft) {
-        requestContext.set('existingPrdDraft', draft.content)
-        requestContext.set('existingPrdId', draft.id)
-        requestContext.set('existingPrdStatus', draft.status)
+      let resumePayload: Record<string, unknown>
+      if (phase === 'prd-clarify') {
+        resumePayload = { answers: message }          // any message = clarification answers
+      } else if (phase === 'prd') {
+        resumePayload = approval ? { approved: true } : { revise: message }
+      } else if (phase === 'tasks') {
+        resumePayload = { confirmed: approval }
+      } else {
+        resumePayload = { approved: approval }        // roadmap: only act on explicit approval
       }
-      console.log(`[sse:${sessionId}] PM routing — intent=${isPmIntent(message)} session=${pmSession} draft=${!!draft}`)
-      agentStream = await pmAgent.stream(mastraMessage, {
-        maxSteps: 10,
-        requestContext,
-        delegation: { onDelegationStart: async () => ({ proceed: true }) },
+
+      // For roadmap/tasks, skip if not an explicit approval (let platformAgent handle it)
+      const shouldResume = phase === 'prd-clarify' || phase === 'prd' || approval
+      if (shouldResume) {
+        pendingPmSessions.delete(conversationId)
+
+        const statusText = phase === 'prd-clarify'
+          ? 'Got it — generating your PRD...'
+          : approval ? 'Approved! Working on the next step...' : 'Revising your PRD...'
+        sendEvent('delta', { text: statusText, conversationId })
+        fullText = statusText
+
+        const workflow = mastra.getWorkflow('pm-workflow')
+        const run = workflow.createRun({ runId: existingRunId })
+        const result = await run.resume({ resumeData: resumePayload, step: existingStepId, requestContext })
+
+        if (result.status === 'suspended') {
+          for (const [sid, step] of Object.entries(result.steps ?? {})) {
+            const s = step as any
+            if (s.status !== 'suspended') continue
+            const sp = s.suspendPayload ?? {}
+            pmRunId = existingRunId
+            pmStepId = sid
+            if (sp.phase === 'prd') {
+              fullText = approval ? `PRD ready for review: "${sp.title}"` : `PRD revised: "${sp.title}"`
+              pendingArtifactRef = { type: 'prd', entityId: sp.prdId, title: sp.title || 'PRD', pmRunId, pmStepId }
+              pendingPmSessions.set(conversationId, { pmRunId, pmStepId, phase: 'prd' })
+            } else if (sp.phase === 'roadmap') {
+              fullText = `Roadmap ready for review: "${sp.title}"`
+              pendingArtifactRef = { type: 'roadmap', entityId: sp.planId, title: sp.title || 'Roadmap', pmRunId, pmStepId }
+              pendingPmSessions.set(conversationId, { pmRunId, pmStepId, phase: 'roadmap' })
+            } else if (sp.phase === 'tasks') {
+              fullText = `${sp.taskCount} tasks ready for review`
+              pendingArtifactRef = { type: 'tasks', entityId: sp.planId, title: `${sp.taskCount} tasks`, pmRunId, pmStepId }
+              pendingPmSessions.set(conversationId, { pmRunId, pmStepId, phase: 'tasks' })
+            }
+            break
+          }
+        } else if (result.status === 'success') {
+          fullText = 'PM workflow completed.'
+        }
+
+        const responseTimeMs = Date.now() - startTime
+        const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
+        sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult: undefined, artifactRef: pendingArtifactRef ?? undefined })
+        saveUserMessage(idToken, conversationId, message, atts)
+        saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef)
+        if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
+        pendingMetrics = { conversationId, tenantId, ragFired: false, ragChunksRetrieved: 0, responseTimeMs, totalTokens: 0, inputTokens: 0, outputTokens: 0, userMessageCount: 1, costUsd: undefined }
+        flushMetrics()
+        closeStream()
+        return
+      }
+    }
+
+    // Route to pmWorkflow if PM intent is detected
+    if (isPmIntent(message)) {
+      // Step 1: routing supervisor — pmAgent classifies intent and extracts context
+      console.log(`[sse:${sessionId}] PM intent detected — consulting pmAgent for routing`)
+      const pmRoutingSchema = z.object({
+        intent: z.enum(['prd', 'roadmap', 'tasks']),
+        existingPrdId: z.string().nullable().optional(),
+        existingPlanId: z.string().nullable().optional(),
       })
+      let routing: z.infer<typeof pmRoutingSchema> = { intent: 'prd', existingPrdId: null, existingPlanId: null }
+      try {
+        const routingResult = await (mastra.getAgent('pm') as any).generate(
+          `Classify this PM request: "${message}"`,
+          { requestContext, structuredOutput: { schema: pmRoutingSchema } },
+        )
+        if (routingResult.object) routing = routingResult.object
+      } catch (err) {
+        console.warn(`[sse:${sessionId}] pmAgent routing failed, defaulting to prd:`, (err as Error).message)
+      }
+
+      // Step 2: inject routing context for workflow steps to read
+      if (routing.existingPrdId) requestContext.set('existingPrdId', routing.existingPrdId)
+      if (routing.existingPlanId) requestContext.set('existingPlanId', routing.existingPlanId)
+
+      console.log(`[sse:${sessionId}] PM routing: intent=${routing.intent} prdId=${routing.existingPrdId ?? 'none'} planId=${routing.existingPlanId ?? 'none'}`)
+
+      // Step 3: start pmWorkflow — steps read existingPrdId/planId from requestContext
+      const workflow = mastra.getWorkflow('pm-workflow')
+      const run = workflow.createRun()
+      agentStream = run.stream({
+        inputData: { userPrompt: mastraMessage },
+        requestContext,
+      })
+      isPmWorkflow = true
     } else {
       agentStream = await (platformAgent as any).stream(mastraMessage, {
         memory: { thread: conversationId || crypto.randomUUID(), resource: tenantId, ...(memoryOptions ? { options: memoryOptions } : {}) },
@@ -218,6 +320,58 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     for await (const part of agentStream.fullStream as AsyncIterable<any>) {
       if (isStreamClosed()) break
+
+      // Handle workflow-specific events
+      if (isPmWorkflow) {
+        switch (part.type) {
+          case 'workflow-step-start': {
+            const stepId = part.payload?.stepId
+            console.log(`[sse:${sessionId}] workflow step started: ${stepId}`)
+            break
+          }
+          case 'workflow-step-complete': {
+            const stepId = part.payload?.stepId
+            console.log(`[sse:${sessionId}] workflow step completed: ${stepId}`)
+            break
+          }
+          case 'workflow-suspended': {
+            const suspendPayload = part.payload?.suspendPayload
+            const suspendedStep = part.payload?.stepId
+            pmRunId = (agentStream as any).runId
+            pmStepId = suspendedStep
+
+            if (suspendPayload) {
+              const { phase, questions, prdId, planId, taskCount, title } = suspendPayload
+              if (phase === 'prd-clarify' && questions) {
+                // Emit questions as visible chat text — no card needed, Option B chat handles answers
+                sendEvent('delta', { text: questions, conversationId })
+                fullText = questions
+                // pendingArtifactRef stays null; session tracked in post-loop block via pmRunId/pmStepId
+              } else if (phase === 'prd' && prdId) {
+                fullText = `PRD draft ready for review: "${title || 'PRD'}"`
+                pendingArtifactRef = { type: 'prd', entityId: prdId, title: title || 'PRD', pmRunId, pmStepId }
+              } else if (phase === 'roadmap' && planId) {
+                fullText = `Roadmap ready for review: "${title || 'Roadmap'}"`
+                pendingArtifactRef = { type: 'roadmap', entityId: planId, title: title || 'Roadmap', pmRunId, pmStepId }
+              } else if (phase === 'tasks' && planId) {
+                fullText = `${taskCount} tasks generated and ready for review`
+                pendingArtifactRef = { type: 'tasks', entityId: planId, title: `${taskCount} tasks`, pmRunId, pmStepId }
+              }
+            }
+
+            console.log(`[sse:${sessionId}] workflow suspended at ${suspendedStep} phase=${suspendPayload?.phase}, runId=${pmRunId}`)
+            break
+          }
+          case 'finish': {
+            console.log(`[sse:${sessionId}] workflow completed`)
+            fullText = fullText || 'Workflow completed successfully'
+            break
+          }
+        }
+        continue
+      }
+
+      // Handle agent events
       switch (part.type) {
         case 'text-delta': {
           const text = (part.payload?.text ?? part.textDelta ?? '') as string
@@ -225,9 +379,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           sendEvent('delta', { text, conversationId })
           break
         }
-        // Delegated sub-agent (e.g. prdAgent) text — Mastra wraps inner stream parts
-        // as agent-execution-event-{inner.type}. Forward text deltas so the artifact
-        // panel streams in real time instead of waiting for the outer finish event.
+        // Delegated sub-agent text
         case 'agent-execution-event-text-delta': {
           const text = (part.payload?.textDelta ?? part.payload?.text ?? '') as string
           if (text) {
@@ -298,23 +450,6 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             console.log(`[sse:${sessionId}] plan JSON extracted from agent response`)
           }
 
-          // Start Mastra HITL pm-workflow after PRD is saved so frontend gets runId for approval gate
-          if (pendingArtifactRef?.type === 'prd') {
-            try {
-              const wf  = mastra.getWorkflow('pm-workflow')
-              const run = wf.createRun()
-              const res = await run.start({ inputData: { prdId: pendingArtifactRef.entityId }, requestContext })
-              if (res.status === 'suspended') {
-                pmRunId  = run.runId
-                pmStepId = 'prd-approval-gate'
-                pendingArtifactRef = { ...pendingArtifactRef, pmRunId, pmStepId }
-                console.log(`[sse:${sessionId}] pmWorkflow started runId=${pmRunId}`)
-              }
-            } catch (pmErr) {
-              console.error(`[sse:${sessionId}] pmWorkflow start failed:`, (pmErr as Error).message)
-            }
-          }
-
           sendEvent('done', { text: fullText, conversationId, messageId, planResult, artifactRef: pendingArtifactRef ?? undefined })
 
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
@@ -329,6 +464,49 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           flushMetrics()
           break
         }
+      }
+    }
+
+    // For PM workflows, the done event and persistence happen here (not inside the loop,
+    // because workflow events use `continue` and skip the agent-finish case).
+    if (isPmWorkflow) {
+      const responseTimeMs = Date.now() - startTime
+      const atts = attachments.map(a => ({
+        fileId: a.fileId,
+        name: a.name ?? a.fileId ?? 'attachment',
+        type: a.type ?? '',
+        size: a.size,
+      }))
+      sendEvent('done', {
+        text: fullText,
+        conversationId,
+        messageId: assistantMessageId,
+        planResult: undefined,
+        artifactRef: pendingArtifactRef ?? undefined,
+      })
+      saveUserMessage(idToken, conversationId, message, atts)
+      saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef)
+      if (pendingArtifactRef) {
+        fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
+      }
+      pendingMetrics = {
+        conversationId, tenantId, ragFired: false, ragChunksRetrieved: 0,
+        responseTimeMs, totalTokens: 0, inputTokens: 0, outputTokens: 0,
+        userMessageCount: 1, costUsd: undefined,
+      }
+      flushMetrics()
+
+      // Register pending session for Option B chat-based resume on next message
+      if (pendingArtifactRef?.pmRunId && pendingArtifactRef?.pmStepId) {
+        // prd / roadmap / tasks — tracked via artifactRef
+        pendingPmSessions.set(conversationId, {
+          pmRunId: pendingArtifactRef.pmRunId,
+          pmStepId: pendingArtifactRef.pmStepId,
+          phase: pendingArtifactRef.type as PendingPmPhase,
+        })
+      } else if (pmRunId && pmStepId && !pendingArtifactRef) {
+        // prd-clarify — questions shown as text, no card; session still needs tracking
+        pendingPmSessions.set(conversationId, { pmRunId, pmStepId, phase: 'prd-clarify' })
       }
     }
 

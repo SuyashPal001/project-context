@@ -59,7 +59,7 @@ export const analyzeStep = createStep({
   id: 'analyze-prd',
   inputSchema: workflowInputSchema,
   outputSchema: analyzeOutputSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, requestContext }) => {
     const { prdContent } = inputData
 
     const prompt = [
@@ -87,7 +87,7 @@ export const analyzeStep = createStep({
     let analysis = ''
 
     try {
-      const result = await formatterAgent.generate(`${roadmapSkill}\n\n${prompt}`)
+      const result = await formatterAgent.generate(`${roadmapSkill}\n\n${prompt}`, { requestContext })
       analysis = result.text ?? ''
       console.log(`[analyzeStep] analysis length=${analysis.length}`)
     } catch (err) {
@@ -107,7 +107,7 @@ export const planStep = createStep({
   id: 'plan-milestones',
   inputSchema: analyzeOutputSchema,
   outputSchema: planOutputSchema,
-  execute: async ({ inputData, getInitData }) => {
+  execute: async ({ inputData, getInitData, requestContext }) => {
     const { analysis } = inputData
     const initData = getInitData<z.infer<typeof workflowInputSchema>>()
 
@@ -139,7 +139,7 @@ export const planStep = createStep({
     let roadmapDraft = ''
 
     try {
-      const result = await formatterAgent.generate(`${roadmapSkill}\n\n${prompt}`)
+      const result = await formatterAgent.generate(`${roadmapSkill}\n\n${prompt}`, { requestContext })
       roadmapDraft = result.text ?? ''
       console.log(`[planStep] roadmapDraft length=${roadmapDraft.length}`)
     } catch (err) {
@@ -161,7 +161,7 @@ export const formatStep = createStep({
   id: 'format-roadmap',
   inputSchema: planOutputSchema,
   outputSchema: formatOutputSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, requestContext }) => {
     const { roadmapDraft } = inputData
 
     const prompt = [
@@ -192,6 +192,7 @@ export const formatStep = createStep({
 
     try {
       const result = await formatterAgent.generate(prompt, {
+        requestContext,
         structuredOutput: { schema: formatOutputSchema },
       })
       if (result.object) {

@@ -9,18 +9,21 @@ import { taskCompletenessScorer } from '../scorers/taskCompleteness.js'
 export const taskAgent = new Agent({
   id: 'saarthi-task',
   name: 'Saarthi Task',
-  description: 'Specialist agent that breaks approved project milestones into concrete engineering tasks.',
+  description: 'Breaks approved project milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates. Call this agent when the user wants to generate tasks, create a task breakdown, or decompose milestones into work items. Requires a plan ID. Returns the saved tasks grouped by milestone.',
   instructions: `You are a task breakdown specialist.
 
-Steps to follow every time:
-1. Call fetch-plan with the planId from context — if not found, stop and tell the user
-2. Serialize the returned plan object to JSON and run taskWorkflow with planData set to that JSON string
-3. Call save-tasks with the taskData from formatStep output, plus userId, tenantId, and agentId from context
-4. Return a summary: plan title, number of milestones processed, total tasks created
+When plan data is provided directly in the prompt:
+- Use it as-is — do not call any tools
+- For each milestone generate 3–7 tasks: title, description, priority, acceptanceCriteria (string[]), estimatedHours
+- Use the exact milestoneId values provided — never invent them
+- Write in structured plain text — no JSON
 
-Never generate PRD or roadmap content — only tasks.
-Never skip fetching the plan — always read it fresh from the DB.
-Never invent milestoneId values — they must come from the fetch-plan result.`,
+When only a planId is provided in context:
+- Call fetch-plan to retrieve the plan — stop if not found
+- Generate tasks as above
+- Call save-tasks with the result
+
+Never generate PRD or roadmap content — only tasks.`,
   model: saarthiModel,
   workspace: taskWorkspace,
   workflows: { tasks: taskWorkflow },

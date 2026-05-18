@@ -1,16 +1,19 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { FileText, Map, CheckSquare, Loader2, Check, AlertCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { FileText, Map, CheckSquare, Loader2, Check, AlertCircle, Pencil, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
 import type { ArtifactState, ArtifactType } from './types';
 
 interface ArtifactPanelProps {
   artifact: ArtifactState;
   onApprove: () => Promise<void>;
+  onRevise?: (instructions: string) => Promise<void>;
   onContentLoaded: (content: string) => void;
+  tenantSlug?: string;
 }
 
 const TYPE_ICONS: Record<ArtifactType, React.ReactNode> = {
@@ -54,9 +57,11 @@ function MarkdownLine({ line }: { line: string }) {
   return <p>{line}</p>;
 }
 
-export function ArtifactPanel({ artifact, onApprove, onContentLoaded }: ArtifactPanelProps) {
+export function ArtifactPanel({ artifact, onApprove, onRevise, onContentLoaded, tenantSlug }: ArtifactPanelProps) {
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [showRevise, setShowRevise] = useState(false);
+  const [reviseText, setReviseText] = useState('');
   const showFooter = !artifact.isStreaming && artifact.entityId !== null;
 
   // Fetch PRD content from DB when artifact has no content (post-refresh restore)
@@ -129,34 +134,102 @@ export function ArtifactPanel({ artifact, onApprove, onContentLoaded }: Artifact
 
       {/* Footer — only shown when streaming is done and entity saved */}
       {showFooter && (
-        <div className="flex-none flex items-center justify-between px-4 py-3 border-t border-border bg-muted/10">
-          <span className="text-[11px] text-muted-foreground">{metaLabel(artifact)}</span>
-          <div className="flex items-center gap-2">
-            {artifact.approveStatus === 'error' && (
-              <span className="flex items-center gap-1 text-[11px] text-red-500">
-                <AlertCircle className="h-3 w-3" />
-                Failed — retry
-              </span>
-            )}
-            {artifact.approveStatus === 'done' ? (
-              <span className="flex items-center gap-1.5 text-[11px] text-green-500 font-medium">
-                <Check className="h-3.5 w-3.5" />
-                Approved
-              </span>
-            ) : (
-              <Button
-                size="sm"
-                className="h-8 text-xs font-medium"
-                disabled={artifact.approveStatus === 'loading'}
-                onClick={onApprove}
-              >
-                {artifact.approveStatus === 'loading' ? (
-                  <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Approving…</>
-                ) : (
-                  APPROVE_LABELS[artifact.type]
-                )}
-              </Button>
-            )}
+        <div className="flex-none border-t border-border bg-muted/10">
+          {/* Revision textarea — shown when Request Changes is clicked */}
+          {showRevise && (
+            <div className="flex flex-col gap-2 px-4 pt-3 pb-2">
+              <Textarea
+                value={reviseText}
+                onChange={e => setReviseText(e.target.value)}
+                placeholder="Describe the changes you want…"
+                className="text-xs resize-none h-20"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => { setShowRevise(false); setReviseText(''); }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={!reviseText.trim() || artifact.approveStatus === 'loading'}
+                  onClick={async () => {
+                    const text = reviseText.trim();
+                    setShowRevise(false);
+                    setReviseText('');
+                    await onRevise?.(text);
+                  }}
+                >
+                  {artifact.approveStatus === 'loading'
+                    ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Revising…</>
+                    : 'Submit Changes'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="text-[11px] text-muted-foreground">{metaLabel(artifact)}</span>
+            <div className="flex items-center gap-2">
+              {artifact.approveStatus === 'error' && (
+                <span className="flex items-center gap-1 text-[11px] text-red-500">
+                  <AlertCircle className="h-3 w-3" />
+                  Failed — retry
+                </span>
+              )}
+              {artifact.approveStatus === 'done' ? (
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 text-[11px] text-green-500 font-medium">
+                    <Check className="h-3.5 w-3.5" />
+                    {artifact.type === 'tasks' ? 'Confirmed' : 'Approved'}
+                  </span>
+                  {artifact.type === 'tasks' && artifact.entityId && tenantSlug && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs font-medium"
+                      onClick={() => window.open(`/${tenantSlug}/dashboard/plans/${artifact.entityId}`, '_blank')}
+                    >
+                      View Plan
+                      <ArrowRight className="h-3 w-3 ml-1.5" />
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {/* Request Changes — PRD only, only when HITL is active */}
+                  {artifact.type === 'prd' && artifact.pmRunId && !showRevise && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs font-medium"
+                      disabled={artifact.approveStatus === 'loading'}
+                      onClick={() => setShowRevise(true)}
+                    >
+                      <Pencil className="h-3 w-3 mr-1.5" />
+                      Request Changes
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs font-medium"
+                    disabled={artifact.approveStatus === 'loading'}
+                    onClick={onApprove}
+                  >
+                    {artifact.approveStatus === 'loading' ? (
+                      <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Working…</>
+                    ) : (
+                      APPROVE_LABELS[artifact.type]
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
