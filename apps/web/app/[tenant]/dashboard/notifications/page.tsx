@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Inbox, AlertCircle, CheckCheck, ChevronLeft, ChevronRight } from "lucide-react";
+import { Inbox, AlertCircle, CheckCheck } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
@@ -18,6 +18,7 @@ import type {
     NotificationsInboxResponse,
 } from "@/components/platform/notifications/types";
 
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { NotificationRow } from "./NotificationRow";
 import { PAGE_SIZE } from "./_helpers";
 
@@ -174,34 +175,12 @@ export default function NotificationsPage() {
                 )}
 
                 {!isLoading && !isError && notifications.length > 0 && (
-                    <div className="flex items-center justify-between px-1">
-                        <p className="text-xs text-muted-foreground">
-                            Page <span className="font-medium text-foreground">{page}</span> of{" "}
-                            <span className="font-medium text-foreground">{totalPages}</span>
-                        </p>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                                disabled={page === 1}
-                            >
-                                <ChevronLeft className="h-4 w-4" />
-                                <span className="sr-only">Previous page</span>
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                                disabled={page >= totalPages}
-                            >
-                                <ChevronRight className="h-4 w-4" />
-                                <span className="sr-only">Next page</span>
-                            </Button>
-                        </div>
-                    </div>
+                    <PaginationControls
+                        page={page}
+                        totalPages={totalPages}
+                        onPrev={() => setPage((p) => Math.max(1, p - 1))}
+                        onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    />
                 )}
             </div>
         </PermissionGate>

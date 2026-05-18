@@ -3,21 +3,19 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-interface RunsPaginationProps {
+interface PaginationControlsProps {
     page: number;
     totalPages: number;
-    isLoading: boolean;
+    isLoading?: boolean;
     onPrev: () => void;
     onNext: () => void;
 }
 
-export function RunsPagination({ page, totalPages, isLoading, onPrev, onNext }: RunsPaginationProps) {
+export function PaginationControls({ page, totalPages, isLoading, onPrev, onNext }: PaginationControlsProps) {
     return (
         <div className="flex items-center justify-between px-1">
             <p className="text-xs text-muted-foreground">
-                Page{" "}
-                <span className="font-medium text-foreground">{page}</span>{" "}
-                of{" "}
+                Page <span className="font-medium text-foreground">{page}</span> of{" "}
                 <span className="font-medium text-foreground">{totalPages}</span>
             </p>
             <div className="flex items-center gap-2">

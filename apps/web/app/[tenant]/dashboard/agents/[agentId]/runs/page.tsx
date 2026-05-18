@@ -14,8 +14,8 @@ import {
 } from "@/components/ui/table";
 import type { AgentDetail, AgentRunsResponse } from "@/components/platform/agents/types";
 
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { RunRow } from "./RunRow";
-import { RunsPagination } from "./RunsPagination";
 
 const PAGE_SIZE = 20;
 
@@ -132,7 +132,7 @@ export default function AgentRunsPage() {
                             </Table>
                         </div>
 
-                        <RunsPagination
+                        <PaginationControls
                             page={page}
                             totalPages={totalPages}
                             isLoading={isLoadingRuns}
