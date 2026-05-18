@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import type { PillType } from "./WizardView";
 
 const SUGGESTED_PROMPTS: { emoji: string; label: string; pill: PillType }[] = [
-    { emoji: "📄", label: "Summarize a document", pill: "summarize" },
-    { emoji: "📅", label: "Schedule a meeting",   pill: "schedule"  },
-    { emoji: "🔍", label: "Research a topic",     pill: "research"  },
-    { emoji: "✍️", label: "Draft an email",        pill: "draft"     },
+    { emoji: "📄", label: "Write a PRD",       pill: "prd"      },
+    { emoji: "🗺️", label: "Build a roadmap",   pill: "roadmap"  },
+    { emoji: "✅", label: "Break into tasks",   pill: "tasks"    },
+    { emoji: "🔍", label: "Research a topic",   pill: "research" },
 ];
 
 interface WelcomeViewProps {
@@ -30,7 +30,7 @@ export function WelcomeView({ agentName, firstName, onSelectPill, children }: We
                     Hi {firstName}! I&apos;m {agentName}.
                 </h2>
                 <p className="text-muted-foreground text-sm mb-8">
-                    Here&apos;s what I can help with:
+                    I can help you plan, design, and ship — here&apos;s what we can do:
                 </p>
 
                 <div className="flex flex-wrap gap-3 justify-center max-w-md">

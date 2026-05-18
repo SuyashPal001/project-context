@@ -5,10 +5,10 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import type { PillType, WizardFields, WizardSpec } from "./wizards/types";
-import { summarizeWizard } from "./wizards/summarize";
-import { scheduleWizard } from "./wizards/schedule";
+import { prdWizard } from "./wizards/prd";
+import { roadmapWizard } from "./wizards/roadmap";
+import { tasksWizard } from "./wizards/tasks";
 import { researchWizard } from "./wizards/research";
-import { draftWizard } from "./wizards/draft";
 
 export type { PillType };
 
@@ -20,10 +20,10 @@ interface WizardViewProps {
 }
 
 const WIZARDS: Record<PillType, WizardSpec> = {
-    summarize: summarizeWizard,
-    schedule: scheduleWizard,
+    prd: prdWizard,
+    roadmap: roadmapWizard,
+    tasks: tasksWizard,
     research: researchWizard,
-    draft: draftWizard,
 };
 
 export function WizardView({ pill, onSubmit, onBack, children }: WizardViewProps) {

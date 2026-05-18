@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 
-export type PillType = "summarize" | "schedule" | "research" | "draft";
+export type PillType = "prd" | "roadmap" | "tasks" | "research";
 
 export type WizardFields = Record<string, string>;
 
