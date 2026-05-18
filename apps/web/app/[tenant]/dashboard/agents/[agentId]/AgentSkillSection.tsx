@@ -2,7 +2,6 @@
 
 import { Brain, Globe, FileSearch, CalendarClock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AgentDetail } from "@/components/platform/agents/types";
 
@@ -89,11 +88,6 @@ export function AgentSkillSection({ agent, isLoading }: AgentSkillSectionProps) 
                                 </div>
                             </div>
                         ))}
-                    </div>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                        <Badge variant="secondary" className="text-xs">Gemini 2.5 Flash</Badge>
-                        <Badge variant="secondary" className="text-xs">Multi-tenant isolated</Badge>
-                        <Badge variant="secondary" className="text-xs">Mastra orchestrated</Badge>
                     </div>
                 </CardContent>
             </Card>
