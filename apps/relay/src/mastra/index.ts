@@ -55,6 +55,10 @@ export const mastra = new Mastra({
     'pm-workflow': pmWorkflow, // Primary PM orchestration flow (workflow-first architecture)
   },
   storage: getMastraStore(),
+  scheduler: {
+    enabled: true,
+    tickIntervalMs: 30_000, // check every 30s
+  },
   scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer, roadmapCompleteness: roadmapCompletenessScorer, taskCompleteness: taskCompletenessScorer },
   editor: new MastraEditor(),
   observability: new Observability({

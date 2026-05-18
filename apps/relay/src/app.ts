@@ -10,6 +10,7 @@ import { documentsRouter } from './routes/documents.js'
 import { chatRouter } from './routes/chat.js'
 import { sessionsRouter } from './routes/sessions.js'
 import { internalRouter, initStudio } from './routes/internal.js'
+import { schedulesRouter } from './routes/schedules.js'
 import {
   API_BASE_URL, sessions,
   resolveGatewayUrl,
@@ -31,6 +32,7 @@ app.route('', pmRouter)
 app.route('', documentsRouter)
 app.route('', chatRouter)
 app.route('', sessionsRouter)
+app.route('', schedulesRouter)
 
 await initStudio(app)
 
