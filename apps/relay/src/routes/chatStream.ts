@@ -8,7 +8,6 @@ import { getThinkingBudget } from '../mastra/thinking.js'
 import { fetchAgentSkill, fetchAgentName } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
-import { isPmIntent } from './pmRouting.js'
 
 export interface ChatStreamOpts {
   message: string
@@ -153,35 +152,13 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const thinkingBudget = getThinkingBudget(message)
     requestContext.set('thinkingBudget', thinkingBudget)
 
-    // Agent routing — primary signal is the conversation's assigned agent (by name).
-    // If the conversation was explicitly created with the PM agent, always use pmAgent.
-    // Only fall back to keyword detection for general/Saarthi conversations where
-    // automatic PM delegation makes sense.
-    const agentNameLower = (agentName ?? '').toLowerCase()
-    const isExplicitPmAgent = agentNameLower.includes('pm')
-
-    let activeAgent = platformAgent
-    let routingReason = 'platformAgent (default)'
-
-    if (isExplicitPmAgent) {
-      activeAgent = pmAgent
-      routingReason = `pmAgent (explicit: name="${agentName}")`
-    } else {
-      // General agent — check intent for automatic PM delegation
-      const hasDocAttachment = attachments.some(
-        a => a.type === 'application/pdf' || a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      )
-      const docExcerpt = (hasDocAttachment && typeof mastraMessage === 'string')
-        ? mastraMessage.slice(0, 2000)
-        : ''
-      const routingText = docExcerpt ? `${message} ${docExcerpt}` : message
-      if (isPmIntent(routingText)) {
-        activeAgent = pmAgent
-        routingReason = `pmAgent (intent: hasDoc=${hasDocAttachment})`
-      }
-    }
-
-    console.log(`[sse:${sessionId}] routing to ${routingReason} thinkingBudget=${thinkingBudget}`)
+    // Agent routing — determined entirely by the conversation's assigned agent.
+    // Saarthi conversations always go to platformAgent; PM agent conversations
+    // always go to pmAgent. No keyword detection — the user chose the agent
+    // when starting the conversation. Internal sub-agent delegation (pmAgent →
+    // prdAgent → roadmapAgent → taskAgent) is handled by Mastra internally.
+    const activeAgent = (agentName ?? '').toLowerCase().includes('pm') ? pmAgent : platformAgent
+    console.log(`[sse:${sessionId}] agent="${agentName}" → ${activeAgent === pmAgent ? 'pmAgent' : 'platformAgent'} thinkingBudget=${thinkingBudget}`)
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
