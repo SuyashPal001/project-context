@@ -143,6 +143,7 @@ membersRoutes.patch('/:id/status', async (c) => {
     const status = result.data.status;
 
     // Fetch the membership, joinedAt, email, and tenantName
+    // email: prefer user record (active member), fall back to invitation_tokens (invited-but-never-signed-up)
     const [target] = await db
         .select({
             id: memberships.id,
@@ -150,12 +151,16 @@ membersRoutes.patch('/:id/status', async (c) => {
             joinedAt: memberships.joinedAt,
             roleId: memberships.roleId,
             userId: memberships.userId,
-            email: users.email,
+            email: sql<string | null>`COALESCE(${users.email}, ${invitationTokens.email})`,
             tenantName: tenants.name,
         })
         .from(memberships)
         .leftJoin(users, eq(memberships.userId, users.id))
         .leftJoin(tenants, eq(memberships.tenantId, tenants.id))
+        .leftJoin(invitationTokens, and(
+            eq(invitationTokens.membershipId, memberships.id),
+            eq(invitationTokens.tenantId, tenantId)
+        ))
         .where(and(
             eq(memberships.id, memberId),
             eq(memberships.tenantId, tenantId)
