@@ -14,5 +14,6 @@ export * from './webhooks';
 export * from './storage';
 export * from './conversations';
 export * from './documents';
+export * from './knowledge';
 export * from './intelligence';
 export * from './pm';

@@ -55,9 +55,8 @@ export function getSidebarItems(
     items.push({ label: "Chat", href: `${base}/chat`, icon: MessageSquare });
     items.push({ label: "Agents", href: `${base}/agents`, icon: Bot });
     items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
-    items.push({ label: "Plans", href: `${base}/plans`, icon: LayoutList });
+    items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
     items.push({ label: "Files", href: `${base}/files`, icon: FolderOpen });
-    items.push({ label: "Connectors", href: `${base}/integrations`, icon: Plug });
 
     items.push({ isDivider: true, href: '', icon: () => null, label: '' });
 
@@ -81,6 +80,7 @@ export function getSidebarItems(
 
     // Admin/Owner only — platform management
     if (isAdminOrOwner) {
+        items.push({ label: "Connectors", href: `${base}/integrations`, icon: Plug });
         items.push({ label: "Members", href: `${base}/settings/members`, icon: Users });
         items.push({ label: "Roles", href: `${base}/settings/roles`, icon: Shield });
         items.push({ label: "Billing", href: `${base}/billing`, icon: CreditCard });
