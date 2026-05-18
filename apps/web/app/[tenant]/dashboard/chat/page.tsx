@@ -7,6 +7,7 @@ import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
 import { WelcomeView } from "@/components/platform/chat/WelcomeView";
 import { WizardView } from "@/components/platform/chat/WizardView";
+import { AgentSelector } from "@/components/platform/chat/AgentSelector";
 import { Canvas } from "@/components/platform/canvas/Canvas";
 import { VoiceModal } from "@/components/platform/voice";
 import { ChatHeader } from "./ChatHeader";
@@ -34,8 +35,9 @@ function ChatPage() {
         conversations, isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
         isDeleteDialogOpen, setIsDeleteDialogOpen,
+        agentSelectorOpen, setAgentSelectorOpen,
         activePill, setActivePill,
-        updateAgentMutation, deleteConversation,
+        createConversation, updateAgentMutation, deleteConversation,
         handleSelectConversation, handleNewChat,
     } = page;
 
@@ -190,6 +192,12 @@ function ChatPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <AgentSelector
+                open={agentSelectorOpen}
+                onOpenChange={setAgentSelectorOpen}
+                onSelect={(agent) => { setAgentSelectorOpen(false); createConversation.mutate(agent.id); }}
+            />
 
             <VoiceModal isOpen={isModalOpen} onClose={closeVoice} session={session} onTap={handleTap} />
         </div>

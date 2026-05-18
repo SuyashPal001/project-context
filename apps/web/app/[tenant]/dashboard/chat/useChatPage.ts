@@ -30,6 +30,7 @@ export function useChatPage() {
     conversationIdRef.current = conversationId;
 
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [agentSelectorOpen, setAgentSelectorOpen] = useState(false);
     const [activePill, setActivePill] = useState<PillType | null>(null);
     const autoCreatingRef = useRef(false);
 
@@ -142,8 +143,13 @@ export function useChatPage() {
         router.push(`/${tenantSlug}/dashboard/chat?id=${conv.id}`);
 
     const handleNewChat = () => {
-        if (activeAgents[0]) createConversation.mutate(activeAgents[0].id);
-        else toast.error('No active agents available. Please create one first.');
+        if (activeAgents.length === 0) {
+            toast.error('No active agents available. Please create one first.');
+        } else if (activeAgents.length === 1) {
+            createConversation.mutate(activeAgents[0].id);
+        } else {
+            setAgentSelectorOpen(true);
+        }
     };
 
     return {
@@ -153,6 +159,7 @@ export function useChatPage() {
         conversations, isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
         isDeleteDialogOpen, setIsDeleteDialogOpen,
+        agentSelectorOpen, setAgentSelectorOpen,
         activePill, setActivePill,
         queryClient, createConversation, updateAgentMutation, deleteConversation,
         handleSelectConversation, handleNewChat,
