@@ -56,6 +56,23 @@ export async function fetchAgentSkill(agentId: string): Promise<AgentSkill | nul
   return { systemPrompt: row.system_prompt, tools, config: row.config }
 }
 
+// Lightweight cache — agent names are immutable after creation
+const agentNameCache = new Map<string, string>()
+
+export async function fetchAgentName(agentId: string): Promise<string | null> {
+  if (!agentId) return null
+  const cached = agentNameCache.get(agentId)
+  if (cached !== undefined) return cached
+  const p = getPool()
+  const res = await p.query<{ name: string }>(
+    'SELECT name FROM agents WHERE id = $1 LIMIT 1',
+    [agentId],
+  )
+  const name = res.rows[0]?.name ?? null
+  if (name) agentNameCache.set(agentId, name)
+  return name
+}
+
 export async function fetchAgentModelId(agentId: string): Promise<string | null> {
   const p = getPool()
   const agentRes = await p.query<{ llm_provider_id: string | null }>(

@@ -5,7 +5,7 @@ import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '..
 import { platformAgent, pmAgent } from '../mastra/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
-import { fetchAgentSkill } from '../usage.js'
+import { fetchAgentSkill, fetchAgentName } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
 import { isPmIntent } from './pmRouting.js'
@@ -142,7 +142,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const mcpClient = getMCPClientForTenant(tenantId)
     requestContext.set('__mcpClient', mcpClient as any)
 
-    const agentSkill = await fetchAgentSkill(agentId)
+    const [agentSkill, agentName] = await Promise.all([
+      fetchAgentSkill(agentId),
+      fetchAgentName(agentId),
+    ])
     if (agentSkill?.systemPrompt) {
       requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
     }
@@ -150,19 +153,35 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const thinkingBudget = getThinkingBudget(message)
     requestContext.set('thinkingBudget', thinkingBudget)
 
-    // PM intent detection: check user message AND first 2000 chars of already-extracted
-    // document text (mastraMessage is a string when docs are present and no images).
-    // This ensures an uploaded RFP/brief routes to pmAgent even if the user typed nothing.
-    const hasDocAttachment = attachments.some(
-      a => a.type === 'application/pdf' || a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    )
-    const docExcerpt = (hasDocAttachment && typeof mastraMessage === 'string')
-      ? mastraMessage.slice(0, 2000)
-      : ''
-    const routingText = docExcerpt ? `${message} ${docExcerpt}` : message
-    const isPm = isPmIntent(routingText)
-    const activeAgent = isPm ? pmAgent : platformAgent
-    console.log(`[sse:${sessionId}] routing to ${isPm ? 'pmAgent' : 'platformAgent'} thinkingBudget=${thinkingBudget} hasDoc=${hasDocAttachment}`)
+    // Agent routing — primary signal is the conversation's assigned agent (by name).
+    // If the conversation was explicitly created with the PM agent, always use pmAgent.
+    // Only fall back to keyword detection for general/Saarthi conversations where
+    // automatic PM delegation makes sense.
+    const agentNameLower = (agentName ?? '').toLowerCase()
+    const isExplicitPmAgent = agentNameLower.includes('pm')
+
+    let activeAgent = platformAgent
+    let routingReason = 'platformAgent (default)'
+
+    if (isExplicitPmAgent) {
+      activeAgent = pmAgent
+      routingReason = `pmAgent (explicit: name="${agentName}")`
+    } else {
+      // General agent — check intent for automatic PM delegation
+      const hasDocAttachment = attachments.some(
+        a => a.type === 'application/pdf' || a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      )
+      const docExcerpt = (hasDocAttachment && typeof mastraMessage === 'string')
+        ? mastraMessage.slice(0, 2000)
+        : ''
+      const routingText = docExcerpt ? `${message} ${docExcerpt}` : message
+      if (isPmIntent(routingText)) {
+        activeAgent = pmAgent
+        routingReason = `pmAgent (intent: hasDoc=${hasDocAttachment})`
+      }
+    }
+
+    console.log(`[sse:${sessionId}] routing to ${routingReason} thinkingBudget=${thinkingBudget}`)
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
