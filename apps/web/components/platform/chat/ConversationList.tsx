@@ -243,25 +243,35 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                             />
                         ))}
                         {lockedAgents.map(agent => (
-                            <div key={agent.id} className="mb-4 opacity-50">
-                                <div className="flex items-center justify-between px-2 mb-1">
-                                    <div className="flex items-center gap-1.5">
-                                        <Bot className="h-3 w-3 text-muted-foreground/50 shrink-0" />
-                                        <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider truncate">
-                                            {agent.name}
-                                        </span>
-                                    </div>
+                            <div key={agent.id} className="mb-4">
+                                <div className="flex items-start justify-between px-2 mb-1">
+                                    <button
+                                        className="flex flex-col min-w-0 text-left"
+                                        onClick={() => router.push(`/${tenantSlug}/dashboard/agents/${agent.id}`)}
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            <Bot className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                                            <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider truncate">
+                                                {agent.name}
+                                            </span>
+                                        </div>
+                                        {agent.description && (
+                                            <p className="text-[10px] text-muted-foreground/30 mt-0.5 pl-4 leading-snug line-clamp-1">
+                                                {agent.description}
+                                            </p>
+                                        )}
+                                    </button>
                                     <button
                                         onClick={() => router.push(`/${tenantSlug}/dashboard/billing`)}
-                                        className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
+                                        className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-primary transition-colors shrink-0 mt-0.5"
                                         title="Upgrade to unlock"
                                     >
                                         <LockKeyhole className="h-3 w-3" />
                                         Upgrade
                                     </button>
                                 </div>
-                                <div className="px-2.5 py-1.5 text-[11px] text-muted-foreground/40 italic">
-                                    Upgrade your plan to unlock
+                                <div className="px-2.5 py-1.5 text-[11px] text-muted-foreground/30 italic">
+                                    Unlock on paid plan
                                 </div>
                             </div>
                         ))}
