@@ -211,7 +211,7 @@ membersRoutes.patch('/:id/status', async (c) => {
                     expiresAt,
                 });
 
-                const appUrl = (process.env.APP_URL ?? '').trim();
+                const appUrl = (process.env.FRONTEND_URL ?? process.env.APP_URL ?? '').trim();
                 const inviteUrl = `${appUrl}/auth/invite/${rawToken}`;
 
                 await sendEmail({
