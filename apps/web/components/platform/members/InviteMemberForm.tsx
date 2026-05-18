@@ -48,7 +48,7 @@ export function InviteMemberForm() {
     const queryClient = useQueryClient();
     const [inlineError, setInlineError] = useState<string | null>(null);
 
-    const canCreateUsers = can(permissions, "users", "create");
+    const canCreateUsers = can(permissions, "members", "create");
 
     const form = useForm<InviteFormValues>({
         resolver: zodResolver(inviteSchema),
