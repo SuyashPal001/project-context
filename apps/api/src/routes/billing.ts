@@ -1,8 +1,10 @@
 import { Hono, type Context } from 'hono';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, asc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { subscriptions, invoices } from '@serverless-saas/database/schema/billing';
+import { agents } from '@serverless-saas/database/schema/agents';
+import { features, planEntitlements } from '@serverless-saas/database/schema/entitlements';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { getCacheClient } from '@serverless-saas/cache';
@@ -105,6 +107,25 @@ const upgradeHandler = async (c: Context<AppEnv>) => {
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
+    }
+
+    // Activate/deactivate agents based on new plan's agent limit
+    try {
+        const agentFeature = (await db.select().from(features).where(eq(features.key, 'agents')).limit(1))[0];
+        if (agentFeature) {
+            const entitlement = (await db.select().from(planEntitlements).where(
+                and(eq(planEntitlements.featureId, agentFeature.id), eq(planEntitlements.plan, result.data.plan))
+            ).limit(1))[0];
+            const allAgents = await db.select({ id: agents.id }).from(agents)
+                .where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)))
+                .orderBy(asc(agents.createdAt));
+            for (let i = 0; i < allAgents.length; i++) {
+                const shouldBeActive = entitlement?.unlimited || i < (entitlement?.valueLimit ?? 1);
+                await db.update(agents).set({ status: shouldBeActive ? 'active' : 'paused' }).where(eq(agents.id, allAgents[i].id));
+            }
+        }
+    } catch (agentErr) {
+        console.error('Agent activation sync failed:', agentErr);
     }
 
     // Invalidate entitlements cache so middleware picks up new limits immediately (ADR-013)

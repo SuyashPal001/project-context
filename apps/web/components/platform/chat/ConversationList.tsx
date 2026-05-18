@@ -6,7 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, MoreVertical, Trash2, Archive, Bot } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Archive, Bot, LockKeyhole } from "lucide-react";
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
 import { cn } from "@/lib/utils";
@@ -180,6 +180,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
     });
 
     const activeAgents = (agentsData?.data ?? []).filter(a => a.status === 'active');
+    const lockedAgents = (agentsData?.data ?? []).filter(a => a.status === 'paused');
     const allConvs = (conversationsData?.data ?? []).filter(c => c.status !== 'archived');
     const filtered = search.trim()
         ? allConvs.filter(c => (c.title || '').toLowerCase().includes(search.toLowerCase()))
@@ -228,18 +229,43 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                         {[1, 2].map(i => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}
                     </div>
                 ) : activeAgents.length > 0 ? (
-                    activeAgents.map(agent => (
-                        <AgentSection
-                            key={agent.id}
-                            agent={agent}
-                            conversations={convsByAgent[agent.id] ?? []}
-                            selectedId={selectedId}
-                            onSelect={onSelect}
-                            onNewChat={onNewChat}
-                            onArchive={(id) => { setActionType('archive'); setDeleteId(id); }}
-                            onDelete={(id) => { setActionType('delete'); setDeleteId(id); }}
-                        />
-                    ))
+                    <>
+                        {activeAgents.map(agent => (
+                            <AgentSection
+                                key={agent.id}
+                                agent={agent}
+                                conversations={convsByAgent[agent.id] ?? []}
+                                selectedId={selectedId}
+                                onSelect={onSelect}
+                                onNewChat={onNewChat}
+                                onArchive={(id) => { setActionType('archive'); setDeleteId(id); }}
+                                onDelete={(id) => { setActionType('delete'); setDeleteId(id); }}
+                            />
+                        ))}
+                        {lockedAgents.map(agent => (
+                            <div key={agent.id} className="mb-4 opacity-50">
+                                <div className="flex items-center justify-between px-2 mb-1">
+                                    <div className="flex items-center gap-1.5">
+                                        <Bot className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                                        <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider truncate">
+                                            {agent.name}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => router.push(`/${tenantSlug}/dashboard/billing`)}
+                                        className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground transition-colors"
+                                        title="Upgrade to unlock"
+                                    >
+                                        <LockKeyhole className="h-3 w-3" />
+                                        Upgrade
+                                    </button>
+                                </div>
+                                <div className="px-2.5 py-1.5 text-[11px] text-muted-foreground/40 italic">
+                                    Upgrade your plan to unlock
+                                </div>
+                            </div>
+                        ))}
+                    </>
                 ) : (
                     <div className="py-10 text-center text-sm text-muted-foreground px-4">
                         No active agents. Create one to start chatting.

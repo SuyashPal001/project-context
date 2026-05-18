@@ -176,6 +176,35 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
+    // Seed PM Agent as inactive — visible as locked on free plan, activated on upgrade
+    const pmRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const pmKeyHash = createHash('sha256').update(pmRawKey).digest('hex');
+    const [pmKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'PM Agent API Key',
+        type: 'agent',
+        keyHash: pmKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [pmAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'PM Agent',
+        type: 'custom',
+        status: 'paused',
+        apiKeyId: pmKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: pmAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are a PM Agent that helps with product planning, PRDs, roadmaps, and task breakdowns.',
+        tools: [],
+        status: 'active',
+    });
+
     // Step 6: Return response
     return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
 });
