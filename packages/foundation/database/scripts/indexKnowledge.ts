@@ -7,12 +7,45 @@ import * as dotenv from 'dotenv';
 
 dotenv.config({ path: resolve(__dirname, '../../../../apps/api/.env') });
 
-const REPO_ROOT = resolve(__dirname, '../../../..');
-const DRY_RUN  = process.argv.includes('--dry-run');
-const PROVIDER = 'vertex';
-const MODEL    = 'text-embedding-004';
-const MIN_LEN  = 50;
-const BATCH    = 100;
+const REPO_ROOT   = resolve(__dirname, '../../../..');
+const DRY_RUN     = process.argv.includes('--dry-run');
+const PROVIDER    = 'vertex-ai';
+const MODEL       = 'text-embedding-004';
+const MIN_LEN     = 50;
+const BATCH       = 100;  // outer processing + DB loop
+const EMBED_BATCH = 20;   // Vertex AI per-request limit (~20k tokens)
+
+// ── embed via Vertex AI text-embedding-004 ────────────────────────────────────
+// Uses GCP metadata server (available on all GCP VMs) for ADC token.
+// text-embedding-004 returns 768 dims — matches vector(768) schema.
+
+const GCP_METADATA = 'http://metadata.google.internal/computeMetadata/v1';
+
+async function getGcpToken(): Promise<string> {
+  const res = await fetch(`${GCP_METADATA}/instance/service-accounts/default/token`, {
+    headers: { 'Metadata-Flavor': 'Google' },
+  });
+  if (!res.ok) throw new Error(`GCP metadata token fetch failed (${res.status})`);
+  const data = await res.json() as { access_token: string };
+  return data.access_token;
+}
+
+async function embedWithVertex(texts: string[], token: string, projectId: string): Promise<number[][]> {
+  const url = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/${MODEL}:predict`;
+  const results: number[][] = [];
+  for (let i = 0; i < texts.length; i += EMBED_BATCH) {
+    const batch = texts.slice(i, i + EMBED_BATCH);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instances: batch.map(content => ({ content })) }),
+    });
+    if (!res.ok) throw new Error(`Vertex embed failed (${res.status}): ${await res.text()}`);
+    const data = await res.json() as { predictions: Array<{ embeddings: { values: number[] } }> };
+    results.push(...data.predictions.map(p => p.embeddings.values));
+  }
+  return results;
+}
 
 // ── chunking helpers ──────────────────────────────────────────────────────────
 
@@ -82,7 +115,7 @@ function discoverChunks(): Chunk[] {
 
 type WithEmbedding = Chunk & { embedding: number[] };
 
-async function batchEmbed(sql: postgres.Sql, chunks: Chunk[]): Promise<WithEmbedding[]> {
+async function batchEmbed(sql: postgres.Sql, chunks: Chunk[], token: string, projectId: string): Promise<WithEmbedding[]> {
   const hashes = chunks.map(c => createHash('sha256').update(c.content).digest('hex'));
 
   // Single query for all cached embeddings
@@ -102,18 +135,23 @@ async function batchEmbed(sql: postgres.Sql, chunks: Chunk[]): Promise<WithEmbed
     if (!cacheMap.has(hashes[i])) { missIdx.push(i); missText.push(chunks[i].content); }
   }
 
-  // Embed misses (embedTexts internally batches at 100)
+  // Embed misses via Vertex AI text-embedding-004 (batches at 100 internally)
   let embedResults: Array<{ contentHash: string; embedding: number[] }> = [];
   if (missText.length > 0) {
-    const { embedTexts } = await import('@serverless-saas/ai');
-    embedResults = await embedTexts(missText, 'RETRIEVAL_DOCUMENT');
-    // Persist new embeddings to cache
+    const vectors = await embedWithVertex(missText, token, projectId);
+    embedResults = missText.map((text, i) => ({
+      contentHash: createHash('sha256').update(text).digest('hex'),
+      embedding: vectors[i],
+    }));
+    // Persist new embeddings to cache (no unique constraint — skip if already cached)
     for (const r of embedResults) {
-      await sql`
-        INSERT INTO embedding_cache (hash, provider, model, embedding)
-        VALUES (${r.contentHash}, ${PROVIDER}, ${MODEL}, ${`[${r.embedding.join(',')}]`}::vector)
-        ON CONFLICT (hash, provider, model) DO NOTHING
-      `;
+      const already = await sql`SELECT 1 FROM embedding_cache WHERE hash = ${r.contentHash} AND provider = ${PROVIDER} AND model = ${MODEL} LIMIT 1`;
+      if (already.length === 0) {
+        await sql`
+          INSERT INTO embedding_cache (hash, provider, model, embedding)
+          VALUES (${r.contentHash}, ${PROVIDER}, ${MODEL}, ${`[${r.embedding.join(',')}]`}::vector)
+        `;
+      }
     }
   }
 
@@ -168,6 +206,10 @@ async function main() {
     return;
   }
 
+  const token = await getGcpToken();
+  const projectId = await (await fetch(`${GCP_METADATA}/project/project-id`, { headers: { 'Metadata-Flavor': 'Google' } })).text();
+  console.log(`Using GCP project: ${projectId}\n`);
+
   const client = postgres(process.env.DATABASE_URL!, { max: 1 });
   let totalInserted = 0;
 
@@ -176,7 +218,7 @@ async function main() {
       const batch = chunks.slice(i, i + BATCH);
       console.log(`\nBatch ${Math.floor(i / BATCH) + 1} (chunks ${i + 1}–${Math.min(i + BATCH, chunks.length)})`);
 
-      const withEmbed = await batchEmbed(client, batch);
+      const withEmbed = await batchEmbed(client, batch, token, projectId);
       await insertBatch(client, withEmbed, tenantId);
 
       totalInserted += batch.length;
