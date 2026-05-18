@@ -170,6 +170,8 @@ export default function AgentDetailPage() {
                     isOwner={isOwner}
                     brandingEnabled={brandingEnabled}
                     tenantSlug={tenantSlug}
+                    agent={agent}
+                    isLoading={isLoadingAgent}
                 />
             </div>
         </PermissionGate>

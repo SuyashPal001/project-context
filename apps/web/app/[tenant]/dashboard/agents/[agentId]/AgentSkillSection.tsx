@@ -1,188 +1,99 @@
 "use client";
 
-import * as React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Lock } from "lucide-react";
-import { toast } from "sonner";
-import { api, ApiError } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Brain, Globe, FileSearch, CalendarClock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { BrandingLockedOverlay } from "./BrandingLockedOverlay";
-
-interface AgentSkill {
-    id: string;
-    name: string;
-    systemPrompt: string;
-    tools: string[];
-    config: Record<string, unknown> | null;
-    version: number;
-    status: "active" | "archived";
-}
-
-interface SkillsResponse {
-    data: AgentSkill[];
-}
+import type { AgentDetail } from "@/components/platform/agents/types";
 
 interface AgentSkillSectionProps {
     agentId: string;
     isOwner: boolean;
     brandingEnabled: boolean;
     tenantSlug: string;
+    agent: AgentDetail | undefined;
+    isLoading: boolean;
 }
 
-export function AgentSkillSection({ agentId, isOwner, brandingEnabled, tenantSlug }: AgentSkillSectionProps) {
-    const queryClient = useQueryClient();
+function fallbackDescription(name: string): string {
+    const n = name.toLowerCase();
+    if (n.includes("pm") || n.includes("product")) {
+        return "Orchestrates the full PM lifecycle — writes PRDs, generates roadmaps, and breaks milestones into engineering tasks by delegating to specialist agents. Use this when you want to plan and ship a feature end-to-end.";
+    }
+    if (n.includes("prd")) {
+        return "Specialist agent for writing and refining Product Requirements Documents. Saves PRDs to your workspace so the roadmap agent can pick them up.";
+    }
+    if (n.includes("roadmap")) {
+        return "Generates structured roadmaps with milestones from an approved PRD. Use after your PRD is ready.";
+    }
+    if (n.includes("task")) {
+        return "Breaks approved milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates.";
+    }
+    return "A general-purpose AI agent. Chat with it to search the web, analyse documents, and get work done.";
+}
 
-    const { data: skillsData, isLoading } = useQuery<SkillsResponse>({
-        queryKey: ["agent-skills", agentId],
-        queryFn: () => api.get<SkillsResponse>(`/api/v1/agents/${agentId}/skills`),
-        enabled: !!agentId,
-    });
+const CAPABILITIES = [
+    { icon: Brain, label: "Conversation memory", description: "Remembers context across turns in the same session" },
+    { icon: FileSearch, label: "Knowledge base", description: "Searches your uploaded documents via RAG" },
+    { icon: Globe, label: "Web search", description: "Looks up live information from the internet" },
+    { icon: CalendarClock, label: "Scheduled runs", description: "Can be triggered automatically on a cron schedule" },
+];
 
-    const existingSkill = skillsData?.data?.[0] ?? null;
-
-    const [promptDraft, setPromptDraft] = React.useState("");
-    const [isPromptDirty, setIsPromptDirty] = React.useState(false);
-    const [webSearchEnabled, setWebSearchEnabled] = React.useState(false);
-
-    React.useEffect(() => {
-        if (existingSkill) {
-            setPromptDraft(existingSkill.systemPrompt ?? "");
-            setWebSearchEnabled(existingSkill.tools?.includes("web_search") ?? false);
-            setIsPromptDirty(false);
-        }
-    }, [existingSkill]);
-
-    const saveSkillMutation = useMutation({
-        mutationFn: ({ tools, systemPrompt }: { tools: string[]; systemPrompt: string }) => {
-            const body = {
-                name: existingSkill?.name ?? "default",
-                systemPrompt,
-                tools,
-                config: existingSkill?.config ?? {},
-            };
-            if (existingSkill) {
-                return api.put(`/api/v1/agents/${agentId}/skills/${existingSkill.id}`, body);
-            }
-            return api.post(`/api/v1/agents/${agentId}/skills`, body);
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["agent-skills", agentId] });
-            setIsPromptDirty(false);
-            toast.success("Prompt saved");
-        },
-        onError: (err) => {
-            const msg = err instanceof ApiError
-                ? (err.data?.message || err.message)
-                : err instanceof Error ? err.message : "Failed to save prompt";
-            toast.error(msg);
-        },
-    });
-
-    const handleWebSearchToggle = (checked: boolean) => {
-        setWebSearchEnabled(checked);
-        const currentTools = existingSkill?.tools ?? ["retrieve_documents"];
-        let newTools = [...currentTools];
-        if (checked) {
-            if (!newTools.includes("web_search")) newTools.push("web_search");
-        } else {
-            newTools = newTools.filter((t) => t !== "web_search");
-        }
-        saveSkillMutation.mutate({
-            tools: newTools,
-            systemPrompt: promptDraft || existingSkill?.systemPrompt || "",
-        });
-    };
-
-    const handleSavePrompt = () => {
-        const currentTools = existingSkill?.tools ?? ["retrieve_documents"];
-        const newTools = [...currentTools];
-        if (webSearchEnabled && !newTools.includes("web_search")) newTools.push("web_search");
-        saveSkillMutation.mutate({ tools: newTools, systemPrompt: promptDraft });
-    };
+export function AgentSkillSection({ agent, isLoading }: AgentSkillSectionProps) {
+    const description = agent?.description?.trim()
+        ? agent.description
+        : fallbackDescription(agent?.name ?? "");
 
     return (
         <>
             <Card>
-                <CardContent className="pt-6">
-                    <div className="mb-4">
-                        <h3 className="text-sm font-semibold">General Prompt</h3>
+                <CardContent className="pt-6 space-y-3">
+                    <div>
+                        <h3 className="text-sm font-semibold">About this agent</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                            System instructions that shape this agent&apos;s behaviour on every conversation.
+                            What this agent does and when to use it.
                         </p>
                     </div>
                     {isLoading ? (
-                        <Skeleton className="h-32 w-full" />
-                    ) : (
-                        <div className="relative">
-                            <div className={cn("space-y-3", !brandingEnabled && "opacity-40 pointer-events-none select-none")}>
-                                <Textarea
-                                    value={promptDraft}
-                                    onChange={(e) => {
-                                        setPromptDraft(e.target.value);
-                                        setIsPromptDirty(true);
-                                    }}
-                                    placeholder="You are a helpful assistant..."
-                                    rows={6}
-                                    disabled={!isOwner}
-                                    className="resize-none font-mono text-sm"
-                                />
-                                {isOwner && isPromptDirty && (
-                                    <div className="flex justify-end">
-                                        <Button
-                                            size="sm"
-                                            onClick={handleSavePrompt}
-                                            disabled={saveSkillMutation.isPending}
-                                        >
-                                            {saveSkillMutation.isPending && (
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            )}
-                                            Save Prompt
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
-
-                            {!brandingEnabled && <BrandingLockedOverlay tenantSlug={tenantSlug} />}
+                        <div className="space-y-2">
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-4/5" />
+                            <Skeleton className="h-4 w-3/5" />
                         </div>
+                    ) : (
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                            {description}
+                        </p>
                     )}
                 </CardContent>
             </Card>
 
             <Card>
-                <CardContent className="pt-6">
-                    <div className="mb-4">
-                        <h3 className="text-sm font-semibold">Tools</h3>
+                <CardContent className="pt-6 space-y-3">
+                    <div>
+                        <h3 className="text-sm font-semibold">Capabilities</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                            Capabilities available to this agent during conversations.
+                            What this agent can do during a conversation.
                         </p>
                     </div>
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-4 py-3">
-                            <div className="space-y-0.5">
-                                <p className="text-sm font-medium">Knowledge base</p>
-                                <p className="text-xs text-muted-foreground">Search tenant documents via RAG</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {CAPABILITIES.map(({ icon: Icon, label, description: cap }) => (
+                            <div
+                                key={label}
+                                className="flex items-start gap-3 rounded-lg border border-border bg-muted/10 px-4 py-3"
+                            >
+                                <Icon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                                <div className="space-y-0.5">
+                                    <p className="text-sm font-medium">{label}</p>
+                                    <p className="text-xs text-muted-foreground">{cap}</p>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                                <Lock className="h-3.5 w-3.5" />
-                                <span className="text-xs">Always on</span>
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-4 py-3">
-                            <div className="space-y-0.5">
-                                <p className="text-sm font-medium">Web search</p>
-                                <p className="text-xs text-muted-foreground">Search the web for current information</p>
-                            </div>
-                            <Switch
-                                checked={webSearchEnabled}
-                                onCheckedChange={handleWebSearchToggle}
-                                disabled={!isOwner || saveSkillMutation.isPending || isLoading}
-                            />
-                        </div>
+                        ))}
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                        <Badge variant="secondary" className="text-xs">Gemini 2.5 Flash</Badge>
+                        <Badge variant="secondary" className="text-xs">Multi-tenant isolated</Badge>
+                        <Badge variant="secondary" className="text-xs">Mastra orchestrated</Badge>
                     </div>
                 </CardContent>
             </Card>
