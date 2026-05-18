@@ -251,7 +251,7 @@ memberInviteRoutes.post('/invite', async (c) => {
         expiresAt,
     }).returning();
 
-    const appUrl = (process.env.APP_URL ?? '').trim();
+    const appUrl = (process.env.FRONTEND_URL ?? process.env.APP_URL ?? '').trim();
     const inviteUrl = `${appUrl}/auth/invite/${rawToken}`;
     console.log('INVITE_URL_DEBUG', { appUrl, inviteUrl, appUrlLength: appUrl.length, appUrlCharCodes: [...appUrl].map(c => c.charCodeAt(0)) });
     try {
