@@ -55,8 +55,9 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         approveStatus: prd.status === 'approved' ? 'done' : 'idle',
       });
       setActiveTab('artifact');
-      // Open the canvas panel so the restored artifact is visible
-      (window as any).__openCanvas?.();
+      // Do NOT auto-open — user opens canvas explicitly via the button.
+      // Auto-opening on agentId change fires on every conversation switch,
+      // including fresh conversations, which is jarring.
     }).catch(() => {});
   }, [agentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
