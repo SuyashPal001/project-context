@@ -3,6 +3,9 @@ import { z } from 'zod'
 import { saarthiModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { fetchAgentContext } from '../tools/fetchAgentContext.js'
+import { prdAgent } from './prdAgent.js'
+import { roadmapAgent } from './roadmapAgent.js'
+import { taskAgent } from './taskAgent.js'
 import { delegationAccuracyScorer } from '../scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from '../scorers/clarityBeforeDelegate.js'
 
@@ -44,6 +47,7 @@ Return ONLY valid JSON. No markdown fences. No explanations.`,
   model: saarthiModel,
   memory: getMastraMemory(),
   tools: { fetchAgentContext },
+  agents: { prdAgent, roadmapAgent, taskAgent },
   scorers: {
     delegationAccuracy: {
       scorer: delegationAccuracyScorer,
