@@ -42,6 +42,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'project_milestones:read',
         'project_milestones:update',
         'project_milestones:delete',
+        'project_pages:create',
+        'project_pages:read',
+        'project_pages:update',
+        'project_pages:delete',
     ],
 
     'ops-agent': [
