@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ArrowLeft, AlertCircle, Loader2, MessageSquare } from "lucide-react";
+import { ArrowLeft, AlertCircle, Loader2, MessageSquare, CalendarClock, History } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
@@ -125,16 +125,29 @@ export default function AgentDetailPage() {
                             </div>
                         )}
                     </div>
-                    <Button
-                        onClick={() => startChatMutation.mutate()}
-                        disabled={isLoadingAgent || startChatMutation.isPending}
-                        className="shrink-0"
-                    >
-                        {startChatMutation.isPending
-                            ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            : <MessageSquare className="mr-2 h-4 w-4" />}
-                        Chat with Agent
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Button variant="outline" size="sm" asChild>
+                            <Link href={`/${tenantSlug}/dashboard/agents/${agentId}/runs`}>
+                                <History className="mr-2 h-4 w-4" />
+                                Runs
+                            </Link>
+                        </Button>
+                        <Button variant="outline" size="sm" asChild>
+                            <Link href={`/${tenantSlug}/dashboard/agents/${agentId}/scheduled`}>
+                                <CalendarClock className="mr-2 h-4 w-4" />
+                                Scheduled
+                            </Link>
+                        </Button>
+                        <Button
+                            onClick={() => startChatMutation.mutate()}
+                            disabled={isLoadingAgent || startChatMutation.isPending}
+                        >
+                            {startChatMutation.isPending
+                                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                : <MessageSquare className="mr-2 h-4 w-4" />}
+                            Chat with Agent
+                        </Button>
+                    </div>
                 </div>
 
                 <AgentIdentityCard
