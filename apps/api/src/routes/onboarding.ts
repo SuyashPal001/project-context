@@ -44,6 +44,21 @@ onboardingRoutes.post('/complete', async (c) => {
         return c.json({ error: 'Unauthorized' }, 401);
     }
 
+    // Guard: if user already owns a workspace, return it instead of creating another.
+    // Prevents duplicate workspaces from auth method switches (e.g. email → Google OAuth).
+    const ownerRole = (await db.select().from(roles).where(and(eq(roles.name, 'owner'), isNull(roles.tenantId))).limit(1))[0];
+    if (ownerRole) {
+        const existing = await db
+            .select({ tenantId: memberships.tenantId, slug: tenants.slug })
+            .from(memberships)
+            .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
+            .where(and(eq(memberships.userId, userId), eq(memberships.roleId, ownerRole.id), eq(memberships.status, 'active')))
+            .limit(1);
+        if (existing[0]) {
+            return c.json({ tenantId: existing[0].tenantId, slug: existing[0].slug, message: 'Workspace already exists' }, 200);
+        }
+    }
+
     // Step 3: Generate unique slug
     const slug = generateSlug(workspaceName);
     const isAvailable = await checkSlugAvailability(slug);
