@@ -45,13 +45,6 @@ export default function OnboardingPage() {
                 purpose: purpose || undefined,
             });
 
-            // Fire-and-forget provision call
-            if (res.tenantId) {
-                api.post(`/api/v1/onboarding/provision/${res.tenantId}`, {}).catch((err) => {
-                    console.error("Background provision failed:", err);
-                });
-            }
-
             // Clear HTTP session token (so login can start fresh and get tenantId claims)
             await fetch('/api/auth/session', { method: 'DELETE' });
 

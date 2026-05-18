@@ -7,7 +7,6 @@ import { gateChunks, fastGateChunks, ScoredChunk } from '../rag/relevanceGate.js
 import { filterPII } from '../pii-filter.js'
 import { saveUserMessage, saveAssistantMessage } from '../persistence.js'
 import {
-  AGENT_SERVER_URL, AGENT_SERVER_KEY,
   sessions, lastRagResult,
 } from '../types.js'
 
@@ -16,63 +15,6 @@ import {
 export const internalRouter = new Hono()
 
 internalRouter.get('/health', (c) => c.json({ ok: true }))
-
-// Health check per tenant — used by Lambda to poll container readiness
-internalRouter.get('/health/:tenantId', async (c) => {
-  const tenantId = c.req.param('tenantId')
-  const serviceKey = c.req.header('x-service-key') ?? ''
-  if (!serviceKey || serviceKey !== (process.env.INTERNAL_SERVICE_KEY ?? '')) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-  try {
-    const resp = await fetch(`${AGENT_SERVER_URL}/status/${tenantId}/default`, {
-      headers: { 'x-service-key': AGENT_SERVER_KEY }
-    })
-    if (!resp.ok) return c.json({ status: 'not_found' }, 404)
-    const body = await resp.json() as { bridgePort?: number | null, status?: string }
-    if (body.bridgePort) return c.json({ status: 'ready', healthy: true })
-    return c.json({ status: 'provisioning', healthy: false })
-  } catch {
-    return c.json({ status: 'provisioning', healthy: false })
-  }
-})
-
-// ─── Provision proxy — Lambda → relay → agent-server ─────────────────────────
-// Lambda cannot reach agent-server (port 3003 not public). Relay proxies it.
-internalRouter.post('/provision/:tenantId', async (c) => {
-  const serviceKey = c.req.header('x-service-key') ?? ''
-  if (!serviceKey || serviceKey !== (process.env.INTERNAL_SERVICE_KEY ?? '')) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-
-  const { tenantId } = c.req.param()
-  console.log(`[provision] tenant ${tenantId} → provisioning started`)
-
-  try {
-    const resp = await fetch(`${AGENT_SERVER_URL}/provision/${tenantId}`, {
-      method: 'POST',
-      headers: {
-        'x-service-key': AGENT_SERVER_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: '{}',
-    })
-
-    const body = await resp.json()
-
-    if (resp.ok) {
-      console.log(`[provision] tenant ${tenantId} → success`)
-      return c.json({ success: true, tenantId, ...body })
-    }
-
-    const detail = (body as Record<string, unknown>).error ?? 'Unknown error'
-    console.warn(`[provision] tenant ${tenantId} → failed: ${detail}`)
-    return c.json({ error: 'Provisioning failed', detail }, 502)
-  } catch (err) {
-    console.error(`[provision] tenant ${tenantId} → agent-server unreachable:`, (err as Error).message)
-    return c.json({ error: 'Agent server unavailable' }, 503)
-  }
-})
 
 // ─── Update proxy — Lambda → relay → agent-server ────────────────────────────
 // Updates IDENTITY.md + clears sessions without recreating the container.

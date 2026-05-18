@@ -13,7 +13,6 @@ import { internalRouter, initStudio } from './routes/internal.js'
 import { schedulesRouter } from './routes/schedules.js'
 import {
   API_BASE_URL, sessions,
-  resolveGatewayUrl,
 } from './types.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 
@@ -39,7 +38,6 @@ await initStudio(app)
 export {
   app,
   API_BASE_URL,
-  resolveGatewayUrl,
   downloadMediaAttachment,
   fireToolCallLog,
   sessions,
