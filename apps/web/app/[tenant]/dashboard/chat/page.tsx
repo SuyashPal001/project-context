@@ -137,7 +137,7 @@ function ChatPage() {
                                             <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={openVoice} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...modelChangeProps} />
                                         </WizardView>
                                     ) : (
-                                        <WelcomeView agentName={activeAgents[0]?.name ?? 'your assistant'} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)}>
+                                        <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={sendMessage}>
                                             <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={openVoice} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...modelChangeProps} />
                                         </WelcomeView>
                                     )

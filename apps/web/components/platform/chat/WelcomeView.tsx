@@ -3,22 +3,36 @@
 import { AgentOrb } from "./AgentOrb";
 import { Button } from "@/components/ui/button";
 import type { PillType } from "./WizardView";
+import type { Agent } from "../agents/types";
 
-const SUGGESTED_PROMPTS: { emoji: string; label: string; pill: PillType }[] = [
-    { emoji: "📄", label: "Write a PRD",       pill: "prd"      },
-    { emoji: "🗺️", label: "Build a roadmap",   pill: "roadmap"  },
-    { emoji: "✅", label: "Break into tasks",   pill: "tasks"    },
-    { emoji: "🔍", label: "Research a topic",   pill: "research" },
+const PM_PROMPTS: { emoji: string; label: string; pill: PillType }[] = [
+    { emoji: "📄", label: "Write a PRD",      pill: "prd"      },
+    { emoji: "🗺️", label: "Build a roadmap",  pill: "roadmap"  },
+    { emoji: "✅", label: "Break into tasks",  pill: "tasks"    },
+    { emoji: "🔍", label: "Research a topic",  pill: "research" },
+];
+
+const GENERAL_PROMPTS: { emoji: string; label: string; text: string }[] = [
+    { emoji: "💡", label: "Brainstorm ideas",     text: "Help me brainstorm ideas for " },
+    { emoji: "✍️", label: "Draft something",      text: "Help me draft " },
+    { emoji: "🔍", label: "Research a topic",     text: "Research and summarise " },
+    { emoji: "❓", label: "Explain a concept",    text: "Explain " },
 ];
 
 interface WelcomeViewProps {
-    agentName: string;
+    agent: Agent | null;
     firstName: string;
     onSelectPill: (pill: PillType) => void;
+    onSend: (text: string) => void;
     children: React.ReactNode;
 }
 
-export function WelcomeView({ agentName, firstName, onSelectPill, children }: WelcomeViewProps) {
+export function WelcomeView({ agent, firstName, onSelectPill, onSend, children }: WelcomeViewProps) {
+    const agentName = agent?.name ?? 'your assistant';
+    const isPm = (agent?.name ?? '').toLowerCase().includes('pm');
+    const tagline = agent?.description
+        ?? (isPm ? 'I can help you plan, design, and ship.' : 'How can I help you today?');
+
     return (
         <div className="flex flex-col h-full">
             <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 text-center">
@@ -29,21 +43,27 @@ export function WelcomeView({ agentName, firstName, onSelectPill, children }: We
                 <h2 className="text-2xl font-bold tracking-tight mb-1">
                     Hi {firstName}! I&apos;m {agentName}.
                 </h2>
-                <p className="text-muted-foreground text-sm mb-8">
-                    I can help you plan, design, and ship — here&apos;s what we can do:
-                </p>
+                <p className="text-muted-foreground text-sm mb-8">{tagline}</p>
 
                 <div className="flex flex-wrap gap-3 justify-center max-w-md">
-                    {SUGGESTED_PROMPTS.map(({ emoji, label, pill }) => (
-                        <Button
-                            key={pill}
-                            variant="outline"
-                            className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium border-border hover:bg-muted/60 transition-colors"
-                            onClick={() => onSelectPill(pill)}
-                        >
-                            {emoji} {label}
-                        </Button>
-                    ))}
+                    {isPm
+                        ? PM_PROMPTS.map(({ emoji, label, pill }) => (
+                            <Button key={pill} variant="outline"
+                                className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium border-border hover:bg-muted/60 transition-colors"
+                                onClick={() => onSelectPill(pill)}
+                            >
+                                {emoji} {label}
+                            </Button>
+                        ))
+                        : GENERAL_PROMPTS.map(({ emoji, label, text }) => (
+                            <Button key={label} variant="outline"
+                                className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium border-border hover:bg-muted/60 transition-colors"
+                                onClick={() => onSend(text)}
+                            >
+                                {emoji} {label}
+                            </Button>
+                        ))
+                    }
                 </div>
             </div>
 
