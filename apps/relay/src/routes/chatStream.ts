@@ -150,13 +150,19 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const thinkingBudget = getThinkingBudget(message)
     requestContext.set('thinkingBudget', thinkingBudget)
 
-    // PM intents → pmAgent (supervisor that delegates to prdAgent/roadmapAgent/taskAgent).
-    // All other messages → platformAgent (search, Q&A, general assistant).
-    // Conversation memory (Mastra PgVector) persists prdId/planId across turns — no
-    // workflow suspend/resume needed for HITL; approval flows conversationally.
-    const isPm = isPmIntent(message)
+    // PM intent detection: check user message AND first 2000 chars of already-extracted
+    // document text (mastraMessage is a string when docs are present and no images).
+    // This ensures an uploaded RFP/brief routes to pmAgent even if the user typed nothing.
+    const hasDocAttachment = attachments.some(
+      a => a.type === 'application/pdf' || a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    )
+    const docExcerpt = (hasDocAttachment && typeof mastraMessage === 'string')
+      ? mastraMessage.slice(0, 2000)
+      : ''
+    const routingText = docExcerpt ? `${message} ${docExcerpt}` : message
+    const isPm = isPmIntent(routingText)
     const activeAgent = isPm ? pmAgent : platformAgent
-    console.log(`[sse:${sessionId}] routing to ${isPm ? 'pmAgent' : 'platformAgent'} thinkingBudget=${thinkingBudget}`)
+    console.log(`[sse:${sessionId}] routing to ${isPm ? 'pmAgent' : 'platformAgent'} thinkingBudget=${thinkingBudget} hasDoc=${hasDocAttachment}`)
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
