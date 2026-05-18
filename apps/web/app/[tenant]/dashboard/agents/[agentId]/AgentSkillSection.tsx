@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Globe, FileSearch, CalendarClock } from "lucide-react";
+import { Brain, Globe, FileSearch, CalendarClock, Network } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AgentDetail } from "@/components/platform/agents/types";
@@ -14,9 +14,14 @@ interface AgentSkillSectionProps {
     isLoading: boolean;
 }
 
+function isSupervisor(name: string): boolean {
+    const n = name.toLowerCase();
+    return n.includes("pm") || (n.includes("product") && !n.includes("prd"));
+}
+
 function fallbackDescription(name: string): string {
     const n = name.toLowerCase();
-    if (n.includes("pm") || n.includes("product")) {
+    if (isSupervisor(n)) {
         return "Orchestrates the full PM lifecycle — writes PRDs, generates roadmaps, and breaks milestones into engineering tasks by delegating to specialist agents. Use this when you want to plan and ship a feature end-to-end.";
     }
     if (n.includes("prd")) {
@@ -31,17 +36,34 @@ function fallbackDescription(name: string): string {
     return "A general-purpose AI agent. Chat with it to search the web, analyse documents, and get work done.";
 }
 
-const CAPABILITIES = [
+const BASE_CAPABILITIES = [
     { icon: Brain, label: "Conversation memory", description: "Remembers context across turns in the same session" },
     { icon: FileSearch, label: "Knowledge base", description: "Searches your uploaded documents via RAG" },
     { icon: Globe, label: "Web search", description: "Looks up live information from the internet" },
     { icon: CalendarClock, label: "Scheduled runs", description: "Can be triggered automatically on a cron schedule" },
 ];
 
+const SUPERVISOR_CAPABILITY = {
+    icon: Network,
+    label: "Delegates to specialist agents",
+    description: "Spins up PRD, Roadmap, and Task agents to handle each phase — you only talk to one agent",
+};
+
+interface CapabilityItem {
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    description: string;
+}
+
 export function AgentSkillSection({ agent, isLoading }: AgentSkillSectionProps) {
+    const name = agent?.name ?? "";
     const description = agent?.description?.trim()
         ? agent.description
-        : fallbackDescription(agent?.name ?? "");
+        : fallbackDescription(name);
+
+    const capabilities: CapabilityItem[] = isSupervisor(name)
+        ? [SUPERVISOR_CAPABILITY, ...BASE_CAPABILITIES]
+        : BASE_CAPABILITIES;
 
     return (
         <>
@@ -76,7 +98,7 @@ export function AgentSkillSection({ agent, isLoading }: AgentSkillSectionProps) 
                         </p>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {CAPABILITIES.map(({ icon: Icon, label, description: cap }) => (
+                        {capabilities.map(({ icon: Icon, label, description: cap }) => (
                             <div
                                 key={label}
                                 className="flex items-start gap-3 rounded-lg border border-border bg-muted/10 px-4 py-3"
