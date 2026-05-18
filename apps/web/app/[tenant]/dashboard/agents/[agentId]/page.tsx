@@ -139,6 +139,7 @@ export default function AgentDetailPage() {
                             </Link>
                         </Button>
                         <Button
+                            size="sm"
                             onClick={() => startChatMutation.mutate()}
                             disabled={isLoadingAgent || startChatMutation.isPending}
                         >
