@@ -9,36 +9,36 @@ import { taskAgent } from './taskAgent.js'
 import { delegationAccuracyScorer } from '../scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from '../scorers/clarityBeforeDelegate.js'
 
-// Routing supervisor: classifies PM intent and extracts context (existing IDs)
-// before chatStream.ts starts pmWorkflow at the appropriate entry point.
-//
-// Pattern: Routing Agent + Workflow (Mastra recommendation for non-deterministic
-// entry points + deterministic sequential execution).
-//
-// pmAgent: handles "which step to start at, what context exists"
-// pmWorkflow: handles "execute prd → roadmap → tasks with HITL gates"
-
 export const pmAgent = new Agent({
   id: 'saarthi-pm',
   name: 'Saarthi PM',
-  description: 'Routing supervisor: classifies PM intent and extracts workflow entry context before handing off to pmWorkflow.',
-  instructions: `You are a PM routing supervisor. Classify the user's PM request and return a JSON routing decision.
+  description: 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.',
+  instructions: `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
 
-Return a JSON object with exactly these fields:
-- intent: "prd" | "roadmap" | "tasks"
-  - "prd"     → user wants to create, draft, write, or revise a PRD / product spec / requirements document
-  - "roadmap" → user wants to generate a roadmap, project plan, or milestones (often from an existing PRD)
-  - "tasks"   → user wants to break down a plan or roadmap into engineering tasks
-- existingPrdId: string | null — UUID if user references a specific PRD by ID (e.g. "prd abc-123", "prd id: xyz"), else null
-- existingPlanId: string | null — UUID if user references a specific plan/roadmap by ID, else null
+## Your specialist agents
+- prdAgent: Writes, drafts, and saves PRDs. Delegate when the user wants a PRD, product spec, or requirements document.
+- roadmapAgent: Generates roadmaps and milestones from an approved PRD. Delegate when the user wants a roadmap, plan, or milestones.
+- taskAgent: Breaks milestones into engineering tasks. Delegate when the user wants task breakdown or work items.
 
-Examples:
-- "create a prd for dark mode" → { "intent": "prd", "existingPrdId": null, "existingPlanId": null }
-- "generate a roadmap from prd abc-123" → { "intent": "roadmap", "existingPrdId": "abc-123", "existingPlanId": null }
-- "break down plan xyz-456 into tasks" → { "intent": "tasks", "existingPrdId": null, "existingPlanId": "xyz-456" }
-- "create tasks for the roadmap" → { "intent": "tasks", "existingPrdId": null, "existingPlanId": null }
+## How to handle each request
+1. Identify which specialist to call based on user intent
+2. Call fetch-agent-context first to load product context for this tenant
+3. Delegate to the right specialist with all relevant context:
+   - For prdAgent: include the user's full feature/product description
+   - For roadmapAgent: include the prdId if available ("The approved PRD id is {prdId}. Generate the roadmap.")
+   - For taskAgent: include the planId if available ("The plan id is {planId}. Generate tasks.")
+4. After the specialist completes, tell the user what was created and suggest the next step
 
-Return ONLY valid JSON. No markdown fences. No explanations.`,
+## Phase rules
+- After PRD is created → ask user to review and approve, then offer to generate the roadmap
+- After roadmap is created → ask user to review and approve, then offer to generate tasks
+- If user asks for roadmap but no approved PRD exists → tell them to create a PRD first
+- If user asks for tasks but no active plan exists → tell them to generate a roadmap first
+
+## Rules
+- Never return raw JSON to the user
+- Never write PRD content, milestones, or tasks yourself — always delegate
+- If the request is ambiguous, ask ONE clarifying question before delegating`,
   requestContextSchema: z.object({
     tenantId: z.string().optional().default(''),
     agentId: z.string().optional().default(''),

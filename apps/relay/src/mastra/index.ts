@@ -75,6 +75,7 @@ export { saarthiModel } from './model.js'
 export { platformAgent, SERVER_TOOLS }
 export { formatterAgent }
 export { prdAgent }
+export { pmAgent }
 export { prdWorkspace } from './workspace/prdWorkspace.js'
 export { getMastraStore, getMastraMemory } from './memory.js'
 export { getMCPClientForTenant, getToolsForTenant } from './tools.js'
