@@ -142,7 +142,11 @@ export function useChatPage() {
     const handleSelectConversation = (conv: Conversation) =>
         router.push(`/${tenantSlug}/dashboard/chat?id=${conv.id}`);
 
-    const handleNewChat = () => {
+    const handleNewChat = (agentId?: string) => {
+        if (agentId) {
+            createConversation.mutate(agentId);
+            return;
+        }
         if (activeAgents.length === 0) {
             toast.error('No active agents available. Please create one first.');
         } else if (activeAgents.length === 1) {

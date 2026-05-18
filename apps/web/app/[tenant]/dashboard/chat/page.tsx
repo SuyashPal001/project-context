@@ -168,7 +168,7 @@ function ChatPage() {
                                 <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 border border-border"><MessageSquare className="h-8 w-8 text-muted-foreground" /></div>
                                 <h2 className="text-2xl font-bold tracking-tight mb-2">Select a conversation</h2>
                                 <p className="text-muted-foreground max-w-sm mb-8">Select an existing conversation from the list or start a new one.</p>
-                                <Button onClick={handleNewChat} size="lg" className="rounded-full shadow-lg h-12 px-6 gap-2"><Plus className="h-4 w-4" />Start New Conversation</Button>
+                                <Button onClick={() => handleNewChat()} size="lg" className="rounded-full shadow-lg h-12 px-6 gap-2"><Plus className="h-4 w-4" />Start New Conversation</Button>
                             </div>
                         )}
                     </div>
