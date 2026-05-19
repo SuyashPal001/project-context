@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, asc, gte, or, isNull } from 'drizzle-orm';
+import { and, eq, asc, gte } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { conversations, messages } from '@serverless-saas/database/schema/conversations';
@@ -10,8 +10,7 @@ import type { AppEnv } from '../types';
 
 export const messagesRoutes = new Hono<AppEnv>();
 
-// Verify conversation belongs to tenant+user and return full row
-// userId IS NULL is a backwards-compat fallback for conversations created before member-scoping
+// Verify conversation belongs strictly to this tenant+user (no cross-member bleed)
 async function resolveConversation(conversationId: string, tenantId: string, userId: string) {
     const [conversation] = await db
         .select()
@@ -19,7 +18,7 @@ async function resolveConversation(conversationId: string, tenantId: string, use
         .where(and(
             eq(conversations.id, conversationId),
             eq(conversations.tenantId, tenantId),
-            or(eq(conversations.userId, userId), isNull(conversations.userId)),
+            eq(conversations.userId, userId),
         ))
         .limit(1);
     return conversation ?? null;
@@ -29,12 +28,14 @@ async function resolveConversation(conversationId: string, tenantId: string, use
 messagesRoutes.get('/:conversationId/messages', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string;
+    const userId = requestContext?.userId as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+    if (!userId) return c.json({ error: 'User not resolved', code: 'NO_USER' }, 400);
 
     const conversationId = c.req.param('conversationId');
 
@@ -58,12 +59,14 @@ messagesRoutes.get('/:conversationId/messages', async (c) => {
 messagesRoutes.post('/:conversationId/messages', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string;
+    const userId = requestContext?.userId as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+    if (!userId) return c.json({ error: 'User not resolved', code: 'NO_USER' }, 400);
 
     const conversationId = c.req.param('conversationId');
 
@@ -109,11 +112,14 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
 messagesRoutes.post('/:conversationId/messages/save', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string;
+    const userId = requestContext?.userId as string | undefined;
+
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+    if (!userId) return c.json({ error: 'User not resolved', code: 'NO_USER' }, 400);
 
     const conversationId = c.req.param('conversationId');
 
-    // Quick check that conversation exists and belongs to the tenant+user
+    // Quick check that conversation exists and belongs strictly to this tenant+user
     if (!await resolveConversation(conversationId, tenantId, userId)) {
         return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
     }
