@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database/client';
 import { conversations } from '@serverless-saas/database/schema/conversations';
@@ -22,7 +22,7 @@ conversationsRoutes.get('/', async (c) => {
 
     const { agentId, status } = c.req.query();
 
-    const filters = [eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)];
+    const filters = [eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))];
     if (agentId) filters.push(eq(conversations.agentId, agentId));
     if (status) filters.push(eq(conversations.status, status as 'active' | 'archived' | 'escalated'));
 
@@ -136,7 +136,7 @@ conversationsRoutes.get('/:id', async (c) => {
         })
         .from(conversations)
         .innerJoin(agents, eq(conversations.agentId, agents.id))
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))))
         .limit(1);
 
     if (!data) {
@@ -162,7 +162,7 @@ conversationsRoutes.patch('/:id', async (c) => {
     const [existing] = await db
         .select({ id: conversations.id })
         .from(conversations)
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))))
         .limit(1);
 
     if (!existing) {
@@ -186,7 +186,7 @@ conversationsRoutes.patch('/:id', async (c) => {
 
     await db.update(conversations)
         .set({ ...result.data, updatedAt: new Date() })
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)));
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))));
 
     const [updated] = await db
         .select({
@@ -209,7 +209,7 @@ conversationsRoutes.patch('/:id', async (c) => {
         })
         .from(conversations)
         .innerJoin(agents, eq(conversations.agentId, agents.id))
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))))
         .limit(1);
 
     return c.json({ data: updated });
@@ -231,7 +231,7 @@ conversationsRoutes.delete('/:id', async (c) => {
     const [existing] = await db
         .select({ id: conversations.id })
         .from(conversations)
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))))
         .limit(1);
 
     if (!existing) {
@@ -240,7 +240,7 @@ conversationsRoutes.delete('/:id', async (c) => {
 
     await db.update(conversations)
         .set({ status: 'archived', updatedAt: new Date() })
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)));
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))));
 
     return c.json({ success: true });
 });
@@ -261,7 +261,7 @@ conversationsRoutes.delete('/:id/permanent', async (c) => {
     const [existing] = await db
         .select({ id: conversations.id })
         .from(conversations)
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))))
         .limit(1);
 
     if (!existing) {
@@ -269,7 +269,7 @@ conversationsRoutes.delete('/:id/permanent', async (c) => {
     }
 
     await db.delete(conversations)
-        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)));
+        .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))));
 
     return c.json({ success: true });
 });

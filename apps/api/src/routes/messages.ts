@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, asc, gte } from 'drizzle-orm';
+import { and, eq, asc, gte, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { conversations, messages } from '@serverless-saas/database/schema/conversations';
@@ -11,11 +11,16 @@ import type { AppEnv } from '../types';
 export const messagesRoutes = new Hono<AppEnv>();
 
 // Verify conversation belongs to tenant+user and return full row
+// userId IS NULL is a backwards-compat fallback for conversations created before member-scoping
 async function resolveConversation(conversationId: string, tenantId: string, userId: string) {
     const [conversation] = await db
         .select()
         .from(conversations)
-        .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
+        .where(and(
+            eq(conversations.id, conversationId),
+            eq(conversations.tenantId, tenantId),
+            or(eq(conversations.userId, userId), isNull(conversations.userId)),
+        ))
         .limit(1);
     return conversation ?? null;
 }
