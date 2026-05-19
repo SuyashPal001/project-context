@@ -90,14 +90,6 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
             status: 'active',
         }).returning();
 
-        // Notify relay on skill create — agent-server rewrites IDENTITY.md and clears sessions
-        const relayUrl = process.env.RELAY_URL;
-        Promise.resolve().then(() => fetch(`${relayUrl}/update/${tenantId}/${agentId}`, {
-            method: 'POST',
-            headers: { 'x-service-key': process.env.INTERNAL_SERVICE_KEY!, 'Content-Type': 'application/json' },
-            body: JSON.stringify({}),
-        }).catch((e) => console.warn('[relay update failed]', e)));
-
         return c.json({ data: created }, 201);
     } catch (err: any) {
         // Unique constraint on [agentId, tenantId, name, version]
@@ -199,14 +191,6 @@ agentSkillsRoutes.put('/:agentId/skills/:skillId', async (c) => {
         ))
         .returning();
 
-    // Notify relay on any skill update — agent-server rewrites IDENTITY.md and clears sessions
-    const relayUrl = process.env.RELAY_URL;
-    Promise.resolve().then(() => fetch(`${relayUrl}/update/${tenantId}/${agentId}`, {
-        method: 'POST',
-        headers: { 'x-service-key': process.env.INTERNAL_SERVICE_KEY!, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    }).catch((e) => console.warn('[relay update failed]', e)));
-
     return c.json({ data: updated });
 });
 
@@ -248,14 +232,6 @@ agentSkillsRoutes.delete('/:agentId/skills/:skillId', async (c) => {
             eq(agentSkills.agentId, agentId),
             eq(agentSkills.tenantId, tenantId),
         ));
-
-    // Notify relay on skill delete — agent-server rewrites IDENTITY.md and clears sessions
-    const relayUrl = process.env.RELAY_URL;
-    Promise.resolve().then(() => fetch(`${relayUrl}/update/${tenantId}/${agentId}`, {
-        method: 'POST',
-        headers: { 'x-service-key': process.env.INTERNAL_SERVICE_KEY!, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    }).catch((e) => console.warn('[relay update failed]', e)));
 
     return c.json({ success: true });
 });
