@@ -31,7 +31,7 @@ export function getMastraStore(): PostgresStore {
   return store
 }
 
-function getMastraVector(): PgVector {
+export function getMastraVector(): PgVector {
   if (vector) return vector
   vector = new PgVector({ id: 'mastra-pg-vector', connectionString: process.env.DATABASE_URL! })
   return vector
@@ -42,7 +42,7 @@ const google = createGoogleGenerativeAI({
   baseURL: (process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001') + '/v1',
   apiKey: process.env.GEMINI_API_KEY ?? 'placeholder',
 })
-const embedder = google.embedding('gemini-embedding-001')
+export const embedder = google.embedding('gemini-embedding-001')
 
 // Singleton Memory instance — shared across all tenants.
 // Isolation is enforced per-request via resourceId (MASTRA_RESOURCE_ID_KEY)

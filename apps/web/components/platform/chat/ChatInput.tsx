@@ -38,6 +38,7 @@ interface ChatInputProps {
     llmProviderId?: string | null;
     providers?: LLMProvider[];
     onModelChange?: (providerId: string) => void;
+    prefill?: string;
 }
 
 export function ChatInput({
@@ -47,6 +48,7 @@ export function ChatInput({
     disabled,
     isLoading,
     isStreaming,
+    prefill,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
 
@@ -112,6 +114,13 @@ export function ChatInput({
             textareaRef.current.style.height = `${Math.min(scrollHeight, 200)}px`;
         }
     }, [content]);
+
+    useEffect(() => {
+        if (prefill) {
+            setContent(prefill);
+            textareaRef.current?.focus();
+        }
+    }, [prefill]);
 
     const showRecordingBar = recorder.isRecording || recorder.audioPreview;
 
