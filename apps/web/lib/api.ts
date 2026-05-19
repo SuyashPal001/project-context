@@ -15,10 +15,16 @@ async function request<T>(
 ): Promise<T> {
     const url = `${BASE_URL}${path}`;
 
+    const method = (options.method ?? 'GET').toUpperCase();
+    const defaultHeaders: Record<string, string> = {};
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE') {
+        defaultHeaders['Content-Type'] = 'application/json';
+    }
+
     const response = await fetch(url, {
         ...options,
         headers: {
-            'Content-Type': 'application/json',
+            ...defaultHeaders,
             ...options.headers,
         },
     });
