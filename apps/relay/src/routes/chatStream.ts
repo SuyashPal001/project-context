@@ -1,15 +1,13 @@
 import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
-import { saveUserMessage, saveAssistantMessage } from '../persistence.js'
+import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload } from '../persistence.js'
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
-import { platformAgent } from '../mastra/index.js'
-import { pmAgent } from '../mastra/agents/pmAgent.js'
+import { platformAgent, pmAgent } from '../mastra/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
-import { fetchAgentSkill } from '../usage.js'
+import { fetchAgentSkill, fetchAgentName } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
-import { isPmIntent, fetchPrdDraft } from './pmRouting.js'
 
 export interface ChatStreamOpts {
   message: string
@@ -79,35 +77,19 @@ async function buildMastraMessage(
   return finalMessage
 }
 
-// ---------------------------------------------------------------------------
-// Plan JSON extraction — parse agent text response for structured plan data.
-// Looks for a fenced ```json block first, then falls back to raw {...}.
-// Returns the parsed object if it has both `plan` and `milestones` keys,
-// otherwise null (normal message, not a PRD analysis response).
-// ---------------------------------------------------------------------------
 function extractPlanJson(text: string): Record<string, unknown> | null {
   const candidates: string[] = []
-
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
   if (fenceMatch) candidates.push(fenceMatch[1])
-
   const rawMatch = text.match(/\{[\s\S]*\}/)
   if (rawMatch) candidates.push(rawMatch[0])
-
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate.trim())
-      if (
-        parsed &&
-        typeof parsed === 'object' &&
-        typeof parsed.plan === 'object' &&
-        Array.isArray(parsed.milestones)
-      ) {
+      if (parsed && typeof parsed === 'object' && typeof parsed.plan === 'object' && Array.isArray(parsed.milestones)) {
         return parsed as Record<string, unknown>
       }
-    } catch {
-      // not valid JSON — try next candidate
-    }
+    } catch { /* not valid JSON — try next */ }
   }
   return null
 }
@@ -128,6 +110,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const costUsd: number | undefined = undefined
   let pendingMetrics: Parameters<typeof fireMetrics>[0] | null = null
   let pendingEval: Parameters<typeof fireAutoEval>[0] | null = null
+  const toolCallNames = new Map<string, string>()
+  const assistantMessageId = crypto.randomUUID()
+  let pendingArtifactRef: ArtifactRefPayload | null = null
+  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks'])
 
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
@@ -142,7 +128,6 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       ? `[AGENT MEMORY]\nYou have remembered the following about this tenant from previous sessions:\n${workingMemory}\n\n`
       : ''
     const sessionCtx = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
-
     const mastraMessage = await buildMastraMessage(attachments, memPreamble, sessionCtx, message, sessionId)
 
     if (isStreamClosed()) return
@@ -156,48 +141,43 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const mcpClient = getMCPClientForTenant(tenantId)
     requestContext.set('__mcpClient', mcpClient as any)
 
-    // Inject per-agent system prompt so platformAgent.instructions uses it
-    // instead of the global agent_templates prompt (ADR: agent branding fix).
-    const agentSkill = await fetchAgentSkill(agentId)
+    const [agentSkill, agentName] = await Promise.all([
+      fetchAgentSkill(agentId),
+      fetchAgentName(agentId),
+    ])
     if (agentSkill?.systemPrompt) {
       requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
     }
 
     const thinkingBudget = getThinkingBudget(message)
     requestContext.set('thinkingBudget', thinkingBudget)
-    console.log(`[sse:${sessionId}] streaming tenantId=${tenantId} conversationId=${conversationId} thinkingBudget=${thinkingBudget} model=${thinkingBudget === 0 ? 'lite' : 'flash'}`)
 
-    // Skip memory recall for conversational turns — nothing useful to recall for "hi"/"thanks".
-    // lastMessages: false disables the 0.57s recall step; memory:save still runs (history kept).
+    // Agent routing — determined entirely by the conversation's assigned agent.
+    // Saarthi conversations always go to platformAgent; PM agent conversations
+    // always go to pmAgent. No keyword detection — the user chose the agent
+    // when starting the conversation. Internal sub-agent delegation (pmAgent →
+    // prdAgent → roadmapAgent → taskAgent) is handled by Mastra internally.
+    const activeAgent = (agentName ?? '').toLowerCase().includes('pm') ? pmAgent : platformAgent
+    console.log(`[sse:${sessionId}] agent="${agentName}" → ${activeAgent === pmAgent ? 'pmAgent' : 'platformAgent'} thinkingBudget=${thinkingBudget}`)
+
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
-    let agentStream: any
-
-    if (isPmIntent(message)) {
-      const draft = await fetchPrdDraft(agentId, tenantId)
-      if (draft) {
-        requestContext.set('existingPrdDraft', draft.content)
-        requestContext.set('existingPrdId', draft.id)
-      }
-      console.log(`[sse:${sessionId}] PM intent detected — routing to pmAgent draft=${!!draft}`)
-      agentStream = await pmAgent.stream(mastraMessage, {
-        maxSteps: 10,
-        requestContext,
-        delegation: { onDelegationStart: async () => ({ proceed: true }) },
-      })
-    } else {
-      agentStream = await (platformAgent as any).stream(mastraMessage, {
-        memory: { thread: conversationId || crypto.randomUUID(), resource: tenantId, ...(memoryOptions ? { options: memoryOptions } : {}) },
-        requestContext,
-        providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
-      })
-    }
+    const agentStream = await (activeAgent as any).stream(mastraMessage, {
+      memory: {
+        thread: conversationId || crypto.randomUUID(),
+        resource: tenantId,
+        ...(memoryOptions ? { options: memoryOptions } : {}),
+      },
+      requestContext,
+      providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
+    })
 
     let fullText = ''
     let planResult: unknown
 
     for await (const part of agentStream.fullStream as AsyncIterable<any>) {
       if (isStreamClosed()) break
+
       switch (part.type) {
         case 'text-delta': {
           const text = (part.payload?.text ?? part.textDelta ?? '') as string
@@ -205,14 +185,49 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           sendEvent('delta', { text, conversationId })
           break
         }
+        // Text streamed from a delegated sub-agent
+        case 'agent-execution-event-text-delta': {
+          const text = (part.payload?.textDelta ?? part.payload?.text ?? '') as string
+          if (text) {
+            fullText += text
+            sendEvent('delta', { text, conversationId })
+          }
+          break
+        }
         case 'tool-call': {
           const p = part.payload ?? part
           const toolName = (p.toolName ?? '') as string
           const args = (p.args ?? {}) as Record<string, unknown>
           const toolCallId = (p.toolCallId ?? toolName) as string
+          if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
           sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           if (toolName === 'retrieve_documents') ragFired = true
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
+          break
+        }
+        case 'tool-result': {
+          const p = part.payload ?? part
+          const toolCallId = (p.toolCallId ?? '') as string
+          const rawToolName = (p.toolName ?? '') as string
+          const resolvedToolName = rawToolName || toolCallNames.get(toolCallId) || ''
+          toolCallNames.delete(toolCallId)
+          const result = (p.result ?? p.output ?? {}) as Record<string, unknown>
+          console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
+          sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
+
+          // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes
+          const normName = resolvedToolName.toLowerCase().replace(/_/g, '-')
+          if (SAVE_TOOL_NAMES.has(normName)) {
+            const entityId = (result.prdId ?? result.planId ?? result.taskBoardId) as string | undefined
+            if (entityId) {
+              const artifactType = normName.includes('prd') ? 'prd' : normName.includes('plan') ? 'roadmap' : 'tasks'
+              pendingArtifactRef = {
+                type: artifactType as ArtifactRefPayload['type'],
+                entityId,
+                title: String(result.title ?? artifactType.toUpperCase()),
+              }
+            }
+          }
           break
         }
         case 'finish': {
@@ -221,10 +236,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           outputTokens = (usage?.completionTokens as number | undefined) ?? 0
           totalTokens = inputTokens + outputTokens
 
-          // Fire done immediately — don't wait for memory:save (~2.5s)
-          const messageId = crypto.randomUUID()
           const responseTimeMs = Date.now() - startTime
-
           const cached = lastRagResult.get(tenantId)
           if (cached && Date.now() - cached.ts < 60_000) {
             ragFired = true
@@ -241,21 +253,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             console.log(`[sse:${sessionId}] plan JSON extracted from agent response`)
           }
 
-          sendEvent('done', { text: fullText, conversationId, messageId, planResult })
+          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined })
 
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
           saveUserMessage(idToken, conversationId, message, atts)
-          saveAssistantMessage(idToken, conversationId, fullText)
+          saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef)
+          if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
 
           pendingMetrics = { conversationId, tenantId, ragFired, ragChunksRetrieved, responseTimeMs, totalTokens, inputTokens, outputTokens, userMessageCount: 1, costUsd }
-          if (ragFired) pendingEval = { conversationId, messageId, tenantId, question: message, retrievedChunks: ragChunks, answer: fullText }
+          if (ragFired) pendingEval = { conversationId, messageId: assistantMessageId, tenantId, question: message, retrievedChunks: ragChunks, answer: fullText }
           flushMetrics()
           break
         }
       }
     }
 
-    // Loop complete — memory:save has finished
     closeStream()
   } catch (err) {
     console.error(`[sse:${sessionId}] fatal error:`, (err as Error).message)

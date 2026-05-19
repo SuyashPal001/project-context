@@ -48,7 +48,7 @@ export function InviteMemberForm() {
     const queryClient = useQueryClient();
     const [inlineError, setInlineError] = useState<string | null>(null);
 
-    const canCreateUsers = can(permissions, "users", "create");
+    const canCreateUsers = can(permissions, "members", "create");
 
     const form = useForm<InviteFormValues>({
         resolver: zodResolver(inviteSchema),
@@ -70,11 +70,15 @@ export function InviteMemberForm() {
     const inviteMutation = useMutation({
         mutationFn: (data: InviteFormValues) =>
             api.post("/api/v1/members/invite", data),
-        onSuccess: () => {
+        onSuccess: (res: any) => {
             queryClient.invalidateQueries({ queryKey: ["members", tenantId] });
             form.reset();
             setInlineError(null);
-            toast.success("Invitation sent successfully");
+            if (res?.emailSent === false) {
+                toast.warning("Member added but email delivery failed. Check SES configuration.");
+            } else {
+                toast.success("Invitation sent successfully");
+            }
         },
         onError: (error: Error) => {
             setInlineError(error.message || "Failed to invite member");

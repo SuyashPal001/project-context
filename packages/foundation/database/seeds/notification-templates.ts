@@ -101,6 +101,24 @@ const TEMPLATES: Array<{
             subject: 'Task failed',
             body: 'Saarthi encountered an error while working on {{taskTitle}}.',
         },
+        {
+            name: 'prd.created',
+            channel: 'in_app',
+            subject: 'PRD ready for review',
+            body: 'Saarthi has finished writing the PRD for {{artifactTitle}}. Open chat to review and approve.',
+        },
+        {
+            name: 'roadmap.created',
+            channel: 'in_app',
+            subject: 'Roadmap ready for review',
+            body: 'Saarthi has created a roadmap for {{artifactTitle}}. Open chat to review and approve.',
+        },
+        {
+            name: 'tasks.created',
+            channel: 'in_app',
+            subject: 'Tasks ready for review',
+            body: 'Saarthi has broken down {{artifactTitle}} into tasks. Open chat to review and confirm.',
+        },
     ];
 
 export async function seedNotificationTemplates(db: typeof DB) {

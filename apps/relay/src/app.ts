@@ -5,13 +5,14 @@ import { mastra } from './mastra/index.js'
 import { downloadMediaAttachment } from './media.js'
 import { fireToolCallLog } from './events.js'
 import { tasksRouter } from './routes/tasks.js'
+import { pmRouter } from './routes/pm.js'
 import { documentsRouter } from './routes/documents.js'
 import { chatRouter } from './routes/chat.js'
 import { sessionsRouter } from './routes/sessions.js'
 import { internalRouter, initStudio } from './routes/internal.js'
+import { schedulesRouter } from './routes/schedules.js'
 import {
   API_BASE_URL, sessions,
-  resolveGatewayUrl,
 } from './types.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 
@@ -26,16 +27,17 @@ app.use('/studio/*', cors({
 
 app.route('', internalRouter)
 app.route('', tasksRouter)
+app.route('', pmRouter)
 app.route('', documentsRouter)
 app.route('', chatRouter)
 app.route('', sessionsRouter)
+app.route('', schedulesRouter)
 
 await initStudio(app)
 
 export {
   app,
   API_BASE_URL,
-  resolveGatewayUrl,
   downloadMediaAttachment,
   fireToolCallLog,
   sessions,

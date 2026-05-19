@@ -41,11 +41,30 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   // Step 1 — find user in our DB by cognitoId
   // User is created here via middleware upsert on first API call (Volca pattern, ADR-024)
   // If not found yet, stamp empty claims — do not throw
-  const [user] = await db
+  let [user] = await db
     .select()
     .from(users)
     .where(eq(users.cognitoId, cognitoId))
     .limit(1);
+
+  // Fallback: look up by verified email when cognitoId doesn't match.
+  // Handles first-time Google OAuth login for a user who previously signed up
+  // via email/password — Cognito issues a different sub for the federated identity,
+  // so the cognitoId lookup misses. Email is Cognito-verified for both auth methods.
+  if (!user) {
+    const email = event.request.userAttributes.email;
+    const emailVerified = event.request.userAttributes.email_verified;
+    if (email && emailVerified === 'true') {
+      [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      if (user) {
+        console.log('[pretoken] step=1/email-fallback', { cognitoId, email, userId: user.id });
+      }
+    }
+  }
 
   console.log('[pretoken] step=1/user', { found: !!user, id: user?.id });
 

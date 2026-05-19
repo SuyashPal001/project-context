@@ -1,7 +1,6 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { WebSocket } from 'ws'
-import { fetchAgentSlug } from './usage.js'
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -65,10 +64,6 @@ export interface WorkflowStep {
 
 export const MEDIA_DIR = join(homedir(), '.openclaw', 'media', 'inbound')
 
-export const AGENT_SERVER_URL = process.env.AGENT_SERVER_URL ?? 'http://localhost:3003'
-export const AGENT_SERVER_KEY = process.env.AGENT_SERVER_KEY ?? process.env.INTERNAL_SERVICE_KEY ?? ''
-export const CONTAINER_MCP_BASE_URL = process.env.CONTAINER_MCP_BASE_URL ?? 'http://host.docker.internal:3002/mcp'
-
 export const API_BASE_URL = process.env.API_BASE_URL ?? ''
 export const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY ?? ''
 export const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? `${API_BASE_URL}/api/v1`
@@ -116,61 +111,6 @@ export const ALLOWED_ORIGINS = new Set([
 export function getAllowedOrigin(requestOrigin: string | undefined): string {
   if (requestOrigin && ALLOWED_ORIGINS.has(requestOrigin)) return requestOrigin
   return ''
-}
-
-// ─── Gateway resolution ───────────────────────────────────────────────────────
-
-export async function resolveGatewayUrl(tenantId: string, agentId: string): Promise<string> {
-  console.log(`[gateway] resolveGatewayUrl called tenantId=${JSON.stringify(tenantId)} agentId=${JSON.stringify(agentId)} OPENCLAW_GATEWAY_URL=${process.env.OPENCLAW_GATEWAY_URL ?? '(unset)'}`)
-  if (process.env.OPENCLAW_GATEWAY_URL) return process.env.OPENCLAW_GATEWAY_URL
-  if (!tenantId) throw new Error('No container found: tenantId is missing')
-  const slug = agentId ? await fetchAgentSlug(agentId).catch(() => null) : null
-  const agentSlug = slug ?? 'default'
-  try {
-    const resp = await fetch(`${AGENT_SERVER_URL}/status/${tenantId}/${agentSlug}`, {
-      headers: { 'x-service-key': AGENT_SERVER_KEY },
-    })
-    if (resp.ok) {
-      const body = await resp.json() as { bridgePort?: number | null }
-      if (body.bridgePort) {
-        const url = `ws://localhost:${body.bridgePort}`
-        console.log(`[gateway] resolved ${tenantId} → ${url}`)
-        return url
-      }
-    }
-  } catch (err) {
-    console.warn('[relay] resolveGatewayUrl: agent-server lookup failed:', (err as Error).message)
-  }
-  if (agentSlug !== 'default') {
-    throw new Error(`Agent container not found for tenant=${tenantId} agentSlug=${agentSlug} — refusing to fall back to default container`)
-  }
-  try {
-    console.log(`[gateway] auto-provisioning tenant=${tenantId} agentSlug=${agentSlug}`)
-    const provResp = await fetch(`${AGENT_SERVER_URL}/provision/${tenantId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-service-key': AGENT_SERVER_KEY },
-      body: JSON.stringify({ agentSlug })
-    })
-    if (provResp.ok) {
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 3000))
-        const statusResp = await fetch(`${AGENT_SERVER_URL}/status/${tenantId}/${agentSlug}`, {
-          headers: { 'x-service-key': AGENT_SERVER_KEY }
-        })
-        if (statusResp.ok) {
-          const body = await statusResp.json() as { bridgePort?: number | null }
-          if (body.bridgePort) {
-            const url = `ws://localhost:${body.bridgePort}`
-            console.log(`[gateway] auto-provision success tenant=${tenantId} → ${url}`)
-            return url
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error(`[gateway] auto-provision failed tenant=${tenantId}:`, (err as Error).message)
-  }
-  throw new Error(`No container found for tenant=${tenantId} agentId=${agentId} agentSlug=${agentSlug}`)
 }
 
 // ─── Conversation history helpers ─────────────────────────────────────────────

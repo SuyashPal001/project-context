@@ -24,6 +24,10 @@ const actionIcons: Record<CanvasAction, React.ElementType> = {
   navigate: Navigation,
   scroll: ScrollText,
   file_created: FileText,
+  artifact_start: FileText,
+  artifact_chunk: FileText,
+  artifact_done: FileText,
+  artifact_load: FileText,
 };
 
 const actionLabels: Record<CanvasAction, string> = {
@@ -33,6 +37,10 @@ const actionLabels: Record<CanvasAction, string> = {
   navigate: 'Navigated to',
   scroll: 'Scrolled',
   file_created: 'Created file',
+  artifact_start: 'Artifact started',
+  artifact_chunk: 'Artifact chunk',
+  artifact_done: 'Artifact saved',
+  artifact_load: 'Artifact loaded',
 };
 
 export function ActionTimeline({ events, maxItems = 10 }: ActionTimelineProps) {

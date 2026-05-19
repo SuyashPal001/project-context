@@ -44,6 +44,16 @@ export function ThinkingIndicator({
     const [messageIndex, setMessageIndex] = useState(0);
 
     const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
+    const isPRD = activeToolCalls.some(tc =>
+        tc.toolName === 'save-prd' || tc.toolName === 'savePRD'
+        || tc.toolName?.startsWith('agent-prd') || tc.toolName?.startsWith('workflow-prd'));
+    const isRoadmap = activeToolCalls.some(tc =>
+        tc.toolName === 'save-plan' || tc.toolName === 'savePlan'
+        || tc.toolName?.startsWith('agent-roadmap'));
+    const isTasks = activeToolCalls.some(tc =>
+        tc.toolName === 'save-tasks' || tc.toolName === 'saveTasks'
+        || tc.toolName?.startsWith('agent-task'));
+    const isSaveTool = isPRD || isRoadmap || isTasks;
 
     const THINKING_MESSAGES = [
         "Thinking...",
@@ -58,7 +68,32 @@ export function ThinkingIndicator({
         "Reviewing sources...",
     ];
 
-    const thinkingMessages = isRAG ? RAG_MESSAGES : THINKING_MESSAGES;
+    const PRD_MESSAGES = [
+        "Writing your PRD...",
+        "Structuring requirements...",
+        "Adding acceptance criteria...",
+        "Finalising the document...",
+    ];
+
+    const ROADMAP_MESSAGES = [
+        "Building your roadmap...",
+        "Organising milestones...",
+        "Sequencing deliverables...",
+        "Almost done...",
+    ];
+
+    const TASKS_MESSAGES = [
+        "Breaking down tasks...",
+        "Estimating effort...",
+        "Assigning priorities...",
+        "Almost done...",
+    ];
+
+    const thinkingMessages = isPRD ? PRD_MESSAGES
+        : isRoadmap ? ROADMAP_MESSAGES
+        : isTasks ? TASKS_MESSAGES
+        : isRAG ? RAG_MESSAGES
+        : THINKING_MESSAGES;
 
     useEffect(() => {
         if (!isRetrying) {
@@ -80,7 +115,7 @@ export function ThinkingIndicator({
         return () => clearInterval(id);
     }, [isStreaming, thinkingMessages.length]);
 
-    if (hasContent) return null;
+    if (hasContent && !isSaveTool) return null;
 
     // Phase 1 — container warmup
     if (isRetrying) {

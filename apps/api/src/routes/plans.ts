@@ -7,6 +7,7 @@ import { hasPermission } from '@serverless-saas/permissions';
 import { nextSequenceId } from '../lib/sequence';
 import type { AppEnv } from '../types';
 import { handlePlanSummary, handleListMilestones, handleCreateMilestone, handlePlanTasks } from './plans.milestones';
+import { handlePlanTimeline } from './plans.timeline';
 
 export const plansRoutes = new Hono<AppEnv>();
 
@@ -108,8 +109,23 @@ plansRoutes.delete('/:planId', async (c) => {
     return c.json({ success: true });
 });
 
+// PATCH /plans/:planId/approve — transition draft → active (Canvas "Approve Roadmap" button)
+plansRoutes.patch('/:planId/approve', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'project_plans', 'update')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+    const { planId } = c.req.param();
+    const [updated] = await db.update(projectPlans).set({ status: 'active', updatedAt: new Date() }).where(and(eq(projectPlans.id, planId), eq(projectPlans.tenantId, tenantId), isNull(projectPlans.deletedAt))).returning({ id: projectPlans.id, status: projectPlans.status });
+    if (!updated) return c.json({ error: 'Plan not found' }, 404);
+    return c.json({ data: updated });
+});
+
 // Plan detail routes
 plansRoutes.get('/:planId/summary', handlePlanSummary);
 plansRoutes.get('/:planId/milestones', handleListMilestones);
 plansRoutes.post('/:planId/milestones', handleCreateMilestone);
 plansRoutes.get('/:planId/tasks', handlePlanTasks);
+plansRoutes.get('/:planId/timeline', handlePlanTimeline);

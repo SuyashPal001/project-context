@@ -16,6 +16,11 @@ function ToolIcon({ toolName }: { toolName: string }) {
   const isEmail = toolName === 'gmail' || toolName === 'send_email' || toolName?.startsWith('GMAIL');
   const isDrive = toolName === 'google_drive';
   const isCRM = toolName === 'zoho_crm' || toolName?.startsWith('ZOHO_CRM');
+  const isWriting = toolName === 'save-prd' || toolName === 'savePRD'
+    || toolName === 'save-plan' || toolName === 'savePlan'
+    || toolName === 'save-tasks' || toolName === 'saveTasks'
+    || toolName?.startsWith('agent-prd') || toolName?.startsWith('agent-roadmap') || toolName?.startsWith('agent-task')
+    || toolName?.startsWith('workflow-prd');
 
   if (isSearch) return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
@@ -56,6 +61,16 @@ function ToolIcon({ toolName }: { toolName: string }) {
     </svg>
   );
 
+  if (isWriting) return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <rect x="2" y="1.5" width="8" height="11" rx="1" stroke="currentColor" strokeWidth="1"/>
+      <line x1="4" y1="4.5" x2="8" y2="4.5" stroke="currentColor" strokeWidth="1"/>
+      <line x1="4" y1="6.5" x2="8" y2="6.5" stroke="currentColor" strokeWidth="1"/>
+      <line x1="4" y1="8.5" x2="6.5" y2="8.5" stroke="currentColor" strokeWidth="1"/>
+      <path d="M9 9.5l1.5-1.5 1.5 1.5-1.5 1.5z" stroke="currentColor" strokeWidth="0.8" fill="none"/>
+    </svg>
+  );
+
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
       <path d="M9.5 2A3.5 3.5 0 0 0 7 7.5L2.5 12a1.06 1.06 0 1 0 1.5 1.5L8.5 9A3.5 3.5 0 0 0 9.5 2z" stroke="currentColor" strokeWidth="1" fill="none"/>
@@ -73,6 +88,9 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
         if (toolName === 'retrieve_documents') return { prefix: 'Searching your documents for ', highlight: q };
         if (toolName === 'browser') return { prefix: 'Browsing ', highlight: q };
         if (toolName === 'code_exec' || toolName === 'code_execution') return { prefix: 'Running code...', highlight: '' };
+        if (toolName === 'save-prd' || toolName === 'savePRD' || toolName?.startsWith('agent-prd') || toolName?.startsWith('workflow-prd')) return { prefix: 'Writing PRD', highlight: query ? ` — ${q}` : '...' };
+        if (toolName === 'save-plan' || toolName === 'savePlan' || toolName?.startsWith('agent-roadmap')) return { prefix: 'Building roadmap...', highlight: '' };
+        if (toolName === 'save-tasks' || toolName === 'saveTasks' || toolName?.startsWith('agent-task')) return { prefix: 'Creating tasks...', highlight: '' };
     }
 
     if (toolName === 'web_search' || toolName === 'browser') return { prefix: 'Searched the web for ', highlight: q };
@@ -87,6 +105,9 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
     if (toolName?.startsWith('GMAIL')) return { prefix: done ? 'Accessed email' : 'Accessing email', highlight: query ? ` — ${q}` : '' };
     if (toolName?.startsWith('JIRA')) return { prefix: done ? 'Accessed Jira' : 'Accessing Jira', highlight: query ? ` — ${q}` : '' };
     if (toolName === 'code_execution' || toolName === 'code_exec') return { prefix: 'Ran code', highlight: '' };
+    if (toolName === 'save-prd' || toolName === 'savePRD' || toolName?.startsWith('agent-prd') || toolName?.startsWith('workflow-prd')) return { prefix: 'PRD drafted', highlight: '' };
+    if (toolName === 'save-plan' || toolName === 'savePlan' || toolName?.startsWith('agent-roadmap')) return { prefix: 'Roadmap built', highlight: '' };
+    if (toolName === 'save-tasks' || toolName === 'saveTasks' || toolName?.startsWith('agent-task')) return { prefix: 'Tasks created', highlight: '' };
 
     const friendly = toolName.replace(/_/g, ' ').toLowerCase();
     return { prefix: done ? `Used ${friendly}` : `Using ${friendly}`, highlight: query ? ` — ${q}` : '' };

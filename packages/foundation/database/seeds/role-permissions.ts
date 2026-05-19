@@ -25,6 +25,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'tenant:read',
         'usage:read',
         'webhooks:read',
+        'agents:read',
+        'files:read',
+        'files:create',
+        'files:delete',
         'conversations:create',
         'conversations:read',
         'conversations:update',
@@ -42,6 +46,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'project_milestones:read',
         'project_milestones:update',
         'project_milestones:delete',
+        'project_pages:create',
+        'project_pages:read',
+        'project_pages:update',
+        'project_pages:delete',
     ],
 
     'ops-agent': [

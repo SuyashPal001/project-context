@@ -32,18 +32,26 @@ const planRowSchema = z.object({
   milestones: z.array(milestoneSchema),
 })
 
+const requestContextSchema = z.object({
+  tenantId: z.string(),
+  agentId: z.string().optional(),
+  userId: z.string().optional(),
+})
+
 export const fetchPlan = createTool({
   id: 'fetch-plan',
   description: 'Reads a project_plans record with its milestones by planId. Returns null with a reason if not found.',
+  requestContextSchema,
   inputSchema: z.object({
     planId: z.string(),
-    tenantId: z.string(),
   }),
   outputSchema: z.object({
     plan: planRowSchema.nullable(),
     reason: z.string().nullable(),
   }),
-  execute: async ({ context: { planId, tenantId } }) => {
+  execute: async (inputData, execContext) => {
+    const planId = inputData?.planId ?? ''
+    const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const client = await getPool().connect()
     try {
       const { rows } = await client.query<{

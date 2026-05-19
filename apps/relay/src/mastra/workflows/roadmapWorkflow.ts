@@ -1,10 +1,19 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
+import { readFileSync } from 'fs'
+import { resolve } from 'path'
 import { z } from 'zod'
 
-// Import agents directly (not via index.js) to avoid circular dependency:
-// roadmapAgent → roadmapWorkflow → index → roadmapAgent
-import { roadmapAgent } from '../agents/roadmapAgent.js'
 import { formatterAgent } from '../agents/formatterAgent.js'
+import { createPlanFromPrd } from '../../services/planService.js'
+import type { PrdData } from '../../services/planService.js'
+
+// Load skill content once at module init — injected into generateText prompts
+// so workflow steps get the same context roadmapAgent.generate() used to provide
+// via its workspace. process.cwd() = relay root (PM2 exec cwd).
+const roadmapSkill = readFileSync(
+  resolve(process.cwd(), 'skills/roadmap-planning/SKILL.md'),
+  'utf-8',
+)
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -25,6 +34,7 @@ const milestoneSchema = z.object({
   title: z.string(),
   description: z.string(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']),
+  targetDate: z.string().optional(),
   tasks: z.array(z.any()).default([]),
 })
 
@@ -43,6 +53,11 @@ const formatOutputSchema = z.object({
   prdData: prdDataSchema,
 })
 
+const saveOutputSchema = z.object({
+  planId: z.string(),
+  title: z.string(),
+})
+
 // ─── Step 1: analyzeStep ─────────────────────────────────────────────────────
 // roadmapAgent extracts plan title, target date, feature areas, goals, risks
 // from the approved PRD content. Plain text output only.
@@ -51,7 +66,7 @@ export const analyzeStep = createStep({
   id: 'analyze-prd',
   inputSchema: workflowInputSchema,
   outputSchema: analyzeOutputSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, requestContext }) => {
     const { prdContent } = inputData
 
     const prompt = [
@@ -64,6 +79,11 @@ export const analyzeStep = createStep({
       `- Goals and success metrics (will become milestone acceptance criteria)`,
       `- Risks mentioned`,
       ``,
+      `Risks: Even if no explicit risks are mentioned in the PRD, always infer`,
+      `and list at least 2-3 implied risks based on the feature area.`,
+      `For example: technical complexity risks, dependency risks,`,
+      `security risks, timeline risks, integration risks.`,
+      ``,
       `Write in structured plain text. Do not produce JSON.`,
       ``,
       `--- PRD ---`,
@@ -74,7 +94,7 @@ export const analyzeStep = createStep({
     let analysis = ''
 
     try {
-      const result = await roadmapAgent.generate(prompt)
+      const result = await formatterAgent.generate(`${roadmapSkill}\n\n${prompt}`, { requestContext })
       analysis = result.text ?? ''
       console.log(`[analyzeStep] analysis length=${analysis.length}`)
     } catch (err) {
@@ -94,7 +114,7 @@ export const planStep = createStep({
   id: 'plan-milestones',
   inputSchema: analyzeOutputSchema,
   outputSchema: planOutputSchema,
-  execute: async ({ inputData, getInitData }) => {
+  execute: async ({ inputData, getInitData, requestContext }) => {
     const { analysis } = inputData
     const initData = getInitData<z.infer<typeof workflowInputSchema>>()
 
@@ -114,13 +134,19 @@ export const planStep = createStep({
       `- acceptance_criteria: 2–4 plain-english done-criteria`,
       ``,
       `Order milestones chronologically. Do not generate tasks.`,
+      ``,
+      `Target dates: If no timeline is specified in the PRD, assume the project`,
+      `starts today and assign realistic target dates to each milestone based on`,
+      `its complexity and priority. Space milestones 2-4 weeks apart.`,
+      `Format dates as YYYY-MM-DD.`,
+      ``,
       `Write in structured plain text. Do not produce JSON.`,
     ].filter(Boolean).join('\n')
 
     let roadmapDraft = ''
 
     try {
-      const result = await roadmapAgent.generate(prompt)
+      const result = await formatterAgent.generate(`${roadmapSkill}\n\n${prompt}`, { requestContext })
       roadmapDraft = result.text ?? ''
       console.log(`[planStep] roadmapDraft length=${roadmapDraft.length}`)
     } catch (err) {
@@ -142,7 +168,7 @@ export const formatStep = createStep({
   id: 'format-roadmap',
   inputSchema: planOutputSchema,
   outputSchema: formatOutputSchema,
-  execute: async ({ inputData }) => {
+  execute: async ({ inputData, requestContext }) => {
     const { roadmapDraft } = inputData
 
     const prompt = [
@@ -156,7 +182,7 @@ export const formatStep = createStep({
       `Return:`,
       `{ "prdData": {`,
       `    "plan": { "title": "...", "description": "...", "targetDate": "ISO string or omit" },`,
-      `    "milestones": [{ "title": "...", "description": "...", "priority": "low|medium|high|urgent", "tasks": [] }],`,
+      `    "milestones": [{ "title": "...", "description": "...", "priority": "low|medium|high|urgent", "targetDate": "YYYY-MM-DD", "tasks": [] }],`,
       `    "risks": ["..."],`,
       `    "totalEstimatedHours": number or omit`,
       `  }`,
@@ -173,6 +199,7 @@ export const formatStep = createStep({
 
     try {
       const result = await formatterAgent.generate(prompt, {
+        requestContext,
         structuredOutput: { schema: formatOutputSchema },
       })
       if (result.object) {
@@ -187,16 +214,42 @@ export const formatStep = createStep({
   },
 })
 
+// ─── Step 4: saveStep ─────────────────────────────────────────────────────────
+// Persists the roadmap to project_plans + project_milestones via planService.
+// Returns planId so prdAgent/pmAgent can pass it to the next phase.
+
+export const saveStep = createStep({
+  id: 'save-roadmap',
+  inputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
+  execute: async ({ inputData, requestContext }) => {
+    const { prdData } = inputData
+    const tenantId = requestContext?.get('tenantId') as string ?? ''
+    const userId   = requestContext?.get('userId')   as string ?? ''
+
+    try {
+      const result = await createPlanFromPrd(tenantId, userId, prdData as PrdData)
+      console.log(`[saveStep:roadmap] saved planId=${result.planId} milestones=${result.milestoneCount}`)
+      return { planId: result.planId, title: prdData.plan.title }
+    } catch (err) {
+      console.error('[saveStep:roadmap] error:', (err as Error).message)
+      throw err
+    }
+  },
+})
+
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 
 export const roadmapWorkflow = createWorkflow({
   id: 'roadmap-workflow',
   inputSchema: workflowInputSchema,
-  outputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
 })
   .then(analyzeStep)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(planStep as any)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(formatStep as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  .then(saveStep as any)
   .commit()

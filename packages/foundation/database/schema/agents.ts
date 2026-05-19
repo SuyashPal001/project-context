@@ -28,6 +28,7 @@ export const agents = pgTable('agents', {
   llmProviderId: uuid('llm_provider_id'),
   avatarUrl: text('avatar_url'),
   description: text('description'),
+  isInternal: boolean('is_internal').notNull().default(false),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -94,6 +95,7 @@ export const agentTasks = pgTable('agent_tasks', {
   planApprovedBy: uuid('plan_approved_by').references(() => users.id),
   blockedReason: text('blocked_reason'),
   cancelReason: text('cancel_reason'),
+  startDate: timestamp('start_date'),
   dueDate: timestamp('due_date'),
   upvotes: integer('upvotes').notNull().default(0),
   downvotes: integer('downvotes').notNull().default(0),
@@ -176,6 +178,25 @@ export const taskComments = pgTable('task_comments', {
 }, (t) => ({
   taskIdIdx: index('task_comments_task_id_idx').on(t.taskId),
   tenantTaskIdx: index('task_comments_tenant_task_idx').on(t.tenantId, t.taskId),
+}));
+
+// ── Task Dependencies ─────────────────────────────────────────────────────────
+
+export const taskDependencyRelationEnum = pgEnum('task_dependency_relation', ['blocks', 'blocked_by', 'start_before', 'finish_before']);
+
+export const taskDependencies = pgTable('task_dependencies', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  tenantId:     uuid('tenant_id').notNull().references(() => tenants.id),
+  fromTaskId:   uuid('from_task_id').notNull().references(() => agentTasks.id),
+  toTaskId:     uuid('to_task_id').notNull().references(() => agentTasks.id),
+  relationType: taskDependencyRelationEnum('relation_type').notNull(),
+  createdBy:    uuid('created_by').references(() => users.id),
+  createdAt:    timestamp('created_at').notNull().defaultNow(),
+  deletedAt:    timestamp('deleted_at'),
+}, (t) => ({
+  fromTaskIdx: index('task_dependencies_from_task_idx').on(t.fromTaskId),
+  toTaskIdx:   index('task_dependencies_to_task_idx').on(t.toTaskId),
+  tenantIdx:   index('task_dependencies_tenant_idx').on(t.tenantId),
 }));
 
 // ─── Tool Registry ───────────────────────────────────────────────

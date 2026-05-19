@@ -6,6 +6,7 @@ export const pmKeys = {
     milestone:      (milestoneId: string)  => ['milestone', milestoneId] as const,
     milestoneTasks: (milestoneId: string)  => ['milestoneTasks', milestoneId] as const,
     planTasks:      (planId: string)       => ['planTasks', planId] as const,
+    planTimeline:   (planId: string)       => ['planTimeline', planId] as const,
     subtasks:       (taskId: string)       => ['subtasks', taskId] as const,
 }
 

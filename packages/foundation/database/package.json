@@ -12,11 +12,15 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx seeds/index.ts"
+    "db:seed": "tsx seeds/index.ts",
+    "index:knowledge": "tsx scripts/indexKnowledge.ts",
+    "index:knowledge:dry": "tsx scripts/indexKnowledge.ts --dry-run"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
+    "@serverless-saas/ai": "workspace:*",
     "drizzle-orm": "^0.45.2",
+    "glob": "^11.0.0",
     "postgres": "^3.4.0",
     "tsx": "^4.21.0"
   },

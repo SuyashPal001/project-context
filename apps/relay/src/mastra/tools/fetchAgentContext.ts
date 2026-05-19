@@ -7,19 +7,30 @@ interface RawChunk {
   score: number
 }
 
+const requestContextSchema = z.object({
+  tenantId: z.string(),
+  agentId: z.string().optional(),
+  userId: z.string().optional(),
+})
+
 export const fetchAgentContext = createTool({
   id: 'fetch-agent-context',
   description: 'Fetches product/company context for a tenant from the knowledge base using semantic search.',
+  requestContextSchema,
   inputSchema: z.object({
-    agentId: z.string(),
-    tenantId: z.string(),
     query: z.string(),
   }),
   outputSchema: z.object({
     context: z.string(),
     sourceCount: z.number(),
   }),
-  execute: async ({ context: { agentId: _agentId, tenantId, query } }) => {
+  execute: async (inputData, execContext) => {
+    const query = inputData?.query ?? ''
+    const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
+    if (!tenantId || tenantId === 'default') {
+      return { context: '', sourceCount: 0 }
+    }
+
     const apiBaseUrl = process.env.API_BASE_URL ?? ''
     const serviceKey = process.env.INTERNAL_SERVICE_KEY ?? ''
 
@@ -30,7 +41,7 @@ export const fetchAgentContext = createTool({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Service-Key': serviceKey,
+          'x-internal-service-key': serviceKey,
         },
         body: JSON.stringify({ query, tenantId, limit: 5, scoreThreshold: 0.3 }),
       })
@@ -49,7 +60,7 @@ export const fetchAgentContext = createTool({
       return { context: '', sourceCount: 0 }
     }
 
-    const context = chunks.map(c => c.content).join('\n\n')
-    return { context, sourceCount: chunks.length }
+    const combined = chunks.map(c => c.content).join('\n\n')
+    return { context: combined, sourceCount: chunks.length }
   },
 })

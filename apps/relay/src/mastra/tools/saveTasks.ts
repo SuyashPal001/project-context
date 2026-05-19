@@ -34,20 +34,28 @@ const taskDataSchema = z.object({
   milestones: z.array(milestoneTaskDataSchema),
 })
 
+const requestContextSchema = z.object({
+  tenantId: z.string(),
+  agentId: z.string().optional(),
+  userId: z.string().optional(),
+})
+
 export const saveTasks = createTool({
   id: 'save-tasks',
   description: 'Inserts agent_tasks rows for all milestones in the task generation output. Wraps all inserts in a single transaction.',
+  requestContextSchema,
   inputSchema: z.object({
-    tenantId: z.string(),
-    userId: z.string(),
-    agentId: z.string(),
     taskData: taskDataSchema,
   }),
   outputSchema: z.object({
     tasksCreated: z.number(),
     milestoneCount: z.number(),
   }),
-  execute: async ({ context: { tenantId, userId, agentId, taskData } }) => {
+  execute: async (inputData, execContext) => {
+    const taskData = (inputData as any)?.taskData
+    const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
+    const userId   = execContext?.requestContext?.get('userId')   as string | undefined ?? ''
+    const agentId  = execContext?.requestContext?.get('agentId')  as string | undefined ?? ''
     const { planId, milestones } = taskData
     const client = await getPool().connect()
 

@@ -29,6 +29,7 @@ import { roadmapAgent } from './agents/roadmapAgent.js'
 import { taskAgent } from './agents/taskAgent.js'
 import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { taskWorkflow } from './workflows/taskWorkflow.js'
+import { pmWorkflow } from './workflows/pmWorkflow.js'
 import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 // ---------------------------------------------------------------------------
@@ -37,9 +38,27 @@ import { prdWorkspace } from './workspace/prdWorkspace.js'
 // ---------------------------------------------------------------------------
 
 export const mastra = new Mastra({
-  agents: { saarthi: platformAgent, formatter: formatterAgent, prd: prdAgent, pm: pmAgent, roadmap: roadmapAgent, task: taskAgent },
-  workflows: { taskExecution: taskExecutionWorkflow, documentWorkflow, prd: prdWorkflow, roadmap: roadmapWorkflow, tasks: taskWorkflow },
+  agents: {
+    saarthi: platformAgent,
+    formatter: formatterAgent,
+    prd: prdAgent,
+    pm: pmAgent, // Routing supervisor — classifies intent before pmWorkflow starts
+    roadmap: roadmapAgent,
+    task: taskAgent,
+  },
+  workflows: {
+    taskExecution: taskExecutionWorkflow,
+    documentWorkflow,
+    prd: prdWorkflow,
+    roadmap: roadmapWorkflow,
+    tasks: taskWorkflow,
+    'pm-workflow': pmWorkflow, // Primary PM orchestration flow (workflow-first architecture)
+  },
   storage: getMastraStore(),
+  scheduler: {
+    enabled: true,
+    tickIntervalMs: 30_000, // check every 30s
+  },
   scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer, roadmapCompleteness: roadmapCompletenessScorer, taskCompleteness: taskCompletenessScorer },
   editor: new MastraEditor(),
   observability: new Observability({
@@ -60,6 +79,7 @@ export { saarthiModel } from './model.js'
 export { platformAgent, SERVER_TOOLS }
 export { formatterAgent }
 export { prdAgent }
+export { pmAgent }
 export { prdWorkspace } from './workspace/prdWorkspace.js'
 export { getMastraStore, getMastraMemory } from './memory.js'
 export { getMCPClientForTenant, getToolsForTenant } from './tools.js'

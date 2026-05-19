@@ -25,7 +25,7 @@ export async function handleListAgents(c: Context<AppEnv>) {
 
     if (!hasPermission(permissions, 'agents', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const data = await db.select().from(agents).where(eq(agents.tenantId, tenantId));
+    const data = await db.select().from(agents).where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)));
     return c.json({ data });
 }
 

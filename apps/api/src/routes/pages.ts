@@ -6,12 +6,12 @@ import {
   createPage,
   listPages,
   getPage,
-  savePage,
   archivePage,
   toggleLock,
   listVersions,
-  restoreVersion,
+  duplicatePage,
 } from '../services/pageService.js';
+import { savePage, restoreVersion } from '../services/pageSaveService.js';
 
 export const pagesRoutes = new Hono<AppEnv>();
 
@@ -28,7 +28,7 @@ pagesRoutes.post('/', async (c) => {
   const result = z.object({
     planId: z.string().uuid(),
     title: z.string().min(1).max(500).optional(),
-    pageType: z.enum(['prd', 'roadmap', 'runbook', 'adr', 'manual', 'custom']).optional(),
+    pageType: z.enum(['prd', 'roadmap', 'runbook', 'adr', 'handover', 'manual', 'custom']).optional(),
     parentId: z.string().uuid().optional(),
     access: z.number().int().min(0).max(1).optional(),
   }).safeParse(await c.req.json());
@@ -147,6 +147,27 @@ pagesRoutes.post('/:id/restore/:versionId', async (c) => {
 
   const page = await restoreVersion(tenantId, userId, pageId, versionId);
   return c.json({ data: page });
+});
+
+// POST /pages/:id/duplicate
+pagesRoutes.post('/:id/duplicate', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const userId = c.get('userId') as string;
+  const permissions = requestContext?.permissions ?? [];
+
+  if (!hasPermission(permissions, 'project_pages', 'create'))
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const pageId = c.req.param('id');
+  try {
+    const page = await duplicatePage(tenantId, userId, pageId);
+    return c.json({ data: page }, 201);
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === 'Page not found')
+      return c.json({ error: 'Page not found' }, 404);
+    throw err;
+  }
 });
 
 // POST /pages/:id/lock — toggles is_locked

@@ -53,6 +53,7 @@ export const projectMilestones = pgTable('project_milestones', {
     title:       text('title').notNull(),
     description: text('description'),
     status:      milestoneStatusEnum('status').notNull().default('backlog'),
+    startDate:   timestamp('start_date'),
     targetDate:  timestamp('target_date'),
     completedAt: timestamp('completed_at'),
     assigneeId:  uuid('assignee_id').references(() => users.id),

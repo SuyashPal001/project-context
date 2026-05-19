@@ -16,6 +16,7 @@ export interface PrdMilestone {
   title: string
   description: string
   priority: 'low' | 'medium' | 'high' | 'urgent'
+  targetDate?: string
   tasks: PrdTask[]
 }
 
@@ -107,12 +108,13 @@ export async function createPlanFromPrd(
       const totalHours = (milestone.tasks ?? []).reduce((sum, t) => sum + (t.estimatedHours ?? 0), 0)
       await client.query(
         `INSERT INTO project_milestones
-           (id, tenant_id, plan_id, sequence_id, title, description, status, priority, created_by, acceptance_criteria, estimated_hours, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'backlog', $7, $8, $9::jsonb, $10, NOW(), NOW())`,
+           (id, tenant_id, plan_id, sequence_id, title, description, status, priority, target_date, created_by, acceptance_criteria, estimated_hours, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'backlog', $7, $8, $9, $10::jsonb, $11, NOW(), NOW())`,
         [
           milestoneId, tenantId, planId, milestoneSeq,
           milestone.title, milestone.description ?? null,
           milestone.priority ?? 'medium',
+          milestone.targetDate ? new Date(milestone.targetDate) : null,
           userId,
           JSON.stringify(allAC),
           totalHours > 0 ? String(totalHours) : null,

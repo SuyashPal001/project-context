@@ -1,10 +1,9 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
 import { z } from 'zod'
 
-// Import agents directly (not via index.js) to avoid circular dependency:
-// prdAgent → prdWorkflow → index → prdAgent
 import { prdAgent } from '../agents/prdAgent.js'
 import { formatterAgent } from '../agents/formatterAgent.js'
+import { savePRD } from '../tools/savePRD.js'
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -41,8 +40,15 @@ const prdSchema = z.object({
   openQuestions: z.array(z.string()),
 })
 
+// prdText passed through so saveStep can persist the markdown content
 const formatOutputSchema = z.object({
   prd: prdSchema,
+  prdText: z.string(),
+})
+
+const saveOutputSchema = z.object({
+  prdId: z.string(),
+  prdContent: z.string(),
 })
 
 // ─── Step 1: gatherStep ───────────────────────────────────────────────────────
@@ -120,6 +126,10 @@ export const writeStep = createStep({
       `Goals, Non-Goals, User Stories (with acceptance criteria), Functional Requirements,`,
       `Non-Functional Requirements, Success Metrics, Open Questions.`,
       `Write in structured plain text. Do not produce JSON.`,
+      `IMPORTANT: Output ONLY the PRD document itself.`,
+      `Do NOT include skill instructions, guidelines, metadata, or any text that`,
+      `is not part of the PRD. Start directly with "## TL;DR" and end with the`,
+      `Open Questions section. Nothing before or after.`,
     ].filter(Boolean).join('\n')
 
     let prdText = ''
@@ -153,7 +163,7 @@ export const formatStep = createStep({
       `Convert the PRD below into a structured JSON object matching the schema exactly.`,
       ``,
       `--- PRD ---`,
-      prdText.slice(0, 6000),
+      prdText.slice(0, 25000),
       `--- End PRD ---`,
       ``,
       `Return: { "prd": { "tldr": "...", "problemStatement": "...", "goals": [...],`,
@@ -168,7 +178,7 @@ export const formatStep = createStep({
       })
       if (result.object) {
         console.log('[formatStep] structured PRD produced successfully')
-        return result.object as z.infer<typeof formatOutputSchema>
+        return { ...(result.object as z.infer<typeof formatOutputSchema>), prdText }
       }
     } catch (err) {
       console.error('[formatStep] error:', (err as Error).message)
@@ -186,6 +196,33 @@ export const formatStep = createStep({
         successMetrics: [],
         openQuestions: [],
       },
+      prdText,
+    }
+  },
+})
+
+// ─── Step 4: saveStep ─────────────────────────────────────────────────────────
+// Persists the PRD to agent_prds via savePRD tool. Returns prdId so the
+// owning agent (prdAgent) can pass it to pmAgent or the next workflow step.
+
+export const saveStep = createStep({
+  id: 'save-prd',
+  inputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
+  execute: async ({ inputData, requestContext }) => {
+    const { prd, prdText } = inputData
+    const title = prd.tldr?.slice(0, 100) || 'Product Requirements Document'
+
+    try {
+      const result = await savePRD.execute!(
+        { title, content: prdText, contentType: 'markdown' as const },
+        { requestContext },
+      )
+      console.log(`[saveStep:prd] saved prdId=${result.prdId}`)
+      return { prdId: result.prdId, prdContent: prdText }
+    } catch (err) {
+      console.error('[saveStep:prd] error:', (err as Error).message)
+      throw err
     }
   },
 })
@@ -195,11 +232,13 @@ export const formatStep = createStep({
 export const prdWorkflow = createWorkflow({
   id: 'prd-workflow',
   inputSchema: workflowInputSchema,
-  outputSchema: formatOutputSchema,
+  outputSchema: saveOutputSchema,
 })
   .then(gatherStep)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(writeStep as any)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(formatStep as any)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  .then(saveStep as any)
   .commit()

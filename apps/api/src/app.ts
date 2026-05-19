@@ -48,6 +48,7 @@ import internalRetrieveRoute from './routes/internal/retrieve';
 import { evalsFeedbackRoutes, evalsRoutes } from './routes/evals';
 import { tasksRoutes } from './routes/tasks';
 import { plansRoutes } from './routes/plans';
+import { prdsRoutes } from './routes/prds';
 import { milestonesRoutes } from './routes/milestones';
 import { pagesRoutes } from './routes/pages';
 import internalEvalsRoute from './routes/internal/evals';
@@ -56,6 +57,7 @@ import internalKnowledgeGapsRoute from './routes/internal/knowledge-gaps';
 import internalTasksRoute from './routes/internal/tasks';
 import { internalWorkflowsRoute } from './routes/internal/workflows';
 import internalIntegrationsRoute from './routes/internal/integrations';
+import { handleArtifactNotify } from './routes/internal/artifacts';
 import { randomUUID } from 'crypto';
 import { initCognito } from '@serverless-saas/auth';
 import { getCacheClient } from '@serverless-saas/cache';
@@ -199,6 +201,7 @@ api.route('/llm-providers', llmProvidersRoutes);
 api.route('/documents', documentsRoutes);
 api.route('/tasks', tasksRoutes);
 api.route('/plans', plansRoutes);
+api.route('/prds', prdsRoutes);
 api.route('/milestones', milestonesRoutes);
 api.route('/pages', pagesRoutes);
 
@@ -210,6 +213,7 @@ internalApi.route('/internal/knowledge-gaps', internalKnowledgeGapsRoute);
 internalApi.route('/internal/tasks', internalTasksRoute);
 internalApi.route('/internal/workflows', internalWorkflowsRoute);
 internalApi.route('/internal/integrations', internalIntegrationsRoute);
+internalApi.post('/internal/artifacts/notify', handleArtifactNotify);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', publicApi);

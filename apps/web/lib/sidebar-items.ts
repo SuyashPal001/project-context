@@ -51,47 +51,19 @@ export function getSidebarItems(
 
     const items: SidebarItem[] = [];
 
-    // 1. MAIN SECTION
-    items.push({ 
-        label: "Chat", 
-        href: `${base}/chat`, 
-        icon: MessageSquare 
-    });
+    // 1. MAIN SECTION — all users
+    items.push({ label: "Chat", href: `${base}/chat`, icon: MessageSquare });
+    items.push({ label: "Agents", href: `${base}/agents`, icon: Bot });
+    items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
+    items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
+    items.push({ label: "Files", href: `${base}/files`, icon: FolderOpen });
 
+    items.push({ isDivider: true, href: '', icon: () => null, label: '' });
+
+    items.push({ label: "Notifications", href: `${base}/notifications`, icon: Bell });
+
+    // Audit log — admin/owner only (platform management)
     if (isAdminOrOwner) {
-        items.push({
-            label: "Agents",
-            href: `${base}/agents`,
-            icon: Bot
-        });
-        items.push({
-            label: "Board",
-            href: `${base}/board`,
-            icon: KanbanSquare,
-        });
-        items.push({
-            label: "Plans",
-            href: `${base}/plans`,
-            icon: LayoutList,
-        });
-        items.push({
-            label: "Files",
-            href: `${base}/files`,
-            icon: FolderOpen
-        });
-        items.push({
-            label: "Connectors",
-            href: `${base}/integrations`,
-            icon: Plug,
-        });
-
-        items.push({ isDivider: true, href: '', icon: () => null, label: '' });
-
-        items.push({
-            label: "Notifications",
-            href: `${base}/notifications`,
-            icon: Bell
-        });
         items.push({
             label: "Audit log",
             href: `${base}/audit`,
@@ -100,36 +72,18 @@ export function getSidebarItems(
             planGateFeature: 'audit_log',
             locked: auditLocked,
         });
+    }
 
-        // 2. SETTINGS SECTION
-        items.push({
-            label: "Profile",
-            href: `${base}/settings/profile`,
-            icon: UserCircle,
-            sectionLabel: "Settings",
-        });
-        items.push({
-            label: "Workspace",
-            href: `${base}/settings/workspace`,
-            icon: Building2,
-        });
-        items.push({
-            label: "Members",
-            href: `${base}/settings/members`,
-            icon: Users,
-        });
-        items.push({ 
-            label: "Roles", 
-            href: `${base}/settings/roles`, 
-            icon: Shield 
-        });
-        items.push({ 
-            label: "Billing", 
-            href: `${base}/billing`, 
-            icon: CreditCard 
-        });
-        
-        // Branding - Starter+ feature
+    // 2. SETTINGS SECTION — all users
+    items.push({ label: "Profile", href: `${base}/settings/profile`, icon: UserCircle, sectionLabel: "Settings" });
+    items.push({ label: "Workspace", href: `${base}/settings/workspace`, icon: Building2 });
+
+    // Admin/Owner only — platform management
+    if (isAdminOrOwner) {
+        items.push({ label: "Connectors", href: `${base}/integrations`, icon: Plug });
+        items.push({ label: "Members", href: `${base}/settings/members`, icon: Users });
+        items.push({ label: "Roles", href: `${base}/settings/roles`, icon: Shield });
+        items.push({ label: "Billing", href: `${base}/billing`, icon: CreditCard });
         items.push({
             label: "Branding",
             href: `${base}/branding`,
@@ -139,7 +93,7 @@ export function getSidebarItems(
             locked: brandingLocked,
         });
 
-        // 3. DEVELOPER SECTION
+        // 3. DEVELOPER SECTION — admin/owner only
         items.push({
             label: "API keys",
             href: `${base}/api-keys`,
@@ -164,24 +118,6 @@ export function getSidebarItems(
             planRequired: 'business',
             planGateFeature: 'mcp_integrations',
             locked: integrationsLocked,
-        });
-    } else {
-        // Regular members see Chat, Notifications, and their own Profile + Workspace
-        items.push({
-            label: "Notifications",
-            href: `${base}/notifications`,
-            icon: Bell,
-        });
-        items.push({
-            label: "Profile",
-            href: `${base}/settings/profile`,
-            icon: UserCircle,
-            sectionLabel: "Settings",
-        });
-        items.push({
-            label: "Workspace",
-            href: `${base}/settings/workspace`,
-            icon: Building2,
         });
     }
 

@@ -4,6 +4,8 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import { StarterKit } from '@tiptap/starter-kit'
+import { Extension } from '@tiptap/core'
+import { Suggestion } from '@tiptap/suggestion'
 import { Underline } from '@tiptap/extension-underline'
 import { Placeholder } from '@tiptap/extension-placeholder'
 import { Link } from '@tiptap/extension-link'
@@ -23,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import { useMentionSuggestions } from '@/hooks/use-mention-suggestions'
 import { createMentionSuggestion } from '../editor/mention-suggestion'
+import { createSlashSuggestion } from './slash-commands/createSlashSuggestion'
 import { pagesKeys } from '@/lib/query-keys/pm'
 
 const lowlight = createLowlight(common)
@@ -60,7 +63,7 @@ export function PageEditor({ pageId, initialHtml, isLocked, onSave }: PageEditor
 
     const editor = useEditor({
         extensions: [
-            StarterKit.configure({ heading: false, codeBlock: false }),
+            StarterKit.configure({ heading: false, codeBlock: false, link: false, underline: false }),
             Underline,
             Heading.configure({ levels: [1, 2, 3] }),
             CodeBlockLowlight.configure({ lowlight }),
@@ -71,6 +74,13 @@ export function PageEditor({ pageId, initialHtml, isLocked, onSave }: PageEditor
             Mention.configure({
                 HTMLAttributes: { class: 'mention' },
                 suggestion: createMentionSuggestion(() => allItemsRef.current),
+            }),
+            Extension.create({
+                name: 'slashCommands',
+                addOptions() { return { suggestion: createSlashSuggestion() } },
+                addProseMirrorPlugins() {
+                    return [Suggestion({ editor: this.editor, ...this.options.suggestion })]
+                },
             }),
         ],
         content: initialHtml ?? '',

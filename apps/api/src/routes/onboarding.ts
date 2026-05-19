@@ -44,6 +44,21 @@ onboardingRoutes.post('/complete', async (c) => {
         return c.json({ error: 'Unauthorized' }, 401);
     }
 
+    // Guard: if user already owns a workspace, return it instead of creating another.
+    // Prevents duplicate workspaces from auth method switches (e.g. email → Google OAuth).
+    const ownerRole = (await db.select().from(roles).where(and(eq(roles.name, 'owner'), isNull(roles.tenantId))).limit(1))[0];
+    if (ownerRole) {
+        const existing = await db
+            .select({ tenantId: memberships.tenantId, slug: tenants.slug })
+            .from(memberships)
+            .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
+            .where(and(eq(memberships.userId, userId), eq(memberships.roleId, ownerRole.id), eq(memberships.status, 'active')))
+            .limit(1);
+        if (existing[0]) {
+            return c.json({ tenantId: existing[0].tenantId, slug: existing[0].slug, message: 'Workspace already exists' }, 200);
+        }
+    }
+
     // Step 3: Generate unique slug
     const slug = generateSlug(workspaceName);
     const isAvailable = await checkSlugAvailability(slug);
@@ -161,87 +176,37 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
+    // Seed PM Agent as inactive — visible as locked on free plan, activated on upgrade
+    const pmRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const pmKeyHash = createHash('sha256').update(pmRawKey).digest('hex');
+    const [pmKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'PM Agent API Key',
+        type: 'agent',
+        keyHash: pmKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [pmAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'PM Agent',
+        type: 'custom',
+        status: 'paused',
+        apiKeyId: pmKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: pmAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are a PM Agent that helps with product planning, PRDs, roadmaps, and task breakdowns.',
+        tools: [],
+        status: 'active',
+    });
+
     // Step 6: Return response
     return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
-});
-
-// GET /onboarding/provision-status/:agentId
-// Accessible with empty custom:tenantId (pre-auth, mounted before tenantResolutionMiddleware).
-// Used by the onboarding setup screen to poll container readiness before the first login.
-// Auth: verifies userId has a membership for the agent's tenant — no session or tenantId claim needed.
-onboardingRoutes.get('/provision-status/:agentId', async (c) => {
-    const userId = c.get('userId');
-    if (!userId) {
-        return c.json({ error: 'Unauthorized' }, 401);
-    }
-
-    const agentId = c.req.param('agentId');
-
-    const agent = (await db.select().from(agents).where(eq(agents.id, agentId)).limit(1))[0];
-
-    if (!agent) {
-        return c.json({ status: 'not_found' });
-    }
-
-    // Verify the requesting user is a member of this agent's tenant
-    const membership = (await db.select()
-        .from(memberships)
-        .where(and(eq(memberships.userId, userId), eq(memberships.tenantId, agent.tenantId)))
-        .limit(1))[0];
-
-    if (!membership) {
-        return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    const relayUrl = process.env.RELAY_URL;
-    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
-
-    if (!relayUrl || !serviceKey) {
-        return c.json({ status: 'ready' }); // local dev — relay not wired up
-    }
-
-    try {
-        const res = await fetch(`${relayUrl}/health/${agent.tenantId}`, {
-            headers: { 'X-Service-Key': serviceKey },
-            signal: AbortSignal.timeout(5000),
-        });
-
-        if (res.ok) {
-            const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-            const isHealthy = data.healthy === true || data.status === 'running' || data.status === 'healthy';
-            return c.json({ status: isHealthy ? 'ready' : 'provisioning' });
-        }
-
-        if (res.status === 404) {
-            return c.json({ status: 'not_found' });
-        }
-
-        return c.json({ status: 'provisioning' });
-    } catch (err) {
-        console.warn(`[onboarding/provision-status] Health check failed for agent ${agentId}:`, err);
-        return c.json({ status: 'provisioning' });
-    }
-});
-
-onboardingRoutes.post('/provision/:tenantId', async (c) => {
-    const tenantId = c.req.param('tenantId');
-    const relayUrl = process.env.RELAY_URL;
-    const serviceKey = process.env.INTERNAL_SERVICE_KEY;
-
-    if (!relayUrl || !serviceKey) {
-        return c.json({ error: 'Relay not configured' }, 500);
-    }
-
-    // Fire-and-forget relay provision call
-    fetch(`${relayUrl}/provision/${tenantId}`, {
-        method: 'POST',
-        headers: { 'X-Service-Key': serviceKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    })
-        .then(() => console.log(`[onboarding] Provisioning triggered for tenant ${tenantId}`))
-        .catch((err) => console.error(`[onboarding] Provisioning failed for tenant ${tenantId}:`, err));
-
-    return c.json({ success: true, message: 'Provisioning started' });
 });
 
 export { onboardingRoutes };

@@ -7,6 +7,7 @@ export function useCanvas() {
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
   const activityTimeoutRef = useRef<NodeJS.Timeout>(null);
+  const pendingActionsRef = useRef<Array<{ action: CanvasAction; data: CanvasEventData }>>([]);
 
   const [isCanvasExpanded, setIsCanvasExpanded] = useState(false);
 
@@ -35,8 +36,10 @@ export function useCanvas() {
 
   // Handle canvas update (called from useAgentEvents)
   const handleCanvasUpdate = useCallback((action: CanvasAction, data: CanvasEventData) => {
-    // Auto-open canvas on first activity
-    if (!isCanvasOpen && action === 'screenshot') {
+    console.log('[canvas] handleCanvasUpdate:', action, data);
+    console.log('[canvas] window.__canvasUpdate exists:', !!(window as any).__canvasUpdate);
+    // Auto-open canvas when browser automation or artifact streaming starts/loads
+    if (!isCanvasOpen && (action === 'screenshot' || action === 'artifact_start' || action === 'artifact_load')) {
       setIsCanvasOpen(true);
     }
 
@@ -53,11 +56,26 @@ export function useCanvas() {
       setHasActivity(false);
     }, 3000);
 
-    // Forward to canvas component
-    if (typeof window !== 'undefined' && (window as any).__canvasUpdate) {
-      (window as any).__canvasUpdate(action, data);
+    // Forward to canvas component; queue if not mounted yet
+    if (typeof window !== 'undefined') {
+      if ((window as any).__canvasUpdate) {
+        (window as any).__canvasUpdate(action, data);
+      } else {
+        pendingActionsRef.current.push({ action, data });
+      }
     }
   }, [isCanvasOpen]);
+
+  const flushPending = useCallback(() => {
+    if (pendingActionsRef.current.length === 0) return;
+    const queue = [...pendingActionsRef.current];
+    pendingActionsRef.current = [];
+    queue.forEach(({ action, data }) => {
+      if ((window as any).__canvasUpdate) {
+        (window as any).__canvasUpdate(action, data);
+      }
+    });
+  }, []);
 
   // Reset canvas state
   const resetCanvas = useCallback(() => {
@@ -77,5 +95,6 @@ export function useCanvas() {
     closeCanvas,
     handleCanvasUpdate,
     resetCanvas,
+    flushPending,
   };
 }

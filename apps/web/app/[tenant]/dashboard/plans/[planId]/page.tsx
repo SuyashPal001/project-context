@@ -9,7 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format, isPast } from 'date-fns'
 import {
-    Plus, Loader2, Trash2, ChevronRight, CalendarDays, ChevronDown, Users, X,
+    Plus, Loader2, Trash2, ChevronRight, CalendarDays, ChevronDown, Users, X, CalendarRange,
 } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDialog } from '@/components/platform/shared/ConfirmDialog'
@@ -37,6 +37,8 @@ import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
     DropdownMenuSeparator, DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu'
+import PagesListPage from './pages/page'
+import { TimelineView } from '@/components/platform/timeline/TimelineView'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -852,7 +854,11 @@ export default function PlanDetailPage() {
                     <TabsTrigger value="overview">Overview</TabsTrigger>
                     <TabsTrigger value="milestones">Milestones</TabsTrigger>
                     <TabsTrigger value="tasks">Tasks</TabsTrigger>
-                    <TabsTrigger value="pages" onClick={() => router.push(`/${tenantSlug}/dashboard/plans/${planId}/pages`)}>Pages</TabsTrigger>
+                    <TabsTrigger value="pages">Pages</TabsTrigger>
+                    <TabsTrigger value="timeline" className="gap-1.5">
+                        <CalendarRange className="w-3.5 h-3.5" />
+                        Timeline
+                    </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview">
@@ -867,7 +873,15 @@ export default function PlanDetailPage() {
                     <TasksTab planId={planId} tenantSlug={tenantSlug} milestones={milestones} />
                 </TabsContent>
 
-                <TabsContent value="pages" />
+                <TabsContent value="pages">
+                    <PagesListPage planId={planId} tenantSlug={tenantSlug} />
+                </TabsContent>
+
+                <TabsContent value="timeline" className="mt-0">
+                    <div className="h-[calc(100vh-280px)] min-h-[500px] pt-4">
+                        <TimelineView planId={planId} />
+                    </div>
+                </TabsContent>
             </Tabs>
 
             <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

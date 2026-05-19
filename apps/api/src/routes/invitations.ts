@@ -251,9 +251,9 @@ memberInviteRoutes.post('/invite', async (c) => {
         expiresAt,
     }).returning();
 
-    const appUrl = (process.env.APP_URL ?? '').trim();
+    const appUrl = (process.env.FRONTEND_URL ?? process.env.APP_URL ?? '').trim();
     const inviteUrl = `${appUrl}/auth/invite/${rawToken}`;
-    console.log('INVITE_URL_DEBUG', { appUrl, inviteUrl, appUrlLength: appUrl.length, appUrlCharCodes: [...appUrl].map(c => c.charCodeAt(0)) });
+    let emailSent = true;
     try {
         await sendEmail({
             to: email,
@@ -262,6 +262,7 @@ memberInviteRoutes.post('/invite', async (c) => {
         });
     } catch (emailErr) {
         console.error('Invitation email send failed:', emailErr);
+        emailSent = false;
     }
 
     try {
@@ -279,5 +280,5 @@ memberInviteRoutes.post('/invite', async (c) => {
         console.error('Audit log write failed:', auditErr);
     }
 
-    return c.json({ success: true, invitationId: token.id }, 201);
+    return c.json({ success: true, invitationId: token.id, emailSent }, 201);
 });

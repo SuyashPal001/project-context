@@ -14,12 +14,17 @@ function getPool(): pg.Pool {
   return _pool
 }
 
+const requestContextSchema = z.object({
+  tenantId: z.string(),
+  agentId: z.string().optional(),
+  userId: z.string().optional(),
+})
+
 export const savePRD = createTool({
   id: 'save-prd',
   description: 'Saves or updates a PRD draft in agent_prds. Pass existingPrdId to update an existing draft.',
+  requestContextSchema,
   inputSchema: z.object({
-    agentId: z.string(),
-    tenantId: z.string(),
     title: z.string(),
     content: z.string(),
     contentType: z.enum(['markdown', 'html']),
@@ -29,8 +34,12 @@ export const savePRD = createTool({
     prdId: z.string(),
     version: z.number(),
     status: z.string(),
+    content: z.string(),
   }),
-  execute: async ({ context: { agentId, tenantId, title, content, contentType, existingPrdId } }) => {
+  execute: async (inputData, execContext) => {
+    const { title, content, contentType, existingPrdId } = inputData as any
+    const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
+    const agentId  = execContext?.requestContext?.get('agentId')  as string | undefined ?? ''
     const client = await getPool().connect()
     try {
       if (existingPrdId) {
@@ -45,7 +54,7 @@ export const savePRD = createTool({
         if (rows.length === 0) {
           throw new Error(`PRD ${existingPrdId} not found for tenant ${tenantId}`)
         }
-        return { prdId: rows[0].id, version: rows[0].version, status: rows[0].status }
+        return { prdId: rows[0].id, version: rows[0].version, status: rows[0].status, content }
       }
 
       const { rows } = await client.query<{ id: string; version: number; status: string }>(
@@ -54,7 +63,7 @@ export const savePRD = createTool({
          RETURNING id, version, status`,
         [agentId, tenantId, title, content, contentType],
       )
-      return { prdId: rows[0].id, version: rows[0].version, status: rows[0].status }
+      return { prdId: rows[0].id, version: rows[0].version, status: rows[0].status, content }
     } finally {
       client.release()
     }

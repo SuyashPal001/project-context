@@ -2,7 +2,7 @@ import { relations } from 'drizzle-orm';
 import { users } from './auth';
 import { memberships, tenants } from './tenancy';
 import { roles } from './authorization';
-import { agents, agentTasks, taskSteps, taskEvents } from './agents';
+import { agents, agentTasks, taskSteps, taskEvents, taskDependencies } from './agents';
 
 export const membershipsRelations = relations(memberships, ({ one }) => ({
     user: one(users, {
@@ -40,6 +40,8 @@ export const agentTasksRelations = relations(agentTasks, ({ one, many }) => ({
     }),
     steps: many(taskSteps),
     events: many(taskEvents),
+    outgoingDependencies: many(taskDependencies, { relationName: 'fromTask' }),
+    incomingDependencies: many(taskDependencies, { relationName: 'toTask' }),
 }));
 
 export const taskStepsRelations = relations(taskSteps, ({ one }) => ({
@@ -50,6 +52,23 @@ export const taskStepsRelations = relations(taskSteps, ({ one }) => ({
     tenant: one(tenants, {
         fields: [taskSteps.tenantId],
         references: [tenants.id],
+    }),
+}));
+
+export const taskDependenciesRelations = relations(taskDependencies, ({ one }) => ({
+    fromTask: one(agentTasks, {
+        fields: [taskDependencies.fromTaskId],
+        references: [agentTasks.id],
+        relationName: 'fromTask',
+    }),
+    toTask: one(agentTasks, {
+        fields: [taskDependencies.toTaskId],
+        references: [agentTasks.id],
+        relationName: 'toTask',
+    }),
+    createdByUser: one(users, {
+        fields: [taskDependencies.createdBy],
+        references: [users.id],
     }),
 }));
 
