@@ -20,9 +20,14 @@ conversationsRoutes.get('/', async (c) => {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+
     const { agentId, status } = c.req.query();
 
-    const filters = [eq(conversations.tenantId, tenantId), or(eq(conversations.userId, userId), isNull(conversations.userId))];
+    const filters = [
+        eq(conversations.tenantId, tenantId),
+        userId ? or(eq(conversations.userId, userId), isNull(conversations.userId)) : isNull(conversations.userId),
+    ];
     if (agentId) filters.push(eq(conversations.agentId, agentId));
     if (status) filters.push(eq(conversations.status, status as 'active' | 'archived' | 'escalated'));
 
