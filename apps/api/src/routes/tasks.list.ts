@@ -14,6 +14,7 @@ export async function handleListTasks(c: Context<AppEnv>) {
     if (!hasPermission(permissions, 'agent_tasks', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
 
     const statusFilter = c.req.query('status');
     const agentIdFilter = c.req.query('agentId');
@@ -60,6 +61,7 @@ export async function handleGetTask(c: Context<AppEnv>) {
     if (!hasPermission(permissions, 'agent_tasks', 'read')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
 
     const taskId = c.req.param('taskId') as string;
 
