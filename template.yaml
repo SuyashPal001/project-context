@@ -27,6 +27,11 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /serverless-saas/dev/iam/foundation-pretoken-role-arn
 
+  PlatformAdminEmails:
+    Type: String
+    Default: ""
+    Description: Comma-separated list of emails that get platform_admin JWT role
+
   FoundationWebSocketRoleArn:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /serverless-saas/dev/iam/foundation-websocket-role-arn
@@ -139,7 +144,7 @@ Resources:
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
-          PLATFORM_ADMIN_EMAILS: "suyash@fitnearn.com,ops@fitnearn.com"
+          PLATFORM_ADMIN_EMAILS: !Ref PlatformAdminEmails
     Metadata:
       BuildMethod: makefile
 
