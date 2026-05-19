@@ -28,7 +28,7 @@ async function resolveConversation(conversationId: string, tenantId: string, use
 messagesRoutes.get('/:conversationId/messages', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'read')) {
@@ -59,7 +59,7 @@ messagesRoutes.get('/:conversationId/messages', async (c) => {
 messagesRoutes.post('/:conversationId/messages', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'create')) {
@@ -112,7 +112,7 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
 messagesRoutes.post('/:conversationId/messages/save', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
 
     if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
     if (!userId) return c.json({ error: 'User not resolved', code: 'NO_USER' }, 400);

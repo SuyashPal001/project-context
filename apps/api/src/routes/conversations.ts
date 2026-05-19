@@ -28,7 +28,7 @@ const conversationSelect = {
 conversationsRoutes.get('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'read')) {
@@ -75,7 +75,7 @@ conversationsRoutes.get('/', async (c) => {
 conversationsRoutes.post('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'create')) {
@@ -120,7 +120,7 @@ conversationsRoutes.post('/', async (c) => {
 conversationsRoutes.get('/:id', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'read')) {
@@ -150,7 +150,7 @@ conversationsRoutes.get('/:id', async (c) => {
 conversationsRoutes.patch('/:id', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'update')) {
@@ -199,7 +199,7 @@ conversationsRoutes.patch('/:id', async (c) => {
 conversationsRoutes.delete('/:id', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'delete')) {
@@ -227,7 +227,7 @@ conversationsRoutes.delete('/:id', async (c) => {
 conversationsRoutes.delete('/:id/permanent', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = requestContext?.userId as string | undefined;
+    const userId = c.get('userId') as string | undefined;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'delete')) {
