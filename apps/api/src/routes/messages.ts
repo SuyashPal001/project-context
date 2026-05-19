@@ -10,20 +10,21 @@ import type { AppEnv } from '../types';
 
 export const messagesRoutes = new Hono<AppEnv>();
 
-// Verify conversation belongs to tenant and return full row
-async function resolveConversation(conversationId: string, tenantId: string) {
+// Verify conversation belongs to tenant+user and return full row
+async function resolveConversation(conversationId: string, tenantId: string, userId: string) {
     const [conversation] = await db
         .select()
         .from(conversations)
-        .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId)))
+        .where(and(eq(conversations.id, conversationId), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
         .limit(1);
     return conversation ?? null;
 }
 
-// GET /conversations/:conversationId/messages — list messages for conversation
+// GET /conversations/:conversationId/messages — list messages for conversation (member-scoped)
 messagesRoutes.get('/:conversationId/messages', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
+    const userId = requestContext?.userId as string;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'read')) {
@@ -32,7 +33,7 @@ messagesRoutes.get('/:conversationId/messages', async (c) => {
 
     const conversationId = c.req.param('conversationId');
 
-    if (!await resolveConversation(conversationId, tenantId)) {
+    if (!await resolveConversation(conversationId, tenantId, userId)) {
         return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
     }
 
@@ -52,7 +53,7 @@ messagesRoutes.get('/:conversationId/messages', async (c) => {
 messagesRoutes.post('/:conversationId/messages', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
-    const userId = c.get('userId') as string;
+    const userId = requestContext?.userId as string;
     const permissions = requestContext?.permissions ?? [];
 
     if (!hasPermission(permissions, 'conversations', 'create')) {
@@ -67,7 +68,7 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
         return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
     }
 
-    const conversation = await resolveConversation(conversationId, tenantId);
+    const conversation = await resolveConversation(conversationId, tenantId, userId);
     if (!conversation) {
         return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
     }
@@ -103,11 +104,12 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
 messagesRoutes.post('/:conversationId/messages/save', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
+    const userId = requestContext?.userId as string;
 
     const conversationId = c.req.param('conversationId');
 
-    // Quick check that conversation exists and belongs to the tenant
-    if (!await resolveConversation(conversationId, tenantId)) {
+    // Quick check that conversation exists and belongs to the tenant+user
+    if (!await resolveConversation(conversationId, tenantId, userId)) {
         return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
     }
 
