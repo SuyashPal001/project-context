@@ -1,0 +1,107 @@
+/* Scoped to the marketing route group only. Applied via <div class="marketing-root">. */
+
+.marketing-root {
+  /* Ocean-cyan palette — mirrors components/platform/chat/AgentOrb.tsx */
+  --mk-bg: oklch(0.16 0.025 220);
+  --mk-bg-elev: oklch(0.20 0.03 220);
+  --mk-fg: oklch(0.97 0.015 200);
+  --mk-muted: oklch(0.68 0.04 210);
+  --mk-line: oklch(1 0 0 / 8%);
+  --mk-line-strong: oklch(0.85 0.12 200 / 0.18);
+  --mk-accent: #22d3ee;            /* cyan-400 — orb mid */
+  --mk-accent-dim: #22d3ee99;
+  --mk-accent-soft: #a5f3fc;       /* cyan-200 — orb highlight */
+  --mk-accent-deep: #0e7490;       /* cyan-700 — orb deep teal */
+  --mk-ink: oklch(0.92 0.02 200);
+
+  background: var(--mk-bg);
+  color: var(--mk-fg);
+  font-feature-settings: "ss01", "cv11";
+}
+
+.marketing-root .font-display {
+  font-family: var(--font-instrument-serif), ui-serif, Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  font-feature-settings: "liga", "dlig";
+}
+
+.marketing-root .font-mono-mk {
+  font-family: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: "ss01", "cv02", "cv11";
+}
+
+/* Layered atmosphere: dot grid + radial amber glow + grain */
+.marketing-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in srgb, var(--mk-accent) 22%, transparent), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 100% 110%, color-mix(in srgb, var(--mk-accent-deep) 30%, transparent), transparent 60%),
+    radial-gradient(ellipse 40% 30% at 0% 80%, color-mix(in srgb, var(--mk-accent) 10%, transparent), transparent 70%);
+}
+
+.marketing-dots {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--mk-accent) 16%, transparent) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: linear-gradient(to bottom, black, transparent 70%);
+  -webkit-mask-image: linear-gradient(to bottom, black, transparent 70%);
+}
+
+.marketing-grain {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.7'/></svg>");
+}
+
+.marketing-rule {
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(to right, transparent, var(--mk-line-strong), transparent);
+}
+
+/* Staggered reveal on page load */
+@keyframes mk-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.marketing-root .mk-rise {
+  animation: mk-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.marketing-root .mk-d-1 { animation-delay: 80ms; }
+.marketing-root .mk-d-2 { animation-delay: 180ms; }
+.marketing-root .mk-d-3 { animation-delay: 320ms; }
+.marketing-root .mk-d-4 { animation-delay: 460ms; }
+.marketing-root .mk-d-5 { animation-delay: 600ms; }
+
+/* Editorial eyebrow */
+.marketing-root .eyebrow {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--mk-accent-dim);
+}
+
+.marketing-root .eyebrow::before {
+  content: "// ";
+  color: var(--mk-muted);
+}
+
+/* Section rhythm */
+.marketing-section {
+  padding-top: clamp(5rem, 10vw, 8rem);
+  padding-bottom: clamp(5rem, 10vw, 8rem);
+}
