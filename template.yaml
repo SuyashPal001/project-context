@@ -139,6 +139,7 @@ Resources:
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
+          PLATFORM_ADMIN_EMAILS: "suyash@fitnearn.com,ops@fitnearn.com"
     Metadata:
       BuildMethod: makefile
 
