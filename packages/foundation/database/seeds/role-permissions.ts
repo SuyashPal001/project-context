@@ -20,6 +20,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 
     member: [
         'members:read',
+        'roles:read',
         'notifications:read',
         'notifications:update',
         'tenant:read',
