@@ -101,7 +101,7 @@ export const agentTasks = pgTable('agent_tasks', {
   downvotes: integer('downvotes').notNull().default(0),
   referenceText: text('reference_text'),
   links: jsonb('links').$type<string[]>().default([]),
-  attachmentFileIds: text('attachment_file_ids').array().notNull().default([]),
+  attachmentFileIds: jsonb('attachment_file_ids').$type<string[]>().notNull().default([]),
   sortOrder: integer('sort_order').default(0),
   mastraRunId: text('mastra_run_id'),
   // PM hierarchy fields (added migration 0021)

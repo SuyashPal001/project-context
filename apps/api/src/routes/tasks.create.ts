@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskEvents, agents } from '@serverless-saas/database/schema/agents';
@@ -69,10 +69,7 @@ export async function handleCreateTask(c: Context<AppEnv>) {
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
         priority: priority ?? 'medium',
         links: Array.isArray(links) ? links : [],
-        attachmentFileIds: sql`ARRAY[${sql.join(
-            (Array.isArray(attachmentFileIds) ? attachmentFileIds : []).map(id => sql`${id}`),
-            sql`, `
-        )}]::text[]`,
+        attachmentFileIds: Array.isArray(attachmentFileIds) ? attachmentFileIds : [],
         milestoneId: milestoneId ?? null,
         planId: planId ?? null,
         parentTaskId: parentTaskId ?? null,
