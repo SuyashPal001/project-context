@@ -15,4 +15,5 @@ npx mastra studio \
   --server-host agent-saas.fitnearn.com \
   --server-port 443 \
   --server-protocol https \
-  --server-api-prefix /studio
+  --server-api-prefix /studio \
+  --request-context-presets ./apps/relay/presets.json
