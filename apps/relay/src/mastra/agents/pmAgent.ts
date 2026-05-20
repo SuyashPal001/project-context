@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent'
-import { z } from 'zod'
+import { tenantContextSchema } from '../context.js'
 import { saarthiModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { fetchAgentContext } from '../tools/fetchAgentContext.js'
@@ -39,11 +39,7 @@ export const pmAgent = new Agent({
 - Never return raw JSON to the user
 - Never write PRD content, milestones, or tasks yourself — always delegate
 - If the request is ambiguous, ask ONE clarifying question before delegating`,
-  requestContextSchema: z.object({
-    tenantId: z.string().optional().default(''),
-    agentId: z.string().optional().default(''),
-    userId: z.string().optional().default(''),
-  }),
+  requestContextSchema: tenantContextSchema,
   model: saarthiModel,
   memory: getMastraMemory(),
   tools: { fetchAgentContext },

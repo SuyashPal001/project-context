@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent'
 
+import { tenantContextSchema } from '../context.js'
 import { saarthiModel } from '../model.js'
 import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
@@ -33,6 +34,8 @@ You know about:
 - API surface: all route handlers and their contracts
 - System behavior: all test files and what they protect
 - Patterns: CLAUDE.md architectural decisions and rules`,
+
+  requestContextSchema: tenantContextSchema,
 
   tools: { retrieve_knowledge: retrieveKnowledge },
   model: saarthiModel,

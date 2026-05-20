@@ -1,17 +1,48 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import pg from 'pg'
 
-interface RawChunk {
-  content: string
-  documentName: string
-  documentId: string
-  source: 'document' | 'codebase'
-  score: number
+let _pool: pg.Pool | null = null
+
+function getPool(): pg.Pool {
+  if (!_pool) {
+    _pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    _pool.on('error', (err) => {
+      console.error('[retrieveKnowledge] pool error:', err.message)
+    })
+  }
+  return _pool
 }
 
-const requestContextSchema = z.object({
-  tenantId: z.string(),
-})
+async function embedQuery(query: string): Promise<number[] | null> {
+  const proxyUrl = process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001'
+  try {
+    const resp = await fetch(`${proxyUrl}/v1/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'text-embedding-004', input: query }),
+    })
+    if (!resp.ok) {
+      console.warn('[retrieveKnowledge] embed failed:', resp.status)
+      return null
+    }
+    const data = await resp.json() as { data: Array<{ embedding: number[] }> }
+    return data.data[0]?.embedding ?? null
+  } catch (err) {
+    console.warn('[retrieveKnowledge] embed error:', (err as Error).message)
+    return null
+  }
+}
+
+interface ChunkRow {
+  id: string
+  content: string
+  file_path: string
+  layer: string
+  file_type: string
+  vec_dist: number
+  text_rank: number
+}
 
 export const retrieveKnowledge = createTool({
   id: 'retrieve_knowledge',
@@ -25,64 +56,88 @@ Call this for EVERY technical question about:
 - What decisions were made
 ALWAYS call this before answering any technical question.
 Never answer from memory alone — always search first.`,
-  requestContextSchema,
+
   inputSchema: z.object({
-    query: z.string().describe('The search query'),
+    query: z.string(),
     layer: z
       .enum(['data', 'platform', 'system', 'infra', 'business'])
       .optional()
       .describe('Filter by layer if relevant'),
   }),
+
   outputSchema: z.object({
     context: z.string(),
     sourceCount: z.number(),
   }),
-  execute: async (inputData, execContext) => {
+
+  execute: async (inputData) => {
     const query = (inputData as any)?.query ?? ''
-    const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
+    const layer = (inputData as any)?.layer as string | undefined
 
-    const retrieveUrl =
-      process.env.RETRIEVE_URL ?? 'http://localhost:3000/api/v1/internal/retrieve'
-    const serviceKey = process.env.INTERNAL_SERVICE_KEY ?? ''
+    const vector = await embedQuery(query)
+    console.log('[retrieve_knowledge] vector dims:', vector?.length ?? 'null - text fallback')
 
-    let chunks: RawChunk[] = []
+    const client = await getPool().connect()
+    let rows: ChunkRow[] = []
 
     try {
-      const resp = await fetch(retrieveUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-internal-service-key': serviceKey,
-        },
-        body: JSON.stringify({ query, tenantId, limit: 5, scoreThreshold: 0.3 }),
-      })
-
-      if (resp.ok) {
-        const data = (await resp.json()) as { chunks?: unknown[] }
-        chunks = Array.isArray(data.chunks) ? (data.chunks as RawChunk[]) : []
+      if (vector) {
+        const vectorStr = `[${vector.join(',')}]`
+        const params: unknown[] = [vectorStr, query]
+        let sql = `
+          SELECT id, content, file_path, layer, file_type,
+                 embedding <=> $1::vector AS vec_dist,
+                 ts_rank(tsv, websearch_to_tsquery('english', $2)) AS text_rank
+          FROM knowledge_chunks
+          WHERE tenant_id IS NULL
+            AND invalidated_at IS NULL
+            AND (
+              embedding <=> $1::vector < 0.7
+              OR tsv @@ websearch_to_tsquery('english', $2)
+            )`
+        if (layer) {
+          params.push(layer)
+          sql += ` AND layer = $${params.length}`
+        }
+        sql += ' ORDER BY vec_dist ASC LIMIT 5'
+        const result = await client.query<ChunkRow>(sql, params)
+        rows = result.rows
       } else {
-        console.error(`[retrieveKnowledge] retrieve returned ${resp.status}`)
+        const params: unknown[] = [query]
+        let sql = `
+          SELECT id, content, file_path, layer, file_type,
+                 0 AS vec_dist,
+                 ts_rank(tsv, websearch_to_tsquery('english', $1)) AS text_rank
+          FROM knowledge_chunks
+          WHERE tenant_id IS NULL
+            AND invalidated_at IS NULL
+            AND tsv @@ websearch_to_tsquery('english', $1)`
+        if (layer) {
+          params.push(layer)
+          sql += ` AND layer = $${params.length}`
+        }
+        sql += ' ORDER BY text_rank DESC LIMIT 5'
+        const result = await client.query<ChunkRow>(sql, params)
+        rows = result.rows
       }
-    } catch (err) {
-      console.error('[retrieveKnowledge] fetch error:', err)
+    } finally {
+      client.release()
     }
 
-    // Keep only codebase chunks (documentId === 'knowledge' and source === 'codebase' always co-occur)
-    const codebaseChunks = chunks.filter(
-      (c) => c.documentId === 'knowledge' || c.source === 'codebase'
-    )
+    console.log('[retrieve_knowledge] rows returned:', rows.length)
+    console.log('[retrieve_knowledge] files:', rows.map(r => r.file_path).join(', '))
 
-    if (codebaseChunks.length === 0) {
-      return { context: 'No relevant codebase references found.', sourceCount: 0 }
+    if (rows.length === 0) {
+      return { context: `No relevant codebase references found for: ${query}`, sourceCount: 0 }
     }
 
-    const n = codebaseChunks.length
     const formatted =
-      `Found ${n} codebase reference${n === 1 ? '' : 's'}:\n\n` +
-      codebaseChunks
-        .map((c) => `[${c.documentName}]\n${c.content}`)
-        .join('\n\n---\n\n')
+      `Found ${rows.length} codebase reference${rows.length === 1 ? '' : 's'}:\n\n` +
+      rows.map((r) => `[${r.file_path}] (${r.layer})\n${r.content}`).join('\n\n---\n\n')
 
-    return { context: formatted, sourceCount: n }
+    console.log('[retrieve_knowledge] context length:', formatted.length, 'chars')
+    console.log('[retrieve_knowledge] sourceCount:', rows.length)
+
+    return { context: formatted, sourceCount: rows.length }
   },
 })
