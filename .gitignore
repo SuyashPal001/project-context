@@ -61,3 +61,6 @@ apps/*/vertex-sa-key.json
 apps/*/*.key
 apps/*/*.pem
 apps/agent-server/portmap.json
+
+# Mastra Studio request-context presets (contain real tenantIds — VM-local only)
+apps/relay/presets.json
