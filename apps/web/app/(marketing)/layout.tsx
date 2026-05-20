@@ -1,22 +1,7 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import { MarketingNav } from "./MarketingNav";
 import { MarketingFooter } from "./MarketingFooter";
 import "./marketing.css";
-
-const instrumentSerif = Instrument_Serif({
-  weight: "400",
-  style: ["normal", "italic"],
-  subsets: ["latin"],
-  variable: "--font-instrument-serif",
-  display: "swap",
-});
-
-const jetBrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "project context — your AI engineering team",
@@ -30,9 +15,7 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className={`marketing-root relative min-h-screen ${instrumentSerif.variable} ${jetBrainsMono.variable}`}
-    >
+    <div className="marketing-root relative min-h-screen">
       <div className="marketing-bg" />
       <div className="marketing-dots" />
       <div className="marketing-grain" />

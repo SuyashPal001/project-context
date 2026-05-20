@@ -1,18 +1,18 @@
 /* Scoped to the marketing route group only. Applied via <div class="marketing-root">. */
 
 .marketing-root {
-  /* Ocean-cyan palette — mirrors components/platform/chat/AgentOrb.tsx */
-  --mk-bg: oklch(0.16 0.025 220);
-  --mk-bg-elev: oklch(0.20 0.03 220);
-  --mk-fg: oklch(0.97 0.015 200);
-  --mk-muted: oklch(0.68 0.04 210);
-  --mk-line: oklch(1 0 0 / 8%);
-  --mk-line-strong: oklch(0.85 0.12 200 / 0.18);
+  /* Teal-tinted black ground + teal accent — matches platform, harmonizes with orb */
+  --mk-bg: oklch(0.05 0.010 215);
+  --mk-bg-elev: oklch(0.11 0.012 215);
+  --mk-fg: oklch(0.98 0.005 200);
+  --mk-muted: oklch(0.66 0.012 210);
+  --mk-line: oklch(1 0 0 / 10%);
+  --mk-line-strong: oklch(0.85 0.12 200 / 0.22);
   --mk-accent: #22d3ee;            /* cyan-400 — orb mid */
   --mk-accent-dim: #22d3ee99;
   --mk-accent-soft: #a5f3fc;       /* cyan-200 — orb highlight */
   --mk-accent-deep: #0e7490;       /* cyan-700 — orb deep teal */
-  --mk-ink: oklch(0.92 0.02 200);
+  --mk-ink: oklch(0.92 0.005 200);
 
   background: var(--mk-bg);
   color: var(--mk-fg);
