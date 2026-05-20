@@ -1,18 +1,19 @@
 /* Scoped to the marketing route group only. Applied via <div class="marketing-root">. */
+/* Design language: Mastra Studio — pure black surfaces, green primary accent, Geist Mono + TASA Explorer */
 
 .marketing-root {
-  /* Teal-tinted black ground + teal accent — matches platform, harmonizes with orb */
-  --mk-bg: oklch(0.05 0.010 215);
-  --mk-bg-elev: oklch(0.11 0.012 215);
-  --mk-fg: oklch(0.98 0.005 200);
-  --mk-muted: oklch(0.66 0.012 210);
-  --mk-line: oklch(1 0 0 / 10%);
-  --mk-line-strong: oklch(0.85 0.12 200 / 0.22);
-  --mk-accent: #22d3ee;            /* cyan-400 — orb mid */
-  --mk-accent-dim: #22d3ee99;
-  --mk-accent-soft: #a5f3fc;       /* cyan-200 — orb highlight */
-  --mk-accent-deep: #0e7490;       /* cyan-700 — orb deep teal */
-  --mk-ink: oklch(0.92 0.005 200);
+  --mk-bg:          oklch(0%    0 0);                        /* surface1 — pure black */
+  --mk-bg-elev:     oklch(17%   0 0);                        /* surface2 — panel bg */
+  --mk-bg-card:     oklch(19%   0 0);                        /* surface3 — card bg */
+  --mk-fg:          oklch(98.5% 0 0);                        /* neutral6 — primary text */
+  --mk-muted:       oklch(55.3% 0 0);                        /* neutral2 — secondary text */
+  --mk-line:        oklch(100%  0 0 / 6%);                   /* border1 — very subtle */
+  --mk-line-strong: oklch(72.3% .219 149.579 / 25%);         /* green-tinted border */
+  --mk-accent:      oklch(72.3% .219 149.579);               /* accent1 = positive1 — green-500 */
+  --mk-accent-dim:  oklch(72.3% .219 149.579 / 40%);
+  --mk-accent-soft: oklch(87.1% .15 154.449);                /* green-300 */
+  --mk-accent-deep: oklch(39.3% .095 152.535);               /* green-900 */
+  --mk-ink:         oklch(92%   0 0);                        /* neutral5 */
 
   background: var(--mk-bg);
   color: var(--mk-fg);
@@ -31,16 +32,15 @@
   font-feature-settings: "ss01", "cv02", "cv11";
 }
 
-/* Layered atmosphere: dot grid + radial amber glow + grain */
+/* Layered atmosphere: very restrained green halo + dot grid + grain */
 .marketing-bg {
   position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in srgb, var(--mk-accent) 22%, transparent), transparent 60%),
-    radial-gradient(ellipse 50% 40% at 100% 110%, color-mix(in srgb, var(--mk-accent-deep) 30%, transparent), transparent 60%),
-    radial-gradient(ellipse 40% 30% at 0% 80%, color-mix(in srgb, var(--mk-accent) 10%, transparent), transparent 70%);
+    radial-gradient(ellipse 65% 38% at 50% -6%,  oklch(72.3% .219 149.579 / 8%),  transparent 52%),
+    radial-gradient(ellipse 38% 28% at 92% 88%,  oklch(39.3% .095 152.535 / 12%), transparent 58%);
 }
 
 .marketing-dots {
@@ -48,10 +48,10 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-image: radial-gradient(color-mix(in srgb, var(--mk-accent) 16%, transparent) 1px, transparent 1px);
-  background-size: 26px 26px;
-  mask-image: linear-gradient(to bottom, black, transparent 70%);
-  -webkit-mask-image: linear-gradient(to bottom, black, transparent 70%);
+  background-image: radial-gradient(oklch(72.3% .219 149.579 / 10%) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, black, transparent 60%);
+  -webkit-mask-image: linear-gradient(to bottom, black, transparent 60%);
 }
 
 .marketing-grain {

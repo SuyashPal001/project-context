@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { useIntegrations } from "@/hooks/useIntegrations";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 
-import { CATALOGUE, CONNECT_URLS, CONNECTED_NAMES, type CatalogueEntry } from "./_catalogue";
+import { CATALOGUE, GOVT_CATALOGUE, CONNECT_URLS, CONNECTED_NAMES, type CatalogueEntry } from "./_catalogue";
 import { UsageBar } from "./UsageBar";
 import { IntegrationCard } from "./IntegrationCard";
 import { DisconnectDialog } from "./DisconnectDialog";
@@ -139,6 +139,35 @@ export default function IntegrationsPage() {
                                 onDisconnect={setDisconnectTarget}
                             />
                         ))}
+                </div>
+
+                {/* Government Systems — requires approval */}
+                <div className="pt-4">
+                    <div className="flex items-center gap-3 mb-1">
+                        <h2 className="text-lg font-semibold tracking-tight">Government Systems</h2>
+                        <span className="text-xs px-2 py-0.5 rounded-sm border font-medium"
+                            style={{ color: '#fbbf24', borderColor: 'rgba(251,191,36,0.3)', background: 'rgba(251,191,36,0.08)' }}>
+                            Requires NIC Approval
+                        </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-5">
+                        These integrations require approval from NIC before they can be activated.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {GOVT_CATALOGUE.map((entry) => (
+                            <IntegrationCard
+                                key={entry.provider}
+                                entry={entry}
+                                connected={false}
+                                integration={undefined}
+                                connecting={null}
+                                canConnect={false}
+                                canDelete={false}
+                                onConnect={() => {}}
+                                onDisconnect={() => {}}
+                            />
+                        ))}
+                    </div>
                 </div>
             </div>
 

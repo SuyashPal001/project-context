@@ -211,6 +211,13 @@
       "when": 1778925300000,
       "tag": "0029_knowledge_chunks",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1779261569975,
+      "tag": "0030_missing_agent_tasks_columns",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,10 @@ import {
     GmailIcon, DriveIcon, CalendarIcon, ZohoIcon, JiraIcon,
     M365Icon, SlackIcon, NotionIcon, WhatsAppIcon,
 } from "./_integrationIcons";
+import {
+    EOfficeIcon, GeMIcon, PFMSIcon, HRMSIcon,
+    CPGRAMSIcon, DigiLockerIcon, SAPIcon, ServiceNowIcon,
+} from "./_govIcons";
 
 export interface CatalogueEntry {
     provider: string;
@@ -10,6 +14,7 @@ export interface CatalogueEntry {
     scopes: string[];
     icon: React.ReactNode;
     available: boolean;
+    requiresApproval?: boolean;
 }
 
 export const CONNECT_URLS: Record<string, string> = {
@@ -120,5 +125,80 @@ export const CATALOGUE: CatalogueEntry[] = [
         scopes: ['Messages', 'Templates', 'Contacts'],
         icon: <WhatsAppIcon className="w-8 h-8" />,
         available: false,
+    },
+];
+
+export const GOVT_CATALOGUE: CatalogueEntry[] = [
+    {
+        provider: 'eoffice',
+        name: 'eOffice (NIC)',
+        description: 'Sync file movements, notings, and approvals',
+        scopes: ['Files', 'Notings', 'Approvals'],
+        icon: <EOfficeIcon className="w-8 h-8" />,
+        available: false,
+        requiresApproval: true,
+    },
+    {
+        provider: 'gem',
+        name: 'GeM Portal',
+        description: 'Track procurement orders and vendor submissions',
+        scopes: ['Orders', 'Vendors', 'Bids'],
+        icon: <GeMIcon className="w-8 h-8" />,
+        available: false,
+        requiresApproval: true,
+    },
+    {
+        provider: 'pfms',
+        name: 'PFMS',
+        description: 'Monitor fund releases and expenditure in real-time',
+        scopes: ['Funds', 'Expenditure', 'Reports'],
+        icon: <PFMSIcon className="w-8 h-8" />,
+        available: false,
+        requiresApproval: true,
+    },
+    {
+        provider: 'hrms',
+        name: 'HRMS',
+        description: 'Access officer profiles, postings, and leave records',
+        scopes: ['Profiles', 'Postings', 'Leave'],
+        icon: <HRMSIcon className="w-8 h-8" />,
+        available: false,
+        requiresApproval: true,
+    },
+    {
+        provider: 'cpgrams',
+        name: 'CPGRAMS',
+        description: 'Monitor and respond to citizen grievance tickets',
+        scopes: ['Grievances', 'Responses', 'Reports'],
+        icon: <CPGRAMSIcon className="w-8 h-8" />,
+        available: false,
+        requiresApproval: true,
+    },
+    {
+        provider: 'digilocker',
+        name: 'DigiLocker',
+        description: 'Verify and retrieve official government documents',
+        scopes: ['Documents', 'Verify', 'Retrieve'],
+        icon: <DigiLockerIcon className="w-8 h-8" />,
+        available: false,
+        requiresApproval: true,
+    },
+    {
+        provider: 'sap_erp',
+        name: 'SAP ERP',
+        description: 'Query procurement, finance, and logistics data',
+        scopes: ['Finance', 'Procurement', 'Logistics'],
+        icon: <SAPIcon className="w-8 h-8" />,
+        available: false,
+        requiresApproval: true,
+    },
+    {
+        provider: 'servicenow',
+        name: 'ServiceNow',
+        description: 'Create and track IT service tickets automatically',
+        scopes: ['Tickets', 'CMDB', 'Workflows'],
+        icon: <ServiceNowIcon className="w-8 h-8" />,
+        available: false,
+        requiresApproval: true,
     },
 ];
