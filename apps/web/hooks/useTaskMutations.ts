@@ -9,7 +9,12 @@ import { validateAttachment } from '@/lib/attachmentValidation'
 import type { Task, TaskDetailResponse } from '@/types/task'
 
 function errorMessage(err: unknown, fallback: string): string {
-    if (err instanceof ApiError) return err.data?.error || err.data?.message || err.message || fallback
+    if (err instanceof ApiError) {
+        if (err.status === 403 && err.data?.code === 'INSUFFICIENT_PERMISSIONS') {
+            return `You don't have permission to perform this action.`
+        }
+        return err.data?.error || err.data?.message || err.message || fallback
+    }
     if (err instanceof Error) return err.message || fallback
     return fallback
 }

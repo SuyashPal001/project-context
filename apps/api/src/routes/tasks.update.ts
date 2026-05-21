@@ -60,6 +60,13 @@ export async function handleUpdateTask(c: Context<AppEnv>) {
 
     if (!task) return c.json({ error: 'Task not found' }, 404);
 
+    // Ownership rule: owner/admin (with agent_tasks:delete) can update any task.
+    // Members can update tasks they created OR tasks assigned to them.
+    const canManageAny = hasPermission(permissions, 'agent_tasks', 'delete');
+    if (!canManageAny && task.createdBy !== userId && task.assigneeId !== userId) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
     const { title, description, estimatedHours, acceptanceCriteria, dueDate, status, startedAt, links, attachmentFileIds, sortOrder, priority, assigneeId, agentId, referenceText, descriptionHtml } = result.data;
 
     if (agentId) {
@@ -123,16 +130,20 @@ export async function handleDeleteTask(c: Context<AppEnv>) {
     const permissions = requestContext?.permissions ?? [];
     const userId = c.get('userId') as string;
 
-    if (!hasPermission(permissions, 'agent_tasks', 'delete')) {
-        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
-    }
-
     const taskId = c.req.param('taskId') as string;
     const task = (await db.select().from(agentTasks).where(and(
         eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId),
     )).limit(1))[0];
 
     if (!task) return c.json({ error: 'Task not found' }, 404);
+
+    // Ownership rule: owner/admin (with agent_tasks:delete) can delete any task.
+    // Members lacking that permission can still delete tasks they created themselves.
+    const canManageAny = hasPermission(permissions, 'agent_tasks', 'delete');
+    if (!canManageAny && task.createdBy !== userId) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
     if (task.status === 'in_progress') return c.json({ error: 'Cannot delete a running task. Cancel it first.' }, 400);
 
     await db.update(agentTasks)

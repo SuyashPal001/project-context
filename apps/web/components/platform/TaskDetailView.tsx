@@ -79,8 +79,9 @@ export function TaskDetailView() {
 
     const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? []
     const members = membersData?.members ?? []
+    const assignableMembers = members.filter(m => m.status === 'active' && m.userId)
     const assigneeOptions: Assignee[] = [
-        ...members.map(m => ({ type: 'member' as const, id: m.userId, name: m.userName || m.userEmail })),
+        ...assignableMembers.map(m => ({ type: 'member' as const, id: m.userId, name: m.userName || m.userEmail })),
         ...activeAgents.map(a => ({ type: 'agent' as const, id: a.id, name: a.name })),
     ]
 

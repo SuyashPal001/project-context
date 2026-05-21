@@ -6,6 +6,7 @@ export type Task = {
     sequenceId?: number | null
     agentId: string | null
     assigneeId: string | null
+    createdBy?: string | null
     parentTaskId?: string | null
     milestoneId?: string | null
     planId?: string | null
@@ -31,7 +32,7 @@ export type Task = {
 }
 
 export type AgentsResponse = { data: { id: string; name: string; status: string }[] }
-export type MembersResponse = { members: { userId: string; userName: string | null; userEmail: string; roleName: string }[] }
+export type MembersResponse = { members: { userId: string; userName: string | null; userEmail: string; roleName: string; status: 'active' | 'invited' | 'suspended' }[] }
 
 export type Assignee = { type: 'agent'; id: string; name: string } | { type: 'member'; id: string; name: string }
 
