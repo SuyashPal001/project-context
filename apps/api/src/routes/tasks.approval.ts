@@ -3,6 +3,7 @@ import { and, count, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskEvents } from '@serverless-saas/database/schema/agents';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '../lib/sqs';
@@ -75,6 +76,7 @@ export async function handlePlanApprove(c: Context<AppEnv>) {
     await db.insert(taskEvents).values({
         taskId, tenantId, actorType: 'human', actorId: userId, eventType: 'plan_approved', payload: {},
     });
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'task_plan_approved', resource: 'agent_task', resourceId: taskId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     console.log('[SQS] Publishing execute_task for task', taskId);
     try {
@@ -116,6 +118,7 @@ async function handleRejectPlan(c: Context<AppEnv>, opts: {
         taskId, tenantId, actorType: 'human', actorId: userId,
         eventType: 'plan_rejected', payload: { stepFeedback: stepFeedback ?? [] },
     });
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'task_plan_rejected', resource: 'agent_task', resourceId: taskId, metadata: { stepCount: stepFeedback?.length ?? 0, hasExtraContext: !!extraContext }, traceId: '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     const pendingSteps: (typeof taskSteps.$inferSelect)[] = await db.select()
         .from(taskSteps)
@@ -174,6 +177,7 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
 
     if (!hasPermission(permissions, 'agent_tasks', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -206,6 +210,8 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
         console.error(`[tasks/workflow/approve] relay resume failed ${res.status}: ${text}`);
         return c.json({ error: 'Failed to resume workflow' }, 502);
     }
+
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'workflow_approved', resource: 'agent_task', resourceId: taskId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     return c.json({ success: true });
 }

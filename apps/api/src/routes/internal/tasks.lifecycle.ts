@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskComments, taskEvents } from '@serverless-saas/database/schema/agents';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { pushWebSocketEvent } from '../../lib/websocket';
 import { publishToQueue } from '../../lib/sqs';
 import { getCacheClient } from '@serverless-saas/cache';
@@ -44,6 +45,7 @@ export async function handleCompleteTask(c: Context<AppEnv>) {
     if (!updatedTask) return c.json({ error: 'Task is not in a completable state' }, 409);
 
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId, eventType: 'status_changed', payload: { from: task.status, to: 'review', summary: parsed.data.summary ?? null } });
+    db.insert(auditLog).values({ tenantId, actorId, actorType: 'agent', action: 'task_completed', resource: 'agent_task', resourceId: taskId, metadata: { summary: parsed.data.summary ?? null }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     try { await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'review' }); }
     catch (wsErr) { console.error('WS push failed (non-fatal):', wsErr); }
@@ -72,6 +74,7 @@ export async function handleFailTask(c: Context<AppEnv>) {
 
     await db.update(agentTasks).set({ status: 'blocked', blockedReason: failError, updatedAt: new Date() }).where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId, eventType: 'status_changed', payload: { from: task.status, to: 'blocked', error: failError } });
+    db.insert(auditLog).values({ tenantId, actorId, actorType: 'agent', action: 'task_failed', resource: 'agent_task', resourceId: taskId, metadata: { error: failError }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     try { await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'blocked' }); }
     catch (wsErr) { console.error('WS push failed (non-fatal):', wsErr); }
@@ -110,6 +113,7 @@ export async function handleClarifyTask(c: Context<AppEnv>) {
     const numbered = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
     await db.update(agentTasks).set({ status: 'blocked', blockedReason: `Agent needs clarification:\n${numbered}`, updatedAt: new Date() }).where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId, eventType: 'clarification_requested', payload: { questions } });
+    db.insert(auditLog).values({ tenantId, actorId, actorType: 'agent', action: 'task_clarification_requested', resource: 'agent_task', resourceId: taskId, metadata: { questions }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await fireNotification(process.env.SQS_PROCESSING_QUEUE_URL, tenantId, 'task.needs_clarification', actorId, task.createdBy, task.id, task.title);
 
     return c.json({ success: true });
@@ -142,6 +146,7 @@ export async function handleSuspendTask(c: Context<AppEnv>) {
     const { tenantId } = task;
     await db.update(agentTasks).set({ status: 'awaiting_approval', blockedReason: null, updatedAt: new Date() }).where(eq(agentTasks.id, taskId));
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'system', actorId: 'system', eventType: 'status_changed', payload: { from: task.status, to: 'awaiting_approval', source: 'mastra_workflow' } });
+    db.insert(auditLog).values({ tenantId, actorId: 'system', actorType: 'system', action: 'task_suspended', resource: 'agent_task', resourceId: taskId, metadata: { source: 'mastra_workflow' }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     try { await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'awaiting_approval' }); }
     catch (wsErr) { console.error('WS push failed (non-fatal):', wsErr); }
@@ -166,6 +171,7 @@ export async function handlePostComment(c: Context<AppEnv>) {
 
     const [comment] = await db.insert(taskComments).values({ taskId, tenantId, authorId: agentId, authorType: 'agent', content, parentId: parentId ?? null }).returning();
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId: agentId, eventType: 'comment_added', payload: { commentId: comment.id } });
+    db.insert(auditLog).values({ tenantId, actorId: agentId, actorType: 'agent', action: 'task_comment_added', resource: 'agent_task', resourceId: taskId, metadata: { commentId: comment.id }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await pushWebSocketEvent(tenantId, { type: 'task.comment.added', taskId, comment });
 
     return c.json({ data: comment }, 201);

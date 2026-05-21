@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { getInstallationToken, getRepoFileTree, fetchFileContent } from '../lib/github';
 import { matchesPattern, getLayer, getFileType, indexFile } from '../lib/knowledgeIndex';
 
@@ -58,5 +59,6 @@ export async function handleKnowledgeInitialIndex(body: Record<string, unknown>)
       AND repo_name = ${repoName}
   `);
 
+  db.insert(auditLog).values({ tenantId, actorId: 'system', actorType: 'system', action: 'knowledge_initial_index_completed', resource: 'github_repo', resourceId: null, metadata: { repoOwner, repoName, defaultBranch, filesProcessed: relevant.length, totalChunks }, traceId: '' }).catch(() => {});
   console.log(`[knowledge.initial_index] done ${repoOwner}/${repoName}: ${totalChunks} chunks across ${relevant.length} files`);
 }

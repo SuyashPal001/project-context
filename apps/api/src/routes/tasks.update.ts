@@ -197,6 +197,7 @@ export async function handleBulkCreate(c: Context<AppEnv>) {
     }));
 
     const created = await db.insert(agentTasks).values(rows).returning();
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'tasks_bulk_created', resource: 'agent_task', resourceId: null, metadata: { count: created.length }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     return c.json({ data: created }, 201);
 }
 
@@ -205,6 +206,7 @@ export async function handleBulkUpdate(c: Context<AppEnv>) {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
 
     if (!hasPermission(permissions, 'agent_tasks', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -237,5 +239,6 @@ export async function handleBulkUpdate(c: Context<AppEnv>) {
         .where(and(inArray(agentTasks.id, task_ids), eq(agentTasks.tenantId, tenantId)))
         .returning({ id: agentTasks.id });
 
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'tasks_bulk_updated', resource: 'agent_task', resourceId: null, metadata: { count: updated.length, fields: Object.keys(properties) }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     return c.json({ data: { updated: updated.length } });
 }

@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { getInstallationToken, getPRFiles, fetchFileContent } from '../lib/github';
 import { matchesPattern, getLayer, getFileType, indexFile } from '../lib/knowledgeIndex';
 
@@ -57,5 +58,6 @@ export async function handleKnowledgeSync(body: Record<string, unknown>): Promis
       AND repo_name = ${repoName}
   `);
 
+  db.insert(auditLog).values({ tenantId, actorId: 'system', actorType: 'system', action: 'knowledge_sync_completed', resource: 'github_repo', resourceId: null, metadata: { repoOwner, repoName, prNumber, filesProcessed: relevant.length, totalChunks }, traceId: '' }).catch(() => {});
   console.log(`[knowledge.sync] done PR #${prNumber}: ${totalChunks} chunks across ${relevant.length} files`);
 }

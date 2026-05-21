@@ -39,6 +39,7 @@ export async function handlePlanTask(c: Context<AppEnv>) {
         taskId, tenantId, actorType: 'human', actorId: userId,
         eventType: 'status_changed', payload: { from: 'todo', to: 'planning' },
     });
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'task_planning_initiated', resource: 'agent_task', resourceId: taskId, metadata: { agentId: task.agentId }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     console.log('[SQS] Publishing plan_task for task', taskId);
     try {
@@ -89,6 +90,7 @@ export async function handleClarifyTask(c: Context<AppEnv>) {
         taskId, tenantId, actorType: 'human', actorId: userId,
         eventType: 'clarification_answered', payload: { answer },
     });
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'task_clarification_provided', resource: 'agent_task', resourceId: taskId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     const [updatedTask] = await db.update(agentTasks)
         .set({ status: 'planning', blockedReason: null, planApprovedAt: null, updatedAt: new Date() })

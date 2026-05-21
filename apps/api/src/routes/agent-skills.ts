@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { agents } from '@serverless-saas/database/schema/agents';
 import { agentSkills } from '@serverless-saas/database/schema/conversations';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
@@ -54,6 +55,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
 
     if (!hasPermission(permissions, 'agents', 'create')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -90,6 +92,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
             status: 'active',
         }).returning();
 
+        db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_created', resource: 'agent_skill', resourceId: created.id, metadata: { agentId, name: result.data.name }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
         return c.json({ data: created }, 201);
     } catch (err: any) {
         // Unique constraint on [agentId, tenantId, name, version]
@@ -140,6 +143,7 @@ agentSkillsRoutes.put('/:agentId/skills/:skillId', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
 
     if (!hasPermission(permissions, 'agents', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -191,6 +195,7 @@ agentSkillsRoutes.put('/:agentId/skills/:skillId', async (c) => {
         ))
         .returning();
 
+    db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_updated', resource: 'agent_skill', resourceId: skillId, metadata: { agentId, fields: Object.keys(result.data) }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     return c.json({ data: updated });
 });
 
@@ -199,6 +204,7 @@ agentSkillsRoutes.delete('/:agentId/skills/:skillId', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
 
     if (!hasPermission(permissions, 'agents', 'delete')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -233,5 +239,6 @@ agentSkillsRoutes.delete('/:agentId/skills/:skillId', async (c) => {
             eq(agentSkills.tenantId, tenantId),
         ));
 
+    db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_deleted', resource: 'agent_skill', resourceId: skillId, metadata: { agentId }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     return c.json({ success: true });
 });

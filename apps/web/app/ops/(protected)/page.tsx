@@ -167,7 +167,7 @@ export default function OpsOverviewPage() {
                             : gaps.length === 0
                                 ? <p className="px-4 py-8 text-sm text-zinc-600 text-center">No knowledge gaps detected.</p>
                                 : gaps.map((g) => (
-                                    <div key={g.id} className="flex items-start gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors">
+                                    <div key={`${g.tenantId}-${g.question}`} className="flex items-start gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors">
                                         <AlertCircle className="h-3.5 w-3.5 text-amber-500/60 flex-shrink-0 mt-0.5" />
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm text-zinc-300 line-clamp-1">{g.question}</p>

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { agents } from '@serverless-saas/database/schema/agents';
 import { agentPolicies } from '@serverless-saas/database/schema/conversations';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
@@ -62,6 +63,7 @@ agentPoliciesRoutes.put('/:agentId/policies', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
+    const userId = c.get('userId') as string;
 
     if (!hasPermission(permissions, 'agents', 'update')) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -103,5 +105,6 @@ agentPoliciesRoutes.put('/:agentId/policies', async (c) => {
         })
         .returning();
 
+    db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_policy_upserted', resource: 'agent_policy', resourceId: upserted.id, metadata: { agentId, allowedActions, blockedActions, requiresApproval }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     return c.json({ data: upserted });
 });
