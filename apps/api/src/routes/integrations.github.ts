@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, desc } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
+import { githubRepos } from '@serverless-saas/database/schema/github';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
@@ -35,4 +36,35 @@ githubIntegrationRoute.post('/github/connect', async (c) => {
 
     const url = `https://github.com/apps/${appSlug}/installations/new?state=${encodeURIComponent(state)}`;
     return c.json({ url });
+});
+
+// GET /github/repos — connected repos for the current tenant
+githubIntegrationRoute.get('/github/repos', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id as string;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'integrations', 'read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const rows = await db
+        .select({
+            id:            githubRepos.id,
+            repoOwner:     githubRepos.repoOwner,
+            repoName:      githubRepos.repoName,
+            repoFullName:  githubRepos.repoFullName,
+            defaultBranch: githubRepos.defaultBranch,
+            lastSyncedAt:  githubRepos.lastSyncedAt,
+            createdAt:     githubRepos.createdAt,
+        })
+        .from(githubRepos)
+        .where(and(
+            eq(githubRepos.tenantId, tenantId),
+            eq(githubRepos.status, 'active'),
+            isNull(githubRepos.deletedAt),
+        ))
+        .orderBy(desc(githubRepos.createdAt));
+
+    return c.json({ repos: rows });
 });
