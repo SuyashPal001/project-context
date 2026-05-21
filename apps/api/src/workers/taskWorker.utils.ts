@@ -1,14 +1,12 @@
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
-import * as schema from '@serverless-saas/database/schema';
 import { taskSteps, files } from '@serverless-saas/database/schema';
 import { eq, asc, and, sql, inArray } from 'drizzle-orm';
 import { storageService } from '@serverless-saas/storage';
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 import { embedQuery } from '@serverless-saas/ai';
+import { db } from '@serverless-saas/database';
 
-export const db = drizzle(neon(process.env.DATABASE_URL!), { schema });
+export { db };
 
 export const RELAY_URL = process.env.RELAY_URL!;
 export const INTERNAL_SERVICE_KEY = () => process.env.INTERNAL_SERVICE_KEY!;
@@ -97,7 +95,7 @@ export async function getPastSuccessfulPlans(tenantId: string, title: string, de
     const sections: string[] = [];
     for (const row of rows) {
         const steps = await db.select({ title: taskSteps.title }).from(taskSteps).where(and(eq(taskSteps.taskId, row.id), eq(taskSteps.status, 'done'))).orderBy(asc(taskSteps.stepNumber));
-        if (steps.length > 0) sections.push(`Past task: "${row.title}"\nSteps taken:\n${steps.map((s, i) => `${i + 1}. ${s.title}`).join('\n')}`);
+        if (steps.length > 0) sections.push(`Past task: "${row.title}"\nSteps taken:\n${steps.map((s: { title: string }, i: number) => `${i + 1}. ${s.title}`).join('\n')}`);
     }
 
     if (sections.length === 0) return null;

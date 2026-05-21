@@ -1,10 +1,11 @@
 import * as crypto from 'crypto';
 import { v5 as uuidv5 } from 'uuid';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import { neon } from '@neondatabase/serverless';
+import { sql } from 'drizzle-orm';
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 import { getOrEmbedTexts } from '@serverless-saas/ai';
+import { db } from '../db';
 import { extractQuestions } from '../rag/extractQuestions';
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
@@ -74,15 +75,14 @@ export interface DocumentIngestPayload {
 }
 
 export async function handleDocumentIngest(payload: DocumentIngestPayload): Promise<void> {
-  const sql = neon(process.env.DATABASE_URL!);
   const { tenantId, documentId, fileKey, mimeType } = payload;
 
   // 1. Mark as processing
-  await sql`
+  await db.execute(sql`
     UPDATE documents
     SET status = 'processing', updated_at = NOW()
     WHERE id = ${documentId} AND tenant_id = ${tenantId}
-  `;
+  `);
 
   try {
     // 2. Download from S3
@@ -114,9 +114,9 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
     const embedded = await getOrEmbedTexts(textChunks, 'RETRIEVAL_DOCUMENT');
 
     // 6. Delete existing chunks (re-ingest is idempotent)
-    await sql`
+    await db.execute(sql`
       DELETE FROM document_chunks WHERE document_id = ${documentId}
-    `;
+    `);
 
     // 7. Insert chunks with embeddings + extracted questions
     for (let i = 0; i < embedded.length; i++) {
@@ -144,7 +144,7 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
         ? `${content} ${questions.join(' ')}`
         : content;
 
-      await sql`
+      await db.execute(sql`
         INSERT INTO document_chunks
           (id, tenant_id, document_id, content, embedding, chunk_index, metadata, tsv)
         VALUES (
@@ -154,7 +154,7 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
           ${content},
           ${vectorStr}::vector,
           ${i},
-          ${JSON.stringify(metadata)},
+          ${JSON.stringify(metadata)}::jsonb,
           to_tsvector('english', ${tsvSource})
         )
         ON CONFLICT (id) DO UPDATE SET
@@ -162,30 +162,30 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
           embedding = EXCLUDED.embedding,
           metadata = EXCLUDED.metadata,
           tsv = EXCLUDED.tsv
-      `;
+      `);
     }
 
     // 8. Mark as ready
-    await sql`
+    await db.execute(sql`
       UPDATE documents
       SET status = 'ready',
           chunk_count = ${embedded.length},
           updated_at = NOW()
       WHERE id = ${documentId} AND tenant_id = ${tenantId}
-    `;
+    `);
 
     console.log(`[documentIngest] done: documentId=${documentId} chunks=${embedded.length}`);
 
   } catch (error) {
     // 9. Mark as failed
     const message = error instanceof Error ? error.message : String(error);
-    await sql`
+    await db.execute(sql`
       UPDATE documents
       SET status = 'failed',
           error = ${message},
           updated_at = NOW()
       WHERE id = ${documentId} AND tenant_id = ${tenantId}
-    `;
+    `);
     console.error(`[documentIngest] failed: documentId=${documentId} error=${message}`);
     throw error; // re-throw so SQS retries
   }
