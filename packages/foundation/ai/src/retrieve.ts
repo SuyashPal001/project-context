@@ -1,4 +1,5 @@
-import { neon } from '@neondatabase/serverless';
+import { sql } from 'drizzle-orm';
+import { db } from '@serverless-saas/database';
 import { embedQuery } from './embeddings';
 
 export interface RetrievedChunk {
@@ -54,14 +55,12 @@ export async function retrieveChunks(
   limit = 5,
   scoreThreshold = 0.5
 ): Promise<RetrievedChunk[]> {
-  const sql = neon(process.env.DATABASE_URL!);
-
   const queryEmbedding = await embedQuery(query);
   const vectorStr = `[${queryEmbedding.join(',')}]`;
 
   // Run both table searches in parallel
-  const [docRows, kRows] = await Promise.all([
-    sql`
+  const [docResult, kResult] = await Promise.all([
+    db.execute(sql`
       SELECT
         dc.id,
         dc.content,
@@ -80,9 +79,9 @@ export async function retrieveChunks(
           OR dc.tsv @@ websearch_to_tsquery('english', ${query})
         )
       LIMIT 20
-    `.then(r => r as unknown as DocRow[]),
+    `),
 
-    sql`
+    db.execute(sql`
       SELECT
         id,
         content,
@@ -101,8 +100,12 @@ export async function retrieveChunks(
         )
       ORDER BY vector_score ASC
       LIMIT 20
-    `.then(r => r as unknown as KnowledgeRow[]),
+    `),
   ]);
+
+  // drizzle-orm/postgres-js returns rows directly; neon-http wraps in { rows }
+  const docRows = (((docResult as any).rows ?? docResult) as DocRow[]);
+  const kRows = (((kResult as any).rows ?? kResult) as KnowledgeRow[]);
 
   if (docRows.length === 0 && kRows.length === 0) return [];
 

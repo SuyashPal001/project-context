@@ -1,19 +1,19 @@
-import { neon } from '@neondatabase/serverless';
+import { sql } from 'drizzle-orm';
+import { db } from '@serverless-saas/database';
 
 export async function getCachedEmbedding(
   contentHash: string,
   provider = 'vertex',
   model = 'text-embedding-004'
 ): Promise<number[] | null> {
-  const sql = neon(process.env.DATABASE_URL!);
-  const rows = await sql`
+  const result = await db.execute(sql`
     SELECT embedding FROM embedding_cache
     WHERE hash = ${contentHash}
       AND provider = ${provider}
       AND model = ${model}
-  `;
-  if (rows.length === 0) return null;
-  // embedding comes back as string "[0.1,0.2,...]" from Neon
+  `);
+  const rows = (result as any).rows ?? (result as any);
+  if (!rows || rows.length === 0) return null;
   const raw = rows[0].embedding;
   if (typeof raw === 'string') {
     return raw.slice(1, -1).split(',').map(Number);
@@ -27,13 +27,12 @@ export async function setCachedEmbedding(
   provider = 'vertex',
   model = 'text-embedding-004'
 ): Promise<void> {
-  const sql = neon(process.env.DATABASE_URL!);
   const vectorStr = `[${embedding.join(',')}]`;
-  await sql`
+  await db.execute(sql`
     INSERT INTO embedding_cache (hash, provider, model, embedding)
     VALUES (${contentHash}, ${provider}, ${model}, ${vectorStr}::vector)
     ON CONFLICT (hash, provider, model) DO NOTHING
-  `;
+  `);
 }
 
 export async function getOrEmbedTexts(

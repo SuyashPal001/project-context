@@ -11,9 +11,9 @@ export async function handleExecution(taskId: string, traceId: string) {
 
     const agent = task.agentId ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0] : null;
     const steps = await db.select().from(taskSteps).where(eq(taskSteps.taskId, taskId)).orderBy(asc(taskSteps.stepNumber));
-    const pendingSteps = steps.filter(s => s.status === 'pending');
+    const pendingSteps = steps.filter((s: { status: string }) => s.status === 'pending');
 
-    if (pendingSteps.length === 0 && steps.every(s => s.status === 'done')) {
+    if (pendingSteps.length === 0 && steps.every((s: { status: string }) => s.status === 'done')) {
         log('info', 'All steps already done, skipping relay');
         await db.update(agentTasks).set({ status: 'review', completedAt: new Date(), updatedAt: new Date() }).where(and(eq(agentTasks.id, taskId), eq(agentTasks.status, 'in_progress')));
         await pushWebSocketEvent(task.tenantId, { type: 'task.status.changed', taskId: task.id, status: 'review' });

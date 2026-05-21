@@ -1,15 +1,11 @@
 import type { ScheduledHandler } from 'aws-lambda';
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
-import * as schema from '@serverless-saas/database/schema';
 import { agentTasks, taskEvents } from '@serverless-saas/database/schema';
+import { db } from '@serverless-saas/database';
 import { eq, and, sql } from 'drizzle-orm';
 import { getCacheClient } from '@serverless-saas/cache';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '../lib/sqs';
 import { initRuntimeSecrets } from '../lib/secrets';
-
-const db = drizzle(neon(process.env.DATABASE_URL!), { schema });
 
 const wlog = (level: 'info' | 'warn' | 'error', msg: string, data?: Record<string, unknown>) =>
   console.log(JSON.stringify({ level, msg, component: 'watchdog', ts: Date.now(), ...data }));
@@ -49,7 +45,7 @@ export const handler: ScheduledHandler = async () => {
     }
 
     if (stalled.length > 0) {
-      wlog('info', 'Stalled tasks detected', { count: stalled.length, taskIds: stalled.map(t => t.id) });
+      wlog('info', 'Stalled tasks detected', { count: stalled.length, taskIds: stalled.map((t: { id: string }) => t.id) });
 
       const reason = 'Task timed out. The agent may have crashed. Please retry.';
 

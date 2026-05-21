@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
-    "@serverless-saas/ai": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "glob": "^11.0.0",
     "postgres": "^3.4.0",
