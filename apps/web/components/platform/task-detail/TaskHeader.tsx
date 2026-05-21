@@ -15,6 +15,7 @@ import {
 import { ConfirmDialog } from '@/components/platform/shared/ConfirmDialog'
 import { api } from '@/lib/api'
 import { pmKeys } from '@/lib/query-keys/pm'
+import { useTenant } from '@/app/[tenant]/tenant-provider'
 import type { Task, TaskDetailResponse } from '@/types/task'
 
 interface TaskHeaderProps {
@@ -44,6 +45,15 @@ export function TaskHeader({ task, editState, taskOperations }: TaskHeaderProps)
     const tenantSlug = params.tenant as string
     const base = `/${tenantSlug}/dashboard`
     const [deleteOpen, setDeleteOpen] = useState(false)
+
+    // Ownership/permission gate: owner/admin (with agent_tasks:delete) can modify any task.
+    // Members can edit tasks they created or that are assigned to them; delete is creator-only.
+    const { userId, permissions } = useTenant()
+    const canManageAny = !!permissions?.includes('agent_tasks:delete')
+    const isCreator = !!task.createdBy && task.createdBy === userId
+    const isAssignee = !!task.assigneeId && task.assigneeId === userId
+    const canEdit = canManageAny || isCreator || isAssignee
+    const canDelete = canManageAny || isCreator
 
     // ── Plan + milestone (only when task belongs to a plan) ───────────────────
     const { data: planData } = useQuery<{ data: { id: string; title: string } }>({
@@ -170,8 +180,8 @@ export function TaskHeader({ task, editState, taskOperations }: TaskHeaderProps)
                     <ArrowDown className="w-3 h-3" /> {task.downvotes || 0}
                 </button>
 
-                {/* Edit / Cancel / Save */}
-                {editState.isEditing ? (
+                {/* Edit / Cancel / Save — only when user can modify the task */}
+                {canEdit && (editState.isEditing ? (
                     <>
                         <Button
                             variant="ghost"
@@ -198,25 +208,27 @@ export function TaskHeader({ task, editState, taskOperations }: TaskHeaderProps)
                     >
                         <Pencil className="w-3 h-3" /> Edit
                     </Button>
-                )}
+                ))}
 
-                {/* Delete dropdown */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground">
-                            <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                            onClick={() => setDeleteOpen(true)}
-                            className="text-red-500 focus:text-red-400 focus:bg-red-500/10 cursor-pointer"
-                        >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                {/* Delete dropdown — only when user can delete the task */}
+                {canDelete && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground">
+                                <MoreHorizontal className="w-4 h-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                                onClick={() => setDeleteOpen(true)}
+                                className="text-red-500 focus:text-red-400 focus:bg-red-500/10 cursor-pointer"
+                            >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
             </div>
 
             <ConfirmDialog

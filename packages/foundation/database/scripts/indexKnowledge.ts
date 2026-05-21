@@ -170,7 +170,7 @@ async function batchEmbed(sql: postgres.Sql, chunks: Chunk[], token: string, pro
 
 // ── insert batch ──────────────────────────────────────────────────────────────
 
-async function insertBatch(sql: postgres.Sql, rows: WithEmbedding[], tenantId: string): Promise<void> {
+async function insertBatch(sql: postgres.Sql, rows: WithEmbedding[], tenantId: string | null): Promise<void> {
   for (const r of rows) {
     await sql`
       INSERT INTO knowledge_chunks
@@ -189,8 +189,7 @@ async function insertBatch(sql: postgres.Sql, rows: WithEmbedding[], tenantId: s
 // ── main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const tenantId = process.env.SYSTEM_TENANT_ID;
-  if (!tenantId) throw new Error('SYSTEM_TENANT_ID env var is required');
+  const tenantId = process.env.SYSTEM_TENANT_ID ?? null;
 
   if (DRY_RUN) console.log('[DRY RUN] — no DB writes\n');
 

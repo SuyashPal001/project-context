@@ -9,16 +9,36 @@ export class ApiError extends Error {
     }
 }
 
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+    if (isRefreshing) return refreshPromise!;
+    isRefreshing = true;
+    refreshPromise = fetch('/api/auth/refresh', { method: 'POST' })
+        .then(r => r.ok)
+        .catch(() => false)
+        .finally(() => { isRefreshing = false; refreshPromise = null; });
+    return refreshPromise;
+}
+
 async function request<T>(
     path: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    isRetry = false
 ): Promise<T> {
     const url = `${BASE_URL}${path}`;
+
+    const method = (options.method ?? 'GET').toUpperCase();
+    const defaultHeaders: Record<string, string> = {};
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE') {
+        defaultHeaders['Content-Type'] = 'application/json';
+    }
 
     const response = await fetch(url, {
         ...options,
         headers: {
-            'Content-Type': 'application/json',
+            ...defaultHeaders,
             ...options.headers,
         },
     });
@@ -29,6 +49,18 @@ async function request<T>(
             errorData = await response.json();
         } catch {
             errorData = { message: 'An unknown error occurred' };
+        }
+
+        // On 401: attempt one silent token refresh then retry the original request.
+        // If refresh fails, force logout so the user lands on the login page cleanly.
+        if (response.status === 401 && !isRetry && typeof window !== 'undefined') {
+            const refreshed = await tryRefreshToken();
+            if (refreshed) return request<T>(path, options, true);
+
+            // Refresh token expired or invalid — sign out
+            const { signOut } = await import('@/lib/auth');
+            await signOut();
+            throw new ApiError(401, errorData);
         }
 
         // Detect plan-gated 403s and fire upgrade prompt event

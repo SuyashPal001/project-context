@@ -16,50 +16,6 @@ export const internalRouter = new Hono()
 
 internalRouter.get('/health', (c) => c.json({ ok: true }))
 
-// ─── Update proxy — Lambda → relay → agent-server ────────────────────────────
-// Updates IDENTITY.md + clears sessions without recreating the container.
-internalRouter.post('/update/:tenantId/:agentSlug', async (c) => {
-  const serviceKey = c.req.header('x-service-key') ?? ''
-  if (!serviceKey || serviceKey !== (process.env.INTERNAL_SERVICE_KEY ?? '')) {
-    return c.json({ error: 'Unauthorized' }, 401)
-  }
-
-  const { tenantId, agentSlug } = c.req.param()
-  console.log(`[update] tenant ${tenantId} agent ${agentSlug} → update started`)
-
-  let reqBody: Record<string, unknown>
-  try {
-    reqBody = await c.req.json()
-  } catch {
-    reqBody = {}
-  }
-
-  try {
-    const resp = await fetch(`${AGENT_SERVER_URL}/update/${tenantId}/${agentSlug}`, {
-      method: 'POST',
-      headers: {
-        'x-service-key': AGENT_SERVER_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(reqBody),
-    })
-
-    const body = await resp.json()
-
-    if (resp.ok) {
-      console.log(`[update] tenant ${tenantId} agent ${agentSlug} → success`)
-      return c.json({ success: true, ...body })
-    }
-
-    const detail = (body as Record<string, unknown>).error ?? 'Unknown error'
-    console.warn(`[update] tenant ${tenantId} agent ${agentSlug} → failed: ${detail}`)
-    return c.json({ error: 'Update failed', detail }, resp.status as 404 | 500 | 502)
-  } catch (err) {
-    console.error(`[update] tenant ${tenantId} agent ${agentSlug} → agent-server unreachable:`, (err as Error).message)
-    return c.json({ error: 'Agent server unavailable' }, 503)
-  }
-})
-
 // ─── Session registry (for /agent-response routing) ──────────────────────────
 
 internalRouter.post('/agent-response', async (c) => {

@@ -20,6 +20,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
 
     member: [
         'members:read',
+        'roles:read',
         'notifications:read',
         'notifications:update',
         'tenant:read',
@@ -89,6 +90,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'integrations:read',
         'usage:read',
     ],
+
+    // platform_admin has no tenant — access is gated by isPlatformAdmin() JWT check,
+    // not by this permissions table. ALL_PERMS here is for future use / consistency.
+    platform_admin: ALL_PERMS,
 };
 
 export async function seedRolePermissions(db: typeof DB) {

@@ -1,4 +1,4 @@
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { tenantFeatureOverrides } from '@serverless-saas/database/schema';
@@ -15,8 +15,8 @@ export async function handleListOverrides(c: Context<AppEnv>) {
     const pageSize = parseInt(c.req.query('pageSize') ?? '20');
 
     const data = await db.select().from(tenantFeatureOverrides).where(and(
-        eq(tenantFeatureOverrides.deletedAt, null as any),
-        eq(tenantFeatureOverrides.revokedAt, null as any),
+        isNull(tenantFeatureOverrides.deletedAt),
+        isNull(tenantFeatureOverrides.revokedAt),
     )).orderBy(desc(tenantFeatureOverrides.createdAt)).limit(pageSize).offset((page - 1) * pageSize);
 
     return c.json({ overrides: data, page, pageSize });
@@ -26,8 +26,7 @@ export async function handleListOverrides(c: Context<AppEnv>) {
 export async function handleCreateOverride(c: Context<AppEnv>) {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const grantedBy = c.get('requestContext') as any;
-    const userId = grantedBy?.user?.id;
+    const userId = c.get('userId');
 
     const schema = z.object({
         tenantId: z.string().uuid(), featureId: z.string().uuid(),

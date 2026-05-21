@@ -1,0 +1,25 @@
+import Link from "next/link";
+
+export function MarketingNav() {
+  return (
+    <header className="fixed top-0 z-50 w-full border-b border-[var(--mk-line)] bg-[var(--mk-bg)]/80 backdrop-blur-xl">
+      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+        <Link href="/" className="flex items-center gap-2.5">
+          <span className="inline-block h-2 w-2 rounded-full bg-[var(--mk-accent)]" />
+          <span className="font-display text-lg leading-none">{/* TODO brand */}project context</span>
+        </Link>
+        <div className="hidden items-center gap-8 sm:flex">
+          <Link href="#agents" className="font-mono-mk text-[11px] uppercase tracking-[0.22em] text-[var(--mk-muted)] transition-colors hover:text-[var(--mk-fg)]">agents</Link>
+          <Link href="#how" className="font-mono-mk text-[11px] uppercase tracking-[0.22em] text-[var(--mk-muted)] transition-colors hover:text-[var(--mk-fg)]">how it works</Link>
+          <Link href="#capabilities" className="font-mono-mk text-[11px] uppercase tracking-[0.22em] text-[var(--mk-muted)] transition-colors hover:text-[var(--mk-fg)]">capabilities</Link>
+        </div>
+        <div className="flex items-center gap-4">
+          <Link href="/auth/login" className="font-mono-mk text-[11px] uppercase tracking-[0.22em] text-[var(--mk-muted)] transition-colors hover:text-[var(--mk-fg)]">sign in</Link>
+          <Link href="/auth/signup" className="border border-[var(--mk-accent)] bg-[var(--mk-accent)] px-4 py-2 font-mono-mk text-[11px] uppercase tracking-[0.22em] text-black transition-opacity hover:opacity-90">
+            get started
+          </Link>
+        </div>
+      </nav>
+    </header>
+  );
+}

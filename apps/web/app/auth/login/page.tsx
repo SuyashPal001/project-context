@@ -93,15 +93,17 @@ function LoginPageContent() {
             if (!meRes.ok) throw new Error('Failed to fetch user profile');
             const me = await meRes.json();
 
-            if (me.needsOnboarding || !me.slug) {
-                finishHyperspace();
-                router.push('/auth/onboarding');
-                return;
-            }
-
+            // platform_admin check must come before needsOnboarding — ops admins
+            // have no tenant by design so needsOnboarding would always be true for them
             if (me.role === 'platform_admin') {
                 router.push('/ops');
                 router.refresh();
+                return;
+            }
+
+            if (me.needsOnboarding || !me.slug) {
+                finishHyperspace();
+                router.push('/auth/onboarding');
                 return;
             }
 

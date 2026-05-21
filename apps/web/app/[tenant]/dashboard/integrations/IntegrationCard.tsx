@@ -28,14 +28,24 @@ export function IntegrationCard({
         <div
             className={cn(
                 "rounded-xl border bg-card p-6 flex flex-col gap-4 transition-colors",
-                entry.available ? "border-border" : "border-border/40 opacity-50"
+                entry.available
+                    ? "border-border"
+                    : entry.requiresApproval
+                        ? "border-amber-500/20"
+                        : "border-border/40 opacity-50"
             )}
         >
             <div className="flex items-start justify-between">
                 <div className="h-14 w-14 rounded-xl bg-muted flex items-center justify-center shrink-0">
                     {entry.icon}
                 </div>
-                {!entry.available && (
+                {entry.requiresApproval && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-sm border"
+                        style={{ color: '#fbbf24', borderColor: 'rgba(251,191,36,0.3)', background: 'rgba(251,191,36,0.08)' }}>
+                        Requires Approval
+                    </span>
+                )}
+                {!entry.requiresApproval && !entry.available && (
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground border border-border/50 rounded-full px-2 py-0.5">
                         Coming soon
                     </span>

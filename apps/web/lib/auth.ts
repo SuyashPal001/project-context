@@ -53,6 +53,11 @@ export async function refreshSession(refreshToken: string, clientMetadata?: Reco
 export async function signOut() {
     if (typeof window !== 'undefined') {
         try {
+            await fetch('/api/proxy/api/v1/auth/logout', { method: 'POST' });
+        } catch (e) {
+            console.error('Failed to invalidate session on backend', e);
+        }
+        try {
             await fetch('/api/auth/session', { method: 'DELETE' });
         } catch (e) {
             console.error('Failed to clear session cookie', e);

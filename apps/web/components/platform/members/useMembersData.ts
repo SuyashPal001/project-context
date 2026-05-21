@@ -16,7 +16,7 @@ export function useMembersData(tenantId: string) {
         queryKey: ["members", tenantId],
         queryFn: async () => {
             const response = await api.get<{ members: Member[] }>("/api/v1/members");
-            return response.members;
+            return Array.isArray(response.members) ? response.members : [];
         },
     });
 

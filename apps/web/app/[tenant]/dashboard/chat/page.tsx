@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, Suspense, useEffect } from "react";
+import { useCallback, Suspense, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
@@ -56,6 +56,7 @@ function ChatPage() {
     const { sendMessage, sendApproval, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage } = stream;
 
     const { isModalOpen, session, openVoice, closeVoice, handleTap } = useVoice({ conversationId: conversationId || undefined });
+    const [inputPrefill, setInputPrefill] = useState('');
 
     const noopActivity = useCallback(() => {}, []);
 
@@ -137,8 +138,8 @@ function ChatPage() {
                                             <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={openVoice} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...modelChangeProps} />
                                         </WizardView>
                                     ) : (
-                                        <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={sendMessage}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={openVoice} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...modelChangeProps} />
+                                        <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={(text) => setInputPrefill(text)}>
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={openVoice} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...modelChangeProps} />
                                         </WelcomeView>
                                     )
                                 ) : (

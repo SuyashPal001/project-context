@@ -2,7 +2,7 @@ import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@m
 import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload } from '../persistence.js'
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
-import { platformAgent, pmAgent } from '../mastra/index.js'
+import { resolveAgent, resolveAgentLabel } from '../mastra/registry.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { fetchAgentSkill, fetchAgentName } from '../usage.js'
@@ -157,8 +157,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // always go to pmAgent. No keyword detection — the user chose the agent
     // when starting the conversation. Internal sub-agent delegation (pmAgent →
     // prdAgent → roadmapAgent → taskAgent) is handled by Mastra internally.
-    const activeAgent = (agentName ?? '').toLowerCase().includes('pm') ? pmAgent : platformAgent
-    console.log(`[sse:${sessionId}] agent="${agentName}" → ${activeAgent === pmAgent ? 'pmAgent' : 'platformAgent'} thinkingBudget=${thinkingBudget}`)
+    const activeAgent = resolveAgent(agentName ?? '')
+    console.log(`[sse:${sessionId}] agent="${agentName}" → ${resolveAgentLabel(activeAgent)} thinkingBudget=${thinkingBudget}`)
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 

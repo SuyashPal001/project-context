@@ -106,6 +106,7 @@ export function BoardView({
     const tasks = data?.data ?? []
     const agents = agentsData?.data ?? []
     const members = membersData?.members ?? []
+    const assignableMembers = members.filter(m => m.status === 'active' && m.userId)
 
     const tasksByCreatedAt = [...tasks].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     const fallbackIndexMap = new Map(tasksByCreatedAt.map((t, i) => [t.id, i + 1]))
@@ -181,10 +182,10 @@ export function BoardView({
                         <SelectTrigger className="h-8 w-[160px] text-sm"><SelectValue placeholder="All Assignees" /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">All Assignees</SelectItem>
-                            {members.filter(m => m.userId).length > 0 && (
+                            {assignableMembers.length > 0 && (
                                 <SelectGroup>
                                     <SelectLabel>Members</SelectLabel>
-                                    {members.filter(m => m.userId).map(m => <SelectItem key={m.userId} value={m.userId}>{m.userName || m.userEmail}</SelectItem>)}
+                                    {assignableMembers.map(m => <SelectItem key={m.userId} value={m.userId}>{m.userName || m.userEmail}</SelectItem>)}
                                 </SelectGroup>
                             )}
                             {agents.filter(a => a.status === 'active').length > 0 && (

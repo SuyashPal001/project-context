@@ -2,10 +2,10 @@ import { pgTable, uuid, text, timestamp, boolean, integer, decimal, pgEnum, inde
 import { json, jsonb } from 'drizzle-orm/pg-core';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
-const vector = customType<{ data: number[]; driverData: string }>({
+const vector = customType<{ data: number[] | null; driverData: string | null }>({
   dataType() { return 'vector(768)'; },
-  toDriver(value: number[]): string { return `[${value.join(',')}]`; },
-  fromDriver(value: string): number[] { return value.slice(1, -1).split(',').map(Number); },
+  toDriver(value: number[] | null): string | null { return value ? `[${value.join(',')}]` : null; },
+  fromDriver(value: string | null): number[] | null { return value ? value.slice(1, -1).split(',').map(Number) : null; },
 });
 import { tenants } from './tenancy';
 import { users } from './auth';
@@ -101,7 +101,7 @@ export const agentTasks = pgTable('agent_tasks', {
   downvotes: integer('downvotes').notNull().default(0),
   referenceText: text('reference_text'),
   links: jsonb('links').$type<string[]>().default([]),
-  attachmentFileIds: text('attachment_file_ids').array().notNull().default([]),
+  attachmentFileIds: jsonb('attachment_file_ids').$type<string[]>().notNull().default([]),
   sortOrder: integer('sort_order').default(0),
   mastraRunId: text('mastra_run_id'),
   // PM hierarchy fields (added migration 0021)

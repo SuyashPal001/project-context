@@ -93,7 +93,7 @@ export async function retrieveChunks(
         embedding <=> ${vectorStr}::vector                              AS vector_score,
         ts_rank(tsv, websearch_to_tsquery('english', ${query}))         AS text_score
       FROM knowledge_chunks
-      WHERE tenant_id = ${tenantId}
+      WHERE (tenant_id = ${tenantId} OR tenant_id IS NULL)
         AND invalidated_at IS NULL
         AND (
           embedding <=> ${vectorStr}::vector < 0.7

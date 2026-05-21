@@ -38,6 +38,17 @@ export const handler: PreTokenGenerationTriggerHandler = async (
   const cognitoId = event.request.userAttributes.sub;
   console.log('[pretoken] step=start', { cognitoId, userName: event.userName });
 
+  // Platform admins have no tenant — they live in the ops portal only.
+  // Detect them by email before any DB lookup so the check works even before
+  // userUpsertMiddleware has created their platform DB row on first API call.
+  const emailFromEvent = event.request.userAttributes.email;
+  const adminEmails = (process.env.PLATFORM_ADMIN_EMAILS ?? '')
+    .split(',').map(e => e.trim()).filter(Boolean);
+  if (emailFromEvent && adminEmails.includes(emailFromEvent)) {
+    console.log('[pretoken] platform_admin detected', { email: emailFromEvent });
+    return platformAdminClaimsResponse(event);
+  }
+
   // Step 1 — find user in our DB by cognitoId
   // User is created here via middleware upsert on first API call (Volca pattern, ADR-024)
   // If not found yet, stamp empty claims — do not throw
@@ -218,6 +229,32 @@ export const handler: PreTokenGenerationTriggerHandler = async (
     plan: subscription.plan,
   });
 
+  return event;
+};
+
+/**
+ * Helper — stamps platform_admin role with no tenant
+ * Platform admins live in the ops portal and have no tenant association
+ */
+const platformAdminClaimsResponse = (event: PreTokenGenerationTriggerEvent) => {
+  (event as any).response = {
+    claimsAndScopeOverrideDetails: {
+      idTokenGeneration: {
+        claimsToAddOrOverride: {
+          'custom:tenantId': '',
+          'custom:role': 'platform_admin',
+          'custom:plan': 'free',
+        },
+      },
+      accessTokenGeneration: {
+        claimsToAddOrOverride: {
+          'custom:tenantId': '',
+          'custom:role': 'platform_admin',
+          'custom:plan': 'free',
+        },
+      },
+    },
+  };
   return event;
 };
 

@@ -10,8 +10,72 @@
 import 'dotenv/config';
 import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
+import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
 import { getAdapter } from './router';
+
+// ---------------------------------------------------------------------------
+// Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
+// ---------------------------------------------------------------------------
+
+const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
+
+async function handleEmbeddings(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let body: string;
+  try { body = await readBody(req); } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Failed to read request body' } }));
+    return;
+  }
+
+  let payload: { model?: string; input: string | string[] };
+  try { payload = JSON.parse(body); } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Invalid JSON' } }));
+    return;
+  }
+
+  const embModel = payload.model ?? 'text-embedding-004';
+  const inputs = Array.isArray(payload.input) ? payload.input : [payload.input];
+  const PROJECT = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? '';
+  const LOCATION = process.env.VERTEX_LOCATION ?? process.env.GCLOUD_LOCATION ?? 'us-central1';
+  const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${embModel}:predict`;
+
+  try {
+    const client = await _auth.getClient();
+    const tokenResp = await client.getAccessToken();
+    const token = tokenResp.token;
+
+    const vertexResp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instances: inputs.map(content => ({ content })) }),
+    });
+
+    if (!vertexResp.ok) {
+      const errText = await vertexResp.text();
+      console.error('[vertex-proxy] embed error:', vertexResp.status, errText);
+      res.writeHead(vertexResp.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: errText } }));
+      return;
+    }
+
+    const vertexData = await vertexResp.json() as { predictions: Array<{ embeddings: { values: number[] } }> };
+    const data = vertexData.predictions.map((p, i) => ({
+      object: 'embedding' as const,
+      index: i,
+      embedding: p.embeddings.values,
+    }));
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ object: 'list', data, model: embModel }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    console.error('[vertex-proxy] embed exception:', message);
+    if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message } }));
+  }
+}
 
 const PORT = parseInt(process.env.PORT ?? '4001', 10);
 const DEFAULT_MODEL = process.env.VERTEX_MODEL ?? 'gemini-2.5-flash';
@@ -151,6 +215,12 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
       object: 'list',
       data: [{ id: DEFAULT_MODEL, object: 'model', created: 0, owned_by: 'google' }],
     }));
+    return;
+  }
+
+  // Embeddings
+  if (req.method === 'POST' && req.url === '/v1/embeddings') {
+    await handleEmbeddings(req, res);
     return;
   }
 

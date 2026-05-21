@@ -205,6 +205,35 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
+    // Seed Architect Agent as paused — visible in agent list, routes to architectAgent in relay
+    const archRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const archKeyHash = createHash('sha256').update(archRawKey).digest('hex');
+    const [archKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Architect API Key',
+        type: 'agent',
+        keyHash: archKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [archAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'Architect',
+        type: 'custom',
+        status: 'active',
+        apiKeyId: archKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: archAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are the technical architect. Always call retrieve_knowledge before answering any technical question about the codebase.',
+        tools: [],
+        status: 'active',
+    });
+
     // Step 6: Return response
     return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
 });

@@ -21,7 +21,7 @@ const tsvector = customType<{ data: string; driverData: string }>({
 
 export const knowledgeChunks = pgTable('knowledge_chunks', {
   id:             uuid('id').primaryKey().defaultRandom(),
-  tenantId:       uuid('tenant_id').notNull(),
+  tenantId:       uuid('tenant_id'),
 
   // classification
   layer:          text('layer').notNull(),

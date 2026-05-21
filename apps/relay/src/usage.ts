@@ -73,21 +73,6 @@ export async function fetchAgentName(agentId: string): Promise<string | null> {
   return name
 }
 
-export async function fetchAgentModelId(agentId: string): Promise<string | null> {
-  const p = getPool()
-  const agentRes = await p.query<{ llm_provider_id: string | null }>(
-    'SELECT llm_provider_id FROM agents WHERE id = $1',
-    [agentId],
-  )
-  const llmProviderId = agentRes.rows[0]?.llm_provider_id ?? null
-  if (!llmProviderId) return null
-  const provRes = await p.query<{ openclaw_model_id: string }>(
-    'SELECT openclaw_model_id FROM llm_providers WHERE id = $1 AND status = \'live\'',
-    [llmProviderId],
-  )
-  return provRes.rows[0]?.openclaw_model_id ?? null
-}
-
 export async function fetchAgentSlug(agentId: string): Promise<string | null> {
   // agentId is now the immutable container slug — no DB lookup needed
   return agentId || null

@@ -59,7 +59,7 @@ export function CreateTaskDialog({
     })
 
     const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? []
-    const members = membersData?.members ?? []
+    const members = (membersData?.members ?? []).filter(m => m.status === 'active' && m.userId)
 
     const [selectedAssignee, setSelectedAssignee] = useState<Assignee | null>(null)
     const [selectedPriority, setSelectedPriority] = useState<'low' | 'medium' | 'high' | 'urgent'>('medium')
