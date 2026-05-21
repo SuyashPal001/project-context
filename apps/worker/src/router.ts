@@ -8,6 +8,8 @@ import { handleUsageRecord } from './handlers/usageRecord';
 import { handleDocumentIngest, DocumentIngestPayload } from './handlers/documentIngest';
 import { handleEvalAuto } from './handlers/evalAuto';
 import { handleWorkflowFire } from './handlers/workflowFire';
+import { handleKnowledgeSync } from './handlers/knowledgeSync';
+import { handleKnowledgeInitialIndex } from './handlers/knowledgeInitialIndex';
 
 export async function route(body: Record<string, unknown>): Promise<void> {
   const type = body.type as string | undefined;
@@ -42,6 +44,12 @@ export async function route(body: Record<string, unknown>): Promise<void> {
       break;
     case 'workflow.fire':
       await handleWorkflowFire(body);
+      break;
+    case 'knowledge.sync':
+      await handleKnowledgeSync(body);
+      break;
+    case 'knowledge.initial_index':
+      await handleKnowledgeInitialIndex(body);
       break;
     default:
       console.log('Worker received unknown job type — skipping', { type });

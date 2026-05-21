@@ -1,3 +1,4 @@
+import { Github } from "lucide-react";
 import {
     GmailIcon, DriveIcon, CalendarIcon, ZohoIcon, JiraIcon,
     M365Icon, SlackIcon, NotionIcon, WhatsAppIcon,
@@ -25,6 +26,7 @@ export const CONNECT_URLS: Record<string, string> = {
     zoho_mail: '/api/v1/integrations/zoho/mail/connect',
     zoho_cliq: '/api/v1/integrations/zoho/cliq/connect',
     jira:      '/api/v1/integrations/jira/connect',
+    github:    '/api/v1/integrations/github/connect',
 };
 
 export const CONNECTED_NAMES: Record<string, string> = {
@@ -35,6 +37,7 @@ export const CONNECTED_NAMES: Record<string, string> = {
     zoho_mail: 'Zoho Mail',
     zoho_cliq: 'Zoho Cliq',
     jira:      'Jira',
+    github:    'GitHub',
 };
 
 export const CATALOGUE: CatalogueEntry[] = [
@@ -92,6 +95,14 @@ export const CATALOGUE: CatalogueEntry[] = [
         description: 'Read and write issues and projects',
         scopes: ['Issues', 'Projects', 'Comments'],
         icon: <JiraIcon className="w-8 h-8" />,
+        available: true,
+    },
+    {
+        provider: 'github',
+        name: 'GitHub',
+        description: 'Connect repos — PR merges keep your codebase knowledge base up to date',
+        scopes: ['Repos', 'Contents', 'Webhooks'],
+        icon: <Github className="w-8 h-8" />,
         available: true,
     },
     {

@@ -37,6 +37,9 @@ import { webhooksRoutes } from './routes/webhooks';
 import { filesRoutes } from './routes/files';
 import { eventsRoutes } from './routes/events';
 import { integrationsRoutes, googleOAuthCallbackRoute, zohoOAuthCallbackRoute, jiraOAuthCallbackRoute } from './routes/integrations';
+import { githubIntegrationRoute } from './routes/integrations.github';
+import { githubCallbackRoute } from './routes/integrations.github.callback';
+import { githubWebhookRoute } from './routes/integrations.github.webhook';
 import { llmProvidersRoutes } from './routes/llm-providers';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { widgetRoutes } from './routes/widget';
@@ -91,6 +94,8 @@ publicApi.route('/widget', widgetRoutes);
 publicApi.route('/integrations', googleOAuthCallbackRoute); // Google OAuth callback — no auth
 publicApi.route('/integrations', zohoOAuthCallbackRoute);   // Zoho OAuth callback — no auth
 publicApi.route('/integrations', jiraOAuthCallbackRoute);   // Jira OAuth callback — no auth
+publicApi.route('/integrations', githubCallbackRoute);      // GitHub App install callback — no auth
+publicApi.route('/integrations', githubWebhookRoute);       // GitHub webhook receiver — HMAC verified
 
 const api = new Hono<AppEnv>();
 
@@ -190,6 +195,7 @@ api.route('/webhooks', webhooksRoutes);
 api.route('/events', eventsRoutes);
 api.route('/files', filesRoutes);
 api.route('/integrations', integrationsRoutes);
+api.route('/integrations', githubIntegrationRoute);
 api.route('/conversations', evalsFeedbackRoutes);
 api.route('/conversations', conversationsRoutes);
 api.route('/conversations', messagesRoutes);

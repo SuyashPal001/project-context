@@ -15,6 +15,7 @@ import { CATALOGUE, GOVT_CATALOGUE, CONNECT_URLS, CONNECTED_NAMES, type Catalogu
 import { UsageBar } from "./UsageBar";
 import { IntegrationCard } from "./IntegrationCard";
 import { DisconnectDialog } from "./DisconnectDialog";
+import { GithubRepos } from "./GithubRepos";
 
 interface EntitlementsResponse {
     integrations?: { used: number; limit: number; unlimited: boolean };
@@ -140,6 +141,8 @@ export default function IntegrationsPage() {
                             />
                         ))}
                 </div>
+
+                {isConnected('github') && <GithubRepos />}
 
                 {/* Government Systems — requires approval */}
                 <div className="pt-4">
