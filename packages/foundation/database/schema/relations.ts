@@ -3,6 +3,7 @@ import { users } from './auth';
 import { memberships, tenants } from './tenancy';
 import { roles } from './authorization';
 import { agents, agentTasks, taskSteps, taskEvents, taskDependencies } from './agents';
+import { githubInstallations, githubRepos } from './github';
 
 export const membershipsRelations = relations(memberships, ({ one }) => ({
     user: one(users, {
@@ -80,5 +81,24 @@ export const taskEventsRelations = relations(taskEvents, ({ one }) => ({
     tenant: one(tenants, {
         fields: [taskEvents.tenantId],
         references: [tenants.id],
+    }),
+}));
+
+export const githubInstallationsRelations = relations(githubInstallations, ({ one, many }) => ({
+    tenant: one(tenants, {
+        fields: [githubInstallations.tenantId],
+        references: [tenants.id],
+    }),
+    repos: many(githubRepos),
+}));
+
+export const githubReposRelations = relations(githubRepos, ({ one }) => ({
+    tenant: one(tenants, {
+        fields: [githubRepos.tenantId],
+        references: [tenants.id],
+    }),
+    installation: one(githubInstallations, {
+        fields: [githubRepos.installationId],
+        references: [githubInstallations.installationId],
     }),
 }));

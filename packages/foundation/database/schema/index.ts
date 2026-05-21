@@ -17,3 +17,4 @@ export * from './documents';
 export * from './knowledge';
 export * from './intelligence';
 export * from './pm';
+export * from './github';

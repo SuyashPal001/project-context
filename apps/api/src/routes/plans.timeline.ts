@@ -99,7 +99,7 @@ export async function handlePlanTimeline(c: Context<AppEnv>) {
     ]);
 
     // Round trip 3: all dependencies internal to this plan's tasks (skip if no tasks)
-    const taskIds = tasks.map((t) => t.id);
+    const taskIds = tasks.map((t: typeof tasks[number]) => t.id);
     type DepRow = { id: string; fromTaskId: string; toTaskId: string; relationType: string };
     let allDeps: DepRow[] = [];
 
@@ -131,7 +131,7 @@ export async function handlePlanTimeline(c: Context<AppEnv>) {
         data: {
             plan,
             milestones,
-            tasks: tasks.map((t) => ({ ...t, dependencies: depsByTask.get(t.id) ?? [] })),
+            tasks: tasks.map((t: typeof tasks[number]) => ({ ...t, dependencies: depsByTask.get(t.id) ?? [] })),
         },
     });
 }
