@@ -96,6 +96,7 @@ function LoginPageContent() {
             // platform_admin check must come before needsOnboarding — ops admins
             // have no tenant by design so needsOnboarding would always be true for them
             if (me.role === 'platform_admin') {
+                finishHyperspace();
                 router.push('/ops');
                 router.refresh();
                 return;
