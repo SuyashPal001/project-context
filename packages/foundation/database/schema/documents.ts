@@ -1,5 +1,7 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp, varchar, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, jsonb, timestamp, varchar, index, uniqueIndex, pgEnum } from 'drizzle-orm/pg-core';
 import { customType } from 'drizzle-orm/pg-core';
+
+export const sensitivityLevelEnum = pgEnum('sensitivity_level', ['public', 'internal', 'confidential', 'restricted']);
 import { tenants } from './tenancy';
 import { users } from './auth';
 
@@ -31,8 +33,9 @@ export const documents = pgTable('documents', {
   name:       text('name').notNull(),
   fileKey:    text('file_key'),
   mimeType:   text('mime_type'),
-  status:     text('status').notNull().default('pending'),
-  hash:       varchar('hash', { length: 64 }).notNull(),
+  status:          text('status').notNull().default('pending'),
+  sensitivityLevel: sensitivityLevelEnum('sensitivity_level').notNull().default('internal'),
+  hash:            varchar('hash', { length: 64 }).notNull(),
   chunkCount: integer('chunk_count').notNull().default(0),
   error:      text('error'),
   metadata:   jsonb('metadata'),
@@ -46,10 +49,11 @@ export const documentChunks = pgTable('document_chunks', {
   id:         uuid('id').primaryKey(),
   tenantId:   uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   documentId: uuid('document_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
-  content:    text('content').notNull(),
-  embedding:  vector('embedding'),
-  tsv:        tsvector('tsv'),
-  chunkIndex: integer('chunk_index').notNull(),
+  content:         text('content').notNull(),
+  sensitivityLevel: sensitivityLevelEnum('sensitivity_level').notNull().default('internal'),
+  embedding:       vector('embedding'),
+  tsv:             tsvector('tsv'),
+  chunkIndex:      integer('chunk_index').notNull(),
   metadata:   jsonb('metadata'),
   createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

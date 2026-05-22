@@ -4,8 +4,10 @@ import { zValidator } from '@hono/zod-validator';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '@serverless-saas/database';
+import { auditLog } from '@serverless-saas/database/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import { documents } from '@serverless-saas/database/schema/documents';
+import { documents, documentChunks } from '@serverless-saas/database/schema/documents';
+import { hasPermission } from '@serverless-saas/permissions';
 import { publishToQueue } from '../lib/sqs';
 import type { AppEnv } from '../types';
 
@@ -119,6 +121,45 @@ documentsRoutes.post(
       console.error('Failed to create document:', error);
       return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
     }
+  }
+);
+
+// PATCH /api/v1/documents/:id/classification
+documentsRoutes.patch(
+  '/:id/classification',
+  zValidator('json', z.object({
+    sensitivityLevel: z.enum(['public', 'internal', 'confidential', 'restricted']),
+  })),
+  async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const userId = c.get('userId');
+    const { id } = c.req.param();
+    const { sensitivityLevel } = c.req.valid('json');
+
+    const permissions = requestContext?.permissions ?? [];
+    if (!hasPermission(permissions, 'documents', 'create')) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const [updated] = await db.update(documents)
+      .set({ sensitivityLevel, updatedAt: new Date() })
+      .where(and(eq(documents.id, id), eq(documents.tenantId, tenantId)))
+      .returning({ id: documents.id });
+
+    if (!updated) return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404);
+
+    await db.update(documentChunks)
+      .set({ sensitivityLevel })
+      .where(and(eq(documentChunks.documentId, id), eq(documentChunks.tenantId, tenantId)));
+
+    await db.insert(auditLog).values({
+      tenantId, actorId: userId!, actorType: 'human',
+      action: 'document_classified', resource: 'document', resourceId: id,
+      metadata: { sensitivityLevel }, traceId: c.get('traceId') ?? '',
+    });
+
+    return c.json({ id, sensitivityLevel });
   }
 );
 

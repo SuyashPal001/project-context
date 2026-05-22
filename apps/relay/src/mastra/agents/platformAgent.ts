@@ -1,15 +1,16 @@
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
 import { createTool } from '@mastra/core/tools'
-import { ModerationProcessor, PromptInjectionDetector, SystemPromptScrubber } from '@mastra/core/processors'
+import { ModerationProcessor, PIIDetector, PromptInjectionDetector, SystemPromptScrubber } from '@mastra/core/processors'
 import { MCPClient } from '@mastra/mcp'
 import { z } from 'zod'
 import { Exa as ExaClass } from 'exa-js'
 import pg from 'pg'
 
-import { saarthiModel, saarthiLiteModel } from '../model.js'
+import { saarthiModel, saarthiLiteModel, saarthiPrivateModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
+import { createViolationHandler } from '../guardrails.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -170,12 +171,18 @@ async function getCachedMcpTools(mcpClient: MCPClient, tenantId: string): Promis
 // Switch to 'block' in production to hard-reject violating content.
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyProcessor = { onViolation?: (v: any) => void }
+
+const violationHandler = createViolationHandler()
+
 const promptInjectionDetector = new PromptInjectionDetector({
   model: saarthiLiteModel,
   strategy: 'warn',
   threshold: 0.7,
   lastMessageOnly: true,
 })
+;(promptInjectionDetector as AnyProcessor).onViolation = violationHandler
 
 const moderationProcessor = new ModerationProcessor({
   model: saarthiLiteModel,
@@ -183,10 +190,20 @@ const moderationProcessor = new ModerationProcessor({
   threshold: 0.5,
   lastMessageOnly: true,
 })
+;(moderationProcessor as AnyProcessor).onViolation = violationHandler
+
+const piiDetector = new PIIDetector({
+  model: saarthiLiteModel,
+  strategy: 'redact',
+  redactionMethod: 'placeholder',
+  lastMessageOnly: true,
+})
+;(piiDetector as AnyProcessor).onViolation = violationHandler
 
 const systemPromptScrubber = new SystemPromptScrubber({
   model: saarthiLiteModel,
 })
+;(systemPromptScrubber as AnyProcessor).onViolation = violationHandler
 
 // ---------------------------------------------------------------------------
 // One platform Agent — serves all tenants.
@@ -244,11 +261,15 @@ export const platformAgent = new Agent({
   memory: getMastraMemory(),
 
   inputProcessors: [promptInjectionDetector, moderationProcessor],
-  outputProcessors: [moderationProcessor, systemPromptScrubber],
+  outputProcessors: [piiDetector, moderationProcessor, systemPromptScrubber],
 
-  // Dynamic model: use Flash Lite for conversational turns (thinkingBudget=0),
-  // Flash for everything else. Budget is set in requestContext by chatStream.ts.
+  // Dynamic model selection:
+  //   restricted data (CASA/KYC) → private model only (set by fetchAgentContext tool)
+  //   thinkingBudget=0           → lite model (conversational turns)
+  //   default                    → full model
   model: ({ requestContext }: { requestContext: RequestContext }) => {
+    const sensitivity = requestContext?.get('maxDataSensitivity') as string | undefined
+    if (sensitivity === 'restricted') return saarthiPrivateModel
     const budget = requestContext?.get('thinkingBudget') as number | undefined
     return budget === 0 ? saarthiLiteModel : saarthiModel
   },

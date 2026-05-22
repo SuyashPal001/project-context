@@ -47,8 +47,12 @@ export const fetchAgentContext = createTool({
       })
 
       if (resp.ok) {
-        const data = await resp.json() as { chunks?: unknown[] }
+        const data = await resp.json() as { chunks?: unknown[]; maxSensitivity?: string }
         chunks = Array.isArray(data.chunks) ? (data.chunks as RawChunk[]) : []
+        // Propagate sensitivity so the model factory can enforce private-only routing
+        const sensitivity = data.maxSensitivity ?? 'internal'
+        execContext?.requestContext?.set('maxDataSensitivity', sensitivity)
+        if (sensitivity === 'restricted') console.log('[fetchAgentContext] restricted content — model will use private-only chain')
       } else {
         console.error(`[fetchAgentContext] retrieve returned ${resp.status}`)
       }

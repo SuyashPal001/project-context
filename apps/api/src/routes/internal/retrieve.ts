@@ -3,7 +3,12 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { retrieveChunks, formatContextBlock } from '@serverless-saas/ai';
+import { db } from '@serverless-saas/database';
+import { documents } from '@serverless-saas/database/schema/documents';
+import { inArray } from 'drizzle-orm';
 import type { AppEnv } from '../../types';
+
+const SENSITIVITY_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
 
 function isAuthorized(provided: string): boolean {
   const expected = process.env.INTERNAL_SERVICE_KEY;
@@ -44,7 +49,17 @@ retrieveRoute.post(
 
       const context = formatContextBlock(chunks);
 
-      return c.json({ context, chunks }, 200);
+      // Determine the highest sensitivity level across retrieved document chunks
+      const docIds = [...new Set(chunks.filter(ch => ch.source === 'document').map(ch => ch.documentId))];
+      let maxSensitivity = 'internal';
+      if (docIds.length > 0) {
+        const rows = await db.select({ s: documents.sensitivityLevel }).from(documents).where(inArray(documents.id, docIds));
+        for (const row of rows) {
+          if ((SENSITIVITY_RANK[row.s] ?? 0) > (SENSITIVITY_RANK[maxSensitivity] ?? 0)) maxSensitivity = row.s;
+        }
+      }
+
+      return c.json({ context, chunks, maxSensitivity }, 200);
     } catch (error) {
       console.error('Retrieve failed:', error);
       return c.json({ error: 'Internal server error', code: 'INTERNAL_ERROR' }, 500);

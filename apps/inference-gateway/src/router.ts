@@ -49,3 +49,11 @@ export function getAdapterChain(model: string | undefined): ProviderAdapter[] {
   if (m.startsWith('ollama/')) return [ollamaCB];
   return [vertexCB, anthropicCB, ollamaCB];
 }
+
+/**
+ * Private-only chain — used when X-Data-Classification: restricted is set.
+ * Restricted data (CASA/KYC) must never be sent to cloud providers.
+ */
+export function getPrivateOnlyChain(): ProviderAdapter[] {
+  return [ollamaCB];
+}

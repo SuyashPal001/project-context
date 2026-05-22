@@ -3,6 +3,7 @@ import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type A
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { resolveAgent, resolveAgentLabel } from '../mastra/registry.js'
+import { runWithGuardrailContext } from '../mastra/guardrails.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { fetchAgentSkill, fetchAgentName } from '../usage.js'
@@ -162,18 +163,19 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
-    const agentStream = await (activeAgent as any).stream(mastraMessage, {
-      memory: {
-        thread: conversationId || crypto.randomUUID(),
-        resource: tenantId,
-        ...(memoryOptions ? { options: memoryOptions } : {}),
-      },
-      requestContext,
-      providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
-    })
-
     let fullText = ''
     let planResult: unknown
+
+    await runWithGuardrailContext({ tenantId, conversationId }, async () => {
+      const agentStream = await (activeAgent as any).stream(mastraMessage, {
+        memory: {
+          thread: conversationId || crypto.randomUUID(),
+          resource: tenantId,
+          ...(memoryOptions ? { options: memoryOptions } : {}),
+        },
+        requestContext,
+        providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
+      })
 
     for await (const part of agentStream.fullStream as AsyncIterable<any>) {
       if (isStreamClosed()) break
@@ -267,6 +269,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         }
       }
     }
+    }) // end runWithGuardrailContext
 
     closeStream()
   } catch (err) {

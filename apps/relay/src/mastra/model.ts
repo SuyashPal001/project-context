@@ -17,5 +17,8 @@ const google = createGoogleGenerativeAI({
 export const saarthiModel = google(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
 
 // Lightweight model for conversational turns (thinkingBudget === 0).
-// Cuts LLM span from ~5.8s to ~1-2s on simple messages.
 export const saarthiLiteModel = google(process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
+
+// Private-only model for restricted data (CASA/KYC).
+// Routes to OllamaAdapter in the inference gateway — never leaves bank infrastructure.
+export const saarthiPrivateModel = google(process.env.MASTRA_PRIVATE_MODEL ?? 'ollama/llama3.2')

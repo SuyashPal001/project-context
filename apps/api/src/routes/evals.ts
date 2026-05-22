@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, sql, desc } from 'drizzle-orm';
+import { and, eq, sql, desc, gte } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import {
@@ -8,6 +8,8 @@ import {
   conversationFeedback,
   conversationMetrics,
 } from '@serverless-saas/database/schema/conversations';
+import { agents } from '@serverless-saas/database/schema/agents';
+import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
@@ -171,4 +173,128 @@ evalsRoutes.get('/conversations', async (c) => {
     .offset(offset);
 
   return c.json({ data: rows });
+});
+
+// GET /evals/tokens?days=30 — token + cost breakdown by agent and by model
+evalsRoutes.get('/tokens', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'analytics', 'read')) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+
+  const days = Math.min(Math.max(parseInt(c.req.query('days') ?? '30', 10) || 30, 1), 365);
+  const since = new Date(Date.now() - days * 86_400_000);
+
+  const [byAgent, byModel] = await Promise.all([
+    db.select({
+      agentId:      conversations.agentId,
+      agentName:    agents.name,
+      totalTokens:  sql<number>`COALESCE(SUM(cm.total_tokens), 0)::int`,
+      inputTokens:  sql<number>`COALESCE(SUM(cm.input_tokens), 0)::int`,
+      outputTokens: sql<number>`COALESCE(SUM(cm.output_tokens), 0)::int`,
+      totalCost:    sql<number>`COALESCE(SUM(cm.total_cost::numeric), 0)::float`,
+      conversations: sql<number>`COUNT(*)::int`,
+    })
+      .from(conversationMetrics)
+      .innerJoin(conversations, eq(conversations.id, conversationMetrics.conversationId))
+      .innerJoin(agents, eq(agents.id, conversations.agentId))
+      .where(and(eq(conversationMetrics.tenantId, tenantId), gte(conversationMetrics.createdAt, since)))
+      .groupBy(conversations.agentId, agents.name)
+      .orderBy(desc(sql`SUM(cm.total_tokens)`)),
+
+    db.select({
+      model:        messages.model,
+      messageCount: sql<number>`COUNT(*)::int`,
+      totalTokens:  sql<number>`COALESCE(SUM(token_count), 0)::int`,
+    })
+      .from(messages)
+      .where(and(eq(messages.tenantId, tenantId), gte(messages.createdAt, since)))
+      .groupBy(messages.model)
+      .orderBy(desc(sql`SUM(token_count)`)),
+  ]);
+
+  return c.json({ data: { byAgent, byModel, period: { days, from: since.toISOString() } } });
+});
+
+// GET /evals/errors?days=7 — tool error rates and failure summary
+evalsRoutes.get('/errors', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'analytics', 'read')) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+
+  const days = Math.min(Math.max(parseInt(c.req.query('days') ?? '7', 10) || 7, 1), 90);
+  const since = new Date(Date.now() - days * 86_400_000);
+
+  const rows = await db.select({
+    toolName:   toolCallLogs.toolName,
+    total:      sql<number>`COUNT(*)::int`,
+    failures:   sql<number>`SUM(CASE WHEN NOT success THEN 1 ELSE 0 END)::int`,
+    avgLatency: sql<number>`COALESCE(AVG(latency_ms), 0)::int`,
+  })
+    .from(toolCallLogs)
+    .where(and(eq(toolCallLogs.tenantId, tenantId), gte(toolCallLogs.createdAt, since)))
+    .groupBy(toolCallLogs.toolName)
+    .orderBy(desc(sql`SUM(CASE WHEN NOT success THEN 1 ELSE 0 END)`));
+
+  const tools = rows.map((r: typeof rows[number]) => ({
+    toolName: r.toolName, total: r.total, failures: r.failures,
+    errorRate: r.total > 0 ? Math.round((r.failures / r.total) * 1000) / 10 : 0,
+    avgLatencyMs: r.avgLatency,
+  }));
+
+  return c.json({ data: { tools, period: { days, from: since.toISOString() } } });
+});
+
+// GET /evals/export?days=30 — CSV export of conversation metrics for periodic reports
+evalsRoutes.get('/export', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'analytics', 'read')) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+
+  const days = Math.min(Math.max(parseInt(c.req.query('days') ?? '30', 10) || 30, 1), 365);
+  const since = new Date(Date.now() - days * 86_400_000);
+
+  const rows = await db.select({
+    conversationId: conversationMetrics.conversationId,
+    agentName:      agents.name,
+    createdAt:      conversationMetrics.createdAt,
+    totalTokens:    conversationMetrics.totalTokens,
+    inputTokens:    conversationMetrics.inputTokens,
+    outputTokens:   conversationMetrics.outputTokens,
+    totalCost:      conversationMetrics.totalCost,
+    responseTimeMs: conversationMetrics.responseTimeMs,
+    ragFired:       conversationMetrics.ragFired,
+    ragChunks:      conversationMetrics.ragChunksRetrieved,
+  })
+    .from(conversationMetrics)
+    .innerJoin(conversations, eq(conversations.id, conversationMetrics.conversationId))
+    .innerJoin(agents, eq(agents.id, conversations.agentId))
+    .where(and(eq(conversationMetrics.tenantId, tenantId), gte(conversationMetrics.createdAt, since)))
+    .orderBy(desc(conversationMetrics.createdAt))
+    .limit(10_000);
+
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const header = 'conversation_id,agent,timestamp,total_tokens,input_tokens,output_tokens,cost_usd,response_time_ms,rag_fired,rag_chunks'
+  type ExportRow = typeof rows[number];
+  const csvRows = rows.map((r: ExportRow) => [
+    esc(r.conversationId), esc(r.agentName), esc(r.createdAt?.toISOString()),
+    esc(r.totalTokens), esc(r.inputTokens), esc(r.outputTokens),
+    esc(r.totalCost), esc(r.responseTimeMs), esc(r.ragFired), esc(r.ragChunks),
+  ].join(','))
+
+  const date = new Date().toISOString().slice(0, 10)
+  return new Response([header, ...csvRows].join('\n'), {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="usage-report-${date}.csv"`,
+    },
+  });
 });

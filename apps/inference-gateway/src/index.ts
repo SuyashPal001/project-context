@@ -12,7 +12,7 @@ import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
-import { getAdapterChain, vertexBreaker, anthropicBreaker, ollamaBreaker } from './router';
+import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker } from './router';
 import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
 
 // ---------------------------------------------------------------------------
@@ -118,7 +118,8 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
   }
 
   const model = payload.model ?? DEFAULT_MODEL;
-  const chain = getAdapterChain(model);
+  const restricted = req.headers['x-data-classification'] === 'restricted';
+  const chain = restricted ? getPrivateOnlyChain() : getAdapterChain(model);
   const tried: string[] = [];
   let lastError: unknown;
 
