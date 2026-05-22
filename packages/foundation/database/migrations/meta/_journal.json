@@ -232,6 +232,20 @@
       "when": 1779984000000,
       "tag": "0032_github_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1780070400000,
+      "tag": "0033_agent_fairness_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1780156800000,
+      "tag": "0034_document_sensitivity",
+      "breakpoints": true
     }
   ]
 }
