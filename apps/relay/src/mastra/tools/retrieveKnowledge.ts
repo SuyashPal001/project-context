@@ -15,7 +15,7 @@ function getPool(): pg.Pool {
 }
 
 async function embedQuery(query: string): Promise<number[] | null> {
-  const proxyUrl = process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001'
+  const proxyUrl = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
   try {
     const resp = await fetch(`${proxyUrl}/v1/embeddings`, {
       method: 'POST',

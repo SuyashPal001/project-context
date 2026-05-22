@@ -171,7 +171,7 @@ async function getCachedMcpTools(mcpClient: MCPClient, tenantId: string): Promis
 //               Falls back to SERVER_TOOLS when requestContext has no tenantId
 //               (e.g., during tool discovery calls from Mastra Studio).
 // memory:       getMastraMemory() singleton — isolation enforced by resourceId.
-// model:        routes through vertex-proxy at VERTEX_PROXY_URL.
+// model:        AI SDK connector routes through Inference Gateway at INFERENCE_GATEWAY_URL.
 // ---------------------------------------------------------------------------
 
 export const platformAgent = new Agent({

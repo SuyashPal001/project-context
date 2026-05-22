@@ -6,6 +6,7 @@ import { handleListOverrides, handleCreateOverride, handleRevokeOverride } from 
 import { handleKnowledgeGaps, handleEvalScores, handleToolPerformance, handleEvalsResults } from './ops.intelligence';
 import { handleFinops, handleOverview } from './ops.finops';
 import { handleListTeam, handleCreateTeamMember, handleDeleteTeamMember } from './ops.team';
+import { handleListFairnessReviews, handleOpsRunFairness } from './ops.fairness';
 
 export const opsRoutes = new Hono<AppEnv>();
 
@@ -41,3 +42,7 @@ opsRoutes.get('/overview', handleOverview);
 opsRoutes.get('/team', handleListTeam);
 opsRoutes.post('/team', handleCreateTeamMember);
 opsRoutes.delete('/team/:userId', handleDeleteTeamMember);
+
+// Fairness reviews
+opsRoutes.get('/fairness', handleListFairnessReviews);
+opsRoutes.post('/fairness/:agentId/run', handleOpsRunFairness);
