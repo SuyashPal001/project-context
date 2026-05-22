@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
 import { createTool } from '@mastra/core/tools'
+import { ModerationProcessor, PromptInjectionDetector, SystemPromptScrubber } from '@mastra/core/processors'
 import { MCPClient } from '@mastra/mcp'
 import { z } from 'zod'
 import { Exa as ExaClass } from 'exa-js'
@@ -164,6 +165,30 @@ async function getCachedMcpTools(mcpClient: MCPClient, tenantId: string): Promis
 }
 
 // ---------------------------------------------------------------------------
+// Guardrail processors — run on every message, input and output.
+// strategy: 'warn' in demo/dev — logs violations but does not block.
+// Switch to 'block' in production to hard-reject violating content.
+// ---------------------------------------------------------------------------
+
+const promptInjectionDetector = new PromptInjectionDetector({
+  model: saarthiLiteModel,
+  strategy: 'warn',
+  threshold: 0.7,
+  lastMessageOnly: true,
+})
+
+const moderationProcessor = new ModerationProcessor({
+  model: saarthiLiteModel,
+  strategy: 'warn',
+  threshold: 0.5,
+  lastMessageOnly: true,
+})
+
+const systemPromptScrubber = new SystemPromptScrubber({
+  model: saarthiLiteModel,
+})
+
+// ---------------------------------------------------------------------------
 // One platform Agent — serves all tenants.
 //
 // instructions: dynamic — fetches latest published agentTemplate from DB.
@@ -217,6 +242,9 @@ export const platformAgent = new Agent({
   },
 
   memory: getMastraMemory(),
+
+  inputProcessors: [promptInjectionDetector, moderationProcessor],
+  outputProcessors: [moderationProcessor, systemPromptScrubber],
 
   // Dynamic model: use Flash Lite for conversational turns (thinkingBudget=0),
   // Flash for everything else. Budget is set in requestContext by chatStream.ts.
