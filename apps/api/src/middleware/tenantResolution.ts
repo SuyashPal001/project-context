@@ -26,15 +26,6 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
     const jwtPayload = c.get('jwtPayload');
     const tenantId = jwtPayload?.['custom:tenantId'];
 
-    // Platform admins operate the ops portal across all tenants — no tenant context required.
-    // Scoped to /ops/* so platform admins still hit normal tenant flow on tenant routes
-    // (avoids skipping downstream entitlements/permissions/queryScope without a tenant).
-    // Each /ops route still enforces its own isPlatformAdmin guard.
-    if (jwtPayload?.['custom:role'] === 'platform_admin' && c.req.path.startsWith('/api/v1/ops')) {
-        c.set('requestContext', { isPlatformAdmin: true } as any);
-        return next();
-    }
-
     // Empty tenantId = new user who hasn't created a workspace yet
     // Set onboarding flag and only allow specific routes through
     if (!tenantId) {

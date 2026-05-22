@@ -27,8 +27,7 @@ import { notificationsRoutes } from './routes/notifications';
 import { auditLogRoutes } from './routes/audit-log';
 import { billingRoutes } from './routes/billing';
 import { brandingRoutes } from './routes/branding';
-import { opsRoutes } from './routes/ops';
-import { agentTemplatesRoutes } from './routes/agentTemplates';
+import { opsApp } from './ops-app';
 import { authInjectionMiddleware } from './middleware/authInjection';
 import { entitlementsRoutes } from './routes/entitlements';
 import { tenantsRoutes } from './routes/tenants';
@@ -189,8 +188,6 @@ api.route('/notifications', notificationsRoutes);
 api.route('/audit-log', auditLogRoutes);
 api.route('/billing', billingRoutes);
 api.route('/branding', brandingRoutes);
-api.route('/ops', opsRoutes);
-api.route('/ops/agent-templates', agentTemplatesRoutes);
 api.route('/entitlements', entitlementsRoutes);
 api.route('/usage', usageRoutes);
 api.route('/webhooks', webhooksRoutes);
@@ -228,6 +225,7 @@ internalApi.post('/internal/artifacts/notify', handleArtifactNotify);
 // ── Mount ─────────────────────────────────────────────────────────────────────
 app.route('/api/v1', publicApi);
 app.route('/api/v1', internalApi);
+app.route('/api/v1', opsApp);   // platform-admin only — isolated from user middleware
 app.route('/api/v1', api);
 
 console.log('REGISTERED ROUTES:', api.routes.map(r => `${r.method} ${r.path}`));
