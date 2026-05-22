@@ -4,8 +4,10 @@ import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { resolveAgent, resolveAgentLabel } from '../mastra/registry.js'
 import { runWithGuardrailContext } from '../mastra/guardrails.js'
+import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
+import { calculateCostUsd } from '../mastra/cost.js'
 import { fetchAgentSkill, fetchAgentName } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
@@ -108,7 +110,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   let totalTokens = 0
   let inputTokens = 0
   let outputTokens = 0
-  const costUsd: number | undefined = undefined
+  let costUsd = 0
   let pendingMetrics: Parameters<typeof fireMetrics>[0] | null = null
   let pendingEval: Parameters<typeof fireAutoEval>[0] | null = null
   const toolCallNames = new Map<string, string>()
@@ -165,6 +167,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     let fullText = ''
     let planResult: unknown
+    let toolCallCount = 0
 
     await runWithGuardrailContext({ tenantId, conversationId }, async () => {
       const agentStream = await (activeAgent as any).stream(mastraMessage, {
@@ -202,6 +205,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const args = (p.args ?? {}) as Record<string, unknown>
           const toolCallId = (p.toolCallId ?? toolName) as string
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
+          toolCallCount++
           sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           if (toolName === 'retrieve_documents') ragFired = true
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
@@ -237,6 +241,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           inputTokens = (usage?.promptTokens as number | undefined) ?? 0
           outputTokens = (usage?.completionTokens as number | undefined) ?? 0
           totalTokens = inputTokens + outputTokens
+          const modelName = thinkingBudget === 0
+            ? (process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
+            : (process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
+          costUsd = calculateCostUsd(modelName, inputTokens, outputTokens)
 
           const responseTimeMs = Date.now() - startTime
           const cached = lastRagResult.get(tenantId)
@@ -261,6 +269,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           saveUserMessage(idToken, conversationId, message, atts)
           saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef)
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
+
+          // FREE-AI Sutra 1 — non-blocking, runs after client already received `done`
+          runFairnessCheck({ tenantId, conversationId, messageId: assistantMessageId, agentId, responseText: fullText, toolsUsed: toolCallCount })
 
           pendingMetrics = { conversationId, tenantId, ragFired, ragChunksRetrieved, responseTimeMs, totalTokens, inputTokens, outputTokens, userMessageCount: 1, costUsd }
           if (ragFired) pendingEval = { conversationId, messageId: assistantMessageId, tenantId, question: message, retrievedChunks: ragChunks, answer: fullText }

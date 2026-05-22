@@ -61,6 +61,7 @@ import internalTasksRoute from './routes/internal/tasks';
 import { internalWorkflowsRoute } from './routes/internal/workflows';
 import internalIntegrationsRoute from './routes/internal/integrations';
 import internalGuardrailsRoute from './routes/internal/guardrails';
+import internalFairnessRoute from './routes/internal/fairness';
 import { handleArtifactNotify } from './routes/internal/artifacts';
 import { randomUUID } from 'crypto';
 import { initCognito } from '@serverless-saas/auth';
@@ -221,6 +222,7 @@ internalApi.route('/internal/tasks', internalTasksRoute);
 internalApi.route('/internal/workflows', internalWorkflowsRoute);
 internalApi.route('/internal/integrations', internalIntegrationsRoute);
 internalApi.route('/internal/guardrails', internalGuardrailsRoute);
+internalApi.route('/internal/fairness', internalFairnessRoute);
 internalApi.post('/internal/artifacts/notify', handleArtifactNotify);
 
 // ── Mount ─────────────────────────────────────────────────────────────────────
