@@ -43,10 +43,12 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
             return new NextResponse(null, { status: 204 });
         }
 
-        return new NextResponse(data, {
-            status: res.status,
-            headers: { 'Content-Type': 'application/json' },
-        });
+        const contentType = res.headers.get('content-type') ?? 'application/json';
+        const responseHeaders: Record<string, string> = { 'Content-Type': contentType };
+        const contentDisp = res.headers.get('content-disposition');
+        if (contentDisp) responseHeaders['Content-Disposition'] = contentDisp;
+
+        return new NextResponse(data, { status: res.status, headers: responseHeaders });
     } catch (err: unknown) {
         console.error('[proxy error]', req.method, url, err);
         const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');

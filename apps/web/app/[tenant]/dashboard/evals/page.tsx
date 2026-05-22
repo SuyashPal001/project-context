@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThumbsUp, ThumbsDown, TrendingUp, Zap, Clock, DollarSign, Lock } from "lucide-react";
+import { TokenUsageTab } from "./TokenUsageTab";
+import { ToolErrorsTab } from "./ToolErrorsTab";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -257,6 +259,7 @@ export default function EvalsPage() {
 }
 
 function EvalsPageContent({ tenantId, plan, isFree, slug }: { tenantId: string; plan: string; isFree: boolean; slug: string }) {
+    const [days, setDays] = useState<7 | 30 | 90>(30);
 
     const { data: summary, isLoading } = useQuery<EvalsSummary>({
         queryKey: ["evals-summary", tenantId],
@@ -292,11 +295,27 @@ function EvalsPageContent({ tenantId, plan, isFree, slug }: { tenantId: string; 
 
     return (
         <div className="space-y-8">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight text-foreground">Evals</h1>
-                <p className="text-muted-foreground mt-2">
-                    Quality metrics and user feedback for your AI agents.
-                </p>
+            <div className="flex items-start justify-between">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Evals</h1>
+                    <p className="text-muted-foreground mt-2">
+                        Quality metrics and user feedback for your AI agents.
+                    </p>
+                </div>
+                <div className="flex items-center gap-1 p-1 rounded-lg border border-border bg-muted/30">
+                    {([7, 30, 90] as const).map((d) => (
+                        <button
+                            key={d}
+                            onClick={() => setDays(d)}
+                            className={cn(
+                                "px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                                days === d ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            {d}d
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Metric cards */}
@@ -344,13 +363,21 @@ function EvalsPageContent({ tenantId, plan, isFree, slug }: { tenantId: string; 
             <Tabs defaultValue="feedback">
                 <TabsList>
                     <TabsTrigger value="feedback">Feedback</TabsTrigger>
-                    <TabsTrigger value="metrics">Conversation Metrics</TabsTrigger>
+                    <TabsTrigger value="metrics">Conversations</TabsTrigger>
+                    <TabsTrigger value="tokens">Token Usage</TabsTrigger>
+                    <TabsTrigger value="errors">Tool Errors</TabsTrigger>
                 </TabsList>
                 <TabsContent value="feedback" className="mt-4">
                     <FeedbackTab />
                 </TabsContent>
                 <TabsContent value="metrics" className="mt-4">
                     <ConversationMetricsTab />
+                </TabsContent>
+                <TabsContent value="tokens" className="mt-4">
+                    <TokenUsageTab days={days} />
+                </TabsContent>
+                <TabsContent value="errors" className="mt-4">
+                    <ToolErrorsTab days={days} />
                 </TabsContent>
             </Tabs>
         </div>
