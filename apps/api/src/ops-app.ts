@@ -10,13 +10,14 @@ import { agentTemplatesRoutes } from './routes/agentTemplates';
 export const opsApp = new Hono<AppEnv>();
 
 // JWT extraction only — no user session, no tenant resolution, no entitlements
-opsApp.use('*', authInjectionMiddleware);
+// MUST use '/ops/*' not '*' — opsApp is mounted before api, so '*' intercepts all /api/v1/* requests
+opsApp.use('/ops/*', authInjectionMiddleware);
 
 // Upsert so userId is available for ops actions (e.g. fairness "run by")
-opsApp.use('*', userUpsertMiddleware);
+opsApp.use('/ops/*', userUpsertMiddleware);
 
 // Hard gate: only platform_admin JWTs reach ops routes
-opsApp.use('*', async (c, next) => {
+opsApp.use('/ops/*', async (c, next) => {
     const jwtPayload = c.get('jwtPayload') as any;
     if (jwtPayload?.['custom:role'] !== 'platform_admin') {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
