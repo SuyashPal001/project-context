@@ -1,5 +1,6 @@
 import type { SQSEvent, SQSBatchResponse, SQSBatchItemFailure } from 'aws-lambda';
 import { route } from './router';
+import { initSecrets } from './lib/initSecrets';
 
 /**
  * Foundation Worker Lambda — SQS consumer
@@ -8,6 +9,7 @@ import { route } from './router';
  * for retry without blocking successfully processed messages.
  */
 export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
+  await initSecrets();
   const failures: SQSBatchItemFailure[] = [];
 
   for (const record of event.Records) {

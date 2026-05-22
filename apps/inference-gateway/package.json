@@ -1,7 +1,7 @@
 {
-  "name": "vertex-proxy",
+  "name": "inference-gateway",
   "version": "1.0.0",
-  "description": "OpenAI-compatible proxy for Vertex AI / Gemini with provider adapter pattern",
+  "description": "OpenAI-compatible Inference Gateway — routes requests to any model backend via swappable adapters (Vertex AI, Anthropic, Ollama, etc.)",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

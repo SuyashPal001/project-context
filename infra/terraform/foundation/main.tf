@@ -839,6 +839,11 @@ resource "aws_secretsmanager_secret" "jira_oauth" {
   description = "Atlassian OAuth 2.0 client credentials for Jira integration"
 }
 
+resource "aws_secretsmanager_secret" "github_app" {
+  name        = "${var.project}/${var.environment}/github-app"
+  description = "GitHub App credentials — JSON with app_id, app_slug, private_key, webhook_secret"
+}
+
 resource "aws_ssm_parameter" "jira_redirect_uri" {
   name  = "${local.ssm_prefix}/jira-redirect-uri"
   type  = "String"

@@ -4,13 +4,13 @@
 // index.ts → taskExecution.ts → index.ts circular dep causes a TDZ error when
 // the model is defined in index.ts.
 //
-// Uses @ai-sdk/google pointed at the local vertex-proxy (port 4001).
-// The proxy handles Vertex AI auth via service account key and caches model instances.
+// Uses @ai-sdk/google (AI SDK connector) pointed at the local Inference Gateway (port 4001).
+// The gateway handles Vertex AI auth via service account key and routes to the right model backend.
 
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 
 const google = createGoogleGenerativeAI({
-  baseURL: (process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001') + '/v1',
+  baseURL: (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001') + '/v1',
   apiKey: process.env.GEMINI_API_KEY ?? 'placeholder',
 })
 

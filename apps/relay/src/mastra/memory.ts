@@ -37,9 +37,9 @@ export function getMastraVector(): PgVector {
   return vector
 }
 
-// Embedder — reuses the same vertex-proxy as the LLM models.
+// Embedder — routes through the Inference Gateway (same as LLM models).
 const google = createGoogleGenerativeAI({
-  baseURL: (process.env.VERTEX_PROXY_URL ?? 'http://localhost:4001') + '/v1',
+  baseURL: (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001') + '/v1',
   apiKey: process.env.GEMINI_API_KEY ?? 'placeholder',
 })
 export const embedder = google.embedding('gemini-embedding-001')

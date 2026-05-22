@@ -91,6 +91,7 @@ Resources:
           JIRA_CLIENT_ID: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/jira-oauth:SecretString:client_id}}"
           JIRA_CLIENT_SECRET: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/jira-oauth:SecretString:client_secret}}"
           JIRA_REDIRECT_URI: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/jira-redirect-uri}}"
+          GITHUB_APP_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/github-app"
           TOKEN_ENCRYPTION_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/token-encryption-key"
           FRONTEND_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/frontend-url}}"
           RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
@@ -121,6 +122,7 @@ Resources:
           GCP_LOCATION: "us-central1"
           DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
           SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+          GITHUB_APP_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/github-app"
     Metadata:
       BuildMethod: makefile
 

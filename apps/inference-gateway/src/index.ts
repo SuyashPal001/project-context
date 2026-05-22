@@ -1,8 +1,8 @@
 /**
- * vertex-proxy — OpenAI-compatible HTTP server
+ * Inference Gateway — OpenAI-compatible HTTP server
  *
- * Sits between OpenClaw (OpenAI format) and backend AI providers.
- * Provider selection is handled by router.ts; each provider lives in adapters/.
+ * Single entry point between AI SDK (model selectors) and model backends.
+ * Adapter selection is handled by router.ts; each model backend adapter lives in adapters/.
  *
  * Port: 4001  (set PORT env var to override)
  */
