@@ -24,20 +24,23 @@ export async function initRuntimeSecrets(): Promise<void> {
     const serviceKeyArn = process.env.INTERNAL_SERVICE_KEY_SECRET_ARN;
     const githubAppArn = process.env.GITHUB_APP_SECRET_ARN;
 
+    const wrap = (p: Promise<void>, label: string) =>
+        p.catch((err: Error) => console.error(`[secrets] ${label} failed — skipping:`, err.message));
+
     await Promise.all([
-        upstashArn ? fetchSecret(upstashArn).then((raw) => {
+        wrap(upstashArn ? fetchSecret(upstashArn).then((raw) => {
             process.env.UPSTASH_REDIS_TOKEN = JSON.parse(raw).token;
-        }) : Promise.resolve(),
+        }) : Promise.resolve(), 'upstash'),
 
-        tokenKeyArn ? fetchSecret(tokenKeyArn).then((raw) => {
+        wrap(tokenKeyArn ? fetchSecret(tokenKeyArn).then((raw) => {
             process.env.TOKEN_ENCRYPTION_KEY = raw;
-        }) : Promise.resolve(),
+        }) : Promise.resolve(), 'token-key'),
 
-        serviceKeyArn ? fetchSecret(serviceKeyArn).then((raw) => {
+        wrap(serviceKeyArn ? fetchSecret(serviceKeyArn).then((raw) => {
             process.env.INTERNAL_SERVICE_KEY = JSON.parse(raw).key;
-        }) : Promise.resolve(),
+        }) : Promise.resolve(), 'service-key'),
 
-        githubAppArn ? fetchSecret(githubAppArn).then((raw) => {
+        wrap(githubAppArn ? fetchSecret(githubAppArn).then((raw) => {
             const parsed = JSON.parse(raw) as {
                 app_id?: string; app_slug?: string;
                 private_key?: string; webhook_secret?: string;
@@ -46,7 +49,7 @@ export async function initRuntimeSecrets(): Promise<void> {
             if (parsed.app_slug) process.env.GITHUB_APP_SLUG = parsed.app_slug;
             if (parsed.private_key) process.env.GITHUB_APP_PRIVATE_KEY = parsed.private_key;
             if (parsed.webhook_secret) process.env.GITHUB_WEBHOOK_SECRET = parsed.webhook_secret;
-        }) : Promise.resolve(),
+        }) : Promise.resolve(), 'github-app'),
     ]);
 
     // Verify Redis connectivity after credentials are injected (L1-5)
