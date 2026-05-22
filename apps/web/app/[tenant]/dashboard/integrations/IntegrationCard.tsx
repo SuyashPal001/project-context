@@ -28,11 +28,7 @@ export function IntegrationCard({
         <div
             className={cn(
                 "rounded-xl border bg-card p-6 flex flex-col gap-4 transition-colors",
-                entry.available
-                    ? "border-border"
-                    : entry.requiresApproval
-                        ? "border-amber-500/20"
-                        : "border-border/40 opacity-50"
+                entry.available ? "border-border" : "border-border/40"
             )}
         >
             <div className="flex items-start justify-between">
@@ -75,18 +71,15 @@ export function IntegrationCard({
             </div>
 
             <div className="border-t border-border/50 pt-4 flex items-center justify-between gap-2">
-                {connected && integration ? (
-                    <span className="text-[11px] text-muted-foreground">
-                        Connected{' '}
-                        {formatDistanceToNow(new Date(integration.createdAt), { addSuffix: true })}
-                    </span>
-                ) : (
-                    <span />
-                )}
+                <span className="text-[11px] text-muted-foreground">
+                    {connected && integration
+                        ? `Connected ${formatDistanceToNow(new Date(integration.createdAt), { addSuffix: true })}`
+                        : ''}
+                </span>
 
-                {entry.available && (
-                    <div className="flex items-center gap-2 ml-auto">
-                        {connected ? (
+                <div className="ml-auto">
+                    {entry.available ? (
+                        connected ? (
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -111,9 +104,15 @@ export function IntegrationCard({
                                     'Connect'
                                 )}
                             </Button>
-                        )}
-                    </div>
-                )}
+                        )
+                    ) : entry.requiresApproval ? (
+                        <Button size="sm" variant="outline" disabled className="opacity-50 cursor-not-allowed">
+                            Request Access
+                        </Button>
+                    ) : (
+                        <span className="text-[11px] font-medium text-muted-foreground">Coming soon</span>
+                    )}
+                </div>
             </div>
         </div>
     );
