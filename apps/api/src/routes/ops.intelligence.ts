@@ -19,7 +19,7 @@ export async function handleKnowledgeGaps(c: Context<AppEnv>) {
         const rows = await db
             .select({
                 tenantId: conversations.tenantId, tenantName: tenants.name,
-                questionAsked: conversations.title,
+                question: conversations.title,
                 lastSeen: sql<string>`MAX(${conversationMetrics.createdAt})`,
                 timesAsked: sql<number>`COUNT(*)`,
             })

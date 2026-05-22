@@ -1,4 +1,4 @@
-import { eq, desc, count, sum, avg, gte, countDistinct } from 'drizzle-orm';
+import { and, eq, desc, count, sum, avg, gte, countDistinct } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { tenants } from '@serverless-saas/database/schema';
 import { conversationMetrics, evalResults } from '@serverless-saas/database/schema/conversations';
@@ -90,7 +90,7 @@ export async function handleOverview(c: Context<AppEnv>) {
         db.select({ value: avg(evalResults.score) }).from(evalResults).catch(() => [{ value: null }]),
         db.select({ value: countDistinct(conversationMetrics.conversationId) })
             .from(conversationMetrics)
-            .where(eq(conversationMetrics.ragFired, true))
+            .where(and(eq(conversationMetrics.ragFired, true), eq(conversationMetrics.ragChunksRetrieved, 0)))
             .catch(() => [{ value: 0 }]),
         db.select({ value: sum(conversationMetrics.totalCost) })
             .from(conversationMetrics).where(gte(conversationMetrics.createdAt, monthStart))

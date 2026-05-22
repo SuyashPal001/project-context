@@ -1,5 +1,6 @@
 import type { ScheduledHandler } from 'aws-lambda';
 import { agentTasks, taskEvents } from '@serverless-saas/database/schema';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { db } from '@serverless-saas/database';
 import { eq, and, sql } from 'drizzle-orm';
 import { getCacheClient } from '@serverless-saas/cache';
@@ -78,6 +79,7 @@ export const handler: ScheduledHandler = async () => {
           eventType: 'status_changed',
           payload: { from: 'in_progress', to: 'blocked', reason },
         });
+        db.insert(auditLog).values({ tenantId: task.tenantId, actorId: 'system', actorType: 'system', action: 'task_timed_out', resource: 'agent_task', resourceId: task.id, metadata: { reason, from: 'in_progress', to: 'blocked' }, traceId: '' }).catch(() => {});
 
         try {
           await pushWebSocketEvent(task.tenantId, {
@@ -131,6 +133,9 @@ export const handler: ScheduledHandler = async () => {
 
     if (!updated) continue;
 
+    await db.insert(taskEvents).values({ taskId: task.id, tenantId: task.tenantId, actorType: 'system', actorId: 'system', eventType: 'status_changed', payload: { from: 'planning', to: 'blocked', reason: 'Planning timed out — relay may be unresponsive.' } });
+    db.insert(auditLog).values({ tenantId: task.tenantId, actorId: 'system', actorType: 'system', action: 'task_timed_out', resource: 'agent_task', resourceId: task.id, metadata: { reason: 'Planning timed out — relay may be unresponsive.', from: 'planning', to: 'blocked' }, traceId: '' }).catch(() => {});
+
     wlog('info', 'Planning timed out', { taskId: task.id, tenantId: task.tenantId });
 
     try {
@@ -182,6 +187,9 @@ export const handler: ScheduledHandler = async () => {
       .returning({ id: agentTasks.id });
 
     if (!updated) continue;
+
+    await db.insert(taskEvents).values({ taskId: task.id, tenantId: task.tenantId, actorType: 'system', actorId: 'system', eventType: 'status_changed', payload: { from: 'awaiting_approval', to: 'cancelled', reason: 'Plan approval timed out after 7 days.' } });
+    db.insert(auditLog).values({ tenantId: task.tenantId, actorId: 'system', actorType: 'system', action: 'task_timed_out', resource: 'agent_task', resourceId: task.id, metadata: { reason: 'Plan approval timed out after 7 days.', from: 'awaiting_approval', to: 'cancelled' }, traceId: '' }).catch(() => {});
 
     wlog('info', 'Approval timed out, cancelling task', { taskId: task.id, tenantId: task.tenantId });
 

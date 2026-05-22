@@ -1,7 +1,8 @@
-import { and, eq, ilike, desc, count, isNull, gte, lte } from 'drizzle-orm';
+import { and, eq, ilike, desc, count, isNull, gte, lte, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { tenants, memberships, users, agents, conversations, tenantFeatureOverrides, features, roles } from '@serverless-saas/database/schema';
+import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 
 import { isPlatformAdmin } from './ops.guard';
@@ -21,13 +22,31 @@ export async function handleListTenants(c: Context<AppEnv>) {
     if (search) conditions.push(ilike(tenants.name, `%${search}%`));
     if (status) conditions.push(eq(tenants.status, status as any));
 
-    const data = await db.select().from(tenants)
-        .where(conditions.length > 0 ? and(...conditions) : undefined)
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [totalRow] = await db.select({ value: count() }).from(tenants).where(where);
+    const total = totalRow?.value ?? 0;
+
+    const rows = await db.select().from(tenants)
+        .where(where)
         .orderBy(desc(tenants.createdAt))
         .limit(pageSize)
         .offset((page - 1) * pageSize);
 
-    return c.json({ tenants: data, page, pageSize });
+    type TenantRow = typeof rows[number];
+    let tenantsWithPlan = rows.map((t: TenantRow) => ({ ...t, plan: null as string | null }));
+    if (rows.length > 0) {
+        const plans = await db
+            .select({ tenantId: subscriptions.tenantId, plan: subscriptions.plan })
+            .from(subscriptions)
+            .where(inArray(subscriptions.tenantId, rows.map((t: TenantRow) => t.id)));
+        const planMap: Record<string, string | null> = Object.fromEntries(
+            plans.map((p: typeof plans[number]) => [p.tenantId, p.plan])
+        );
+        tenantsWithPlan = rows.map((t: TenantRow) => ({ ...t, plan: planMap[t.id] ?? null }));
+    }
+
+    return c.json({ tenants: tenantsWithPlan, page, pageSize, total, totalPages: Math.ceil(total / pageSize) });
 }
 
 // GET /ops/tenants/:id
@@ -37,6 +56,13 @@ export async function handleGetTenant(c: Context<AppEnv>) {
     const tenantId = c.req.param('id') as string;
     const tenant = (await db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1))[0];
     if (!tenant) return c.json({ error: 'Tenant not found' }, 404);
+
+    const [sub] = await db
+        .select({ plan: subscriptions.plan, subscriptionStatus: subscriptions.status })
+        .from(subscriptions)
+        .where(eq(subscriptions.tenantId, tenantId))
+        .orderBy(desc(subscriptions.createdAt))
+        .limit(1);
 
     const memberRows = await db
         .select({
@@ -78,7 +104,7 @@ export async function handleGetTenant(c: Context<AppEnv>) {
     }));
 
     return c.json({
-        tenant,
+        tenant: { ...tenant, plan: sub?.plan ?? null, subscriptionStatus: sub?.subscriptionStatus ?? null },
         members: memberRows,
         stats: { memberCount: memberRows.length, activeAgents: agentCountRow?.value ?? 0, totalConversations: convCountRow?.value ?? 0 },
         overrides: overridesWithStatus,

@@ -143,6 +143,7 @@ export async function handleDeleteAgent(c: Context<AppEnv>) {
 
     if (!hasPermission(permissions, 'agents', 'delete')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
+    const userId = c.get('userId') as string;
     const agentId = c.req.param('id') as string;
     const existing = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!existing) return c.json({ error: 'Agent not found' }, 404);
@@ -151,6 +152,7 @@ export async function handleDeleteAgent(c: Context<AppEnv>) {
     if (existing.apiKeyId) {
         await db.update(apiKeys).set({ status: 'revoked', revokedAt: new Date() }).where(eq(apiKeys.id, existing.apiKeyId));
     }
+    db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_deleted', resource: 'agent', resourceId: agentId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
     return c.json({ success: true });
 }

@@ -6,6 +6,7 @@ import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 import { getOrEmbedTexts } from '@serverless-saas/ai';
 import { db } from '../db';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import { extractQuestions } from '../rag/extractQuestions';
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
@@ -174,6 +175,7 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
       WHERE id = ${documentId} AND tenant_id = ${tenantId}
     `);
 
+    db.insert(auditLog).values({ tenantId, actorId: 'system', actorType: 'system', action: 'document_ingestion_completed', resource: 'document', resourceId: documentId, metadata: { chunkCount: embedded.length, mimeType }, traceId: '' }).catch(() => {});
     console.log(`[documentIngest] done: documentId=${documentId} chunks=${embedded.length}`);
 
   } catch (error) {
@@ -186,6 +188,7 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
           updated_at = NOW()
       WHERE id = ${documentId} AND tenant_id = ${tenantId}
     `);
+    db.insert(auditLog).values({ tenantId, actorId: 'system', actorType: 'system', action: 'document_ingestion_failed', resource: 'document', resourceId: documentId, metadata: { error: message, mimeType }, traceId: '' }).catch(() => {});
     console.error(`[documentIngest] failed: documentId=${documentId} error=${message}`);
     throw error; // re-throw so SQS retries
   }

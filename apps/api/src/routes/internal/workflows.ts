@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentWorkflowRuns } from '@serverless-saas/database/schema/agents';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import type { AppEnv } from '../../types';
 
 function isAuthorized(provided: string): boolean {
@@ -20,6 +21,7 @@ function isAuthorized(provided: string): boolean {
 }
 
 const updateSchema = z.object({
+  tenantId: z.string().uuid().optional(),
   status: z.enum(['running', 'completed', 'failed']).optional(),
   stepsCompleted: z.array(z.unknown()).optional(),
   toolsCalled: z.array(z.unknown()).optional(),
@@ -72,6 +74,14 @@ internalWorkflowsRoute.post('/:workflowRunId/update', async (c) => {
     .update(agentWorkflowRuns)
     .set(update)
     .where(eq(agentWorkflowRuns.id, workflowRunId));
+
+  if (parsed.data.tenantId && parsed.data.status) {
+    db.insert(auditLog).values({
+      tenantId: parsed.data.tenantId, actorId: 'system', actorType: 'system',
+      action: 'workflow_run_updated', resource: 'agent_workflow_run', resourceId: workflowRunId,
+      metadata: { status: parsed.data.status }, traceId: c.req.header('x-trace-id') ?? '',
+    }).catch((err: unknown) => console.error('Audit log write failed:', err));
+  }
 
   return c.json({ success: true });
 });
