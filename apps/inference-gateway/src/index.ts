@@ -13,6 +13,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
 import { getAdapterChain, vertexBreaker, anthropicBreaker, ollamaBreaker } from './router';
+import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -122,18 +123,25 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
   let lastError: unknown;
 
   for (const adapter of chain) {
-    const name = adapter.constructor.name.replace('Adapter', '').toLowerCase();
+    const name = (adapter as { adapterName?: string }).adapterName
+      ?? adapter.constructor.name.replace('Adapter', '').toLowerCase();
     tried.push(name);
+    const t0 = Date.now();
     try {
       await adapter.handleCompletion(payload, res);
+      latency.observe({ adapter: name }, Date.now() - t0);
+      requestsTotal.inc({ adapter: name, status: 'success' });
       if (tried.length > 1) {
+        const prev = tried[tried.length - 2];
+        fallbacksTotal.inc({ from: prev, to: name });
         console.log(`[gateway] fallback succeeded: ${tried.slice(0, -1).join(' → ')} failed, used ${name}`);
       }
       return;
     } catch (err) {
+      latency.observe({ adapter: name }, Date.now() - t0);
+      requestsTotal.inc({ adapter: name, status: 'failure' });
       lastError = err;
       if (res.headersSent) {
-        // Streaming started — cannot fall back, close gracefully
         console.error(`[gateway] ${name} failed mid-stream, cannot fall back`);
         if (!res.writableEnded) res.end();
         return;
@@ -229,6 +237,18 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
         ollama:    ollamaBreaker.getStatus(),
       },
     }));
+    return;
+  }
+
+  // Prometheus metrics scrape endpoint
+  if (req.method === 'GET' && req.url === '/metrics') {
+    const body = renderMetrics({
+      vertex:    vertexBreaker.getStatus(),
+      anthropic: anthropicBreaker.getStatus(),
+      ollama:    ollamaBreaker.getStatus(),
+    });
+    res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+    res.end(body);
     return;
   }
 

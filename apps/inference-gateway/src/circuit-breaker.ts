@@ -71,10 +71,14 @@ export class CircuitBreaker {
  * Throws AdapterError immediately when the circuit is open — no network call made.
  */
 export class CircuitBreakerAdapter implements ProviderAdapter {
+  readonly adapterName: string;
+
   constructor(
     private readonly inner: ProviderAdapter,
     private readonly breaker: CircuitBreaker,
-  ) {}
+  ) {
+    this.adapterName = breaker.name;
+  }
 
   async handleCompletion(req: OpenAIRequest, res: ServerResponse): Promise<void> {
     if (!this.breaker.isAvailable()) {
