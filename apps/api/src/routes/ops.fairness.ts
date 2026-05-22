@@ -87,8 +87,8 @@ export async function handleOpsRunFairness(c: Context<AppEnv>) {
     ];
     const overallStatus = deriveOverallStatus(checkResults);
 
-    const requestContext = c.get('requestContext') as any;
-    const runBy = requestContext?.userId ?? 'ops';
+    const runBy = c.get('userId') as string;
+    if (!runBy) return c.json({ error: 'User context not found', code: 'USER_CONTEXT_MISSING' }, 500);
 
     const [review] = await db.insert(agentFairnessReviews).values({
         agentId,

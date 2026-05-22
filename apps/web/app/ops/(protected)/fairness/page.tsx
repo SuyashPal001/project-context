@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, ShieldAlert, ShieldX, Loader2, RefreshCw, CircleDashed } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -45,7 +45,7 @@ export default function FairnessReviewsPage() {
     const runMutation = useMutation({
         mutationFn: (agentId: string) => { setRunningId(agentId); return api.post(`/api/v1/ops/fairness/${agentId}/run`, {}); },
         onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["ops-fairness"] }); toast.success("Fairness check completed"); setRunningId(null); },
-        onError: () => { toast.error("Fairness check failed"); setRunningId(null); },
+        onError: (err) => { const msg = err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : "Fairness check failed"; toast.error(msg); setRunningId(null); },
     });
 
     const rows = data?.agents ?? [];
