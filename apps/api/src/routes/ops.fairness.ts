@@ -1,8 +1,9 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, desc, and } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agents } from '@serverless-saas/database/schema/agents';
 import { agentSkills } from '@serverless-saas/database/schema/conversations';
 import { agentFairnessReviews } from '@serverless-saas/database/schema/fairness';
+import { auditLog } from '@serverless-saas/database/schema/audit';
 import type { FairnessCheckResult } from '@serverless-saas/database/schema/fairness';
 import { isPlatformAdmin } from './ops.guard';
 import { checkDemographicLanguage, checkLanguageRestriction, checkInclusiveScope, deriveOverallStatus } from './agents.fairness';
@@ -82,4 +83,27 @@ export async function handleOpsRunFairness(c: Context<AppEnv>) {
     }).returning();
 
     return c.json({ review });
+}
+
+// GET /ops/fairness/response-audits — Sutra 1 runtime response checks from audit_log
+export async function handleListResponseAudits(c: Context<AppEnv>) {
+    if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+    const rows = await db
+        .select({
+            id: auditLog.id,
+            tenantId: auditLog.tenantId,
+            resourceId: auditLog.resourceId,
+            metadata: auditLog.metadata,
+            createdAt: auditLog.createdAt,
+        })
+        .from(auditLog)
+        .where(and(
+            eq(auditLog.action, 'response_fairness_audit'),
+            eq(auditLog.actorType, 'agent'),
+        ))
+        .orderBy(desc(auditLog.createdAt))
+        .limit(100);
+
+    return c.json({ audits: rows });
 }
