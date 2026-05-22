@@ -1,5 +1,6 @@
-import { eq, sql, desc, and } from 'drizzle-orm';
+import { eq, desc, and, inArray } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
+import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { agents } from '@serverless-saas/database/schema/agents';
 import { agentSkills } from '@serverless-saas/database/schema/conversations';
 import { agentFairnessReviews } from '@serverless-saas/database/schema/fairness';
@@ -14,33 +15,48 @@ import type { AppEnv } from '../types';
 export async function handleListFairnessReviews(c: Context<AppEnv>) {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const rows = await db.execute(sql`
-        SELECT
-            a.id          AS agent_id,
-            a.name        AS agent_name,
-            a.type        AS agent_type,
-            a.status      AS agent_status,
-            a.tenant_id,
-            t.name        AS tenant_name,
-            t.slug        AS tenant_slug,
-            r.id          AS review_id,
-            r.overall_status,
-            r.run_at,
-            r.check_results
-        FROM agents a
-        INNER JOIN tenants t ON a.tenant_id = t.id
-        LEFT JOIN LATERAL (
-            SELECT id, overall_status, run_at, check_results
-            FROM agent_fairness_reviews
-            WHERE agent_id = a.id
-            ORDER BY run_at DESC
-            LIMIT 1
-        ) r ON true
-        WHERE a.is_internal = false
-        ORDER BY a.name ASC
-    `);
+    const agentRows = await db
+        .select({
+            agent_id: agents.id,
+            agent_name: agents.name,
+            agent_type: agents.type,
+            tenant_id: agents.tenantId,
+            tenant_name: tenants.name,
+            tenant_slug: tenants.slug,
+        })
+        .from(agents)
+        .innerJoin(tenants, eq(agents.tenantId, tenants.id))
+        .where(eq(agents.isInternal, false))
+        .orderBy(agents.name);
 
-    return c.json({ agents: rows.rows });
+    if (agentRows.length === 0) return c.json({ agents: [] });
+
+    const agentIds = agentRows.map((a: typeof agentRows[number]) => a.agent_id);
+
+    // Latest review per agent — one query, merge in JS
+    const reviews = await db
+        .select({
+            agentId: agentFairnessReviews.agentId,
+            review_id: agentFairnessReviews.id,
+            overall_status: agentFairnessReviews.overallStatus,
+            run_at: agentFairnessReviews.runAt,
+            check_results: agentFairnessReviews.checkResults,
+        })
+        .from(agentFairnessReviews)
+        .where(inArray(agentFairnessReviews.agentId, agentIds))
+        .orderBy(desc(agentFairnessReviews.runAt));
+
+    const latestByAgent = new Map<string, typeof reviews[number]>();
+    for (const r of reviews) {
+        if (!latestByAgent.has(r.agentId)) latestByAgent.set(r.agentId, r);
+    }
+
+    const result = agentRows.map((a: typeof agentRows[number]) => {
+        const r = latestByAgent.get(a.agent_id);
+        return { ...a, review_id: r?.review_id ?? null, overall_status: r?.overall_status ?? null, run_at: r?.run_at ?? null, check_results: r?.check_results ?? null };
+    });
+
+    return c.json({ agents: result });
 }
 
 // POST /ops/fairness/:agentId/run — run check from ops (no tenant scope restriction)
