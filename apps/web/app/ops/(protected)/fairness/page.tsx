@@ -59,7 +59,7 @@ export default function FairnessReviewsPage() {
         <div className="space-y-6">
             <div>
                 <h1 className="text-xl font-semibold text-zinc-100">Fairness Reviews</h1>
-                <p className="text-sm text-zinc-500 mt-1">RBI FREE-AI Sutra 1 — automated fairness checks across all agents</p>
+                <p className="text-sm text-zinc-500 mt-1">Automated fairness checks across all agents and tenants</p>
             </div>
             <Tabs defaultValue="runtime">
                 <TabsList className="bg-zinc-900 border border-zinc-800">
@@ -85,7 +85,7 @@ export default function FairnessReviewsPage() {
                                 {auditsLoading ? Array.from({ length: 5 }).map((_, i) => (
                                     <TableRow key={i} className="border-zinc-800"><TableCell><Skeleton className="h-4 w-28" /></TableCell><TableCell><Skeleton className="h-4 w-16" /></TableCell><TableCell><Skeleton className="h-4 w-32" /></TableCell><TableCell><Skeleton className="h-4 w-40" /></TableCell><TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell></TableRow>
                                 )) : audits.length === 0 ? (
-                                    <TableRow className="border-zinc-800"><TableCell colSpan={5} className="text-center text-zinc-500 py-10 text-sm">No runtime audits yet — deploy Lambda to activate Sutra 1</TableCell></TableRow>
+                                    <TableRow className="border-zinc-800"><TableCell colSpan={5} className="text-center text-zinc-500 py-10 text-sm">No runtime audits recorded yet.</TableCell></TableRow>
                                 ) : audits.map(row => {
                                     const status = row.metadata?.overallStatus ?? 'pass';
                                     const flags = (row.metadata?.checkResults ?? []).flatMap(r => [...(r.flags ?? []), ...(r.violations ?? [])]).filter(Boolean);
