@@ -12,7 +12,7 @@ import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
-import { getAdapter } from './router';
+import { getAdapterChain } from './router';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -54,7 +54,7 @@ async function handleEmbeddings(req: IncomingMessage, res: ServerResponse): Prom
 
     if (!vertexResp.ok) {
       const errText = await vertexResp.text();
-      console.error('[vertex-proxy] embed error:', vertexResp.status, errText);
+      console.error('[inference-gateway] embed error:', vertexResp.status, errText);
       res.writeHead(vertexResp.status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: { message: errText } }));
       return;
@@ -71,7 +71,7 @@ async function handleEmbeddings(req: IncomingMessage, res: ServerResponse): Prom
     res.end(JSON.stringify({ object: 'list', data, model: embModel }));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[vertex-proxy] embed exception:', message);
+    console.error('[inference-gateway] embed exception:', message);
     if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { message } }));
   }
@@ -117,20 +117,36 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
   }
 
   const model = payload.model ?? DEFAULT_MODEL;
-  const adapter = getAdapter(model);
+  const chain = getAdapterChain(model);
+  const tried: string[] = [];
+  let lastError: unknown;
 
-  try {
-    await adapter.handleCompletion(payload, res);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[vertex-proxy] adapter error:', err);
-    if (!res.headersSent) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-    }
-    if (!res.writableEnded) {
-      res.end(JSON.stringify({ error: { message, type: 'api_error' } }));
+  for (const adapter of chain) {
+    const name = adapter.constructor.name.replace('Adapter', '').toLowerCase();
+    tried.push(name);
+    try {
+      await adapter.handleCompletion(payload, res);
+      if (tried.length > 1) {
+        console.log(`[gateway] fallback succeeded: ${tried.slice(0, -1).join(' → ')} failed, used ${name}`);
+      }
+      return;
+    } catch (err) {
+      lastError = err;
+      if (res.headersSent) {
+        // Streaming started — cannot fall back, close gracefully
+        console.error(`[gateway] ${name} failed mid-stream, cannot fall back`);
+        if (!res.writableEnded) res.end();
+        return;
+      }
+      console.warn(`[gateway] ${name} failed, trying next in chain: ${err instanceof Error ? err.message : err}`);
     }
   }
+
+  // All adapters exhausted
+  const message = lastError instanceof Error ? lastError.message : 'All model backends unavailable';
+  console.error(`[gateway] all adapters exhausted: ${tried.join(' → ')}`);
+  res.writeHead(503, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: { message, type: 'api_error', tried } }));
 }
 
 /**
@@ -149,18 +165,18 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
   const modelMatch = req.url?.match(/models\/([^/:?]+)/);
   const nativeModelName = modelMatch?.[1] ?? DEFAULT_MODEL;
 
-  console.log(`[vertex-proxy] native Gemini via Vertex AI: ${req.method} model=${nativeModelName}`);
+  console.log(`[inference-gateway] native Gemini via Vertex AI: ${req.method} model=${nativeModelName}`);
 
   const isStreaming = req.url?.includes('streamGenerateContent') ?? false;
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nativeRequest = (body ? JSON.parse(body) : {}) as any;
-    console.log('[vertex-proxy] native-gemini tools:', JSON.stringify(nativeRequest.tools ?? null));
+    console.log('[inference-gateway] native-gemini tools:', JSON.stringify(nativeRequest.tools ?? null));
     const nativeModel = vertexAI.getGenerativeModel({ model: nativeModelName });
 
     if (isStreaming) {
-      console.log('[vertex-proxy] streaming via generateContentStream');
+      console.log('[inference-gateway] streaming via generateContentStream');
       const streamResult = await nativeModel.generateContentStream(nativeRequest);
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -179,7 +195,7 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[vertex-proxy] native Gemini error:', message);
+    console.error('[inference-gateway] native Gemini error:', message);
     if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { message, type: 'api_error' } }));
   }
@@ -241,7 +257,7 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
     return;
   }
 
-  console.log(`[vertex-proxy] 404 unhandled: ${req.method} ${req.url}`);
+  console.log(`[inference-gateway] 404 unhandled: ${req.method} ${req.url}`);
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: { message: 'Not found', type: 'invalid_request_error' } }));
 });
@@ -251,5 +267,5 @@ server.listen(PORT, () => {
   console.log(`  default model: ${DEFAULT_MODEL}`);
 });
 
-process.on('uncaughtException', (err) => console.error('[vertex-proxy] uncaughtException:', err));
-process.on('unhandledRejection', (err) => console.error('[vertex-proxy] unhandledRejection:', err));
+process.on('uncaughtException', (err) => console.error('[inference-gateway] uncaughtException:', err));
+process.on('unhandledRejection', (err) => console.error('[inference-gateway] unhandledRejection:', err));

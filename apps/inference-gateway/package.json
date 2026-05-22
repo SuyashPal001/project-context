@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test:fallback": "bash scripts/test-fallback.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.84.0",

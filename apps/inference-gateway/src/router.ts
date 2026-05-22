@@ -19,10 +19,24 @@ const ollamaAdapter = new OllamaAdapter();
 
 export function getAdapter(model: string | undefined): ProviderAdapter {
   const m = model ?? '';
-
   if (m.startsWith('claude')) return anthropicAdapter;
   if (m.startsWith('ollama/')) return ollamaAdapter;
-
-  // Default: Vertex AI / Gemini model backend
   return vertexAdapter;
+}
+
+/**
+ * Returns an ordered fallback chain for the requested model.
+ * The handler tries each adapter in sequence — moving to the next only if
+ * the current one throws (AdapterError or any error) before headers are sent.
+ *
+ * Fallback order:
+ *   gemini-*   → Vertex AI → Anthropic → Ollama (local, always available)
+ *   claude-*   → Anthropic → Ollama
+ *   ollama/*   → Ollama only (local — nowhere to fall back to)
+ */
+export function getAdapterChain(model: string | undefined): ProviderAdapter[] {
+  const m = model ?? '';
+  if (m.startsWith('claude'))  return [anthropicAdapter, ollamaAdapter];
+  if (m.startsWith('ollama/')) return [ollamaAdapter];
+  return [vertexAdapter, anthropicAdapter, ollamaAdapter];
 }

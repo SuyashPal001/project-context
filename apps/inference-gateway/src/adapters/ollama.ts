@@ -10,14 +10,19 @@
 
 import type { ServerResponse } from 'http';
 import type { ProviderAdapter } from './base';
+import { AdapterError } from './base';
 import type { OpenAIRequest } from '../types';
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
 
 export class OllamaAdapter implements ProviderAdapter {
   async handleCompletion(req: OpenAIRequest, res: ServerResponse): Promise<void> {
-    // Strip "ollama/" prefix — used by router for dispatch, unknown to Ollama
-    const model = (req.model ?? 'qwen3:14b').replace(/^ollama\//, '');
+    // Strip "ollama/" prefix if present; for fallback requests (non-ollama/* model),
+    // use the configured local fallback model instead of forwarding the original name.
+    const raw = req.model ?? '';
+    const model = raw.startsWith('ollama/')
+      ? raw.replace(/^ollama\//, '')
+      : (process.env.OLLAMA_FALLBACK_MODEL ?? 'qwen3.5:4b');
 
     console.log(
       `[ollama-adapter] model=${model} messages=${req.messages.length} stream=${req.stream ?? false}`,
@@ -25,25 +30,22 @@ export class OllamaAdapter implements ProviderAdapter {
 
     let ollamaRes: Response;
     try {
+      // think: false disables qwen3.5 reasoning chain — required for non-GPU inference
       ollamaRes = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...req, model }),
+        body: JSON.stringify({ ...req, model, think: false }),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[ollama-adapter] connection error: ${message}`);
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: { message: `Ollama unreachable: ${message}` } }));
-      return;
+      throw new AdapterError(502, `Ollama unreachable: ${message}`);
     }
 
     if (!ollamaRes.ok) {
       const errText = await ollamaRes.text();
       console.error(`[ollama-adapter] error ${ollamaRes.status}: ${errText}`);
-      res.writeHead(ollamaRes.status, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: { message: errText } }));
-      return;
+      throw new AdapterError(ollamaRes.status, errText);
     }
 
     if (req.stream) {
