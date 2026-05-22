@@ -12,10 +12,19 @@ import type { ProviderAdapter } from './adapters/base';
 import { VertexAdapter } from './adapters/vertex';
 import { AnthropicAdapter } from './adapters/anthropic';
 import { OllamaAdapter } from './adapters/ollama';
+import { CircuitBreaker, CircuitBreakerAdapter } from './circuit-breaker';
 
-const vertexAdapter = new VertexAdapter();
+const vertexAdapter    = new VertexAdapter();
 const anthropicAdapter = new AnthropicAdapter();
-const ollamaAdapter = new OllamaAdapter();
+const ollamaAdapter    = new OllamaAdapter();
+
+export const vertexBreaker    = new CircuitBreaker('vertex',    { failureThreshold: 3, resetTimeoutMs: 60_000 });
+export const anthropicBreaker = new CircuitBreaker('anthropic', { failureThreshold: 3, resetTimeoutMs: 60_000 });
+export const ollamaBreaker    = new CircuitBreaker('ollama',    { failureThreshold: 5, resetTimeoutMs: 30_000 });
+
+const vertexCB    = new CircuitBreakerAdapter(vertexAdapter,    vertexBreaker);
+const anthropicCB = new CircuitBreakerAdapter(anthropicAdapter, anthropicBreaker);
+const ollamaCB    = new CircuitBreakerAdapter(ollamaAdapter,    ollamaBreaker);
 
 export function getAdapter(model: string | undefined): ProviderAdapter {
   const m = model ?? '';
@@ -36,7 +45,7 @@ export function getAdapter(model: string | undefined): ProviderAdapter {
  */
 export function getAdapterChain(model: string | undefined): ProviderAdapter[] {
   const m = model ?? '';
-  if (m.startsWith('claude'))  return [anthropicAdapter, ollamaAdapter];
-  if (m.startsWith('ollama/')) return [ollamaAdapter];
-  return [vertexAdapter, anthropicAdapter, ollamaAdapter];
+  if (m.startsWith('claude'))  return [anthropicCB, ollamaCB];
+  if (m.startsWith('ollama/')) return [ollamaCB];
+  return [vertexCB, anthropicCB, ollamaCB];
 }

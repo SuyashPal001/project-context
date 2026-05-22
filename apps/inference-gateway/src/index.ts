@@ -12,7 +12,7 @@ import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
-import { getAdapterChain } from './router';
+import { getAdapterChain, vertexBreaker, anthropicBreaker, ollamaBreaker } from './router';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -220,7 +220,15 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Health check
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', model: DEFAULT_MODEL }));
+    res.end(JSON.stringify({
+      status: 'ok',
+      model: DEFAULT_MODEL,
+      circuits: {
+        vertex:    vertexBreaker.getStatus(),
+        anthropic: anthropicBreaker.getStatus(),
+        ollama:    ollamaBreaker.getStatus(),
+      },
+    }));
     return;
   }
 
