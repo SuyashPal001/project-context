@@ -1,12 +1,14 @@
 import { and, eq, desc, count, avg, sql, countDistinct } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { tenants, conversations } from '@serverless-saas/database/schema';
-
 import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
 import { conversationMetrics, evalResults, conversationFeedback, messages } from '@serverless-saas/database/schema/conversations';
 import { isPlatformAdmin } from './ops.guard';
+import { getLogger } from '@serverless-saas/logger';
 import type { Context } from 'hono';
 import type { AppEnv } from '../types';
+
+const logger = getLogger({ serviceName: 'ops-api' });
 
 // GET /ops/agent-intelligence/knowledge-gaps
 export async function handleKnowledgeGaps(c: Context<AppEnv>) {
@@ -43,7 +45,7 @@ export async function handleKnowledgeGaps(c: Context<AppEnv>) {
             totalPages: Math.ceil((totalRow?.value ?? 0) / pageSize),
         });
     } catch (err) {
-        console.error('[ops/knowledge-gaps]', err);
+        logger.error('ops_knowledge_gaps_failed', { traceId: c.get('traceId') ?? 'unknown', error: err as Error });
         return c.json({ gaps: [], total: 0, page, totalPages: 0 });
     }
 }
@@ -84,7 +86,7 @@ export async function handleEvalScores(c: Context<AppEnv>) {
 
         return c.json({ scores });
     } catch (err) {
-        console.error('[ops/eval-scores]', err);
+        logger.error('ops_eval_scores_failed', { traceId: c.get('traceId') ?? 'unknown', error: err as Error });
         return c.json({ scores: [] });
     }
 }
@@ -117,7 +119,7 @@ export async function handleToolPerformance(c: Context<AppEnv>) {
             })),
         });
     } catch (err) {
-        console.error('[ops/tool-performance]', err);
+        logger.error('ops_tool_performance_failed', { traceId: c.get('traceId') ?? 'unknown', error: err as Error });
         return c.json({ tools: [] });
     }
 }

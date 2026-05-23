@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Plus, AlertCircle, Settings2, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { StatusBadge } from "@/components/platform/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ export default function FeatureOverridesPage() {
 
     const queryKey = ["ops-overrides", page] as const;
 
-    const { data, isLoading, isError } = useQuery<OpsOverridesResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsOverridesResponse>({
         queryKey,
         queryFn: () => api.get<OpsOverridesResponse>(`/api/v1/ops/overrides?page=${page}&pageSize=${PAGE_SIZE}`),
     });
@@ -54,13 +54,13 @@ export default function FeatureOverridesPage() {
     const createMutation = useMutation({
         mutationFn: (v: OverrideFormValues) => api.post("/api/v1/ops/overrides", v),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey }); toast.success("Override granted"); setIsDialogOpen(false); form.reset(); },
-        onError: () => toast.error("Failed to grant override"),
+        onError: (err) => toast.error(err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : "Failed to grant override"),
     });
 
     const revokeMutation = useMutation({
         mutationFn: (id: string) => api.post(`/api/v1/ops/overrides/${id}/revoke`),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey }); toast.success("Override revoked"); },
-        onError: () => toast.error("Failed to revoke override"),
+        onError: (err) => toast.error(err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : "Failed to revoke override"),
     });
 
     const overrides = data?.overrides ?? [];
@@ -162,7 +162,7 @@ export default function FeatureOverridesPage() {
             {isError && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load feature overrides.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load feature overrides."}</AlertDescription>
                 </Alert>
             )}
 

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, MessageCircleQuestion } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -18,7 +18,7 @@ function fmtTs(iso: string | null | undefined) {
 }
 
 export default function KnowledgeGapsPage() {
-    const { data, isLoading, isError } = useQuery<OpsKnowledgeGapsResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsKnowledgeGapsResponse>({
         queryKey: ["ops-knowledge-gaps"],
         queryFn: () => api.get<OpsKnowledgeGapsResponse>("/api/v1/ops/agent-intelligence/knowledge-gaps"),
     });
@@ -35,7 +35,7 @@ export default function KnowledgeGapsPage() {
             {isError && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load knowledge gaps.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load knowledge gaps."}</AlertDescription>
                 </Alert>
             )}
 

@@ -6,7 +6,8 @@ import {
     Building2, BrainCircuit, AlertCircle, TrendingUp,
     DollarSign, MessageCircleQuestion, FileText,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import type {
@@ -61,17 +62,17 @@ function fmtTs(iso: string | null | undefined) {
 }
 
 export default function OpsOverviewPage() {
-    const { data: stats, isLoading: statsLoading } = useQuery<OpsOverviewStats>({
+    const { data: stats, isLoading: statsLoading, isError: statsError, error: statsErr } = useQuery<OpsOverviewStats>({
         queryKey: ["ops-overview"],
         queryFn: () => api.get<OpsOverviewStats>("/api/v1/ops/overview"),
     });
 
-    const { data: auditData, isLoading: auditLoading } = useQuery<OpsAuditResponse>({
+    const { data: auditData, isLoading: auditLoading, isError: auditError, error: auditErr } = useQuery<OpsAuditResponse>({
         queryKey: ["ops-overview-audit"],
         queryFn: () => api.get<OpsAuditResponse>("/api/v1/ops/audit?page=1&pageSize=10"),
     });
 
-    const { data: gapsData, isLoading: gapsLoading } = useQuery<OpsKnowledgeGapsResponse>({
+    const { data: gapsData, isLoading: gapsLoading, isError: gapsError, error: gapsErr } = useQuery<OpsKnowledgeGapsResponse>({
         queryKey: ["ops-overview-gaps"],
         queryFn: () => api.get<OpsKnowledgeGapsResponse>("/api/v1/ops/agent-intelligence/knowledge-gaps?limit=5"),
     });
@@ -79,12 +80,22 @@ export default function OpsOverviewPage() {
     const entries = auditData?.entries ?? [];
     const gaps = gapsData?.gaps?.slice(0, 5) ?? [];
 
+    const apiErrMsg = (err: unknown) =>
+        err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : undefined;
+
     return (
         <div className="space-y-8">
             <div>
                 <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Mission Control</h1>
                 <p className="text-zinc-500 text-sm mt-1">Platform overview across all tenants.</p>
             </div>
+
+            {statsError && (
+                <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" /><AlertTitle>Failed to load overview stats</AlertTitle>
+                    <AlertDescription>{apiErrMsg(statsErr) ?? "Could not load platform stats."}</AlertDescription>
+                </Alert>
+            )}
 
             {/* Stat cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -131,6 +142,8 @@ export default function OpsOverviewPage() {
                                     <Skeleton className="h-3 w-full" />
                                 </div>
                             ))
+                            : auditError
+                                ? <p className="px-4 py-8 text-sm text-red-400/80 text-center">{apiErrMsg(auditErr) ?? "Failed to load recent activity."}</p>
                             : entries.length === 0
                                 ? <p className="px-4 py-8 text-sm text-zinc-600 text-center">No recent activity.</p>
                                 : entries.map((e) => (
@@ -164,6 +177,8 @@ export default function OpsOverviewPage() {
                                     <Skeleton className="h-3 w-full" />
                                 </div>
                             ))
+                            : gapsError
+                                ? <p className="px-4 py-8 text-sm text-red-400/80 text-center">{apiErrMsg(gapsErr) ?? "Failed to load knowledge gaps."}</p>
                             : gaps.length === 0
                                 ? <p className="px-4 py-8 text-sm text-zinc-600 text-center">No knowledge gaps detected.</p>
                                 : gaps.map((g) => (

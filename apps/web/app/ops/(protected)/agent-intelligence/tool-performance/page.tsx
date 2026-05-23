@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Wrench } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,7 +27,7 @@ function SuccessBar({ value }: { value: number | null }) {
 }
 
 export default function ToolPerformancePage() {
-    const { data, isLoading, isError } = useQuery<OpsToolPerfResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsToolPerfResponse>({
         queryKey: ["ops-tool-performance"],
         queryFn: () => api.get<OpsToolPerfResponse>("/api/v1/ops/agent-intelligence/tool-performance"),
     });
@@ -44,7 +44,7 @@ export default function ToolPerformancePage() {
             {isError && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load tool performance data.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load tool performance data."}</AlertDescription>
                 </Alert>
             )}
 

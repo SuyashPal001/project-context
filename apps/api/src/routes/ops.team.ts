@@ -5,8 +5,11 @@ import { tenants, memberships, users, roles } from '@serverless-saas/database/sc
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { createUser, setUserPassword, disableUser } from '@serverless-saas/auth';
 import { isPlatformAdmin } from './ops.guard';
+import { getLogger } from '@serverless-saas/logger';
 import type { Context } from 'hono';
 import type { AppEnv } from '../types';
+
+const logger = getLogger({ serviceName: 'ops-api' });
 
 // GET /ops/team
 export async function handleListTeam(c: Context<AppEnv>) {
@@ -41,7 +44,7 @@ export async function handleCreateTeamMember(c: Context<AppEnv>) {
         cognitoId = await createUser({ email, name });
         await setUserPassword(email, password);
     } catch (err: any) {
-        console.error('[ops/team] Cognito create failed:', err);
+        logger.error('ops_team_cognito_create_failed', { traceId: c.get('traceId') ?? 'unknown', email, error: err as Error });
         if (err?.name === 'UsernameExistsException') {
             return c.json({ error: 'A Cognito user with this email already exists', code: 'EMAIL_TAKEN' }, 409);
         }
@@ -69,6 +72,7 @@ export async function handleCreateTeamMember(c: Context<AppEnv>) {
         memberType: 'human', status: 'active', joinedAt: new Date(),
     });
 
+    logger.info('ops_team_member_created', { traceId: c.get('traceId') ?? 'unknown', actorId: c.get('userId'), newUserId: newUser.id, email });
     return c.json({ data: { id: newUser.id, name: newUser.name, email: newUser.email, createdAt: newUser.createdAt } }, 201);
 }
 
@@ -96,8 +100,9 @@ export async function handleDeleteTeamMember(c: Context<AppEnv>) {
     try {
         await disableUser(membership.userEmail);
     } catch (err: any) {
-        console.error('[ops/team] Cognito disable failed (non-fatal):', err);
+        logger.warn('ops_team_cognito_disable_failed', { traceId: c.get('traceId') ?? 'unknown', targetUserId, error: err as Error });
     }
 
+    logger.info('ops_team_member_removed', { traceId: c.get('traceId') ?? 'unknown', actorId: requestingUserId, targetUserId });
     return c.json({ success: true });
 }

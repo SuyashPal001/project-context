@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Star, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -35,7 +35,7 @@ function ScoreBar({ value }: { value: number | null }) {
 }
 
 export default function EvalScoresPage() {
-    const { data, isLoading, isError } = useQuery<OpsEvalScoresResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsEvalScoresResponse>({
         queryKey: ["ops-eval-scores"],
         queryFn: () => api.get<OpsEvalScoresResponse>("/api/v1/ops/agent-intelligence/eval-scores"),
     });
@@ -52,7 +52,7 @@ export default function EvalScoresPage() {
             {isError && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load eval scores.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load eval scores."}</AlertDescription>
                 </Alert>
             )}
 
