@@ -20,14 +20,16 @@ function isAuthorized(provided: string): boolean {
 }
 
 const schema = z.object({
-  tenantId:       z.string().uuid(),
-  conversationId: z.string().uuid(),
-  messageId:      z.string().uuid(),
-  agentId:        z.string().min(1),
-  overallStatus:  z.enum(['pass', 'warn', 'fail']),
-  checkResults:   z.array(z.unknown()),
-  responseLength: z.number().int().nonnegative(),
-  toolsUsed:      z.number().int().nonnegative(),
+  tenantId:        z.string().uuid(),
+  conversationId:  z.string().uuid(),
+  messageId:       z.string().uuid(),
+  agentId:         z.string().min(1),
+  agentName:       z.string().optional(),
+  overallStatus:   z.enum(['pass', 'warn', 'fail']),
+  checkResults:    z.array(z.unknown()),
+  responseLength:  z.number().int().nonnegative(),
+  toolsUsed:       z.number().int().nonnegative(),
+  responseSnippet: z.string().max(200).optional(),
 })
 
 const internalFairnessRoute = new Hono<AppEnv>()
@@ -52,12 +54,14 @@ internalFairnessRoute.post('/audit', async (c) => {
     resource:   'conversation',
     resourceId: d.conversationId,
     metadata:   {
-      sutra:          'FREE-AI-Sutra-1',
-      messageId:      d.messageId,
-      overallStatus:  d.overallStatus,
-      checkResults:   d.checkResults,
-      responseLength: d.responseLength,
-      toolsUsed:      d.toolsUsed,
+      sutra:           'FREE-AI-Sutra-1',
+      messageId:       d.messageId,
+      agentName:       d.agentName,
+      overallStatus:   d.overallStatus,
+      checkResults:    d.checkResults,
+      responseLength:  d.responseLength,
+      toolsUsed:       d.toolsUsed,
+      responseSnippet: d.responseSnippet,
     },
     traceId: '',
   }).catch((err: unknown) => {

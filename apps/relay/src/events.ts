@@ -73,11 +73,12 @@ export function fireKnowledgeGap(payload: {
 }
 
 export function fireFairnessAudit(payload: {
-  tenantId: string; conversationId: string; messageId: string; agentId: string
+  tenantId: string; conversationId: string; messageId: string; agentId: string; agentName: string
   overallStatus: 'pass' | 'warn' | 'fail'
   checkResults: unknown[]
   responseLength: number
   toolsUsed: number
+  responseSnippet?: string
 }): void {
   fetch(`${API_BASE_URL}/api/v1/internal/fairness/audit`, {
     method: 'POST',

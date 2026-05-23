@@ -12,6 +12,7 @@ export interface FairnessAuditInput {
   conversationId: string
   messageId: string
   agentId: string
+  agentName: string
   responseText: string
   toolsUsed: number
 }
@@ -33,15 +34,22 @@ export function runFairnessCheck(input: FairnessAuditInput): void {
 
       const overallStatus = deriveOverall([bias.status, policy.status, equity.status])
 
+      // Only store a snippet when something was flagged — avoids retaining clean response text
+      const responseSnippet = overallStatus !== 'pass'
+        ? input.responseText.slice(0, 150).replace(/\s+/g, ' ').trim()
+        : undefined
+
       fireFairnessAudit({
-        tenantId:       input.tenantId,
-        conversationId: input.conversationId,
-        messageId:      input.messageId,
-        agentId:        input.agentId,
+        tenantId:        input.tenantId,
+        conversationId:  input.conversationId,
+        messageId:       input.messageId,
+        agentId:         input.agentId,
+        agentName:       input.agentName,
         overallStatus,
-        checkResults:   [bias, policy, equity],
-        responseLength: equity.responseLength,
-        toolsUsed:      equity.toolsUsed,
+        checkResults:    [bias, policy, equity],
+        responseLength:  equity.responseLength,
+        toolsUsed:       equity.toolsUsed,
+        responseSnippet,
       })
 
       if (overallStatus !== 'pass') {

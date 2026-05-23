@@ -271,7 +271,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
 
           // FREE-AI Sutra 1 — non-blocking, runs after client already received `done`
-          runFairnessCheck({ tenantId, conversationId, messageId: assistantMessageId, agentId, responseText: fullText, toolsUsed: toolCallCount })
+          runFairnessCheck({ tenantId, conversationId, messageId: assistantMessageId, agentId, agentName: agentName ?? agentId, responseText: fullText, toolsUsed: toolCallCount })
 
           pendingMetrics = { conversationId, tenantId, ragFired, ragChunksRetrieved, responseTimeMs, totalTokens, inputTokens, outputTokens, userMessageCount: 1, costUsd }
           if (ragFired) pendingEval = { conversationId, messageId: assistantMessageId, tenantId, question: message, retrievedChunks: ragChunks, answer: fullText }

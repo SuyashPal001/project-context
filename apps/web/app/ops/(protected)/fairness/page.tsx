@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ShieldCheck, ShieldAlert, ShieldX, Loader2, RefreshCw, CircleDashed } from "lucide-react";
+import { ShieldCheck, ShieldAlert, ShieldX, Loader2, RefreshCw, CircleDashed, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface AgentFairnessRow { agent_id: string; agent_name: string; agent_type: string; tenant_id: string; tenant_name: string; tenant_slug: string; review_id: string | null; overall_status: "pass" | "warn" | "fail" | null; run_at: string | null; check_results: unknown | null }
-interface ResponseAuditRow { id: string; tenantId: string; resourceId: string | null; metadata: { overallStatus: string; checkResults: { checkId: string; status: string; flags?: string[]; violations?: string[] }[]; responseLength: number; toolsUsed: number } | null; createdAt: string }
+interface ResponseAuditRow { id: string; tenantId: string; agentId: string | null; agentName: string | null; tenantName: string | null; tenantSlug: string | null; resourceId: string | null; metadata: { overallStatus: string; agentName?: string; checkResults: { checkId: string; status: string; flags?: string[]; violations?: string[] }[]; responseLength: number; toolsUsed: number; responseSnippet?: string } | null; createdAt: string }
 
 const statusConfig = {
     pass: { icon: ShieldCheck, badge: "bg-emerald-500/10 text-emerald-500", label: "Pass" },
@@ -32,11 +33,11 @@ export default function FairnessReviewsPage() {
     const [statusFilter, setStatusFilter] = React.useState("all");
     const [runningId, setRunningId] = React.useState<string | null>(null);
 
-    const { data, isLoading } = useQuery<{ agents: AgentFairnessRow[] }>({
+    const { data, isLoading, isError, error } = useQuery<{ agents: AgentFairnessRow[] }>({
         queryKey: ["ops-fairness"],
         queryFn: () => api.get("/api/v1/ops/fairness"),
     });
-    const { data: auditsData, isLoading: auditsLoading } = useQuery<{ audits: ResponseAuditRow[] }>({
+    const { data: auditsData, isLoading: auditsLoading, isError: auditsError, error: auditsErr } = useQuery<{ audits: ResponseAuditRow[] }>({
         queryKey: ["ops-fairness-response-audits"],
         queryFn: () => api.get("/api/v1/ops/fairness/response-audits"),
         refetchInterval: 30_000,
@@ -69,6 +70,12 @@ export default function FairnessReviewsPage() {
 
                 <TabsContent value="runtime" className="space-y-4 mt-4">
                     <p className="text-xs text-zinc-500">Automated checks on every agent response. Refreshes every 30s. Populated after Lambda deploy.</p>
+                    {auditsError && (
+                        <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
+                            <AlertDescription>{auditsErr instanceof ApiError ? (auditsErr.data?.error ?? auditsErr.data?.message ?? `Server error ${auditsErr.status}`) : "Failed to load response audits."}</AlertDescription>
+                        </Alert>
+                    )}
                     {warnCount + failCount > 0 && <div className="flex gap-2 text-xs"><span className="text-red-400">{failCount} fail</span><span className="text-yellow-400">{warnCount} warn</span><span className="text-zinc-500">in last 100 responses</span></div>}
                     <div className="rounded-lg border border-zinc-800 overflow-hidden">
                         <Table>
@@ -76,26 +83,38 @@ export default function FairnessReviewsPage() {
                                 <TableRow className="border-zinc-800 hover:bg-transparent">
                                     <TableHead className="text-zinc-400">Time</TableHead>
                                     <TableHead className="text-zinc-400">Status</TableHead>
-                                    <TableHead className="text-zinc-400">Conversation</TableHead>
-                                    <TableHead className="text-zinc-400">Flags / Violations</TableHead>
-                                    <TableHead className="text-zinc-400 text-right">Length</TableHead>
+                                    <TableHead className="text-zinc-400">Agent · Tenant</TableHead>
+                                    <TableHead className="text-zinc-400">Flags</TableHead>
+                                    <TableHead className="text-zinc-400">Response Preview</TableHead>
+                                    <TableHead className="text-zinc-400 text-right">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {auditsLoading ? Array.from({ length: 5 }).map((_, i) => (
-                                    <TableRow key={i} className="border-zinc-800"><TableCell><Skeleton className="h-4 w-28" /></TableCell><TableCell><Skeleton className="h-4 w-16" /></TableCell><TableCell><Skeleton className="h-4 w-32" /></TableCell><TableCell><Skeleton className="h-4 w-40" /></TableCell><TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell></TableRow>
+                                    <TableRow key={i} className="border-zinc-800"><TableCell><Skeleton className="h-4 w-28" /></TableCell><TableCell><Skeleton className="h-4 w-16" /></TableCell><TableCell><Skeleton className="h-4 w-32" /></TableCell><TableCell><Skeleton className="h-4 w-24" /></TableCell><TableCell><Skeleton className="h-4 w-48" /></TableCell><TableCell><Skeleton className="h-6 w-20 ml-auto" /></TableCell></TableRow>
                                 )) : audits.length === 0 ? (
-                                    <TableRow className="border-zinc-800"><TableCell colSpan={5} className="text-center text-zinc-500 py-10 text-sm">No runtime audits recorded yet.</TableCell></TableRow>
+                                    <TableRow className="border-zinc-800"><TableCell colSpan={6} className="text-center text-zinc-500 py-10 text-sm">No runtime audits recorded yet.</TableCell></TableRow>
                                 ) : audits.map(row => {
                                     const status = row.metadata?.overallStatus ?? 'pass';
                                     const flags = (row.metadata?.checkResults ?? []).flatMap(r => [...(r.flags ?? []), ...(r.violations ?? [])]).filter(Boolean);
+                                    const agentLabel = row.agentName ?? row.metadata?.agentName ?? row.agentId?.slice(0, 8) ?? "—";
+                                    const tenantLabel = row.tenantName ?? row.tenantSlug ?? row.tenantId?.slice(0, 8) ?? "—";
+                                    const snippet = row.metadata?.responseSnippet;
                                     return (
                                         <TableRow key={row.id} className="border-zinc-800 hover:bg-zinc-900/40">
-                                            <TableCell className="text-xs text-zinc-400">{new Date(row.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</TableCell>
+                                            <TableCell className="text-xs text-zinc-400 whitespace-nowrap">{new Date(row.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</TableCell>
                                             <TableCell><StatusBadge status={status} /></TableCell>
-                                            <TableCell className="text-xs text-zinc-500 font-mono">{row.resourceId?.slice(0, 8) ?? "—"}</TableCell>
+                                            <TableCell>
+                                                <p className="text-xs font-medium text-zinc-200">{agentLabel}</p>
+                                                <p className="text-xs text-zinc-500">{tenantLabel}</p>
+                                            </TableCell>
                                             <TableCell className="text-xs text-zinc-400">{flags.length > 0 ? flags.join(", ") : <span className="text-zinc-600">none</span>}</TableCell>
-                                            <TableCell className="text-right text-xs text-zinc-500">{row.metadata?.responseLength ?? "—"}</TableCell>
+                                            <TableCell className="max-w-[220px]">
+                                                {snippet ? <p className="text-xs text-zinc-500 italic truncate" title={snippet}>"{snippet}"</p> : <span className="text-xs text-zinc-700">—</span>}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {row.agentId && <Button size="sm" variant="outline" className="h-7 text-xs border-zinc-700" onClick={() => runMutation.mutate(row.agentId!)} disabled={runningId === row.agentId || runMutation.isPending}>{runningId === row.agentId ? <Loader2 className="h-3 w-3 animate-spin" /> : "Run Config Check"}</Button>}
+                                            </TableCell>
                                         </TableRow>
                                     );
                                 })}
@@ -105,6 +124,12 @@ export default function FairnessReviewsPage() {
                 </TabsContent>
 
                 <TabsContent value="config" className="space-y-4 mt-4">
+                    {isError && (
+                        <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
+                            <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load fairness reviews."}</AlertDescription>
+                        </Alert>
+                    )}
                     <div className="flex gap-3">
                         {[{ key: "never", label: "Never Checked", count: counts.never, color: "text-zinc-400" }, { key: "fail", label: "Failed", count: counts.fail, color: "text-red-400" }, { key: "warn", label: "Warning", count: counts.warn, color: "text-yellow-400" }, { key: "pass", label: "Passed", count: counts.pass, color: "text-emerald-400" }].map(s => (
                             <div key={s.key} className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
