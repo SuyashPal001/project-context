@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, FileText, ChevronLeft, ChevronRight, Filter } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ export default function AuditLogPage() {
 
     const queryKey = ["ops-audit", debouncedTenantId, actorType, from, to, page] as const;
 
-    const { data, isLoading, isError } = useQuery<OpsAuditResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsAuditResponse>({
         queryKey,
         queryFn: () => {
             let url = `/api/v1/ops/audit?page=${page}&pageSize=${PAGE_SIZE}`;
@@ -119,7 +119,7 @@ export default function AuditLogPage() {
             {isError && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load audit log.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load audit log."}</AlertDescription>
                 </Alert>
             )}
 

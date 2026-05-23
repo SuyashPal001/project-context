@@ -27,7 +27,7 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
     const agent = new Agent({ keepAliveTimeout: 1, keepAliveMaxTimeout: 1 });
 
     try {
-        console.log('[proxy]', req.method, url);
+        console.log(JSON.stringify({ level: 'info', service: 'web-proxy', msg: 'upstream_request', method: req.method, url }));
         const res = await undiciFetch(url, {
             method: req.method,
             headers,
@@ -43,6 +43,10 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
             return new NextResponse(null, { status: 204 });
         }
 
+        if (!res.ok) {
+            console.warn(JSON.stringify({ level: 'warn', service: 'web-proxy', msg: 'upstream_error', method: req.method, url, status: res.status, body: data.slice(0, 300) }));
+        }
+
         const contentType = res.headers.get('content-type') ?? 'application/json';
         const responseHeaders: Record<string, string> = { 'Content-Type': contentType };
         const contentDisp = res.headers.get('content-disposition');
@@ -50,7 +54,7 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
 
         return new NextResponse(data, { status: res.status, headers: responseHeaders });
     } catch (err: unknown) {
-        console.error('[proxy error]', req.method, url, err);
+        console.error(JSON.stringify({ level: 'error', service: 'web-proxy', msg: 'proxy_network_error', method: req.method, url, error: err instanceof Error ? err.message : String(err) }));
         const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
         return NextResponse.json(
             { error: isTimeout ? 'Upstream request timed out' : 'Proxy error' },

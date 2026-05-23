@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Filter, Star, ChevronLeft, ChevronRight } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,7 @@ export default function EvalResultsPage() {
 
     const queryKey = ["ops-eval-results", debouncedTenantId, dimension, maxScore, page] as const;
 
-    const { data, isLoading, isError } = useQuery<OpsEvalResultsResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsEvalResultsResponse>({
         queryKey,
         queryFn: () => {
             let url = `/api/v1/ops/evals/results?page=${page}&pageSize=${PAGE_SIZE}`;
@@ -137,7 +137,7 @@ export default function EvalResultsPage() {
             {isError && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load eval results.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load eval results."}</AlertDescription>
                 </Alert>
             )}
 

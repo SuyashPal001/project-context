@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Plus, AlertCircle, Cpu, ToggleLeft, ToggleRight } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,7 @@ export default function ProvidersPage() {
 
     const queryKey = ["ops-providers"] as const;
 
-    const { data, isLoading, isError } = useQuery<OpsProvidersResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsProvidersResponse>({
         queryKey,
         queryFn: () => api.get<OpsProvidersResponse>("/api/v1/ops/providers"),
     });
@@ -58,14 +58,14 @@ export default function ProvidersPage() {
     const createMutation = useMutation({
         mutationFn: (v: AddFormValues) => api.post("/api/v1/ops/providers", v),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey }); toast.success("Provider added"); setIsDialogOpen(false); form.reset(); },
-        onError: () => toast.error("Failed to add provider"),
+        onError: (err) => toast.error(err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : "Failed to add provider"),
     });
 
     const toggleMutation = useMutation({
         mutationFn: ({ id, status }: { id: string; status: "live" | "coming_soon" }) =>
             api.patch(`/api/v1/ops/providers/${id}`, { status }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey }); toast.success("Provider status updated"); },
-        onError: () => toast.error("Failed to update provider"),
+        onError: (err) => toast.error(err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : "Failed to update provider"),
     });
 
     const providers = data?.providers ?? [];
@@ -149,7 +149,7 @@ export default function ProvidersPage() {
             {isError && (
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load providers.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load providers."}</AlertDescription>
                 </Alert>
             )}
 
