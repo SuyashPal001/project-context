@@ -811,6 +811,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@0.10.4)(@opentelemetry/api@1.9.0)(@types/pg@8.20.0)(@upstash/redis@1.36.3)(pg@8.20.0)(postgres@3.4.8)
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
 
   packages/foundation/validators:
     dependencies:
