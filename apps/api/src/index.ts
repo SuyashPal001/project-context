@@ -3,7 +3,7 @@ export { };
 
 import { handle } from 'hono/aws-lambda';
 import { app } from './app';
-import { initRuntimeSecrets } from './lib/secrets';
+import { initRuntimeSecrets } from '@serverless-saas/secrets';
 
 let initialized = false;
 

@@ -79,6 +79,9 @@ importers:
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
+      '@serverless-saas/agent-api':
+        specifier: workspace:*
+        version: link:../../products/agent-platform/packages/api
       '@serverless-saas/agent-schema':
         specifier: workspace:*
         version: link:../../products/agent-platform/packages/schema
@@ -109,6 +112,12 @@ importers:
       '@serverless-saas/permissions':
         specifier: workspace:*
         version: link:../../packages/foundation/permissions
+      '@serverless-saas/queue':
+        specifier: workspace:*
+        version: link:../../packages/foundation/queue
+      '@serverless-saas/secrets':
+        specifier: workspace:*
+        version: link:../../packages/foundation/secrets
       '@serverless-saas/storage':
         specifier: workspace:*
         version: link:../../packages/foundation/storage
@@ -782,6 +791,29 @@ importers:
         specifier: ^0.45.2
         version: 0.45.2(@neondatabase/serverless@0.10.4)(@opentelemetry/api@1.9.0)(@types/pg@8.20.0)(@upstash/redis@1.36.3)(pg@8.20.0)(postgres@3.4.8)
 
+  packages/foundation/queue:
+    dependencies:
+      '@aws-sdk/client-sqs':
+        specifier: ^3.1011.0
+        version: 3.1011.0
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/foundation/secrets:
+    dependencies:
+      '@aws-sdk/client-secrets-manager':
+        specifier: ^3.1011.0
+        version: 3.1043.0
+      '@serverless-saas/cache':
+        specifier: workspace:*
+        version: link:../cache
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/foundation/storage:
     dependencies:
       '@aws-sdk/client-s3':
@@ -829,6 +861,85 @@ importers:
       zod:
         specifier: ^3.23.0
         version: 3.25.76
+
+  products/agent-platform/packages/api:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1011.0
+        version: 3.1014.0
+      '@aws-sdk/client-secrets-manager':
+        specifier: ^3.1011.0
+        version: 3.1043.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.1011.0
+        version: 3.1014.0
+      '@hono/zod-validator':
+        specifier: ^0.2.2
+        version: 0.2.2(hono@4.12.18)(zod@3.25.76)
+      '@serverless-saas/agent-schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@serverless-saas/ai':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/ai
+      '@serverless-saas/cache':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/cache
+      '@serverless-saas/database':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/database
+      '@serverless-saas/entitlements':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/entitlements
+      '@serverless-saas/events':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/events
+      '@serverless-saas/logger':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/logger
+      '@serverless-saas/notifications':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/notifications
+      '@serverless-saas/permissions':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/permissions
+      '@serverless-saas/queue':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/queue
+      '@serverless-saas/secrets':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/secrets
+      '@serverless-saas/storage':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/storage
+      '@serverless-saas/types':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/types
+      '@serverless-saas/validators':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/validators
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@neondatabase/serverless@0.10.4)(@opentelemetry/api@1.9.0)(@types/pg@8.20.0)(@upstash/redis@1.36.3)(pg@8.20.0)(postgres@3.4.8)
+      hono:
+        specifier: ^4.12.18
+        version: 4.12.18
+      pdf-parse:
+        specifier: ^1.1.1
+        version: 1.1.4
+      striptags:
+        specifier: ^3.2.0
+        version: 3.2.0
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
+    devDependencies:
+      '@types/pdf-parse':
+        specifier: ^1.1.5
+        version: 1.1.5
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   products/agent-platform/packages/schema:
     dependencies:

@@ -3,7 +3,7 @@ import type { AppEnv } from './types';
 import { authInjectionMiddleware } from './middleware/authInjection';
 import { userUpsertMiddleware } from './middleware/userUpsert';
 import { opsRoutes } from './routes/ops';
-import { agentTemplatesRoutes } from './routes/agentTemplates';
+import { agentProduct } from '@serverless-saas/agent-api';
 
 // Separate Hono app for platform-admin ops portal.
 // Completely isolated from user middleware chain — ops bugs cannot affect user auth.
@@ -18,7 +18,7 @@ opsApp.use('/ops/*', userUpsertMiddleware);
 
 // Hard gate: only platform_admin JWTs reach ops routes
 opsApp.use('/ops/*', async (c, next) => {
-    const jwtPayload = c.get('jwtPayload') as any;
+    const jwtPayload = c.get('jwtPayload') as Record<string, unknown> | undefined;
     if (jwtPayload?.['custom:role'] !== 'platform_admin') {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
@@ -26,4 +26,4 @@ opsApp.use('/ops/*', async (c, next) => {
 });
 
 opsApp.route('/ops', opsRoutes);
-opsApp.route('/ops/agent-templates', agentTemplatesRoutes);
+agentProduct.mountOpsRoutes(opsApp);

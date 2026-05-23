@@ -4,7 +4,7 @@ import { createSign, createPrivateKey } from 'crypto';
 import { db } from '@serverless-saas/database';
 import { encryptCredentials } from './integrations.crypto';
 import { syncToolsAndNotifyRelay } from './integrations.sync';
-import { publishToQueue } from '../lib/sqs';
+import { publishToQueue } from '@serverless-saas/queue';
 import type { AppEnv } from '../types';
 
 export const githubCallbackRoute = new Hono<AppEnv>();
