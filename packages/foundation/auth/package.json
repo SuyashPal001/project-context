@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.932.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.1011.0",
     "@neondatabase/serverless": "^0.10.4",
     "@serverless-saas/cache": "workspace:*",
     "@serverless-saas/types": "workspace:*",

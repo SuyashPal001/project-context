@@ -27,8 +27,7 @@
   },
   "pnpm": {
     "overrides": {
-      "protobufjs": ">=7.5.8",
-      "@smithy/types": "4.14.1"
+      "protobufjs": ">=7.5.8"
     }
   }
 }
