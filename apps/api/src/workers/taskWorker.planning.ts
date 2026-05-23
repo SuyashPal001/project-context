@@ -1,4 +1,4 @@
-import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/database/schema';
+import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/agent-schema';
 import { eq, and } from 'drizzle-orm';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '../lib/sqs';

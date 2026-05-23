@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { agentWorkflowRuns } from '@serverless-saas/database/schema/agents';
+import { agentWorkflowRuns } from '@serverless-saas/agent-schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import type { AppEnv } from '../../types';
 

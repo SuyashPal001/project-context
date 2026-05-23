@@ -20,6 +20,7 @@
     "@hono/node-server": "^1.13.0",
     "@hono/zod-validator": "^0.2.2",
     "@neondatabase/serverless": "^0.10.4",
+    "@serverless-saas/agent-schema": "workspace:*",
     "@serverless-saas/ai": "workspace:*",
     "@serverless-saas/auth": "workspace:*",
     "@serverless-saas/cache": "workspace:*",

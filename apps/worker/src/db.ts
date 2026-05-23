@@ -1,4 +1,7 @@
-import * as schema from '@serverless-saas/database/schema';
+import * as foundationSchema from '@serverless-saas/database/schema';
+import * as agentSchema from '@serverless-saas/agent-schema';
+
+const schema = { ...foundationSchema, ...agentSchema };
 
 const connectionString = process.env.DATABASE_URL!;
 

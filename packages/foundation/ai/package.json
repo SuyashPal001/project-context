@@ -14,6 +14,7 @@
     "@aws-sdk/client-secrets-manager": "^3.1011.0",
     "@aws-sdk/client-sqs": "^3.1011.0",
     "@neondatabase/serverless": "^0.10.4",
+    "@serverless-saas/agent-schema": "workspace:*",
     "@serverless-saas/cache": "workspace:*",
     "@serverless-saas/database": "workspace:*",
     "ai": "^4.3.19",

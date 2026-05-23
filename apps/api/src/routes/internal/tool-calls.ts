@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
+import { toolCallLogs } from '@serverless-saas/agent-schema/intelligence';
 import { users } from '@serverless-saas/database/schema/auth';
 import type { AppEnv } from '../../types';
 

@@ -5,7 +5,7 @@ import { db } from '@serverless-saas/database';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { invitationTokens } from '@serverless-saas/database/schema/invitations';
 import { users } from '@serverless-saas/database/schema/auth';
-import { agents } from '@serverless-saas/database/schema/agents';
+import { agents } from '@serverless-saas/agent-schema/agents';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { sendEmail } from '@serverless-saas/notifications';

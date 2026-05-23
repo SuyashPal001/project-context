@@ -1,6 +1,6 @@
 import { pgTable, uuid, text, timestamp, boolean, integer, numeric, jsonb } from 'drizzle-orm/pg-core';
-import { tenants } from './tenancy';
-import { users } from './auth';
+import { tenants } from '@serverless-saas/database/schema/tenancy';
+import { users } from '@serverless-saas/database/schema/auth';
 import { conversations } from './conversations';
 
 export const knowledgeGaps = pgTable('knowledge_gaps', {

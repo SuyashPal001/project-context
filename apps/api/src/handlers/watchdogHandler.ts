@@ -1,5 +1,5 @@
 import type { ScheduledHandler } from 'aws-lambda';
-import { agentTasks, taskEvents } from '@serverless-saas/database/schema';
+import { agentTasks, taskEvents } from '@serverless-saas/agent-schema';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { db } from '@serverless-saas/database';
 import { eq, and, sql } from 'drizzle-orm';

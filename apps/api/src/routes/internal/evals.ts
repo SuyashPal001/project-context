@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { conversationMetrics, messages } from '@serverless-saas/database/schema/conversations';
+import { conversationMetrics, messages } from '@serverless-saas/agent-schema/conversations';
 import { count, and, eq } from 'drizzle-orm';
 import { publishToQueue } from '../../lib/sqs';
 import type { AppEnv } from '../../types';

@@ -7,9 +7,9 @@ import {
   messages,
   conversationFeedback,
   conversationMetrics,
-} from '@serverless-saas/database/schema/conversations';
-import { agents } from '@serverless-saas/database/schema/agents';
-import { toolCallLogs } from '@serverless-saas/database/schema/intelligence';
+} from '@serverless-saas/agent-schema/conversations';
+import { agents } from '@serverless-saas/agent-schema/agents';
+import { toolCallLogs } from '@serverless-saas/agent-schema/intelligence';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { conversations, messages } from '@serverless-saas/database/schema/conversations';
+import { conversations, messages } from '@serverless-saas/agent-schema/conversations';
 import { bundleAgentConfig } from '@serverless-saas/ai/src/config/bundler';
 import { getRuntime } from '@serverless-saas/ai/src/runtime/factory';
 import { createEventHandler } from '@serverless-saas/ai/src/events/handler';

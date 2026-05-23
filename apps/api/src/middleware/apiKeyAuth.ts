@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { apiKeys } from '@serverless-saas/database/schema/access';
-import { agents } from '@serverless-saas/database/schema/agents';
+import { agents } from '@serverless-saas/agent-schema/agents';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { rolePermissions, permissions } from '@serverless-saas/database/schema/authorization';
 import type { AppEnv } from '../types';

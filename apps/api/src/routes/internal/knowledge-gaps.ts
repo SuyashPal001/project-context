@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { knowledgeGaps } from '@serverless-saas/database/schema/intelligence';
+import { knowledgeGaps } from '@serverless-saas/agent-schema/intelligence';
 import type { AppEnv } from '../../types';
 
 function isAuthorized(provided: string): boolean {

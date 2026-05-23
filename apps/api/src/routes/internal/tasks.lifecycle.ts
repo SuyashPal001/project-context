@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { agentTasks, taskComments, taskEvents } from '@serverless-saas/database/schema/agents';
+import { agentTasks, taskComments, taskEvents } from '@serverless-saas/agent-schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { pushWebSocketEvent } from '../../lib/websocket';
 import { publishToQueue } from '../../lib/sqs';

@@ -3,7 +3,7 @@ import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
-import { agents } from '@serverless-saas/database/schema/agents';
+import { agents } from '@serverless-saas/agent-schema/agents';
 import { integrations } from '@serverless-saas/database/schema/integrations';
 import { usageRecords } from '@serverless-saas/database/schema/billing';
 import type { AppEnv } from '../types';

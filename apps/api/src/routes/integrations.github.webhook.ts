@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { githubInstallations, githubRepos } from '@serverless-saas/database/schema/github';
+import { githubInstallations, githubRepos } from '@serverless-saas/agent-schema/github';
 import { integrations } from '@serverless-saas/database/schema/integrations';
 import { publishToQueue } from '../lib/sqs';
 import type { AppEnv } from '../types';

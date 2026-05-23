@@ -79,6 +79,9 @@ importers:
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
+      '@serverless-saas/agent-schema':
+        specifier: workspace:*
+        version: link:../../products/agent-platform/packages/schema
       '@serverless-saas/ai':
         specifier: workspace:*
         version: link:../../packages/foundation/ai
@@ -152,6 +155,25 @@ importers:
       vitest:
         specifier: ^4.1.5
         version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@20.19.35)(msw@2.12.10(@types/node@20.19.35)(typescript@5.9.3))(vite@8.0.10(@types/node@20.19.35)(esbuild@0.27.3)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+
+  apps/inference-gateway:
+    dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.84.0
+        version: 0.84.0(zod@4.3.6)
+      '@google-cloud/vertexai':
+        specifier: ^1.9.3
+        version: 1.12.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))
+      dotenv:
+        specifier: ^17.4.1
+        version: 17.4.2
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.17
+        version: 22.19.17
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
 
   apps/mcp-server:
     dependencies:
@@ -283,25 +305,6 @@ importers:
       vitest:
         specifier: ^4.1.5
         version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@22.19.17)(msw@2.12.10(@types/node@22.19.17)(typescript@5.9.3))(vite@8.0.10(@types/node@22.19.17)(esbuild@0.27.3)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
-
-  apps/vertex-proxy:
-    dependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.84.0
-        version: 0.84.0(zod@4.3.6)
-      '@google-cloud/vertexai':
-        specifier: ^1.9.3
-        version: 1.12.0(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))
-      dotenv:
-        specifier: ^17.4.1
-        version: 17.4.2
-    devDependencies:
-      '@types/node':
-        specifier: ^22.19.17
-        version: 22.19.17
-      typescript:
-        specifier: ^5.6.0
-        version: 5.9.3
 
   apps/web:
     dependencies:
@@ -498,6 +501,9 @@ importers:
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
+      '@serverless-saas/agent-schema':
+        specifier: workspace:*
+        version: link:../../products/agent-platform/packages/schema
       '@serverless-saas/ai':
         specifier: workspace:*
         version: link:../../packages/foundation/ai
@@ -550,6 +556,9 @@ importers:
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
+      '@serverless-saas/agent-schema':
+        specifier: workspace:*
+        version: link:../../../products/agent-platform/packages/schema
       '@serverless-saas/cache':
         specifier: workspace:*
         version: link:../cache
@@ -817,6 +826,19 @@ importers:
       zod:
         specifier: ^3.23.0
         version: 3.25.76
+
+  products/agent-platform/packages/schema:
+    dependencies:
+      '@serverless-saas/database':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/database
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@neondatabase/serverless@0.10.4)(@opentelemetry/api@1.9.0)(@types/pg@8.20.0)(@upstash/redis@1.36.3)(pg@8.20.0)(postgres@3.4.8)
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
 packages:
 

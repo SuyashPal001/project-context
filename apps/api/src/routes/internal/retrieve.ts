@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { retrieveChunks, formatContextBlock } from '@serverless-saas/ai';
 import { db } from '@serverless-saas/database';
-import { documents } from '@serverless-saas/database/schema/documents';
+import { documents } from '@serverless-saas/agent-schema/documents';
 import { inArray } from 'drizzle-orm';
 import type { AppEnv } from '../../types';
 

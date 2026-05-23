@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 // Prevent module-level side effects from tasks.ts's workspace imports.
 // vi.mock is hoisted before all imports by vitest.
 vi.mock('@serverless-saas/database', () => ({ db: {} }))
-vi.mock('@serverless-saas/database/schema/agents', () => ({
+vi.mock('@serverless-saas/agent-schema/agents', () => ({
   agentTasks: {}, taskSteps: {}, taskEvents: {}, taskComments: {}, agents: {},
 }))
 vi.mock('@serverless-saas/database/schema/auth', () => ({ users: {} }))

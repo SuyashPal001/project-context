@@ -6,7 +6,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '@serverless-saas/database';
 import { auditLog } from '@serverless-saas/database/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import { documents, documentChunks } from '@serverless-saas/database/schema/documents';
+import { documents, documentChunks } from '@serverless-saas/agent-schema/documents';
 import { hasPermission } from '@serverless-saas/permissions';
 import { publishToQueue } from '../lib/sqs';
 import type { AppEnv } from '../types';

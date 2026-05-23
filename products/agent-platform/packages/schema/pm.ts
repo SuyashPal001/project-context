@@ -3,8 +3,8 @@ import {
     primaryKey, uniqueIndex, index,
 } from 'drizzle-orm/pg-core';
 import { taskPriorityEnum, agents } from './agents';
-import { tenants } from './tenancy';
-import { users } from './auth';
+import { tenants } from '@serverless-saas/database/schema/tenancy';
+import { users } from '@serverless-saas/database/schema/auth';
 
 // ── Sequence counters ─────────────────────────────────────────────────────────
 // One row per (tenantId, resource). Atomically incremented on every insert

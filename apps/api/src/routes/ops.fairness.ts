@@ -1,11 +1,11 @@
 import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
-import { agents } from '@serverless-saas/database/schema/agents';
-import { agentSkills } from '@serverless-saas/database/schema/conversations';
-import { agentFairnessReviews } from '@serverless-saas/database/schema/fairness';
+import { agents } from '@serverless-saas/agent-schema/agents';
+import { agentSkills } from '@serverless-saas/agent-schema/conversations';
+import { agentFairnessReviews } from '@serverless-saas/agent-schema/fairness';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import type { FairnessCheckResult } from '@serverless-saas/database/schema/fairness';
+import type { FairnessCheckResult } from '@serverless-saas/agent-schema/fairness';
 import { isPlatformAdmin } from './ops.guard';
 import { checkDemographicLanguage, checkLanguageRestriction, checkInclusiveScope, deriveOverallStatus } from './agents.fairness';
 import { getLogger } from '@serverless-saas/logger';

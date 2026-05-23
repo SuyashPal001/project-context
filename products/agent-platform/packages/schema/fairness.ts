@@ -1,7 +1,7 @@
 import { pgTable, uuid, text, timestamp, jsonb, pgEnum, index } from 'drizzle-orm/pg-core';
 import { agents } from './agents';
-import { users } from './auth';
-import { tenants } from './tenancy';
+import { users } from '@serverless-saas/database/schema/auth';
+import { tenants } from '@serverless-saas/database/schema/tenancy';
 
 export const fairnessStatusEnum = pgEnum('fairness_status', ['pass', 'warn', 'fail']);
 

@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { agentTasks, taskComments, taskEvents, agents } from '@serverless-saas/database/schema/agents';
+import { agentTasks, taskComments, taskEvents, agents } from '@serverless-saas/agent-schema/agents';
 import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';

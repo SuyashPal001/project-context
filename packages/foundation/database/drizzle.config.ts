@@ -5,7 +5,10 @@ import * as dotenv from 'dotenv';
 dotenv.config({ path: '../../../apps/api/.env' });
 
 export default defineConfig({
-  schema: './schema/index.ts',
+  schema: [
+    './schema/index.ts',
+    '../../../products/agent-platform/packages/schema/src/index.ts',
+  ],
   out: './migrations',
   dialect: 'postgresql',
   dbCredentials: {

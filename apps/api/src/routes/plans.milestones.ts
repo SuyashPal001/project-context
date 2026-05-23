@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { eq, and, isNull, count, sql, inArray } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { projectPlans, projectMilestones, type ProjectMilestone } from '@serverless-saas/database/schema/pm';
-import { agentTasks } from '@serverless-saas/database/schema/agents';
+import { projectPlans, projectMilestones, type ProjectMilestone } from '@serverless-saas/agent-schema/pm';
+import { agentTasks } from '@serverless-saas/agent-schema/agents';
 import { hasPermission } from '@serverless-saas/permissions';
 import { nextSequenceId } from '../lib/sequence';
 import type { Context } from 'hono';

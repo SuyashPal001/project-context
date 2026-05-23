@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { agents } from '@serverless-saas/database/schema/agents';
+import { agents } from '@serverless-saas/agent-schema/agents';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { Context } from 'hono';
 import type { AppEnv } from '../types';

@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database/client';
-import { conversations } from '@serverless-saas/database/schema/conversations';
-import { agents } from '@serverless-saas/database/schema/agents';
+import { conversations } from '@serverless-saas/agent-schema/conversations';
+import { agents } from '@serverless-saas/agent-schema/agents';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 

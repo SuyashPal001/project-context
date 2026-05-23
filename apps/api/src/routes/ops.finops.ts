@@ -1,7 +1,7 @@
 import { and, eq, desc, count, sum, avg, gte, countDistinct } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { tenants } from '@serverless-saas/database/schema';
-import { conversationMetrics, evalResults } from '@serverless-saas/database/schema/conversations';
+import { conversationMetrics, evalResults } from '@serverless-saas/agent-schema/conversations';
 import { isPlatformAdmin } from './ops.guard';
 import { getLogger } from '@serverless-saas/logger';
 import type { Context } from 'hono';

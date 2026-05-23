@@ -2,8 +2,8 @@ import { pgTable, uuid, text, integer, jsonb, timestamp, varchar, index, uniqueI
 import { customType } from 'drizzle-orm/pg-core';
 
 export const sensitivityLevelEnum = pgEnum('sensitivity_level', ['public', 'internal', 'confidential', 'restricted']);
-import { tenants } from './tenancy';
-import { users } from './auth';
+import { tenants } from '@serverless-saas/database/schema/tenancy';
+import { users } from '@serverless-saas/database/schema/auth';
 
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType() {

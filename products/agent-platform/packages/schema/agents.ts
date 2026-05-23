@@ -7,8 +7,8 @@ const vector = customType<{ data: number[] | null; driverData: string | null }>(
   toDriver(value: number[] | null): string | null { return value ? `[${value.join(',')}]` : null; },
   fromDriver(value: string | null): number[] | null { return value ? value.slice(1, -1).split(',').map(Number) : null; },
 });
-import { tenants } from './tenancy';
-import { users } from './auth';
+import { tenants } from '@serverless-saas/database/schema/tenancy';
+import { users } from '@serverless-saas/database/schema/auth';
 
 export const workflowTriggerEnum = pgEnum('workflow_trigger', ['incident_created', 'scheduled', 'manual']);
 export const workflowStatusEnum = pgEnum('workflow_status', ['active', 'paused', 'archived']);

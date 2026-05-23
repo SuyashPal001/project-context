@@ -1,6 +1,6 @@
 import { generateTextVertex } from '@serverless-saas/ai';
 import { db } from '../db';
-import { evalResults } from '@serverless-saas/database';
+import { evalResults } from '@serverless-saas/agent-schema';
 
 export interface EvalAutoPayload {
   conversationId: string;

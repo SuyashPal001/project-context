@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { agents } from '@serverless-saas/database/schema/agents';
-import { agentSkills } from '@serverless-saas/database/schema/conversations';
-import { agentFairnessReviews } from '@serverless-saas/database/schema/fairness';
-import type { FairnessCheckResult } from '@serverless-saas/database/schema/fairness';
+import { agents } from '@serverless-saas/agent-schema/agents';
+import { agentSkills } from '@serverless-saas/agent-schema/conversations';
+import { agentFairnessReviews } from '@serverless-saas/agent-schema/fairness';
+import type { FairnessCheckResult } from '@serverless-saas/agent-schema/fairness';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 

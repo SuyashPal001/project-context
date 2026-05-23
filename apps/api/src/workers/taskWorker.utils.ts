@@ -1,4 +1,5 @@
-import { taskSteps, files } from '@serverless-saas/database/schema';
+import { files } from '@serverless-saas/database/schema';
+import { taskSteps } from '@serverless-saas/agent-schema';
 import { eq, asc, and, sql, inArray } from 'drizzle-orm';
 import { storageService } from '@serverless-saas/storage';
 import pdfParse from 'pdf-parse';

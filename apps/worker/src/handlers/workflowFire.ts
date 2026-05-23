@@ -1,7 +1,7 @@
 import { eq, and } from 'drizzle-orm';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { db } from '../db';
-import { agentWorkflows, agentWorkflowRuns } from '@serverless-saas/database/schema';
+import { agentWorkflows, agentWorkflowRuns } from '@serverless-saas/agent-schema';
 
 const RELAY_URL = process.env.RELAY_URL!;
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY!;
