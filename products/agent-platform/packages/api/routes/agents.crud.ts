@@ -1,7 +1,7 @@
 import { and, eq, count } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { users } from '@serverless-saas/database/schema/auth';
 import { apiKeys } from '@serverless-saas/database/schema/access';

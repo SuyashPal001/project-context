@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, asc, gte } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { conversations, messages } from '@serverless-saas/agent-schema/conversations';
 import { usageRecords } from '@serverless-saas/database/schema/billing';
 import { runMessageRelay, RelayError } from './_relay';
@@ -93,9 +93,9 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
         db.insert(usageRecords).values({
             tenantId,
             metric: 'messages',
-            quantity: 1,
+            quantity: '1',
             actorId: userId,
-            actorType: 'user',
+            actorType: 'human',
             recordedAt: new Date(),
         }).catch((err: unknown) => console.error('usage record failed:', err));
 

@@ -70,7 +70,7 @@ export async function handleEvalAuto(body: Record<string, unknown>): Promise<voi
         conversationId: payload.conversationId,
         messageId: payload.messageId,
         tenantId: payload.tenantId,
-        dimension: dim,
+        evalType: dim,
         score,
         reasoning: scores.reasoning ?? null,
       });

@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { retrieveChunks, formatContextBlock } from '@serverless-saas/ai';
-import { db } from '@serverless-saas/database';
+import { db } from '../../db';
 import { documents } from '@serverless-saas/agent-schema/documents';
 import { inArray } from 'drizzle-orm';
 import type { AppEnv } from '@serverless-saas/types';

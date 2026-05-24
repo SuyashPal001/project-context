@@ -1,5 +1,5 @@
 import { and, eq, desc, count, avg, sql, countDistinct } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { tenants } from '@serverless-saas/database/schema';
 import { conversations } from '@serverless-saas/agent-schema';
 import { toolCallLogs } from '@serverless-saas/agent-schema/intelligence';

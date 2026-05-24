@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '@serverless-saas/types';
 import { and, count, eq } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from './db';
 import { registerUsageCounter } from '@serverless-saas/entitlements';
 import { agents } from '@serverless-saas/agent-schema/agents';
 

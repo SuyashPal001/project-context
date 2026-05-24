@@ -21,8 +21,8 @@ const mockDb = vi.hoisted(() => {
 
 // Intercept the module-level `const db = drizzle(neon(process.env.DATABASE_URL!), { schema })`
 // in taskWorker.ts so it never tries to open a real DB connection.
-vi.mock('@neondatabase/serverless', () => ({ neon: vi.fn() }))
-vi.mock('drizzle-orm/neon-http', () => ({ drizzle: vi.fn(() => mockDb) }))
+vi.mock('postgres', () => ({ default: vi.fn() }))
+vi.mock('drizzle-orm/postgres-js', () => ({ drizzle: vi.fn(() => mockDb) }))
 vi.mock('@serverless-saas/database/schema', () => ({
   agentTasks: {}, taskSteps: {}, taskEvents: {}, agents: {}, files: {},
 }))

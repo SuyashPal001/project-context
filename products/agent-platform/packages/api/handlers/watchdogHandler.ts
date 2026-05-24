@@ -1,7 +1,7 @@
 import type { ScheduledHandler } from 'aws-lambda';
 import { agentTasks, taskEvents } from '@serverless-saas/agent-schema';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { eq, and, sql } from 'drizzle-orm';
 import { getCacheClient } from '@serverless-saas/cache';
 import { pushWebSocketEvent } from '../lib/websocket';

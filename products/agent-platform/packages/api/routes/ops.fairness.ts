@@ -1,5 +1,5 @@
 import { eq, desc, and, inArray, sql } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';

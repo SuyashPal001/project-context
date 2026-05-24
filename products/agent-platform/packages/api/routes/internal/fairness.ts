@@ -5,7 +5,7 @@
 import { timingSafeEqual } from 'crypto'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { db } from '@serverless-saas/database'
+import { db } from '../../db'
 import { auditLog } from '@serverless-saas/database/schema/audit'
 import type { AppEnv } from '@serverless-saas/types'
 

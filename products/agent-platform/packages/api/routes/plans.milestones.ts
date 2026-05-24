@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { eq, and, isNull, count, sql, inArray } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { projectPlans, projectMilestones, type ProjectMilestone } from '@serverless-saas/agent-schema/pm';
 import { agentTasks } from '@serverless-saas/agent-schema/agents';
 import { hasPermission } from '@serverless-saas/permissions';

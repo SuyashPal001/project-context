@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq, and, isNull } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { projectPlans } from '@serverless-saas/agent-schema/pm';
 import { hasPermission } from '@serverless-saas/permissions';
 import { nextSequenceId } from '../lib/sequence';

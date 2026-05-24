@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { Context } from 'hono';

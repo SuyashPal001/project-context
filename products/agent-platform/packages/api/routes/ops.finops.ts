@@ -1,5 +1,5 @@
 import { and, eq, desc, count, sum, avg, gte, countDistinct } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { tenants } from '@serverless-saas/database/schema';
 import { conversationMetrics, evalResults } from '@serverless-saas/agent-schema/conversations';
 import { isPlatformAdmin } from './ops.guard';

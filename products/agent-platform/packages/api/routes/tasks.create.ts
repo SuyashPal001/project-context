@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { agentTasks, taskEvents, agents } from '@serverless-saas/agent-schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
@@ -94,7 +94,7 @@ export async function handleCreateTask(c: Context<AppEnv>) {
     // Fire-and-forget embedding for future RAG-injected planning
     const embedText = [title, description].filter(Boolean).join(' ');
     embedTexts([embedText], 'RETRIEVAL_DOCUMENT')
-        .then(([embedding]) => db.update(agentTasks).set({ embedding }).where(eq(agentTasks.id, task.id)))
+        .then(([result]) => db.update(agentTasks).set({ embedding: result.embedding }).where(eq(agentTasks.id, task.id)))
         .catch((err: unknown) => console.error('[tasks] embedding generation failed (non-fatal):', (err as Error).message));
 
     return c.json({ data: { task: { ...task, sortOrder: task.sortOrder ?? 0 }, steps: [] } }, 201);

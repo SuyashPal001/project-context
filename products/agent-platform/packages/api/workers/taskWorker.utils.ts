@@ -5,7 +5,7 @@ import { storageService } from '@serverless-saas/storage';
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 import { embedQuery } from '@serverless-saas/ai';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 
 export { db };
 

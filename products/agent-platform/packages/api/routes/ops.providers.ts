@@ -1,6 +1,6 @@
 import { and, eq, desc, countDistinct } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema';
 import { llmProviders } from '@serverless-saas/database/schema/integrations';
 import { isPlatformAdmin } from './ops.guard';

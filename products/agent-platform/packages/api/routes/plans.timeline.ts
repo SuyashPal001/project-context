@@ -1,5 +1,5 @@
 import { eq, and, isNull, inArray, sql } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { projectPlans, projectMilestones } from '@serverless-saas/agent-schema/pm';
 import { agentTasks, taskDependencies } from '@serverless-saas/agent-schema/agents';
 import { hasPermission } from '@serverless-saas/permissions';

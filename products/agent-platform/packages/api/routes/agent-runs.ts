@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { agentWorkflowRuns } from '@serverless-saas/agent-schema/agents';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';

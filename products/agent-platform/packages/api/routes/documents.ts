@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { auditLog } from '@serverless-saas/database/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { documents, documentChunks } from '@serverless-saas/agent-schema/documents';

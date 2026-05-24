@@ -1,4 +1,4 @@
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { tenantCounters } from '@serverless-saas/agent-schema/pm';
 import { sql } from 'drizzle-orm';
 

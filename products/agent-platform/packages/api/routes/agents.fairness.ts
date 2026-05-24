@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
 import { agentFairnessReviews } from '@serverless-saas/agent-schema/fairness';

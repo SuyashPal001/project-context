@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { agentTasks, taskSteps, taskEvents } from '@serverless-saas/agent-schema/agents';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { Context } from 'hono';

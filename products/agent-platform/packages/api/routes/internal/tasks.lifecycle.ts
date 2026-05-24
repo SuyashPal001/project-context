@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../../db';
 import { agentTasks, taskComments, taskEvents } from '@serverless-saas/agent-schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { pushWebSocketEvent } from '../../lib/websocket';

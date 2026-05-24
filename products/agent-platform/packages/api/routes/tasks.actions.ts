@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { agentTasks, taskEvents } from '@serverless-saas/agent-schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';

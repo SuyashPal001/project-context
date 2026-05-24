@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../db';
 import { conversations, messages } from '@serverless-saas/agent-schema/conversations';
 import { bundleAgentConfig } from '@serverless-saas/ai/src/config/bundler';
 import { getRuntime } from '@serverless-saas/ai/src/runtime/factory';

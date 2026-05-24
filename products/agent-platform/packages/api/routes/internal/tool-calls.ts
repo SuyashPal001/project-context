@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db } from '../../db';
 import { toolCallLogs } from '@serverless-saas/agent-schema/intelligence';
 import { users } from '@serverless-saas/database/schema/auth';
 import type { AppEnv } from '@serverless-saas/types';
