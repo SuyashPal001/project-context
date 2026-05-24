@@ -84,10 +84,9 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
         .where(eq(rolePermissions.roleId, membership.roleId));
 
     // Array of objects — same format used across the whole platform
-    const resolvedPermissions = permissionRows.map((p: { resource: string; action: string }) => ({
-        resource: p.resource,
-        action: p.action,
-    }));
+    const resolvedPermissions = permissionRows.map((p: { resource: string; action: string }) =>
+        `${p.resource}:${p.action}`
+    );
 
     // Set apiKeyContext — the correct context type for programmatic access
     // Routes read this the same way regardless of whether caller is human or agent

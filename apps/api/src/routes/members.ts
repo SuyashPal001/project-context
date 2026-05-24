@@ -211,7 +211,7 @@ membersRoutes.patch('/:id/status', async (c) => {
                     email: target.email,
                     tokenHash,
                     roleId: target.roleId,
-                    invitedBy: c.get('userId') ?? target.userId,
+                    invitedBy: (c.get('userId') ?? target.userId)!,
                     status: 'pending',
                     expiresAt,
                 });

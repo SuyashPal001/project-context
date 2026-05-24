@@ -45,7 +45,7 @@ export async function handleCreateOverride(c: Context<AppEnv>) {
         tenantId: result.data.tenantId, featureId: result.data.featureId,
         enabled: result.data.enabled, valueLimit: result.data.valueLimit,
         unlimited: result.data.unlimited, reason: result.data.reason,
-        grantedBy: userId, expiresAt: result.data.expiresAt ? new Date(result.data.expiresAt) : null,
+        grantedBy: userId!, expiresAt: result.data.expiresAt ? new Date(result.data.expiresAt) : null,
     }).returning();
 
     logger.info('ops_override_granted', { traceId: c.get('traceId') ?? 'unknown', tenantId: result.data.tenantId, featureId: result.data.featureId, overrideId: override.id, actorId: c.get('userId') });

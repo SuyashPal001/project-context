@@ -42,7 +42,7 @@ filesRoutes.post(
 
     await db.insert(auditLog).values({
       tenantId,
-      actorId: userId,
+      actorId: userId!,
       actorType: 'human',
       action: 'file_upload_requested',
       resource: 'file',
@@ -77,7 +77,7 @@ filesRoutes.post(
 
     await db.insert(auditLog).values({
       tenantId,
-      actorId: userId,
+      actorId: userId!,
       actorType: 'human',
       action: 'file_uploaded',
       resource: 'file',
@@ -174,7 +174,7 @@ filesRoutes.delete('/:id', async (c) => {
 
   await db.insert(auditLog).values({
     tenantId,
-    actorId: userId,
+    actorId: userId!,
     actorType: 'human',
     action: 'file_deleted',
     resource: 'file',

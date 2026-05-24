@@ -45,7 +45,7 @@ usageRoutes.get('/', async (c) => {
             ORDER BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
         `);
 
-        const aggregatedData = (result.rows ?? result) as { date: string; value: number }[];
+        const aggregatedData = result as unknown as { date: string; value: number }[];
 
         // Calculate total
         const total = aggregatedData.reduce((sum: number, row: { date: string, value: number }) => sum + (row.value || 0), 0);
