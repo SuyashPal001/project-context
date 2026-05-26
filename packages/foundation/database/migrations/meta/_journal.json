@@ -246,6 +246,13 @@
       "when": 1780156800000,
       "tag": "0034_document_sensitivity",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1779831437918,
+      "tag": "0035_handy_zzzax",
+      "breakpoints": true
     }
   ]
 }
