@@ -237,6 +237,34 @@ filesRoutes.post('/:id/ingest', async (c) => {
       })
       .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
 
+    // Auto-commit extracted fields to lakehouse (fire and forget — never block ingest response)
+    if (result.extractedFields && result.extractedFields.length > 0) {
+      const filename = fileRecord.name;
+      const getValue = (key: string) =>
+        result.extractedFields!.find((f: any) => f.key === key)?.value ?? '';
+
+      const rawAmount = getValue('pension_amount').replace(/[^0-9.]/g, '');
+      const declaredAmount = parseFloat(rawAmount) || 0;
+
+      const LAKEHOUSE_URL = process.env.LAKEHOUSE_URL ?? 'http://localhost:8001';
+      fetch(`${LAKEHOUSE_URL}/commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          records: [{
+            pension_id: getValue('ppo_number') || `PEN-${fileId.slice(0, 8)}`,
+            pensioner_name: getValue('pensioner_name') || 'Unknown',
+            declared_amount: declaredAmount,
+            status: 'original',
+            office_code: 'PB-001',
+            effective_date: getValue('effective_date') || new Date().toISOString().split('T')[0],
+          }],
+          label: `Ingestion — ${filename}`,
+          description: 'Auto-committed from P1 document ingestion pipeline',
+        }),
+      }).catch(() => {}); // never block the ingest response
+    }
+
     return c.json({
       data: {
         fileId,
