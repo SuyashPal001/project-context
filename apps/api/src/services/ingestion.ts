@@ -14,10 +14,26 @@ export interface IngestionResult {
 }
 
 const SCANNED_TEXT_THRESHOLD = 100;
+const GARBLED_CHAR_THRESHOLD = 0.3; // >30% suspicious chars = garbled = scanned
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 200;
 
-export function detectFormat(filename: string, mimeType: string, textLength: number): string {
+/**
+ * Borrowed from RAGFlow deepdoc/parser/pdf_parser.py.
+ * Checks if pdf-parse returned garbage encoding (replacement chars, zero-width chars).
+ * A text PDF returning garbled chars means the PDF is actually a scanned image
+ * with a fake text layer — we should route it to the vision LLM instead.
+ */
+function isGarbled(text: string): boolean {
+  if (!text || text.length === 0) return false;
+  const suspicious = text.split('').filter(c => {
+    const code = c.charCodeAt(0);
+    return code === 65533 || code === 0 || code === 65279 || (code >= 57344 && code <= 63743);
+  }).length;
+  return suspicious / text.length > GARBLED_CHAR_THRESHOLD;
+}
+
+export function detectFormat(filename: string, mimeType: string, textLength: number, extractedText?: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? '';
 
   if (['jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp'].includes(ext)) return 'Scanned Image';
@@ -26,7 +42,10 @@ export function detectFormat(filename: string, mimeType: string, textLength: num
   if (['docx', 'doc'].includes(ext) || mimeType.includes('wordprocessingml') || mimeType.includes('msword')) return 'DOCX';
 
   if (ext === 'pdf' || mimeType === 'application/pdf') {
+    // Text too short → scanned
     if (textLength < SCANNED_TEXT_THRESHOLD) return 'Scanned Image';
+    // Text passes length check but is garbled encoding → scanned with fake text layer
+    if (extractedText && isGarbled(extractedText)) return 'Scanned Image';
     return 'PDF (text)';
   }
 
@@ -135,7 +154,7 @@ export async function ingestFile(
     textLength = extractedText.trim().length;
   }
 
-  const formatDetected = detectFormat(filename, mimeType, textLength);
+  const formatDetected = detectFormat(filename, mimeType, textLength, extractedText);
 
   if (formatDetected === 'Scanned Image') {
     const extractedFields = await extractFieldsWithGemini(buffer, mimeType);

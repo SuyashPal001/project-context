@@ -3,12 +3,19 @@ import { detectFormat, chunkText } from '../services/ingestion';
 
 describe('detectFormat', () => {
   it('detects text PDF by mime type and non-empty text', () => {
-    const result = detectFormat('pension.pdf', 'application/pdf', 500);
+    const result = detectFormat('pension.pdf', 'application/pdf', 500, 'Normal readable pension text here');
     expect(result).toBe('PDF (text)');
   });
 
   it('detects scanned PDF when text is too short', () => {
-    const result = detectFormat('service_book.pdf', 'application/pdf', 50);
+    const result = detectFormat('service_book.pdf', 'application/pdf', 50, '');
+    expect(result).toBe('Scanned Image');
+  });
+
+  it('detects scanned PDF when text is garbled encoding', () => {
+    // Simulate garbled replacement chars from a fake text layer
+    const garbled = '�'.repeat(200) + 'abc';
+    const result = detectFormat('scanned.pdf', 'application/pdf', garbled.length, garbled);
     expect(result).toBe('Scanned Image');
   });
 
