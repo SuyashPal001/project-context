@@ -17,6 +17,7 @@ import {
     UserCircle,
     KanbanSquare,
     LayoutList,
+    Database,
 } from "lucide-react";
 import React from 'react';
 
@@ -57,6 +58,7 @@ export function getSidebarItems(
     items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
     items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
     items.push({ label: "Files", href: `${base}/files`, icon: FolderOpen });
+    items.push({ label: "Lakehouse", href: `${base}/lakehouse`, icon: Database });
 
     items.push({ isDivider: true, href: '', icon: () => null, label: '' });
 
