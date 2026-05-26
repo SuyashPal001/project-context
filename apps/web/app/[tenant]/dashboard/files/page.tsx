@@ -23,16 +23,16 @@ export default function FilesPage() {
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                            Files
+                            Document Ingestion
                         </h1>
                         <p className="text-muted-foreground mt-2">
-                            Securely manage and organize your workspace assets.
+                            Upload pension documents, service books, and financial records. Multi-format detection · OCR extraction · Lakehouse indexed.
                         </p>
                     </div>
                     {canUpload && (
                         <Button onClick={() => setIsUploadOpen(true)}>
                             <Upload className="w-4 h-4 mr-2" />
-                            Upload File
+                            Ingest Document
                         </Button>
                     )}
                 </div>

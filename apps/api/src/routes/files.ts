@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { storageService } from '@serverless-saas/storage';
 import { db } from '@serverless-saas/database';
-import { auditLog } from '@serverless-saas/database/schema';
+import { auditLog, files } from '@serverless-saas/database/schema';
 import { hasPermission } from '@serverless-saas/permissions';
+import { eq, and } from 'drizzle-orm';
+import { ingestFile } from '../services/ingestion';
 import type { AppEnv } from '../types';
 
 const filesRoutes = new Hono<AppEnv>();
@@ -153,6 +155,13 @@ filesRoutes.get('/', async (c) => {
     uploadedBy: f.uploadedBy ?? '',
     createdAt: f.createdAt.toISOString(),
     updatedAt: f.updatedAt.toISOString(),
+    // Ingestion metadata
+    formatDetected: f.formatDetected ?? null,
+    officeCode: f.officeCode ?? 'PB-001',
+    classification: f.classification ?? 'Confidential',
+    chunkCount: f.chunkCount ?? 0,
+    ingestionStatus: f.ingestionStatus ?? 'pending',
+    extractedFields: f.extractedFields ?? null,
   }));
 
   return c.json({ data });
@@ -184,6 +193,67 @@ filesRoutes.delete('/:id', async (c) => {
   });
 
   return c.json({ success: true });
+});
+
+// Trigger ingestion processing for an uploaded file
+filesRoutes.post('/:id/ingest', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const fileId = c.req.param('id');
+
+  const permissions = requestContext?.permissions || [];
+  if (!hasPermission(permissions, 'files', 'create')) {
+    return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
+  }
+
+  // Mark as processing
+  await db
+    .update(files)
+    .set({ ingestionStatus: 'processing', updatedAt: new Date() })
+    .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
+
+  try {
+    const [fileRecord] = await db
+      .select()
+      .from(files)
+      .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)))
+      .limit(1);
+
+    if (!fileRecord) return c.json({ error: 'Not Found', message: 'File not found' }, 404);
+
+    const buffer = await storageService.downloadFile(tenantId, fileId);
+    const result = await ingestFile(fileRecord.name, fileRecord.mimeType ?? '', buffer);
+
+    await db
+      .update(files)
+      .set({
+        formatDetected: result.formatDetected,
+        chunkCount: result.chunkCount,
+        extractedFields: result.extractedFields as any,
+        ingestionStatus: 'done',
+        officeCode: 'PB-001',
+        classification: 'Confidential',
+        updatedAt: new Date(),
+      })
+      .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
+
+    return c.json({
+      data: {
+        fileId,
+        formatDetected: result.formatDetected,
+        chunkCount: result.chunkCount,
+        extractedFields: result.extractedFields,
+        ingestionStatus: 'done',
+      }
+    });
+  } catch (err: any) {
+    await db
+      .update(files)
+      .set({ ingestionStatus: 'failed', updatedAt: new Date() })
+      .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
+
+    return c.json({ error: 'Ingestion failed', message: err.message }, 500);
+  }
 });
 
 export { filesRoutes };

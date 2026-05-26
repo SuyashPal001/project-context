@@ -151,6 +151,15 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
                 body: JSON.stringify({ size: selectedFile.size }),
             });
 
+            // Trigger ingestion (fire and don't await — status shown in table)
+            fetch(`/api/proxy/api/v1/files/${data.fileId}/ingest`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            }).catch(() => {});
+
+            // Refresh table after ingestion completes (typically 4–8 seconds)
+            setTimeout(() => onSuccess(), 5000);
+
             setUploadComplete(true);
             onSuccess();
         } catch (err: any) {
@@ -169,7 +178,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
                     </div>
                     <DialogTitle className="text-xl font-semibold">Upload Complete</DialogTitle>
                     <DialogDescription className="text-center mt-2 mb-6">
-                        <span className="font-medium text-zinc-300">{selectedFile?.name}</span> has been securely transferred to the cloud instance {customPrefix ? `at /${customPrefix}` : 'root'}.
+                        <span className="font-medium text-zinc-300">{selectedFile?.name}</span> uploaded and ingestion started. Check the Document Ingestion table for processing status.
                     </DialogDescription>
                     <Button onClick={handleClose} className="w-full">Done</Button>
                 </DialogContent>
