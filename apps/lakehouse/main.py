@@ -69,7 +69,7 @@ def commit_snapshot(req: CommitRequest):
     """Write a full set of records as a new Delta version (used by P1 ingestion auto-commit)."""
     df = pd.DataFrame([r.dict() for r in req.records])
     table = pa.Table.from_pandas(df)
-    write_deltalake(DELTA_PATH, table, mode="overwrite", overwrite_schema=True)
+    write_deltalake(DELTA_PATH, table, mode="overwrite", schema_mode="overwrite")
     dt = dl.DeltaTable(DELTA_PATH)
     version = dt.version()
     save_label(version, req.label, req.description)
@@ -93,7 +93,7 @@ def apply_correction(req: CorrectionRequest):
     df.loc[df["pension_id"] == req.pension_id, "status"] = "corrected"
 
     table = pa.Table.from_pandas(df)
-    write_deltalake(DELTA_PATH, table, mode="overwrite", overwrite_schema=True)
+    write_deltalake(DELTA_PATH, table, mode="overwrite", schema_mode="overwrite")
 
     dt = dl.DeltaTable(DELTA_PATH)
     version = dt.version()
