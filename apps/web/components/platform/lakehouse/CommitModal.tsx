@@ -162,7 +162,7 @@ export function CommitModal({ open, onOpenChange, records, onSuccess }: Props) {
                         {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Committing…</> : "Commit Correction"}
                     </Button>
                 </DialogFooter>
-            </Dialog>
+            </DialogContent>
         </Dialog>
     );
 }
