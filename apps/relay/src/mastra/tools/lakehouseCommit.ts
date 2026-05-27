@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 const LAKEHOUSE_URL = process.env.LAKEHOUSE_URL ?? 'http://localhost:8001';
 
-export async function lakehouseCommit(fields: Array<{ key: string; label: string; value: string; confidence: number }>, filename: string, fileId: string): Promise<{ version: number; label: string }> {
+export async function lakehouseCommit(fields: Array<{ key: string; label: string; value: string; confidence: number }>, filename: string, fileId: string, tenantId?: string): Promise<{ version: number; label: string }> {
   const getValue = (key: string) => fields.find(f => f.key === key)?.value ?? ''
   const rawAmount = getValue('pension_amount').replace(/[^0-9.]/g, '')
   const body = {
@@ -12,7 +12,7 @@ export async function lakehouseCommit(fields: Array<{ key: string; label: string
       pensioner_name: getValue('pensioner_name') || 'Unknown',
       declared_amount: parseFloat(rawAmount) || 0,
       status: 'original',
-      office_code: 'PB-001',
+      office_code: tenantId ?? 'unknown',
       effective_date: getValue('effective_date') || new Date().toISOString().split('T')[0],
     }],
     label: `Ingestion — ${filename}`,

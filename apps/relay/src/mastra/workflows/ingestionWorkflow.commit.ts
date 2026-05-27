@@ -10,7 +10,7 @@ export const commitStep = createStep({
     if (inputData.extractedFields.length === 0) {
       return { ...inputData, lakehouseVersion: -1, lakehouseLabel: 'No fields to commit' }
     }
-    const result = await lakehouseCommit(inputData.extractedFields, inputData.filename, inputData.fileId)
+    const result = await lakehouseCommit(inputData.extractedFields, inputData.filename, inputData.fileId, inputData.tenantId)
     return { ...inputData, lakehouseVersion: result.version, lakehouseLabel: result.label }
   },
 })
