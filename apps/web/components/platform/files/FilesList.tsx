@@ -121,15 +121,24 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         onError: () => toast.error("Failed to start re-ingestion"),
     });
 
-    const ingestFolderMutation = useMutation({
-        mutationFn: async (personalIdentifier: string) =>
-            api.post('/api/v1/files/ingest-folder', { personalIdentifier }),
-        onSuccess: (_, identifier) => {
-            queryClient.invalidateQueries({ queryKey: ['files'] });
-            toast.success(`Ingestion started for folder "${identifier}"`);
-        },
-        onError: () => toast.error("Failed to start folder ingestion"),
-    });
+    const [ingestingFolders, setIngestingFolders] = useState<Set<string>>(new Set());
+
+    const ingestFolder = async (folderName: string) => {
+        const folderPrefix = `${prefix}${folderName}/`;
+        const pending = (response?.data ?? []).filter(
+            f => f.key.startsWith(folderPrefix) && f.ingestionStatus !== 'done'
+        );
+        if (pending.length === 0) return;
+        setIngestingFolders(prev => new Set([...prev, folderName]));
+        for (const file of pending) {
+            try {
+                await fetch(`/api/proxy/api/v1/files/${file.id}/ingest`, { method: 'POST' });
+            } catch { /* continue */ }
+        }
+        setIngestingFolders(prev => { const n = new Set(prev); n.delete(folderName); return n; });
+        queryClient.invalidateQueries({ queryKey: ['files'] });
+        toast.success(`Ingestion queued for folder "${folderName}"`);
+    };
 
     const downloadFile = async (fileId: string) => {
         try {
@@ -226,32 +235,40 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {virtualFolders.map(folderName => (
-                                    <TableRow
-                                        key={`folder-${folderName}`}
-                                        onClick={() => onPrefixChange(`${prefix}${folderName}/`)}
-                                        className="cursor-pointer border-zinc-800/50 hover:bg-muted/40 transition-colors"
-                                    >
-                                        <TableCell colSpan={7}>
-                                            <div className="flex items-center gap-2">
-                                                <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
-                                                <span className="font-medium text-zinc-200">{folderName}/</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-7 text-xs text-zinc-400 hover:text-green-400 gap-1"
-                                                onClick={() => ingestFolderMutation.mutate(folderName)}
-                                                disabled={ingestFolderMutation.isPending}
-                                            >
-                                                <Play className="w-3 h-3" />
-                                                Ingest All
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                {virtualFolders.map(folderName => {
+                                    const folderPrefix = `${prefix}${folderName}/`;
+                                    const folderFiles = (response?.data ?? []).filter(f => f.key.startsWith(folderPrefix));
+                                    const allDone = folderFiles.length > 0 && folderFiles.every(f => f.ingestionStatus === 'done');
+                                    const isIngesting = ingestingFolders.has(folderName);
+                                    return (
+                                        <TableRow
+                                            key={`folder-${folderName}`}
+                                            onClick={() => onPrefixChange(folderPrefix)}
+                                            className="cursor-pointer border-zinc-800/50 hover:bg-muted/40 transition-colors"
+                                        >
+                                            <TableCell colSpan={7}>
+                                                <div className="flex items-center gap-2">
+                                                    <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+                                                    <span className="font-medium text-zinc-200">{folderName}/</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 text-xs text-zinc-400 hover:text-green-400 gap-1"
+                                                    onClick={() => ingestFolder(folderName)}
+                                                    disabled={allDone || isIngesting}
+                                                >
+                                                    {isIngesting
+                                                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                                                        : <Play className="w-3 h-3" />}
+                                                    {isIngesting ? 'Ingesting…' : 'Ingest'}
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
                                 {filteredFiles.map(file => (
                                     <TableRow
                                         key={file.id}

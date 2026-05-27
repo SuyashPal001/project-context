@@ -18,7 +18,7 @@ interface UploadFileModalProps {
 
 type FileStatus = {
   progress: number
-  status: 'pending' | 'uploading' | 'confirming' | 'ingesting' | 'done' | 'error'
+  status: 'pending' | 'uploading' | 'confirming' | 'done' | 'error'
   error?: string
 }
 
@@ -128,9 +128,6 @@ export function UploadFileModal({ open, onOpenChange, onSuccess }: UploadFileMod
         body: JSON.stringify({ size: file.size }),
       })
 
-      updateStatus(file.name, { status: 'ingesting' })
-      fetch(`/api/proxy/api/v1/files/${data.fileId}/ingest`, { method: 'POST' }).catch(() => {})
-
       updateStatus(file.name, { status: 'done' })
     } catch (err: any) {
       updateStatus(file.name, { status: 'error', error: err.message })
@@ -206,7 +203,7 @@ export function UploadFileModal({ open, onOpenChange, onSuccess }: UploadFileMod
                         {s?.status === 'uploading' && (
                           <span className="text-xs text-primary font-mono shrink-0">{s.progress}%</span>
                         )}
-                        {(s?.status === 'confirming' || s?.status === 'ingesting') && (
+                        {s?.status === 'confirming' && (
                           <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
                         )}
                         {s?.status === 'done' && <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />}
