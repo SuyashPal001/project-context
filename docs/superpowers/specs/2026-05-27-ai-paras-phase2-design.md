@@ -28,19 +28,33 @@ genuinely reason. Fixing it is what makes A1 real *and* uses Mastra properly.
 
 ---
 
-## DEMO BUILD SCOPE (time-boxed) — backend agent only, NO custom UI
+## DEMO BUILD SCOPE (time-boxed) — READ THIS FIRST, it overrides everything below
 
-Limited time. Build **only the agent backend**; show it through the **re-skinned Mastra Studio**
-(no custom web UI work this round). In scope:
-- `aiParasAgent` (Tier 2) + `documentIntelligenceAgent` (Tier 3); Saarthi delegates via `agents:{}`
-- tools (`routeToOfficer` new; reuse `check_required_documents`, `validate_pension_case`)
-- memory, input/output processors, scorers, skill, exposes the deterministic scrutiny workflow
-- document → fields automation (closes A1) + page numbers in ingestion (A3)
-- register everything on the Mastra instance so Studio displays it
+Limited time. The goal is to **showcase agent capabilities + the pension use case**, surfaced in
+the **re-skinned Mastra Studio**. Build the **agent backend only — NO custom web UI this round.**
+Configuring the agent correctly makes Studio display memory/tools/processors/scorers/traces
+automatically; that is the demo surface.
 
-**Deferred (NOT this round):** custom officer-review UI changes, SAO role-filter page, the eval
-harness, Require Tool Approval, custom working-memory templates/Variables. Studio already shows
-memory/tools/processors/scorers/traces from the agent config alone.
+**IN SCOPE (build these):**
+- [ ] Page numbers in ingestion extract step (GAP 9 / A3)
+- [ ] `routeToOfficer` Mastra tool (DRY persist, shared by agent + workflow)
+- [ ] `documentIntelligenceAgent` (Tier 3) — document → fields with page provenance (A1)
+- [ ] `citationGrounding` + `findingFaithfulness` scorers (one-per-file in `scorers/`)
+- [ ] `aiParasAgent` (Tier 2) — own input/output processors, sub-agent, memory, exposes the
+      deterministic scrutiny workflow via `workflows:{}`, scorers
+- [ ] Register both agents + scorers on the Mastra instance; add `aiParasAgent` to Saarthi's
+      `agents:{}` delegation map
+- [ ] HITL suspend/resume in the scrutiny path (backend + relay + API) — shows in Studio traces
+- [ ] Filesystem skill `apps/relay/skills/pension-scrutiny/` + `agent_skills` DB record
+- [ ] SAO officer **seed** (data only, trivial — so escalation has a target role)
+- [ ] Build, type-check (relay/api/web), push develop
+
+**OUT OF SCOPE — DO NOT BUILD this round (explicit):**
+- ❌ **SAO role-filter on the pension-review queue (any custom web UI).** Skip it. (If your plan
+  has a "SAO filter on pension-review queue" task — e.g. T11 — DROP it.)
+- ❌ Any other officer-review UI changes / new web pages.
+- ❌ Eval harness (Datasets/Experiments), Require Tool Approval, custom working-memory
+  templates/Variables — all deferred to a later round.
 
 ## Core architectural decision: AI-PARAS becomes a real Mastra Agent
 
@@ -71,7 +85,7 @@ seeded batch (run via the deterministic workflow) is already on screen. Best of 
 | Extraction owner | Who turns a document into pension fields | **The agent** — via an `extract_pension_fields` tool (LLM reads the document's text/OCR into the structured numeric field set with `{doc, page}` provenance). This is the legitimate place for AI reasoning. Deterministic key-map fallback if LLM unavailable. |
 | Case grouping | How docs become one case | Agent groups documents by **extracted PPO number** (`ppo_number`); falls back to officer-assigned grouping if absent. |
 | Page numbers | A3 real attribution | Add **page tracking to the ingestion extract step** (closes GAP 9), so extraction records which page each value came from. |
-| SAO loop | A4 receiving end | **Role filter on the existing pension-review queue** (no new page) + a seeded SAO officer. Escalated cases appear in the SAO's view. |
+| SAO loop | A4 receiving end | This round: **seed an SAO officer only** (data). The queue role-filter UI is OUT of scope (see DEMO BUILD SCOPE). HITL suspend/resume covers the human-in-the-loop story for the demo. |
 | Backwards compat | Don't break Phase 1 | Seed scripts and the workflow both stay. The agent path is additive. |
 
 ---
