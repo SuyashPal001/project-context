@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent'
 import { saarthiModel } from '../model.js'
+import { tenantContextSchema } from '../context.js'
 
 // ---------------------------------------------------------------------------
 // DocumentIntelligenceAgent — Tier 3 of the AI-PARAS multi-agent network.
@@ -82,4 +83,5 @@ Rules:
 - qualifying_service_years should be in decimal years (e.g. 28 years 6 months = 28.5)`,
 
   model: saarthiModel,
+  requestContextSchema: tenantContextSchema,
 })

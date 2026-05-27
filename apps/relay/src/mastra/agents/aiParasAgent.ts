@@ -5,6 +5,7 @@ import { saarthiModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { createViolationHandler } from '../guardrails.js'
 import { prdWorkspace } from '../workspace/prdWorkspace.js'
+import { pensionContextSchema } from '../context.js'
 
 import { checkRequiredDocumentsTool } from '../tools/checkRequiredDocuments.js'
 import { validatePensionCaseTool } from '../tools/validatePensionCase.js'
@@ -104,6 +105,7 @@ Then list: provision, declared, calculated, source page.`,
   model: saarthiModel,
   memory: getMastraMemory(),
   workspace: prdWorkspace,
+  requestContextSchema: pensionContextSchema,
 
   tools: {
     check_required_documents: checkRequiredDocumentsTool,
