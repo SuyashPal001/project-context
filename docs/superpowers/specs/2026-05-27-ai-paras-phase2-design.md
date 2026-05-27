@@ -28,6 +28,20 @@ genuinely reason. Fixing it is what makes A1 real *and* uses Mastra properly.
 
 ---
 
+## DEMO BUILD SCOPE (time-boxed) — backend agent only, NO custom UI
+
+Limited time. Build **only the agent backend**; show it through the **re-skinned Mastra Studio**
+(no custom web UI work this round). In scope:
+- `aiParasAgent` (Tier 2) + `documentIntelligenceAgent` (Tier 3); Saarthi delegates via `agents:{}`
+- tools (`routeToOfficer` new; reuse `check_required_documents`, `validate_pension_case`)
+- memory, input/output processors, scorers, skill, exposes the deterministic scrutiny workflow
+- document → fields automation (closes A1) + page numbers in ingestion (A3)
+- register everything on the Mastra instance so Studio displays it
+
+**Deferred (NOT this round):** custom officer-review UI changes, SAO role-filter page, the eval
+harness, Require Tool Approval, custom working-memory templates/Variables. Studio already shows
+memory/tools/processors/scorers/traces from the agent config alone.
+
 ## Core architectural decision: AI-PARAS becomes a real Mastra Agent
 
 Phase 1 built AI-PARAS as a rigid **workflow** (`.then()` chain) — the LLM did almost nothing,
@@ -243,6 +257,29 @@ AI-PARAS's capability is defined as a **skill in two forms**, both already used 
 
 **Scorers close GAP 7 too:** wiring finding-quality scorers means the observability dashboard
 (P8) shows live agent-quality metrics during the demo — turning an open gap into a strength.
+
+### Demo surface: the re-skinned Mastra Studio (shown as-is)
+
+The demo shows the **re-skinned Mastra Studio** (`agent-studio.fitnearn.com`, branding already
+removed). Key point: **configuring AI-PARAS properly is all that's needed** — Studio then
+automatically displays the agent's Memory, Tools, Workflows, Skills, Processors, Scorers,
+System Prompt, and full nested **Traces** (with the prompt-injection-detector + content-moderator
+processors shown as sub-agent runs). No extra UI work to make the platform look rich; the agent
+config drives the Studio views.
+
+**NOT used: "Network" chat mode — it is deprecated.** Multi-agent collaboration is via `agents:{}`
+delegation (the supported path, as in `pmAgent`), NOT the Network chat method.
+
+### Studio plug-ins — DEFERRED (not for the time-boxed demo)
+
+These are future polish, **not built for this demo** (limited time). Documented so they aren't lost:
+
+- **Eval harness — Dataset + Experiment + Scorers (Evaluate tab):** a pension-case dataset +
+  experiment to produce a **measured accuracy %** for A2. (Deferred.)
+- **Require Tool Approval — tool-level HITL (Model Settings):** officer approves a tool action
+  before it executes. (Deferred.)
+- **Working-memory template "Pension Case Context" + Variables (`requestContextSchema`):**
+  case-specific memory template + dynamic `{{caseRef}}` prompt variables. (Deferred.)
 
 ### Why the verdict tool stays deterministic (not the agent's job)
 
