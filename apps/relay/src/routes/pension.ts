@@ -25,9 +25,9 @@ pensionRoutes.post('/internal/pension/run', async (c) => {
   const fieldSources = (fields.field_sources as Record<string, { sourceDoc: string; sourcePage: number }> | undefined) ?? {}
 
   try {
-    // CONFIRMED LIVE: createRun() is synchronous, run.start() is async
+    // Use Mastra framework: getWorkflow() + await createRun() (createRun is async per Mastra ^1.32.1)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const run = (mastra.getWorkflow('pension-pre-scrutiny') as any).createRun()
+    const run = await (mastra.getWorkflow('pension-pre-scrutiny') as any).createRun()
     const result = await run.start({
       inputData: {
         caseId: kase.id,
