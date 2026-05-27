@@ -13,6 +13,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { IngestionSidePanel } from "./IngestionSidePanel";
 import { FilesFilter } from "./FilesFilter";
 
@@ -250,6 +251,16 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 <div className="space-y-2">
                     <FilesFilter officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
                         filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }} />
+                    {/* Bulk action bar */}
+                    {selectedIds.size > 0 && (
+                        <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
+                            <span className="text-zinc-300">Selected: <strong>{selectedIds.size}</strong> {selectedIds.size === 1 ? 'file' : 'files'}</span>
+                            <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={bulkDelete} disabled={bulkDeleting}>
+                                {bulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                Delete Selected
+                            </Button>
+                        </div>
+                    )}
                     <div className="flex gap-4 items-start">
                     {/* Main table */}
                     <div className="flex-1 border border-zinc-800 rounded-lg bg-card overflow-hidden min-w-0">
@@ -257,8 +268,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             <TableHeader className="bg-muted/50">
                                 <TableRow className="border-zinc-800 hover:bg-transparent">
                                     <TableHead className="w-10">
-                                        <input type="checkbox" checked={allPageSelected} onChange={toggleSelectAll}
-                                            className="rounded border-zinc-600 bg-zinc-800 accent-primary cursor-pointer" />
+                                        <Checkbox checked={allPageSelected} onCheckedChange={toggleSelectAll} />
                                     </TableHead>
                                     <TableHead>Document</TableHead>
                                     <TableHead>Format</TableHead>
@@ -280,10 +290,10 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         <TableRow
                                             key={`folder-${folderName}`}
                                             onClick={() => onPrefixChange(folderPrefix)}
-                                            className="cursor-pointer border-zinc-800/50 hover:bg-muted/40 transition-colors"
+                                            className="cursor-pointer border-zinc-800/50 hover:bg-zinc-900/40 transition-colors"
                                         >
-                                            <TableCell onClick={e => e.stopPropagation()} />
-                                            <TableCell colSpan={7}>
+                                            <TableCell className="py-3" onClick={e => e.stopPropagation()} />
+                                            <TableCell className="py-3" colSpan={7}>
                                                 <div className="flex items-center gap-2">
                                                     <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
                                                     <span className="font-medium text-zinc-200">{folderName}/</span>
@@ -309,15 +319,14 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 {pagedFiles.map(file => (
                                     <TableRow
                                         key={file.id}
-                                        className={`border-zinc-800/50 hover:bg-muted/40 transition-colors cursor-pointer ${selectedFile?.id === file.id ? 'bg-muted/40 border-l-2 border-l-blue-500' : ''}`}
+                                        className={`border-zinc-800/50 hover:bg-zinc-900/40 transition-colors cursor-pointer ${selectedFile?.id === file.id ? 'bg-zinc-900/40 border-l-2 border-l-blue-500' : ''}`}
                                         onClick={() => setSelectedFile(selectedFile?.id === file.id ? null : file)}
                                     >
-                                        <TableCell className="w-10" onClick={e => e.stopPropagation()}>
-                                            <input type="checkbox" checked={selectedIds.has(file.id)}
-                                                onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(file.id) ? n.delete(file.id) : n.add(file.id); return n; })}
-                                                className="rounded border-zinc-600 bg-zinc-800 accent-primary cursor-pointer" />
+                                        <TableCell className="w-10 py-3 align-middle" onClick={e => e.stopPropagation()}>
+                                            <Checkbox checked={selectedIds.has(file.id)}
+                                                onCheckedChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(file.id) ? n.delete(file.id) : n.add(file.id); return n; })} />
                                         </TableCell>
-                                        <TableCell className="max-w-[180px]">
+                                        <TableCell className="max-w-[180px] py-3">
                                             <div className="flex items-center gap-2">
                                                 {getFileIcon(file.contentType)}
                                                 <span className="text-zinc-300 truncate text-sm font-medium" title={file.filename}>{file.filename}</span>
@@ -328,13 +337,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                 {file.formatDetected ?? '—'}
                                             </span>
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="py-3">
                                             <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-mono">
                                                 {file.officeCode}
                                             </span>
                                         </TableCell>
-                                        <TableCell>
-                                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${file.classification === 'Confidential' ? 'bg-red-500/10 text-red-400' : 'bg-amber-500/10 text-amber-400'}`}>
+                                        <TableCell className="py-3">
+                                            <span className={`text-xs px-2 py-0.5 rounded font-medium border ${file.classification === 'Confidential' ? 'border-red-500/30 text-red-400 bg-red-500/10' : 'border-amber-500/30 text-amber-400 bg-amber-500/10'}`}>
                                                 {file.classification}
                                             </span>
                                         </TableCell>
@@ -387,17 +396,6 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         />
                     )}
                     </div>
-
-                    {/* Bulk action bar */}
-                    {selectedIds.size > 0 && (
-                        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-sm">
-                            <span className="text-zinc-300">Selected: <strong>{selectedIds.size}</strong> {selectedIds.size === 1 ? 'file' : 'files'}</span>
-                            <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={bulkDelete} disabled={bulkDeleting}>
-                                {bulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                                Delete Selected
-                            </Button>
-                        </div>
-                    )}
 
                     {/* Pagination */}
                     {totalPages > 1 && (
