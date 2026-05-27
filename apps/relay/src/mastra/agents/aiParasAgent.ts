@@ -1,10 +1,9 @@
 import { Agent } from '@mastra/core/agent'
-import { ModerationProcessor, PIIDetector, PromptInjectionDetector, SystemPromptScrubber } from '@mastra/core/processors'
+import { ModerationProcessor, PIIDetector, PromptInjectionDetector } from '@mastra/core/processors'
 
 import { saarthiModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { createViolationHandler } from '../guardrails.js'
-import { prdWorkspace } from '../workspace/prdWorkspace.js'
 import { pensionContextSchema } from '../context.js'
 
 import { checkRequiredDocumentsTool } from '../tools/checkRequiredDocuments.js'
@@ -18,6 +17,12 @@ import { findingFaithfulnessScorer } from '../scorers/findingFaithfulness.js'
 // ---------------------------------------------------------------------------
 // Per-agent processor instances — NOT shared with platformAgent.
 // Each agent must own its processors so violations are attributed correctly.
+//
+// NOTE: SystemPromptScrubber is intentionally omitted from outputProcessors.
+// It redacts the agent's own legitimate self-introduction because the auditor
+// persona overlaps with keywords in the system prompt, producing asterisk runs.
+// PromptInjectionDetector + ModerationProcessor on input and PIIDetector +
+// ModerationProcessor on output provide the governance story without masking.
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,10 +54,60 @@ const piiDetector = new PIIDetector({
 })
 ;(piiDetector as AnyProcessor).onViolation = violationHandler
 
-const systemPromptScrubber = new SystemPromptScrubber({
-  model: saarthiModel,
-})
-;(systemPromptScrubber as AnyProcessor).onViolation = violationHandler
+// ---------------------------------------------------------------------------
+// CCS Pension Rules 1972 — domain guidance inlined from
+// apps/relay/skills/pension-scrutiny/SKILL.md.
+//
+// Previously injected via `workspace: prdWorkspace`, but that attached the
+// entire PRD file-editing toolset (read_file, write_file, mkdir, grep…).
+// A pension auditor must NEVER have write/delete tools. Inline instead.
+// ---------------------------------------------------------------------------
+
+const CCS_DOMAIN_GUIDANCE = `
+## CCS Pension Rules 1972 — Domain Reference
+
+### Five Key Rules
+
+**R001 — Minimum Qualifying Service**
+Provision: CCS Pension Rules 1972, Rule 49(1)(a)
+Threshold: qualifying_service_years ≥ 10 years required for pension entitlement.
+
+**R002 — Pension Calculation Formula**
+Provision: CCS Pension Rules 1972, Rule 49(1)
+Formula: Pension = (last_pay × qualifying_service_years) / 66
+Tolerance: declared vs calculated mismatch > ₹500 → FAIL
+last_pay is typically in the Service Book (final pay certificate page).
+
+**R003 — Commutation Ceiling**
+Provision: CCS Pension Rules 1972, Rule 10
+Limit: commutation_amount / declared_pension × 100 ≤ 40%
+If commutation_amount = 0, rule passes automatically.
+
+**R004 — Death-cum-Retirement Gratuity (DCRG)**
+Provision: CCS Pension Rules 1972, Rule 50
+Formula: DCRG = last_pay × min(qualifying_service_years, 33) / 4
+Cap: maximum ₹20 lakh (₹2,000,000). Tolerance: mismatch > ₹1,000 → FAIL.
+
+**R005 — Family Pension Eligibility**
+Provision: CCS Pension Rules 1972, Rule 54
+Threshold: qualifying_service_years ≥ 1 year.
+
+### Required Documents
+1. service_book — Service Book (joining date, pay history)
+2. ppo_form — Pension Payment Order application
+3. salary_certificate — Final pay verification
+
+### Escalation Criteria (route to SAO)
+- Pension mismatch (R002) > ₹2,000
+- DCRG mismatch (R004) > ₹10,000
+- Both R002 and R003 fail simultaneously
+- Suspected fraud or document forgery flagged by officer
+
+### Narration Examples
+FAIL: "Declared pension of ₹23,400 does not match calculated entitlement of ₹27,180
+under Rule 49(1) (₹54,360 × 33.0 / 66 = ₹27,180). Discrepancy ₹3,780."
+PASS: "Commutation amount of ₹0 complies with the 40% ceiling under Rule 10."
+`
 
 // ---------------------------------------------------------------------------
 // AI-PARAS — Tier 2: pension pre-scrutiny lead.
@@ -60,13 +115,14 @@ const systemPromptScrubber = new SystemPromptScrubber({
 // Capabilities demonstrated (maps to spec's 12-capability showcase table):
 //   #1  Multi-agent delegation    → agents: { documentIntelligence }
 //   #2  Agent + workflow compose  → workflows: { scrutiny: pensionWorkflow }
-//   #5  Governance processors     → inputProcessors + outputProcessors (own instances)
+//   #5  Governance processors     → inputProcessors [PromptInjection, Moderation]
+//                                   outputProcessors [PII, Moderation]
 //   #6  Memory + semantic recall  → getMastraMemory()
 //   #7  Live scorers / evals      → citationGrounding + findingFaithfulness
 //   #8  Structured output         → instructions enforce exact schema
 //   #9  Deterministic verdict     → validate_pension_case tool (rule engine, not LLM)
 //  #11  Versioned skill           → agent_skills DB record (seed script)
-//  #12  Filesystem skill          → pension-scrutiny/ via prdWorkspace
+//  #12  Domain guidance           → CCS_DOMAIN_GUIDANCE inlined above
 // ---------------------------------------------------------------------------
 
 export const aiParasAgent = new Agent({
@@ -81,7 +137,7 @@ For each pension case you receive:
 1. Call check_required_documents with the list of present documents
    - If documents are missing → report which ones and stop (status: incomplete)
 2. Delegate to DocumentIntelligenceAgent to extract pension fields from the document text
-   - Pass the document text and ask for: last_pay, qualifying_service_years, declared_pension, commutation_amount, declared_dcrg with page numbers
+   - Ask for: last_pay, qualifying_service_years, declared_pension, commutation_amount, declared_dcrg with page numbers
 3. Call validate_pension_case with the extracted fields
 4. Assemble findings for EVERY rule result:
    - For each rule: ruleId, ruleName, status (pass/fail), provision, narration, declaredValue, calculatedValue, sources (["Service Book, p.4"])
@@ -89,24 +145,21 @@ For each pension case you receive:
 
 ## CRITICAL RULES
 - NEVER decide pass/fail yourself — always call validate_pension_case. The rule engine decides.
-- NEVER return free-text — findings must have the exact fields: ruleId, ruleName, status, provision, narration, declaredValue, calculatedValue, sources
+- NEVER return free-text — findings must carry: ruleId, ruleName, status, provision, narration, declaredValue, calculatedValue, sources
 - NEVER skip validate_pension_case even if you think you know the answer
-- The deterministic workflow (scrutiny) is available as a capability for batch runs
-
-## Escalation criteria (refer to pension-scrutiny skill for details)
-- Service < 10 years → incomplete entitlement (R001)
-- Pension mismatch > ₹500 → automatic flag for SAO review
-- Commutation > 40% → regulatory violation (R003)
+- The deterministic workflow (scrutiny) is available as a batch-run capability
+- You have exactly 3 tools: check_required_documents, validate_pension_case, route_to_officer
 
 ## Output format
 Report findings as: "[RULE ID] [PASS/FAIL] — [one-line verdict with numbers cited]"
-Then list: provision, declared, calculated, source page.`,
+Then list: provision, declared, calculated, source page.
+${CCS_DOMAIN_GUIDANCE}`,
 
   model: saarthiModel,
   memory: getMastraMemory(),
-  workspace: prdWorkspace,
   requestContextSchema: pensionContextSchema,
 
+  // Exactly 3 pension tools — no filesystem tools
   tools: {
     check_required_documents: checkRequiredDocumentsTool,
     validate_pension_case: validatePensionCaseTool,
@@ -117,13 +170,15 @@ Then list: provision, declared, calculated, source page.`,
   agents: { documentIntelligence: documentIntelligenceAgent },
 
   // The deterministic Phase 1 workflow exposed as an agent capability.
-  // Used for batch/fallback runs; the agent orchestrates for live demo runs.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   workflows: { scrutiny: pensionWorkflow as any },
 
-  // Own governance processors — not inherited from platformAgent
+  // Governance processors (own instances, not shared with platformAgent).
+  // Input: prompt-injection defence + moderation on incoming messages.
+  // Output: PII redaction + moderation on findings (no SystemPromptScrubber —
+  //         it masks legitimate auditor persona text with asterisks).
   inputProcessors: [promptInjectionDetector, moderationProcessor],
-  outputProcessors: [piiDetector, moderationProcessor, systemPromptScrubber],
+  outputProcessors: [piiDetector, moderationProcessor],
 
   // Live quality scorers — visible in Mastra Studio evals tab
   scorers: {
