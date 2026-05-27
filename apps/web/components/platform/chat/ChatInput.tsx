@@ -1,5 +1,4 @@
 import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle } from "lucide-react";
-import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import {
     DropdownMenu,
     DropdownMenuContent,
