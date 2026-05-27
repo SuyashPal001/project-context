@@ -9,6 +9,7 @@
 import type { ServerResponse } from 'http';
 import Anthropic from '@anthropic-ai/sdk';
 import type { ProviderAdapter } from './base';
+import { latency } from '../metrics.js';
 import type {
   OpenAIContentPart,
   OpenAIMessage,
@@ -308,6 +309,8 @@ export class AnthropicAdapter implements ProviderAdapter {
     const streamParams = { ...params, stream: true } as Anthropic.MessageCreateParamsStreaming;
 
     const stream = await client.messages.create(streamParams);
+    const t0 = Date.now();
+    let ttftFired = false;
 
     for await (const event of stream) {
       if (event.type === 'message_start') {
@@ -317,6 +320,10 @@ export class AnthropicAdapter implements ProviderAdapter {
         if (block.type === 'text') {
           // Nothing to emit yet — text comes in content_block_delta
         } else if (block.type === 'tool_use') {
+          if (!ttftFired) {
+            latency.observe({ adapter: 'anthropic', metric: 'ttft' }, Date.now() - t0);
+            ttftFired = true;
+          }
           // Register this content block index → tool call slot
           blockIndexToToolIndex.set(event.index, toolCallIndex);
           // Emit tool call header delta
@@ -339,6 +346,10 @@ export class AnthropicAdapter implements ProviderAdapter {
       } else if (event.type === 'content_block_delta') {
         const delta = event.delta;
         if (delta.type === 'text_delta') {
+          if (!ttftFired) {
+            latency.observe({ adapter: 'anthropic', metric: 'ttft' }, Date.now() - t0);
+            ttftFired = true;
+          }
           totalChars += delta.text.length;
           res.write(
             `data: ${JSON.stringify(makeStreamChunk(id, modelName, { content: delta.text }))}\n\n`,

@@ -18,6 +18,7 @@ import type {
 import { FunctionCallingMode } from '@google-cloud/vertexai';
 
 import type { ProviderAdapter } from './base';
+import { latency } from '../metrics.js';
 import type {
   OpenAIContentPart,
   OpenAIMessage,
@@ -375,6 +376,8 @@ export class VertexAdapter implements ProviderAdapter {
     );
 
     const streamResult = await model.generateContentStream(request);
+    const t0 = Date.now();
+    let ttftFired = false;
 
     let totalChars = 0;
     let toolCallIndex = 0;
@@ -392,11 +395,19 @@ export class VertexAdapter implements ProviderAdapter {
         const p = part as { text?: string; functionCall?: { name: string; args: unknown } };
 
         if (p.text) {
+          if (!ttftFired) {
+            latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0);
+            ttftFired = true;
+          }
           totalChars += p.text.length;
           res.write(
             `data: ${JSON.stringify(makeStreamChunk(id, modelName, { content: p.text }))}\n\n`,
           );
         } else if (p.functionCall) {
+          if (!ttftFired) {
+            latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0);
+            ttftFired = true;
+          }
           // Gemini functionCall → OpenAI tool_calls streaming delta
           hasToolCalls = true;
           const callId = `call_${id}_${toolCallIndex}`;

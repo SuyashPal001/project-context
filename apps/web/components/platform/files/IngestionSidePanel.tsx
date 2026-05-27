@@ -27,6 +27,25 @@ interface Props {
     onClose: () => void;
 }
 
+const PIPELINE_STEPS = [
+    { id: 'detectFormat', label: 'detectFormat' },
+    { id: 'classify',     label: 'classify' },
+    { id: 'extract',      label: 'extract' },
+    { id: 'validate',     label: 'validate' },
+    { id: 'commit',       label: 'commit' },
+    { id: 'embed',        label: 'embed' },
+];
+
+function getStepState(idx: number, status: string): 'done' | 'active' | 'idle' {
+    if (status === 'done') return 'done';
+    if (status === 'failed') return idx < 4 ? 'done' : 'idle';
+    if (status === 'processing') {
+        if (idx < 2) return 'done';
+        if (idx === 2) return 'active';
+    }
+    return 'idle';
+}
+
 function ConfidenceBar({ value }: { value: number }) {
     const pct = Math.round(value * 100);
     const color = pct >= 90 ? 'bg-green-500' : pct >= 75 ? 'bg-amber-500' : 'bg-red-500';
@@ -110,6 +129,29 @@ export function IngestionSidePanel({ file, onClose }: Props) {
                         <p className="text-xs text-amber-400">Vision LLM processing document…</p>
                     </div>
                 )}
+
+                {/* Pipeline Lineage */}
+                <div className="border-t border-zinc-800 pt-4">
+                    <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">Pipeline Steps</p>
+                    <div className="space-y-1.5">
+                        {PIPELINE_STEPS.map((step, idx) => {
+                            const state = getStepState(idx, file.ingestionStatus);
+                            return (
+                                <div key={step.id} className="flex items-center gap-2">
+                                    <span className="text-sm leading-none">
+                                        {state === 'done' ? '✅' : state === 'active' ? '⏳' : '⬜'}
+                                    </span>
+                                    <span className={`text-xs font-mono ${
+                                        state === 'done' ? 'text-zinc-300' :
+                                        state === 'active' ? 'text-amber-400 animate-pulse' :
+                                        'text-zinc-600'}`}>
+                                        {step.label}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
         </div>
     );

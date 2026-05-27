@@ -18,11 +18,11 @@ function buildExtractionPrompt(documentType: string): string {
 
 function getMockFields() {
   return [
-    { key: 'pensioner_name', label: 'Pensioner Name', value: 'Ramesh Kumar', confidence: 0.96 },
-    { key: 'dob', label: 'Date of Birth', value: '15-03-1962', confidence: 0.94 },
-    { key: 'pension_amount', label: 'Pension Amount', value: '₹18,500', confidence: 0.91 },
-    { key: 'effective_date', label: 'Effective Date', value: '01-04-2020', confidence: 0.89 },
-    { key: 'ppo_number', label: 'PPO Number', value: 'PB/001/2020/00234', confidence: 0.93 },
+    { key: 'pensioner_name', label: 'Pensioner Name', value: 'Sh. Harbhajan Singh (Retd. Naib Tehsildar)', confidence: 0.96 },
+    { key: 'dob', label: 'Date of Birth', value: '12-07-1961', confidence: 0.94 },
+    { key: 'pension_amount', label: 'Pension Amount', value: '₹23,400', confidence: 0.91 },
+    { key: 'effective_date', label: 'Effective Date', value: '01-11-2019', confidence: 0.89 },
+    { key: 'ppo_number', label: 'PPO Number', value: 'PPO/PB/2019/00847', confidence: 0.93 },
   ];
 }
 

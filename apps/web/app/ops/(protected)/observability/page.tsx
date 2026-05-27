@@ -9,6 +9,7 @@ import { WorkflowMetricsCard, type WorkflowPoint } from "@/components/platform/o
 import { CostBreakdownCard, type CostData } from "@/components/platform/observability/CostBreakdownCard"
 import { AuditVolumeCard, type AuditPoint } from "@/components/platform/observability/AuditVolumeCard"
 import { AgentActivityCard, type AgentStat } from "@/components/platform/observability/AgentActivityCard"
+import { InferenceLatencyCard, type AdapterLatency } from "@/components/platform/observability/InferenceLatencyCard"
 
 interface Summary {
   totalRequests24h: number
@@ -41,6 +42,7 @@ export default function OpsObservabilityPage() {
   const { data: costs, isLoading: cl } = useQuery({ queryKey: ['ops-obs-costs', tenantId], queryFn: () => get<CostData>(opsUrl('costs', tenantId)), refetchInterval: 60_000 })
   const { data: auditData, isLoading: al } = useQuery({ queryKey: ['ops-obs-audit', tenantId], queryFn: () => get<{ points: AuditPoint[] }>(opsUrl('audit-volume', tenantId)), refetchInterval: 60_000 })
   const { data: agentsData, isLoading: agl } = useQuery({ queryKey: ['ops-obs-agents', tenantId], queryFn: () => get<{ agents: AgentStat[] }>(opsUrl('agents', tenantId)), refetchInterval: 60_000 })
+  const { data: latencyData, isLoading: ll } = useQuery({ queryKey: ['ops-obs-inference-latency'], queryFn: () => get<{ adapters: AdapterLatency[] }>(opsUrl('inference-latency', '')), refetchInterval: 30_000 })
 
   const workflows = workflowsData?.points ?? []
   const audit = auditData?.points ?? []
@@ -90,6 +92,8 @@ export default function OpsObservabilityPage() {
       </div>
 
       <AgentActivityCard agents={agents} loading={agl} />
+
+      <InferenceLatencyCard adapters={latencyData?.adapters ?? []} loading={ll} />
     </div>
   )
 }

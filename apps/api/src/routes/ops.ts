@@ -7,7 +7,7 @@ import { handleKnowledgeGaps, handleEvalScores, handleToolPerformance, handleEva
 import { handleFinops, handleOverview } from './ops.finops';
 import { handleListTeam, handleCreateTeamMember, handleDeleteTeamMember } from './ops.team';
 import { handleListFairnessReviews, handleOpsRunFairness, handleListResponseAudits } from './ops.fairness';
-import { handleObsSummary, handleObsWorkflows, handleObsCosts, handleObsAuditVolume, handleObsAgents } from './ops.observability';
+import { handleObsSummary, handleObsWorkflows, handleObsCosts, handleObsAuditVolume, handleObsAgents, handleObsInferenceLatency } from './ops.observability';
 
 export const opsRoutes = new Hono<AppEnv>();
 
@@ -50,6 +50,7 @@ opsRoutes.get('/observability/workflows', handleObsWorkflows);
 opsRoutes.get('/observability/costs', handleObsCosts);
 opsRoutes.get('/observability/audit-volume', handleObsAuditVolume);
 opsRoutes.get('/observability/agents', handleObsAgents);
+opsRoutes.get('/observability/inference-latency', handleObsInferenceLatency);
 
 // Fairness reviews
 opsRoutes.get('/fairness', handleListFairnessReviews);

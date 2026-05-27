@@ -12,6 +12,7 @@ import type { ServerResponse } from 'http';
 import type { ProviderAdapter } from './base';
 import { AdapterError } from './base';
 import type { OpenAIRequest } from '../types';
+import { latency } from '../metrics.js';
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
 
@@ -59,10 +60,16 @@ export class OllamaAdapter implements ProviderAdapter {
       // Pipe SSE chunks through directly — Ollama /v1/ uses same SSE format as OpenAI
       const reader = ollamaRes.body!.getReader();
       const decoder = new TextDecoder();
+      const t0 = Date.now();
+      let ttftFired = false;
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          if (!ttftFired && value && value.length > 0) {
+            latency.observe({ adapter: 'ollama', metric: 'ttft' }, Date.now() - t0);
+            ttftFired = true;
+          }
           res.write(decoder.decode(value, { stream: true }));
         }
       } finally {

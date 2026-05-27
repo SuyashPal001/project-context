@@ -14,6 +14,7 @@ import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { IngestionSidePanel } from "./IngestionSidePanel";
+import { FilesFilter } from "./FilesFilter";
 
 interface ExtractedField {
     key: string;
@@ -85,6 +86,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const queryClient = useQueryClient();
     const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
+    const [filterOffice, setFilterOffice] = useState("all");
+    const [filterClassification, setFilterClassification] = useState("all");
 
     const { data: response, isLoading } = useQuery({
         queryKey: ['files', prefix],
@@ -126,7 +129,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         }));
     }, [prefix]);
 
-    const { virtualFolders, files } = useMemo(() => {
+    const { virtualFolders, files, officeCodes } = useMemo(() => {
         const allFiles = response?.data || [];
         const folders = new Set<string>();
         const directFiles: FileRecord[] = [];
@@ -143,9 +146,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
 
         return {
             virtualFolders: Array.from(folders).sort(),
+            officeCodes: Array.from(new Set(allFiles.map(f => f.officeCode).filter(Boolean))).sort() as string[],
             files: directFiles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         };
     }, [response?.data, prefix]);
+    const filteredFiles = files.filter(f =>
+        (filterOffice === "all" || f.officeCode === filterOffice) &&
+        (filterClassification === "all" || f.classification === filterClassification));
 
     return (
         <div className="space-y-4">
@@ -179,7 +186,10 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     />
                 </div>
             ) : (
-                <div className="flex gap-4 items-start">
+                <div className="space-y-2">
+                    <FilesFilter officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={setFilterOffice}
+                        filterClassification={filterClassification} onClassificationChange={setFilterClassification} />
+                    <div className="flex gap-4 items-start">
                     {/* Main table */}
                     <div className="flex-1 border border-zinc-800 rounded-lg bg-card overflow-hidden min-w-0">
                         <Table>
@@ -210,7 +220,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         </TableCell>
                                     </TableRow>
                                 ))}
-                                {files.map(file => (
+                                {filteredFiles.map(file => (
                                     <TableRow
                                         key={file.id}
                                         className={`border-zinc-800/50 hover:bg-muted/40 transition-colors cursor-pointer ${selectedFile?.id === file.id ? 'bg-muted/40 border-l-2 border-l-blue-500' : ''}`}
@@ -271,6 +281,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             onClose={() => setSelectedFile(null)}
                         />
                     )}
+                    </div>
                 </div>
             )}
 
