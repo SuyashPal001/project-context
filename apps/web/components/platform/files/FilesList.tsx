@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { EmptyState, ConfirmDialog } from "@/components/platform/shared";
 import {
-    Loader2, FolderOpen, FileText, Image as ImageIcon, Video, Music, FileCode, File, Download, Trash2, Folder as FolderIcon, ChevronRight, RefreshCw, Play
+    Loader2, FolderOpen, FileText, Image as ImageIcon, Video, Music, FileCode, File, Download, Trash2, Folder as FolderIcon, ChevronRight, ChevronLeft, RefreshCw, Play
 } from "lucide-react";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -88,6 +88,10 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
     const [filterOffice, setFilterOffice] = useState("all");
     const [filterClassification, setFilterClassification] = useState("all");
+    const [currentPage, setCurrentPage] = useState(1);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkDeleting, setBulkDeleting] = useState(false);
+    const PAGE_SIZE = 10;
 
     const { data: response, isLoading } = useQuery({
         queryKey: ['files', prefix],
@@ -187,6 +191,30 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         (filterOffice === "all" || f.officeCode === filterOffice) &&
         (filterClassification === "all" || f.classification === filterClassification));
 
+    const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
+    const pagedFiles = filteredFiles.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    const allPageSelected = pagedFiles.length > 0 && pagedFiles.every(f => selectedIds.has(f.id));
+
+    const toggleSelectAll = () => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (allPageSelected) pagedFiles.forEach(f => next.delete(f.id));
+            else pagedFiles.forEach(f => next.add(f.id));
+            return next;
+        });
+    };
+
+    const bulkDelete = async () => {
+        setBulkDeleting(true);
+        for (const id of selectedIds) {
+            try { await api.del(`/api/v1/files/${id}`); } catch { /* continue */ }
+        }
+        setBulkDeleting(false);
+        setSelectedIds(new Set());
+        queryClient.invalidateQueries({ queryKey: ['files'] });
+        toast.success(`Deleted ${selectedIds.size} file${selectedIds.size !== 1 ? 's' : ''}`);
+    };
+
     return (
         <div className="space-y-4">
             {/* Breadcrumb */}
@@ -220,14 +248,18 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 </div>
             ) : (
                 <div className="space-y-2">
-                    <FilesFilter officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={setFilterOffice}
-                        filterClassification={filterClassification} onClassificationChange={setFilterClassification} />
+                    <FilesFilter officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
+                        filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }} />
                     <div className="flex gap-4 items-start">
                     {/* Main table */}
                     <div className="flex-1 border border-zinc-800 rounded-lg bg-card overflow-hidden min-w-0">
                         <Table>
                             <TableHeader className="bg-muted/50">
                                 <TableRow className="border-zinc-800 hover:bg-transparent">
+                                    <TableHead className="w-10">
+                                        <input type="checkbox" checked={allPageSelected} onChange={toggleSelectAll}
+                                            className="rounded border-zinc-600 bg-zinc-800 accent-primary cursor-pointer" />
+                                    </TableHead>
                                     <TableHead>Document</TableHead>
                                     <TableHead>Format</TableHead>
                                     <TableHead>Office</TableHead>
@@ -250,6 +282,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                             onClick={() => onPrefixChange(folderPrefix)}
                                             className="cursor-pointer border-zinc-800/50 hover:bg-muted/40 transition-colors"
                                         >
+                                            <TableCell onClick={e => e.stopPropagation()} />
                                             <TableCell colSpan={7}>
                                                 <div className="flex items-center gap-2">
                                                     <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
@@ -273,12 +306,17 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         </TableRow>
                                     );
                                 })}
-                                {filteredFiles.map(file => (
+                                {pagedFiles.map(file => (
                                     <TableRow
                                         key={file.id}
                                         className={`border-zinc-800/50 hover:bg-muted/40 transition-colors cursor-pointer ${selectedFile?.id === file.id ? 'bg-muted/40 border-l-2 border-l-blue-500' : ''}`}
                                         onClick={() => setSelectedFile(selectedFile?.id === file.id ? null : file)}
                                     >
+                                        <TableCell className="w-10" onClick={e => e.stopPropagation()}>
+                                            <input type="checkbox" checked={selectedIds.has(file.id)}
+                                                onChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(file.id) ? n.delete(file.id) : n.add(file.id); return n; })}
+                                                className="rounded border-zinc-600 bg-zinc-800 accent-primary cursor-pointer" />
+                                        </TableCell>
                                         <TableCell className="max-w-[180px]">
                                             <div className="flex items-center gap-2">
                                                 {getFileIcon(file.contentType)}
@@ -349,6 +387,37 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         />
                     )}
                     </div>
+
+                    {/* Bulk action bar */}
+                    {selectedIds.size > 0 && (
+                        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-sm">
+                            <span className="text-zinc-300">Selected: <strong>{selectedIds.size}</strong> {selectedIds.size === 1 ? 'file' : 'files'}</span>
+                            <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={bulkDelete} disabled={bulkDeleting}>
+                                {bulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                Delete Selected
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between pt-1">
+                            <div className="flex items-center gap-1">
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>
+                                    <ChevronLeft className="w-4 h-4" />
+                                </Button>
+                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                    <Button key={page} variant={page === currentPage ? "secondary" : "ghost"} size="icon" className="h-7 w-7 text-xs" onClick={() => setCurrentPage(page)}>
+                                        {page}
+                                    </Button>
+                                ))}
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
+                                    <ChevronRight className="w-4 h-4" />
+                                </Button>
+                            </div>
+                            <span className="text-xs text-zinc-500">Total {filteredFiles.length} files</span>
+                        </div>
+                    )}
                 </div>
             )}
 
