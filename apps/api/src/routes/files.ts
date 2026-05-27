@@ -9,6 +9,8 @@ import { eq, and } from 'drizzle-orm';
 import { ingestFile } from '../services/ingestion';
 import type { AppEnv } from '../types';
 
+const RELAY_URL = process.env.RELAY_URL ?? 'http://localhost:3001';
+
 const filesRoutes = new Hono<AppEnv>();
 
 // Get presigned upload URL
@@ -222,7 +224,48 @@ filesRoutes.post('/:id/ingest', async (c) => {
     if (!fileRecord) return c.json({ error: 'Not Found', message: 'File not found' }, 404);
 
     const buffer = await storageService.downloadFile(tenantId, fileId);
-    const result = await ingestFile(fileRecord.name, fileRecord.mimeType ?? '', buffer);
+    const filename = fileRecord.name;
+    const mimeType = fileRecord.mimeType ?? '';
+
+    let result: { formatDetected: string; chunkCount: number; extractedFields: any[] | null };
+
+    try {
+      const relayRes = await fetch(`${RELAY_URL}/internal/ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileId,
+          filename,
+          mimeType,
+          bufferBase64: buffer.toString('base64'),
+          tenantId: tenantId ?? 'unknown',
+        }),
+      });
+
+      if (!relayRes.ok) {
+        throw new Error(`Relay returned ${relayRes.status}`);
+      }
+
+      const relayData = await relayRes.json() as any;
+      if (!relayData.ok) {
+        throw new Error(relayData.error ?? 'Workflow failed');
+      }
+
+      result = {
+        formatDetected: relayData.formatDetected,
+        chunkCount: relayData.chunkCount,
+        extractedFields: relayData.extractedFields ?? null,
+      };
+    } catch (err: any) {
+      console.error('[ingest] relay workflow failed, falling back to inline ingestion', err);
+      // Fallback: existing flat ingestion (kept as safety net for demo)
+      const fallback = await ingestFile(filename, mimeType, buffer);
+      result = {
+        formatDetected: fallback.formatDetected,
+        chunkCount: fallback.chunkCount,
+        extractedFields: fallback.extractedFields ?? null,
+      };
+    }
 
     await db
       .update(files)
@@ -236,34 +279,6 @@ filesRoutes.post('/:id/ingest', async (c) => {
         updatedAt: new Date(),
       })
       .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
-
-    // Auto-commit extracted fields to lakehouse (fire and forget — never block ingest response)
-    if (result.extractedFields && result.extractedFields.length > 0) {
-      const filename = fileRecord.name;
-      const getValue = (key: string) =>
-        result.extractedFields!.find((f: any) => f.key === key)?.value ?? '';
-
-      const rawAmount = getValue('pension_amount').replace(/[^0-9.]/g, '');
-      const declaredAmount = parseFloat(rawAmount) || 0;
-
-      const LAKEHOUSE_URL = process.env.LAKEHOUSE_URL ?? 'http://localhost:8001';
-      fetch(`${LAKEHOUSE_URL}/commit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          records: [{
-            pension_id: getValue('ppo_number') || `PEN-${fileId.slice(0, 8)}`,
-            pensioner_name: getValue('pensioner_name') || 'Unknown',
-            declared_amount: declaredAmount,
-            status: 'original',
-            office_code: 'PB-001',
-            effective_date: getValue('effective_date') || new Date().toISOString().split('T')[0],
-          }],
-          label: `Ingestion — ${filename}`,
-          description: 'Auto-committed from P1 document ingestion pipeline',
-        }),
-      }).catch(() => {}); // never block the ingest response
-    }
 
     return c.json({
       data: {
