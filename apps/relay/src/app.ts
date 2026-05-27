@@ -13,6 +13,7 @@ import { internalRouter, initStudio } from './routes/internal.js'
 import { schedulesRouter } from './routes/schedules.js'
 import { explanationRouter } from './routes/explanation.js'
 import { ingestRoute } from './routes/ingest.js'
+import { pensionRoutes } from './routes/pension.js'
 import {
   API_BASE_URL, sessions,
 } from './types.js'
@@ -36,6 +37,7 @@ app.route('', sessionsRouter)
 app.route('', schedulesRouter)
 app.route('', explanationRouter)
 app.route('', ingestRoute)
+app.route('', pensionRoutes)
 
 await initStudio(app)
 
