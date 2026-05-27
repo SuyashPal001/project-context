@@ -1,7 +1,6 @@
 import { createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
-import { db } from '@serverless-saas/database';
-import { pensionCases, pensionFindings, pensionOfficerActions } from '@serverless-saas/database/schema/pension';
+import { db, pensionCases, pensionFindings, pensionOfficerActions } from '@serverless-saas/database';
 import { eq } from 'drizzle-orm';
 import { findingAssemblyOutputSchema, routeOutputSchema } from './pensionWorkflow.schemas.js';
 

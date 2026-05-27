@@ -1,7 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { db } from '@serverless-saas/database'
-import { pensionCases, pensionFindings } from '@serverless-saas/database/schema/pension'
+import { db, pensionCases, pensionFindings } from '@serverless-saas/database'
 import { eq } from 'drizzle-orm'
 
 // ---------------------------------------------------------------------------
