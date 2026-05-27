@@ -139,6 +139,44 @@ internalRouter.post('/rag/retrieve', async (c) => {
   }
 })
 
+// ─── Mastra agent registry — public list for web app agents page ──────────────
+// Returns the subset of platform agents that should be visible in the web app.
+// PM/Architect/internal pipeline agents are excluded — shown in Studio only.
+
+const VISIBLE_PLATFORM_AGENTS: Array<{ id: string; description: string }> = [
+  {
+    id: 'saarthi',
+    description: 'Your primary AI assistant on the Saarthi platform. Handles tasks, answers questions, and coordinates with specialist agents.',
+  },
+  {
+    id: 'ai-paras',
+    description: 'CAG pension pre-scrutiny auditor. Validates pension cases against CCS Pension Rules 1972 and routes findings to the officer queue.',
+  },
+  {
+    id: 'document-intelligence',
+    description: 'Extracts structured pension fields from government document text/OCR with page provenance. Specialist sub-agent for AI-PARAS.',
+  },
+]
+
+internalRouter.get('/api/mastra/agents', (c) => {
+  const list: Array<{ id: string; name: string; description: string }> = []
+  for (const { id: agentId, description: staticDesc } of VISIBLE_PLATFORM_AGENTS) {
+    try {
+      const agent: any = mastra.getAgent(agentId)
+      if (agent) {
+        list.push({
+          id: agent.id ?? agentId,
+          name: agent.name ?? agentId,
+          description: staticDesc,
+        })
+      }
+    } catch {
+      // Agent not registered — skip
+    }
+  }
+  return c.json({ agents: list })
+})
+
 // ─── Mastra Studio — platform admin observability ─────────────────────────────
 // No bearer token gate — mastra studio CLI cannot send auth headers.
 // Security relies on relay port 3001 not being publicly exposed.

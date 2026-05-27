@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent'
-import { PIIDetector, PromptInjectionDetector } from '@mastra/core/processors'
+import { PromptInjectionDetector } from '@mastra/core/processors'
 
 import { saarthiModel, saarthiLiteModel } from '../model.js'
 import { createViolationHandler } from '../guardrails.js'
@@ -17,17 +17,19 @@ import { findingFaithfulnessScorer } from '../scorers/findingFaithfulness.js'
 // Per-agent processor instances — NOT shared with platformAgent.
 // Each agent must own its processors so violations are attributed correctly.
 //
-// Governance story (two processors, two LLM calls per turn max):
-//   Input:  PromptInjectionDetector — blocks adversarial injections
-//   Output: PIIDetector             — redacts pensioner PII before display
+// Governance story (one processor, one LLM call per turn):
+//   Input only: PromptInjectionDetector — blocks adversarial injections
 //
-// ModerationProcessor intentionally omitted: government pension docs don't
-// produce harmful content; adding it was an extra LLM call with no benefit.
-// SystemPromptScrubber omitted: masks the auditor persona with asterisks.
+// PIIDetector intentionally omitted from both input AND output:
+//   - On input:  would redact pensioner pay/service figures before analysis,
+//                breaking the rule engine calculations entirely.
+//   - On output: output processors buffer the full stream before returning,
+//                which kills streaming in Mastra Studio. Pension findings must
+//                show pensioner details anyway — the officer needs them.
+// ModerationProcessor omitted: pension docs ≠ harmful content.
+// SystemPromptScrubber omitted: masks auditor persona with asterisks.
 //
-// Both processors use saarthiLiteModel (gemini-2.5-flash-lite) — guardrail
-// classification doesn't need full-model reasoning, and using the lite model
-// here cuts ~8-10s off each turn vs saarthiModel.
+// Uses saarthiLiteModel: guardrail classification doesn't need full reasoning.
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,14 +44,6 @@ const promptInjectionDetector = new PromptInjectionDetector({
   lastMessageOnly: true,
 })
 ;(promptInjectionDetector as AnyProcessor).onViolation = violationHandler
-
-const piiDetector = new PIIDetector({
-  model: saarthiLiteModel,
-  strategy: 'redact',
-  redactionMethod: 'placeholder',
-  lastMessageOnly: true,
-})
-;(piiDetector as AnyProcessor).onViolation = violationHandler
 
 // ---------------------------------------------------------------------------
 // CCS Pension Rules 1972 — domain guidance inlined from
@@ -170,11 +164,9 @@ ${CCS_DOMAIN_GUIDANCE}`,
   workflows: { scrutiny: pensionWorkflow as any },
 
   // Governance processors (own instances, not shared with platformAgent).
-  // Input: injection defence only — lite model, fast classification.
-  // Output: PII redaction only — lite model, fast classification.
-  // ModerationProcessor dropped: pension docs ≠ harmful content, saves 2 LLM calls/turn.
+  // Input only: injection defence (lite model). No output processors — they
+  // buffer the full response and kill streaming in Mastra Studio.
   inputProcessors: [promptInjectionDetector],
-  outputProcessors: [piiDetector],
 
   // Live quality scorers — visible in Mastra Studio evals tab
   scorers: {
