@@ -8,7 +8,6 @@ export const classifyStep = createStep({
   inputSchema: detectFormatOutputSchema,
   outputSchema: classifyOutputSchema,
   execute: async ({ inputData, getInitData }) => {
-    console.log('[classifyStep] inputData keys:', inputData ? Object.keys(inputData) : 'undefined')
     const init = getInitData<z.infer<typeof workflowInputSchema>>()
     const filename = inputData?.filename ?? init.filename
     const formatDetected = inputData?.formatDetected ?? 'Unknown'
@@ -21,9 +20,7 @@ ${extractedText ? `Text excerpt: ${extractedText.slice(0, 500)}` : '(scanned ima
 
 Classify this document.`
 
-    console.log('[classifyStep] calling agent...')
     const result = await classifierAgent.generate(prompt, { activeTools: [] })
-    console.log('[classifyStep] agent done')
     const text = (result.text ?? '').trim()
     const jsonMatch = text.match(/\{[\s\S]*\}/)
 

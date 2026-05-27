@@ -7,7 +7,6 @@ export const extractStep = createStep({
   inputSchema: classifyOutputSchema,
   outputSchema: extractOutputSchema,
   execute: async ({ inputData }) => {
-    console.log('[extractStep] inputData keys:', inputData ? Object.keys(inputData) : 'undefined')
     if (!inputData.isScanned) {
       return { ...inputData, extractedFields: [] }
     }
