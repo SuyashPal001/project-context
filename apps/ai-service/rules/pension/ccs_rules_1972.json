@@ -1,0 +1,45 @@
+{
+  "version": "1972-v1",
+  "rules": [
+    {
+      "id": "R001",
+      "name": "Minimum qualifying service",
+      "check": "qualifying_service_years >= 10",
+      "error": "Qualifying service {qualifying_service_years} years is below the minimum 10 years.",
+      "provision": "CCS Pension Rules 1972, Rule 49",
+      "inputs": ["qualifying_service_years"]
+    },
+    {
+      "id": "R002",
+      "name": "Pension calculation",
+      "check": "abs(declared_pension - (last_pay * qualifying_service_years / 66)) < 100",
+      "error": "Pension mismatch. Declared: {declared_pension}, Calculated: {calculated}.",
+      "provision": "CCS Pension Rules 1972, Rule 49(1)",
+      "inputs": ["declared_pension", "last_pay", "qualifying_service_years"]
+    },
+    {
+      "id": "R003",
+      "name": "Commutation limit",
+      "check": "commutation_amount <= declared_pension * 0.40",
+      "error": "Commutation {commutation_amount} exceeds the 40% limit of {limit}.",
+      "provision": "CCS Pension Rules 1972, Rule 10",
+      "inputs": ["commutation_amount", "declared_pension"]
+    },
+    {
+      "id": "R004",
+      "name": "DCRG calculation",
+      "check": "abs(declared_dcrg - (last_pay * qualifying_service_years * 0.25)) < 100",
+      "error": "DCRG mismatch. Declared: {declared_dcrg}, Calculated: {calculated_dcrg}.",
+      "provision": "CCS Pension Rules 1972, Rule 50",
+      "inputs": ["declared_dcrg", "last_pay", "qualifying_service_years"]
+    },
+    {
+      "id": "R005",
+      "name": "Family pension eligibility",
+      "check": "qualifying_service_years >= 1",
+      "error": "Family pension requires at least 1 year of service; found {qualifying_service_years}.",
+      "provision": "CCS Pension Rules 1972, Rule 54",
+      "inputs": ["qualifying_service_years"]
+    }
+  ]
+}
