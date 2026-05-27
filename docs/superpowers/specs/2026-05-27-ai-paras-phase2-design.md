@@ -88,7 +88,11 @@ TIER 2 — AI-PARAS  (aiParasAgent, NEW)  ── pension pre-scrutiny lead
      • DocumentIntelligenceAgent  (SUB-AGENT) → extract fields    [G1, G2]
      • validate_pension_case      (tool, DETERMINISTIC verdict)   [A2 integrity]
      • route_to_officer           (tool, persist + assign)        [A4]
-   Memory, structured-output findings, finding scorers.
+   Declares its OWN: inputProcessors [PromptInjectionDetector] on the
+   document, outputProcessors [PIIDetector, SystemPromptScrubber] on the
+   finding; memory; structured-output findings; finding scorers.
+   (Processors are per-agent in Mastra — AI-PARAS does not merely inherit
+   Saarthi's; it sets its own, copied from platformAgent's setup.)
         ↓ delegates extraction
 TIER 3 — DocumentIntelligenceAgent  (NEW)  ── document reader
    Reads Service Book / PPO text+OCR → structured pension field set
@@ -173,6 +177,8 @@ codebase, so we are assembling, not inventing.
 | 8 | **Structured output** | Findings emitted in an exact schema, never free-text | `formatterAgent` | Brittle elsewhere |
 | 9 | **Deterministic verdict inside an agent** | Defensible math, agentic orchestration | Phase 1 rule engine | Most go all-LLM (indefensible) or all-rules (not agentic) |
 | 10 | **Streaming reasoning + tool trace** | The evaluator watches it think and call tools live | `chatStream.ts` | — |
+| 11 | **Versioned, governable skill** | AI-PARAS's capability is an `agent_skills` record — "Pension Pre-Scrutiny (CCS 1972) v1", active/archivable, per-tenant. Different states can run different skill versions; roll back instantly | `agent_skills` table, `usage.ts` | Hardcoded prompts elsewhere — no versioning/governance |
+| 12 | **Filesystem skill (workspace)** | CCS domain guidance injected into the agent from `skills/pension-scrutiny/` | `skills/roadmap-planning`, workspace loaders | — |
 
 ### What the evaluator actually sees (this is an agent, not a flow)
 
@@ -219,9 +225,21 @@ inventing anything; we are assembling proven pieces into the flagship.
 | **Scorers** | `createScorer` evaluating each finding — e.g. *citation-grounding* (does the finding cite a real rule + real source field?) and *faithfulness* (does the narration match the deterministic verdict?). Scores register on the Mastra instance and surface in the observability dashboard. | `scorers.ts` (`dodPassScorer`) registered in `mastra/index.ts` | A2, A3, P8, GAP 7 |
 | **Streaming** | Live reasoning + tool-call trace shown to the evaluator | `chatStream.ts` | the demo itself |
 
-The "skill" of the agent is its **instructions** (system prompt) — the CAG-auditor persona and
-the rule that it must always defer pass/fail to `validate_pension_case`. (Mastra has no separate
-"skill" primitive; instructions + tools are the agent's skill set.)
+### Skills — versioned capability, not a hardcoded prompt
+
+AI-PARAS's capability is defined as a **skill in two forms**, both already used in this codebase:
+
+- **Platform skill (`agent_skills` table):** a versioned record — `name` "Pension Pre-Scrutiny
+  (CCS 1972)", `systemPrompt` (the auditor persona + "always defer pass/fail to
+  `validate_pension_case`"), `tools[]` (the enabled tool names), `config`, `version`, `status`.
+  The agent loads its instructions + enabled tools from this record (same pattern as
+  `platformAgent`'s dynamic instructions and `usage.ts`'s `SELECT … FROM agent_skills`). This
+  makes the capability **versioned, per-tenant, and activatable/archivable** — a state can run
+  v1 while another runs v2; a bad rule-prompt can be rolled back without a deploy. That is real
+  agent governance, and a strong CAG differentiator.
+
+- **Filesystem skill (`apps/relay/skills/pension-scrutiny/`):** CCS domain guidance discovered by
+  a Mastra workspace and injected into the agent, exactly like `skills/roadmap-planning/`.
 
 **Scorers close GAP 7 too:** wiring finding-quality scorers means the observability dashboard
 (P8) shows live agent-quality metrics during the demo — turning an open gap into a strength.
@@ -273,17 +291,20 @@ A2 (15) and A5 (2) already complete in Phase 1 — unchanged.
 
 | File | Responsibility |
 |------|----------------|
-| `apps/relay/src/mastra/agents/aiParasAgent.ts` | **Tier 2 — pension lead.** instructions, model, tools, sub-agent, memory, structured output |
+| `apps/relay/src/mastra/agents/aiParasAgent.ts` | **Tier 2 — pension lead.** instructions, model, tools, sub-agent, memory, structured output, **own input/output processors** (PromptInjectionDetector / PIIDetector + SystemPromptScrubber), exposes the scrutiny workflow via `workflows:{}` |
 | `apps/relay/src/mastra/agents/documentIntelligenceAgent.ts` | **Tier 3 — document reader.** Extracts fields + page provenance |
 | `apps/relay/src/mastra/agents/platformAgent.ts` | **Tier 1 — Saarthi.** Add `aiParasAgent` to its `agents: {}` delegation map |
 | `apps/relay/src/mastra/tools/routeToOfficer.ts` | Shared persist tool (findings + case status) — used by the agent AND the Phase 1 workflow fallback (DRY) |
-| `apps/relay/src/mastra/scorers/pensionScorers.ts` | `createScorer` — citation-grounding + faithfulness scorers for findings |
-| `apps/relay/src/mastra/index.ts` | Register both new agents + pension scorers on the Mastra instance |
+| `apps/relay/src/mastra/scorers/citationGrounding.ts` | `createScorer` — does the finding cite a real rule + real source field? (one scorer per file, matching existing `scorers/` convention) |
+| `apps/relay/src/mastra/scorers/findingFaithfulness.ts` | `createScorer` — does the narration match the deterministic verdict? |
+| `apps/relay/src/mastra/index.ts` | Register both new agents + both scorers on the Mastra instance (extend existing `agents:{}` / `scorers:{}` maps) |
 | `apps/relay/src/mastra/workflows/ingestionWorkflow.schemas.ts` | Add optional `page` to `fieldSchema` (GAP 9) |
 | `apps/relay/src/mastra/workflows/ingestionWorkflow.extract.ts` | Populate `page` per field |
 | `apps/relay/src/routes/pension.ts` | Route to run the agent network on a document/case + stream the reasoning; suspend/resume hook for officer decision |
 | `apps/web/app/[tenant]/dashboard/pension-review/page.tsx` | Add role/status filter (SAO view) |
 | `scripts/seed_pension_cases.py` | Add a seeded SAO officer/role |
+| `apps/relay/skills/pension-scrutiny/` | Filesystem skill — CCS domain guidance injected via a workspace (matches `skills/roadmap-planning`) |
+| `scripts/seed_pension_skill.py` (or SQL) | Seed the `agent_skills` record: "Pension Pre-Scrutiny (CCS 1972) v1" — systemPrompt + enabled tools, status=active |
 
 Reused unchanged from Phase 1: `check_required_documents`, `validate_pension_case` tools; the
 CCS rule engine; the `pension_cases`/`pension_findings`/`pension_officer_actions` schema; the
@@ -302,3 +323,7 @@ deterministic `pensionWorkflow` (now the fallback path).
 - Whether page numbers are available at extraction time for scanned (vision) docs vs text PDFs
   — text PDFs: yes via pdf-parse page split; scanned: per-image page index.
 - How the SAO officer/role is represented in the existing auth/role model (reuse, don't invent).
+- How `agent_skills.agentId` maps to a runtime Mastra agent — i.e. how AI-PARAS gets an `agents`
+  table row so a skill record can reference it, and how `usage.ts` resolves skill → agent today.
+- The exact Mastra suspend/resume call surface in `@mastra/core` ^1.32.1 (copy from `pmWorkflow.ts`
+  + `routes/pm.ts`) and the workflow-as-agent-capability wiring (copy from `prdAgent.workflows`).
