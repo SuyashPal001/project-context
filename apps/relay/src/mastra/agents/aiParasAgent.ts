@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent'
 import { PromptInjectionDetector } from '@mastra/core/processors'
 
-import { saarthiModel, saarthiLiteModel } from '../model.js'
+import { saarthiModel } from '../model.js'
 import { createViolationHandler } from '../guardrails.js'
 import { pensionContextSchema } from '../context.js'
 
@@ -38,7 +38,7 @@ type AnyProcessor = { onViolation?: (v: any) => void }
 const violationHandler = createViolationHandler()
 
 const promptInjectionDetector = new PromptInjectionDetector({
-  model: saarthiLiteModel,
+  model: saarthiModel,
   strategy: 'warn',
   threshold: 0.7,
   lastMessageOnly: true,
