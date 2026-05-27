@@ -2,7 +2,6 @@ import { Agent } from '@mastra/core/agent'
 import { ModerationProcessor, PIIDetector, PromptInjectionDetector } from '@mastra/core/processors'
 
 import { saarthiModel } from '../model.js'
-import { getMastraMemory } from '../memory.js'
 import { createViolationHandler } from '../guardrails.js'
 import { pensionContextSchema } from '../context.js'
 
@@ -156,7 +155,6 @@ Then list: provision, declared, calculated, source page.
 ${CCS_DOMAIN_GUIDANCE}`,
 
   model: saarthiModel,
-  memory: getMastraMemory(),
   requestContextSchema: pensionContextSchema,
 
   // Exactly 3 pension tools — no filesystem tools
