@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db, auditLog } from '@serverless-saas/database';
 import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
+import { verifyAuditChain } from '../services/audit-log.js';
 import type { AppEnv } from '../types';
 
 export const auditLogRoutes = new Hono<AppEnv>();
@@ -107,6 +108,20 @@ auditLogRoutes.get('/summary', async (c) => {
         topApprovers: approverRows.map((r: { actorId: string; name: string | null; approvals: number }) => ({ actorId: r.actorId, name: r.name ?? r.actorId, approvals: r.approvals })),
         topAgentActions: agentActionRows.map((r: { action: string; count: number }) => ({ action: r.action, count: r.count })),
     }});
+});
+
+// GET /audit-log/verify — verify SHA-256 hash chain integrity for tenant
+auditLogRoutes.get('/verify', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'audit_log', 'read')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const result = await verifyAuditChain(tenantId);
+    return c.json({ data: result });
 });
 
 // GET /audit-log/export — CSV export (max 10,000 rows)

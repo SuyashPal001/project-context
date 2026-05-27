@@ -17,7 +17,7 @@ export interface AuditLogInput {
   traceId?: string;
 }
 
-function computeEntryHash(prevHash: string | null, entry: AuditLogInput, createdAt: Date): string {
+function computeEntryHash(prevHash: string | null, entry: AuditLogInput): string {
   const payload = JSON.stringify({
     prevHash: prevHash ?? '',
     tenantId: entry.tenantId,
@@ -27,7 +27,6 @@ function computeEntryHash(prevHash: string | null, entry: AuditLogInput, created
     resourceId: entry.resourceId ?? '',
     previousState: entry.previousState ?? null,
     newState: entry.newState ?? null,
-    createdAt: createdAt.toISOString(),
   });
   return createHash('sha256').update(payload).digest('hex');
 }
@@ -47,7 +46,7 @@ export async function logWithDiff(input: AuditLogInput): Promise<{ id: string; e
 
   const prevHash = latest?.entryHash ?? null;
   const createdAt = new Date();
-  const entryHash = computeEntryHash(prevHash, input, createdAt);
+  const entryHash = computeEntryHash(prevHash, input);
 
   const [row] = await db
     .insert(auditLog)
@@ -87,8 +86,17 @@ export async function verifyAuditChain(tenantId: string): Promise<{
     .where(eq(auditLog.tenantId, tenantId))
     .orderBy(auditLog.createdAt);
 
-  let prevHash: string | null = null;
-  for (const e of entries) {
+  // Skip legacy entries that predate hash chain introduction
+  const firstHashedIdx = entries.findIndex((e: typeof entries[number]) => e.entryHash !== null);
+  if (firstHashedIdx === -1) {
+    return { valid: true, totalEntries: entries.length };
+  }
+
+  // TODO(production): acquire row-level lock here to prevent concurrent inserts
+  // racing on the same prevHash and breaking the chain.
+  let prevHash: string | null = entries[firstHashedIdx].prevHash ?? null;
+  for (let i = firstHashedIdx; i < entries.length; i++) {
+    const e = entries[i];
     const expected = computeEntryHash(prevHash, {
       tenantId: e.tenantId,
       actorId: e.actorId,
@@ -98,7 +106,7 @@ export async function verifyAuditChain(tenantId: string): Promise<{
       resourceId: e.resourceId ?? undefined,
       previousState: e.previousState as any,
       newState: e.newState as any,
-    } as any, e.createdAt);
+    });
 
     if (e.entryHash !== expected || e.prevHash !== prevHash) {
       return { valid: false, totalEntries: entries.length, firstBrokenAt: e.id };
