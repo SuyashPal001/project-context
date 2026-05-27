@@ -1,5 +1,14 @@
-import { sql } from 'drizzle-orm'
+import { sql, SQL } from 'drizzle-orm'
 import { db } from '@serverless-saas/database'
+
+// null = platform-wide (no tenant filter); string = scoped to that tenant
+type TenantScope = string | null
+
+function tenantFilter(col: string, tenantId: TenantScope): SQL {
+  return tenantId
+    ? sql`AND ${sql.raw(col)} = ${tenantId}::uuid`
+    : sql``
+}
 
 export interface SummaryStats {
   totalRequests24h: number
@@ -10,33 +19,35 @@ export interface SummaryStats {
   health: { api: 'ok' | 'degraded' | 'down'; relay: 'ok' | 'unknown'; lakehouse: 'ok' | 'unknown' }
 }
 
-export async function getSummary(tenantId: string): Promise<SummaryStats> {
+export async function getSummary(tenantId: TenantScope): Promise<SummaryStats> {
   const [[requests], [costs], [audit], [workflows]] = await Promise.all([
     db.execute(sql`
       SELECT COUNT(*)::int AS count FROM usage_records
-      WHERE tenant_id = ${tenantId} AND recorded_at > NOW() - INTERVAL '24 hours' AND metric = 'api_calls'
+      WHERE recorded_at > NOW() - INTERVAL '24 hours' AND metric = 'api_calls'
+      ${tenantFilter('tenant_id', tenantId)}
     `),
     db.execute(sql`
       SELECT COALESCE(SUM(cost_usd), 0)::numeric AS total FROM token_costs
-      WHERE tenant_id = ${tenantId} AND created_at > NOW() - INTERVAL '24 hours'
+      WHERE created_at > NOW() - INTERVAL '24 hours'
+      ${tenantFilter('tenant_id', tenantId)}
     `),
     db.execute(sql`
       SELECT COUNT(*)::int AS count FROM audit_log
-      WHERE tenant_id = ${tenantId} AND created_at > NOW() - INTERVAL '24 hours'
+      WHERE created_at > NOW() - INTERVAL '24 hours'
+      ${tenantFilter('tenant_id', tenantId)}
     `),
     db.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE status = 'running')::int AS active,
         COUNT(*) FILTER (WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '24 hours')::int AS done24,
         COUNT(*) FILTER (WHERE status = 'failed'    AND completed_at > NOW() - INTERVAL '24 hours')::int AS failed24
-      FROM agent_workflow_runs WHERE tenant_id = ${tenantId}
+      FROM agent_workflow_runs WHERE 1=1 ${tenantFilter('tenant_id', tenantId)}
     `),
   ])
 
   const done = Number((workflows as any).done24 ?? 0)
   const failed = Number((workflows as any).failed24 ?? 0)
   const total = done + failed
-  const successRate = total === 0 ? 1 : done / total
 
   const relayHealth = await probe(process.env.RELAY_INTERNAL_URL ?? 'http://localhost:3001')
   const lakehouseHealth = await probe(process.env.LAKEHOUSE_URL ?? 'http://localhost:8001')
@@ -45,7 +56,7 @@ export async function getSummary(tenantId: string): Promise<SummaryStats> {
     totalRequests24h: Number((requests as any).count ?? 0),
     totalCostUsd24h: Number((costs as any).total ?? 0),
     activeWorkflows: Number((workflows as any).active ?? 0),
-    workflowSuccessRate24h: successRate,
+    workflowSuccessRate24h: total === 0 ? 1 : done / total,
     auditEntries24h: Number((audit as any).count ?? 0),
     health: { api: 'ok', relay: relayHealth, lakehouse: lakehouseHealth },
   }
@@ -68,14 +79,12 @@ export interface WorkflowMetricPoint {
   avgLatencyMs: number | null
 }
 
-export async function getWorkflowMetrics(tenantId: string, hours = 24): Promise<WorkflowMetricPoint[]> {
+export async function getWorkflowMetrics(tenantId: TenantScope, hours = 24): Promise<WorkflowMetricPoint[]> {
   const rows = await db.execute(sql`
     WITH buckets AS (
       SELECT generate_series(
         date_trunc('hour', NOW()) - (${hours - 1} || ' hours')::interval,
-        date_trunc('hour', NOW()),
-        '1 hour'
-      ) AS hour
+        date_trunc('hour', NOW()), '1 hour') AS hour
     )
     SELECT
       to_char(b.hour, 'YYYY-MM-DD"T"HH24:00:00') AS hour,
@@ -84,9 +93,10 @@ export async function getWorkflowMetrics(tenantId: string, hours = 24): Promise<
       COUNT(r.*) FILTER (WHERE r.status = 'running')::int   AS running,
       AVG(EXTRACT(EPOCH FROM (r.completed_at - r.started_at)) * 1000)::int AS avg_latency_ms
     FROM buckets b
-    LEFT JOIN agent_workflow_runs r ON date_trunc('hour', r.started_at) = b.hour AND r.tenant_id = ${tenantId}
-    GROUP BY b.hour
-    ORDER BY b.hour
+    LEFT JOIN agent_workflow_runs r
+      ON date_trunc('hour', r.started_at) = b.hour
+      ${tenantId ? sql`AND r.tenant_id = ${tenantId}::uuid` : sql``}
+    GROUP BY b.hour ORDER BY b.hour
   `)
   return (rows as any[]).map(r => ({
     hour: r.hour,
@@ -103,18 +113,19 @@ export interface CostBreakdown {
   daily: Array<{ day: string; costUsd: number }>
 }
 
-export async function getCostBreakdown(tenantId: string, days = 7): Promise<CostBreakdown> {
+export async function getCostBreakdown(tenantId: TenantScope, days = 7): Promise<CostBreakdown> {
+  const tf = tenantFilter('tenant_id', tenantId)
   const [byModelRows, byWorkflowRows, dailyRows] = await Promise.all([
     db.execute(sql`
       SELECT model, SUM(cost_usd)::numeric AS cost_usd, COUNT(*)::int AS calls,
              SUM(input_tokens)::int AS input_tokens, SUM(output_tokens)::int AS output_tokens
-      FROM token_costs WHERE tenant_id = ${tenantId} AND created_at > NOW() - (${days} || ' days')::interval
+      FROM token_costs WHERE created_at > NOW() - (${days} || ' days')::interval ${tf}
       GROUP BY model ORDER BY cost_usd DESC
     `),
     db.execute(sql`
       SELECT COALESCE(workflow_id, '(direct)') AS workflow_id,
              SUM(cost_usd)::numeric AS cost_usd, COUNT(*)::int AS calls
-      FROM token_costs WHERE tenant_id = ${tenantId} AND created_at > NOW() - (${days} || ' days')::interval
+      FROM token_costs WHERE created_at > NOW() - (${days} || ' days')::interval ${tf}
       GROUP BY workflow_id ORDER BY cost_usd DESC
     `),
     db.execute(sql`
@@ -125,7 +136,8 @@ export async function getCostBreakdown(tenantId: string, days = 7): Promise<Cost
       )
       SELECT to_char(d.day, 'YYYY-MM-DD') AS day, COALESCE(SUM(t.cost_usd), 0)::numeric AS cost_usd
       FROM days d
-      LEFT JOIN token_costs t ON t.tenant_id = ${tenantId} AND date_trunc('day', t.created_at) = d.day
+      LEFT JOIN token_costs t ON date_trunc('day', t.created_at) = d.day
+        ${tenantId ? sql`AND t.tenant_id = ${tenantId}::uuid` : sql``}
       GROUP BY d.day ORDER BY d.day
     `),
   ])
@@ -142,7 +154,7 @@ export interface AuditVolumePoint {
   byActorType: { human: number; agent: number; system: number }
 }
 
-export async function getAuditVolume(tenantId: string, days = 14): Promise<AuditVolumePoint[]> {
+export async function getAuditVolume(tenantId: TenantScope, days = 14): Promise<AuditVolumePoint[]> {
   const rows = await db.execute(sql`
     WITH days AS (
       SELECT generate_series(
@@ -155,7 +167,8 @@ export async function getAuditVolume(tenantId: string, days = 14): Promise<Audit
            COUNT(a.*) FILTER (WHERE a.actor_type = 'agent')::int  AS agent,
            COUNT(a.*) FILTER (WHERE a.actor_type = 'system')::int AS system
     FROM days d
-    LEFT JOIN audit_log a ON a.tenant_id = ${tenantId} AND date_trunc('day', a.created_at) = d.day
+    LEFT JOIN audit_log a ON date_trunc('day', a.created_at) = d.day
+      ${tenantId ? sql`AND a.tenant_id = ${tenantId}::uuid` : sql``}
     GROUP BY d.day ORDER BY d.day
   `)
   return (rows as any[]).map(r => ({
@@ -173,13 +186,14 @@ export interface AgentActivity {
   avgOutputTokens: number
 }
 
-export async function getAgentActivity(tenantId: string, days = 7): Promise<AgentActivity[]> {
+export async function getAgentActivity(tenantId: TenantScope, days = 7): Promise<AgentActivity[]> {
   const rows = await db.execute(sql`
     SELECT COALESCE(agent_id, '(unknown)') AS agent_id,
            COUNT(*)::int AS total_calls, SUM(cost_usd)::numeric AS total_cost_usd,
            AVG(input_tokens)::int AS avg_input_tokens, AVG(output_tokens)::int AS avg_output_tokens
     FROM token_costs
-    WHERE tenant_id = ${tenantId} AND created_at > NOW() - (${days} || ' days')::interval
+    WHERE created_at > NOW() - (${days} || ' days')::interval
+    ${tenantFilter('tenant_id', tenantId)}
     GROUP BY agent_id ORDER BY total_calls DESC LIMIT 10
   `)
   return (rows as any[]).map(r => ({

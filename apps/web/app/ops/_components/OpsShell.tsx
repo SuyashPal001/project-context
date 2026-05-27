@@ -7,7 +7,7 @@ import {
     LayoutDashboard, Building2, Sliders, FileText, Cpu,
     Shield, LogOut, MessageCircleQuestion,
     Star, Wrench, ChevronRight, DollarSign, List, Users, ShieldCheck,
-    PanelLeftClose, PanelLeftOpen,
+    PanelLeftClose, PanelLeftOpen, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
@@ -32,6 +32,7 @@ const NAV: NavItem[] = [
     { kind: "sub",     label: "Eval Results",        href: "/ops/agent-intelligence/eval-results",         icon: List },
     { kind: "sub",     label: "Tool Performance",    href: "/ops/agent-intelligence/tool-performance",     icon: Wrench },
     { kind: "section", label: "Platform" },
+    { kind: "sub",     label: "Observability",       href: "/ops/observability",                           icon: Activity },
     { kind: "sub",     label: "FinOps",              href: "/ops/finops",                                  icon: DollarSign },
     { kind: "sub",     label: "Audit Log",           href: "/ops/platform/audit",                          icon: FileText },
     { kind: "sub",     label: "Providers",           href: "/ops/platform/providers",                      icon: Cpu },
