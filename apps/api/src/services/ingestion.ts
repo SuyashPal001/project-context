@@ -120,7 +120,7 @@ Only include fields actually visible in the document. Confidence between 0.0 and
       return getMockFields();
     }
 
-    const result = await response.json();
+    const result = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = result?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return getMockFields();
