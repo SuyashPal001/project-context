@@ -249,8 +249,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 </div>
             ) : (
                 <div className="space-y-2">
-                    <FilesFilter officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
-                        filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }} />
+                    {prefix && <FilesFilter officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
+                        filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }} />}
                     {/* Bulk action bar */}
                     {selectedIds.size > 0 && (
                         <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
