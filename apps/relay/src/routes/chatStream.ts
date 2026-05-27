@@ -7,7 +7,7 @@ import { runWithGuardrailContext } from '../mastra/guardrails.js'
 import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
-import { calculateCostUsd } from '../mastra/cost.js'
+import { calculateCostUsd, persistCost } from '../mastra/cost.js'
 import { fetchAgentSkill, fetchAgentName } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
@@ -245,6 +245,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             ? (process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
             : (process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
           costUsd = calculateCostUsd(modelName, inputTokens, outputTokens)
+          persistCost({ tenantId, agentId: agentName ?? agentId, model: modelName, inputTokens, outputTokens })
 
           const responseTimeMs = Date.now() - startTime
           const cached = lastRagResult.get(tenantId)
