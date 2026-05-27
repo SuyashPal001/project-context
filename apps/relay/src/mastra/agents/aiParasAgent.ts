@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent'
-import { ModerationProcessor, PIIDetector, PromptInjectionDetector } from '@mastra/core/processors'
+import { PIIDetector, PromptInjectionDetector } from '@mastra/core/processors'
 
-import { saarthiModel } from '../model.js'
+import { saarthiModel, saarthiLiteModel } from '../model.js'
 import { createViolationHandler } from '../guardrails.js'
 import { pensionContextSchema } from '../context.js'
 
@@ -17,11 +17,17 @@ import { findingFaithfulnessScorer } from '../scorers/findingFaithfulness.js'
 // Per-agent processor instances — NOT shared with platformAgent.
 // Each agent must own its processors so violations are attributed correctly.
 //
-// NOTE: SystemPromptScrubber is intentionally omitted from outputProcessors.
-// It redacts the agent's own legitimate self-introduction because the auditor
-// persona overlaps with keywords in the system prompt, producing asterisk runs.
-// PromptInjectionDetector + ModerationProcessor on input and PIIDetector +
-// ModerationProcessor on output provide the governance story without masking.
+// Governance story (two processors, two LLM calls per turn max):
+//   Input:  PromptInjectionDetector — blocks adversarial injections
+//   Output: PIIDetector             — redacts pensioner PII before display
+//
+// ModerationProcessor intentionally omitted: government pension docs don't
+// produce harmful content; adding it was an extra LLM call with no benefit.
+// SystemPromptScrubber omitted: masks the auditor persona with asterisks.
+//
+// Both processors use saarthiLiteModel (gemini-2.5-flash-lite) — guardrail
+// classification doesn't need full-model reasoning, and using the lite model
+// here cuts ~8-10s off each turn vs saarthiModel.
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,23 +36,15 @@ type AnyProcessor = { onViolation?: (v: any) => void }
 const violationHandler = createViolationHandler()
 
 const promptInjectionDetector = new PromptInjectionDetector({
-  model: saarthiModel,
+  model: saarthiLiteModel,
   strategy: 'warn',
   threshold: 0.7,
   lastMessageOnly: true,
 })
 ;(promptInjectionDetector as AnyProcessor).onViolation = violationHandler
 
-const moderationProcessor = new ModerationProcessor({
-  model: saarthiModel,
-  strategy: 'warn',
-  threshold: 0.5,
-  lastMessageOnly: true,
-})
-;(moderationProcessor as AnyProcessor).onViolation = violationHandler
-
 const piiDetector = new PIIDetector({
-  model: saarthiModel,
+  model: saarthiLiteModel,
   strategy: 'redact',
   redactionMethod: 'placeholder',
   lastMessageOnly: true,
@@ -172,11 +170,11 @@ ${CCS_DOMAIN_GUIDANCE}`,
   workflows: { scrutiny: pensionWorkflow as any },
 
   // Governance processors (own instances, not shared with platformAgent).
-  // Input: prompt-injection defence + moderation on incoming messages.
-  // Output: PII redaction + moderation on findings (no SystemPromptScrubber —
-  //         it masks legitimate auditor persona text with asterisks).
-  inputProcessors: [promptInjectionDetector, moderationProcessor],
-  outputProcessors: [piiDetector, moderationProcessor],
+  // Input: injection defence only — lite model, fast classification.
+  // Output: PII redaction only — lite model, fast classification.
+  // ModerationProcessor dropped: pension docs ≠ harmful content, saves 2 LLM calls/turn.
+  inputProcessors: [promptInjectionDetector],
+  outputProcessors: [piiDetector],
 
   // Live quality scorers — visible in Mastra Studio evals tab
   scorers: {
