@@ -12,6 +12,17 @@ import type { AppEnv } from '../types';
 
 const RELAY_URL = process.env.RELAY_URL ?? 'http://localhost:3001';
 
+function classifyDocument(filename: string): string {
+  const name = filename.toLowerCase();
+  const confidentialKeywords = [
+    'ppo', 'pension', 'service_book', 'servicebook',
+    'salary', 'gratuity', 'dcrg', 'itr', 'aadhaar',
+    'aadhar', 'pan', 'payslip', 'retirement', 'family_pension'
+  ];
+  if (confidentialKeywords.some(k => name.includes(k))) return 'Confidential';
+  return 'Internal';
+}
+
 const filesRoutes = new Hono<AppEnv>();
 
 // Get presigned upload URL
@@ -212,7 +223,7 @@ filesRoutes.get('/', async (c) => {
     // Ingestion metadata
     formatDetected: f.formatDetected ?? null,
     officeCode: f.officeCode ?? requestContext?.tenant?.slug ?? tenantId,
-    classification: f.classification ?? 'Confidential',
+    classification: f.classification ?? classifyDocument(f.name),
     chunkCount: f.chunkCount ?? 0,
     ingestionStatus: f.ingestionStatus ?? 'pending',
     extractedFields: f.extractedFields ?? null,
@@ -342,7 +353,7 @@ filesRoutes.post('/:id/ingest', async (c) => {
         extractedFields: result.extractedFields as any,
         ingestionStatus: 'done',
         officeCode: requestContext?.tenant?.slug ?? tenantId,
-        classification: 'Confidential',
+        classification: classifyDocument(filename),
         updatedAt: new Date(),
       })
       .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
