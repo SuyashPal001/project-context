@@ -5,7 +5,7 @@ import { persistCost } from '../cost.js';
 const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001';
 
 function buildExtractionPrompt(documentType: string): string {
-  const base = `You are extracting structured data from an Indian government document. Return ONLY valid JSON in this format: {"fields": [{"key":"...","label":"...","value":"...","confidence":0.0}]}. Confidence between 0.0 and 1.0. Only include fields actually visible.`;
+  const base = `You are extracting structured data from an Indian government document. Return ONLY valid JSON in this format: {"fields": [{"key":"...","label":"...","value":"...","confidence":0.0,"page":1}]}. Confidence between 0.0 and 1.0. "page" is the 1-based page number where the field appears. Only include fields actually visible.`;
   const typeHints: Record<string, string> = {
     'Service Book': 'Expected fields: officer_name, dob, joining_date, current_post, office_code, employee_id',
     'PPO': 'Expected fields: pensioner_name, ppo_number, pension_amount, effective_date, office_code, dob',
@@ -18,15 +18,15 @@ function buildExtractionPrompt(documentType: string): string {
 
 function getMockFields() {
   return [
-    { key: 'pensioner_name', label: 'Pensioner Name', value: 'Sh. Harbhajan Singh (Retd. Naib Tehsildar)', confidence: 0.96 },
-    { key: 'dob', label: 'Date of Birth', value: '12-07-1961', confidence: 0.94 },
-    { key: 'pension_amount', label: 'Pension Amount', value: '₹23,400', confidence: 0.91 },
-    { key: 'effective_date', label: 'Effective Date', value: '01-11-2019', confidence: 0.89 },
-    { key: 'ppo_number', label: 'PPO Number', value: 'PPO/PB/2019/00847', confidence: 0.93 },
+    { key: 'pensioner_name', label: 'Pensioner Name', value: 'Sh. Harbhajan Singh (Retd. Naib Tehsildar)', confidence: 0.96, page: 1 },
+    { key: 'dob', label: 'Date of Birth', value: '12-07-1961', confidence: 0.94, page: 1 },
+    { key: 'pension_amount', label: 'Pension Amount', value: '₹23,400', confidence: 0.91, page: 2 },
+    { key: 'effective_date', label: 'Effective Date', value: '01-11-2019', confidence: 0.89, page: 2 },
+    { key: 'ppo_number', label: 'PPO Number', value: 'PPO/PB/2019/00847', confidence: 0.93, page: 1 },
   ];
 }
 
-export async function geminiExtract(imageBase64: string, mimeType: string, documentType: string, tenantId?: string): Promise<{ fields: Array<{ key: string; label: string; value: string; confidence: number }> }> {
+export async function geminiExtract(imageBase64: string, mimeType: string, documentType: string, tenantId?: string): Promise<{ fields: Array<{ key: string; label: string; value: string; confidence: number; page?: number }> }> {
   const safeMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
   const prompt = buildExtractionPrompt(documentType)
   try {
@@ -82,6 +82,7 @@ export const geminiExtractTool = createTool({
       label: z.string(),
       value: z.string(),
       confidence: z.number(),
+      page: z.number().optional(),
     })),
   }),
   execute: async ({ context }) => {

@@ -25,6 +25,7 @@ export const fieldSchema = z.object({
   label: z.string(),
   value: z.string(),
   confidence: z.number(),
+  page: z.number().optional(),
 })
 
 export const extractOutputSchema = classifyOutputSchema.extend({
