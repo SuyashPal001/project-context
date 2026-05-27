@@ -14,6 +14,7 @@ import { getMastraStore, getMastraMemory } from './memory.js'
 import { taskExecutionWorkflow } from './workflows/taskExecution.js'
 import { documentWorkflow } from './workflows/documentWorkflow.js'
 import { ingestionWorkflow } from './workflows/ingestionWorkflow.js'
+import { pensionWorkflow } from './workflows/pensionWorkflow.js'
 import { prdWorkflow } from './workflows/prdWorkflow.js'
 import { dodPassScorer } from './workflows/scorers.js'
 import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
@@ -53,6 +54,7 @@ export const mastra = new Mastra({
     taskExecution: taskExecutionWorkflow,
     documentWorkflow,
     documentIngestion: ingestionWorkflow,
+    'pension-pre-scrutiny': pensionWorkflow,
     prd: prdWorkflow,
     roadmap: roadmapWorkflow,
     tasks: taskWorkflow,
