@@ -8,6 +8,7 @@ interface IngestBody {
   bufferBase64: string
   extractedText?: string
   tenantId: string
+  personalIdentifier?: string
 }
 
 function validateBody(raw: unknown): { ok: true; body: IngestBody } | { ok: false; error: string } {
@@ -22,6 +23,9 @@ function validateBody(raw: unknown): { ok: true; body: IngestBody } | { ok: fals
   if (b.extractedText !== undefined && typeof b.extractedText !== 'string') {
     return { ok: false, error: 'extractedText must be a string when present' }
   }
+  if (b.personalIdentifier !== undefined && typeof b.personalIdentifier !== 'string') {
+    return { ok: false, error: 'personalIdentifier must be a string when present' }
+  }
   return {
     ok: true,
     body: {
@@ -31,6 +35,7 @@ function validateBody(raw: unknown): { ok: true; body: IngestBody } | { ok: fals
       bufferBase64: b.bufferBase64 as string,
       extractedText: b.extractedText as string | undefined,
       tenantId: b.tenantId as string,
+      personalIdentifier: b.personalIdentifier as string | undefined,
     },
   }
 }

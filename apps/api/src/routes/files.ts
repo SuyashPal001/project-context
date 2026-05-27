@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { storageService } from '@serverless-saas/storage';
 import { db } from '@serverless-saas/database';
 import { auditLog, files } from '@serverless-saas/database/schema';
+import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
 import { eq, and } from 'drizzle-orm';
 import { ingestFile } from '../services/ingestion';
@@ -201,12 +202,34 @@ filesRoutes.delete('/:id', async (c) => {
 filesRoutes.post('/:id/ingest', async (c) => {
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
+  const userId = c.get('userId') as string;
   const fileId = c.req.param('id');
+  const force = c.req.query('force') === 'true';
 
   const permissions = requestContext?.permissions || [];
   if (!hasPermission(permissions, 'files', 'create')) {
     return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
   }
+
+  const [fileRecord] = await db
+    .select()
+    .from(files)
+    .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)))
+    .limit(1);
+
+  if (!fileRecord) return c.json({ error: 'Not Found', message: 'File not found' }, 404);
+
+  if (fileRecord.ingestionStatus === 'done' && !force) {
+    return c.json({ error: 'Already ingested. Pass ?force=true to re-ingest.' }, 409);
+  }
+
+  // Look up uploader's personalIdentifier for chunk tagging
+  const [uploader] = await db
+    .select({ personalIdentifier: users.personalIdentifier })
+    .from(users)
+    .where(eq(users.id, fileRecord.uploadedBy ?? userId))
+    .limit(1);
+  const personalIdentifier = uploader?.personalIdentifier ?? undefined;
 
   // Mark as processing
   await db
@@ -215,14 +238,6 @@ filesRoutes.post('/:id/ingest', async (c) => {
     .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
 
   try {
-    const [fileRecord] = await db
-      .select()
-      .from(files)
-      .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)))
-      .limit(1);
-
-    if (!fileRecord) return c.json({ error: 'Not Found', message: 'File not found' }, 404);
-
     const buffer = await storageService.downloadFile(tenantId, fileId);
     const filename = fileRecord.name;
     const mimeType = fileRecord.mimeType ?? '';
@@ -239,6 +254,7 @@ filesRoutes.post('/:id/ingest', async (c) => {
           mimeType,
           bufferBase64: buffer.toString('base64'),
           tenantId: tenantId ?? 'unknown',
+          personalIdentifier,
         }),
       });
 

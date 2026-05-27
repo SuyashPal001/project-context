@@ -7,6 +7,7 @@ export const workflowInputSchema = z.object({
   bufferBase64: z.string(),
   extractedText: z.string().optional(),
   tenantId: z.string(),
+  personalIdentifier: z.string().optional(),
 })
 
 export const detectFormatOutputSchema = workflowInputSchema.extend({

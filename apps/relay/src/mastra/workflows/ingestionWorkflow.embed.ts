@@ -97,6 +97,7 @@ export const embedStep = createStep({
                 : inputData.mimeType?.includes('word') ? 'docx'
                 : 'txt',
           ingested_at: new Date().toISOString(),
+          ...(inputData.personalIdentifier ? { personal_identifier: inputData.personalIdentifier } : {}),
         })
         await client.query(`
           INSERT INTO document_chunks

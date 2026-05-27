@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { EmptyState, ConfirmDialog } from "@/components/platform/shared";
 import {
-    Loader2, FolderOpen, FileText, Image as ImageIcon, Video, Music, FileCode, File, Download, Trash2, Folder as FolderIcon, ChevronRight
+    Loader2, FolderOpen, FileText, Image as ImageIcon, Video, Music, FileCode, File, Download, Trash2, Folder as FolderIcon, ChevronRight, RefreshCw, Play
 } from "lucide-react";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -111,6 +111,26 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         }
     });
 
+    const reingestMutation = useMutation({
+        mutationFn: async (fileId: string) =>
+            api.post(`/api/v1/files/${fileId}/ingest?force=true`, {}),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            toast.success("Re-ingestion started");
+        },
+        onError: () => toast.error("Failed to start re-ingestion"),
+    });
+
+    const ingestFolderMutation = useMutation({
+        mutationFn: async (personalIdentifier: string) =>
+            api.post('/api/v1/files/ingest-folder', { personalIdentifier }),
+        onSuccess: (_, identifier) => {
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            toast.success(`Ingestion started for folder "${identifier}"`);
+        },
+        onError: () => toast.error("Failed to start folder ingestion"),
+    });
+
     const downloadFile = async (fileId: string) => {
         try {
             const res = await api.get<{ data: { downloadUrl: string } }>(`/api/v1/files/${fileId}/download`);
@@ -212,11 +232,23 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         onClick={() => onPrefixChange(`${prefix}${folderName}/`)}
                                         className="cursor-pointer border-zinc-800/50 hover:bg-muted/40 transition-colors"
                                     >
-                                        <TableCell colSpan={8}>
+                                        <TableCell colSpan={7}>
                                             <div className="flex items-center gap-2">
                                                 <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
                                                 <span className="font-medium text-zinc-200">{folderName}/</span>
                                             </div>
+                                        </TableCell>
+                                        <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 text-xs text-zinc-400 hover:text-green-400 gap-1"
+                                                onClick={() => ingestFolderMutation.mutate(folderName)}
+                                                disabled={ingestFolderMutation.isPending}
+                                            >
+                                                <Play className="w-3 h-3" />
+                                                Ingest All
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -261,6 +293,18 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-400 hover:text-zinc-200" onClick={() => downloadFile(file.id)}>
                                                     <Download className="w-3.5 h-3.5" />
                                                 </Button>
+                                                {file.ingestionStatus === 'done' || file.ingestionStatus === 'failed' ? (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-zinc-400 hover:text-green-400"
+                                                        title="Re-ingest"
+                                                        onClick={() => reingestMutation.mutate(file.id)}
+                                                        disabled={reingestMutation.isPending}
+                                                    >
+                                                        <RefreshCw className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                ) : null}
                                                 {canDelete && (
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-400 hover:text-red-500" onClick={() => setDeletingFileId(file.id)}>
                                                         <Trash2 className="w-3.5 h-3.5" />
