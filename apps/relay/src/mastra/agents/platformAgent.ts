@@ -11,6 +11,7 @@ import { saarthiModel, saarthiLiteModel, saarthiPrivateModel } from '../model.js
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { createViolationHandler } from '../guardrails.js'
+import { aiParasAgent } from './aiParasAgent.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -259,6 +260,10 @@ export const platformAgent = new Agent({
   },
 
   memory: getMastraMemory(),
+
+  // Specialist agent delegation — Saarthi recognises pension scrutiny tasks
+  // and routes them to AI-PARAS (Tier 2) which delegates reading to Tier 3.
+  agents: { aiParas: aiParasAgent },
 
   inputProcessors: [promptInjectionDetector, moderationProcessor],
   outputProcessors: [piiDetector, moderationProcessor, systemPromptScrubber],
