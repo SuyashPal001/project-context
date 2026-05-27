@@ -19,3 +19,4 @@ export * from './intelligence';
 export * from './pm';
 export * from './github';
 export * from './fairness';
+export * from './observability';
