@@ -69,5 +69,5 @@ export const routeToOfficerTool = createTool({
   description: 'Persists pension findings to the database and routes the case to the Dealing Hand officer queue. Call after validate_pension_case when findings are assembled.',
   inputSchema: routeToOfficerInputSchema,
   outputSchema: routeToOfficerOutputSchema,
-  execute: async ({ context }) => routeToOfficer(context),
+  execute: async (inputData) => routeToOfficer(inputData),
 })

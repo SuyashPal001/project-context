@@ -70,9 +70,9 @@ Never answer from memory alone — always search first.`,
     sourceCount: z.number(),
   }),
 
-  execute: async ({ context }) => {
-    const query = context.query ?? ''
-    const layer = context.layer as string | undefined
+  execute: async (inputData) => {
+    const query = inputData.query ?? ''
+    const layer = inputData.layer as string | undefined
 
     const vector = await embedQuery(query)
     console.log('[retrieve_knowledge] vector dims:', vector?.length ?? 'null - text fallback')

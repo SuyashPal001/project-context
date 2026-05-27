@@ -85,7 +85,7 @@ export const geminiExtractTool = createTool({
       page: z.number().optional(),
     })),
   }),
-  execute: async ({ context }) => {
-    return geminiExtract(context.imageBase64, context.mimeType, context.documentType)
+  execute: async (inputData) => {
+    return geminiExtract(inputData.imageBase64, inputData.mimeType, inputData.documentType)
   },
 });

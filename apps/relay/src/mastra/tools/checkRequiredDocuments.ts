@@ -13,5 +13,5 @@ export const checkRequiredDocumentsTool = createTool({
   description: 'Checks whether a pension case has all required document types (service book, PPO form, salary certificate).',
   inputSchema: z.object({ presentDocs: z.array(z.string()) }),
   outputSchema: z.object({ complete: z.boolean(), missing: z.array(z.string()) }),
-  execute: async ({ context }) => checkRequiredDocuments(context.presentDocs),
+  execute: async (inputData) => checkRequiredDocuments(inputData.presentDocs),
 });

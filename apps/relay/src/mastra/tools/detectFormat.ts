@@ -40,7 +40,7 @@ export const detectFormatTool = createTool({
     formatDetected: z.string(),
     isScanned: z.boolean(),
   }),
-  execute: async ({ context }) => {
-    return detectFormat(context.filename, context.mimeType, context.textLength, context.extractedText)
+  execute: async (inputData) => {
+    return detectFormat(inputData.filename, inputData.mimeType, inputData.textLength, inputData.extractedText)
   },
 });

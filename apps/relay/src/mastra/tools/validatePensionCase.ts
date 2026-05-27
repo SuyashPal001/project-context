@@ -16,5 +16,5 @@ export const validatePensionCaseTool = createTool({
     provision: z.string(), inputs: z.array(z.string()),
     declared: z.number().nullable(), calculated: z.number().nullable(), message: z.string(),
   })),
-  execute: async ({ context }) => validatePensionCase(context.fields),
+  execute: async (inputData) => validatePensionCase(inputData.fields),
 });

@@ -25,7 +25,7 @@ export const chunkEmbedTool = createTool({
   outputSchema: z.object({
     chunkCount: z.number(),
   }),
-  execute: async ({ context }) => {
-    return chunkEmbed(context.text)
+  execute: async (inputData) => {
+    return chunkEmbed(inputData.text)
   },
 });

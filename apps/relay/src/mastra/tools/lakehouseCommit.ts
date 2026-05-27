@@ -43,7 +43,7 @@ export const lakehouseCommitTool = createTool({
     version: z.number(),
     label: z.string(),
   }),
-  execute: async ({ context }) => {
-    return lakehouseCommit(context.fields, context.filename, context.fileId)
+  execute: async (inputData) => {
+    return lakehouseCommit(inputData.fields, inputData.filename, inputData.fileId)
   },
 });
