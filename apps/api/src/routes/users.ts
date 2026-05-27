@@ -14,7 +14,7 @@ usersRoutes.get('/profile', async (c) => {
     if (!userId) return c.json({ error: 'Unauthorized' }, 401);
 
     const [user] = await db
-        .select({ id: users.id, name: users.name, email: users.email, avatarUrl: users.avatarUrl })
+        .select({ id: users.id, name: users.name, email: users.email, avatarUrl: users.avatarUrl, personalIdentifier: users.personalIdentifier })
         .from(users)
         .where(and(eq(users.id, userId), isNull(users.deletedAt)))
         .limit(1);
@@ -35,6 +35,7 @@ usersRoutes.patch('/profile', async (c) => {
     const schema = z.object({
         name: z.string().min(1).max(100).optional(),
         avatarUrl: z.string().url().or(z.string().length(0)).nullable().optional(),
+        personalIdentifier: z.string().min(3).max(50).regex(/^[a-zA-Z0-9_-]+$/, 'Only letters, numbers, hyphens and underscores').optional().nullable(),
     });
 
     const body = await c.req.json();
@@ -46,12 +47,13 @@ usersRoutes.patch('/profile', async (c) => {
     const updateData: Record<string, unknown> = { updatedAt: new Date() };
     if (parsed.data.name !== undefined) updateData.name = parsed.data.name;
     if (parsed.data.avatarUrl !== undefined) updateData.avatarUrl = parsed.data.avatarUrl || null;
+    if (parsed.data.personalIdentifier !== undefined) updateData.personalIdentifier = parsed.data.personalIdentifier || null;
 
     const [updated] = await db
         .update(users)
         .set(updateData)
         .where(and(eq(users.id, userId), isNull(users.deletedAt)))
-        .returning({ id: users.id, name: users.name, email: users.email, avatarUrl: users.avatarUrl });
+        .returning({ id: users.id, name: users.name, email: users.email, avatarUrl: users.avatarUrl, personalIdentifier: users.personalIdentifier });
 
     if (!updated) return c.json({ error: 'User not found', code: 'NOT_FOUND' }, 404);
 

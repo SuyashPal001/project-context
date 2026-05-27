@@ -11,7 +11,6 @@ import { saarthiModel, saarthiLiteModel, saarthiPrivateModel } from '../model.js
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { createViolationHandler } from '../guardrails.js'
-import { aiParasAgent } from './aiParasAgent.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -81,7 +80,8 @@ export const SERVER_TOOLS = {
     inputSchema: z.object({
       query: z.string().describe('The search query'),
     }),
-    execute: async ({ query }: { query: string }) => {
+    execute: async (inputData) => {
+      const { query } = inputData
       const { results } = await exa.searchAndContents(query, {
         livecrawl: 'always',
         numResults: 5,
@@ -102,7 +102,8 @@ export const SERVER_TOOLS = {
     inputSchema: z.object({
       url: z.string().describe('The URL to fetch'),
     }),
-    execute: async ({ url }: { url: string }) => {
+    execute: async (inputData) => {
+      const { url } = inputData
       try {
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), 10_000)
@@ -263,7 +264,11 @@ export const platformAgent = new Agent({
 
   // Specialist agent delegation — Saarthi recognises pension scrutiny tasks
   // and routes them to AI-PARAS (Tier 2) which delegates reading to Tier 3.
-  agents: { aiParas: aiParasAgent },
+  // agents: { aiParas: aiParasAgent },
+  // NOTE: aiParasAgent removed from sub-agents map. Having it here caused
+  // platformAgent's SERVER_TOOLS (internet_search, web_fetch) to leak into
+  // aiParasAgent's tool list when called as a sub-agent. AI-PARAS is
+  // registered standalone in the Mastra registry and testable directly in Studio.
 
   inputProcessors: [promptInjectionDetector, moderationProcessor],
   outputProcessors: [piiDetector, moderationProcessor, systemPromptScrubber],

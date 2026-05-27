@@ -38,6 +38,7 @@ import { DeleteAccountModal } from "./DeleteAccountModal";
 const profileSchema = z.object({
     name: z.string().min(1, "Name is required").max(100),
     avatarUrl: z.string().url("Must be a valid URL").or(z.string().length(0)).optional().nullable(),
+    personalIdentifier: z.string().min(3, "At least 3 characters").max(50).regex(/^[a-zA-Z0-9_-]+$/, "Only letters, numbers, hyphens and underscores").or(z.string().length(0)).optional().nullable(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -47,6 +48,7 @@ interface UserProfile {
     name: string;
     email: string;
     avatarUrl: string | null;
+    personalIdentifier: string | null;
 }
 
 export default function ProfileSettingsPage() {
@@ -69,6 +71,7 @@ export default function ProfileSettingsPage() {
             form.reset({
                 name: data.user.name,
                 avatarUrl: data.user.avatarUrl || "",
+                personalIdentifier: data.user.personalIdentifier || "",
             });
         }
     }, [data, form]);
@@ -78,6 +81,7 @@ export default function ProfileSettingsPage() {
             api.patch("/api/v1/users/profile", {
                 name: values.name,
                 avatarUrl: values.avatarUrl || null,
+                personalIdentifier: values.personalIdentifier || null,
             }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["user-profile"] });
@@ -164,6 +168,29 @@ export default function ProfileSettingsPage() {
                                                 {...field}
                                             />
                                         </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="personalIdentifier"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Personal Identifier</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                placeholder="e.g. 2345-6789-1234 or harbhajan-singh"
+                                                disabled={updateMutation.isPending}
+                                                className="font-mono"
+                                                {...field}
+                                                value={field.value ?? ""}
+                                            />
+                                        </FormControl>
+                                        <p className="text-xs text-muted-foreground">
+                                            Used as your unique folder identifier for document uploads. Letters, numbers, hyphens and underscores only.
+                                        </p>
                                         <FormMessage />
                                     </FormItem>
                                 )}
