@@ -111,15 +111,19 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         }
     });
 
-    const reingestMutation = useMutation({
-        mutationFn: async (fileId: string) =>
-            api.post(`/api/v1/files/${fileId}/ingest?force=true`, {}),
-        onSuccess: () => {
+    const [ingestingFiles, setIngestingFiles] = useState<Set<string>>(new Set());
+
+    const ingestFile = async (fileId: string) => {
+        setIngestingFiles(prev => new Set([...prev, fileId]));
+        try {
+            await fetch(`/api/proxy/api/v1/files/${fileId}/ingest`, { method: 'POST' });
             queryClient.invalidateQueries({ queryKey: ['files'] });
-            toast.success("Re-ingestion started");
-        },
-        onError: () => toast.error("Failed to start re-ingestion"),
-    });
+        } catch {
+            toast.error("Failed to start ingestion");
+        } finally {
+            setIngestingFiles(prev => { const n = new Set(prev); n.delete(fileId); return n; });
+        }
+    };
 
     const [ingestingFolders, setIngestingFolders] = useState<Set<string>>(new Set());
 
@@ -310,18 +314,20 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-400 hover:text-zinc-200" onClick={() => downloadFile(file.id)}>
                                                     <Download className="w-3.5 h-3.5" />
                                                 </Button>
-                                                {file.ingestionStatus === 'done' || file.ingestionStatus === 'failed' ? (
+                                                {(file.ingestionStatus === 'pending' || file.ingestionStatus === 'failed') && (
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-7 w-7 text-zinc-400 hover:text-green-400"
-                                                        title="Re-ingest"
-                                                        onClick={() => reingestMutation.mutate(file.id)}
-                                                        disabled={reingestMutation.isPending}
+                                                        title="Ingest"
+                                                        onClick={() => ingestFile(file.id)}
+                                                        disabled={ingestingFiles.has(file.id)}
                                                     >
-                                                        <RefreshCw className="w-3.5 h-3.5" />
+                                                        {ingestingFiles.has(file.id)
+                                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                            : <RefreshCw className="w-3.5 h-3.5" />}
                                                     </Button>
-                                                ) : null}
+                                                )}
                                                 {canDelete && (
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-400 hover:text-red-500" onClick={() => setDeletingFileId(file.id)}>
                                                         <Trash2 className="w-3.5 h-3.5" />
