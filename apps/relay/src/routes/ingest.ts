@@ -54,17 +54,19 @@ ingestRoute.post('/internal/ingest', async (c) => {
     const result = await run.start({ inputData: parsed.body })
 
     if (result.status === 'success') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const out = (result as any).result
       return c.json({
         ok: true,
-        formatDetected: result.output.formatDetected,
-        documentType: result.output.documentType,
-        classificationConfidence: result.output.classificationConfidence,
-        extractedFields: result.output.extractedFields,
-        chunkCount: result.output.chunkCount,
-        lakehouseVersion: result.output.lakehouseVersion,
-        overallQuality: result.output.overallQuality,
-        needsReview: result.output.needsReview,
-        validationIssues: result.output.validationIssues,
+        formatDetected: out.formatDetected,
+        documentType: out.documentType,
+        classificationConfidence: out.classificationConfidence,
+        extractedFields: out.extractedFields,
+        chunkCount: out.chunkCount,
+        lakehouseVersion: out.lakehouseVersion,
+        overallQuality: out.overallQuality,
+        needsReview: out.needsReview,
+        validationIssues: out.validationIssues,
         runId: run.runId,
       })
     }

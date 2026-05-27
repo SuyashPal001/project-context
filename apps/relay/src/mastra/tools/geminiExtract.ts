@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001';
 
 function buildExtractionPrompt(documentType: string): string {
   const base = `You are extracting structured data from an Indian government document. Return ONLY valid JSON in this format: {"fields": [{"key":"...","label":"...","value":"...","confidence":0.0}]}. Confidence between 0.0 and 1.0. Only include fields actually visible.`;
@@ -25,6 +25,38 @@ function getMockFields() {
   ];
 }
 
+export async function geminiExtract(imageBase64: string, mimeType: string, documentType: string): Promise<{ fields: Array<{ key: string; label: string; value: string; confidence: number }> }> {
+  const safeMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
+  const prompt = buildExtractionPrompt(documentType)
+  try {
+    const response = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'gemini-2.5-flash',
+        temperature: 0.1,
+        max_tokens: 1024,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:${safeMime};base64,${imageBase64}` } },
+            { type: 'text', text: prompt },
+          ],
+        }],
+      }),
+    })
+    if (!response.ok) return { fields: getMockFields() }
+    const result = await response.json() as any
+    const text = result?.choices?.[0]?.message?.content ?? ''
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return { fields: getMockFields() }
+    const parsed = JSON.parse(jsonMatch[0])
+    return { fields: parsed.fields ?? getMockFields() }
+  } catch {
+    return { fields: getMockFields() }
+  }
+}
+
 export const geminiExtractTool = createTool({
   id: 'gemini-extract',
   description: 'Extracts structured fields from a document image using Gemini Vision with a doc-type-specific prompt.',
@@ -42,36 +74,6 @@ export const geminiExtractTool = createTool({
     })),
   }),
   execute: async ({ context }) => {
-    const { imageBase64, mimeType, documentType } = context;
-    if (!GEMINI_API_KEY) return { fields: getMockFields() };
-
-    const safeMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
-    const prompt = buildExtractionPrompt(documentType);
-
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [
-              { inlineData: { mimeType: safeMime, data: imageBase64 } },
-              { text: prompt },
-            ]}],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
-          }),
-        }
-      );
-      if (!response.ok) return { fields: getMockFields() };
-      const result = await response.json() as any;
-      const text = result?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return { fields: getMockFields() };
-      const parsed = JSON.parse(jsonMatch[0]);
-      return { fields: parsed.fields ?? getMockFields() };
-    } catch {
-      return { fields: getMockFields() };
-    }
+    return geminiExtract(context.imageBase64, context.mimeType, context.documentType)
   },
 });

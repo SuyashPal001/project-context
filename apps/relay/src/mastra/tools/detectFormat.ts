@@ -13,6 +13,20 @@ function isGarbled(text: string): boolean {
   return suspicious / text.length > GARBLED_CHAR_THRESHOLD;
 }
 
+export function detectFormat(filename: string, mimeType: string, textLength: number, extractedText?: string): { formatDetected: string; isScanned: boolean } {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  if (['jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp'].includes(ext)) return { formatDetected: 'Scanned Image', isScanned: true }
+  if (mimeType.startsWith('image/')) return { formatDetected: 'Scanned Image', isScanned: true }
+  if (ext === 'csv' || mimeType === 'text/csv') return { formatDetected: 'CSV', isScanned: false }
+  if (['docx', 'doc'].includes(ext) || mimeType.includes('wordprocessingml')) return { formatDetected: 'DOCX', isScanned: false }
+  if (ext === 'pdf' || mimeType === 'application/pdf') {
+    if (textLength < SCANNED_TEXT_THRESHOLD) return { formatDetected: 'Scanned Image', isScanned: true }
+    if (extractedText && isGarbled(extractedText)) return { formatDetected: 'Scanned Image', isScanned: true }
+    return { formatDetected: 'PDF (text)', isScanned: false }
+  }
+  return { formatDetected: 'Unknown', isScanned: false }
+}
+
 export const detectFormatTool = createTool({
   id: 'detect-format',
   description: 'Detects document format from filename, MIME type, and optional extracted text.',
@@ -27,19 +41,6 @@ export const detectFormatTool = createTool({
     isScanned: z.boolean(),
   }),
   execute: async ({ context }) => {
-    const { filename, mimeType, textLength, extractedText } = context;
-    const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-
-    if (['jpg', 'jpeg', 'png', 'tiff', 'tif', 'bmp', 'webp'].includes(ext)) return { formatDetected: 'Scanned Image', isScanned: true };
-    if (mimeType.startsWith('image/')) return { formatDetected: 'Scanned Image', isScanned: true };
-    if (ext === 'csv' || mimeType === 'text/csv') return { formatDetected: 'CSV', isScanned: false };
-    if (['docx', 'doc'].includes(ext) || mimeType.includes('wordprocessingml')) return { formatDetected: 'DOCX', isScanned: false };
-
-    if (ext === 'pdf' || mimeType === 'application/pdf') {
-      if (textLength < SCANNED_TEXT_THRESHOLD) return { formatDetected: 'Scanned Image', isScanned: true };
-      if (extractedText && isGarbled(extractedText)) return { formatDetected: 'Scanned Image', isScanned: true };
-      return { formatDetected: 'PDF (text)', isScanned: false };
-    }
-    return { formatDetected: 'Unknown', isScanned: false };
+    return detectFormat(context.filename, context.mimeType, context.textLength, context.extractedText)
   },
 });

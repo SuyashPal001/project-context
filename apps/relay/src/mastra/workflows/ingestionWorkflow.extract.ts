@@ -1,5 +1,5 @@
 import { createStep } from '@mastra/core/workflows'
-import { geminiExtractTool } from '../tools/geminiExtract.js'
+import { geminiExtract } from '../tools/geminiExtract.js'
 import { classifyOutputSchema, extractOutputSchema } from './ingestionWorkflow.schemas.js'
 
 export const extractStep = createStep({
@@ -7,21 +7,11 @@ export const extractStep = createStep({
   inputSchema: classifyOutputSchema,
   outputSchema: extractOutputSchema,
   execute: async ({ inputData }) => {
+    console.log('[extractStep] inputData keys:', inputData ? Object.keys(inputData) : 'undefined')
     if (!inputData.isScanned) {
       return { ...inputData, extractedFields: [] }
     }
-
-    const result = await geminiExtractTool.execute!({
-      context: {
-        imageBase64: inputData.bufferBase64,
-        mimeType: inputData.mimeType,
-        documentType: inputData.documentType,
-      },
-    } as any)
-
-    return {
-      ...inputData,
-      extractedFields: result.fields,
-    }
+    const result = await geminiExtract(inputData.bufferBase64, inputData.mimeType, inputData.documentType)
+    return { ...inputData, extractedFields: result.fields }
   },
 })
