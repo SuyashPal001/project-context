@@ -1,0 +1,28 @@
+import { createStep } from '@mastra/core/workflows'
+import { lakehouseCommitTool } from '../tools/lakehouseCommit.js'
+import { validateOutputSchema, commitOutputSchema } from './ingestionWorkflow.schemas.js'
+
+export const commitStep = createStep({
+  id: 'ingestion-commit-lakehouse',
+  inputSchema: validateOutputSchema,
+  outputSchema: commitOutputSchema,
+  execute: async ({ inputData }) => {
+    if (inputData.extractedFields.length === 0) {
+      return { ...inputData, lakehouseVersion: -1, lakehouseLabel: 'No fields to commit' }
+    }
+
+    const result = await lakehouseCommitTool.execute!({
+      context: {
+        fields: inputData.extractedFields,
+        filename: inputData.filename,
+        fileId: inputData.fileId,
+      },
+    } as any)
+
+    return {
+      ...inputData,
+      lakehouseVersion: result.version,
+      lakehouseLabel: result.label,
+    }
+  },
+})
