@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useRef, useMemo } from "react"
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
@@ -45,10 +45,17 @@ function uploadToS3(url: string, file: globalThis.File, onProgress: (pct: number
   })
 }
 
-export function UploadFileModal({ open, onOpenChange, onSuccess }: UploadFileModalProps) {
+export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }: UploadFileModalProps) {
   const { data: profileData } = useQuery({
     queryKey: ['user-profile'],
     queryFn: () => api.get<{ user: { personalIdentifier: string | null } }>('/api/v1/users/profile'),
+  })
+  const { data: existingFilesData } = useQuery({
+    queryKey: ['files', currentPrefix],
+    queryFn: async () => {
+      const params = currentPrefix ? `?prefix=${encodeURIComponent(currentPrefix)}` : ''
+      return api.get<{ data: { key: string }[] }>(`/api/v1/files${params}`)
+    },
   })
   const [selectedFiles, setSelectedFiles] = useState<globalThis.File[]>([])
   const [isDragActive, setIsDragActive] = useState(false)
@@ -61,6 +68,15 @@ export function UploadFileModal({ open, onOpenChange, onSuccess }: UploadFileMod
   const folder = profileData?.user?.personalIdentifier ?? null
   const prefixedName = (originalName: string) => `${folder}-${originalName}`
   const objectKey = (originalName: string) => `${folder}/${prefixedName(originalName)}`
+
+  const existingKeys = useMemo(
+    () => new Set((existingFilesData?.data ?? []).map(f => f.key)),
+    [existingFilesData]
+  )
+  const duplicateNames = useMemo(
+    () => new Set(selectedFiles.filter(f => folder && existingKeys.has(objectKey(f.name))).map(f => f.name)),
+    [selectedFiles, existingKeys, folder]
+  )
 
   const updateStatus = (filename: string, update: Partial<FileStatus>) =>
     setFileStatuses(prev => ({ ...prev, [filename]: { ...prev[filename], ...update } }))
@@ -171,6 +187,15 @@ export function UploadFileModal({ open, onOpenChange, onSuccess }: UploadFileMod
             </div>
           )}
 
+          {duplicateNames.size > 0 && !isUploading && !allSettled && (
+            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>
+                <strong>{duplicateNames.size} {duplicateNames.size === 1 ? 'file' : 'files'} already exist</strong> and will be replaced with a new version. Previous versions are preserved in S3.
+              </span>
+            </div>
+          )}
+
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleChange} />
 
           {selectedFiles.length === 0 ? (
@@ -193,9 +218,11 @@ export function UploadFileModal({ open, onOpenChange, onSuccess }: UploadFileMod
                 {selectedFiles.map(file => {
                   const s = fileStatuses[file.name]
                   return (
-                    <div key={file.name} className="border border-zinc-800 bg-zinc-900/50 rounded-lg p-3">
+                    <div key={file.name} className={`border rounded-lg p-3 ${duplicateNames.has(file.name) ? 'border-amber-500/30 bg-amber-500/5' : 'border-zinc-800 bg-zinc-900/50'}`}>
                       <div className="flex items-center gap-3">
-                        <File className="h-4 w-4 text-zinc-500 shrink-0" />
+                        {duplicateNames.has(file.name)
+                          ? <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium shrink-0">Version update</span>
+                          : <File className="h-4 w-4 text-zinc-500 shrink-0" />}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-zinc-200 truncate">{file.name}</p>
                           <p className="text-xs text-zinc-500">{formatFileSize(file.size)}</p>

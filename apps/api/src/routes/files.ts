@@ -6,7 +6,7 @@ import { db } from '@serverless-saas/database';
 import { auditLog, files } from '@serverless-saas/database/schema';
 import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne, isNull } from 'drizzle-orm';
 import { ingestFile } from '../services/ingestion';
 import type { AppEnv } from '../types';
 
@@ -78,6 +78,57 @@ filesRoutes.post(
       return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
     }
 
+    // Fetch the pending record to get its S3 key
+    const [pendingRecord] = await db
+      .select({ key: files.key })
+      .from(files)
+      .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)))
+      .limit(1);
+
+    if (!pendingRecord) {
+      return c.json({ error: 'Not Found', message: 'File record not found' }, 404);
+    }
+
+    // Check for an existing uploaded record with the same key (dedup)
+    const [existing] = await db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(
+        eq(files.key, pendingRecord.key),
+        eq(files.tenantId, tenantId),
+        eq(files.status, 'uploaded'),
+        isNull(files.deletedAt),
+        ne(files.id, fileId),
+      ))
+      .limit(1);
+
+    if (existing) {
+      // Update the existing record — reset size and ingestion for the new S3 version
+      await db
+        .update(files)
+        .set({ size, ingestionStatus: 'pending', updatedAt: new Date() })
+        .where(and(eq(files.id, existing.id), eq(files.tenantId, tenantId)));
+
+      // Discard the duplicate pending record created during /upload
+      await db
+        .update(files)
+        .set({ status: 'deleted', deletedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
+
+      await db.insert(auditLog).values({
+        tenantId,
+        actorId: userId,
+        actorType: 'human',
+        action: 'file_uploaded',
+        resource: 'file',
+        resourceId: existing.id,
+        metadata: { size, deduplicated: true },
+        traceId: c.get('traceId') ?? '',
+      });
+
+      return c.json({ success: true, fileId: existing.id });
+    }
+
     await storageService.confirmUpload(tenantId, fileId, size);
 
     await db.insert(auditLog).values({
@@ -91,7 +142,7 @@ filesRoutes.post(
       traceId: c.get('traceId') ?? '',
     });
 
-    return c.json({ success: true });
+    return c.json({ success: true, fileId });
   }
 );
 
