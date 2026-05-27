@@ -243,8 +243,8 @@ const BUILTIN_TOOLS = [
   // Platform tools — always available regardless of integrations
   { name: 'web_search', description: 'Search the web for current information, news, facts, and real-time data. Returns relevant results with titles, URLs, and snippets.', provider: null,
     inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The search query' }, maxResults: { type: 'number', description: 'Maximum number of results to return (default: 5, max: 10)' } }, required: ['query'] } },
-  { name: 'retrieve_documents', description: 'Search the tenant private knowledge base for relevant documents. Use when the user asks about their uploaded documents, policies, reports, CV, job descriptions, or any domain-specific knowledge. Always cite the source document name in your response.', provider: null,
-    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The search query to find relevant documents' } }, required: ['query'] } },
+  { name: 'retrieve_documents', description: 'Search the pension document repository. When the user message contains a person identifier (PPO number, Aadhaar, PAN, or any folder name like @PPO-12345), extract it and pass as "identifier". The search will be scoped to that person\'s folder only. If no identifier is provided, searches across all tenant documents. Always cite the source document name in your response.', provider: null,
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'The search query' }, identifier: { type: 'string', description: 'Person folder identifier extracted from the message (PPO number, Aadhaar, PAN, etc). Pass whenever the user mentions a specific person or folder.' } }, required: ['query'] } },
   // Platform — plan creation from PRD output
   { name: 'create_plan_from_prd', description: 'Create a project plan with milestones and tasks in the database from structured PRD extraction output. Use after documentWorkflow produces a prdData object. Returns planId, planSequenceId (e.g. PLN-1), milestoneCount, taskCount, and planUrl.', provider: null,
     inputSchema: { type: 'object', properties: {
@@ -375,7 +375,7 @@ async function toolsCall(tenantId: string, name: string, args: Record<string, un
             'Content-Type': 'application/json',
             'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
           },
-          body: JSON.stringify({ query: args.query as string, tenantId }),
+          body: JSON.stringify({ query: args.query as string, tenantId, identifier: args.identifier as string | undefined }),
           signal: AbortSignal.timeout(15_000),
         })
         if (!res.ok) {

@@ -7,6 +7,7 @@ import { auditLog, files } from '@serverless-saas/database/schema';
 import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
 import { eq, and, ne, isNull } from 'drizzle-orm';
+import { personFolders } from '@serverless-saas/database/schema';
 import { ingestFile } from '../services/ingestion';
 import type { AppEnv } from '../types';
 
@@ -31,13 +32,14 @@ filesRoutes.post(
   zValidator('json', z.object({
     filename: z.string().min(1).max(255),
     contentType: z.string().min(1).max(127),
-    key: z.string().max(512).optional(), // user-space key e.g. "documents/report.pdf"
+    key: z.string().max(512).optional(),
+    personFolderId: z.string().uuid().optional(),
   })),
   async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const userId = c.get('userId');
-    const { filename, contentType, key: userKey } = c.req.valid('json');
+    const { filename, contentType, key: userKey, personFolderId } = c.req.valid('json');
 
     if (!userId) {
       return c.json({ error: 'Forbidden', message: 'Missing userId' }, 403);
@@ -55,6 +57,11 @@ filesRoutes.post(
       uploadedBy: userId,
       userKey,
     });
+
+    // Link to person folder if provided
+    if (personFolderId) {
+      await db.update(files).set({ personFolderId, updatedAt: new Date() }).where(eq(files.id, result.fileId));
+    }
 
     await db.insert(auditLog).values({
       tenantId,
@@ -307,6 +314,18 @@ filesRoutes.post('/:id/ingest', async (c) => {
     let result: { formatDetected: string; chunkCount: number; extractedFields: any[] | null };
 
     try {
+      // Resolve person folder identifier for RAG scoping
+      let personFolderId: string | undefined
+      let folderIdentifier: string | undefined
+      if (fileRecord.personFolderId) {
+        const [pf] = await db
+          .select({ id: personFolders.id, identifier: personFolders.identifier })
+          .from(personFolders)
+          .where(eq(personFolders.id, fileRecord.personFolderId))
+          .limit(1)
+        if (pf) { personFolderId = pf.id; folderIdentifier = pf.identifier }
+      }
+
       const relayRes = await fetch(`${RELAY_URL}/internal/ingest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -316,7 +335,8 @@ filesRoutes.post('/:id/ingest', async (c) => {
           mimeType,
           bufferBase64: buffer.toString('base64'),
           tenantId: tenantId ?? 'unknown',
-          personalIdentifier,
+          personalIdentifier: folderIdentifier ?? personalIdentifier,
+          personFolderId,
         }),
       });
 

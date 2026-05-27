@@ -5,7 +5,8 @@ import { zValidator } from '@hono/zod-validator';
 import { retrieveChunks, formatContextBlock } from '@serverless-saas/ai';
 import { db } from '@serverless-saas/database';
 import { documents } from '@serverless-saas/database/schema/documents';
-import { inArray } from 'drizzle-orm';
+import { personFolders } from '@serverless-saas/database/schema';
+import { inArray, and, eq } from 'drizzle-orm';
 import type { AppEnv } from '../../types';
 
 const SENSITIVITY_RANK: Record<string, number> = { public: 0, internal: 1, confidential: 2, restricted: 3 };
@@ -25,6 +26,8 @@ const bodySchema = z.object({
   tenantId: z.string().uuid(),
   limit: z.number().int().min(1).max(10).default(5),
   scoreThreshold: z.number().min(0).max(1).default(0.5),
+  // Optional: scope retrieval to a specific person folder by identifier string
+  identifier: z.string().optional(),
 });
 
 const retrieveRoute = new Hono<AppEnv>();
@@ -40,11 +43,31 @@ retrieveRoute.post(
       }
 
       const body = c.req.valid('json');
+
+      // Resolve person folder if identifier provided
+      let personFolderId: string | undefined;
+      if (body.identifier) {
+        const [folder] = await db
+          .select({ id: personFolders.id, status: personFolders.status })
+          .from(personFolders)
+          .where(and(eq(personFolders.tenantId, body.tenantId), eq(personFolders.identifier, body.identifier)))
+          .limit(1);
+
+        if (!folder) {
+          return c.json({ context: `No record found for '${body.identifier}'. Please verify the identifier and try again.`, chunks: [], maxSensitivity: 'internal' }, 200);
+        }
+        if (folder.status === 'pending') {
+          return c.json({ context: `Documents for '${body.identifier}' have been received but not yet verified. Please ask an admin to verify this folder.`, chunks: [], maxSensitivity: 'internal' }, 200);
+        }
+        personFolderId = folder.id;
+      }
+
       const chunks = await retrieveChunks(
         body.query,
         body.tenantId,
         body.limit,
-        body.scoreThreshold
+        body.scoreThreshold,
+        personFolderId
       );
 
       const context = formatContextBlock(chunks);

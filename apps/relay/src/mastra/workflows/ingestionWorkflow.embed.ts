@@ -99,16 +99,18 @@ export const embedStep = createStep({
           ingested_at: new Date().toISOString(),
           ...(inputData.personalIdentifier ? { personal_identifier: inputData.personalIdentifier } : {}),
         })
+        const personFolderId = (inputData as any).personFolderId ?? null
         await client.query(`
           INSERT INTO document_chunks
-            (id, tenant_id, document_id, content, embedding, chunk_index, metadata, tsv)
-          VALUES ($1, $2, $3, $4, $5::vector, $6, $7::jsonb, to_tsvector('english', $4))
+            (id, tenant_id, document_id, content, embedding, chunk_index, metadata, tsv, person_folder_id)
+          VALUES ($1, $2, $3, $4, $5::vector, $6, $7::jsonb, to_tsvector('english', $4), $8)
           ON CONFLICT (id) DO UPDATE SET
-            content   = EXCLUDED.content,
-            embedding = EXCLUDED.embedding,
-            metadata  = EXCLUDED.metadata,
-            tsv       = EXCLUDED.tsv
-        `, [id, inputData.tenantId, inputData.fileId, content, vectorStr, i, metadata])
+            content          = EXCLUDED.content,
+            embedding        = EXCLUDED.embedding,
+            metadata         = EXCLUDED.metadata,
+            tsv              = EXCLUDED.tsv,
+            person_folder_id = EXCLUDED.person_folder_id
+        `, [id, inputData.tenantId, inputData.fileId, content, vectorStr, i, metadata, personFolderId])
         stored++
       }
     } finally {
