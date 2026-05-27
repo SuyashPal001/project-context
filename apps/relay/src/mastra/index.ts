@@ -13,6 +13,7 @@ import { Observability, DefaultExporter } from '@mastra/observability'
 import { getMastraStore, getMastraMemory } from './memory.js'
 import { taskExecutionWorkflow } from './workflows/taskExecution.js'
 import { documentWorkflow } from './workflows/documentWorkflow.js'
+import { ingestionWorkflow } from './workflows/ingestionWorkflow.js'
 import { prdWorkflow } from './workflows/prdWorkflow.js'
 import { dodPassScorer } from './workflows/scorers.js'
 import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
@@ -51,6 +52,7 @@ export const mastra = new Mastra({
   workflows: {
     taskExecution: taskExecutionWorkflow,
     documentWorkflow,
+    documentIngestion: ingestionWorkflow,
     prd: prdWorkflow,
     roadmap: roadmapWorkflow,
     tasks: taskWorkflow,
