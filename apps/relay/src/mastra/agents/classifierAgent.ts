@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent';
-import { saarthiModel } from '../model';
+import { saarthiModel } from '../model.js';
 
 export const classifierAgent = new Agent({
   id: 'doc-classifier',
