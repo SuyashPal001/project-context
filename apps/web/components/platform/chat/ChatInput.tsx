@@ -1,4 +1,5 @@
 import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle } from "lucide-react";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -201,7 +202,7 @@ export function ChatInput({
                                 </div>
 
                                 <div className="flex items-center gap-1.5">
-                                    {!content.trim() && !isStreaming && !isLoading && (
+                                    {FEATURE_FLAGS.chatVoice && !content.trim() && !isStreaming && !isLoading && (
                                         <button
                                             type="button"
                                             onClick={recorder.startRecording}
