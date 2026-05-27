@@ -200,7 +200,7 @@ export function UploadFileModal({ open, onOpenChange, onSuccess }: UploadFileMod
                       <div className="flex items-center gap-3">
                         <File className="h-4 w-4 text-zinc-500 shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-zinc-200 truncate">{prefixedName(file.name)}</p>
+                          <p className="text-sm text-zinc-200 truncate">{file.name}</p>
                           <p className="text-xs text-zinc-500">{formatFileSize(file.size)}</p>
                         </div>
                         {s?.status === 'uploading' && (
