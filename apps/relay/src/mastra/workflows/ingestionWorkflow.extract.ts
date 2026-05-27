@@ -10,7 +10,7 @@ export const extractStep = createStep({
     if (!inputData.isScanned) {
       return { ...inputData, extractedFields: [] }
     }
-    const result = await geminiExtract(inputData.bufferBase64, inputData.mimeType, inputData.documentType)
+    const result = await geminiExtract(inputData.bufferBase64, inputData.mimeType, inputData.documentType, inputData.tenantId)
     return { ...inputData, extractedFields: result.fields }
   },
 })

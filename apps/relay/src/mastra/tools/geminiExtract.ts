@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { persistCost } from '../cost.js';
 
 const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001';
 
@@ -25,7 +26,7 @@ function getMockFields() {
   ];
 }
 
-export async function geminiExtract(imageBase64: string, mimeType: string, documentType: string): Promise<{ fields: Array<{ key: string; label: string; value: string; confidence: number }> }> {
+export async function geminiExtract(imageBase64: string, mimeType: string, documentType: string, tenantId?: string): Promise<{ fields: Array<{ key: string; label: string; value: string; confidence: number }> }> {
   const safeMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
   const prompt = buildExtractionPrompt(documentType)
   try {
@@ -47,6 +48,16 @@ export async function geminiExtract(imageBase64: string, mimeType: string, docum
     })
     if (!response.ok) return { fields: getMockFields() }
     const result = await response.json() as any
+    if (tenantId && result?.usage) {
+      persistCost({
+        tenantId,
+        agentId: 'gemini-extract',
+        workflowId: 'document-ingestion',
+        model: 'gemini-2.5-flash',
+        inputTokens: result.usage.prompt_tokens ?? 0,
+        outputTokens: result.usage.completion_tokens ?? 0,
+      })
+    }
     const text = result?.choices?.[0]?.message?.content ?? ''
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return { fields: getMockFields() }
