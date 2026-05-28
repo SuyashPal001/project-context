@@ -225,6 +225,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
           sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
 
+          // Inject summary as synthetic text when route_to_officer returns one
+          if (resolvedToolName === 'route_to_officer' && typeof result.summary === 'string' && result.summary) {
+            fullText += result.summary
+            sendEvent('delta', { text: result.summary, conversationId })
+          }
+
           // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes
           const normName = resolvedToolName.toLowerCase().replace(/_/g, '-')
           if (SAVE_TOOL_NAMES.has(normName)) {
