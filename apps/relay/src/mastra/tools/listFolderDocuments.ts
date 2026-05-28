@@ -36,14 +36,18 @@ Returns filenames, mime types, and ingest status.`,
     const client = await getPool().connect()
     try {
       const result = await client.query(`
-        SELECT DISTINCT f.id, f.name, f.mime_type, f.status
+        SELECT f.id, f.name, f.mime_type, f.status
         FROM files f
-        LEFT JOIN person_folders pf ON pf.id = $1
-        WHERE f.tenant_id   = $2
+        WHERE f.tenant_id = $2
           AND f.deleted_at IS NULL
           AND (
             f.person_folder_id = $1
-            OR (pf.identifier IS NOT NULL AND f.key LIKE pf.identifier || '/%')
+            OR f.key LIKE (
+              SELECT pf.identifier || '/%'
+              FROM person_folders pf
+              WHERE pf.id = $1
+              LIMIT 1
+            )
           )
         ORDER BY f.created_at DESC
       `, [folderId, tenantId])
