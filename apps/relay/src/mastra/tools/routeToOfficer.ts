@@ -34,6 +34,7 @@ export const routeToOfficerOutputSchema = z.object({
   assignedRole: z.string(),
   findingIds: z.array(z.string()),
   caseId: z.string(),
+  summary: z.string(),
 })
 
 export async function routeToOfficer(
@@ -88,7 +89,24 @@ export async function routeToOfficer(
     .set({ status: input.caseStatus, assignedRole, updatedAt: new Date() })
     .where(eq(pensionCases.id, resolvedCaseId))
 
-  return { assignedRole, findingIds, caseId: resolvedCaseId }
+  const failCount = input.findings.filter(f => f.status === 'fail').length
+  const passCount = input.findings.filter(f => f.status === 'pass').length
+  const cantCount = input.findings.filter(f => f.status === 'cannot_evaluate').length
+  const lines = input.findings.map(f => {
+    const badge = f.status === 'pass' ? 'PASS' : f.status === 'fail' ? 'FAIL' : 'CANNOT EVALUATE'
+    return `${f.ruleId} ${badge} — ${f.narration}`
+  })
+  const summary = [
+    `## Pre-Scrutiny Report — ${input.caseRef ?? resolvedCaseId}`,
+    '',
+    ...lines,
+    '',
+    `**Result:** ${passCount} passed · ${failCount} failed · ${cantCount} cannot evaluate`,
+    `**Assigned to:** ${assignedRole} queue`,
+    `**Case ID:** ${resolvedCaseId}`,
+  ].join('\n')
+
+  return { assignedRole, findingIds, caseId: resolvedCaseId, summary }
 }
 
 export const routeToOfficerTool = createTool({
