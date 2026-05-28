@@ -5,8 +5,8 @@ export const REQUIRED_DOCS = ['service_book', 'ppo_form', 'salary_certificate'] 
 
 const KEYWORDS: Record<string, string[]> = {
   service_book:       ['service', 'book', 'sb'],
-  ppo_form:           ['ppo', 'pension payment order', 'form'],
-  salary_certificate: ['salary', 'pay', 'certificate', 'cert'],
+  ppo_form:           ['ppo', 'pension payment order', 'payment order', 'payment', 'form'],
+  salary_certificate: ['salary', 'pay', 'certificate', 'cert', 'disbursement'],
 }
 
 export function checkRequiredDocuments(presentDocs: string[]): { complete: boolean; missing: string[] } {
