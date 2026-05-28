@@ -64,4 +64,12 @@ export const DEFAULT_AGENTS = [
     is_internal: false,
     apiKeyName: 'Architect API Key',
   },
+  {
+    name: 'AI-PARAS',
+    description: 'CAG pension pre-scrutiny auditor. Validates pension cases against CCS Pension Rules 1972.',
+    type: 'assistant',
+    status: 'active',
+    is_internal: false,
+    apiKeyName: 'AI-PARAS API Key',
+  },
 ] as const

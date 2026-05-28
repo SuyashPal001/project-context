@@ -26,6 +26,7 @@ export interface ChatStreamOpts {
   sendEvent: (event: string, data: object) => void
   closeStream: () => void
   isStreamClosed: () => boolean
+  folderId?: string
 }
 
 type ContentPart =
@@ -102,6 +103,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     message, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, closeStream, isStreamClosed,
+    folderId,
   } = opts
 
   let ragFired = false
@@ -141,6 +143,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('tenantId', tenantId)
     requestContext.set('agentId', agentId)
     requestContext.set('userId', internalUserId)
+    if (folderId) requestContext.set('folderId', folderId)
     const mcpClient = getMCPClientForTenant(tenantId)
     requestContext.set('__mcpClient', mcpClient as any)
 
