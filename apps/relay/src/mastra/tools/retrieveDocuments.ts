@@ -41,14 +41,18 @@ async function search(query: string, tenantId: string, folderId: string, limit =
         AND (
           dc.person_folder_id = $3
           OR dc.document_id IN (
-            SELECT f.id FROM files f
-            WHERE f.tenant_id   = $2
-              AND f.deleted_at IS NULL
-              AND f.key LIKE (
-                SELECT pf.identifier || '/%'
-                FROM person_folders pf
-                WHERE pf.id = $3
-                LIMIT 1
+            SELECT doc.id FROM documents doc
+            WHERE doc.tenant_id = $2
+              AND doc.hash IN (
+                SELECT f.id::text FROM files f
+                WHERE f.tenant_id   = $2
+                  AND f.deleted_at IS NULL
+                  AND f.key LIKE (
+                    SELECT pf.identifier || '/%'
+                    FROM person_folders pf
+                    WHERE pf.id = $3
+                    LIMIT 1
+                  )
               )
           )
         )
