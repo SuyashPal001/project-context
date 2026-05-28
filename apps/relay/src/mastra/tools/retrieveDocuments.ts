@@ -66,6 +66,10 @@ async function search(query: string, tenantId: string, folderId: string, limit =
   }
 }
 
+const requestContextSchema = z.object({
+  tenantId: z.string(),
+})
+
 export const retrieveDocumentsTool = createTool({
   id: 'retrieve_documents',
   description: `Search indexed documents in a folder.
@@ -79,12 +83,21 @@ If this returns no results, say you cannot find the information — never guess.
     tenantId: z.string().describe('The tenant ID'),
   }),
 
+  requestContextSchema,
+
   outputSchema: z.object({
     found:   z.boolean(),
     context: z.string(),
   }),
 
-  execute: async ({ query, folderId, tenantId }) => {
+  execute: async ({ query, folderId }, execContext) => {
+    const tenantId = (execContext as any)?.requestContext?.get('tenantId') as string | undefined
+      ?? (execContext as any)?.context?.tenantId as string | undefined
+      ?? ''
+    if (!tenantId) {
+      console.error('[retrieveDocuments] tenantId missing from requestContext')
+      return { found: false, context: 'Document retrieval failed: missing tenant context.' }
+    }
     let rows: Awaited<ReturnType<typeof search>>
     try {
       rows = await search(query, tenantId, folderId)

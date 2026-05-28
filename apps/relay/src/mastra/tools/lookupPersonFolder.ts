@@ -3,6 +3,10 @@ import { z } from 'zod'
 import { db, personFolders } from '@serverless-saas/database'
 import { and, eq, or, sql } from 'drizzle-orm'
 
+const requestContextSchema = z.object({
+  tenantId: z.string(),
+})
+
 export const lookupPersonFolderTool = createTool({
   id: 'lookup_person_folder',
   description: `Resolve a pensioner identifier (e.g. "PB-2023-4521") to a folder ID.
@@ -15,13 +19,18 @@ If not found, tell the officer the folder does not exist yet.`,
     tenantId:   z.string().describe('The tenant ID'),
   }),
 
+  requestContextSchema,
+
   outputSchema: z.object({
     found:    z.boolean(),
     folderId: z.string().optional(),
     status:   z.string().optional(),
   }),
 
-  execute: async ({ identifier, tenantId }) => {
+  execute: async ({ identifier }, execContext) => {
+    const tenantId = (execContext as any)?.requestContext?.get('tenantId') as string | undefined
+      ?? (execContext as any)?.context?.tenantId as string | undefined
+      ?? ''
     const normalised = identifier.trim().toLowerCase()
     const [folder] = await db
       .select({ id: personFolders.id, status: personFolders.status })

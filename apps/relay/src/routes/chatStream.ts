@@ -132,6 +132,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const memPreamble = workingMemory
       ? `[AGENT MEMORY]\nYou have remembered the following about this tenant from previous sessions:\n${workingMemory}\n\n`
       : ''
+    console.log('[session] tenantId:', tenantId)
     const sessionCtx = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}\n</session_context>\n\n`
     const mastraMessage = await buildMastraMessage(attachments, memPreamble, sessionCtx, message, sessionId)
 

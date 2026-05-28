@@ -11,6 +11,10 @@ function getPool(): pg.Pool {
   return _pool
 }
 
+const requestContextSchema = z.object({
+  tenantId: z.string(),
+})
+
 export const listFolderDocumentsTool = createTool({
   id: 'list_folder_documents',
   description: `List all documents uploaded to a person folder.
@@ -22,6 +26,8 @@ Returns filenames, mime types, and ingest status.`,
     tenantId: z.string().describe('The tenant ID'),
   }),
 
+  requestContextSchema,
+
   outputSchema: z.object({
     found:     z.boolean(),
     documents: z.array(z.object({
@@ -32,7 +38,10 @@ Returns filenames, mime types, and ingest status.`,
     })),
   }),
 
-  execute: async ({ folderId, tenantId }) => {
+  execute: async ({ folderId }, execContext) => {
+    const tenantId = (execContext as any)?.requestContext?.get('tenantId') as string | undefined
+      ?? (execContext as any)?.context?.tenantId as string | undefined
+      ?? ''
     const client = await getPool().connect()
     try {
       const result = await client.query(`
