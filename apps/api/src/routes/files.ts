@@ -372,7 +372,7 @@ filesRoutes.post('/:id/ingest', async (c) => {
         chunkCount: result.chunkCount,
         extractedFields: result.extractedFields as any,
         ingestionStatus: 'done',
-        officeCode: requestContext?.tenant?.slug ?? tenantId,
+        officeCode: requestContext?.tenant?.name ?? tenantId,
         classification: classifyDocument(filename),
         updatedAt: new Date(),
       })
