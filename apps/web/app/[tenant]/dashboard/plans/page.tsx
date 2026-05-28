@@ -258,7 +258,7 @@ type CreatePlanForm = z.infer<typeof createPlanSchema>
 function CreatePlanDialog({ open, onOpenChange, tenantId }: { open: boolean; onOpenChange: (v: boolean) => void; tenantId: string }) {
     const queryClient = useQueryClient()
     const { register, handleSubmit, reset, formState: { errors } } = useForm<CreatePlanForm>({
-        resolver: zodResolver(createPlanSchema),
+        resolver: zodResolver(createPlanSchema as any),
     })
 
     const mutation = useMutation({

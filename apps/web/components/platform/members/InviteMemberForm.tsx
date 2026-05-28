@@ -51,7 +51,7 @@ export function InviteMemberForm() {
     const canCreateUsers = can(permissions, "members", "create");
 
     const form = useForm<InviteFormValues>({
-        resolver: zodResolver(inviteSchema),
+        resolver: zodResolver(inviteSchema as any),
         defaultValues: {
             email: "",
             roleId: "",

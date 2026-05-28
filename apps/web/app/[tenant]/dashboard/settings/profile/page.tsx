@@ -62,7 +62,7 @@ export default function ProfileSettingsPage() {
     });
 
     const form = useForm<ProfileFormValues>({
-        resolver: zodResolver(profileSchema),
+        resolver: zodResolver(profileSchema as any),
         defaultValues: { name: "", avatarUrl: "" },
     });
 

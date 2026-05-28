@@ -48,7 +48,7 @@ export default function BrandingPage() {
     });
 
     const form = useForm<BrandingFormValues>({
-        resolver: zodResolver(brandingFormSchema),
+        resolver: zodResolver(brandingFormSchema as any),
         defaultValues: {
             brandName: "",
             logoUrl: "",

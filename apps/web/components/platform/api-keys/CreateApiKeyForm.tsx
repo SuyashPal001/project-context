@@ -24,7 +24,7 @@ export function CreateApiKeyForm({ onSuccess }: CreateApiKeyFormProps) {
     const [step, setStep] = useState<1 | 2>(1);
 
     const form = useForm<ApiKeyFormValues>({
-        resolver: zodResolver(apiKeySchema),
+        resolver: zodResolver(apiKeySchema as any),
         defaultValues: { name: "", type: "rest", permissions: [], expiryOption: "none" },
     });
 

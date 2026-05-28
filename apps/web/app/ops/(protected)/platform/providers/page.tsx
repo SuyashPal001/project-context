@@ -51,7 +51,7 @@ export default function ProvidersPage() {
     });
 
     const form = useForm<AddFormValues, unknown, AddFormValues>({
-        resolver: zodResolver(addSchema) as any,
+        resolver: zodResolver(addSchema as any),
         defaultValues: { provider: "openai", model: "", displayName: "", openclawModelId: "", apiKey: "", isDefault: false },
     });
 

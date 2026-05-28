@@ -46,7 +46,7 @@ export default function OpsTeamPage() {
     });
 
     const form = useForm<AddMemberFormValues>({
-        resolver: zodResolver(addMemberSchema),
+        resolver: zodResolver(addMemberSchema as any),
         defaultValues: { name: "", email: "", password: "" },
     });
 

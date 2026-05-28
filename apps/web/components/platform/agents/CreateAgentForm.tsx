@@ -41,7 +41,7 @@ export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
     const queryClient = useQueryClient();
 
     const form = useForm<z.infer<typeof formSchema>>({
-        resolver: zodResolver(formSchema),
+        resolver: zodResolver(formSchema as any),
         defaultValues: {
             name: "",
             type: "ops",

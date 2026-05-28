@@ -161,7 +161,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                     </div>
                     <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground border-t pt-4">
                         <span>Model</span>
-                        <span className="font-medium text-foreground">{agent.model || "Gemini 2.5 Flash"}</span>
+                        <span className="font-medium text-foreground">AI-PARAS v1</span>
                     </div>
                 </CardContent>
             </Card>

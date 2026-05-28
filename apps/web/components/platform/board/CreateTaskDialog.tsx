@@ -74,7 +74,7 @@ export function CreateTaskDialog({
     const attachFileInputRef = useRef<HTMLInputElement>(null)
 
     const { register, control, handleSubmit, reset, watch, formState: { errors } } = useForm<CreateTaskForm>({
-        resolver: zodResolver(createTaskSchema),
+        resolver: zodResolver(createTaskSchema as any),
         defaultValues: { acceptanceCriteria: [] as { text: string }[] },
     })
     const { fields, append, remove } = useFieldArray({ control, name: 'acceptanceCriteria' })

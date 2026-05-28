@@ -47,7 +47,7 @@ export default function FeatureOverridesPage() {
     });
 
     const form = useForm<OverrideFormValues>({
-        resolver: zodResolver(overrideSchema),
+        resolver: zodResolver(overrideSchema as any),
         defaultValues: { tenantId: "", featureId: "", enabled: false, valueLimit: 0, unlimited: false, reason: "", expiresAt: "" },
     });
 

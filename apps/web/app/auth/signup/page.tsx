@@ -39,7 +39,7 @@ export default function SignupPage() {
     const [isLoading, setIsLoading] = useState(false);
 
     const form = useForm<SignupSchema>({
-        resolver: zodResolver(signupSchema),
+        resolver: zodResolver(signupSchema as any),
         defaultValues: {
             name: "",
             email: "",

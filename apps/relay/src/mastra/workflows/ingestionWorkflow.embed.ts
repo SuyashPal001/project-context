@@ -1,13 +1,7 @@
 import { createStep } from '@mastra/core/workflows'
 import * as crypto from 'crypto'
-import { createRequire } from 'module'
 import pg from 'pg'
-import mammoth from 'mammoth'
 import { validateOutputSchema, embedOutputSchema } from './ingestionWorkflow.schemas.js'
-
-const _require = createRequire(import.meta.url)
-const _pdfParseMod = _require('pdf-parse')
-const pdfParse = (typeof _pdfParseMod === 'function' ? _pdfParseMod : _pdfParseMod.default) as (buf: Buffer) => Promise<{ text: string }>
 
 const CHUNK_SIZE = 1000
 const CHUNK_OVERLAP = 200
@@ -75,31 +69,9 @@ export const embedStep = createStep({
   inputSchema: validateOutputSchema,
   outputSchema: embedOutputSchema,
   execute: async ({ inputData }) => {
-    let textContent = inputData.extractedText
-      ?? inputData.extractedFields.map(f => `${f.label}: ${f.value}`).join('\n')
-
-    // Lambda sends bufferBase64 but no extractedText for text PDFs/DOCX — extract here
-    if (!textContent && inputData.bufferBase64) {
-      const buf = Buffer.from(inputData.bufferBase64, 'base64')
-      if (inputData.mimeType === 'application/pdf') {
-        try {
-          const parsed = await pdfParse(buf)
-          textContent = parsed.text ?? ''
-        } catch (err) {
-          console.warn('[embed] pdf-parse failed:', (err as Error).message)
-        }
-      } else if (
-        inputData.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        inputData.mimeType === 'application/msword'
-      ) {
-        try {
-          const res = await mammoth.extractRawText({ buffer: buf })
-          textContent = res.value ?? ''
-        } catch (err) {
-          console.warn('[embed] mammoth failed:', (err as Error).message)
-        }
-      }
-    }
+    // Lambda extracts text before sending — use extractedText first, then fields fallback
+    const textContent = (inputData.extractedText?.trim())
+      || inputData.extractedFields.map(f => `${f.label}: ${f.value}`).join('\n')
 
     const chunks = chunkText(textContent)
     if (chunks.length === 0) {
@@ -109,6 +81,13 @@ export const embedStep = createStep({
     const client = await getPool().connect()
     let stored = 0
     try {
+      // Ensure tenant exists locally so documents FK is satisfied
+      await client.query(`
+        INSERT INTO tenants (id, name, slug, status)
+        VALUES ($1, $2, $3, 'active')
+        ON CONFLICT (id) DO NOTHING
+      `, [inputData.tenantId, inputData.tenantId, inputData.tenantId])
+
       // Upsert a documents row so document_chunks FK is satisfied
       // Use fileId as the hash — it's a UUID (36 chars), fits varchar(64), unique per tenant
       const docRes = await client.query(`

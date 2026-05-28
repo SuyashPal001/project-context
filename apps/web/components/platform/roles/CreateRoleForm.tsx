@@ -37,7 +37,7 @@ export function CreateRoleForm({ onSuccess, onUpgradeRequired }: CreateRoleFormP
     const queryClient = useQueryClient();
 
     const form = useForm<RoleFormValues>({
-        resolver: zodResolver(roleSchema),
+        resolver: zodResolver(roleSchema as any),
         defaultValues: {
             name: "",
             description: "",

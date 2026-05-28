@@ -52,9 +52,18 @@ export async function geminiExtract(imageBase64: string, mimeType: string, docum
       })
     }
     const text = result?.choices?.[0]?.message?.content ?? ''
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    // Strip markdown code fences before parsing
+    const stripped = text.replace(/```(?:json)?\s*/g, '').replace(/```/g, '').trim()
+    const jsonMatch = stripped.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return { fields: [] }
-    const parsed = JSON.parse(jsonMatch[0])
+    let parsed: any
+    try {
+      parsed = JSON.parse(jsonMatch[0])
+    } catch {
+      // Attempt to salvage truncated JSON by trimming after last complete field
+      const truncated = jsonMatch[0].replace(/,?\s*\{[^}]*$/, '').replace(/,\s*$/, '') + ']}'
+      try { parsed = JSON.parse(truncated) } catch { return { fields: [] } }
+    }
     return { fields: parsed.fields ?? [] }
   } catch (err) {
     console.warn('[geminiExtract] error:', (err as Error).message)

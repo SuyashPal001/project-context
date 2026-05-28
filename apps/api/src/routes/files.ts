@@ -335,6 +335,8 @@ filesRoutes.post('/:id/ingest', async (c) => {
         const mammoth = await import('mammoth')
         const mmResult = await mammoth.extractRawText({ buffer })
         extractedText = mmResult.value
+      } else if (mimeType === 'text/csv' || filename.endsWith('.csv')) {
+        extractedText = buffer.toString('utf-8')
       }
 
       const relayRes = await fetch(`${RELAY_URL}/internal/ingest`, {

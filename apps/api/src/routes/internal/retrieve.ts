@@ -26,8 +26,9 @@ const bodySchema = z.object({
   tenantId: z.string().uuid(),
   limit: z.number().int().min(1).max(10).default(5),
   scoreThreshold: z.number().min(0).max(1).default(0.5),
-  // Optional: scope retrieval to a specific person folder by identifier string
+  // Scope by identifier string OR direct folder UUID
   identifier: z.string().optional(),
+  personFolderId: z.string().uuid().optional(),
 });
 
 const retrieveRoute = new Hono<AppEnv>();
@@ -44,8 +45,8 @@ retrieveRoute.post(
 
       const body = c.req.valid('json');
 
-      // Resolve person folder if identifier provided
-      let personFolderId: string | undefined;
+      // Resolve person folder — by identifier string or direct UUID
+      let personFolderId: string | undefined = body.personFolderId;
       if (body.identifier) {
         const [folder] = await db
           .select({ id: personFolders.id, status: personFolders.status })
