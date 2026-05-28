@@ -7,6 +7,7 @@ import { pensionContextSchema } from '../context.js'
 
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { lookupPersonFolderTool } from '../tools/lookupPersonFolder.js'
+import { listFolderDocumentsTool } from '../tools/listFolderDocuments.js'
 import { checkRequiredDocumentsTool } from '../tools/checkRequiredDocuments.js'
 import { validatePensionCaseTool } from '../tools/validatePensionCase.js'
 import { routeToOfficerTool } from '../tools/routeToOfficer.js'
@@ -158,16 +159,19 @@ For each pension case you receive:
    - If not → call lookup_person_folder with the identifier the officer mentioned and tenantId from context
      - If found: false → stop: "No folder found for that identifier. Please create the folder first."
      - If found: true, status "pending" → stop: "Documents received but not yet verified. Ask an admin to verify."
-   Then call retrieve_documents with the resolved folderId and tenantId.
-   - If retrieve_documents returns found: false → stop: "No indexed documents found for this folder. Please ensure documents have been uploaded and ingested."
-   - If found: true → use the returned context to identify fields in step 3
-2. Call check_required_documents with the list of present documents
+2. Call list_folder_documents with the resolved folderId and tenantId
+   - If found: false → stop: "No documents uploaded to this folder yet. Please upload the required documents."
+   - Collect the list of document names from the result for step 3
+3. Call check_required_documents with the list of present document names from step 2
    - If documents are missing → report which ones and stop (status: incomplete)
-3. From the retrieved context, identify: last_pay, qualifying_service_years, declared_pension, commutation_amount, declared_dcrg with chunk references
-4. Call validate_pension_case with the extracted fields
-5. Assemble findings for EVERY rule result:
+4. Call retrieve_documents with the resolved folderId and tenantId to load full text
+   - If found: false → stop: "Documents uploaded but not yet indexed. Please wait for ingestion to complete."
+   - Use the returned context to identify fields in step 5
+5. From the retrieved context, identify: last_pay, qualifying_service_years, declared_pension, commutation_amount, declared_dcrg with chunk references
+6. Call validate_pension_case with the extracted fields
+7. Assemble findings for EVERY rule result:
    - For each rule: ruleId, ruleName, status (pass/fail), provision, narration, declaredValue, calculatedValue, sources (["Service Book, chunk 3"])
-6. Call route_to_officer to persist the findings and route to the Dealing Hand
+   Then call route_to_officer to persist the findings and route to the Dealing Hand
 
 ## CRITICAL RULES
 - NEVER decide pass/fail yourself — always call validate_pension_case. The rule engine decides.
@@ -175,7 +179,7 @@ For each pension case you receive:
 - NEVER skip validate_pension_case even if you think you know the answer
 - NEVER answer outside the domain lock above
 - The deterministic workflow (scrutiny) is available as a batch-run capability
-- You have exactly 5 tools: lookup_person_folder, retrieve_documents, check_required_documents, validate_pension_case, route_to_officer
+- You have exactly 6 tools: lookup_person_folder, list_folder_documents, retrieve_documents, check_required_documents, validate_pension_case, route_to_officer
 
 ## Output format
 Report findings as: "[RULE ID] [PASS/FAIL] — [one-line verdict with numbers cited]"
@@ -185,9 +189,10 @@ ${CCS_DOMAIN_GUIDANCE}`,
   model: saarthiModel,
   requestContextSchema: pensionContextSchema,
 
-  // 5 pension tools — no filesystem tools
+  // 6 pension tools — no filesystem tools
   tools: {
     lookup_person_folder:     lookupPersonFolderTool,
+    list_folder_documents:    listFolderDocumentsTool,
     retrieve_documents:       retrieveDocumentsTool,
     check_required_documents: checkRequiredDocumentsTool,
     validate_pension_case:    validatePensionCaseTool,

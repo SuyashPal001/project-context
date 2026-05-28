@@ -119,7 +119,13 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
       DELETE FROM document_chunks WHERE document_id = ${documentId}
     `);
 
-    // 7. Insert chunks with embeddings + extracted questions
+    // 7. Look up person_folder_id so chunks are folder-scoped for RAG
+    const fileRow = await db.execute(sql`
+      SELECT person_folder_id FROM files WHERE id = ${documentId} LIMIT 1
+    `)
+    const personFolderId = (fileRow as any).rows?.[0]?.person_folder_id ?? null
+
+    // 8. Insert chunks with embeddings + extracted questions
     for (let i = 0; i < embedded.length; i++) {
       const { text: content, embedding } = embedded[i];
       const id = chunkId(documentId, i);
@@ -147,7 +153,7 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
 
       await db.execute(sql`
         INSERT INTO document_chunks
-          (id, tenant_id, document_id, content, embedding, chunk_index, metadata, tsv)
+          (id, tenant_id, document_id, content, embedding, chunk_index, metadata, tsv, person_folder_id)
         VALUES (
           ${id},
           ${tenantId},
@@ -156,13 +162,15 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
           ${vectorStr}::vector,
           ${i},
           ${JSON.stringify(metadata)}::jsonb,
-          to_tsvector('english', ${tsvSource})
+          to_tsvector('english', ${tsvSource}),
+          ${personFolderId}
         )
         ON CONFLICT (id) DO UPDATE SET
           content = EXCLUDED.content,
           embedding = EXCLUDED.embedding,
           metadata = EXCLUDED.metadata,
-          tsv = EXCLUDED.tsv
+          tsv = EXCLUDED.tsv,
+          person_folder_id = EXCLUDED.person_folder_id
       `);
     }
 
