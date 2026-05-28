@@ -10,16 +10,8 @@
  *   3. Platform default provider (tenantId IS NULL, isDefault=true)
  */
 
-import { db } from '@serverless-saas/database';
+import { db, agents, agentSkills, agentPolicies, conversations, messages, llmProviders, integrations } from '@serverless-saas/database';
 import { eq, and, desc, isNull } from 'drizzle-orm';
-import { agents } from '@serverless-saas/database/schema/agents';
-import {
-  agentSkills,
-  agentPolicies,
-  conversations,
-  messages,
-} from '@serverless-saas/database/schema/conversations';
-import { llmProviders, integrations } from '@serverless-saas/database/schema/integrations';
 import type {
   AgentSessionConfig,
   LLMProviderConfig,

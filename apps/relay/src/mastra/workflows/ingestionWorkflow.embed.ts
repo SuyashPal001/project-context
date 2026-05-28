@@ -81,6 +81,18 @@ export const embedStep = createStep({
     const client = await getPool().connect()
     let stored = 0
     try {
+      // Upsert a documents row so document_chunks FK is satisfied
+      // Use fileId as the hash — it's a UUID (36 chars), fits varchar(64), unique per tenant
+      const docRes = await client.query(`
+        INSERT INTO documents (id, tenant_id, name, file_key, mime_type, hash, status)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'ready')
+        ON CONFLICT (tenant_id, hash) DO UPDATE SET
+          name = EXCLUDED.name, mime_type = EXCLUDED.mime_type,
+          status = 'ready', updated_at = now()
+        RETURNING id
+      `, [inputData.tenantId, inputData.filename, inputData.fileId, inputData.mimeType, inputData.fileId])
+      const documentId: string = docRes.rows[0].id
+
       for (let i = 0; i < chunks.length; i++) {
         const content = chunks[i]
         const embedding = await embedText(content)
@@ -110,9 +122,13 @@ export const embedStep = createStep({
             metadata         = EXCLUDED.metadata,
             tsv              = EXCLUDED.tsv,
             person_folder_id = EXCLUDED.person_folder_id
-        `, [id, inputData.tenantId, inputData.fileId, content, vectorStr, i, metadata, personFolderId])
+        `, [id, inputData.tenantId, documentId, content, vectorStr, i, metadata, personFolderId])
         stored++
       }
+      await client.query(
+        `UPDATE documents SET chunk_count = $1, updated_at = now() WHERE id = $2`,
+        [stored, documentId]
+      )
     } finally {
       client.release()
     }
