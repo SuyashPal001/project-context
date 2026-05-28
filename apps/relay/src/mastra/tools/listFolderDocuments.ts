@@ -1,7 +1,15 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { db } from '@serverless-saas/database'
-import { sql } from 'drizzle-orm'
+import pg from 'pg'
+
+let _pool: pg.Pool | null = null
+function getPool(): pg.Pool {
+  if (!_pool) {
+    _pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    _pool.on('error', (err) => console.error('[listFolderDocuments] pool error:', (err as Error).message))
+  }
+  return _pool
+}
 
 export const listFolderDocumentsTool = createTool({
   id: 'list_folder_documents',
@@ -25,23 +33,27 @@ Returns filenames, mime types, and ingest status.`,
   }),
 
   execute: async ({ folderId, tenantId }) => {
-    const rows = await db.execute(sql`
-      SELECT id, name, mime_type, status
-      FROM files
-      WHERE person_folder_id = ${folderId}
-        AND tenant_id        = ${tenantId}
-        AND deleted_at IS NULL
-      ORDER BY created_at DESC
-    `)
+    const client = await getPool().connect()
+    try {
+      const result = await client.query(`
+        SELECT id, name, mime_type, status
+        FROM files
+        WHERE person_folder_id = $1
+          AND tenant_id        = $2
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC
+      `, [folderId, tenantId])
 
-    const rawRows: any[] = Array.isArray(rows) ? rows : ((rows as any).rows ?? [])
-    const documents = rawRows.map((r: any) => ({
-      id:       r.id,
-      name:     r.name ?? r.original_name ?? '',
-      mimeType: r.mime_type ?? '',
-      status:   r.status ?? '',
-    }))
+      const documents = result.rows.map((r: any) => ({
+        id:       r.id,
+        name:     r.name ?? '',
+        mimeType: r.mime_type ?? '',
+        status:   r.status ?? '',
+      }))
 
-    return { found: documents.length > 0, documents }
+      return { found: documents.length > 0, documents }
+    } finally {
+      client.release()
+    }
   },
 })
