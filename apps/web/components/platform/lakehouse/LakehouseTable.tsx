@@ -71,7 +71,7 @@ export function LakehouseTable({ records, version, loading }: Props) {
                                     variant="outline"
                                     className={`text-xs capitalize ${STATUS_STYLES[r.status] ?? STATUS_STYLES.original}`}
                                 >
-                                    {r.status}
+                                    {r.status.replace(/_/g, ' ')}
                                 </Badge>
                             </td>
                             <td className="px-4 py-3 font-mono text-xs text-zinc-400">{r.office_code}</td>
