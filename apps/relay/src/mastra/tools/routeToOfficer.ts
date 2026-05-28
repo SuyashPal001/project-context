@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { db, pensionCases, pensionFindings } from '@serverless-saas/database'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 
 // ---------------------------------------------------------------------------
 // routeToOfficer — shared persist logic for AI-PARAS agent and the
@@ -12,6 +12,9 @@ import { eq } from 'drizzle-orm'
 export const routeToOfficerInputSchema = z.object({
   tenantId: z.string(),
   caseId: z.string(),
+  caseRef: z.string().optional().describe('PPO reference e.g. PPO/PB/2020/00512 — used to create the case if it does not exist'),
+  pensionerName: z.string().optional().describe('Full name of the pensioner'),
+  officeCode: z.string().optional().default('PB-001'),
   caseStatus: z.enum(['pending_review', 'cleared', 'incomplete', 'reviewed', 'escalated']),
   findings: z.array(z.object({
     ruleId: z.string(),
@@ -38,12 +41,36 @@ export async function routeToOfficer(
 ): Promise<z.infer<typeof routeToOfficerOutputSchema>> {
   const assignedRole = 'Dealing Hand'
 
+  // Resolve the case UUID — upsert by caseRef if provided so the tool is
+  // self-contained even when no prior pension_cases row exists.
+  let resolvedCaseId = input.caseId
+  if (input.caseRef) {
+    const existing = await db.select({ id: pensionCases.id })
+      .from(pensionCases)
+      .where(and(eq(pensionCases.tenantId, input.tenantId), eq(pensionCases.caseRef, input.caseRef)))
+      .limit(1)
+
+    if (existing.length > 0) {
+      resolvedCaseId = existing[0].id
+    } else {
+      const [inserted] = await db.insert(pensionCases).values({
+        tenantId: input.tenantId,
+        caseRef: input.caseRef,
+        pensionerName: input.pensionerName ?? 'Unknown',
+        officeCode: input.officeCode ?? 'PB-001',
+        status: input.caseStatus,
+        assignedRole,
+      }).returning({ id: pensionCases.id })
+      resolvedCaseId = inserted.id
+    }
+  }
+
   const findingIds: string[] = []
   for (const f of input.findings) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [row] = await db.insert(pensionFindings).values({
       tenantId: input.tenantId,
-      caseId: input.caseId,
+      caseId: resolvedCaseId,
       ruleId: f.ruleId,
       ruleName: f.ruleName,
       status: f.status,
@@ -59,9 +86,9 @@ export async function routeToOfficer(
 
   await db.update(pensionCases)
     .set({ status: input.caseStatus, assignedRole, updatedAt: new Date() })
-    .where(eq(pensionCases.id, input.caseId))
+    .where(eq(pensionCases.id, resolvedCaseId))
 
-  return { assignedRole, findingIds, caseId: input.caseId }
+  return { assignedRole, findingIds, caseId: resolvedCaseId }
 }
 
 export const routeToOfficerTool = createTool({

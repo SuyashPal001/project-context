@@ -163,7 +163,7 @@ Steps:
 5. Extract: last_pay, qualifying_service_years, declared_pension, commutation_amount, declared_dcrg.
 6. Call validate_pension_case with extracted fields.
 7. Assemble findings for every rule (ruleId, ruleName, status, provision, narration, declaredValue, calculatedValue, sources).
-8. Call route_to_officer with tenantId, caseId (from context or lookup), caseStatus, and findings.
+8. Call route_to_officer with tenantId, caseId (from context or lookup), caseRef (the PPO reference e.g. PPO/PB/2020/00512), pensionerName (full name from documents), caseStatus, and findings.
 
 ## CRITICAL RULES
 - NEVER decide pass/fail yourself — always call validate_pension_case. The rule engine decides.
