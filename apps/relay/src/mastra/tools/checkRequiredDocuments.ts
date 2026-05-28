@@ -5,7 +5,7 @@ export const REQUIRED_DOCS = ['service_book', 'ppo_form', 'salary_certificate'] 
 
 const KEYWORDS: Record<string, string[]> = {
   service_book:       ['service', 'book', 'sb'],
-  ppo_form:           ['ppo', 'pension payment order', 'payment order', 'payment', 'form'],
+  ppo_form:           ['ppo', 'pension payment order', 'payment order', 'payment', 'payement', 'form'],
   salary_certificate: ['salary', 'pay', 'certificate', 'cert', 'disbursement'],
 }
 
