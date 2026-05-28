@@ -6,7 +6,8 @@ import mammoth from 'mammoth'
 import { validateOutputSchema, embedOutputSchema } from './ingestionWorkflow.schemas.js'
 
 const _require = createRequire(import.meta.url)
-const pdfParse = _require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
+const _pdfParseMod = _require('pdf-parse')
+const pdfParse = (typeof _pdfParseMod === 'function' ? _pdfParseMod : _pdfParseMod.default) as (buf: Buffer) => Promise<{ text: string }>
 
 const CHUNK_SIZE = 1000
 const CHUNK_OVERLAP = 200

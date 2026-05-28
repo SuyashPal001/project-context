@@ -67,7 +67,7 @@ async function runWorkflow(body: IngestBody): Promise<void> {
           chunkCount:      out.chunkCount ?? 0,
           extractedFields: (out.extractedFields ?? null) as any,
           ingestionStatus: 'done',
-          officeCode:      body.tenantName ?? body.tenantId,
+          officeCode:      (body.tenantName ?? '').slice(0, 32) || null,
           classification:  body.classification ?? 'Internal',
           updatedAt:       new Date(),
         })
