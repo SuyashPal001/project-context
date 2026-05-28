@@ -34,7 +34,8 @@ Returns filenames, mime types, and ingest status.`,
       ORDER BY created_at DESC
     `)
 
-    const documents = ((rows as any).rows ?? []).map((r: any) => ({
+    const rawRows: any[] = Array.isArray(rows) ? rows : ((rows as any).rows ?? [])
+    const documents = rawRows.map((r: any) => ({
       id:       r.id,
       name:     r.name ?? r.original_name ?? '',
       mimeType: r.mime_type ?? '',
