@@ -38,7 +38,20 @@ async function search(query: string, tenantId: string, folderId: string, limit =
         (1 - (dc.embedding <=> $1::vector)) AS score
       FROM document_chunks dc
       WHERE dc.tenant_id = $2
-        AND dc.person_folder_id = $3
+        AND (
+          dc.person_folder_id = $3
+          OR dc.document_id IN (
+            SELECT f.id FROM files f
+            WHERE f.tenant_id   = $2
+              AND f.deleted_at IS NULL
+              AND f.key LIKE (
+                SELECT pf.identifier || '/%'
+                FROM person_folders pf
+                WHERE pf.id = $3
+                LIMIT 1
+              )
+          )
+        )
         AND (1 - (dc.embedding <=> $1::vector)) >= $4
       ORDER BY dc.embedding <=> $1::vector
       LIMIT $5
