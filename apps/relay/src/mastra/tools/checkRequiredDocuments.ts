@@ -3,8 +3,17 @@ import { z } from 'zod';
 
 export const REQUIRED_DOCS = ['service_book', 'ppo_form', 'salary_certificate'] as const;
 
+const KEYWORDS: Record<string, string[]> = {
+  service_book:       ['service', 'book', 'sb'],
+  ppo_form:           ['ppo', 'pension payment order', 'form'],
+  salary_certificate: ['salary', 'pay', 'certificate', 'cert'],
+}
+
 export function checkRequiredDocuments(presentDocs: string[]): { complete: boolean; missing: string[] } {
-  const missing = REQUIRED_DOCS.filter(d => !presentDocs.includes(d));
+  const lower = presentDocs.map(d => d.toLowerCase())
+  const missing = REQUIRED_DOCS.filter(req =>
+    !lower.some(name => KEYWORDS[req].some(kw => name.includes(kw)))
+  )
   return { complete: missing.length === 0, missing };
 }
 
