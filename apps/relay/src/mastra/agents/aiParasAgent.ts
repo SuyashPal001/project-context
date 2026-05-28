@@ -164,6 +164,7 @@ Steps:
 6. Call validate_pension_case with extracted fields.
 7. Assemble findings for every rule (ruleId, ruleName, status, provision, narration, declaredValue, calculatedValue, sources).
 8. Call route_to_officer with tenantId, caseId (from context or lookup), caseRef (the PPO reference e.g. PPO/PB/2020/00512), pensionerName (full name from documents), caseStatus, and findings.
+9. After route_to_officer returns, output the full findings table — one line per rule: "[RULE ID] [PASS/FAIL] — [narration]". Then state: "Case routed to [assignedRole] queue. [N] findings recorded."
 
 ## CRITICAL RULES
 - NEVER decide pass/fail yourself — always call validate_pension_case. The rule engine decides.
