@@ -25,7 +25,7 @@ async function embedQuery(query: string): Promise<number[]> {
   return data.data[0].embedding
 }
 
-async function search(query: string, tenantId: string, folderId: string, limit = 5) {
+async function search(query: string, tenantId: string, folderId: string, limit = 15) {
   const embedding = await embedQuery(query)
   const vectorStr = `[${embedding.join(',')}]`
   const client = await getPool().connect()
