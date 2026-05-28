@@ -207,13 +207,14 @@ filesRoutes.get('/', async (c) => {
   const tenantId = requestContext?.tenant?.id;
   const limit = parseInt(c.req.query('limit') || '50');
   const offset = parseInt(c.req.query('offset') || '0');
+  const prefix = c.req.query('prefix') || undefined;
 
   const permissions = requestContext?.permissions || [];
   if (!hasPermission(permissions, 'files', 'read')) {
     return c.json({ error: 'Forbidden', message: 'Missing permission: files:read' }, 403);
   }
 
-  const filesList = await storageService.listFiles(tenantId, limit, offset);
+  const filesList = await storageService.listFiles(tenantId, limit, offset, prefix);
 
   // Map DB field names to the shape the frontend FileRecord interface expects
   const data = filesList.map((f) => ({

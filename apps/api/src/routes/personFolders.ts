@@ -115,6 +115,26 @@ personFoldersRoutes.post('/:id/verify', async (c) => {
   return c.json({ success: true });
 });
 
+// Delete a person folder record
+personFoldersRoutes.delete('/:id', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const folderId = c.req.param('id');
+
+  const permissions = requestContext?.permissions || [];
+  if (!hasPermission(permissions, 'files', 'delete')) {
+    return c.json({ error: 'Forbidden', message: 'Missing permission: files:delete' }, 403);
+  }
+
+  const deleted = await db
+    .delete(personFolders)
+    .where(and(eq(personFolders.id, folderId), eq(personFolders.tenantId, tenantId)))
+    .returning({ id: personFolders.id });
+
+  if (!deleted.length) return c.json({ error: 'Not Found' }, 404);
+  return c.json({ success: true });
+});
+
 // List files in a person folder
 personFoldersRoutes.get('/:id/files', async (c) => {
   const requestContext = c.get('requestContext') as any;

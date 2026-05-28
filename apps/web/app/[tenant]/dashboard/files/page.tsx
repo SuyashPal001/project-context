@@ -32,7 +32,7 @@ export default function FilesPage() {
                     {canUpload && (
                         <Button onClick={() => setIsUploadOpen(true)}>
                             <Upload className="w-4 h-4 mr-2" />
-                            Ingest Document
+                            {currentPrefix ? 'Add Files' : 'Ingest Document'}
                         </Button>
                     )}
                 </div>
@@ -45,11 +45,14 @@ export default function FilesPage() {
                     canDelete={can('files', 'delete')}
                 />
                 
-                <UploadFileModal 
-                    open={isUploadOpen} 
-                    onOpenChange={setIsUploadOpen} 
+                <UploadFileModal
+                    open={isUploadOpen}
+                    onOpenChange={setIsUploadOpen}
                     currentPrefix={currentPrefix}
-                    onSuccess={() => { queryClient.invalidateQueries({ queryKey: ['files'] }); setCurrentPrefix(""); }}
+                    onSuccess={(folderName) => {
+                        queryClient.invalidateQueries({ queryKey: ['files'] });
+                        if (!currentPrefix) setCurrentPrefix(`${folderName}/`);
+                    }}
                 />
             </div>
         </PermissionGate>

@@ -199,8 +199,16 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         for (const file of folderFiles) {
             try { await api.del(`/api/v1/files/${file.id}`); } catch { /* continue */ }
         }
+        // Clean up the person folder record by identifier
+        try {
+            const lookup = await api.get<{ found: boolean; data?: { id: string } }>(`/api/v1/person-folders/lookup?identifier=${encodeURIComponent(folderName)}`);
+            if (lookup.found && lookup.data?.id) {
+                await api.del(`/api/v1/person-folders/${lookup.data.id}`);
+            }
+        } catch { /* continue */ }
         setDeletingFolderName(null);
         queryClient.invalidateQueries({ queryKey: ['files'] });
+        queryClient.invalidateQueries({ queryKey: ['person-folders'] });
         toast.success(`Folder "${folderName}" deleted`);
     };
 
@@ -228,10 +236,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         const directFiles: FileRecord[] = [];
 
         allFiles.forEach(file => {
+            if (prefix && !file.key.startsWith(prefix)) return;
             const relativePath = prefix ? file.key.substring(prefix.length) : file.key;
             if (relativePath.includes('/')) {
                 const folderName = relativePath.split('/')[0];
-                folders.add(folderName);
+                if (folderName) folders.add(folderName);
             } else {
                 directFiles.push(file);
             }

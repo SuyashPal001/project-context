@@ -6,31 +6,21 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { UploadCloud, File, X, CheckCircle2, Loader2, AlertCircle, FolderOpen, ChevronDown, Plus } from "lucide-react"
+import { UploadCloud, File, X, CheckCircle2, Loader2, AlertCircle, FolderOpen } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
 
 interface UploadFileModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   currentPrefix: string
-  onSuccess: () => void
+  onSuccess: (folderName: string) => void
 }
 
 type FileStatus = {
   progress: number
   status: 'pending' | 'uploading' | 'confirming' | 'done' | 'error'
   error?: string
-}
-
-interface PersonFolder {
-  id: string
-  identifier: string
-  displayName: string | null
-  fileCount: number
 }
 
 function formatFileSize(bytes: number): string {
@@ -56,43 +46,32 @@ function uploadToS3(url: string, file: globalThis.File, onProgress: (pct: number
   })
 }
 
-const NEW_FOLDER_VALUE = '__new__'
-
 export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }: UploadFileModalProps) {
   const queryClient = useQueryClient()
 
-  const { data: foldersData, isLoading: foldersLoading } = useQuery({
-    queryKey: ['person-folders'],
-    queryFn: () => api.get<{ data: PersonFolder[] }>('/api/v1/person-folders'),
-    enabled: open,
-  })
+  const isInsideFolder = currentPrefix.length > 0
+  const prefixFolderName = currentPrefix.replace(/\/$/, '')
 
-  const folders = foldersData?.data ?? []
+  const [newFolderName, setNewFolderName] = useState('')
+  const folderName = isInsideFolder ? prefixFolderName : newFolderName.trim()
+  const folderReady = folderName.length > 0
 
-  const [selectedFolderId, setSelectedFolderId] = useState<string>('')
-  const [newIdentifier, setNewIdentifier] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<globalThis.File[]>([])
   const [isDragActive, setIsDragActive] = useState(false)
   const [fileStatuses, setFileStatuses] = useState<Record<string, FileStatus>>({})
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const isNewFolder = selectedFolderId === NEW_FOLDER_VALUE
-  const selectedFolder = folders.find(f => f.id === selectedFolderId) ?? null
-  const activeIdentifier = isNewFolder ? newIdentifier.trim() : (selectedFolder?.identifier ?? '')
-  const folderReady = isNewFolder ? activeIdentifier.length > 0 : !!selectedFolder
-
-  const prefixedName = (originalName: string) => `${activeIdentifier}-${originalName}`
-  const objectKey = (originalName: string) => `${activeIdentifier}/${prefixedName(originalName)}`
+  const prefixedName = (originalName: string) => `${folderName}-${originalName}`
+  const objectKey = (originalName: string) => `${folderName}/${prefixedName(originalName)}`
 
   const { data: existingFilesData } = useQuery({
-    queryKey: ['files', activeIdentifier ? `${activeIdentifier}/` : currentPrefix],
+    queryKey: ['files', folderName ? `${folderName}/` : ''],
     queryFn: async () => {
-      const prefix = activeIdentifier ? `${activeIdentifier}/` : currentPrefix
-      const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
-      return api.get<{ data: { key: string }[] }>(`/api/v1/files${params}`)
+      const prefix = `${folderName}/`
+      return api.get<{ data: { key: string }[] }>(`/api/v1/files?prefix=${encodeURIComponent(prefix)}`)
     },
-    enabled: !!activeIdentifier,
+    enabled: !!folderName,
   })
 
   const existingKeys = useMemo(
@@ -100,8 +79,8 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
     [existingFilesData]
   )
   const duplicateNames = useMemo(
-    () => new Set(selectedFiles.filter(f => activeIdentifier && existingKeys.has(objectKey(f.name))).map(f => f.name)),
-    [selectedFiles, existingKeys, activeIdentifier]
+    () => new Set(selectedFiles.filter(f => folderName && existingKeys.has(objectKey(f.name))).map(f => f.name)),
+    [selectedFiles, existingKeys, folderName]
   )
 
   const updateStatus = (filename: string, update: Partial<FileStatus>) =>
@@ -129,8 +108,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
     setTimeout(() => {
       setSelectedFiles([])
       setFileStatuses({})
-      setSelectedFolderId('')
-      setNewIdentifier('')
+      setNewFolderName('')
     }, 300)
   }
 
@@ -186,28 +164,25 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
     if (!selectedFiles.length || !folderReady) return
     setIsUploading(true)
 
-    let personFolderId = selectedFolder?.id ?? ''
-
-    if (isNewFolder) {
-      try {
-        const res = await fetch('/api/proxy/api/v1/person-folders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ identifier: activeIdentifier }),
-        })
-        if (!res.ok) throw new Error('Failed to create folder')
-        const { data } = await res.json()
-        personFolderId = data.id
-        queryClient.invalidateQueries({ queryKey: ['person-folders'] })
-      } catch (err: any) {
-        setIsUploading(false)
-        return
-      }
+    let personFolderId = ''
+    try {
+      const res = await fetch('/api/proxy/api/v1/person-folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: folderName }),
+      })
+      if (!res.ok) throw new Error('Failed to create folder')
+      const { data } = await res.json()
+      personFolderId = data.id
+      queryClient.invalidateQueries({ queryKey: ['person-folders'] })
+    } catch {
+      setIsUploading(false)
+      return
     }
 
     await Promise.all(selectedFiles.map(f => uploadSingleFile(f, personFolderId)))
     setIsUploading(false)
-    onSuccess()
+    onSuccess(folderName)
   }
 
   const allSettled = selectedFiles.length > 0 &&
@@ -217,68 +192,35 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md bg-zinc-950 border-zinc-800">
         <DialogHeader>
-          <DialogTitle>Upload Documents</DialogTitle>
+          <DialogTitle>{isInsideFolder ? 'Add Files' : 'Upload Documents'}</DialogTitle>
           <DialogDescription>
-            Select a person folder or create a new one, then upload files.
+            {isInsideFolder
+              ? `Upload files into the ${prefixFolderName} folder.`
+              : 'Enter a folder name, then select files to upload.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-4 space-y-4">
-          {/* Folder selector */}
-          <div className="space-y-2">
-            <label className="text-xs text-zinc-400 font-medium">Person Folder</label>
-            {foldersLoading ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-500">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading folders…
-              </div>
-            ) : (
-              <Select value={selectedFolderId} onValueChange={setSelectedFolderId} disabled={isUploading || allSettled}>
-                <SelectTrigger className="bg-zinc-900 border-zinc-800 text-sm">
-                  <SelectValue placeholder="Select or create a person folder…" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800">
-                  {folders.map(f => (
-                    <SelectItem key={f.id} value={f.id} className="text-sm">
-                      <div className="flex items-center gap-2">
-                        <FolderOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                        <span className="font-mono">{f.identifier}</span>
-                        {f.fileCount > 0 && (
-                          <span className="text-zinc-500 text-xs">{f.fileCount} files</span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                  <SelectItem value={NEW_FOLDER_VALUE} className="text-sm">
-                    <div className="flex items-center gap-2 text-primary">
-                      <Plus className="h-3.5 w-3.5 shrink-0" />
-                      <span>New person folder…</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-
-            {isNewFolder && (
+          {!isInsideFolder && (
+            <div className="space-y-2">
+              <label className="text-xs text-zinc-400 font-medium">Folder Name</label>
               <Input
                 placeholder="e.g. 3434-5766-8090"
-                value={newIdentifier}
-                onChange={e => setNewIdentifier(e.target.value)}
+                value={newFolderName}
+                onChange={e => setNewFolderName(e.target.value)}
                 disabled={isUploading || allSettled}
                 className="bg-zinc-900 border-zinc-800 text-sm font-mono"
                 autoFocus
               />
-            )}
+            </div>
+          )}
 
-            {activeIdentifier && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-400">
-                <FolderOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                <span className="font-mono text-zinc-300">{activeIdentifier}/</span>
-                <span className="text-zinc-600">·</span>
-                <span>stored as <span className="font-mono">{activeIdentifier}-filename</span></span>
-              </div>
-            )}
-          </div>
-
+          {folderName && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-400">
+              <FolderOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+              <span className="font-mono text-zinc-300">{folderName}/</span>
+            </div>
+          )}
 
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleChange} />
 
@@ -299,7 +241,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
             >
               <UploadCloud className="h-8 w-8 text-zinc-500 mb-3" />
               <p className="text-sm font-medium text-zinc-200 mb-1">
-                {folderReady ? 'Drop files here or click to browse' : 'Select a folder first'}
+                {folderReady ? 'Drop files here or click to browse' : 'Enter a folder name first'}
               </p>
               <p className="text-xs text-zinc-500">Multiple files · Scanned images, PDFs, DOCX</p>
             </div>
@@ -308,13 +250,17 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
               <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
                 {selectedFiles.map(file => {
                   const s = fileStatuses[file.name]
+                  const isDuplicate = duplicateNames.has(file.name)
                   return (
-                    <div key={file.name} className="border rounded-lg p-3 border-zinc-800 bg-zinc-900/50">
+                    <div key={file.name} className={`border rounded-lg p-3 bg-zinc-900/50 ${isDuplicate ? 'border-amber-500/40' : 'border-zinc-800'}`}>
                       <div className="flex items-center gap-3">
                         <File className="h-4 w-4 text-zinc-500 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-zinc-200 truncate">{file.name}</p>
-                          <p className="text-xs text-zinc-500">{formatFileSize(file.size)}</p>
+                          <p className="text-xs text-zinc-500">
+                            {formatFileSize(file.size)}
+                            {isDuplicate && <span className="ml-2 text-amber-400">· will overwrite</span>}
+                          </p>
                         </div>
                         {s?.status === 'uploading' && (
                           <span className="text-xs text-primary font-mono shrink-0">{s.progress}%</span>
