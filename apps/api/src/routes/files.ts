@@ -337,6 +337,8 @@ filesRoutes.post('/:id/ingest', async (c) => {
           tenantId: tenantId ?? 'unknown',
           personalIdentifier: folderIdentifier ?? personalIdentifier,
           personFolderId,
+          tenantName: requestContext?.tenant?.name ?? tenantId,
+          classification: classifyDocument(filename),
         }),
       });
 
@@ -349,14 +351,11 @@ filesRoutes.post('/:id/ingest', async (c) => {
         throw new Error(relayData.error ?? 'Workflow failed');
       }
 
-      result = {
-        formatDetected: relayData.formatDetected,
-        chunkCount: relayData.chunkCount,
-        extractedFields: relayData.extractedFields ?? null,
-      };
+      // Relay processes async and updates DB itself — return 202 immediately
+      return c.json({ data: { fileId, ingestionStatus: 'processing' } }, 202);
     } catch (err: any) {
       console.error('[ingest] relay workflow failed, falling back to inline ingestion', err);
-      // Fallback: existing flat ingestion (kept as safety net for demo)
+      // Fallback: inline ingestion (blocking, but only fires if relay is unreachable)
       const fallback = await ingestFile(filename, mimeType, buffer);
       result = {
         formatDetected: fallback.formatDetected,
