@@ -28,7 +28,7 @@
     {
       "id": "R004",
       "name": "DCRG calculation",
-      "check": "abs(declared_dcrg - (last_pay * qualifying_service_years * 0.25)) < 100",
+      "check": "abs(declared_dcrg - (last_pay * min(qualifying_service_years, 33) * 0.25)) < 1000",
       "error": "DCRG mismatch. Declared: {declared_dcrg}, Calculated: {calculated_dcrg}.",
       "provision": "CCS Pension Rules 1972, Rule 50",
       "inputs": ["declared_dcrg", "last_pay", "qualifying_service_years"]

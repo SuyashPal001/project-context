@@ -2,7 +2,7 @@ import { createStep } from '@mastra/core/workflows';
 import { ruleValidationOutputSchema, findingAssemblyOutputSchema } from './pensionWorkflow.schemas.js';
 
 const INFERENCE_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001';
-const NARRATION_MODEL = process.env.DEFAULT_MODEL ?? 'ollama/qwen2.5:7b';
+const NARRATION_MODEL = process.env.DEFAULT_MODEL ?? 'gemini-2.5-flash';
 
 async function narrate(message: string, provision: string): Promise<string> {
   try {

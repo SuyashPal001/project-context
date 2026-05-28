@@ -8,9 +8,10 @@ export const tenantContextSchema = z.object({
   userId:   z.string().optional().default(''),
 })
 
-// Extended context for pension agents — adds caseId so Studio shows the form field
+// Extended context for pension agents — adds caseId and folderId so Studio shows the form fields
 export const pensionContextSchema = tenantContextSchema.extend({
-  caseId: z.string().optional().default(''),
+  caseId:   z.string().optional().default(''),
+  folderId: z.string().optional().default(''),
 })
 
 export type TenantContext = z.infer<typeof tenantContextSchema>

@@ -28,9 +28,9 @@ function loadRules(): RawRule[] {
   return cached;
 }
 
-// Safe arithmetic evaluator: numbers, identifiers, + - * / ( ), abs(), and one top-level comparison.
+// Safe arithmetic evaluator: numbers, identifiers, + - * / ( ), abs(), min(), and one top-level comparison.
 function evalArith(expr: string, vars: RuleInput): number {
-  const tokens = expr.match(/abs|[A-Za-z_][A-Za-z0-9_]*|[0-9]+\.?[0-9]*|[+\-*/()]/g) ?? [];
+  const tokens = expr.match(/min|abs|[A-Za-z_][A-Za-z0-9_]*|[0-9]+\.?[0-9]*|[+\-*/(),]/g) ?? [];
   let i = 0;
   const peek = () => tokens[i];
   const next = () => tokens[i++];
@@ -48,6 +48,7 @@ function evalArith(expr: string, vars: RuleInput): number {
     const t = next();
     if (t === '(') { const v = parseExpr(); next(); return v; }
     if (t === 'abs') { next(); const v = parseExpr(); next(); return Math.abs(v); }
+    if (t === 'min') { next(); const a = parseExpr(); next(); const b = parseExpr(); next(); return Math.min(a, b); }
     if (t === '-') return -parseFactor();
     if (/^[0-9]/.test(t)) return parseFloat(t);
     if (!(t in vars)) throw new Error(`missing:${t}`);
@@ -96,7 +97,7 @@ export function evaluateRules(input: RuleInput): RuleResult[] {
     }
     if (rule.id === 'R004') {
       declared = input.declared_dcrg;
-      calculated = Math.round(input.last_pay * input.qualifying_service_years * 0.25);
+      calculated = Math.round(input.last_pay * Math.min(input.qualifying_service_years, 33) * 0.25);
     }
 
     return {
