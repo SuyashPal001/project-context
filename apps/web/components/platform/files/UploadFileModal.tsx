@@ -279,14 +279,6 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
             )}
           </div>
 
-          {duplicateNames.size > 0 && !isUploading && !allSettled && (
-            <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-              <span>
-                <strong>{duplicateNames.size} {duplicateNames.size === 1 ? 'file' : 'files'} already exist</strong> and will be replaced with a new version.
-              </span>
-            </div>
-          )}
 
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleChange} />
 
@@ -317,11 +309,9 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
                 {selectedFiles.map(file => {
                   const s = fileStatuses[file.name]
                   return (
-                    <div key={file.name} className={`border rounded-lg p-3 ${duplicateNames.has(file.name) ? 'border-amber-500/30 bg-amber-500/5' : 'border-zinc-800 bg-zinc-900/50'}`}>
+                    <div key={file.name} className="border rounded-lg p-3 border-zinc-800 bg-zinc-900/50">
                       <div className="flex items-center gap-3">
-                        {duplicateNames.has(file.name)
-                          ? <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium shrink-0">Version update</span>
-                          : <File className="h-4 w-4 text-zinc-500 shrink-0" />}
+                        <File className="h-4 w-4 text-zinc-500 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-zinc-200 truncate">{file.name}</p>
                           <p className="text-xs text-zinc-500">{formatFileSize(file.size)}</p>
