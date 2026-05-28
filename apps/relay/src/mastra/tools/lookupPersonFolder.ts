@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { db, personFolders } from '@serverless-saas/database'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, or, sql } from 'drizzle-orm'
 
 export const lookupPersonFolderTool = createTool({
   id: 'lookup_person_folder',
@@ -26,7 +26,13 @@ If not found, tell the officer the folder does not exist yet.`,
     const [folder] = await db
       .select({ id: personFolders.id, status: personFolders.status })
       .from(personFolders)
-      .where(and(eq(personFolders.tenantId, tenantId), eq(sql`lower(${personFolders.identifier})`, normalised)))
+      .where(and(
+        eq(personFolders.tenantId, tenantId),
+        or(
+          eq(sql`lower(${personFolders.identifier})`, normalised),
+          eq(sql`lower(${personFolders.displayName})`, normalised),
+        )
+      ))
       .limit(1)
 
     if (!folder) return { found: false }

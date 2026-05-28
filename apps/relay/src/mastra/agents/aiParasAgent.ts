@@ -1,8 +1,6 @@
 import { Agent } from '@mastra/core/agent'
-import { PromptInjectionDetector } from '@mastra/core/processors'
 
 import { saarthiModel } from '../model.js'
-import { createViolationHandler } from '../guardrails.js'
 import { pensionContextSchema } from '../context.js'
 
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
@@ -35,18 +33,6 @@ import { findingFaithfulnessScorer } from '../scorers/findingFaithfulness.js'
 // Uses saarthiLiteModel: guardrail classification doesn't need full reasoning.
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyProcessor = { onViolation?: (v: any) => void }
-
-const violationHandler = createViolationHandler()
-
-const promptInjectionDetector = new PromptInjectionDetector({
-  model: saarthiModel,
-  strategy: 'warn',
-  threshold: 0.7,
-  lastMessageOnly: true,
-})
-;(promptInjectionDetector as AnyProcessor).onViolation = violationHandler
 
 // ---------------------------------------------------------------------------
 // CCS Pension Rules 1972 — domain guidance inlined from
@@ -137,10 +123,12 @@ You are AI-PARAS, a sovereign AI system built exclusively for the Comptroller an
 ## Domain lock — Non-negotiable
 You ONLY assist with:
 1. CCS Pension Rules 1972 pre-scrutiny for a specific pension case
-2. Any question about pension documents, service records, pay details, gratuity, or retirement benefits for a specific person folder
+2. Any question about a pensioner or government employee — by name, case ID, or folder identifier — including pay details, basic pay, service records, gratuity, retirement benefits, or any field from their uploaded documents
 3. Routing findings to the officer queue
 
-If a question is outside these three areas — geography, general knowledge, other laws, coding, personal advice, anything else — respond with exactly:
+When an officer asks about a person by name (e.g. "Ramesh Kumar Verma"), treat that name as the identifier for lookup_person_folder. Do NOT reject it as off-domain.
+
+If a question is clearly outside pension work — geography, general knowledge, unrelated laws, coding, personal advice — respond with exactly:
 "I am AI-PARAS. I only assist with CCS Pension Rules 1972 pension pre-scrutiny. I cannot help with this request."
 Do not apologise. Do not explain. Do not engage further on off-domain topics.
 
@@ -156,7 +144,7 @@ You MUST call retrieve_documents before answering ANY factual question about a p
 For each pension case you receive:
 1. Resolve the folder:
    - If folderId is present in your context → use it directly
-   - If not → call lookup_person_folder with the identifier the officer mentioned and tenantId from context
+   - If not → call lookup_person_folder with the identifier OR name the officer mentioned (e.g. "Ramesh Kumar Verma", "officer-123") and tenantId from context
      - If found: false → stop: "No folder found for that identifier. Please create the folder first."
      - If found: true, status "pending" → stop: "Documents received but not yet verified. Ask an admin to verify."
 2. Call list_folder_documents with the resolved folderId and tenantId
@@ -205,11 +193,6 @@ ${CCS_DOMAIN_GUIDANCE}`,
   // The deterministic Phase 1 workflow exposed as an agent capability.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   workflows: { scrutiny: pensionWorkflow as any },
-
-  // Governance processors (own instances, not shared with platformAgent).
-  // Input only: injection defence (lite model). No output processors — they
-  // buffer the full response and kill streaming in Mastra Studio.
-  inputProcessors: [promptInjectionDetector],
 
   // Live quality scorers — visible in Mastra Studio evals tab
   scorers: {

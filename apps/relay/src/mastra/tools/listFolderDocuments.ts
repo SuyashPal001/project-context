@@ -26,7 +26,7 @@ Returns filenames, mime types, and ingest status.`,
 
   execute: async ({ folderId, tenantId }) => {
     const rows = await db.execute(sql`
-      SELECT id, original_name AS name, mime_type, status
+      SELECT id, name, mime_type, status
       FROM files
       WHERE person_folder_id = ${folderId}
         AND tenant_id        = ${tenantId}
