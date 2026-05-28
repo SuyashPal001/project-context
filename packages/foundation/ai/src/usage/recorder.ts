@@ -10,7 +10,7 @@
  */
 
 import { db } from '@serverless-saas/database';
-import { usageRecords } from '@serverless-saas/database/schema/billing';
+import { usageRecords } from '@serverless-saas/database/dist/schema/billing';
 import type { UsageReport } from '../runtime/types';
 
 // =============================================================================

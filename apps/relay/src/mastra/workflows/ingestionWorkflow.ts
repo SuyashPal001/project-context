@@ -4,7 +4,6 @@ import { detectFormatStep } from './ingestionWorkflow.detectFormat.js'
 import { classifyStep } from './ingestionWorkflow.classify.js'
 import { extractStep } from './ingestionWorkflow.extract.js'
 import { validateStep } from './ingestionWorkflow.validate.js'
-import { commitStep } from './ingestionWorkflow.commit.js'
 import { embedStep } from './ingestionWorkflow.embed.js'
 
 export const ingestionWorkflow = createWorkflow({
@@ -20,8 +19,6 @@ export const ingestionWorkflow = createWorkflow({
   .then(extractStep as any)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(validateStep as any)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  .then(commitStep as any)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .then(embedStep as any)
   .commit()

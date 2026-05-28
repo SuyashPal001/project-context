@@ -152,7 +152,7 @@ export async function retrieveChunks(
     ...Array.from(kRrf.entries()).map(([id, score])   => ({ id, score, source: 'codebase' as const })),
   ]
     .sort((a, b) => b.score - a.score)
-    .filter(({ score }) => score >= scoreThreshold / 100)
+    .filter(({ score }) => score >= scoreThreshold)
     .slice(0, limit);
 
   return merged.map(({ id, score, source }) => {

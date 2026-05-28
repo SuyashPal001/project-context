@@ -79,8 +79,8 @@ export async function extractFieldsWithGemini(
 ): Promise<ExtractedField[]> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn('GEMINI_API_KEY not set — returning mock fields');
-    return getMockFields();
+    console.warn('GEMINI_API_KEY not set — skipping field extraction');
+    return [];
   }
 
   const base64Image = imageBuffer.toString('base64');
@@ -117,28 +117,18 @@ Only include fields actually visible in the document. Confidence between 0.0 and
 
     if (!response.ok) {
       console.error('Gemini API error:', response.status);
-      return getMockFields();
+      return [];
     }
 
     const result = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     const text = result?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return getMockFields();
+    if (!jsonMatch) return [];
     const parsed = JSON.parse(jsonMatch[0]);
-    return parsed.fields ?? getMockFields();
+    return parsed.fields ?? [];
   } catch {
-    return getMockFields();
+    return [];
   }
-}
-
-function getMockFields(): ExtractedField[] {
-  return [
-    { key: 'pensioner_name', label: 'Pensioner Name', value: 'Ramesh Kumar', confidence: 0.96 },
-    { key: 'dob', label: 'Date of Birth', value: '15-03-1962', confidence: 0.94 },
-    { key: 'pension_amount', label: 'Pension Amount', value: '₹18,500', confidence: 0.91 },
-    { key: 'effective_date', label: 'Effective Date', value: '01-04-2020', confidence: 0.89 },
-    { key: 'ppo_number', label: 'PPO Number', value: 'PB/001/2020/00234', confidence: 0.93 },
-  ];
 }
 
 export async function ingestFile(

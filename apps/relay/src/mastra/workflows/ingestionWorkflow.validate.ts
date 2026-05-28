@@ -11,7 +11,7 @@ export const validateStep = createStep({
     if (inputData.extractedFields.length === 0) {
       return {
         ...inputData,
-        overallQuality: 'high' as const,
+        overallQuality: 'medium' as const,
         needsReview: false,
         validationIssues: [],
       }

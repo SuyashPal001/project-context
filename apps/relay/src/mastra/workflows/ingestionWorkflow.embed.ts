@@ -1,7 +1,12 @@
 import { createStep } from '@mastra/core/workflows'
 import * as crypto from 'crypto'
+import { createRequire } from 'module'
 import pg from 'pg'
-import { commitOutputSchema, embedOutputSchema } from './ingestionWorkflow.schemas.js'
+import mammoth from 'mammoth'
+import { validateOutputSchema, embedOutputSchema } from './ingestionWorkflow.schemas.js'
+
+const _require = createRequire(import.meta.url)
+const pdfParse = _require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
 
 const CHUNK_SIZE = 1000
 const CHUNK_OVERLAP = 200
@@ -66,16 +71,38 @@ async function embedText(text: string): Promise<number[] | null> {
 
 export const embedStep = createStep({
   id: 'ingestion-embed',
-  inputSchema: commitOutputSchema,
+  inputSchema: validateOutputSchema,
   outputSchema: embedOutputSchema,
   execute: async ({ inputData }) => {
-    const textContent = inputData.extractedText
+    let textContent = inputData.extractedText
       ?? inputData.extractedFields.map(f => `${f.label}: ${f.value}`).join('\n')
+
+    // Lambda sends bufferBase64 but no extractedText for text PDFs/DOCX — extract here
+    if (!textContent && inputData.bufferBase64) {
+      const buf = Buffer.from(inputData.bufferBase64, 'base64')
+      if (inputData.mimeType === 'application/pdf') {
+        try {
+          const parsed = await pdfParse(buf)
+          textContent = parsed.text ?? ''
+        } catch (err) {
+          console.warn('[embed] pdf-parse failed:', (err as Error).message)
+        }
+      } else if (
+        inputData.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        inputData.mimeType === 'application/msword'
+      ) {
+        try {
+          const res = await mammoth.extractRawText({ buffer: buf })
+          textContent = res.value ?? ''
+        } catch (err) {
+          console.warn('[embed] mammoth failed:', (err as Error).message)
+        }
+      }
+    }
 
     const chunks = chunkText(textContent)
     if (chunks.length === 0) {
-      console.warn('[embed] no chunks generated for fileId:', inputData.fileId)
-      return { ...inputData, chunkCount: 0 }
+      throw new Error('No text content extracted — 0 chunks produced. Ingestion failed.')
     }
 
     const client = await getPool().connect()
@@ -109,6 +136,7 @@ export const embedStep = createStep({
                 : inputData.mimeType?.includes('word') ? 'docx'
                 : 'txt',
           ingested_at: new Date().toISOString(),
+          filename: inputData.filename,
           ...(inputData.personalIdentifier ? { personal_identifier: inputData.personalIdentifier } : {}),
         })
         const personFolderId = (inputData as any).personFolderId ?? null

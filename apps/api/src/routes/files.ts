@@ -8,7 +8,6 @@ import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
 import { eq, and, ne, isNull } from 'drizzle-orm';
 import { personFolders } from '@serverless-saas/database/schema';
-import { ingestFile } from '../services/ingestion';
 import type { AppEnv } from '../types';
 
 const RELAY_URL = process.env.RELAY_URL ?? 'http://localhost:3001';
@@ -311,8 +310,6 @@ filesRoutes.post('/:id/ingest', async (c) => {
     const filename = fileRecord.name;
     const mimeType = fileRecord.mimeType ?? '';
 
-    let result: { formatDetected: string; chunkCount: number; extractedFields: any[] | null };
-
     try {
       // Resolve person folder identifier for RAG scoping
       let personFolderId: string | undefined
@@ -326,6 +323,20 @@ filesRoutes.post('/:id/ingest', async (c) => {
         if (pf) { personFolderId = pf.id; folderIdentifier = pf.identifier }
       }
 
+      // Pre-extract text so relay detectFormat classifies PDFs/DOCX correctly
+      let extractedText: string | undefined
+      if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
+        const { extractTextFromPdf } = await import('../services/ingestion.js')
+        extractedText = await extractTextFromPdf(buffer)
+      } else if (
+        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        filename.endsWith('.docx')
+      ) {
+        const mammoth = await import('mammoth')
+        const mmResult = await mammoth.extractRawText({ buffer })
+        extractedText = mmResult.value
+      }
+
       const relayRes = await fetch(`${RELAY_URL}/internal/ingest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -334,6 +345,7 @@ filesRoutes.post('/:id/ingest', async (c) => {
           filename,
           mimeType,
           bufferBase64: buffer.toString('base64'),
+          extractedText,
           tenantId: tenantId ?? 'unknown',
           personalIdentifier: folderIdentifier ?? personalIdentifier,
           personFolderId,
@@ -354,38 +366,9 @@ filesRoutes.post('/:id/ingest', async (c) => {
       // Relay processes async and updates DB itself — return 202 immediately
       return c.json({ data: { fileId, ingestionStatus: 'processing' } }, 202);
     } catch (err: any) {
-      console.error('[ingest] relay workflow failed, falling back to inline ingestion', err);
-      // Fallback: inline ingestion (blocking, but only fires if relay is unreachable)
-      const fallback = await ingestFile(filename, mimeType, buffer);
-      result = {
-        formatDetected: fallback.formatDetected,
-        chunkCount: fallback.chunkCount,
-        extractedFields: fallback.extractedFields ?? null,
-      };
+      console.error('[ingest] relay unreachable or returned error — marking failed', err);
+      throw err;
     }
-
-    await db
-      .update(files)
-      .set({
-        formatDetected: result.formatDetected,
-        chunkCount: result.chunkCount,
-        extractedFields: result.extractedFields as any,
-        ingestionStatus: 'done',
-        officeCode: requestContext?.tenant?.name ?? tenantId,
-        classification: classifyDocument(filename),
-        updatedAt: new Date(),
-      })
-      .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
-
-    return c.json({
-      data: {
-        fileId,
-        formatDetected: result.formatDetected,
-        chunkCount: result.chunkCount,
-        extractedFields: result.extractedFields,
-        ingestionStatus: 'done',
-      }
-    });
   } catch (err: any) {
     await db
       .update(files)

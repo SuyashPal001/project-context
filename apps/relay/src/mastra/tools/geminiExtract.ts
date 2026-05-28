@@ -16,16 +16,6 @@ function buildExtractionPrompt(documentType: string): string {
   return `${base}\n\nDocument type: ${documentType}\n${hint}`;
 }
 
-function getMockFields() {
-  return [
-    { key: 'pensioner_name', label: 'Pensioner Name', value: 'Sh. Harbhajan Singh (Retd. Naib Tehsildar)', confidence: 0.96, page: 1 },
-    { key: 'dob', label: 'Date of Birth', value: '12-07-1961', confidence: 0.94, page: 1 },
-    { key: 'pension_amount', label: 'Pension Amount', value: '₹23,400', confidence: 0.91, page: 2 },
-    { key: 'effective_date', label: 'Effective Date', value: '01-11-2019', confidence: 0.89, page: 2 },
-    { key: 'ppo_number', label: 'PPO Number', value: 'PPO/PB/2019/00847', confidence: 0.93, page: 1 },
-  ];
-}
-
 export async function geminiExtract(imageBase64: string, mimeType: string, documentType: string, tenantId?: string): Promise<{ fields: Array<{ key: string; label: string; value: string; confidence: number; page?: number }> }> {
   const safeMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
   const prompt = buildExtractionPrompt(documentType)
@@ -46,7 +36,10 @@ export async function geminiExtract(imageBase64: string, mimeType: string, docum
         }],
       }),
     })
-    if (!response.ok) return { fields: getMockFields() }
+    if (!response.ok) {
+      console.warn('[geminiExtract] inference gateway returned', response.status)
+      return { fields: [] }
+    }
     const result = await response.json() as any
     if (tenantId && result?.usage) {
       persistCost({
@@ -60,11 +53,12 @@ export async function geminiExtract(imageBase64: string, mimeType: string, docum
     }
     const text = result?.choices?.[0]?.message?.content ?? ''
     const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return { fields: getMockFields() }
+    if (!jsonMatch) return { fields: [] }
     const parsed = JSON.parse(jsonMatch[0])
-    return { fields: parsed.fields ?? getMockFields() }
-  } catch {
-    return { fields: getMockFields() }
+    return { fields: parsed.fields ?? [] }
+  } catch (err) {
+    console.warn('[geminiExtract] error:', (err as Error).message)
+    return { fields: [] }
   }
 }
 

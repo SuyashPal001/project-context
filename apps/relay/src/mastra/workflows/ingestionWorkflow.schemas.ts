@@ -44,6 +44,6 @@ export const commitOutputSchema = validateOutputSchema.extend({
   lakehouseLabel: z.string(),
 })
 
-export const embedOutputSchema = commitOutputSchema.extend({
+export const embedOutputSchema = validateOutputSchema.extend({
   chunkCount: z.number(),
 })
