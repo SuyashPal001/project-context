@@ -8,7 +8,7 @@ import { LakehouseTable, type PensionRecord } from "@/components/platform/lakeho
 import { CommitModal } from "@/components/platform/lakehouse/CommitModal";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/lib/hooks/usePermissions";
-import { GitCommitHorizontal } from "lucide-react";
+import { GitCommitHorizontal, RefreshCw } from "lucide-react";
 
 async function fetchSnapshots(): Promise<Snapshot[]> {
     const res = await fetch("/api/proxy/api/v1/lakehouse/snapshots");
@@ -31,6 +31,48 @@ export default function LakehousePage() {
     const queryClient = useQueryClient();
     const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
     const [isCorrectOpen, setIsCorrectOpen] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleSync = async () => {
+        setIsSyncing(true);
+        try {
+            const casesRes = await fetch("/api/proxy/api/v1/pension/cases");
+            if (!casesRes.ok) return;
+            const cases = await casesRes.json() as Array<{
+                caseRef: string;
+                pensionerName: string;
+                officeCode: string;
+                status: string;
+                fields: Record<string, unknown>;
+                createdAt: string;
+            }>;
+            if (!cases.length) return;
+
+            const records = cases.map(c => ({
+                pension_id: c.caseRef,
+                pensioner_name: c.pensionerName,
+                declared_amount: Number(c.fields?.declared_pension ?? c.fields?.last_pay ?? 0),
+                status: c.status,
+                office_code: c.officeCode ?? "PB-001",
+                effective_date: c.createdAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+            }));
+
+            const commitRes = await fetch("/api/proxy/api/v1/lakehouse/commit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    records,
+                    label: `Sync — ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
+                }),
+            });
+            if (!commitRes.ok) return;
+            const { version } = await commitRes.json();
+            queryClient.invalidateQueries({ queryKey: ["lakehouse"] });
+            setSelectedVersion(version);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     const { data: snapshots = [], isLoading: snapshotsLoading } = useQuery({
         queryKey: ["lakehouse", "snapshots"],
@@ -66,15 +108,26 @@ export default function LakehousePage() {
                         </p>
                     </div>
                     {can("files", "create") && (
-                        <Button
-                            onClick={() => setIsCorrectOpen(true)}
-                            disabled={!recordsData?.records?.length}
-                            variant="outline"
-                            className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                        >
-                            <GitCommitHorizontal className="w-4 h-4 mr-2" />
-                            Commit Correction
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button
+                                onClick={handleSync}
+                                disabled={isSyncing}
+                                variant="outline"
+                                className="border-zinc-600 text-zinc-300 hover:bg-zinc-800"
+                            >
+                                <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
+                                {isSyncing ? "Syncing…" : "Sync Cases"}
+                            </Button>
+                            <Button
+                                onClick={() => setIsCorrectOpen(true)}
+                                disabled={!recordsData?.records?.length}
+                                variant="outline"
+                                className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                            >
+                                <GitCommitHorizontal className="w-4 h-4 mr-2" />
+                                Commit Correction
+                            </Button>
+                        </div>
                     )}
                 </div>
 

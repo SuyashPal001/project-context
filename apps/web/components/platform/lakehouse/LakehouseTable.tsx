@@ -43,7 +43,7 @@ export function LakehouseTable({ records, version, loading }: Props) {
         return (
             <div className="flex flex-col items-center justify-center py-20 text-zinc-600">
                 <Database className="w-8 h-8 mb-3 opacity-40" />
-                <p className="text-sm">No records. Ingest a document first — it auto-commits here.</p>
+                <p className="text-sm">No records in this snapshot. Use Sync Cases to commit the latest pension cases.</p>
             </div>
         );
     }
