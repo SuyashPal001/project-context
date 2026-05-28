@@ -233,6 +233,7 @@ filesRoutes.get('/', async (c) => {
     chunkCount: f.chunkCount ?? 0,
     ingestionStatus: f.ingestionStatus ?? 'pending',
     extractedFields: f.extractedFields ?? null,
+    personFolderId: f.personFolderId ?? null,
   }));
 
   return c.json({ data });

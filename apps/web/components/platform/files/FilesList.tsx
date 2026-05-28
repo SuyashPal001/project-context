@@ -4,13 +4,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { EmptyState, ConfirmDialog } from "@/components/platform/shared";
 import {
-    Loader2, FolderOpen, FileText, Image as ImageIcon, Video, Music, FileCode, File, Download, Trash2, Folder as FolderIcon, ChevronRight, ChevronLeft, RefreshCw, Play
+    Loader2, FolderOpen, FileText, Image as ImageIcon, Video, Music, FileCode, File, Download, Trash2, Folder as FolderIcon, ChevronRight, ChevronLeft, RefreshCw, Play, MessageSquare
 } from "lucide-react";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { formatDistanceToNow } from "date-fns";
 import { useState, useMemo, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,6 +41,7 @@ interface FileRecord {
     chunkCount: number;
     ingestionStatus: 'pending' | 'processing' | 'done' | 'failed';
     extractedFields: ExtractedField[] | null;
+    personFolderId: string | null;
 }
 
 interface FilesListProps {
@@ -116,8 +118,13 @@ function ProcessingStepsIndicator({ status }: { status: string }) {
     );
 }
 
+const AI_PARAS_AGENT_ID = '22222222-0001-0001-0001-000000000001';
+
 export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, canDelete }: FilesListProps) {
     const queryClient = useQueryClient();
+    const params = useParams();
+    const router = useRouter();
+    const tenant = params.tenant as string;
     const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
     const [deletingFolderName, setDeletingFolderName] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
@@ -300,6 +307,30 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 </div>
             ) : (
                 <div className="space-y-2">
+                    {prefix && (() => {
+                        const folderPersonFolderId = (response?.data ?? [])
+                            .filter(f => f.key.startsWith(prefix))
+                            .find(f => f.personFolderId)?.personFolderId ?? null;
+                        const folderAllDone = (response?.data ?? [])
+                            .filter(f => f.key.startsWith(prefix))
+                            .every(f => f.ingestionStatus === 'done');
+                        return folderPersonFolderId && folderAllDone ? (
+                            <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                                <div className="flex items-center gap-2 text-sm text-blue-300">
+                                    <MessageSquare className="w-4 h-4" />
+                                    <span>All documents ingested — ready for AI-PARAS scrutiny</span>
+                                </div>
+                                <Button
+                                    size="sm"
+                                    className="h-7 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5"
+                                    onClick={() => router.push(`/${tenant}/dashboard/chat?agentId=${AI_PARAS_AGENT_ID}&folderId=${folderPersonFolderId}`)}
+                                >
+                                    <MessageSquare className="w-3 h-3" />
+                                    Ask AI-PARAS
+                                </Button>
+                            </div>
+                        ) : null;
+                    })()}
                     {prefix && <FilesFilter
                         officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
                         filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }}
