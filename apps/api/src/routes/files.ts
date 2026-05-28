@@ -229,7 +229,7 @@ filesRoutes.get('/', async (c) => {
     updatedAt: f.updatedAt.toISOString(),
     // Ingestion metadata
     formatDetected: f.formatDetected ?? null,
-    officeCode: f.officeCode ?? requestContext?.tenant?.slug ?? tenantId,
+    officeCode: f.officeCode ?? null,
     classification: f.classification ?? classifyDocument(f.name),
     chunkCount: f.chunkCount ?? 0,
     ingestionStatus: f.ingestionStatus ?? 'pending',
@@ -372,7 +372,6 @@ filesRoutes.post('/:id/ingest', async (c) => {
         chunkCount: result.chunkCount,
         extractedFields: result.extractedFields as any,
         ingestionStatus: 'done',
-        officeCode: requestContext?.tenant?.slug ?? tenantId,
         classification: classifyDocument(filename),
         updatedAt: new Date(),
       })

@@ -14,7 +14,7 @@ export interface IngestionFileRecord {
     id: string;
     filename: string;
     formatDetected: string | null;
-    officeCode: string;
+    officeCode: string | null;
     classification: string;
     chunkCount: number;
     ingestionStatus: string;
@@ -79,7 +79,7 @@ export function IngestionSidePanel({ file, onClose }: Props) {
                     {[
                         { label: 'File', value: file.filename, className: 'text-zinc-300 truncate max-w-[160px]' },
                         { label: 'Format', value: file.formatDetected ?? '—', className: 'text-zinc-300 font-mono' },
-                        { label: 'Office', value: file.officeCode, className: 'text-blue-400 font-mono' },
+                        { label: 'Office', value: file.officeCode ?? '—', className: 'text-blue-400 font-mono' },
                         { label: 'Classification', value: file.classification, className: file.classification === 'Confidential' ? 'text-red-400' : 'text-amber-400' },
                         { label: 'Chunks', value: String(file.chunkCount || '—'), className: 'text-zinc-300' },
                         { label: 'Embeddings', value: file.chunkCount > 0 ? `✅ ${file.chunkCount} vectors` : '—', className: 'text-green-400' },

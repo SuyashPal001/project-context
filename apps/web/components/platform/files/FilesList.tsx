@@ -10,7 +10,7 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { formatDistanceToNow } from "date-fns";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,9 +34,8 @@ interface FileRecord {
     uploadedBy: string;
     createdAt: string;
     updatedAt: string;
-    // Ingestion metadata
     formatDetected: string | null;
-    officeCode: string;
+    officeCode: string | null;
     classification: string;
     chunkCount: number;
     ingestionStatus: 'pending' | 'processing' | 'done' | 'failed';
@@ -83,12 +82,48 @@ function IngestionStatusBadge({ status }: { status: string }) {
     );
 }
 
+const PIPELINE_STAGES = ['detectFormat', 'classify', 'extract', 'validate', 'commit', 'embed'];
+
+function ProcessingStepsIndicator({ status }: { status: string }) {
+    const [currentStep, setCurrentStep] = useState(0);
+
+    useEffect(() => {
+        if (status !== 'processing') { setCurrentStep(0); return; }
+        setCurrentStep(0);
+        const timer = setInterval(() => {
+            setCurrentStep(prev => Math.min(prev + 1, PIPELINE_STAGES.length - 1));
+        }, 8000);
+        return () => clearInterval(timer);
+    }, [status]);
+
+    if (status !== 'processing') return <IngestionStatusBadge status={status} />;
+
+    return (
+        <div className="flex items-center gap-1">
+            {PIPELINE_STAGES.map((stage, idx) => (
+                <div
+                    key={stage}
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                        idx < currentStep ? 'bg-green-500' :
+                        idx === currentStep ? 'bg-amber-400 animate-pulse' :
+                        'bg-zinc-700'
+                    }`}
+                    title={stage}
+                />
+            ))}
+            <span className="text-xs text-amber-400 ml-1 font-mono">{PIPELINE_STAGES[currentStep]}</span>
+        </div>
+    );
+}
+
 export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, canDelete }: FilesListProps) {
     const queryClient = useQueryClient();
     const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+    const [deletingFolderName, setDeletingFolderName] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
     const [filterOffice, setFilterOffice] = useState("all");
     const [filterClassification, setFilterClassification] = useState("all");
+    const [filterFormat, setFilterFormat] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -100,7 +135,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
             return api.get<{ data: FileRecord[] }>(`/api/v1/files${params}`);
         },
-        refetchInterval: 5000, // poll every 5s so processing → done updates automatically
+        refetchInterval: 5000,
     });
 
     const deleteMutation = useMutation({
@@ -138,6 +173,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             f => f.key.startsWith(folderPrefix) && f.ingestionStatus !== 'done'
         );
         if (pending.length === 0) return;
+        // Navigate into folder first so user sees per-file progress
+        onPrefixChange(folderPrefix);
         setIngestingFolders(prev => new Set([...prev, folderName]));
         for (const file of pending) {
             try {
@@ -147,6 +184,17 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         setIngestingFolders(prev => { const n = new Set(prev); n.delete(folderName); return n; });
         queryClient.invalidateQueries({ queryKey: ['files'] });
         toast.success(`Ingestion queued for folder "${folderName}"`);
+    };
+
+    const deleteFolder = async (folderName: string) => {
+        const folderPrefix = `${prefix}${folderName}/`;
+        const folderFiles = (response?.data ?? []).filter(f => f.key.startsWith(folderPrefix));
+        for (const file of folderFiles) {
+            try { await api.del(`/api/v1/files/${file.id}`); } catch { /* continue */ }
+        }
+        setDeletingFolderName(null);
+        queryClient.invalidateQueries({ queryKey: ['files'] });
+        toast.success(`Folder "${folderName}" deleted`);
     };
 
     const downloadFile = async (fileId: string) => {
@@ -167,7 +215,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         }));
     }, [prefix]);
 
-    const { virtualFolders, files, officeCodes } = useMemo(() => {
+    const { virtualFolders, files, officeCodes, formatTypes } = useMemo(() => {
         const allFiles = response?.data || [];
         const folders = new Set<string>();
         const directFiles: FileRecord[] = [];
@@ -185,12 +233,15 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         return {
             virtualFolders: Array.from(folders).sort(),
             officeCodes: Array.from(new Set(allFiles.map(f => f.officeCode).filter(Boolean))).sort() as string[],
+            formatTypes: Array.from(new Set(allFiles.map(f => f.formatDetected).filter(Boolean))).sort() as string[],
             files: directFiles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         };
     }, [response?.data, prefix]);
+
     const filteredFiles = files.filter(f =>
         (filterOffice === "all" || f.officeCode === filterOffice) &&
-        (filterClassification === "all" || f.classification === filterClassification));
+        (filterClassification === "all" || f.classification === filterClassification) &&
+        (filterFormat === "all" || f.formatDetected === filterFormat));
 
     const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
     const pagedFiles = filteredFiles.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -249,8 +300,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {prefix && <FilesFilter officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
-                        filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }} />}
+                    {prefix && <FilesFilter
+                        officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
+                        filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }}
+                        formatTypes={formatTypes} filterFormat={filterFormat} onFormatChange={v => { setFilterFormat(v); setCurrentPage(1); }}
+                    />}
                     {/* Bulk action bar */}
                     {selectedIds.size > 0 && (
                         <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
@@ -300,18 +354,30 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-7 text-xs text-zinc-400 hover:text-green-400 gap-1"
-                                                    onClick={() => ingestFolder(folderName)}
-                                                    disabled={allDone || isIngesting}
-                                                >
-                                                    {isIngesting
-                                                        ? <Loader2 className="w-3 h-3 animate-spin" />
-                                                        : <Play className="w-3 h-3" />}
-                                                    {isIngesting ? 'Ingesting…' : 'Ingest'}
-                                                </Button>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 text-xs text-zinc-400 hover:text-green-400 gap-1"
+                                                        onClick={() => ingestFolder(folderName)}
+                                                        disabled={allDone || isIngesting}
+                                                    >
+                                                        {isIngesting
+                                                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                                                            : <Play className="w-3 h-3" />}
+                                                        {isIngesting ? 'Ingesting…' : 'Ingest'}
+                                                    </Button>
+                                                    {canDelete && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 text-zinc-400 hover:text-red-500"
+                                                            onClick={() => setDeletingFolderName(folderName)}
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     );
@@ -338,9 +404,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                             </span>
                                         </TableCell>
                                         <TableCell className="py-3">
-                                            <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-mono">
-                                                {file.officeCode}
-                                            </span>
+                                            {file.officeCode ? (
+                                                <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-mono">
+                                                    {file.officeCode}
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-zinc-600">—</span>
+                                            )}
                                         </TableCell>
                                         <TableCell className="py-3">
                                             <span className={`text-xs px-2 py-0.5 rounded font-medium border ${file.classification === 'Confidential' ? 'border-red-500/30 text-red-400 bg-red-500/10' : 'border-amber-500/30 text-amber-400 bg-amber-500/10'}`}>
@@ -351,7 +421,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                             {file.chunkCount > 0 ? file.chunkCount : '—'}
                                         </TableCell>
                                         <TableCell>
-                                            <IngestionStatusBadge status={file.ingestionStatus} />
+                                            <ProcessingStepsIndicator status={file.ingestionStatus} />
                                         </TableCell>
                                         <TableCell className="text-zinc-400 text-sm">
                                             {formatDistanceToNow(new Date(file.createdAt), { addSuffix: true })}
@@ -428,6 +498,17 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 variant="danger"
                 onConfirm={() => { if (deletingFileId) deleteMutation.mutate(deletingFileId); }}
                 loading={deleteMutation.isPending}
+            />
+
+            <ConfirmDialog
+                open={!!deletingFolderName}
+                onOpenChange={(open) => !open && setDeletingFolderName(null)}
+                title="Delete Folder"
+                description={`Delete folder "${deletingFolderName}" and all its files? This cannot be undone.`}
+                confirmLabel="Delete Folder"
+                variant="danger"
+                onConfirm={() => { if (deletingFolderName) deleteFolder(deletingFolderName); }}
+                loading={false}
             />
         </div>
     );

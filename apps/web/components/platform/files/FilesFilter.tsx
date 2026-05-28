@@ -10,9 +10,12 @@ interface Props {
     filterClassification: string;
     onOfficeChange: (v: string) => void;
     onClassificationChange: (v: string) => void;
+    formatTypes: string[];
+    filterFormat: string;
+    onFormatChange: (v: string) => void;
 }
 
-export function FilesFilter({ officeCodes, filterOffice, filterClassification, onOfficeChange, onClassificationChange }: Props) {
+export function FilesFilter({ officeCodes, filterOffice, filterClassification, onOfficeChange, onClassificationChange, formatTypes, filterFormat, onFormatChange }: Props) {
     return (
         <div className="flex gap-2">
             <Select value={filterOffice} onValueChange={onOfficeChange}>
@@ -35,6 +38,17 @@ export function FilesFilter({ officeCodes, filterOffice, filterClassification, o
                         <SelectItem key={v} value={v} className="text-xs">
                             {v === "all" ? "All Classifications" : v}
                         </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            <Select value={filterFormat} onValueChange={onFormatChange}>
+                <SelectTrigger className="w-36 h-8 text-xs bg-zinc-900 border-zinc-800">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                    <SelectItem value="all" className="text-xs">All Formats</SelectItem>
+                    {formatTypes.map(f => (
+                        <SelectItem key={f} value={f} className="text-xs">{f}</SelectItem>
                     ))}
                 </SelectContent>
             </Select>

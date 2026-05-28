@@ -49,7 +49,7 @@ export default function FilesPage() {
                     open={isUploadOpen} 
                     onOpenChange={setIsUploadOpen} 
                     currentPrefix={currentPrefix}
-                    onSuccess={() => queryClient.invalidateQueries({ queryKey: ['files'] })}
+                    onSuccess={() => { queryClient.invalidateQueries({ queryKey: ['files'] }); setCurrentPrefix(""); }}
                 />
             </div>
         </PermissionGate>
