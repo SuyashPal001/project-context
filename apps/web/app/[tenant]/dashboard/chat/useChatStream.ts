@@ -19,13 +19,14 @@ interface Params {
     conversationId: string | null;
     conversationIdRef: React.MutableRefObject<string | null>;
     agentId: string | undefined;
+    folderId?: string;
     selectedConversation: Conversation | undefined;
     messages: Message[];
     handleCanvasUpdate: (action: CanvasAction, data: CanvasEventData) => void;
     openCanvas: () => void;
 }
 
-export function useChatStream({ conversationId, conversationIdRef, agentId, selectedConversation, messages, handleCanvasUpdate, openCanvas }: Params) {
+export function useChatStream({ conversationId, conversationIdRef, agentId, folderId, selectedConversation, messages, handleCanvasUpdate, openCanvas }: Params) {
     const queryClient = useQueryClient();
     const [eventError, setEventError] = useState<string | null>(null);
     const [agentTimedOut, setAgentTimedOut] = useState(false);
@@ -46,6 +47,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
     const { sendMessage: sendChatMessage, sendApproval, cancel, isStreaming, isRetrying } = useChat({
         conversationId: conversationId || undefined,
         agentId,
+        folderId,
 
         onDelta: useCallback((delta: string, messageId: string) => {
             if (activeToolCalls.size > 0) activeToolCalls.forEach((_, id) => handleToolDone(id, undefined));

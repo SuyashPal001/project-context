@@ -6,6 +6,7 @@ import { createViolationHandler } from '../guardrails.js'
 import { pensionContextSchema } from '../context.js'
 
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
+import { lookupPersonFolderTool } from '../tools/lookupPersonFolder.js'
 import { checkRequiredDocumentsTool } from '../tools/checkRequiredDocuments.js'
 import { validatePensionCaseTool } from '../tools/validatePensionCase.js'
 import { routeToOfficerTool } from '../tools/routeToOfficer.js'
@@ -152,9 +153,13 @@ You MUST call retrieve_documents before answering ANY factual question about a p
 
 ## Your responsibilities
 For each pension case you receive:
-1. Call retrieve_documents with query "last pay qualifying service years pension commutation DCRG"
-   using folderId and tenantId from your context.
-   - If found: false → stop and respond: "No indexed documents found for this folder. Please ensure documents have been uploaded and ingested."
+1. Resolve the folder:
+   - If folderId is present in your context → use it directly
+   - If not → call lookup_person_folder with the identifier the officer mentioned and tenantId from context
+     - If found: false → stop: "No folder found for that identifier. Please create the folder first."
+     - If found: true, status "pending" → stop: "Documents received but not yet verified. Ask an admin to verify."
+   Then call retrieve_documents with the resolved folderId and tenantId.
+   - If retrieve_documents returns found: false → stop: "No indexed documents found for this folder. Please ensure documents have been uploaded and ingested."
    - If found: true → use the returned context to identify fields in step 3
 2. Call check_required_documents with the list of present documents
    - If documents are missing → report which ones and stop (status: incomplete)
@@ -170,7 +175,7 @@ For each pension case you receive:
 - NEVER skip validate_pension_case even if you think you know the answer
 - NEVER answer outside the domain lock above
 - The deterministic workflow (scrutiny) is available as a batch-run capability
-- You have exactly 4 tools: retrieve_documents, check_required_documents, validate_pension_case, route_to_officer
+- You have exactly 5 tools: lookup_person_folder, retrieve_documents, check_required_documents, validate_pension_case, route_to_officer
 
 ## Output format
 Report findings as: "[RULE ID] [PASS/FAIL] — [one-line verdict with numbers cited]"
@@ -180,8 +185,9 @@ ${CCS_DOMAIN_GUIDANCE}`,
   model: saarthiModel,
   requestContextSchema: pensionContextSchema,
 
-  // Exactly 4 pension tools — no filesystem tools
+  // 5 pension tools — no filesystem tools
   tools: {
+    lookup_person_folder:     lookupPersonFolderTool,
     retrieve_documents:       retrieveDocumentsTool,
     check_required_documents: checkRequiredDocumentsTool,
     validate_pension_case:    validatePensionCaseTool,

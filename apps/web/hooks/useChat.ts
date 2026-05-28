@@ -13,6 +13,7 @@ const WARMUP_MESSAGE = 'Taking longer than usual. Your workspace is still warmin
 export interface UseChatOptions {
     conversationId?: string;
     agentId?: string;
+    folderId?: string;
     onDelta?: (delta: string, messageId: string, conversationId?: string) => void;
     onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown) => void;
     onError?: (code: string, message: string) => void;
@@ -34,6 +35,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const {
         conversationId,
         agentId,
+        folderId,
         onDelta,
         onDone,
         onError,
@@ -63,8 +65,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onApprovalRequiredRef = useRef(onApprovalRequired);
     const conversationIdRef = useRef(conversationId);
     const agentIdRef = useRef(agentId);
+    const folderIdRef = useRef(folderId);
 
     onDeltaRef.current = onDelta;
+    folderIdRef.current = folderId;
     onDoneRef.current = onDone;
     onErrorRef.current = onError;
     onToolCallRef.current = onToolCall;
@@ -149,6 +153,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 agentId: agentIdRef.current,
                 conversationId: conversationIdRef.current,
                 attachments,
+                ...(folderIdRef.current ? { folderId: folderIdRef.current } : {}),
             }),
             signal: controller.signal,
         });

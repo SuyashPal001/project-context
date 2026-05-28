@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
@@ -28,6 +29,8 @@ import {
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 
 function ChatPage() {
+    const searchParams = useSearchParams();
+    const folderId = searchParams.get('folderId') ?? undefined;
     const page = useChatPage();
     const {
         tenantSlug, conversationId, conversationIdRef, firstName,
@@ -49,6 +52,7 @@ function ChatPage() {
         conversationId,
         conversationIdRef,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
+        folderId,
         selectedConversation,
         messages,
         handleCanvasUpdate,

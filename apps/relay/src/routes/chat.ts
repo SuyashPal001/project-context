@@ -79,6 +79,9 @@ chatRouter.post('/api/chat', async (c) => {
   const bodyTenantId = typeof (body as Record<string, unknown>).tenantId === 'string'
     ? (body as Record<string, unknown>).tenantId as string
     : ''
+  const folderId = typeof (body as Record<string, unknown>).folderId === 'string'
+    ? (body as Record<string, unknown>).folderId as string
+    : undefined
 
   if (!conversationId || !rawMessage) {
     return c.json({ error: 'conversationId and message are required' }, 400)
@@ -177,6 +180,7 @@ chatRouter.post('/api/chat', async (c) => {
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, closeStream,
     isStreamClosed: () => streamClosed,
+    folderId,
   })
 
   const origin = getAllowedOrigin(c.req.header('Origin'))
