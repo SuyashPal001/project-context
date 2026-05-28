@@ -82,7 +82,7 @@ function IngestionStatusBadge({ status }: { status: string }) {
     );
 }
 
-const PIPELINE_STAGES = ['detectFormat', 'classify', 'extract', 'validate', 'commit', 'embed'];
+const PIPELINE_STAGES = ['detectFormat', 'classify', 'extract', 'validate', 'embed'];
 
 function ProcessingStepsIndicator({ status }: { status: string }) {
     const [currentStep, setCurrentStep] = useState(0);

@@ -5,9 +5,13 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { UploadCloud, File, X, CheckCircle2, Loader2, AlertCircle, FolderOpen } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { Input } from "@/components/ui/input"
+import { UploadCloud, File, X, CheckCircle2, Loader2, AlertCircle, FolderOpen, ChevronDown, Plus } from "lucide-react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
 
 interface UploadFileModalProps {
   open: boolean
@@ -20,6 +24,13 @@ type FileStatus = {
   progress: number
   status: 'pending' | 'uploading' | 'confirming' | 'done' | 'error'
   error?: string
+}
+
+interface PersonFolder {
+  id: string
+  identifier: string
+  displayName: string | null
+  fileCount: number
 }
 
 function formatFileSize(bytes: number): string {
@@ -45,37 +56,52 @@ function uploadToS3(url: string, file: globalThis.File, onProgress: (pct: number
   })
 }
 
+const NEW_FOLDER_VALUE = '__new__'
+
 export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }: UploadFileModalProps) {
-  const { data: profileData } = useQuery({
-    queryKey: ['user-profile'],
-    queryFn: () => api.get<{ user: { personalIdentifier: string | null } }>('/api/v1/users/profile'),
+  const queryClient = useQueryClient()
+
+  const { data: foldersData, isLoading: foldersLoading } = useQuery({
+    queryKey: ['person-folders'],
+    queryFn: () => api.get<{ data: PersonFolder[] }>('/api/v1/person-folders'),
+    enabled: open,
   })
-  const { data: existingFilesData } = useQuery({
-    queryKey: ['files', currentPrefix],
-    queryFn: async () => {
-      const params = currentPrefix ? `?prefix=${encodeURIComponent(currentPrefix)}` : ''
-      return api.get<{ data: { key: string }[] }>(`/api/v1/files${params}`)
-    },
-  })
+
+  const folders = foldersData?.data ?? []
+
+  const [selectedFolderId, setSelectedFolderId] = useState<string>('')
+  const [newIdentifier, setNewIdentifier] = useState('')
   const [selectedFiles, setSelectedFiles] = useState<globalThis.File[]>([])
   const [isDragActive, setIsDragActive] = useState(false)
   const [fileStatuses, setFileStatuses] = useState<Record<string, FileStatus>>({})
   const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Folder = personalIdentifier. Both folder and objects share the same prefix.
-  // If not set, upload is blocked — user must set it in Profile Settings first.
-  const folder = profileData?.user?.personalIdentifier ?? null
-  const prefixedName = (originalName: string) => `${folder}-${originalName}`
-  const objectKey = (originalName: string) => `${folder}/${prefixedName(originalName)}`
+  const isNewFolder = selectedFolderId === NEW_FOLDER_VALUE
+  const selectedFolder = folders.find(f => f.id === selectedFolderId) ?? null
+  const activeIdentifier = isNewFolder ? newIdentifier.trim() : (selectedFolder?.identifier ?? '')
+  const folderReady = isNewFolder ? activeIdentifier.length > 0 : !!selectedFolder
+
+  const prefixedName = (originalName: string) => `${activeIdentifier}-${originalName}`
+  const objectKey = (originalName: string) => `${activeIdentifier}/${prefixedName(originalName)}`
+
+  const { data: existingFilesData } = useQuery({
+    queryKey: ['files', activeIdentifier ? `${activeIdentifier}/` : currentPrefix],
+    queryFn: async () => {
+      const prefix = activeIdentifier ? `${activeIdentifier}/` : currentPrefix
+      const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : ''
+      return api.get<{ data: { key: string }[] }>(`/api/v1/files${params}`)
+    },
+    enabled: !!activeIdentifier,
+  })
 
   const existingKeys = useMemo(
     () => new Set((existingFilesData?.data ?? []).map(f => f.key)),
     [existingFilesData]
   )
   const duplicateNames = useMemo(
-    () => new Set(selectedFiles.filter(f => folder && existingKeys.has(objectKey(f.name))).map(f => f.name)),
-    [selectedFiles, existingKeys, folder]
+    () => new Set(selectedFiles.filter(f => activeIdentifier && existingKeys.has(objectKey(f.name))).map(f => f.name)),
+    [selectedFiles, existingKeys, activeIdentifier]
   )
 
   const updateStatus = (filename: string, update: Partial<FileStatus>) =>
@@ -100,7 +126,12 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
   const handleClose = () => {
     if (isUploading) return
     onOpenChange(false)
-    setTimeout(() => { setSelectedFiles([]); setFileStatuses({}) }, 300)
+    setTimeout(() => {
+      setSelectedFiles([])
+      setFileStatuses({})
+      setSelectedFolderId('')
+      setNewIdentifier('')
+    }, 300)
   }
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -119,7 +150,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
     e.target.value = ''
   }
 
-  async function uploadSingleFile(file: globalThis.File) {
+  async function uploadSingleFile(file: globalThis.File, personFolderId: string) {
     try {
       updateStatus(file.name, { status: 'uploading', progress: 0 })
 
@@ -130,6 +161,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
           filename: prefixedName(file.name),
           contentType: file.type || 'application/octet-stream',
           key: objectKey(file.name),
+          personFolderId,
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to get upload URL')
@@ -151,9 +183,29 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
   }
 
   async function handleUpload() {
-    if (!selectedFiles.length) return
+    if (!selectedFiles.length || !folderReady) return
     setIsUploading(true)
-    await Promise.all(selectedFiles.map(f => uploadSingleFile(f)))
+
+    let personFolderId = selectedFolder?.id ?? ''
+
+    if (isNewFolder) {
+      try {
+        const res = await fetch('/api/proxy/api/v1/person-folders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: activeIdentifier }),
+        })
+        if (!res.ok) throw new Error('Failed to create folder')
+        const { data } = await res.json()
+        personFolderId = data.id
+        queryClient.invalidateQueries({ queryKey: ['person-folders'] })
+      } catch (err: any) {
+        setIsUploading(false)
+        return
+      }
+    }
+
+    await Promise.all(selectedFiles.map(f => uploadSingleFile(f, personFolderId)))
     setIsUploading(false)
     onSuccess()
   }
@@ -167,31 +219,71 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
         <DialogHeader>
           <DialogTitle>Upload Documents</DialogTitle>
           <DialogDescription>
-            Files are stored under your unique identifier. Folder and file names share the same prefix.
+            Select a person folder or create a new one, then upload files.
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-4 space-y-4">
-          {/* Auto-derived folder info */}
-          {folder ? (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-400">
-              <FolderOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-              <span className="font-mono text-zinc-300">{folder}/</span>
-              <span className="text-zinc-600">·</span>
-              <span>files stored as <span className="font-mono text-zinc-400">{folder}-filename</span></span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>No personal identifier set. Go to <strong>Settings → Profile</strong> to set one before uploading.</span>
-            </div>
-          )}
+          {/* Folder selector */}
+          <div className="space-y-2">
+            <label className="text-xs text-zinc-400 font-medium">Person Folder</label>
+            {foldersLoading ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading folders…
+              </div>
+            ) : (
+              <Select value={selectedFolderId} onValueChange={setSelectedFolderId} disabled={isUploading || allSettled}>
+                <SelectTrigger className="bg-zinc-900 border-zinc-800 text-sm">
+                  <SelectValue placeholder="Select or create a person folder…" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                  {folders.map(f => (
+                    <SelectItem key={f.id} value={f.id} className="text-sm">
+                      <div className="flex items-center gap-2">
+                        <FolderOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                        <span className="font-mono">{f.identifier}</span>
+                        {f.fileCount > 0 && (
+                          <span className="text-zinc-500 text-xs">{f.fileCount} files</span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={NEW_FOLDER_VALUE} className="text-sm">
+                    <div className="flex items-center gap-2 text-primary">
+                      <Plus className="h-3.5 w-3.5 shrink-0" />
+                      <span>New person folder…</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+
+            {isNewFolder && (
+              <Input
+                placeholder="e.g. 3434-5766-8090"
+                value={newIdentifier}
+                onChange={e => setNewIdentifier(e.target.value)}
+                disabled={isUploading || allSettled}
+                className="bg-zinc-900 border-zinc-800 text-sm font-mono"
+                autoFocus
+              />
+            )}
+
+            {activeIdentifier && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-400">
+                <FolderOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                <span className="font-mono text-zinc-300">{activeIdentifier}/</span>
+                <span className="text-zinc-600">·</span>
+                <span>stored as <span className="font-mono">{activeIdentifier}-filename</span></span>
+              </div>
+            )}
+          </div>
 
           {duplicateNames.size > 0 && !isUploading && !allSettled && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400">
               <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <span>
-                <strong>{duplicateNames.size} {duplicateNames.size === 1 ? 'file' : 'files'} already exist</strong> and will be replaced with a new version. Previous versions are preserved in S3.
+                <strong>{duplicateNames.size} {duplicateNames.size === 1 ? 'file' : 'files'} already exist</strong> and will be replaced with a new version.
               </span>
             </div>
           )}
@@ -200,16 +292,23 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
 
           {selectedFiles.length === 0 ? (
             <div
-              className={`border-2 border-dashed rounded-lg p-10 flex flex-col items-center text-center cursor-pointer transition-all duration-200 ${
+              className={`border-2 border-dashed rounded-lg p-10 flex flex-col items-center text-center transition-all duration-200 ${
+                folderReady ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'
+              } ${
                 isDragActive
                   ? 'border-primary bg-primary/10'
                   : 'border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900/50'
               }`}
-              onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
+              onDragEnter={folderReady ? handleDrag : undefined}
+              onDragLeave={folderReady ? handleDrag : undefined}
+              onDragOver={folderReady ? handleDrag : undefined}
+              onDrop={folderReady ? handleDrop : undefined}
+              onClick={() => folderReady && fileInputRef.current?.click()}
             >
               <UploadCloud className="h-8 w-8 text-zinc-500 mb-3" />
-              <p className="text-sm font-medium text-zinc-200 mb-1">Drop files here or click to browse</p>
+              <p className="text-sm font-medium text-zinc-200 mb-1">
+                {folderReady ? 'Drop files here or click to browse' : 'Select a folder first'}
+              </p>
               <p className="text-xs text-zinc-500">Multiple files · Scanned images, PDFs, DOCX</p>
             </div>
           ) : (
@@ -275,7 +374,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
           ) : (
             <>
               <Button variant="outline" onClick={handleClose} disabled={isUploading}>Cancel</Button>
-              <Button onClick={handleUpload} disabled={!selectedFiles.length || isUploading || !folder}>
+              <Button onClick={handleUpload} disabled={!selectedFiles.length || isUploading || !folderReady}>
                 {isUploading
                   ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading</>
                   : `Upload ${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}`}
