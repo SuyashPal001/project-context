@@ -248,14 +248,15 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         }
         case 'finish': {
           const usage = part.payload?.output?.usage ?? part.usage
-          inputTokens = (usage?.promptTokens as number | undefined) ?? 0
-          outputTokens = (usage?.completionTokens as number | undefined) ?? 0
+          inputTokens = (usage?.inputTokens as number | undefined) ?? (usage?.promptTokens as number | undefined) ?? 0
+          outputTokens = (usage?.outputTokens as number | undefined) ?? (usage?.completionTokens as number | undefined) ?? 0
           totalTokens = inputTokens + outputTokens
           const modelName = thinkingBudget === 0
             ? (process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
             : (process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
           costUsd = calculateCostUsd(modelName, inputTokens, outputTokens)
           persistCost({ tenantId, agentId: agentName ?? agentId, model: modelName, inputTokens, outputTokens })
+          console.log(`[tokens] model=${modelName} input=${inputTokens} output=${outputTokens} total=${totalTokens} cost=$${costUsd.toFixed(6)}`)
 
           const responseTimeMs = Date.now() - startTime
           const cached = lastRagResult.get(tenantId)
