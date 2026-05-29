@@ -151,6 +151,42 @@ function toGeminiContents(messages: OpenAIMessage[]): {
 // code_execution and web_fetch map to native Gemini codeExecution/urlContext.
 const GEMINI_SERVER_TOOL_NAMES = new Set(['code_execution', 'web_fetch']);
 
+// Vertex AI rejects $schema, propertyNames, and bare anyOf — strip them recursively.
+// Zod v4 (used by @ai-sdk/openai-compatible) adds these; @ai-sdk/google stripped them automatically.
+function sanitizeSchema(schema: unknown): unknown {
+  if (!schema || typeof schema !== 'object') return schema;
+  if (Array.isArray(schema)) return schema.map(sanitizeSchema);
+
+  const obj = schema as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+
+  for (const [key, val] of Object.entries(obj)) {
+    if (key === '$schema' || key === 'propertyNames') continue;
+
+    // type: ['string', 'null'] → type: 'string', nullable: true
+    if (key === 'type' && Array.isArray(val)) {
+      const nonNull = (val as string[]).filter((t) => t !== 'null');
+      out.type = nonNull[0] ?? 'string';
+      if (nonNull.length !== val.length) out.nullable = true;
+      continue;
+    }
+
+    // anyOf: [T, {type:'null'}] → merge T with nullable:true
+    if (key === 'anyOf' && Array.isArray(val)) {
+      const nonNull = val.filter((v) => !(typeof v === 'object' && v !== null && (v as Record<string,unknown>).type === 'null'));
+      if (nonNull.length === 1 && val.length !== nonNull.length) {
+        const merged = sanitizeSchema(nonNull[0]) as Record<string, unknown>;
+        Object.assign(out, merged);
+        out.nullable = true;
+        continue;
+      }
+    }
+
+    out[key] = sanitizeSchema(val);
+  }
+  return out;
+}
+
 function toGeminiTools(tools: OpenAITool[] | undefined): Tool[] | undefined {
   if (!tools || tools.length === 0) return undefined;
 
@@ -163,7 +199,7 @@ function toGeminiTools(tools: OpenAITool[] | undefined): Tool[] | undefined {
     .map((t) => ({
       name: t.function.name,
       description: t.function.description ?? '',
-      parameters: t.function.parameters as FunctionDeclaration['parameters'],
+      parameters: sanitizeSchema(t.function.parameters) as FunctionDeclaration['parameters'],
     }));
 
   if (functionDeclarations.length > 0) {
@@ -301,6 +337,9 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): GenerateContentRequest {
   if (openaiReq.temperature !== undefined) generationConfig.temperature = openaiReq.temperature;
   if (openaiReq.max_tokens !== undefined) generationConfig.maxOutputTokens = openaiReq.max_tokens;
   if (openaiReq.top_p !== undefined) generationConfig.topP = openaiReq.top_p;
+  if (openaiReq.thinkingBudget !== undefined) {
+    generationConfig.thinkingConfig = { thinkingBudget: openaiReq.thinkingBudget };
+  }
 
   const request: GenerateContentRequest = { contents };
   if (systemInstruction) request.systemInstruction = systemInstruction;
@@ -375,7 +414,13 @@ export class VertexAdapter implements ProviderAdapter {
       `data: ${JSON.stringify(makeStreamChunk(id, modelName, { role: 'assistant', content: '' }))}\n\n`,
     );
 
-    const streamResult = await model.generateContentStream(request);
+    let streamResult: Awaited<ReturnType<typeof model.generateContentStream>>;
+    try {
+      streamResult = await model.generateContentStream(request);
+    } catch (initErr) {
+      console.error(`[vertex-adapter] generateContentStream init error: ${initErr instanceof Error ? initErr.message : JSON.stringify(initErr)}`);
+      throw initErr;
+    }
     const t0 = Date.now();
     let ttftFired = false;
 
@@ -384,6 +429,7 @@ export class VertexAdapter implements ProviderAdapter {
     let hasToolCalls = false;
     let lastFinishReason: string | null = null;
 
+    try {
     for await (const chunk of streamResult.stream) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const candidate = (chunk as any).candidates?.[0];
@@ -431,6 +477,10 @@ export class VertexAdapter implements ProviderAdapter {
           toolCallIndex++;
         }
       }
+    }
+    } catch (streamErr) {
+      console.error(`[vertex-adapter] stream error: ${streamErr instanceof Error ? streamErr.message : JSON.stringify(streamErr)}`);
+      throw streamErr;
     }
 
     // Final chunk with correct finish_reason

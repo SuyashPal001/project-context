@@ -181,7 +181,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           ...(memoryOptions ? { options: memoryOptions } : {}),
         },
         requestContext,
-        providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
+        providerOptions: { 'inference-gateway': { thinkingBudget } },
       })
 
     for await (const part of agentStream.fullStream as AsyncIterable<any>) {

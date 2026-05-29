@@ -123,14 +123,42 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
   const tried: string[] = [];
   let lastError: unknown;
 
+  // Wrap res.write to intercept SSE chunks and extract usage + tok/sec at gateway level
+  const t0 = Date.now();
+  let tFirstWrite = 0;
+  let completionTokens = 0;
+  const origWrite = res.write.bind(res);
+  (res as ServerResponse).write = function (chunk: unknown, ...args: unknown[]) {
+    if (!tFirstWrite) tFirstWrite = Date.now();
+    const str = typeof chunk === 'string' ? chunk : (chunk instanceof Buffer ? chunk.toString() : '');
+    if (str.startsWith('data: ') && !str.includes('[DONE]')) {
+      try {
+        const parsed = JSON.parse(str.slice(6)) as { usage?: { completion_tokens?: number } };
+        if (parsed.usage?.completion_tokens) completionTokens = parsed.usage.completion_tokens;
+      } catch { /* non-JSON chunk, skip */ }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (origWrite as any)(chunk, ...args);
+  } as typeof res.write;
+
   for (const adapter of chain) {
     const name = (adapter as { adapterName?: string }).adapterName
       ?? adapter.constructor.name.replace('Adapter', '').toLowerCase();
     tried.push(name);
-    const t0 = Date.now();
     try {
       await adapter.handleCompletion(payload, res);
-      latency.observe({ adapter: name }, Date.now() - t0);
+      const totalMs = Date.now() - t0;
+      const genMs = tFirstWrite > 0 ? Date.now() - tFirstWrite : totalMs;
+      const ttft = tFirstWrite > 0 ? tFirstWrite - t0 : null;
+      const tokPerSec = completionTokens > 0 && genMs > 0
+        ? ((completionTokens / genMs) * 1000).toFixed(1)
+        : 'n/a';
+      console.log(
+        `[gateway] done adapter=${name} model=${model}` +
+        ` ttft=${ttft !== null ? ttft + 'ms' : 'n/a'} tok/s=${tokPerSec}` +
+        ` completion_tokens=${completionTokens} total_ms=${totalMs}`,
+      );
+      latency.observe({ adapter: name }, totalMs);
       requestsTotal.inc({ adapter: name, status: 'success' });
       if (tried.length > 1) {
         const prev = tried[tried.length - 2];
@@ -143,7 +171,7 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
       requestsTotal.inc({ adapter: name, status: 'failure' });
       lastError = err;
       if (res.headersSent) {
-        console.error(`[gateway] ${name} failed mid-stream, cannot fall back`);
+        console.error(`[gateway] ${name} failed mid-stream, cannot fall back: ${err instanceof Error ? err.message : JSON.stringify(err)}`);
         if (!res.writableEnded) res.end();
         return;
       }
@@ -160,8 +188,10 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
 
 /**
  * Native Gemini API pass-through.
- * @ai-sdk/google hits /v1/models/:model:generateContent in Google AI format.
- * web_search is now handled by Exa (real function call) so no tool transformation needed.
+ * The relay no longer hits this path (switched to @ai-sdk/openai-compatible → /v1/chat/completions).
+ * Kept as a generic escape hatch for any client that sends raw Gemini-format requests
+ * (e.g. direct curl tests, future non-Mastra integrations, Mastra Studio internals).
+ * Does NOT go through the adapter chain — no fallback, no circuit breaker, no tok/s logging.
  */
 async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Promise<void> {
   // Lazy import to avoid pulling in vertexai at top level for this edge case
@@ -192,13 +222,41 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
       });
+      const t0 = Date.now();
+      let tFirstChunk = 0;
+      let completionTokens = 0;
+      let promptTokens = 0;
       for await (const chunk of streamResult.stream) {
+        if (!tFirstChunk) tFirstChunk = Date.now();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const meta = (chunk as any).usageMetadata;
+        if (meta?.candidatesTokenCount) completionTokens = meta.candidatesTokenCount;
+        if (meta?.promptTokenCount) promptTokens = meta.promptTokenCount;
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
       res.write('data: [DONE]\n\n');
       res.end();
+      const totalMs = Date.now() - t0;
+      const genMs = tFirstChunk > 0 ? Date.now() - tFirstChunk : totalMs;
+      const ttft = tFirstChunk > 0 ? tFirstChunk - t0 : null;
+      const tokPerSec = completionTokens > 0 && genMs > 0
+        ? ((completionTokens / genMs) * 1000).toFixed(1)
+        : 'n/a';
+      console.log(
+        `[gateway] done adapter=vertex model=${nativeModelName}` +
+        ` ttft=${ttft !== null ? ttft + 'ms' : 'n/a'} tok/s=${tokPerSec}` +
+        ` prompt_tokens=${promptTokens} completion_tokens=${completionTokens} total_ms=${totalMs}`,
+      );
     } else {
+      const t0 = Date.now();
       const result = await nativeModel.generateContent(nativeRequest);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const meta = (result.response as any).usageMetadata;
+      console.log(
+        `[gateway] done adapter=vertex model=${nativeModelName} (non-stream)` +
+        ` prompt_tokens=${meta?.promptTokenCount ?? 0} completion_tokens=${meta?.candidatesTokenCount ?? 0}` +
+        ` total_ms=${Date.now() - t0}`,
+      );
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result.response));
     }

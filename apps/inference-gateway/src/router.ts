@@ -18,20 +18,13 @@ const vertexAdapter    = new VertexAdapter();
 const anthropicAdapter = new AnthropicAdapter();
 const ollamaAdapter    = new OllamaAdapter();
 
-export const vertexBreaker    = new CircuitBreaker('vertex',    { failureThreshold: 3, resetTimeoutMs: 60_000 });
+export const vertexBreaker    = new CircuitBreaker('vertex',    { failureThreshold: 10, resetTimeoutMs: 60_000 });
 export const anthropicBreaker = new CircuitBreaker('anthropic', { failureThreshold: 3, resetTimeoutMs: 60_000 });
 export const ollamaBreaker    = new CircuitBreaker('ollama',    { failureThreshold: 5, resetTimeoutMs: 30_000 });
 
 const vertexCB    = new CircuitBreakerAdapter(vertexAdapter,    vertexBreaker);
 const anthropicCB = new CircuitBreakerAdapter(anthropicAdapter, anthropicBreaker);
 const ollamaCB    = new CircuitBreakerAdapter(ollamaAdapter,    ollamaBreaker);
-
-export function getAdapter(model: string | undefined): ProviderAdapter {
-  const m = model ?? '';
-  if (m.startsWith('claude')) return anthropicAdapter;
-  if (m.startsWith('ollama/')) return ollamaAdapter;
-  return vertexAdapter;
-}
 
 /**
  * Returns an ordered fallback chain for the requested model.
