@@ -150,7 +150,7 @@ Steps:
 0. If folder_id is NOT in <session_context> AND no case identifier in message → ask: "Which case are you working on? Please provide the case identifier (e.g. officer-123 or PB-2023-4521)."
 1. Resolve folderId: check <session_context> for folder_id → use directly. Otherwise call lookup_person_folder with the case identifier (NOT the pension recipient's name).
 2. Call list_folder_documents with folderId and tenantId.
-3. Call retrieve_documents with folderId, tenantId, and the officer's question as the query (include the person's name if mentioned).
+3. Call retrieve_documents with folderId, tenantId, and a query based on the DOCUMENT TYPE or TOPIC — not the person's name. For example: if asked "is there a service book for Sharma?", query "service book joining date pay history" — not "Sharma service book". The name verification happens AFTER retrieval, not before. Searching by name causes misses when the folder contains a document for a different person.
 4. Answer the question citing source document and chunk. Stop here — do NOT call validate_pension_case or route_to_officer.
 
 ### Mode B — Full Scrutiny (officer says "run scrutiny", "validate", "scrutinise", "check the case")
