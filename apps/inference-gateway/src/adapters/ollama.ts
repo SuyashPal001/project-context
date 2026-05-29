@@ -17,7 +17,13 @@ import { AdapterError } from './base';
 import type { OpenAIRequest } from '../types';
 import { latency } from '../metrics.js';
 
-const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
+// Parse OLLAMA_URL — extract Basic Auth credentials if present (Node fetch rejects creds in URL).
+const _ollamaRaw = process.env.OLLAMA_URL ?? 'http://localhost:11434';
+const _ollamaParsed = new URL(_ollamaRaw);
+const OLLAMA_BASE = `${_ollamaParsed.protocol}//${_ollamaParsed.host}`;
+const OLLAMA_AUTH = _ollamaParsed.username
+  ? 'Basic ' + Buffer.from(`${decodeURIComponent(_ollamaParsed.username)}:${decodeURIComponent(_ollamaParsed.password)}`).toString('base64')
+  : null;
 
 // Strip <think>...</think> blocks that Qwen3 emits when thinking mode is active.
 // vLLM 0.22.0 does not support per-request thinking disable via chat_template_kwargs.
@@ -40,10 +46,11 @@ export class OllamaAdapter implements ProviderAdapter {
 
     let ollamaRes: Response;
     try {
-      // think: false disables qwen3.5 reasoning chain — required for non-GPU inference
-      ollamaRes = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
+      const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (OLLAMA_AUTH) fetchHeaders['Authorization'] = OLLAMA_AUTH;
+      ollamaRes = await fetch(`${OLLAMA_BASE}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: fetchHeaders,
         body: JSON.stringify({ ...req, model, think: false, chat_template_kwargs: { enable_thinking: false } }),
       });
     } catch (err) {
