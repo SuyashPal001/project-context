@@ -73,13 +73,14 @@ export class OllamaAdapter implements ProviderAdapter {
         'X-Accel-Buffering': 'no',
       });
 
-      // Pipe SSE chunks — strip <think> blocks that may span multiple chunks.
+      // Pipe SSE chunks — strip <think> blocks using a state machine.
+      // Previous logic (cleaned.replace(thinkBuf,'')) erased all non-think content.
       const reader = ollamaRes.body!.getReader();
       const decoder = new TextDecoder();
       const t0 = Date.now();
       let ttftFired = false;
-      let thinkBuf = '';   // accumulates content inside <think>...</think>
-      let inThink = false;
+      let inThink = false;  // true while inside a <think>...</think> block
+      let partial = '';     // incomplete tag fragment carried across chunks
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -98,11 +99,35 @@ export class OllamaAdapter implements ProviderAdapter {
               const chunk = JSON.parse(line.slice(6)) as { choices?: { delta?: { content?: string } }[] };
               const delta = chunk.choices?.[0]?.delta;
               if (delta?.content) {
-                thinkBuf += delta.content;
-                const cleaned = stripThinkTags(thinkBuf);
-                if (cleaned !== thinkBuf) thinkBuf = '';
-                delta.content = cleaned.replace(thinkBuf, '').trimStart();
-                thinkBuf = cleaned ? '' : thinkBuf;
+                // State machine: pass through only non-think content
+                let input = partial + delta.content;
+                partial = '';
+                let output = '';
+                while (input.length > 0) {
+                  if (!inThink) {
+                    const start = input.indexOf('<think>');
+                    if (start === -1) {
+                      // No think tag — check for partial tag at end
+                      const maybeTag = '<think>';
+                      let tail = '';
+                      for (let i = 1; i < maybeTag.length; i++) {
+                        if (input.endsWith(maybeTag.slice(0, i))) { tail = input.slice(-i); break; }
+                      }
+                      output += input.slice(0, input.length - tail.length);
+                      partial = tail;
+                      input = '';
+                    } else {
+                      output += input.slice(0, start);
+                      input = input.slice(start + 7);
+                      inThink = true;
+                    }
+                  } else {
+                    const end = input.indexOf('</think>');
+                    if (end === -1) { input = ''; } // discard think content
+                    else { input = input.slice(end + 8); inThink = false; }
+                  }
+                }
+                delta.content = output;
               }
               out += 'data: ' + JSON.stringify(chunk) + '\n';
             } catch {
