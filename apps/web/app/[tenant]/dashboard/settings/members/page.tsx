@@ -68,7 +68,7 @@ function InviteMemberModal({ open, onOpenChange }: { open: boolean; onOpenChange
     const tenantSlug = params?.tenant;
 
     const form = useForm<InviteFormValues>({
-        resolver: zodResolver(inviteSchema),
+        resolver: zodResolver(inviteSchema as any),
         defaultValues: {
             email: "",
             roleId: "",

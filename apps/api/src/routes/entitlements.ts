@@ -3,8 +3,8 @@ import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
-import { agents } from '@serverless-saas/database/schema/agents';
 import { integrations } from '@serverless-saas/database/schema/integrations';
+import { countUsage } from '@serverless-saas/entitlements';
 import { usageRecords } from '@serverless-saas/database/schema/billing';
 import type { AppEnv } from '../types';
 
@@ -62,14 +62,8 @@ entitlementsRoutes.get('/', async (c) => {
                 eq(memberships.memberType, 'human')
             ));
 
-        // Agents: COUNT agents WHERE tenantId AND status = 'active'
-        const [agentsCount] = await db
-            .select({ count: sql<number>`COUNT(*)::int` })
-            .from(agents)
-            .where(and(
-                eq(agents.tenantId, tenantId),
-                eq(agents.status, 'active')
-            ));
+        // Agents: delegate to product-registered usage counter
+        const agentsCount = { count: await countUsage('agents', tenantId) };
 
         // Integrations: COUNT integrations WHERE tenantId AND status = 'active'
         const [integrationsCount] = await db

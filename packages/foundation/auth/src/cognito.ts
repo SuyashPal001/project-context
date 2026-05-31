@@ -8,9 +8,12 @@ import {
   AdminGetUserCommand,
   AdminInitiateAuthCommand,
   AdminRespondToAuthChallengeCommand,
+  ListUsersCommand,
   type AdminCreateUserCommandInput,
   type AdminInitiateAuthCommandInput,
 } from '@aws-sdk/client-cognito-identity-provider';
+
+export type AuthProvider = 'email' | 'google' | 'not_found';
 
 export interface CognitoConfig {
   region: string;
@@ -158,6 +161,29 @@ export const respondToAuthChallenge = async (
       ChallengeResponses: responses,
     }),
   );
+};
+
+export const getUserProvider = async (email: string): Promise<AuthProvider> => {
+  const cfg = getCognitoConfig();
+  const result = await getCognitoClient().send(
+    new ListUsersCommand({
+      UserPoolId: cfg.userPoolId,
+      Filter: `email = "${email}"`,
+      Limit: 5,
+    }),
+  );
+
+  if (!result.Users || result.Users.length === 0) return 'not_found';
+
+  for (const user of result.Users) {
+    const identitiesAttr = user.Attributes?.find((a) => a.Name === 'identities');
+    if (identitiesAttr?.Value) {
+      const identities = JSON.parse(identitiesAttr.Value) as { providerName: string }[];
+      if (identities.some((i) => i.providerName === 'Google')) return 'google';
+    }
+  }
+
+  return 'email';
 };
 
 export const resetCognito = (): void => {

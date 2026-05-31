@@ -4,8 +4,11 @@ import { db } from '@serverless-saas/database';
 import { tenantFeatureOverrides } from '@serverless-saas/database/schema';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { isPlatformAdmin } from './ops.guard';
+import { getLogger } from '@serverless-saas/logger';
 import type { Context } from 'hono';
 import type { AppEnv } from '../types';
+
+const logger = getLogger({ serviceName: 'ops-api' });
 
 // GET /ops/overrides
 export async function handleListOverrides(c: Context<AppEnv>) {
@@ -42,9 +45,10 @@ export async function handleCreateOverride(c: Context<AppEnv>) {
         tenantId: result.data.tenantId, featureId: result.data.featureId,
         enabled: result.data.enabled, valueLimit: result.data.valueLimit,
         unlimited: result.data.unlimited, reason: result.data.reason,
-        grantedBy: userId, expiresAt: result.data.expiresAt ? new Date(result.data.expiresAt) : null,
+        grantedBy: userId!, expiresAt: result.data.expiresAt ? new Date(result.data.expiresAt) : null,
     }).returning();
 
+    logger.info('ops_override_granted', { traceId: c.get('traceId') ?? 'unknown', tenantId: result.data.tenantId, featureId: result.data.featureId, overrideId: override.id, actorId: c.get('userId') });
     try {
         await db.insert(auditLog).values({
             tenantId: result.data.tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
@@ -52,7 +56,9 @@ export async function handleCreateOverride(c: Context<AppEnv>) {
             metadata: { featureId: result.data.featureId, reason: result.data.reason },
             traceId: c.get('traceId') ?? '',
         });
-    } catch (auditErr) { console.error('Audit log write failed:', auditErr); }
+    } catch (auditErr) {
+        logger.warn('ops_audit_log_write_failed', { traceId: c.get('traceId') ?? 'unknown', action: 'override_granted', overrideId: override.id, error: auditErr as Error });
+    }
 
     return c.json({ data: override }, 201);
 }
@@ -72,13 +78,16 @@ export async function handleRevokeOverride(c: Context<AppEnv>) {
         .where(eq(tenantFeatureOverrides.id, overrideId))
         .returning();
 
+    logger.info('ops_override_revoked', { traceId: c.get('traceId') ?? 'unknown', tenantId: existing.tenantId, overrideId, actorId: userId });
     try {
         await db.insert(auditLog).values({
             tenantId: existing.tenantId, actorId: userId ?? 'system', actorType: 'human',
             action: 'override_revoked', resource: 'tenant_feature_override', resourceId: overrideId,
             metadata: {}, traceId: c.get('traceId') ?? '',
         });
-    } catch (auditErr) { console.error('Audit log write failed:', auditErr); }
+    } catch (auditErr) {
+        logger.warn('ops_audit_log_write_failed', { traceId: c.get('traceId') ?? 'unknown', action: 'override_revoked', overrideId, error: auditErr as Error });
+    }
 
     return c.json({ data: updated });
 }

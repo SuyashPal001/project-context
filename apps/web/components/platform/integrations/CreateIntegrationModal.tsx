@@ -46,7 +46,7 @@ export function CreateIntegrationModal({ open, onOpenChange }: { open: boolean; 
     const queryClient = useQueryClient();
 
     const form = useForm<FormValues>({
-        resolver: zodResolver(createIntegrationSchema),
+        resolver: zodResolver(createIntegrationSchema as any),
         defaultValues: {
             name: "",
             provider: "slack",

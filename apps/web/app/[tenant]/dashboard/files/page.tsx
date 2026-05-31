@@ -23,16 +23,16 @@ export default function FilesPage() {
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                            Files
+                            Document Ingestion
                         </h1>
                         <p className="text-muted-foreground mt-2">
-                            Securely manage and organize your workspace assets.
+                            Upload documents to your knowledge base. Multi-format detection · OCR extraction · RAG indexed.
                         </p>
                     </div>
                     {canUpload && (
                         <Button onClick={() => setIsUploadOpen(true)}>
                             <Upload className="w-4 h-4 mr-2" />
-                            Upload File
+                            {currentPrefix ? 'Add Files' : 'Ingest Document'}
                         </Button>
                     )}
                 </div>
@@ -45,11 +45,14 @@ export default function FilesPage() {
                     canDelete={can('files', 'delete')}
                 />
                 
-                <UploadFileModal 
-                    open={isUploadOpen} 
-                    onOpenChange={setIsUploadOpen} 
+                <UploadFileModal
+                    open={isUploadOpen}
+                    onOpenChange={setIsUploadOpen}
                     currentPrefix={currentPrefix}
-                    onSuccess={() => queryClient.invalidateQueries({ queryKey: ['files'] })}
+                    onSuccess={(folderName) => {
+                        queryClient.invalidateQueries({ queryKey: ['files'] });
+                        if (!currentPrefix) setCurrentPrefix(`${folderName}/`);
+                    }}
                 />
             </div>
         </PermissionGate>

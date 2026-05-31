@@ -1,9 +1,10 @@
-import { pgTable, uuid, varchar, integer, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, integer, timestamp, pgEnum, jsonb } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy';
 import { users } from './auth';
 
 // File status enum
 export const fileStatusEnum = pgEnum('file_status', ['pending', 'uploaded', 'deleted']);
+export const ingestionStatusEnum = pgEnum('ingestion_status', ['pending', 'processing', 'done', 'failed']);
 
 // Files table - tracks uploaded files metadata
 export const files = pgTable('files', {
@@ -19,4 +20,11 @@ export const files = pgTable('files', {
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // Ingestion metadata
+  formatDetected: varchar('format_detected', { length: 64 }),
+  officeCode: varchar('office_code', { length: 32 }).default('PB-001'),
+  classification: varchar('classification', { length: 32 }).default('Confidential'),
+  chunkCount: integer('chunk_count').default(0),
+  ingestionStatus: ingestionStatusEnum('ingestion_status').default('pending'),
+  extractedFields: jsonb('extracted_fields'),
 });

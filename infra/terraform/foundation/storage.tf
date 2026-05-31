@@ -20,6 +20,14 @@ resource "aws_s3_bucket_public_access_block" "files" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_versioning" "files" {
+  bucket = aws_s3_bucket.files.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # CORS for presigned URL uploads from the browser
 resource "aws_s3_bucket_cors_configuration" "files" {
   bucket = aws_s3_bucket.files.id

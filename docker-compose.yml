@@ -19,5 +19,19 @@ services:
     ports:
       - "6379:6379"
 
+  lakehouse:
+    build:
+      context: ./apps/lakehouse
+      dockerfile: Dockerfile
+    container_name: saarthi-lakehouse
+    ports:
+      - "8001:8001"
+    environment:
+      DELTA_PATH: /data/pension_records
+    volumes:
+      - lakehouse_data:/data
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  lakehouse_data:

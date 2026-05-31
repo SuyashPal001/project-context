@@ -71,8 +71,8 @@ Never answer from memory alone — always search first.`,
   }),
 
   execute: async (inputData) => {
-    const query = (inputData as any)?.query ?? ''
-    const layer = (inputData as any)?.layer as string | undefined
+    const query = inputData.query ?? ''
+    const layer = inputData.layer as string | undefined
 
     const vector = await embedQuery(query)
     console.log('[retrieve_knowledge] vector dims:', vector?.length ?? 'null - text fallback')

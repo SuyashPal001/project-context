@@ -17,6 +17,7 @@ import { useAudioRecorder } from "./useAudioRecorder";
 import { useFileUpload } from "./useFileUpload";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { RecordingBar } from "./RecordingBar";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 
 interface LLMProvider {
     id: string;
@@ -173,32 +174,34 @@ export function ChatInput({
 
                             <div className="flex items-center justify-between px-2 pb-2">
                                 <div className="flex items-center gap-0.5">
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <button className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                                                <Plus className="h-4 w-4" />
-                                            </button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent side="top" align="start" className="w-48 p-2">
-                                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
-                                            <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
-                                                <ImageIcon className="h-4 w-4" />
-                                                <span>Media</span>
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleMediaClick('video')} className="hidden gap-2 cursor-pointer py-2">
-                                                <Video className="h-4 w-4" />
-                                                <span>Video</span>
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleMediaClick('document')} className="gap-2 cursor-pointer py-2">
-                                                <FileText className="h-4 w-4" />
-                                                <span>Document (PDF, DOCX)</span>
-                                            </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    {FEATURE_FLAGS.chatUpload && (
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <button className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                                                    <Plus className="h-4 w-4" />
+                                                </button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent side="top" align="start" className="w-48 p-2">
+                                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
+                                                <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
+                                                    <ImageIcon className="h-4 w-4" />
+                                                    <span>Media</span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handleMediaClick('video')} className="hidden gap-2 cursor-pointer py-2">
+                                                    <Video className="h-4 w-4" />
+                                                    <span>Video</span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handleMediaClick('document')} className="gap-2 cursor-pointer py-2">
+                                                    <FileText className="h-4 w-4" />
+                                                    <span>Document (PDF, DOCX)</span>
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    )}
                                 </div>
 
                                 <div className="flex items-center gap-1.5">
-                                    {!content.trim() && !isStreaming && !isLoading && (
+                                    {FEATURE_FLAGS.chatVoice && !content.trim() && !isStreaming && !isLoading && (
                                         <button
                                             type="button"
                                             onClick={recorder.startRecording}

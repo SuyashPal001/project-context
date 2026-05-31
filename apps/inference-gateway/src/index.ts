@@ -12,7 +12,8 @@ import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
-import { getAdapter } from './router';
+import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker } from './router';
+import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -54,7 +55,7 @@ async function handleEmbeddings(req: IncomingMessage, res: ServerResponse): Prom
 
     if (!vertexResp.ok) {
       const errText = await vertexResp.text();
-      console.error('[vertex-proxy] embed error:', vertexResp.status, errText);
+      console.error('[inference-gateway] embed error:', vertexResp.status, errText);
       res.writeHead(vertexResp.status, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: { message: errText } }));
       return;
@@ -71,7 +72,7 @@ async function handleEmbeddings(req: IncomingMessage, res: ServerResponse): Prom
     res.end(JSON.stringify({ object: 'list', data, model: embModel }));
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[vertex-proxy] embed exception:', message);
+    console.error('[inference-gateway] embed exception:', message);
     if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { message } }));
   }
@@ -117,26 +118,80 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
   }
 
   const model = payload.model ?? DEFAULT_MODEL;
-  const adapter = getAdapter(model);
+  const restricted = req.headers['x-data-classification'] === 'restricted';
+  const chain = restricted ? getPrivateOnlyChain() : getAdapterChain(model);
+  const tried: string[] = [];
+  let lastError: unknown;
 
-  try {
-    await adapter.handleCompletion(payload, res);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[vertex-proxy] adapter error:', err);
-    if (!res.headersSent) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+  // Wrap res.write to intercept SSE chunks and extract usage + tok/sec at gateway level
+  const t0 = Date.now();
+  let tFirstWrite = 0;
+  let completionTokens = 0;
+  const origWrite = res.write.bind(res);
+  (res as ServerResponse).write = function (chunk: unknown, ...args: unknown[]) {
+    if (!tFirstWrite) tFirstWrite = Date.now();
+    const str = typeof chunk === 'string' ? chunk : (chunk instanceof Buffer ? chunk.toString() : '');
+    if (str.startsWith('data: ') && !str.includes('[DONE]')) {
+      try {
+        const parsed = JSON.parse(str.slice(6)) as { usage?: { completion_tokens?: number } };
+        if (parsed.usage?.completion_tokens) completionTokens = parsed.usage.completion_tokens;
+      } catch { /* non-JSON chunk, skip */ }
     }
-    if (!res.writableEnded) {
-      res.end(JSON.stringify({ error: { message, type: 'api_error' } }));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (origWrite as any)(chunk, ...args);
+  } as typeof res.write;
+
+  for (const adapter of chain) {
+    const name = (adapter as { adapterName?: string }).adapterName
+      ?? adapter.constructor.name.replace('Adapter', '').toLowerCase();
+    tried.push(name);
+    try {
+      await adapter.handleCompletion(payload, res);
+      const totalMs = Date.now() - t0;
+      const genMs = tFirstWrite > 0 ? Date.now() - tFirstWrite : totalMs;
+      const ttft = tFirstWrite > 0 ? tFirstWrite - t0 : null;
+      const tokPerSec = completionTokens > 0 && genMs > 0
+        ? ((completionTokens / genMs) * 1000).toFixed(1)
+        : 'n/a';
+      console.log(
+        `[gateway] done adapter=${name} model=${model}` +
+        ` ttft=${ttft !== null ? ttft + 'ms' : 'n/a'} tok/s=${tokPerSec}` +
+        ` completion_tokens=${completionTokens} total_ms=${totalMs}`,
+      );
+      latency.observe({ adapter: name }, totalMs);
+      requestsTotal.inc({ adapter: name, status: 'success' });
+      if (tried.length > 1) {
+        const prev = tried[tried.length - 2];
+        fallbacksTotal.inc({ from: prev, to: name });
+        console.log(`[gateway] fallback succeeded: ${tried.slice(0, -1).join(' → ')} failed, used ${name}`);
+      }
+      return;
+    } catch (err) {
+      latency.observe({ adapter: name }, Date.now() - t0);
+      requestsTotal.inc({ adapter: name, status: 'failure' });
+      lastError = err;
+      if (res.headersSent) {
+        console.error(`[gateway] ${name} failed mid-stream, cannot fall back: ${err instanceof Error ? err.message : JSON.stringify(err)}`);
+        if (!res.writableEnded) res.end();
+        return;
+      }
+      console.warn(`[gateway] ${name} failed, trying next in chain: ${err instanceof Error ? err.message : err}`);
     }
   }
+
+  // All adapters exhausted
+  const message = lastError instanceof Error ? lastError.message : 'All model backends unavailable';
+  console.error(`[gateway] all adapters exhausted: ${tried.join(' → ')}`);
+  res.writeHead(503, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ error: { message, type: 'api_error', tried } }));
 }
 
 /**
  * Native Gemini API pass-through.
- * @ai-sdk/google hits /v1/models/:model:generateContent in Google AI format.
- * web_search is now handled by Exa (real function call) so no tool transformation needed.
+ * The relay no longer hits this path (switched to @ai-sdk/openai-compatible → /v1/chat/completions).
+ * Kept as a generic escape hatch for any client that sends raw Gemini-format requests
+ * (e.g. direct curl tests, future non-Mastra integrations, Mastra Studio internals).
+ * Does NOT go through the adapter chain — no fallback, no circuit breaker, no tok/s logging.
  */
 async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Promise<void> {
   // Lazy import to avoid pulling in vertexai at top level for this edge case
@@ -149,37 +204,65 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
   const modelMatch = req.url?.match(/models\/([^/:?]+)/);
   const nativeModelName = modelMatch?.[1] ?? DEFAULT_MODEL;
 
-  console.log(`[vertex-proxy] native Gemini via Vertex AI: ${req.method} model=${nativeModelName}`);
+  console.log(`[inference-gateway] native Gemini via Vertex AI: ${req.method} model=${nativeModelName}`);
 
   const isStreaming = req.url?.includes('streamGenerateContent') ?? false;
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const nativeRequest = (body ? JSON.parse(body) : {}) as any;
-    console.log('[vertex-proxy] native-gemini tools:', JSON.stringify(nativeRequest.tools ?? null));
+    console.log('[inference-gateway] native-gemini tools:', JSON.stringify(nativeRequest.tools ?? null));
     const nativeModel = vertexAI.getGenerativeModel({ model: nativeModelName });
 
     if (isStreaming) {
-      console.log('[vertex-proxy] streaming via generateContentStream');
+      console.log('[inference-gateway] streaming via generateContentStream');
       const streamResult = await nativeModel.generateContentStream(nativeRequest);
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
       });
+      const t0 = Date.now();
+      let tFirstChunk = 0;
+      let completionTokens = 0;
+      let promptTokens = 0;
       for await (const chunk of streamResult.stream) {
+        if (!tFirstChunk) tFirstChunk = Date.now();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const meta = (chunk as any).usageMetadata;
+        if (meta?.candidatesTokenCount) completionTokens = meta.candidatesTokenCount;
+        if (meta?.promptTokenCount) promptTokens = meta.promptTokenCount;
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
       res.write('data: [DONE]\n\n');
       res.end();
+      const totalMs = Date.now() - t0;
+      const genMs = tFirstChunk > 0 ? Date.now() - tFirstChunk : totalMs;
+      const ttft = tFirstChunk > 0 ? tFirstChunk - t0 : null;
+      const tokPerSec = completionTokens > 0 && genMs > 0
+        ? ((completionTokens / genMs) * 1000).toFixed(1)
+        : 'n/a';
+      console.log(
+        `[gateway] done adapter=vertex model=${nativeModelName}` +
+        ` ttft=${ttft !== null ? ttft + 'ms' : 'n/a'} tok/s=${tokPerSec}` +
+        ` prompt_tokens=${promptTokens} completion_tokens=${completionTokens} total_ms=${totalMs}`,
+      );
     } else {
+      const t0 = Date.now();
       const result = await nativeModel.generateContent(nativeRequest);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const meta = (result.response as any).usageMetadata;
+      console.log(
+        `[gateway] done adapter=vertex model=${nativeModelName} (non-stream)` +
+        ` prompt_tokens=${meta?.promptTokenCount ?? 0} completion_tokens=${meta?.candidatesTokenCount ?? 0}` +
+        ` total_ms=${Date.now() - t0}`,
+      );
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result.response));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal server error';
-    console.error('[vertex-proxy] native Gemini error:', message);
+    console.error('[inference-gateway] native Gemini error:', message);
     if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { message, type: 'api_error' } }));
   }
@@ -204,7 +287,27 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Health check
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', model: DEFAULT_MODEL }));
+    res.end(JSON.stringify({
+      status: 'ok',
+      model: DEFAULT_MODEL,
+      circuits: {
+        vertex:    vertexBreaker.getStatus(),
+        anthropic: anthropicBreaker.getStatus(),
+        ollama:    ollamaBreaker.getStatus(),
+      },
+    }));
+    return;
+  }
+
+  // Prometheus metrics scrape endpoint
+  if (req.method === 'GET' && req.url === '/metrics') {
+    const body = renderMetrics({
+      vertex:    vertexBreaker.getStatus(),
+      anthropic: anthropicBreaker.getStatus(),
+      ollama:    ollamaBreaker.getStatus(),
+    });
+    res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+    res.end(body);
     return;
   }
 
@@ -241,7 +344,7 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
     return;
   }
 
-  console.log(`[vertex-proxy] 404 unhandled: ${req.method} ${req.url}`);
+  console.log(`[inference-gateway] 404 unhandled: ${req.method} ${req.url}`);
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: { message: 'Not found', type: 'invalid_request_error' } }));
 });
@@ -251,5 +354,5 @@ server.listen(PORT, () => {
   console.log(`  default model: ${DEFAULT_MODEL}`);
 });
 
-process.on('uncaughtException', (err) => console.error('[vertex-proxy] uncaughtException:', err));
-process.on('unhandledRejection', (err) => console.error('[vertex-proxy] unhandledRejection:', err));
+process.on('uncaughtException', (err) => console.error('[inference-gateway] uncaughtException:', err));
+process.on('unhandledRejection', (err) => console.error('[inference-gateway] unhandledRejection:', err));

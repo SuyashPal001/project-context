@@ -33,6 +33,9 @@ function fallbackDescription(name: string): string {
     if (n.includes("task")) {
         return "Breaks approved milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates.";
     }
+    if (n.includes("architect")) {
+        return "Technical architect with deep codebase knowledge. Reviews designs, proposes system architecture, and answers implementation questions.";
+    }
     return "A general-purpose AI agent. Chat with it to search the web, analyse documents, and get work done.";
 }
 

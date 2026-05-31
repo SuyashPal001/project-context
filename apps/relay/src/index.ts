@@ -67,6 +67,7 @@ async function handleSession(
     }
     const effectiveMessage = filteredWsMsg || '[voice message]'
     const agentId = typeof body.agentId === 'string' ? body.agentId : ''
+    const folderId = typeof body.folderId === 'string' && body.folderId ? body.folderId : undefined
 
     pendingUserMessage = effectiveMessage
     pendingAttachments = (attachments0 as Array<{ fileId?: string; name: string; type: string; size?: number }>)
@@ -107,7 +108,7 @@ async function handleSession(
           : ''
         if (workingMemory) console.log(`[session:${sessionId}] injected working memory tenantId=${tenantId}`)
 
-        const sessionContext = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
+        const sessionContext = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}\n</session_context>\n\n`
 
         const mediaAttachments = (attachments0 as any[]).filter((a: any) =>
           a.type?.startsWith('image/') ||
@@ -161,6 +162,7 @@ async function handleSession(
         requestContext.set(MASTRA_THREAD_ID_KEY, conversationId ?? crypto.randomUUID())
         requestContext.set('tenantId', tenantId)
         requestContext.set('agentId', agentId)
+        if (folderId) requestContext.set('folderId', folderId)
         mcpClient = getMCPClientForTenant(tenantId)
         requestContext.set('__mcpClient', mcpClient as any)
 

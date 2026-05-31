@@ -36,7 +36,7 @@ function VerifyPageContent() {
     const [resendSuccess, setResendSuccess] = useState(false);
 
     const form = useForm<VerifySchema>({
-        resolver: zodResolver(verifySchema),
+        resolver: zodResolver(verifySchema as any),
         defaultValues: { code: "" },
     });
 

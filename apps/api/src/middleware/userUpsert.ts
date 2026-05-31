@@ -3,6 +3,43 @@ import { eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { users } from '@serverless-saas/database/schema/auth';
 
+// name-slug + 8 random alphanumeric chars → e.g. "harbhajan-singh-a1b2c3d4"
+// 36^8 ≈ 2.8T possibilities — collision negligible even at millions of users.
+function generatePersonalIdentifier(name: string): string {
+    const slug = (name || 'user')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 30)
+    const suffix = Math.random().toString(36).slice(2, 10)
+    return `${slug || 'user'}-${suffix}`
+}
+
+async function upsertUser(
+    cognitoId: string,
+    email: string,
+    name: string,
+    attempt = 0
+): Promise<typeof users.$inferSelect> {
+    const personalIdentifier = generatePersonalIdentifier(name || email)
+    try {
+        const [user] = await db.insert(users)
+            .values({ cognitoId, email, name, personalIdentifier })
+            .onConflictDoUpdate({
+                target: users.cognitoId,
+                // personalIdentifier intentionally excluded — keeps existing value on update
+                set: { email, name, updatedAt: new Date() },
+            })
+            .returning()
+        return user
+    } catch (err: any) {
+        if (err?.code === '23505' && err?.constraint === 'users_personal_identifier_unique' && attempt < 3) {
+            return upsertUser(cognitoId, email, name, attempt + 1)
+        }
+        throw err
+    }
+}
+
 /**
  * User Upsert Middleware — Volca Pattern (ADR-024)
  *
@@ -57,13 +94,7 @@ export const userUpsertMiddleware = async (c: Context, next: Next) => {
     }
 
     try {
-        const [user] = await db.insert(users)
-            .values({ cognitoId, email, name: name || "" })
-            .onConflictDoUpdate({
-                target: users.cognitoId,
-                set: { email, name: name || "", updatedAt: new Date() },
-            })
-            .returning();
+        const user = await upsertUser(cognitoId, email, name || "")
         c.set('userId', user.id);
     } catch (error: any) {
         if (error?.code === '23505' && error?.constraint === 'users_email_unique') {

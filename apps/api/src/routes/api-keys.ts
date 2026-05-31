@@ -91,7 +91,7 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
             ORDER BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
         `);
 
-        const aggregatedData = (result.rows ?? result) as { date: string; value: number }[];
+        const aggregatedData = result as unknown as { date: string; value: number }[];
 
         const total = aggregatedData.reduce((sum, row) => sum + (row.value || 0), 0);
 

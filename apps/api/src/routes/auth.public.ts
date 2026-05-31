@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database';
 import { users } from '@serverless-saas/database/schema/auth';
 import { getCacheClient } from '@serverless-saas/cache';
-import { adminInitiateAuth } from '@serverless-saas/auth';
+import { adminInitiateAuth, getUserProvider } from '@serverless-saas/auth';
 import type { AppEnv } from '../types';
 
 export const authPublicRoutes = new Hono<AppEnv>();
@@ -54,10 +54,16 @@ authPublicRoutes.get('/check-email', async (c) => {
         return c.json({ error: 'Too many requests. Please try again later.', code: 'RATE_LIMIT_EXCEEDED', retryAfter: 60 }, 429);
     }
 
+    const cognitoProvider = await getUserProvider(validatedEmail).catch(() => 'not_found' as const);
+
+    if (cognitoProvider !== 'not_found') {
+        return c.json({ exists: true, provider: cognitoProvider });
+    }
+
     const [user] = await db
         .select({ id: users.id }).from(users)
-        .where(and(eq(users.email, result.data), isNull(users.deletedAt)))
+        .where(and(eq(users.email, validatedEmail), isNull(users.deletedAt)))
         .limit(1);
 
-    return c.json({ exists: !!user });
+    return c.json({ exists: !!user, provider: 'not_found' });
 });

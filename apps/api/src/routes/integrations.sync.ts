@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { agents } from '@serverless-saas/database/schema/agents';
-import { agentSkills } from '@serverless-saas/database/schema/conversations';
+import { agents } from '@serverless-saas/agent-schema/agents';
+import { agentSkills } from '@serverless-saas/agent-schema/conversations';
 import { PROVIDER_TOOLS_MAP } from './integrations.crypto';
 
 // Merges provider tools into agent_skills.tools and fires relay /update.

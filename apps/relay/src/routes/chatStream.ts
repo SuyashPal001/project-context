@@ -3,8 +3,11 @@ import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type A
 import { downloadMediaAttachment } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { resolveAgent, resolveAgentLabel } from '../mastra/registry.js'
+import { runWithGuardrailContext } from '../mastra/guardrails.js'
+import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
+import { calculateCostUsd, persistCost } from '../mastra/cost.js'
 import { fetchAgentSkill, fetchAgentName } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
@@ -107,7 +110,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   let totalTokens = 0
   let inputTokens = 0
   let outputTokens = 0
-  const costUsd: number | undefined = undefined
+  let costUsd = 0
   let pendingMetrics: Parameters<typeof fireMetrics>[0] | null = null
   let pendingEval: Parameters<typeof fireAutoEval>[0] | null = null
   const toolCallNames = new Map<string, string>()
@@ -127,6 +130,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const memPreamble = workingMemory
       ? `[AGENT MEMORY]\nYou have remembered the following about this tenant from previous sessions:\n${workingMemory}\n\n`
       : ''
+    console.log('[session] tenantId:', tenantId)
     const sessionCtx = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
     const mastraMessage = await buildMastraMessage(attachments, memPreamble, sessionCtx, message, sessionId)
 
@@ -138,6 +142,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('tenantId', tenantId)
     requestContext.set('agentId', agentId)
     requestContext.set('userId', internalUserId)
+
     const mcpClient = getMCPClientForTenant(tenantId)
     requestContext.set('__mcpClient', mcpClient as any)
 
@@ -162,18 +167,20 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
-    const agentStream = await (activeAgent as any).stream(mastraMessage, {
-      memory: {
-        thread: conversationId || crypto.randomUUID(),
-        resource: tenantId,
-        ...(memoryOptions ? { options: memoryOptions } : {}),
-      },
-      requestContext,
-      providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
-    })
-
     let fullText = ''
     let planResult: unknown
+    let toolCallCount = 0
+
+    await runWithGuardrailContext({ tenantId, conversationId }, async () => {
+      const agentStream = await (activeAgent as any).stream(mastraMessage, {
+        memory: {
+          thread: conversationId || crypto.randomUUID(),
+          resource: tenantId,
+          ...(memoryOptions ? { options: memoryOptions } : {}),
+        },
+        requestContext,
+        providerOptions: { 'inference-gateway': { thinkingBudget } },
+      })
 
     for await (const part of agentStream.fullStream as AsyncIterable<any>) {
       if (isStreamClosed()) break
@@ -200,6 +207,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const args = (p.args ?? {}) as Record<string, unknown>
           const toolCallId = (p.toolCallId ?? toolName) as string
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
+          toolCallCount++
           sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           if (toolName === 'retrieve_documents') ragFired = true
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
@@ -214,6 +222,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const result = (p.result ?? p.output ?? {}) as Record<string, unknown>
           console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
           sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
+
+          // Inject summary as synthetic text when route_to_officer returns one
+          if (resolvedToolName === 'route_to_officer' && typeof result.summary === 'string' && result.summary) {
+            fullText += result.summary
+            sendEvent('delta', { text: result.summary, conversationId })
+          }
 
           // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes
           const normName = resolvedToolName.toLowerCase().replace(/_/g, '-')
@@ -232,9 +246,15 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         }
         case 'finish': {
           const usage = part.payload?.output?.usage ?? part.usage
-          inputTokens = (usage?.promptTokens as number | undefined) ?? 0
-          outputTokens = (usage?.completionTokens as number | undefined) ?? 0
+          inputTokens = (usage?.inputTokens as number | undefined) ?? (usage?.promptTokens as number | undefined) ?? 0
+          outputTokens = (usage?.outputTokens as number | undefined) ?? (usage?.completionTokens as number | undefined) ?? 0
           totalTokens = inputTokens + outputTokens
+          const modelName = thinkingBudget === 0
+            ? (process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
+            : (process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
+          costUsd = calculateCostUsd(modelName, inputTokens, outputTokens)
+          persistCost({ tenantId, agentId: agentName ?? agentId, model: modelName, inputTokens, outputTokens })
+          console.log(`[tokens] model=${modelName} input=${inputTokens} output=${outputTokens} total=${totalTokens} cost=$${costUsd.toFixed(6)}`)
 
           const responseTimeMs = Date.now() - startTime
           const cached = lastRagResult.get(tenantId)
@@ -260,6 +280,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef)
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
 
+          // FREE-AI Sutra 1 — non-blocking, runs after client already received `done`
+          runFairnessCheck({ tenantId, conversationId, messageId: assistantMessageId, agentId, agentName: agentName ?? agentId, responseText: fullText, toolsUsed: toolCallCount })
+
           pendingMetrics = { conversationId, tenantId, ragFired, ragChunksRetrieved, responseTimeMs, totalTokens, inputTokens, outputTokens, userMessageCount: 1, costUsd }
           if (ragFired) pendingEval = { conversationId, messageId: assistantMessageId, tenantId, question: message, retrievedChunks: ragChunks, answer: fullText }
           flushMetrics()
@@ -267,6 +290,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         }
       }
     }
+    }) // end runWithGuardrailContext
 
     closeStream()
   } catch (err) {

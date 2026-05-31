@@ -40,7 +40,7 @@ export function CreateWebhookModal({ open, onOpenChange }: { open: boolean; onOp
     });
 
     const form = useForm<FormValues>({
-        resolver: zodResolver(createWebhookSchema),
+        resolver: zodResolver(createWebhookSchema as any),
         defaultValues: {
             url: "",
             events: [],

@@ -30,7 +30,7 @@ export function ChangePasswordCard() {
     const { identities } = useTenant();
 
     const form = useForm<ChangePasswordFormValues>({
-        resolver: zodResolver(changePasswordSchema),
+        resolver: zodResolver(changePasswordSchema as any),
         defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
     });
 

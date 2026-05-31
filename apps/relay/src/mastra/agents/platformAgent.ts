@@ -1,14 +1,16 @@
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
 import { createTool } from '@mastra/core/tools'
+import { ModerationProcessor, PIIDetector, PromptInjectionDetector, SystemPromptScrubber } from '@mastra/core/processors'
 import { MCPClient } from '@mastra/mcp'
 import { z } from 'zod'
 import { Exa as ExaClass } from 'exa-js'
 import pg from 'pg'
 
-import { saarthiModel, saarthiLiteModel } from '../model.js'
+import { saarthiModel, saarthiLiteModel, saarthiPrivateModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
+import { createViolationHandler } from '../guardrails.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -78,7 +80,8 @@ export const SERVER_TOOLS = {
     inputSchema: z.object({
       query: z.string().describe('The search query'),
     }),
-    execute: async ({ query }: { query: string }) => {
+    execute: async (inputData) => {
+      const { query } = inputData
       const { results } = await exa.searchAndContents(query, {
         livecrawl: 'always',
         numResults: 5,
@@ -99,7 +102,8 @@ export const SERVER_TOOLS = {
     inputSchema: z.object({
       url: z.string().describe('The URL to fetch'),
     }),
-    execute: async ({ url }: { url: string }) => {
+    execute: async (inputData) => {
+      const { url } = inputData
       try {
         const controller = new AbortController()
         const timer = setTimeout(() => controller.abort(), 10_000)
@@ -164,6 +168,46 @@ async function getCachedMcpTools(mcpClient: MCPClient, tenantId: string): Promis
 }
 
 // ---------------------------------------------------------------------------
+// Guardrail processors — run on every message, input and output.
+// strategy: 'warn' in demo/dev — logs violations but does not block.
+// Switch to 'block' in production to hard-reject violating content.
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyProcessor = { onViolation?: (v: any) => void }
+
+const violationHandler = createViolationHandler()
+
+const promptInjectionDetector = new PromptInjectionDetector({
+  model: saarthiLiteModel,
+  strategy: 'warn',
+  threshold: 0.7,
+  lastMessageOnly: true,
+})
+;(promptInjectionDetector as AnyProcessor).onViolation = violationHandler
+
+const moderationProcessor = new ModerationProcessor({
+  model: saarthiLiteModel,
+  strategy: 'warn',
+  threshold: 0.5,
+  lastMessageOnly: true,
+})
+;(moderationProcessor as AnyProcessor).onViolation = violationHandler
+
+const piiDetector = new PIIDetector({
+  model: saarthiLiteModel,
+  strategy: 'redact',
+  redactionMethod: 'placeholder',
+  lastMessageOnly: true,
+})
+;(piiDetector as AnyProcessor).onViolation = violationHandler
+
+const systemPromptScrubber = new SystemPromptScrubber({
+  model: saarthiLiteModel,
+})
+;(systemPromptScrubber as AnyProcessor).onViolation = violationHandler
+
+// ---------------------------------------------------------------------------
 // One platform Agent — serves all tenants.
 //
 // instructions: dynamic — fetches latest published agentTemplate from DB.
@@ -218,9 +262,24 @@ export const platformAgent = new Agent({
 
   memory: getMastraMemory(),
 
-  // Dynamic model: use Flash Lite for conversational turns (thinkingBudget=0),
-  // Flash for everything else. Budget is set in requestContext by chatStream.ts.
+  // Specialist agent delegation — Saarthi recognises pension scrutiny tasks
+  // and routes them to AI-PARAS (Tier 2) which delegates reading to Tier 3.
+  // agents: { aiParas: aiParasAgent },
+  // NOTE: aiParasAgent removed from sub-agents map. Having it here caused
+  // platformAgent's SERVER_TOOLS (internet_search, web_fetch) to leak into
+  // aiParasAgent's tool list when called as a sub-agent. AI-PARAS is
+  // registered standalone in the Mastra registry and testable directly in Studio.
+
+  inputProcessors: [promptInjectionDetector, moderationProcessor],
+  outputProcessors: [piiDetector, moderationProcessor, systemPromptScrubber],
+
+  // Dynamic model selection:
+  //   restricted data (CASA/KYC) → private model only (set by fetchAgentContext tool)
+  //   thinkingBudget=0           → lite model (conversational turns)
+  //   default                    → full model
   model: ({ requestContext }: { requestContext: RequestContext }) => {
+    const sensitivity = requestContext?.get('maxDataSensitivity') as string | undefined
+    if (sensitivity === 'restricted') return saarthiPrivateModel
     const budget = requestContext?.get('thinkingBudget') as number | undefined
     return budget === 0 ? saarthiLiteModel : saarthiModel
   },

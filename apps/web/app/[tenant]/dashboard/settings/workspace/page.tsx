@@ -59,7 +59,7 @@ export default function WorkspaceSettingsPage() {
     const [isFetching, setIsFetching] = useState(true);
 
     const form = useForm<WorkspaceFormValues>({
-        resolver: zodResolver(workspaceSchema),
+        resolver: zodResolver(workspaceSchema as any),
         defaultValues: { name: "", slug: tenantSlug || "" },
     });
 

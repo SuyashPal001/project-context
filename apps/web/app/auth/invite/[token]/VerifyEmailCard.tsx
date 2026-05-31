@@ -22,7 +22,7 @@ interface VerifyEmailCardProps {
 
 export function VerifyEmailCard({ email, isSubmitting, error, resendSuccess, onSubmit, onResend }: VerifyEmailCardProps) {
     const form = useForm<VerifySchema>({
-        resolver: zodResolver(verifySchema),
+        resolver: zodResolver(verifySchema as any),
         defaultValues: { code: "" },
     });
 

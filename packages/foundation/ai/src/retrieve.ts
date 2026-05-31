@@ -53,7 +53,7 @@ export async function retrieveChunks(
   query: string,
   tenantId: string,
   limit = 5,
-  scoreThreshold = 0.5
+  scoreThreshold = 0.5,
 ): Promise<RetrievedChunk[]> {
   const queryEmbedding = await embedQuery(query);
   const vectorStr = `[${queryEmbedding.join(',')}]`;
@@ -61,26 +61,25 @@ export async function retrieveChunks(
   // Run both table searches in parallel
   const [docResult, kResult] = await Promise.all([
     db.execute(sql`
-      SELECT
-        dc.id,
-        dc.content,
-        dc.chunk_index,
-        dc.metadata,
-        d.name AS document_name,
-        d.id   AS document_id,
-        (1 - (dc.embedding <=> ${vectorStr}::vector))               AS vector_score,
-        ts_rank(dc.tsv, websearch_to_tsquery('english', ${query}))  AS text_score
-      FROM document_chunks dc
-      JOIN documents d ON d.id = dc.document_id
-      WHERE dc.tenant_id = ${tenantId}
-        AND d.status = 'ready'
-        AND (
-          dc.embedding <=> ${vectorStr}::vector < 0.7
-          OR dc.tsv @@ websearch_to_tsquery('english', ${query})
-        )
-      LIMIT 20
-    `),
-
+          SELECT
+            dc.id,
+            dc.content,
+            dc.chunk_index,
+            dc.metadata,
+            d.name AS document_name,
+            d.id   AS document_id,
+            (1 - (dc.embedding <=> ${vectorStr}::vector))               AS vector_score,
+            ts_rank(dc.tsv, websearch_to_tsquery('english', ${query}))  AS text_score
+          FROM document_chunks dc
+          JOIN documents d ON d.id = dc.document_id
+          WHERE dc.tenant_id = ${tenantId}
+            AND d.status = 'ready'
+            AND (
+              dc.embedding <=> ${vectorStr}::vector < 0.7
+              OR dc.tsv @@ websearch_to_tsquery('english', ${query})
+            )
+          LIMIT 20
+        `),
     db.execute(sql`
       SELECT
         id,
@@ -130,7 +129,7 @@ export async function retrieveChunks(
     ...Array.from(kRrf.entries()).map(([id, score])   => ({ id, score, source: 'codebase' as const })),
   ]
     .sort((a, b) => b.score - a.score)
-    .filter(({ score }) => score >= scoreThreshold / 100)
+    .filter(({ score }) => score >= scoreThreshold)
     .slice(0, limit);
 
   return merged.map(({ id, score, source }) => {

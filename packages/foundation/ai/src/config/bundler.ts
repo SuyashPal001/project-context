@@ -12,13 +12,13 @@
 
 import { db } from '@serverless-saas/database';
 import { eq, and, desc, isNull } from 'drizzle-orm';
-import { agents } from '@serverless-saas/database/schema/agents';
+import { agents } from '@serverless-saas/agent-schema/agents';
 import {
   agentSkills,
   agentPolicies,
   conversations,
   messages,
-} from '@serverless-saas/database/schema/conversations';
+} from '@serverless-saas/agent-schema/conversations';
 import { llmProviders, integrations } from '@serverless-saas/database/schema/integrations';
 import type {
   AgentSessionConfig,

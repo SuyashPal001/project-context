@@ -71,7 +71,7 @@ export function MessageItem({
             )}>
                 {isAssistant && isFirstInSequence && (
                     <span className="text-[10px] font-mono tracking-[0.08em] text-[#444] uppercase select-none mb-1 block">
-                        SAARTHI
+                        Assistant
                     </span>
                 )}
 

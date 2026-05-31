@@ -17,7 +17,7 @@ interface CreateAccountFormProps {
 
 export function CreateAccountForm({ isSubmitting, onSubmit }: CreateAccountFormProps) {
     const form = useForm<CreateAccountSchema>({
-        resolver: zodResolver(createAccountSchema),
+        resolver: zodResolver(createAccountSchema as any),
         defaultValues: { name: "", password: "", confirmPassword: "" },
     });
 

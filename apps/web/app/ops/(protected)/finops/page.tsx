@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
     DollarSign, Zap, BarChart3, Building2, AlertCircle,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -70,7 +70,7 @@ function StatCard({
 export default function FinOpsPage() {
     const [period, setPeriod] = React.useState<Period>("30d");
 
-    const { data, isLoading, isError } = useQuery<OpsFinopsResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsFinopsResponse>({
         queryKey: ["ops-finops", period],
         queryFn: () => api.get<OpsFinopsResponse>(`/api/v1/ops/finops?period=${period}`),
     });
@@ -108,7 +108,7 @@ export default function FinOpsPage() {
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load FinOps data.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load FinOps data."}</AlertDescription>
                 </Alert>
             )}
 

@@ -8,6 +8,7 @@ import {
     DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Conversation } from '@/components/platform/chat/types';
+import { FEATURE_FLAGS } from '@/lib/feature-flags';
 
 interface Props {
     selectedConversation: Conversation;
@@ -54,18 +55,20 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
                 </div>
             </div>
             <div className="flex items-center gap-2">
-                <Button
-                    variant={isCanvasOpen ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={toggleCanvas}
-                    className="relative flex"
-                >
-                    <PanelRight className="h-4 w-4 mr-2" />
-                    Canvas
-                    {hasActivity && !isCanvasOpen && (
-                        <span className="absolute -top-1 -right-1 h-3 w-3 bg-green-500 rounded-full animate-pulse" />
-                    )}
-                </Button>
+                {FEATURE_FLAGS.chatCanvas && (
+                    <Button
+                        variant={isCanvasOpen ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={toggleCanvas}
+                        className="relative flex"
+                    >
+                        <PanelRight className="h-4 w-4 mr-2" />
+                        Canvas
+                        {hasActivity && !isCanvasOpen && (
+                            <span className="absolute -top-1 -right-1 h-3 w-3 bg-green-500 rounded-full animate-pulse" />
+                        )}
+                    </Button>
+                )}
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
                     <Info className="h-4 w-4" />
                 </Button>

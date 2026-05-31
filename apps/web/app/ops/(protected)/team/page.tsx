@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Plus, AlertCircle, Users, Trash2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,7 +35,7 @@ export default function OpsTeamPage() {
     const queryClient = useQueryClient();
     const [isDialogOpen, setIsDialogOpen] = React.useState(false);
 
-    const { data, isLoading, isError } = useQuery<OpsTeamResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsTeamResponse>({
         queryKey: QUERY_KEY,
         queryFn: () => api.get<OpsTeamResponse>("/api/v1/ops/team"),
     });
@@ -46,7 +46,7 @@ export default function OpsTeamPage() {
     });
 
     const form = useForm<AddMemberFormValues>({
-        resolver: zodResolver(addMemberSchema),
+        resolver: zodResolver(addMemberSchema as any),
         defaultValues: { name: "", email: "", password: "" },
     });
 
@@ -58,8 +58,8 @@ export default function OpsTeamPage() {
             setIsDialogOpen(false);
             form.reset();
         },
-        onError: (err: any) => {
-            toast.error(err?.message || "Failed to add team member");
+        onError: (err) => {
+            toast.error(err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : "Failed to add team member");
         },
     });
 
@@ -69,8 +69,8 @@ export default function OpsTeamPage() {
             queryClient.invalidateQueries({ queryKey: QUERY_KEY });
             toast.success("Team member removed");
         },
-        onError: (err: any) => {
-            toast.error(err?.message || "Failed to remove team member");
+        onError: (err) => {
+            toast.error(err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : "Failed to remove team member");
         },
     });
 
@@ -150,7 +150,7 @@ export default function OpsTeamPage() {
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load team members.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load team members."}</AlertDescription>
                 </Alert>
             )}
 

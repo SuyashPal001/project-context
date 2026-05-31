@@ -1,6 +1,6 @@
 import { db } from '@serverless-saas/database';
 import { files, storageProviders } from '@serverless-saas/database/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, like } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { S3StorageProvider } from './providers/s3';
@@ -163,14 +163,15 @@ export class StorageService {
       ));
   }
 
-  async listFiles(tenantId: string, limit = 50, offset = 0): Promise<InferSelectModel<typeof files>[]> {
+  async listFiles(tenantId: string, limit = 50, offset = 0, prefix?: string): Promise<InferSelectModel<typeof files>[]> {
     return db
       .select()
       .from(files)
       .where(and(
         eq(files.tenantId, tenantId),
         eq(files.status, 'uploaded'),
-        isNull(files.deletedAt)
+        isNull(files.deletedAt),
+        prefix ? like(files.key, `${prefix}%`) : undefined,
       ))
       .limit(limit)
       .offset(offset)

@@ -1,0 +1,41 @@
+{
+  "name": "@serverless-saas/agent-worker-handlers",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "default": "./dist/db.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/google-vertex": "^1.0.4",
+    "@aws-sdk/client-s3": "^3.1011.0",
+    "@neondatabase/serverless": "^0.10.4",
+    "ai": "^4.3.19",
+    "@serverless-saas/agent-schema": "workspace:*",
+    "@serverless-saas/ai": "workspace:*",
+    "@serverless-saas/database": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "mammoth": "^1.7.0",
+    "pdf-parse": "^1.1.1",
+    "postgres": "^3.4.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/pdf-parse": "^1.1.5",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^5.9.3"
+  }
+}

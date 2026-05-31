@@ -40,7 +40,7 @@ export function CreateMilestoneDialog({
     const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null)
     const [selectedPriority, setSelectedPriority] = useState<Priority>('medium')
     const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateMilestoneForm>({
-        resolver: zodResolver(createMilestoneSchema),
+        resolver: zodResolver(createMilestoneSchema as any),
     })
 
     const mutation = useMutation({

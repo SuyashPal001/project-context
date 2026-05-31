@@ -2,7 +2,6 @@ import type { Agent } from '@mastra/core/agent'
 import { platformAgent } from './agents/platformAgent.js'
 import { pmAgent } from './agents/pmAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
-
 // Map of DB agent name (lowercased) → Mastra agent instance.
 // Exact-match keys are tried first; substring fallback uses the same keys.
 const AGENT_REGISTRY: Record<string, Agent> = {
@@ -29,6 +28,7 @@ export function resolveAgent(agentName: string): Agent {
 export function resolveAgentLabel(agent: Agent): string {
   if (agent === (architectAgent as unknown as Agent)) return 'architectAgent'
   if (agent === (pmAgent as unknown as Agent)) return 'pmAgent'
+
   return 'platformAgent'
 }
 
@@ -60,4 +60,5 @@ export const DEFAULT_AGENTS = [
     is_internal: false,
     apiKeyName: 'Architect API Key',
   },
+
 ] as const

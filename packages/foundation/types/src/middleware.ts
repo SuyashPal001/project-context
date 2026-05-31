@@ -69,3 +69,28 @@ export interface ApiKeyContext {
 export type AuthContext =
   | { type: 'user'; context: RequestContext }
   | { type: 'apikey'; context: ApiKeyContext };
+
+// ============================================
+// Hono App Environment Bindings
+// ============================================
+// Shared shape used by foundation API and any product API that mounts into it.
+
+import type { LambdaEvent } from 'hono/aws-lambda';
+
+export interface AppEnv {
+  Bindings: {
+    event: LambdaEvent;
+  };
+  Variables: {
+    requestContext?: RequestContext;
+    tenantId: string;
+    apiKeyContext?: ApiKeyContext;
+    apiKeyId?: string;
+    userId?: string;
+    agentId?: string;
+    actorType?: 'human' | 'agent';
+    traceId: string;
+    startTime: number;
+    jwtPayload?: Record<string, string>;
+  };
+}

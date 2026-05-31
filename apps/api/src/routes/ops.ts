@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { handleListTenants, handleGetTenant, handlePatchTenant, handleGetAudit } from './ops.tenants';
-import { handleListProviders, handleCreateProvider, handlePatchProvider } from './ops.providers';
 import { handleListOverrides, handleCreateOverride, handleRevokeOverride } from './ops.overrides';
-import { handleKnowledgeGaps, handleEvalScores, handleToolPerformance, handleEvalsResults } from './ops.intelligence';
-import { handleFinops, handleOverview } from './ops.finops';
 import { handleListTeam, handleCreateTeamMember, handleDeleteTeamMember } from './ops.team';
-import { handleListFairnessReviews, handleOpsRunFairness } from './ops.fairness';
+import { handleObsSummary, handleObsWorkflows, handleObsCosts, handleObsAuditVolume, handleObsAgents, handleObsInferenceLatency } from './ops.observability';
+
+// Foundation ops routes only. Product (agent-platform) adds its own ops routes
+// via agentProduct.mountOpsRoutes() — providers, agent-intelligence, finops,
+// overview, fairness, agent-templates.
 
 export const opsRoutes = new Hono<AppEnv>();
 
@@ -18,31 +19,20 @@ opsRoutes.patch('/tenants/:id', handlePatchTenant);
 // Audit
 opsRoutes.get('/audit', handleGetAudit);
 
-// LLM Providers
-opsRoutes.get('/providers', handleListProviders);
-opsRoutes.post('/providers', handleCreateProvider);
-opsRoutes.patch('/providers/:id', handlePatchProvider);
-
 // Feature Overrides
 opsRoutes.get('/overrides', handleListOverrides);
 opsRoutes.post('/overrides', handleCreateOverride);
 opsRoutes.post('/overrides/:id/revoke', handleRevokeOverride);
-
-// Agent Intelligence
-opsRoutes.get('/agent-intelligence/knowledge-gaps', handleKnowledgeGaps);
-opsRoutes.get('/agent-intelligence/eval-scores', handleEvalScores);
-opsRoutes.get('/agent-intelligence/tool-performance', handleToolPerformance);
-opsRoutes.get('/evals/results', handleEvalsResults);
-
-// FinOps + Overview
-opsRoutes.get('/finops', handleFinops);
-opsRoutes.get('/overview', handleOverview);
 
 // Team management
 opsRoutes.get('/team', handleListTeam);
 opsRoutes.post('/team', handleCreateTeamMember);
 opsRoutes.delete('/team/:userId', handleDeleteTeamMember);
 
-// Fairness reviews
-opsRoutes.get('/fairness', handleListFairnessReviews);
-opsRoutes.post('/fairness/:agentId/run', handleOpsRunFairness);
+// Observability (platform-wide or ?tenantId= scoped)
+opsRoutes.get('/observability/summary', handleObsSummary);
+opsRoutes.get('/observability/workflows', handleObsWorkflows);
+opsRoutes.get('/observability/costs', handleObsCosts);
+opsRoutes.get('/observability/audit-volume', handleObsAuditVolume);
+opsRoutes.get('/observability/agents', handleObsAgents);
+opsRoutes.get('/observability/inference-latency', handleObsInferenceLatency);

@@ -13,6 +13,8 @@ import { Observability, DefaultExporter } from '@mastra/observability'
 import { getMastraStore, getMastraMemory } from './memory.js'
 import { taskExecutionWorkflow } from './workflows/taskExecution.js'
 import { documentWorkflow } from './workflows/documentWorkflow.js'
+import { ingestionWorkflow } from './workflows/ingestionWorkflow.js'
+
 import { prdWorkflow } from './workflows/prdWorkflow.js'
 import { dodPassScorer } from './workflows/scorers.js'
 import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
@@ -28,6 +30,7 @@ import { pmAgent } from './agents/pmAgent.js'
 import { roadmapAgent } from './agents/roadmapAgent.js'
 import { taskAgent } from './agents/taskAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
+
 import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { taskWorkflow } from './workflows/taskWorkflow.js'
 import { pmWorkflow } from './workflows/pmWorkflow.js'
@@ -47,10 +50,13 @@ export const mastra = new Mastra({
     pm: pmAgent, // Routing supervisor — classifies intent before pmWorkflow starts
     roadmap: roadmapAgent,
     task: taskAgent,
+
   },
   workflows: {
     taskExecution: taskExecutionWorkflow,
     documentWorkflow,
+    documentIngestion: ingestionWorkflow,
+
     prd: prdWorkflow,
     roadmap: roadmapWorkflow,
     tasks: taskWorkflow,
@@ -61,7 +67,15 @@ export const mastra = new Mastra({
     enabled: true,
     tickIntervalMs: 30_000, // check every 30s
   },
-  scorers: { dodPass: dodPassScorer, prdCompleteness: prdCompletenessScorer, delegationAccuracy: delegationAccuracyScorer, clarityBeforeDelegate: clarityBeforeDelegateScorer, roadmapCompleteness: roadmapCompletenessScorer, taskCompleteness: taskCompletenessScorer },
+  scorers: {
+    dodPass: dodPassScorer,
+    prdCompleteness: prdCompletenessScorer,
+    delegationAccuracy: delegationAccuracyScorer,
+    clarityBeforeDelegate: clarityBeforeDelegateScorer,
+    roadmapCompleteness: roadmapCompletenessScorer,
+    taskCompleteness: taskCompletenessScorer,
+
+  },
   editor: new MastraEditor(),
   observability: new Observability({
     configs: {

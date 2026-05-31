@@ -21,11 +21,7 @@ export function AgentInfoCard({ agent, providers, isLoading }: AgentInfoCardProp
         ? new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date(agent.createdAt))
         : "";
 
-    const resolvedModel =
-        providers.find((p) => p.id === agent?.llmProviderId)?.displayName
-        || providers.find((p) => p.isDefault)?.displayName
-        || agent?.model
-        || "Not set";
+    const resolvedModel = "Gemini 2.5 Flash";
 
     return (
         <Card>

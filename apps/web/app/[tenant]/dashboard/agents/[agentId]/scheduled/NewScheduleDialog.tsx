@@ -42,7 +42,8 @@ interface Props {
 export function NewScheduleDialog({ agentId, onCreated }: Props) {
   const [open, setOpen] = React.useState(false);
   const form = useForm<ScheduleFormData>({
-    resolver: zodResolver(scheduleSchema),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(scheduleSchema as any),
     defaultValues: { templatePrompt: "", cron: "0 9 * * 1", timezone: "Asia/Kolkata" },
   });
 

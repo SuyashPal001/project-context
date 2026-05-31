@@ -8,7 +8,7 @@ import {
     ChevronLeft, ChevronRight,
     MoreHorizontal, CircleAlert, RotateCcw,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { StatusBadge } from "@/components/platform/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,7 @@ export default function TenantsListPage() {
 
     const queryKey = ["ops-tenants", debouncedSearch, status, page] as const;
 
-    const { data, isLoading, isError } = useQuery<OpsTenantsResponse>({
+    const { data, isLoading, isError, error } = useQuery<OpsTenantsResponse>({
         queryKey,
         queryFn: () => {
             let url = `/api/v1/ops/tenants?page=${page}&pageSize=${PAGE_SIZE}`;
@@ -53,7 +53,7 @@ export default function TenantsListPage() {
         mutationFn: ({ id, status }: { id: string; status: string }) =>
             api.patch(`/api/v1/ops/tenants/${id}`, { status }),
         onSuccess: () => { queryClient.invalidateQueries({ queryKey }); toast.success("Tenant status updated"); },
-        onError: () => toast.error("Failed to update tenant status"),
+        onError: (err) => toast.error(err instanceof ApiError ? (err.data?.error ?? err.data?.message ?? `Server error ${err.status}`) : "Failed to update tenant status"),
     });
 
     const tenants = data?.tenants ?? [];
@@ -90,7 +90,7 @@ export default function TenantsListPage() {
                 <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>Failed to load tenants list.</AlertDescription>
+                    <AlertDescription>{error instanceof ApiError ? (error.data?.error ?? error.data?.message ?? `Server error ${error.status}`) : "Failed to load tenants list."}</AlertDescription>
                 </Alert>
             )}
 

@@ -25,6 +25,8 @@ export function useChatPage() {
     const tenantSlug = params.tenant as string;
     const rawConvId = searchParams.get('id');
     const incomingConvId = searchParams.get('conversationId');
+    const incomingAgentId = searchParams.get('agentId');
+
     const conversationId = rawConvId ?? incomingConvId;
     const conversationIdRef = useRef(conversationId);
     conversationIdRef.current = conversationId;
@@ -42,7 +44,7 @@ export function useChatPage() {
 
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
     const tenantClaims = useTenant();
-    const firstName = tenantClaims.given_name ?? tenantClaims.name?.split(' ')[0] ?? 'there';
+    const firstName = 'Gov Officer';
 
     const { data: providersData } = useQuery<{ providers: LLMProvider[] }>({
         queryKey: ['llm-providers'],
@@ -138,6 +140,19 @@ export function useChatPage() {
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isLoadingConversations, isErrorConversations, conversations.length, conversationId, activeAgents.length]);
+
+    // Auto-create a conversation when ?agentId= is in the URL
+    useEffect(() => {
+        if (!incomingAgentId || conversationId || autoCreatingRef.current || isLoadingConversations) return;
+        autoCreatingRef.current = true;
+        api.post<{ data: Conversation }>('/api/v1/conversations', { agentId: incomingAgentId })
+            .then((res) => {
+                queryClient.invalidateQueries({ queryKey: ['conversations'] });
+                router.replace(`/${tenantSlug}/dashboard/chat?id=${res.data.id}`);
+            })
+            .catch(() => { autoCreatingRef.current = false; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [incomingAgentId, conversationId, isLoadingConversations]);
 
     const handleSelectConversation = (conv: Conversation) =>
         router.push(`/${tenantSlug}/dashboard/chat?id=${conv.id}`);

@@ -3,10 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
-import { canDelete } from "@/lib/permissions";
+import { canDelete, can } from "@/lib/permissions";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Shield, Users, MoreVertical } from "lucide-react";
+import { AlertCircle, Shield, Users, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
     Card,
@@ -16,6 +16,7 @@ import {
     CardContent,
 } from "@/components/ui/card";
 import { DeleteRoleAction } from "./DeleteRoleAction";
+import Link from "next/link";
 
 export interface Role {
     id: string;
@@ -41,6 +42,7 @@ export function RolesList() {
     });
 
     const canDeleteRoles = canDelete(permissions, "roles");
+    const canUpdateRoles = can(permissions, "roles", "update");
 
     if (isLoading) {
         return (
@@ -88,9 +90,18 @@ export function RolesList() {
                                 </Badge>
                             )}
                         </div>
-                        {!role.isDefault && !!role.tenantId && canDeleteRoles && (
-                            <DeleteRoleAction roleId={role.id} roleName={role.name} />
-                        )}
+                        <div className="flex items-center gap-1">
+                            {canUpdateRoles && (
+                                <Link href={`/${tenantId}/dashboard/settings/roles/${role.id}`}>
+                                    <button className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                                        <Settings className="h-4 w-4"/>
+                                    </button>
+                                </Link>
+                            )}
+                            {!role.isDefault && !!role.tenantId && canDeleteRoles && (
+                                <DeleteRoleAction roleId={role.id} roleName={role.name} />
+                            )}
+                        </div>
                     </CardHeader>
                     <CardContent>
                         <CardDescription className="text-sm text-muted-foreground mb-4 line-clamp-2 min-h-[40px]">

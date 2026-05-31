@@ -1,13 +1,16 @@
 import { and, eq, ilike, desc, count, isNull, gte, lte, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { tenants, memberships, users, agents, conversations, tenantFeatureOverrides, features, roles } from '@serverless-saas/database/schema';
+import { tenants, memberships, users, tenantFeatureOverrides, features, roles } from '@serverless-saas/database/schema';
+import { agents, conversations } from '@serverless-saas/agent-schema';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-
 import { isPlatformAdmin } from './ops.guard';
+import { getLogger } from '@serverless-saas/logger';
 import type { Context } from 'hono';
 import type { AppEnv } from '../types';
+
+const logger = getLogger({ serviceName: 'ops-api' });
 
 // GET /ops/tenants
 export async function handleListTenants(c: Context<AppEnv>) {
@@ -127,13 +130,16 @@ export async function handlePatchTenant(c: Context<AppEnv>) {
         .where(eq(tenants.id, tenantId))
         .returning();
 
+    const action = result.data.status === 'suspended' ? 'tenant_suspended' : 'tenant_reactivated';
+    logger.info('ops_tenant_status_changed', { traceId: c.get('traceId') ?? 'unknown', tenantId, action, actorId: c.get('userId') });
     try {
         await db.insert(auditLog).values({
             tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
-            action: result.data.status === 'suspended' ? 'tenant_suspended' : 'tenant_reactivated',
-            resource: 'tenant', resourceId: tenantId, metadata: {}, traceId: c.get('traceId') ?? '',
+            action, resource: 'tenant', resourceId: tenantId, metadata: {}, traceId: c.get('traceId') ?? '',
         });
-    } catch (auditErr) { console.error('Audit log write failed:', auditErr); }
+    } catch (auditErr) {
+        logger.warn('ops_audit_log_write_failed', { traceId: c.get('traceId') ?? 'unknown', tenantId, action, error: auditErr as Error });
+    }
 
     return c.json({ data: updated });
 }

@@ -72,6 +72,28 @@ export function fireKnowledgeGap(payload: {
   }).catch((err: Error) => { console.error('[knowledge-gaps] error:', err.message) })
 }
 
+export function fireFairnessAudit(payload: {
+  tenantId: string; conversationId: string; messageId: string; agentId: string; agentName: string
+  overallStatus: 'pass' | 'warn' | 'fail'
+  checkResults: unknown[]
+  responseLength: number
+  toolsUsed: number
+  responseSnippet?: string
+}): void {
+  fetch(`${API_BASE_URL}/api/v1/internal/fairness/audit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-internal-service-key': INTERNAL_SERVICE_KEY },
+    body: JSON.stringify(payload),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const t = await res.text().catch(() => '')
+      console.error(`[fairness] audit post failed: ${res.status} ${t}`)
+    } else {
+      console.log(`[fairness:Sutra1] audit posted cid=${payload.conversationId} status=${payload.overallStatus}`)
+    }
+  }).catch((err: Error) => { console.error('[fairness] audit error:', err.message) })
+}
+
 export function fireTaskStepDelta(taskId: string, stepId: string, tenantId: string, delta: string, text: string): void {
   fetch(`${INTERNAL_API_URL}/internal/tasks/${taskId}/steps/${stepId}/delta`, {
     method: 'POST',

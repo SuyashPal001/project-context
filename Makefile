@@ -1,4 +1,4 @@
-REPO_ROOT := /mnt/data/projects/serverless-saas
+REPO_ROOT := $(shell git rev-parse --show-toplevel)
 ESBUILD   := $(REPO_ROOT)/node_modules/.bin/esbuild
 ESBUILD_FLAGS := --bundle --platform=node --target=es2020 --minify --sourcemap \
   --external:@aws-sdk/*
@@ -24,11 +24,11 @@ build-FoundationWebSocketFunction:
 	  $(ESBUILD_FLAGS)
 
 build-TaskWorkerFunction:
-	$(ESBUILD) $(REPO_ROOT)/apps/api/src/workers/taskWorker.ts \
+	$(ESBUILD) $(REPO_ROOT)/products/agent-platform/packages/api/workers/taskWorker.ts \
 	  --outfile=$(ARTIFACTS_DIR)/taskWorker.js \
 	  $(ESBUILD_FLAGS)
 
 build-WatchdogFunction:
-	$(ESBUILD) $(REPO_ROOT)/apps/api/src/handlers/watchdogHandler.ts \
+	$(ESBUILD) $(REPO_ROOT)/products/agent-platform/packages/api/handlers/watchdogHandler.ts \
 	  --outfile=$(ARTIFACTS_DIR)/watchdogHandler.js \
 	  $(ESBUILD_FLAGS)

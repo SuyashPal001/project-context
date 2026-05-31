@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
@@ -25,8 +26,11 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 
 function ChatPage() {
+    const searchParams = useSearchParams();
+    const folderId = searchParams.get('folderId') ?? undefined;
     const page = useChatPage();
     const {
         tenantSlug, conversationId, conversationIdRef, firstName,
@@ -48,6 +52,7 @@ function ChatPage() {
         conversationId,
         conversationIdRef,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
+        folderId,
         selectedConversation,
         messages,
         handleCanvasUpdate,
@@ -135,18 +140,18 @@ function ChatPage() {
                                 {!hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
                                     activePill !== null ? (
                                         <WizardView pill={activePill} onBack={() => setActivePill(null)} onSubmit={(prompt) => sendMessage(prompt)}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={openVoice} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...modelChangeProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...modelChangeProps} />
                                         </WizardView>
                                     ) : (
                                         <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={(text) => setInputPrefill(text)}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={openVoice} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...modelChangeProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...modelChangeProps} />
                                         </WelcomeView>
                                     )
                                 ) : (
                                     <>
                                         <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} hasContent={hasContent} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} />
                                         <div className="shrink-0 pt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={openVoice} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                         </div>
                                     </>
                                 )}
@@ -175,9 +180,11 @@ function ChatPage() {
                     </div>
 
                     {/* Canvas Panel */}
-                    <div className={cn("transition-all overflow-hidden h-full z-10 bg-background", isCanvasExpanded ? "w-full flex-1" : (isCanvasOpen ? "w-1/2 border-l border-border" : "w-0"))}>
-                        <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={noopActivity} tenantSlug={tenantSlug} flushPending={flushPending} agentId={selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id} />
-                    </div>
+                    {FEATURE_FLAGS.chatCanvas && (
+                        <div className={cn("transition-all overflow-hidden h-full z-10 bg-background", isCanvasExpanded ? "w-full flex-1" : (isCanvasOpen ? "w-1/2 border-l border-border" : "w-0"))}>
+                            <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={noopActivity} tenantSlug={tenantSlug} flushPending={flushPending} agentId={selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id} />
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -200,7 +207,7 @@ function ChatPage() {
                 onSelect={(agent) => { setAgentSelectorOpen(false); createConversation.mutate(agent.id); }}
             />
 
-            <VoiceModal isOpen={isModalOpen} onClose={closeVoice} session={session} onTap={handleTap} />
+            {FEATURE_FLAGS.chatVoice && <VoiceModal isOpen={isModalOpen} onClose={closeVoice} session={session} onTap={handleTap} />}
         </div>
     );
 }

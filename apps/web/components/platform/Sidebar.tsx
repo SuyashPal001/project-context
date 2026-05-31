@@ -39,6 +39,7 @@ import { Badge } from "@/components/ui/badge"
 import { getSidebarItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
 import { UsageBar } from "./UsageBar"
+import { SaarthiLogo } from "./SaarthiLogo"
 
 
 interface SidebarNavLinkProps {
@@ -160,19 +161,13 @@ export function Sidebar() {
             )}>
                 {/* Logo Section */}
                 <div className={cn(
-                    "flex items-center gap-2 mb-8 transition-all px-2",
-                    isSidebarCollapsed ? "justify-center" : "px-2"
+                    "flex items-center mb-8 px-2 transition-all duration-300",
+                    isSidebarCollapsed ? "justify-center" : ""
                 )}>
-                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                        <span className="text-primary-foreground font-bold text-xl uppercase">
-                            {tenantSlug?.[0] || 'P'}
-                        </span>
-                    </div>
-                    {!isSidebarCollapsed && (
-                        <span className="text-lg font-bold tracking-tight text-foreground truncate">
-                            Platform
-                        </span>
-                    )}
+                    <SaarthiLogo
+                        variant={isSidebarCollapsed ? "icon" : "full"}
+                        iconSize={isSidebarCollapsed ? 30 : 28}
+                    />
                 </div>
 
                 {/* Navigation Items */}
