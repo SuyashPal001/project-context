@@ -8,6 +8,7 @@ export const workflowInputSchema = z.object({
   extractedText: z.string().optional(),
   tenantId: z.string(),
   personalIdentifier: z.string().optional(),
+  personFolderId: z.string().optional(),
 })
 
 export const detectFormatOutputSchema = workflowInputSchema.extend({

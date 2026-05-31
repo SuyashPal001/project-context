@@ -16,26 +16,40 @@ function buildExtractionPrompt(documentType: string): string {
   return `${base}\n\nDocument type: ${documentType}\n${hint}`;
 }
 
+function makeGatewayBody(imageBase64: string, safeMime: string, prompt: string): string {
+  return JSON.stringify({
+    model: 'gemini-2.5-flash',
+    temperature: 0.1,
+    max_tokens: 12288,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:${safeMime};base64,${imageBase64}` } },
+        { type: 'text', text: prompt },
+      ],
+    }],
+  })
+}
+
+async function callGateway(imageBase64: string, safeMime: string, prompt: string): Promise<Response> {
+  const url = `${INFERENCE_GATEWAY_URL}/v1/chat/completions`
+  const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: makeGatewayBody(imageBase64, safeMime, prompt) }
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const response = await fetch(url, opts)
+    if (response.status !== 503) return response
+    const delay = (attempt + 1) * 5_000
+    console.warn(`[geminiExtract] 503 on attempt ${attempt + 1}, retrying in ${delay / 1000}s`)
+    await new Promise(r => setTimeout(r, delay))
+  }
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: makeGatewayBody(imageBase64, safeMime, prompt) })
+}
+
 export async function geminiExtract(imageBase64: string, mimeType: string, documentType: string, tenantId?: string): Promise<{ fields: Array<{ key: string; label: string; value: string; confidence: number; page?: number }> }> {
-  const safeMime = mimeType.startsWith('image/') ? mimeType : 'image/jpeg'
+  const ALLOWED_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf']
+  const safeMime = ALLOWED_MIMES.includes(mimeType) ? mimeType : 'image/jpeg'
   const prompt = buildExtractionPrompt(documentType)
   try {
-    const response = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gemini-2.5-flash',
-        temperature: 0.1,
-        max_tokens: 1024,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image_url', image_url: { url: `data:${safeMime};base64,${imageBase64}` } },
-            { type: 'text', text: prompt },
-          ],
-        }],
-      }),
-    })
+    const response = await callGateway(imageBase64, safeMime, prompt)
     if (!response.ok) {
       console.warn('[geminiExtract] inference gateway returned', response.status)
       return { fields: [] }
@@ -60,9 +74,18 @@ export async function geminiExtract(imageBase64: string, mimeType: string, docum
     try {
       parsed = JSON.parse(jsonMatch[0])
     } catch {
-      // Attempt to salvage truncated JSON by trimming after last complete field
-      const truncated = jsonMatch[0].replace(/,?\s*\{[^}]*$/, '').replace(/,\s*$/, '') + ']}'
-      try { parsed = JSON.parse(truncated) } catch { return { fields: [] } }
+      // Salvage attempt 1: trim after last complete object
+      const s1 = jsonMatch[0].replace(/,?\s*\{[^}]*$/, '').replace(/,\s*$/, '') + ']}'
+      try { parsed = JSON.parse(s1) } catch { /* try next */ }
+      if (!parsed) {
+        // Salvage attempt 2: find last complete "}," and close there
+        const lastClose = jsonMatch[0].lastIndexOf('},')
+        if (lastClose > 0) {
+          const s2 = jsonMatch[0].slice(0, lastClose + 1) + ']}'
+          try { parsed = JSON.parse(s2) } catch { /* give up */ }
+        }
+      }
+      if (!parsed) return { fields: [] }
     }
     return { fields: parsed.fields ?? [] }
   } catch (err) {
