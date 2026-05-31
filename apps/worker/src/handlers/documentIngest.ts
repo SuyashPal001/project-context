@@ -4,7 +4,7 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { sql } from 'drizzle-orm';
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
-import { getOrEmbedTexts } from '@serverless-saas/ai';
+import { getOrEmbedTexts, generateTextVertex } from '@serverless-saas/ai';
 import { db } from '../db';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { extractQuestions } from '../rag/extractQuestions';
@@ -46,6 +46,38 @@ function chunkText(text: string): string[] {
     if (start < 0) start = 0;
   }
   return chunks;
+}
+
+// ── Contextual blurb generation ───────────────────────────
+async function generateContextBlurb(
+  documentText: string,
+  chunk: string,
+  documentName: string,
+): Promise<string> {
+  // Use first 8000 chars of document for context — enough to understand structure
+  const docSample = documentText.slice(0, 8000);
+  const prompt = `Here is a document and one chunk extracted from it. Write 2-3 sentences describing what this chunk is about and where it fits in the document. Be specific about the document name, section, rule number, or topic. Output only the description, no preamble.
+
+Document name: ${documentName}
+Document (first 8000 chars):
+${docSample}
+
+Chunk:
+${chunk}
+
+Description:`;
+
+  try {
+    const blurb = await generateTextVertex({
+      prompt,
+      model: 'gemini-2.0-flash',
+      maxTokens: 150,
+      temperature: 0,
+    });
+    return blurb.trim();
+  } catch {
+    return '';
+  }
 }
 
 // ── Parse file content ────────────────────────────────────
@@ -111,8 +143,17 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
       throw new Error('No chunks generated');
     }
 
-    // 5. Embed all chunks (with cache)
-    const embedded = await getOrEmbedTexts(textChunks, 'RETRIEVAL_DOCUMENT');
+    // 5. Generate context blurbs and prepend to each chunk before embedding
+    const documentName = fileKey.split('/').pop() ?? fileKey;
+    const contextualChunks = await Promise.all(
+      textChunks.map(async (chunk) => {
+        const blurb = await generateContextBlurb(text, chunk, documentName);
+        return blurb ? `[CONTEXT: ${blurb}]\n\n${chunk}` : chunk;
+      })
+    );
+
+    // 6. Embed contextualised chunks (with cache)
+    const embedded = await getOrEmbedTexts(contextualChunks, 'RETRIEVAL_DOCUMENT');
 
     // 6. Delete existing chunks (re-ingest is idempotent)
     await db.execute(sql`
@@ -127,18 +168,20 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
 
     // 8. Insert chunks with embeddings + extracted questions
     for (let i = 0; i < embedded.length; i++) {
-      const { text: content, embedding } = embedded[i];
+      const content = contextualChunks[i];
+      const { embedding } = embedded[i];
       const id = chunkId(documentId, i);
       const vectorStr = `[${embedding.join(',')}]`;
 
       // Extract questions this chunk answers — silent fail, never blocks ingestion
       const questions = await extractQuestions(content);
 
+      const rawChunk = textChunks[i];
       const metadata = {
         chunk_index: i,
         total_chunks: embedded.length,
-        char_start: text.indexOf(content),
-        char_end: text.indexOf(content) + content.length,
+        char_start: text.indexOf(rawChunk),
+        char_end: text.indexOf(rawChunk) + rawChunk.length,
         source: mimeType === 'application/pdf' ? 'pdf'
               : mimeType.includes('word') ? 'docx'
               : 'txt',
