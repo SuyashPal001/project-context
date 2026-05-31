@@ -4,7 +4,6 @@ import { retrieveChunks, type RetrievedChunk } from '@serverless-saas/ai'
 import { fastGateChunks, gateChunks, type ScoredChunk } from '../../rag/relevanceGate.js'
 
 const RETRIEVE_LIMIT = 20
-const FAST_GATE_THRESHOLD = 0.3
 const CONTEXT_CHUNK_LIMIT = 5
 
 function toScoredChunk(r: RetrievedChunk): ScoredChunk {
@@ -51,7 +50,7 @@ If this returns no results, say you cannot find the information — never guess.
 
     let chunks: RetrievedChunk[]
     try {
-      chunks = await retrieveChunks(query, tenantId, RETRIEVE_LIMIT, FAST_GATE_THRESHOLD, folderId)
+      chunks = await retrieveChunks(query, tenantId, RETRIEVE_LIMIT, 0, folderId)
     } catch (err) {
       console.error('[retrieveDocuments] retrieveChunks threw:', (err as Error).message)
       return { found: false, context: 'Document retrieval failed. Please try again.' }
@@ -63,7 +62,7 @@ If this returns no results, say you cannot find the information — never guess.
 
     // Fast gate: score threshold filter — no LLM, instant
     const scoredChunks = chunks.map(toScoredChunk)
-    const fastGated = fastGateChunks(scoredChunks, FAST_GATE_THRESHOLD, RETRIEVE_LIMIT)
+    const fastGated = fastGateChunks(scoredChunks, 0, RETRIEVE_LIMIT)
 
     if (fastGated.length === 0) {
       return { found: false, context: 'No relevant content found in indexed documents for this query.' }

@@ -98,4 +98,20 @@ describe('retrieveDocumentsTool', () => {
       'folder-42'
     )
   })
+
+  it('falls back to fast-gated results when gateChunks throws', async () => {
+    const chunks = [makeChunk('c1', 0.02), makeChunk('c2', 0.015)]
+    mockRetrieveChunks.mockResolvedValue(chunks)
+
+    const scoredChunks = chunks.map(c => makeScoredChunk(c.id, c.score))
+    mockFastGate.mockReturnValue(scoredChunks)
+    mockGateChunks.mockRejectedValue(new Error('LLM timeout'))
+
+    const result = await (retrieveDocumentsTool as any).execute(
+      { query: 'gratuity limit', folderId: 'folder-1' },
+      { requestContext: makeRequestContext('tenant-1') }
+    )
+
+    expect(result.found).toBe(true)
+  })
 })
