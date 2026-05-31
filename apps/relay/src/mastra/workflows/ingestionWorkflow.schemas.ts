@@ -8,7 +8,6 @@ export const workflowInputSchema = z.object({
   extractedText: z.string().optional(),
   tenantId: z.string(),
   personalIdentifier: z.string().optional(),
-  personFolderId: z.string().optional(),
 })
 
 export const detectFormatOutputSchema = workflowInputSchema.extend({
@@ -40,10 +39,7 @@ export const validateOutputSchema = extractOutputSchema.extend({
   validationIssues: z.array(z.object({ field: z.string(), issue: z.string() })),
 })
 
-export const commitOutputSchema = validateOutputSchema.extend({
-  lakehouseVersion: z.number(),
-  lakehouseLabel: z.string(),
-})
+export const commitOutputSchema = validateOutputSchema
 
 export const embedOutputSchema = validateOutputSchema.extend({
   chunkCount: z.number(),
