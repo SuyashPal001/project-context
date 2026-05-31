@@ -5,7 +5,7 @@ import { db } from '@serverless-saas/database';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { invitationTokens } from '@serverless-saas/database/schema/invitations';
 import { users } from '@serverless-saas/database/schema/auth';
-import { agents } from '@serverless-saas/database/schema/agents';
+import { agents } from '@serverless-saas/agent-schema/agents';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { sendEmail } from '@serverless-saas/notifications';
@@ -211,7 +211,7 @@ membersRoutes.patch('/:id/status', async (c) => {
                     email: target.email,
                     tokenHash,
                     roleId: target.roleId,
-                    invitedBy: c.get('userId') ?? target.userId,
+                    invitedBy: (c.get('userId') ?? target.userId)!,
                     status: 'pending',
                     expiresAt,
                 });

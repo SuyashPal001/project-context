@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-ses": "^3.0.0",
+    "@aws-sdk/client-ses": "^3.1011.0",
     "@neondatabase/serverless": "^0.10.4",
     "drizzle-orm": "^0.45.2"
   }

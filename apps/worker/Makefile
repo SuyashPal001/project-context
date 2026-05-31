@@ -1,4 +1,4 @@
-REPO_ROOT := /mnt/data/projects/serverless-saas
+REPO_ROOT := $(shell git rev-parse --show-toplevel)
 ESBUILD   := $(REPO_ROOT)/node_modules/.bin/esbuild
 ESBUILD_FLAGS := --bundle --platform=node --target=es2020 --minify --sourcemap \
   --external:@aws-sdk/*

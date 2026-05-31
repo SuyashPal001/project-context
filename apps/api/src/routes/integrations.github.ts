@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { and, eq, isNull, desc } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
-import { githubRepos } from '@serverless-saas/database/schema/github';
+import { githubRepos } from '@serverless-saas/agent-schema/github';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 

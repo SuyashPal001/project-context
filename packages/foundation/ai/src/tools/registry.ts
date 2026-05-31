@@ -13,7 +13,7 @@ export async function getAgentTools(
 ): Promise<ToolRegistryResult> {
   // Dynamically import schema to avoid bundling issues
   const { agentTools, agentToolAssignments } = await import(
-    '@serverless-saas/database/schema'
+    '@serverless-saas/agent-schema'
   )
 
   // Get tools assigned to this agent for this tenant
@@ -102,7 +102,7 @@ export async function getToolByName(
   name: string
 ): Promise<ToolDefinition | null> {
   const { agentTools } = await import(
-    '@serverless-saas/database/schema'
+    '@serverless-saas/agent-schema'
   )
 
   const rows = await db

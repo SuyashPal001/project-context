@@ -6,8 +6,8 @@ import { roles } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { agents, agentTemplates } from '@serverless-saas/database/schema/agents';
-import { agentSkills } from '@serverless-saas/database/schema/conversations';
+import { agents, agentTemplates } from '@serverless-saas/agent-schema/agents';
+import { agentSkills } from '@serverless-saas/agent-schema/conversations';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { eq, isNull, and, desc } from 'drizzle-orm';
 

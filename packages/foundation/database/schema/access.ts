@@ -1,14 +1,13 @@
 import { pgTable, uuid, text, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy';
 import { users } from './auth';
-import { agents } from './agents';
 
 export const apiKeyTypeEnum = pgEnum('api_key_type', ['rest', 'mcp', 'oauth', 'agent']);
 export const apiKeyStatusEnum = pgEnum('api_key_status', ['active', 'revoked']);
 
 export const apiKeys = pgTable('api_keys', {
   id: uuid('id').primaryKey().defaultRandom(),
-  agentId: uuid('agent_id').references(() => agents.id),
+  agentId: uuid('agent_id'),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   name: text('name').notNull(),
   keyHash: text('key_hash').notNull(),

@@ -1,5 +1,5 @@
 import { isNull } from 'drizzle-orm';
-import { agentTools } from '../schema/agents';
+import { agentTools } from '@serverless-saas/agent-schema/agents';
 import type { db as DB } from './index';
 
 type Stakes = 'low' | 'medium' | 'high' | 'critical';

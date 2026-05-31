@@ -90,3 +90,19 @@ export async function resendConfirmationCode(email: string) {
         Username: email,
     });
 }
+
+export async function forgotPassword(email: string) {
+    await cognitoRequest('ForgotPassword', {
+        ClientId: CLIENT_ID,
+        Username: email,
+    });
+}
+
+export async function resetPassword(email: string, code: string, newPassword: string) {
+    await cognitoRequest('ConfirmForgotPassword', {
+        ClientId: CLIENT_ID,
+        Username: email,
+        ConfirmationCode: code,
+        Password: newPassword,
+    });
+}

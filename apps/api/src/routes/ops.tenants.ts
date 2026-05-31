@@ -1,7 +1,8 @@
 import { and, eq, ilike, desc, count, isNull, gte, lte, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database';
-import { tenants, memberships, users, agents, conversations, tenantFeatureOverrides, features, roles } from '@serverless-saas/database/schema';
+import { tenants, memberships, users, tenantFeatureOverrides, features, roles } from '@serverless-saas/database/schema';
+import { agents, conversations } from '@serverless-saas/agent-schema';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { isPlatformAdmin } from './ops.guard';

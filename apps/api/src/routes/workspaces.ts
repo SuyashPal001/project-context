@@ -5,7 +5,7 @@ import { db } from '@serverless-saas/database';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { sessions } from '@serverless-saas/database/schema/auth';
-import { agents, agentWorkflows } from '@serverless-saas/database/schema/agents';
+import { agents, agentWorkflows } from '@serverless-saas/agent-schema/agents';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { webhookEndpoints } from '@serverless-saas/database/schema/webhooks';
 import { auditLog } from '@serverless-saas/database/schema/audit';
