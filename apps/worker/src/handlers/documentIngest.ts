@@ -75,7 +75,8 @@ Description:`;
       temperature: 0,
     });
     return blurb.trim();
-  } catch {
+  } catch (err) {
+    console.warn('[documentIngest] generateContextBlurb failed, using raw chunk:', err instanceof Error ? err.message : String(err));
     return '';
   }
 }
@@ -145,12 +146,11 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
 
     // 5. Generate context blurbs and prepend to each chunk before embedding
     const documentName = fileKey.split('/').pop() ?? fileKey;
-    const contextualChunks = await Promise.all(
-      textChunks.map(async (chunk) => {
-        const blurb = await generateContextBlurb(text, chunk, documentName);
-        return blurb ? `[CONTEXT: ${blurb}]\n\n${chunk}` : chunk;
-      })
-    );
+    const contextualChunks: string[] = [];
+    for (const chunk of textChunks) {
+      const blurb = await generateContextBlurb(text, chunk, documentName);
+      contextualChunks.push(blurb ? `[CONTEXT: ${blurb}]\n\n${chunk}` : chunk);
+    }
 
     // 6. Embed contextualised chunks (with cache)
     const embedded = await getOrEmbedTexts(contextualChunks, 'RETRIEVAL_DOCUMENT');
@@ -173,10 +173,11 @@ export async function handleDocumentIngest(payload: DocumentIngestPayload): Prom
       const id = chunkId(documentId, i);
       const vectorStr = `[${embedding.join(',')}]`;
 
-      // Extract questions this chunk answers — silent fail, never blocks ingestion
-      const questions = await extractQuestions(content);
-
       const rawChunk = textChunks[i];
+
+      // Extract questions this chunk answers — silent fail, never blocks ingestion
+      // Use raw chunk (no blurb prefix) so question extraction operates on original text
+      const questions = await extractQuestions(rawChunk);
       const metadata = {
         chunk_index: i,
         total_chunks: embedded.length,
