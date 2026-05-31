@@ -54,35 +54,13 @@ export async function retrieveChunks(
   tenantId: string,
   limit = 5,
   scoreThreshold = 0.5,
-  personFolderId?: string
 ): Promise<RetrievedChunk[]> {
   const queryEmbedding = await embedQuery(query);
   const vectorStr = `[${queryEmbedding.join(',')}]`;
 
   // Run both table searches in parallel
   const [docResult, kResult] = await Promise.all([
-    personFolderId
-      // Person-folder-scoped query — no documents table JOIN needed
-      ? db.execute(sql`
-          SELECT
-            dc.id,
-            dc.content,
-            dc.chunk_index,
-            dc.metadata,
-            COALESCE(dc.metadata->>'filename', 'document') AS document_name,
-            dc.document_id,
-            (1 - (dc.embedding <=> ${vectorStr}::vector))               AS vector_score,
-            ts_rank(dc.tsv, websearch_to_tsquery('english', ${query}))  AS text_score
-          FROM document_chunks dc
-          WHERE dc.tenant_id = ${tenantId}
-            AND dc.person_folder_id = ${personFolderId}
-            AND (
-              dc.embedding <=> ${vectorStr}::vector < 0.7
-              OR dc.tsv @@ websearch_to_tsquery('english', ${query})
-            )
-          LIMIT 20
-        `)
-      : db.execute(sql`
+    db.execute(sql`
           SELECT
             dc.id,
             dc.content,
@@ -102,7 +80,6 @@ export async function retrieveChunks(
             )
           LIMIT 20
         `),
-
     db.execute(sql`
       SELECT
         id,

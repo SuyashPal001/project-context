@@ -14,7 +14,7 @@ import { getMastraStore, getMastraMemory } from './memory.js'
 import { taskExecutionWorkflow } from './workflows/taskExecution.js'
 import { documentWorkflow } from './workflows/documentWorkflow.js'
 import { ingestionWorkflow } from './workflows/ingestionWorkflow.js'
-import { pensionWorkflow } from './workflows/pensionWorkflow.js'
+
 import { prdWorkflow } from './workflows/prdWorkflow.js'
 import { dodPassScorer } from './workflows/scorers.js'
 import { prdCompletenessScorer } from './scorers/prdCompleteness.js'
@@ -22,8 +22,6 @@ import { delegationAccuracyScorer } from './scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from './scorers/clarityBeforeDelegate.js'
 import { roadmapCompletenessScorer } from './scorers/roadmapCompleteness.js'
 import { taskCompletenessScorer } from './scorers/taskCompleteness.js'
-import { citationGroundingScorer } from './scorers/citationGrounding.js'
-import { findingFaithfulnessScorer } from './scorers/findingFaithfulness.js'
 
 import { platformAgent, SERVER_TOOLS } from './agents/platformAgent.js'
 import { formatterAgent } from './agents/formatterAgent.js'
@@ -32,8 +30,7 @@ import { pmAgent } from './agents/pmAgent.js'
 import { roadmapAgent } from './agents/roadmapAgent.js'
 import { taskAgent } from './agents/taskAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
-import { aiParasAgent } from './agents/aiParasAgent.js'
-import { documentIntelligenceAgent } from './agents/documentIntelligenceAgent.js'
+
 import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { taskWorkflow } from './workflows/taskWorkflow.js'
 import { pmWorkflow } from './workflows/pmWorkflow.js'
@@ -53,14 +50,13 @@ export const mastra = new Mastra({
     pm: pmAgent, // Routing supervisor — classifies intent before pmWorkflow starts
     roadmap: roadmapAgent,
     task: taskAgent,
-    'ai-paras': aiParasAgent,            // Tier 2: pension pre-scrutiny lead
-    'document-intelligence': documentIntelligenceAgent, // Tier 3: document reader
+
   },
   workflows: {
     taskExecution: taskExecutionWorkflow,
     documentWorkflow,
     documentIngestion: ingestionWorkflow,
-    'pension-pre-scrutiny': pensionWorkflow,
+
     prd: prdWorkflow,
     roadmap: roadmapWorkflow,
     tasks: taskWorkflow,
@@ -78,8 +74,7 @@ export const mastra = new Mastra({
     clarityBeforeDelegate: clarityBeforeDelegateScorer,
     roadmapCompleteness: roadmapCompletenessScorer,
     taskCompleteness: taskCompletenessScorer,
-    citationGrounding: citationGroundingScorer,     // pension: finding cites real rule + source
-    findingFaithfulness: findingFaithfulnessScorer, // pension: narration matches verdict
+
   },
   editor: new MastraEditor(),
   observability: new Observability({

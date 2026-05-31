@@ -2,16 +2,12 @@ import type { Agent } from '@mastra/core/agent'
 import { platformAgent } from './agents/platformAgent.js'
 import { pmAgent } from './agents/pmAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
-import { aiParasAgent } from './agents/aiParasAgent.js'
-
 // Map of DB agent name (lowercased) → Mastra agent instance.
 // Exact-match keys are tried first; substring fallback uses the same keys.
 const AGENT_REGISTRY: Record<string, Agent> = {
-  saarthi:               platformAgent as unknown as Agent,
-  'pm agent':            pmAgent as unknown as Agent,
-  architect:             architectAgent as unknown as Agent,
-  'ai-paras':            aiParasAgent as unknown as Agent,
-  'document intelligence': aiParasAgent as unknown as Agent, // routes to AI-PARAS; DocIntel is a sub-agent
+  saarthi:    platformAgent as unknown as Agent,
+  'pm agent': pmAgent as unknown as Agent,
+  architect:  architectAgent as unknown as Agent,
 }
 
 /**
@@ -32,7 +28,7 @@ export function resolveAgent(agentName: string): Agent {
 export function resolveAgentLabel(agent: Agent): string {
   if (agent === (architectAgent as unknown as Agent)) return 'architectAgent'
   if (agent === (pmAgent as unknown as Agent)) return 'pmAgent'
-  if (agent === (aiParasAgent as unknown as Agent)) return 'aiParasAgent'
+
   return 'platformAgent'
 }
 
@@ -64,12 +60,5 @@ export const DEFAULT_AGENTS = [
     is_internal: false,
     apiKeyName: 'Architect API Key',
   },
-  {
-    name: 'AI-PARAS',
-    description: 'CAG pension pre-scrutiny auditor. Validates pension cases against CCS Pension Rules 1972.',
-    type: 'assistant',
-    status: 'active',
-    is_internal: false,
-    apiKeyName: 'AI-PARAS API Key',
-  },
+
 ] as const

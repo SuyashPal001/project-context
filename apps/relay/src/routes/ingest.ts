@@ -11,7 +11,6 @@ interface IngestBody {
   extractedText?: string
   tenantId: string
   personalIdentifier?: string
-  personFolderId?: string
   tenantName?: string
   classification?: string
 }
@@ -31,9 +30,6 @@ function validateBody(raw: unknown): { ok: true; body: IngestBody } | { ok: fals
   if (b.personalIdentifier !== undefined && typeof b.personalIdentifier !== 'string') {
     return { ok: false, error: 'personalIdentifier must be a string when present' }
   }
-  if (b.personFolderId !== undefined && typeof b.personFolderId !== 'string') {
-    return { ok: false, error: 'personFolderId must be a string when present' }
-  }
   return {
     ok: true,
     body: {
@@ -44,7 +40,6 @@ function validateBody(raw: unknown): { ok: true; body: IngestBody } | { ok: fals
       extractedText:      b.extractedText as string | undefined,
       tenantId:           b.tenantId as string,
       personalIdentifier: b.personalIdentifier as string | undefined,
-      personFolderId:     b.personFolderId as string | undefined,
       tenantName:         b.tenantName as string | undefined,
       classification:     b.classification as string | undefined,
     },
