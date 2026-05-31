@@ -58,10 +58,9 @@ export async function runRAGPipeline(
       return { context: buildContext(gated), skipped: false }
     }
 
-    // Retry: gate filtered everything — rewrite query with broader terms
-    console.log('[RAG] Gate filtered all chunks — retrying with explicit rewrite')
-    const retryQuery = await rewriteQuery(message, history)
-    const retryGated = await fetchAndGate(retryQuery, tenantId, folderId)
+    // Retry: gate filtered everything — use original message as fallback query
+    console.log('[RAG] Gate filtered all chunks — retrying with original message')
+    const retryGated = await fetchAndGate(message, tenantId, folderId)
 
     if (retryGated.length > 0) {
       return { context: buildContext(retryGated), skipped: false }
