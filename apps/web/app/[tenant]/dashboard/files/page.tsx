@@ -26,7 +26,7 @@ export default function FilesPage() {
                             Document Ingestion
                         </h1>
                         <p className="text-muted-foreground mt-2">
-                            Upload pension documents, service books, and financial records. Multi-format detection · OCR extraction · Lakehouse indexed.
+                            Upload documents to your knowledge base. Multi-format detection · OCR extraction · RAG indexed.
                         </p>
                     </div>
                     {canUpload && (

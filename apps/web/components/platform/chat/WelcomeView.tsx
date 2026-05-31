@@ -12,13 +12,6 @@ const PM_PROMPTS: { emoji: string; label: string; pill: PillType }[] = [
     { emoji: "🔍", label: "Research a topic",  pill: "research" },
 ];
 
-const PARAS_PROMPTS: { emoji: string; label: string; text: string }[] = [
-    { emoji: "📋", label: "Pension entitlement",  text: "What is the pension entitlement for " },
-    { emoji: "📂", label: "Summarise documents",  text: "Summarise all documents for " },
-    { emoji: "🔍", label: "Verify service record", text: "Verify the service record for " },
-    { emoji: "💰", label: "Calculate gratuity",   text: "Calculate gratuity for " },
-];
-
 const GENERAL_PROMPTS: { emoji: string; label: string; text: string }[] = [
     { emoji: "💡", label: "Brainstorm ideas",     text: "Help me brainstorm ideas for " },
     { emoji: "✍️", label: "Draft something",      text: "Help me draft " },
@@ -37,7 +30,6 @@ interface WelcomeViewProps {
 export function WelcomeView({ agent, firstName, onSelectPill, onSend, children }: WelcomeViewProps) {
     const agentName = agent?.name ?? 'your assistant';
     const isPm = (agent?.name ?? '').toLowerCase().includes('pm');
-    const isParas = (agent?.name ?? '').toLowerCase().includes('paras');
     const tagline = agent?.description
         ?? (isPm ? 'I can help you plan, design, and ship.' : 'How can I help you today?');
 
@@ -63,7 +55,7 @@ export function WelcomeView({ agent, firstName, onSelectPill, onSend, children }
                                 {emoji} {label}
                             </Button>
                         ))
-                        : (isParas ? PARAS_PROMPTS : GENERAL_PROMPTS).map(({ emoji, label, text }) => (
+                        : GENERAL_PROMPTS.map(({ emoji, label, text }) => (
                             <Button key={label} variant="outline"
                                 className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium border-border hover:bg-muted/60 transition-colors"
                                 onClick={() => onSend(text)}

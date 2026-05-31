@@ -128,7 +128,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         queryKey: ['agents'],
         queryFn: () => api.get<{ data: { id: string; name: string; status: string }[] }>('/api/v1/agents'),
     });
-    const aiParasAgentId = agentsData?.data?.find(a => a.status === 'active' && a.name === 'AI-PARAS')?.id ?? null;
+
     const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
     const [deletingFolderName, setDeletingFolderName] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
@@ -314,37 +314,12 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     <EmptyState
                         icon={<FolderOpen className="w-12 h-12" />}
                         title={prefix ? "This folder is empty" : "No documents ingested yet"}
-                        description="Upload pension documents, service books, or financial records to begin."
+                        description="Upload documents to begin."
                         action={canUpload ? { label: "Ingest Document", onClick: onUploadClick } : undefined}
                     />
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {prefix && (() => {
-                        const folderPersonFolderId = (response?.data ?? [])
-                            .filter(f => f.key.startsWith(prefix))
-                            .find(f => f.personFolderId)?.personFolderId ?? null;
-                        const folderAllDone = (response?.data ?? [])
-                            .filter(f => f.key.startsWith(prefix))
-                            .every(f => f.ingestionStatus === 'done');
-                        return folderPersonFolderId && folderAllDone ? (
-                            <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                                <div className="flex items-center gap-2 text-sm text-blue-300">
-                                    <MessageSquare className="w-4 h-4" />
-                                    <span>All documents ingested — ready for AI-PARAS scrutiny</span>
-                                </div>
-                                <Button
-                                    size="sm"
-                                    className="h-7 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5"
-                                    disabled={!aiParasAgentId}
-                                    onClick={() => aiParasAgentId && router.push(`/${tenant}/dashboard/chat?agentId=${aiParasAgentId}&folderId=${folderPersonFolderId}`)}
-                                >
-                                    <MessageSquare className="w-3 h-3" />
-                                    Ask AI-PARAS
-                                </Button>
-                            </div>
-                        ) : null;
-                    })()}
                     {prefix && <FilesFilter
                         officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
                         filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }}

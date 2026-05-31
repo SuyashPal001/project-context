@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Globe, FileSearch, CalendarClock, Network, Scale, ClipboardCheck, UserCheck, BarChart3, BookOpen, Building2, TrendingUp } from "lucide-react";
+import { Brain, Globe, FileSearch, CalendarClock, Network } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AgentDetail } from "@/components/platform/agents/types";
@@ -19,25 +19,6 @@ function isSupervisor(name: string): boolean {
     return n.includes("pm") || (n.includes("product") && !n.includes("prd"));
 }
 
-function isParasAgent(name: string): boolean {
-    const n = name.toLowerCase();
-    return n.includes("paras") || n.includes("pension");
-}
-
-function isITRAgent(name: string): boolean {
-    return name.toLowerCase().includes("itr");
-}
-
-function isSupplementaryAgent(name: string): boolean {
-    const n = name.toLowerCase();
-    return n.includes("supplementary");
-}
-
-function isCommercialAgent(name: string): boolean {
-    const n = name.toLowerCase();
-    return n.includes("commercial");
-}
-
 function fallbackDescription(name: string): string {
     const n = name.toLowerCase();
     if (isSupervisor(n)) {
@@ -51,6 +32,9 @@ function fallbackDescription(name: string): string {
     }
     if (n.includes("task")) {
         return "Breaks approved milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates.";
+    }
+    if (n.includes("architect")) {
+        return "Technical architect with deep codebase knowledge. Reviews designs, proposes system architecture, and answers implementation questions.";
     }
     return "A general-purpose AI agent. Chat with it to search the web, analyse documents, and get work done.";
 }
@@ -68,34 +52,6 @@ const SUPERVISOR_CAPABILITY = {
     description: "Spins up PRD, Roadmap, and Task agents to handle each phase — you only talk to one agent",
 };
 
-const PARAS_CAPABILITIES = [
-    { icon: FileSearch, label: "Pension document analysis", description: "Extracts fields from service books, PPO forms, and salary certificates" },
-    { icon: Scale, label: "CCS Rules 1972 validation", description: "Validates qualifying service, pension formula, commutation ceiling, and DCRG" },
-    { icon: ClipboardCheck, label: "Document completeness check", description: "Verifies all mandatory documents are present before scrutiny begins" },
-    { icon: UserCheck, label: "Officer review routing", description: "Routes findings to Dealing Hand queue with full audit trail" },
-];
-
-const ITR_CAPABILITIES = [
-    { icon: FileSearch, label: "Dual-document cross-reference", description: "Matches ITR declared figures against Assessment Order determinations line by line" },
-    { icon: Scale, label: "IT Act rule engine", description: "Validates deductions, additions, and disallowances under applicable IT Act provisions" },
-    { icon: BarChart3, label: "Risk scoring", description: "Ranks cases by materiality, appellate history, and year-on-year income variance" },
-    { icon: ClipboardCheck, label: "Structured observations", description: "Every finding linked to the exact ITR schedule and AO paragraph" },
-];
-
-const SUPPLEMENTARY_CAPABILITIES = [
-    { icon: BookOpen, label: "Multi-document reconciliation", description: "Cross-checks appropriation accounts, budget estimates, and supplementary demands" },
-    { icon: BarChart3, label: "Anomaly detection", description: "Flags material misstatements, classification errors, and GFR 2017 deviations" },
-    { icon: TrendingUp, label: "Multi-year trend analysis", description: "Tracks 5-year financial trajectories and flags sudden breaks from trend" },
-    { icon: UserCheck, label: "Officer review routing", description: "All reconciliation findings route to the designated audit officer queue" },
-];
-
-const COMMERCIAL_CAPABILITIES = [
-    { icon: Building2, label: "Audit universe management", description: "Tracks all PSUs, ABs, and ULBs with automated risk scoring per entity" },
-    { icon: BarChart3, label: "Financial ratio analysis", description: "Liquidity, solvency, and profitability ratios benchmarked against sector norms" },
-    { icon: ClipboardCheck, label: "GPFR preparation", description: "AI-drafted GPFR chapters with maker-checker review workflow and full audit trail" },
-    { icon: Network, label: "Cross-domain linkages", description: "Flags findings relevant to ITR, compliance, and performance audit teams automatically" },
-];
-
 interface CapabilityItem {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
@@ -108,15 +64,7 @@ export function AgentSkillSection({ agent, isLoading }: AgentSkillSectionProps) 
         ? agent.description
         : fallbackDescription(name);
 
-    const capabilities: CapabilityItem[] = isParasAgent(name)
-        ? PARAS_CAPABILITIES
-        : isITRAgent(name)
-        ? ITR_CAPABILITIES
-        : isSupplementaryAgent(name)
-        ? SUPPLEMENTARY_CAPABILITIES
-        : isCommercialAgent(name)
-        ? COMMERCIAL_CAPABILITIES
-        : isSupervisor(name)
+    const capabilities: CapabilityItem[] = isSupervisor(name)
         ? [SUPERVISOR_CAPABILITY, ...BASE_CAPABILITIES]
         : BASE_CAPABILITIES;
 
