@@ -44,7 +44,7 @@ export function useChatPage() {
 
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
     const tenantClaims = useTenant();
-    const firstName = tenantClaims.given_name ?? tenantClaims.name?.split(' ')[0] ?? 'there';
+    const firstName = 'Gov Officer';
 
     const { data: providersData } = useQuery<{ providers: LLMProvider[] }>({
         queryKey: ['llm-providers'],

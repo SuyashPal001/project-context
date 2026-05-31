@@ -118,13 +118,17 @@ function ProcessingStepsIndicator({ status }: { status: string }) {
     );
 }
 
-const AI_PARAS_AGENT_ID = '22222222-0001-0001-0001-000000000001';
-
 export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, canDelete }: FilesListProps) {
     const queryClient = useQueryClient();
     const params = useParams();
     const router = useRouter();
     const tenant = params.tenant as string;
+
+    const { data: agentsData } = useQuery({
+        queryKey: ['agents'],
+        queryFn: () => api.get<{ data: { id: string; name: string; status: string }[] }>('/api/v1/agents'),
+    });
+    const aiParasAgentId = agentsData?.data?.find(a => a.status === 'active' && a.name === 'AI-PARAS')?.id ?? null;
     const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
     const [deletingFolderName, setDeletingFolderName] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
@@ -332,7 +336,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 <Button
                                     size="sm"
                                     className="h-7 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5"
-                                    onClick={() => router.push(`/${tenant}/dashboard/chat?agentId=${AI_PARAS_AGENT_ID}&folderId=${folderPersonFolderId}`)}
+                                    disabled={!aiParasAgentId}
+                                    onClick={() => aiParasAgentId && router.push(`/${tenant}/dashboard/chat?agentId=${aiParasAgentId}&folderId=${folderPersonFolderId}`)}
                                 >
                                     <MessageSquare className="w-3 h-3" />
                                     Ask AI-PARAS
