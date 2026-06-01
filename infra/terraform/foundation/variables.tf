@@ -224,7 +224,7 @@ variable "frontend_url" {
 # SES
 # -------------------------------------------------------
 variable "ses_from_domain" {
-  description = "SES sending subdomain (e.g. mail.saas.fitnearn.com)"
+  description = "SES sending subdomain (e.g. mail.projectcontext.co)"
   type        = string
 }
 
@@ -232,6 +232,6 @@ variable "ses_from_domain" {
 # Storage
 # -------------------------------------------------------
 variable "domain" {
-  description = "Root domain for the project (e.g. saas.fitnearn.com). Used for S3 CORS wildcard."
+  description = "Root domain for the project (e.g. projectcontext.co). Used for S3 CORS."
   type        = string
 }

@@ -1,5 +1,5 @@
 variable "domain" {
-  description = "The sending domain for SES (e.g. mail.saas.fitnearn.com)"
+  description = "The sending domain for SES (e.g. mail.projectcontext.co)"
   type        = string
 }
 
