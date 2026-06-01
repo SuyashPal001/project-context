@@ -829,9 +829,14 @@ resource "aws_secretsmanager_secret" "token_encryption_key" {
   description = "AES-256-GCM master key for token encryption"
 }
 
-resource "aws_secretsmanager_secret" "google_client_secret" {
-  name        = "${var.project}/${var.environment}/google-client-secret"
-  description = "Google OAuth client secret"
+resource "aws_secretsmanager_secret" "google_oauth" {
+  name        = "${var.project}/${var.environment}/google-oauth"
+  description = "Google OAuth 2.0 client credentials (client_id, client_secret)"
+}
+
+resource "aws_secretsmanager_secret" "zoho_oauth" {
+  name        = "${var.project}/${var.environment}/zoho-oauth"
+  description = "Zoho OAuth 2.0 client credentials (client_id, client_secret)"
 }
 
 resource "aws_secretsmanager_secret" "jira_oauth" {
@@ -844,6 +849,16 @@ resource "aws_secretsmanager_secret" "github_app" {
   description = "GitHub App credentials — JSON with app_id, app_slug, private_key, webhook_secret"
 }
 
+resource "aws_secretsmanager_secret" "gcp_sa_key" {
+  name        = "${var.project}/${var.environment}/gcp-sa-key"
+  description = "GCP service account key JSON — used for Vertex AI and document processing"
+}
+
+resource "aws_secretsmanager_secret" "internal_service_key" {
+  name        = "${var.project}/${var.environment}/internal-service-key"
+  description = "Shared secret for service-to-service auth (API, relay, agent-server, mcp-server)"
+}
+
 resource "aws_ssm_parameter" "jira_redirect_uri" {
   name  = "${local.ssm_prefix}/jira-redirect-uri"
   type  = "String"
@@ -854,6 +869,26 @@ resource "aws_ssm_parameter" "google_redirect_uri" {
   name  = "${local.ssm_prefix}/google-redirect-uri"
   type  = "String"
   value = var.google_redirect_uri
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "zoho_redirect_uri" {
+  name  = "${local.ssm_prefix}/zoho-redirect-uri"
+  type  = "String"
+  value = var.zoho_redirect_uri
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "relay_url" {
+  name  = "${local.ssm_prefix}/relay-url"
+  type  = "String"
+  value = var.relay_url
 
   lifecycle {
     ignore_changes = [value]
@@ -917,5 +952,6 @@ resource "aws_ssm_parameter" "ses_domain_identity_arn" {
 # Data: Google OAuth credentials from Secrets Manager
 # -------------------------------------------------------
 data "aws_secretsmanager_secret_version" "google_oauth" {
-  secret_id = "${var.project}/${var.environment}/google-oauth"
+  secret_id  = aws_secretsmanager_secret.google_oauth.id
+  depends_on = [aws_secretsmanager_secret.google_oauth]
 }
