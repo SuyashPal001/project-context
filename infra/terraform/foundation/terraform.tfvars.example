@@ -63,9 +63,11 @@ upstash_redis_rest_url   = "https://..."        # Upstash REST URL
 upstash_redis_rest_token = "..."                # Upstash REST token
 
 # -------------------------------------------------------
-# Auth / OAuth redirects
+# Auth / OAuth credentials & redirects
 # -------------------------------------------------------
-google_redirect_uri = "https://agent-saas.fitnearn.com/api/v1/integrations/google/callback"
+google_client_id     = ""   # GCP Console → APIs & Services → Credentials
+google_client_secret = ""   # GCP Console → APIs & Services → Credentials
+google_redirect_uri  = "https://agent-saas.fitnearn.com/api/v1/integrations/google/callback"
 zoho_redirect_uri   = "https://agent-saas.fitnearn.com/api/v1/integrations/zoho/callback"
 jira_redirect_uri   = "https://agent-saas.fitnearn.com/api/v1/integrations/jira/callback"
 
