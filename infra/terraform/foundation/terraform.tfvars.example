@@ -25,14 +25,14 @@ region      = "ap-south-1"
 # Cognito
 # -------------------------------------------------------
 cognito_domain_prefix = "project-context-dev"   # must be globally unique
-cognito_callback_urls = ["http://localhost:3000/auth/callback", "https://agent-saas.fitnearn.com/auth/callback"]
-cognito_logout_urls   = ["http://localhost:3000", "https://agent-saas.fitnearn.com"]
+cognito_callback_urls = ["http://localhost:3000/auth/callback", "https://projectcontext.co/auth/callback"]
+cognito_logout_urls   = ["http://localhost:3000", "https://projectcontext.co"]
 
 # -------------------------------------------------------
 # API Gateway
 # -------------------------------------------------------
 api_name           = "project-context-api-dev"
-cors_allow_origins = ["http://localhost:3000", "https://agent-saas.fitnearn.com"]
+cors_allow_origins = ["http://localhost:3000", "https://projectcontext.co", "https://*.projectcontext.co"]
 
 # -------------------------------------------------------
 # SQS
@@ -67,15 +67,15 @@ upstash_redis_rest_token = "..."                # Upstash REST token
 # -------------------------------------------------------
 google_client_id     = ""   # GCP Console → APIs & Services → Credentials
 google_client_secret = ""   # GCP Console → APIs & Services → Credentials
-google_redirect_uri  = "https://agent-saas.fitnearn.com/api/v1/integrations/google/callback"
-zoho_redirect_uri   = "https://agent-saas.fitnearn.com/api/v1/integrations/zoho/callback"
-jira_redirect_uri   = "https://agent-saas.fitnearn.com/api/v1/integrations/jira/callback"
+google_redirect_uri  = "https://projectcontext.co/api/v1/integrations/google/callback"
+zoho_redirect_uri   = "https://projectcontext.co/api/v1/integrations/zoho/callback"
+jira_redirect_uri   = "https://projectcontext.co/api/v1/integrations/jira/callback"
 
 # -------------------------------------------------------
 # URLs
 # -------------------------------------------------------
-frontend_url = "https://agent-saas.fitnearn.com"
-relay_url    = "https://relay.agent-saas.fitnearn.com"   # or http://localhost:3001 for dev
+frontend_url = "https://projectcontext.co"
+relay_url    = "https://relay.projectcontext.co"   # or http://localhost:3001 for dev
 
 # -------------------------------------------------------
 # WebSocket
@@ -85,5 +85,5 @@ ws_token_secret = ""   # random secret, e.g. openssl rand -hex 32
 # -------------------------------------------------------
 # SES / Domain
 # -------------------------------------------------------
-ses_from_domain = "mail.saas.fitnearn.com"
-domain          = "saas.fitnearn.com"
+ses_from_domain = "mail.projectcontext.co"
+domain          = "projectcontext.co"

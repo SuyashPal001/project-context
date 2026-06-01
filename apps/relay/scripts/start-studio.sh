@@ -12,7 +12,7 @@
 
 npx mastra studio \
   --port 3010 \
-  --server-host agent-saas.fitnearn.com \
+  --server-host projectcontext.co \
   --server-port 443 \
   --server-protocol https \
   --server-api-prefix /studio \

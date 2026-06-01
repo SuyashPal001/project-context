@@ -78,7 +78,7 @@ Resources:
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           FROM_EMAIL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/ses/from-email}}"
           UPSTASH_REDIS_TOKEN_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/cache"
-          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
+          OPENCLAW_WS_ENDPOINT: "wss://projectcontext.co"
           DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
           GCP_SA_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/gcp-sa-key"
           GCP_LOCATION: "us-central1"
@@ -95,7 +95,7 @@ Resources:
           TOKEN_ENCRYPTION_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/token-encryption-key"
           FRONTEND_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/frontend-url}}"
           RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
-          LAKEHOUSE_URL: "https://agent-saas.fitnearn.com/api/lakehouse"
+          LAKEHOUSE_URL: "https://projectcontext.co/api/lakehouse"
           INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
           AGENT_TASK_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/agent-task-queue-url}}"
     Metadata:
@@ -146,7 +146,7 @@ Resources:
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
-          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
+          OPENCLAW_WS_ENDPOINT: "wss://projectcontext.co"
           PLATFORM_ADMIN_EMAILS: !Ref PlatformAdminEmails
     Metadata:
       BuildMethod: makefile
@@ -170,7 +170,7 @@ Resources:
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           WS_TOKEN_SECRET_SSM_PATH: !Sub "/${ProjectName}/${EnvironmentName}/ws-token-secret"
-          OPENCLAW_WS_ENDPOINT: "wss://agent-saas.fitnearn.com"
+          OPENCLAW_WS_ENDPOINT: "wss://projectcontext.co"
     Metadata:
       BuildMethod: makefile
 
