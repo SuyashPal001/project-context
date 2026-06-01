@@ -10,7 +10,7 @@ locals {
 # Data: WebSocket Lambda (deployed by SAM)
 # -------------------------------------------------------
 data "aws_lambda_function" "websocket" {
-  function_name = "serverless-saas-foundation-websocket-dev"
+  function_name = "project-context-foundation-websocket-dev"
 }
 
 # -------------------------------------------------------
@@ -310,7 +310,7 @@ module "api_gateway" {
 # API Gateway: WebSocket API
 # -------------------------------------------------------
 resource "aws_apigatewayv2_api" "ws_api" {
-  name                         = "serverless-saas-websocket-dev"
+  name                         = "project-context-websocket-dev"
   protocol_type                = "WEBSOCKET"
   route_selection_expression = "$request.body.action"
 }

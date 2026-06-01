@@ -143,7 +143,7 @@ variable "foundation_worker_lambda_arn" {
 variable "agent_task_queue_name" {
   description = "Name of the agent task SQS queue"
   type        = string
-  default     = "serverless-saas-agent-task-queue-dev"
+  default     = "project-context-agent-task-queue-dev"
 }
 
 variable "task_worker_lambda_arn" {

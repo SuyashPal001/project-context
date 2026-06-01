@@ -8,7 +8,7 @@ Description: >
 Parameters:
   ProjectName:
     Type: String
-    Default: serverless-saas
+    Default: project-context
 
   EnvironmentName:
     Type: String
@@ -17,15 +17,15 @@ Parameters:
 
   FoundationApiRoleArn:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /serverless-saas/dev/iam/foundation-api-role-arn
+    Default: /project-context/dev/iam/foundation-api-role-arn
 
   FoundationWorkerRoleArn:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /serverless-saas/dev/iam/foundation-worker-role-arn
+    Default: /project-context/dev/iam/foundation-worker-role-arn
 
   FoundationPretokenRoleArn:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /serverless-saas/dev/iam/foundation-pretoken-role-arn
+    Default: /project-context/dev/iam/foundation-pretoken-role-arn
 
   PlatformAdminEmails:
     Type: String
@@ -34,11 +34,11 @@ Parameters:
 
   FoundationWebSocketRoleArn:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /serverless-saas/dev/iam/foundation-websocket-role-arn
+    Default: /project-context/dev/iam/foundation-websocket-role-arn
 
   TaskWorkerRoleArn:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /serverless-saas/dev/iam/task-worker-role-arn
+    Default: /project-context/dev/iam/task-worker-role-arn
 
 Globals:
   Function:
