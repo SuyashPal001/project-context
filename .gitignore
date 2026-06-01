@@ -50,6 +50,7 @@ infra/terraform/**/terraform.tfvars
 !README.md
 !CLAUDE.md
 !ONBOARDING.md
+!LAUNCH-CHECKLIST.md
 
 # Temp SAM build artifacts
 apps/**/package.original.json
