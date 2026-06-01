@@ -5,7 +5,7 @@ import type { Attachment } from '@/types/agent-events';
 import { SSEParser } from './useChat/sseParser';
 import { getAuthTokens, attemptRefresh } from './useChat/auth';
 
-const CHAT_ENDPOINT = 'https://agent-saas.fitnearn.com/api/chat';
+const CHAT_ENDPOINT = `${process.env.NEXT_PUBLIC_API_URL ?? 'https://projectcontext.co'}/api/chat`;
 const RETRY_INTERVAL_MS = 5_000;
 const RETRY_MAX_MS = 90_000;
 const WARMUP_MESSAGE = 'Taking longer than usual. Your workspace is still warming up — please try again in a moment.';

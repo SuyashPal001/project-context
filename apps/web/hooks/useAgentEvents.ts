@@ -205,7 +205,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        const wsUrl = process.env.NEXT_PUBLIC_AGENT_WS_URL || "wss://agent-saas.fitnearn.com";
+        const wsUrl = process.env.NEXT_PUBLIC_AGENT_WS_URL || "wss://relay.projectcontext.co";
 
         if (!wsUrl) {
           console.error('NEXT_PUBLIC_AGENT_WS_URL is not defined');

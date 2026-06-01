@@ -1,7 +1,7 @@
 # agent-relay
 
 WebSocket + SSE relay bridging the frontend to the Mastra `platformAgent` (Saarthi).
-Runs on GCP VM port 3001. Publicly exposed via NGINX at `wss://agent-saas.fitnearn.com`.
+Runs on GCP VM port 3001. Publicly exposed via NGINX at `wss://relay.projectcontext.co`.
 
 ## Architecture
 
@@ -37,12 +37,8 @@ Runs on GCP VM port 3001. Publicly exposed via NGINX at `wss://agent-saas.fitnea
 ## Deploy (GCP VM)
 
 ```bash
-cd /home/suyashresearchwork/serverless-saas/apps/relay
+cd /home/suyashresearchwork/project-context/apps/relay
 npm run build && pm2 restart agent-relay
-```
-
-> **Note:** Repo is at `/home/suyashresearchwork/serverless-saas/` (canonical).
-> `/opt/serverless-saas/` is a dead clone — do not edit it.
 
 ## Environment variables (relay .env)
 
