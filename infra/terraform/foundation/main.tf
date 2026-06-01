@@ -10,7 +10,7 @@ locals {
 # Data: WebSocket Lambda (deployed by SAM)
 # -------------------------------------------------------
 data "aws_lambda_function" "websocket" {
-  function_name = "project-context-foundation-websocket-dev"
+  function_name = "${var.project}-foundation-websocket-${var.environment}"
 }
 
 # -------------------------------------------------------
@@ -310,7 +310,7 @@ module "api_gateway" {
 # API Gateway: WebSocket API
 # -------------------------------------------------------
 resource "aws_apigatewayv2_api" "ws_api" {
-  name                         = "project-context-websocket-dev"
+  name                         = "${var.project}-websocket-${var.environment}"
   protocol_type                = "WEBSOCKET"
   route_selection_expression = "$request.body.action"
 }
@@ -339,9 +339,9 @@ resource "aws_apigatewayv2_route" "default" {
   target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
 }
 
-resource "aws_apigatewayv2_stage" "ws_dev" {
+resource "aws_apigatewayv2_stage" "ws" {
   api_id      = aws_apigatewayv2_api.ws_api.id
-  name        = "dev"
+  name        = var.environment
   auto_deploy = true
 }
 
@@ -803,7 +803,7 @@ resource "aws_ssm_parameter" "ws_api_id" {
 resource "aws_ssm_parameter" "ws_api_endpoint" {
   name  = "/${var.project}/${var.environment}/api-gateway/ws-api-endpoint"
   type  = "String"
-  value = aws_apigatewayv2_stage.ws_dev.invoke_url
+  value = aws_apigatewayv2_stage.ws.invoke_url
 }
 
 resource "aws_ssm_parameter" "iam_foundation_websocket_role_arn" {

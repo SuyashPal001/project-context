@@ -1,0 +1,87 @@
+# Copy to terraform.tfvars and fill in your values
+# cp terraform.tfvars.example terraform.tfvars
+#
+# Deployment order:
+#   1. sam deploy --config-env dev          (writes Lambda ARNs to SSM)
+#   2. terraform apply                      (reads ARNs, wires everything)
+#
+# Secrets seeded manually in AWS Secrets Manager before terraform apply:
+#   project-context/{env}/google-oauth      → { client_id, client_secret }
+#   project-context/{env}/gcp-sa-key        → GCP service account JSON
+#   project-context/{env}/internal-service-key → random secret string
+#   project-context/{env}/token-encryption-key → 32-byte hex key
+#   project-context/{env}/jira-oauth        → { client_id, client_secret }
+#   project-context/{env}/github-app        → { app_id, private_key, webhook_secret }
+#   project-context/{env}/zoho-oauth        → { client_id, client_secret }
+
+# -------------------------------------------------------
+# Core
+# -------------------------------------------------------
+project     = "project-context"
+environment = "dev"                 # dev | staging | prod
+region      = "ap-south-1"
+
+# -------------------------------------------------------
+# Cognito
+# -------------------------------------------------------
+cognito_domain_prefix = "project-context-dev"   # must be globally unique
+cognito_callback_urls = ["http://localhost:3000/auth/callback", "https://agent-saas.fitnearn.com/auth/callback"]
+cognito_logout_urls   = ["http://localhost:3000", "https://agent-saas.fitnearn.com"]
+
+# -------------------------------------------------------
+# API Gateway
+# -------------------------------------------------------
+api_name           = "project-context-api-dev"
+cors_allow_origins = ["http://localhost:3000", "https://agent-saas.fitnearn.com"]
+
+# -------------------------------------------------------
+# SQS
+# -------------------------------------------------------
+processing_queue_name  = "project-context-processing-queue-dev"
+workflow_queue_name    = "project-context-workflow-queue-dev"
+agent_task_queue_name  = "project-context-agent-task-queue-dev"
+
+# -------------------------------------------------------
+# SNS / EventBridge
+# -------------------------------------------------------
+events_topic_name = "project-context-events-dev"
+event_bus_name    = "project-context-bus-dev"
+
+# -------------------------------------------------------
+# Lambda ARNs — filled after `sam deploy --config-env dev`
+# -------------------------------------------------------
+pre_token_generation_lambda_arn = "arn:aws:lambda:ap-south-1:ACCOUNT_ID:function:project-context-foundation-pretoken-dev"
+foundation_api_lambda_arn       = "arn:aws:lambda:ap-south-1:ACCOUNT_ID:function:project-context-foundation-api-dev"
+foundation_worker_lambda_arn    = "arn:aws:lambda:ap-south-1:ACCOUNT_ID:function:project-context-foundation-worker-dev"
+task_worker_lambda_arn          = "arn:aws:lambda:ap-south-1:ACCOUNT_ID:function:project-context-task-worker-dev"
+
+# -------------------------------------------------------
+# Database & Cache
+# -------------------------------------------------------
+database_url             = "postgresql://..."   # Neon connection string
+upstash_redis_rest_url   = "https://..."        # Upstash REST URL
+upstash_redis_rest_token = "..."                # Upstash REST token
+
+# -------------------------------------------------------
+# Auth / OAuth redirects
+# -------------------------------------------------------
+google_redirect_uri = "https://agent-saas.fitnearn.com/api/v1/integrations/google/callback"
+zoho_redirect_uri   = "https://agent-saas.fitnearn.com/api/v1/integrations/zoho/callback"
+jira_redirect_uri   = "https://agent-saas.fitnearn.com/api/v1/integrations/jira/callback"
+
+# -------------------------------------------------------
+# URLs
+# -------------------------------------------------------
+frontend_url = "https://agent-saas.fitnearn.com"
+relay_url    = "https://relay.agent-saas.fitnearn.com"   # or http://localhost:3001 for dev
+
+# -------------------------------------------------------
+# WebSocket
+# -------------------------------------------------------
+ws_token_secret = ""   # random secret, e.g. openssl rand -hex 32
+
+# -------------------------------------------------------
+# SES / Domain
+# -------------------------------------------------------
+ses_from_domain = "mail.saas.fitnearn.com"
+domain          = "saas.fitnearn.com"
