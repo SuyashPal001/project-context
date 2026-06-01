@@ -1,7 +1,7 @@
 // Direct relay API client for schedule management.
 // Relay auth uses platform_id_token (not httpOnly) as Bearer token.
 
-const RELAY_BASE = "https://agent-saas.fitnearn.com";
+const RELAY_BASE = process.env.NEXT_PUBLIC_AGENT_WS_URL?.replace(/^wss?:\/\//, 'https://') ?? "https://relay.projectcontext.co";
 
 function getIdToken(): string {
   if (typeof document === "undefined") return "";
