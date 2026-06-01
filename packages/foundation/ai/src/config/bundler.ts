@@ -2,7 +2,7 @@
  * Config Bundler
  *
  * Loads agent configuration from the database and builds an AgentSessionConfig
- * to pass to the OpenClaw VM runtime on session start.
+ * to pass to the agent runtime on session start.
  *
  * LLM provider fallback chain:
  *   1. Agent's pinned provider (llmProviderId is set on the agent row)

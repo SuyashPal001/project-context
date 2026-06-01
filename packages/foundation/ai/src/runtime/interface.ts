@@ -39,9 +39,9 @@ export interface AgentRuntime {
 }
 
 // =============================================================================
-// SESSION-BASED INTERFACE — used by OpenClaw VM (WebSocket sessions)
+// SESSION-BASED INTERFACE — implement this to wire an agent runtime adapter
 //
-// All VM adapters implement this interface. The message relay route calls this
+// All runtime adapters implement this interface. The message relay route calls this
 // without knowing what's underneath.
 // =============================================================================
 
