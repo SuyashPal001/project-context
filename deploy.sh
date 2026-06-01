@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-cd /home/suyashresearchwork/serverless-saas
+cd /home/suyashresearchwork/project-context
 
 # Stop PM2 BEFORE clearing .next so it doesn't crash-loop during the build.
 # Without this, PM2 retries thousands of times against the missing server.js.
