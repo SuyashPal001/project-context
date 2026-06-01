@@ -64,8 +64,8 @@ module "cognito" {
       provider_name = "Google"
       provider_type = "Google"
       provider_details = {
-        client_id        = jsondecode(data.aws_secretsmanager_secret_version.google_oauth.secret_string)["client_id"]
-        client_secret    = jsondecode(data.aws_secretsmanager_secret_version.google_oauth.secret_string)["client_secret"]
+        client_id        = var.google_client_id
+        client_secret    = var.google_client_secret
         authorize_scopes = "email openid profile"
       }
       attribute_mapping = {
@@ -834,6 +834,14 @@ resource "aws_secretsmanager_secret" "google_oauth" {
   description = "Google OAuth 2.0 client credentials (client_id, client_secret)"
 }
 
+resource "aws_secretsmanager_secret_version" "google_oauth" {
+  secret_id     = aws_secretsmanager_secret.google_oauth.id
+  secret_string = jsonencode({
+    client_id     = var.google_client_id
+    client_secret = var.google_client_secret
+  })
+}
+
 resource "aws_secretsmanager_secret" "zoho_oauth" {
   name        = "${var.project}/${var.environment}/zoho-oauth"
   description = "Zoho OAuth 2.0 client credentials (client_id, client_secret)"
@@ -948,10 +956,3 @@ resource "aws_ssm_parameter" "ses_domain_identity_arn" {
   value = module.ses.domain_identity_arn
 }
 
-# -------------------------------------------------------
-# Data: Google OAuth credentials from Secrets Manager
-# -------------------------------------------------------
-data "aws_secretsmanager_secret_version" "google_oauth" {
-  secret_id  = aws_secretsmanager_secret.google_oauth.id
-  depends_on = [aws_secretsmanager_secret.google_oauth]
-}

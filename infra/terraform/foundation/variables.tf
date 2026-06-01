@@ -185,6 +185,18 @@ variable "jira_redirect_uri" {
 }
 
 # Google OAuth
+variable "google_client_id" {
+  description = "Google OAuth 2.0 client ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth 2.0 client secret"
+  type        = string
+  sensitive   = true
+}
+
 variable "google_redirect_uri" {
   description = "Redirect URI registered in the Google Cloud Console for OAuth (e.g. https://api.example.com/api/v1/integrations/google/callback)"
   type        = string
