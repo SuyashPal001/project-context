@@ -48,6 +48,7 @@ infra/terraform/**/terraform.tfvars
 # Internal docs (contain architecture details / env references)
 *.md
 !README.md
+!CLAUDE.md
 
 # Temp SAM build artifacts
 apps/**/package.original.json
