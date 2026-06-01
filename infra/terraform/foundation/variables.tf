@@ -190,6 +190,18 @@ variable "google_redirect_uri" {
   type        = string
 }
 
+# Zoho OAuth
+variable "zoho_redirect_uri" {
+  description = "Redirect URI registered in the Zoho API console for OAuth"
+  type        = string
+}
+
+# Relay
+variable "relay_url" {
+  description = "Public URL of the relay service (e.g. https://relay.example.com)"
+  type        = string
+}
+
 # Frontend
 variable "frontend_url" {
   description = "Public frontend base URL used for OAuth callback redirects (e.g. https://app.example.com)"

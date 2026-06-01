@@ -43,7 +43,7 @@ resource "aws_s3_bucket_cors_configuration" "files" {
 
 # SSM parameter so Lambda can read the bucket name at runtime
 resource "aws_ssm_parameter" "storage_bucket" {
-  name  = "${local.ssm_prefix}/storage/bucket"
+  name  = "${local.ssm_prefix}/s3/documents-bucket-name"
   type  = "String"
   value = aws_s3_bucket.files.bucket
 }
