@@ -1,5 +1,5 @@
-bucket         = "serverless-saas-terraform-state"
+bucket         = "project-context-terraform-state"
 region         = "ap-south-1"
-dynamodb_table = "serverless-saas-terraform-locks"
+dynamodb_table = "project-context-terraform-locks"
 encrypt        = true
 key            = "staging/aws/ap-south-1/foundation/terraform.tfstate"

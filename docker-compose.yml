@@ -3,7 +3,7 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15
-    container_name: serverless-saas-postgres
+    container_name: project-context-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -15,7 +15,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: serverless-saas-redis
+    container_name: project-context-redis
     ports:
       - "6379:6379"
 

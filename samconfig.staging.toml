@@ -5,11 +5,11 @@ cached = true
 parallel = true
 
 [default.deploy.parameters]
-stack_name              = "serverless-saas-foundation-staging"
-s3_bucket               = "serverless-saas-sam-deployments"
-s3_prefix               = "serverless-saas-foundation-staging"
+stack_name              = "project-context-foundation-staging"
+s3_bucket               = "project-context-sam-deployments"
+s3_prefix               = "project-context-foundation-staging"
 region                  = "ap-south-1"
 capabilities            = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
 confirm_changeset       = true
 fail_on_empty_changeset = false
-parameter_overrides     = "ProjectName=serverless-saas EnvironmentName=staging"
+parameter_overrides     = "ProjectName=project-context EnvironmentName=staging"

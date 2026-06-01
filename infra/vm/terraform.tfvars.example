@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars and fill in your values
+# cp terraform.tfvars.example terraform.tfvars
+
+# -------------------------------------------------------
+# Required
+# -------------------------------------------------------
+cloud   = "gcp"             # gcp | aws | hetzner
+project = "serverless-saas" # used for resource naming
+
+# -------------------------------------------------------
+# GCP (if cloud = "gcp")
+# -------------------------------------------------------
+gcp_project_id   = "your-gcp-project-id"
+gcp_region       = "asia-south1"
+gcp_machine_type = "e2-medium"   # 2 vCPU, 4GB RAM
+
+# -------------------------------------------------------
+# AWS (if cloud = "aws")
+# -------------------------------------------------------
+# aws_region        = "ap-south-1"
+# aws_instance_type = "t3.small"
+# aws_ami           = "ami-xxxxxxxxxxxxxxxxx"  # Ubuntu 22.04 LTS in your region
+
+# -------------------------------------------------------
+# Security — restrict to your team's IPs in production
+# -------------------------------------------------------
+# allowed_cidr_blocks = ["203.0.113.0/24"]  # your office/team IPs
+allowed_cidr_blocks = ["0.0.0.0/0"]         # open for dev (change for staging/prod)

@@ -5,11 +5,11 @@ cached = true
 parallel = true
 
 [default.deploy.parameters]
-stack_name              = "serverless-saas-foundation-dev"
-s3_bucket               = "serverless-saas-sam-deployments-dev"
-s3_prefix               = "serverless-saas-foundation-dev"
+stack_name              = "project-context-foundation-dev"
+s3_bucket               = "project-context-sam-deployments-dev"
+s3_prefix               = "project-context-foundation-dev"
 region                  = "ap-south-1"
 capabilities            = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
 confirm_changeset       = false
 fail_on_empty_changeset = false
-parameter_overrides     = "ProjectName=serverless-saas EnvironmentName=dev PlatformAdminEmails=suyash@fitnearn.com,ops@fitnearn.com"
+parameter_overrides     = "ProjectName=project-context EnvironmentName=dev PlatformAdminEmails=suyash@fitnearn.com,ops@fitnearn.com"
