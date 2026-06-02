@@ -2,7 +2,7 @@
 
 ## What this repo is
 
-A multi-tenant SaaS platform with an agentic AI layer built on top. The foundation handles auth, tenancy, billing, roles, notifications, webhooks, files, and audit. The agent platform adds async task planning, real-time agent orchestration, MCP tool integrations, and a Delta Lake data store for domain-specific knowledge (pension records).
+A multi-tenant SaaS platform with an agentic AI layer built on top. The foundation handles auth, tenancy, billing, roles, notifications, webhooks, files, and audit. The agent platform adds async task planning, real-time agent orchestration, and MCP tool integrations.
 
 Domain: **projectcontext.co**
 
@@ -18,7 +18,6 @@ Domain: **projectcontext.co**
 - **MCP server:** Standalone Node.js service on GCP VM (port 3002) — Gmail, Google integrations
 - **AI service:** Python FastAPI (port 3004) — document processing
 - **Inference gateway:** Node.js proxy (port 4001) — Vertex AI / Gemini
-- **Lakehouse:** Python FastAPI + Delta Lake (port 8001) — pension records
 - **Agent server:** OpenClaw runtime (port 3003)
 - **DB:** Neon PostgreSQL + Drizzle ORM
 - **Cache:** Upstash Redis
@@ -40,7 +39,6 @@ apps/
   agent-server/     OpenClaw agent runtime
   ai-service/       Python FastAPI — document AI processing
   inference-gateway/ Node.js proxy — Vertex AI / Gemini
-  lakehouse/        Python FastAPI — Delta Lake data warehouse
 
 packages/foundation/
   ai                LLM provider clients (Vertex, Anthropic)
@@ -67,7 +65,7 @@ products/agent-platform/packages/
 
 infra/
   terraform/        IaC — Cognito, API GW, SQS, SNS, EventBridge, S3, IAM, secrets
-  vm/               One-click dev VM (GCP/AWS) — pgvector + Redis + Lakehouse
+  vm/               One-click dev VM (GCP/AWS) — pgvector + Redis
   monitoring/       Prometheus + Grafana stack
 
 mcp-server/         Standalone MCP server (own package.json, npm not pnpm)
@@ -103,7 +101,6 @@ bootstrap.sh        Creates S3 + DynamoDB resources before first deploy
 | `apps/agent-server` | Node.js (PM2) | GCP VM | 3003 |
 | `apps/ai-service` | Python (PM2) | GCP VM | 3004 |
 | `apps/inference-gateway` | Node.js (PM2) | GCP VM | 4001 |
-| `apps/lakehouse` | Python (uvicorn) | GCP VM | 8001 |
 
 **Deploy script for GCP VM services:** `./deploy.sh` (rebuilds Next.js + restarts PM2)
 
@@ -178,7 +175,6 @@ Agent platform handlers registered via `registerProductHandlers`.
 - **SSM namespace is `/project-context/{env}/...`** — not `serverless-saas`. The package scope `@serverless-saas/*` is internal-only and never touches AWS.
 - **Tenant routing in web.** Dashboard URLs are `/{tenantSlug}/dashboard/*`. Subdomain routing (`acme.projectcontext.co`) is handled by `apps/web/middleware.ts` via `NEXT_PUBLIC_ROOT_DOMAIN`.
 - **Inference gateway proxies Vertex AI.** `apps/inference-gateway` on port 4001 is the single point for all Gemini/Vertex calls. Agent orchestrator and other services hit it via `VERTEX_PROXY_URL`.
-- **Lakehouse holds pension data.** `apps/lakehouse` is a Python FastAPI service backed by Delta Lake at `/data/pension_records`. It's stateful — volume must persist.
 - **pgvector required.** Use `pgvector/pgvector:pg16` not vanilla postgres for local dev. The agent platform uses vector search.
 
 ---
@@ -241,7 +237,7 @@ terraform init -backend-config=../environments/dev/backend.hcl
 terraform plan
 terraform apply
 
-# Dev VM (one-click Postgres + Redis + Lakehouse)
+# Dev VM (one-click Postgres + Redis)
 cd infra/vm
 cp terraform.tfvars.example terraform.tfvars
 terraform init && terraform apply
@@ -250,6 +246,17 @@ terraform output env_block   # paste into .env files
 # GCP VM deploy (web + PM2 services)
 ./deploy.sh
 ```
+
+---
+
+## Foundation vs Product rule
+
+Before writing any new code, ask: **"Is this foundation or product?"**
+
+- **Foundation** — works for any SaaS product, has no knowledge of PM workflows, pension records, or any specific domain. Goes in `packages/foundation/*`, `apps/api` foundation routes, `apps/web` foundation pages, or the base agent-orchestrator setup (platformAgent, memory, model, guardrails, RAG pipeline).
+- **Product** — specific to `project-context` (PM workflows, PRD, roadmap, tasks, agents, board, chat, evals). Goes in `products/agent-platform/*`, product-specific agent-orchestrator agents/workflows, product-specific web pages.
+
+This boundary stays clean until the foundation is extracted into a separate repo after the first production product ships. Don't strip it early — ship first, extract after.
 
 ---
 
