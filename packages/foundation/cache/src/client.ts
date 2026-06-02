@@ -5,7 +5,7 @@ import Redis from 'ioredis';
 export type CacheClient = {
   ping: () => Promise<string>;
   get: (key: string) => Promise<string | null>;
-  set: (key: string, value: string, options?: { ex?: number }) => Promise<string | null>;
+  set: (key: string, value: string, options?: { ex?: number; nx?: boolean }) => Promise<string | null>;
   del: (...keys: string[]) => Promise<number>;
   exists: (...keys: string[]) => Promise<number>;
   expire: (key: string, seconds: number) => Promise<number>;
@@ -27,8 +27,12 @@ const createUpstashClient = (url: string, token: string): CacheClient => {
   return {
     ping: () => client.ping(),
     get: (key) => client.get(key),
-    set: (key, value, opts) =>
-      client.set(key, value, opts?.ex ? { ex: opts.ex } : undefined) as Promise<string | null>,
+    set: (key, value, opts) => {
+      if (opts?.ex !== undefined && opts?.nx) return client.set(key, value, { ex: opts.ex, nx: true }) as Promise<string | null>;
+      if (opts?.ex !== undefined) return client.set(key, value, { ex: opts.ex }) as Promise<string | null>;
+      if (opts?.nx) return client.set(key, value, { nx: true }) as Promise<string | null>;
+      return client.set(key, value) as Promise<string | null>;
+    },
     del: (...keys) => client.del(...keys),
     exists: (...keys) => client.exists(...keys),
     expire: (key, seconds) => client.expire(key, seconds),
@@ -46,10 +50,12 @@ const createIoRedisClient = (url: string): CacheClient => {
   return {
     ping: () => client.ping(),
     get: (key) => client.get(key),
-    set: (key, value, opts) =>
-      opts?.ex
-        ? client.set(key, value, 'EX', opts.ex)
-        : client.set(key, value),
+    set: (key, value, opts) => {
+      if (opts?.ex && opts?.nx) return client.set(key, value, 'EX', opts.ex, 'NX');
+      if (opts?.ex) return client.set(key, value, 'EX', opts.ex);
+      if (opts?.nx) return client.set(key, value, 'NX');
+      return client.set(key, value);
+    },
     del: (...keys) => client.del(...keys),
     exists: (...keys) => client.exists(...keys),
     expire: (key, seconds) => client.expire(key, seconds),
