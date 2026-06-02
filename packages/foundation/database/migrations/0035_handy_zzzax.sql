@@ -1,6 +1,4 @@
 CREATE TYPE "public"."ingestion_status" AS ENUM('pending', 'processing', 'done', 'failed');--> statement-breakpoint
-CREATE TYPE "public"."sensitivity_level" AS ENUM('public', 'internal', 'confidential', 'restricted');--> statement-breakpoint
-CREATE TYPE "public"."fairness_status" AS ENUM('pass', 'warn', 'fail');--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "github_installations" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
@@ -46,8 +44,6 @@ ALTER TABLE "files" ADD COLUMN "classification" varchar(32) DEFAULT 'Confidentia
 ALTER TABLE "files" ADD COLUMN "chunk_count" integer DEFAULT 0;--> statement-breakpoint
 ALTER TABLE "files" ADD COLUMN "ingestion_status" "ingestion_status" DEFAULT 'pending';--> statement-breakpoint
 ALTER TABLE "files" ADD COLUMN "extracted_fields" jsonb;--> statement-breakpoint
-ALTER TABLE "document_chunks" ADD COLUMN "sensitivity_level" "sensitivity_level" DEFAULT 'internal' NOT NULL;--> statement-breakpoint
-ALTER TABLE "documents" ADD COLUMN "sensitivity_level" "sensitivity_level" DEFAULT 'internal' NOT NULL;--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "agent_fairness_reviews" ADD CONSTRAINT "agent_fairness_reviews_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION

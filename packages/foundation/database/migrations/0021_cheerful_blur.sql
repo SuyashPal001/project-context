@@ -1,3 +1,4 @@
+CREATE TYPE "public"."task_priority" AS ENUM('low', 'medium', 'high', 'urgent');--> statement-breakpoint
 CREATE TYPE "public"."milestone_status" AS ENUM('backlog', 'in_progress', 'completed', 'cancelled');--> statement-breakpoint
 CREATE TYPE "public"."plan_status" AS ENUM('draft', 'active', 'completed', 'archived');--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "project_milestones" (
