@@ -103,13 +103,16 @@ export function checkRateLimit(userId: string): boolean {
 // ─── CORS helpers ─────────────────────────────────────────────────────────────
 
 export const ALLOWED_ORIGINS = new Set([
+  'https://projectcontext.co',
   'http://localhost:3000',
   'http://localhost:3001',
   ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : []),
 ])
 
 export function getAllowedOrigin(requestOrigin: string | undefined): string {
-  if (requestOrigin && ALLOWED_ORIGINS.has(requestOrigin)) return requestOrigin
+  if (!requestOrigin) return ''
+  if (ALLOWED_ORIGINS.has(requestOrigin)) return requestOrigin
+  if (/^https:\/\/[a-zA-Z0-9-]+\.projectcontext\.co$/.test(requestOrigin)) return requestOrigin
   return ''
 }
 

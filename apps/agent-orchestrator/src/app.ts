@@ -22,7 +22,7 @@ import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 const app = new Hono()
 
 app.use('/studio/*', cors({
-  origin: 'https://agent-studio.fitnearn.com',
+  origin: 'https://projectcontext.co',
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'x-mastra-client-type'],
   credentials: true,

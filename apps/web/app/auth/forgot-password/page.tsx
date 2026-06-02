@@ -22,7 +22,7 @@ function ForgotPasswordContent() {
     const [sent, setSent] = useState(false);
 
     const form = useForm<Schema>({
-        resolver: zodResolver(schema),
+        resolver: zodResolver(schema as any),
         defaultValues: { email: searchParams.get('email') ?? '' },
     });
 

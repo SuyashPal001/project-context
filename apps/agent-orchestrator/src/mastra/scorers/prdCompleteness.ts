@@ -1,6 +1,6 @@
 import { createScorer } from '@mastra/core/evals'
 
-import { saarthiModel } from '../model.js'
+import { platformModel } from '../model.js'
 
 // ─── prdCompletenessScorer ─────────────────────────────────────────────────────
 // LLM-as-judge scorer: heuristic pass for speed, LLM judge for the reason.
@@ -30,7 +30,7 @@ export const prdCompletenessScorer = createScorer({
   .generateReason(async ({ run, score }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const output = (run.output as any)?.text ?? JSON.stringify(run.output)
-    const result = await saarthiModel.doGenerate({
+    const result = await platformModel.doGenerate({
       inputFormat: 'messages',
       mode: { type: 'regular' },
       prompt: [

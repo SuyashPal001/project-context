@@ -5,7 +5,7 @@ import { architectAgent } from './agents/architectAgent.js'
 // Map of DB agent name (lowercased) → Mastra agent instance.
 // Exact-match keys are tried first; substring fallback uses the same keys.
 const AGENT_REGISTRY: Record<string, Agent> = {
-  saarthi:    platformAgent as unknown as Agent,
+  disco:      platformAgent as unknown as Agent,
   'pm agent': pmAgent as unknown as Agent,
   architect:  architectAgent as unknown as Agent,
 }
@@ -20,7 +20,7 @@ export function resolveAgent(agentName: string): Agent {
   for (const [name, agent] of Object.entries(AGENT_REGISTRY)) {
     if (key.includes(name)) return agent
   }
-  // Saarthi (platformAgent) is the default for
+  // Disco (platformAgent) is the default for
   // all tenants — handles unknown agent names
   return platformAgent as unknown as Agent
 }
@@ -36,12 +36,12 @@ export function resolveAgentLabel(agent: Agent): string {
 // Consumed by onboarding + backfill scripts.
 export const DEFAULT_AGENTS = [
   {
-    name: 'Saarthi',
+    name: 'Disco',
     description: 'Your AI assistant',
     type: 'assistant',
     status: 'active',
     is_internal: false,
-    apiKeyName: 'Saarthi API Key',
+    apiKeyName: 'Disco API Key',
     isDefault: true,
   },
   {

@@ -19,6 +19,9 @@ cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
 cp -r apps/web/public apps/web/.next/standalone/apps/web/public
 
 echo "→ Starting web-frontend..."
-pm2 start web-frontend
+pm2 start /home/suyashresearchwork/project-context/apps/web/.next/standalone/apps/web/server.js \
+  --name web-frontend \
+  --cwd /home/suyashresearchwork/project-context/apps/web/.next/standalone/apps/web 2>/dev/null || \
+pm2 restart web-frontend
 
 echo "✓ Deploy complete"

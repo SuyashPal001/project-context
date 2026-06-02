@@ -1,5 +1,5 @@
 // Isolated model definition — imported by both index.ts and taskExecution.ts.
-// Keeping it here breaks the circular TDZ issue: saarthiModel must be available
+// Keeping it here breaks the circular TDZ issue: platformModel must be available
 // at module init time in taskExecution.ts (for scorer creation), but the
 // index.ts → taskExecution.ts → index.ts circular dep causes a TDZ error when
 // the model is defined in index.ts.
@@ -27,11 +27,11 @@ const gatewayPrivate = createOpenAICompatible({
   headers: { 'x-data-classification': 'restricted' },
 })
 
-export const saarthiModel = gateway(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
+export const platformModel = gateway(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
 
 // Lightweight model for conversational turns (thinkingBudget === 0).
-export const saarthiLiteModel = gateway(process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
+export const liteModel = gateway(process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
 
 // Private-only model for restricted data (CASA/KYC).
 // x-data-classification header forces OllamaAdapter — never hits cloud providers.
-export const saarthiPrivateModel = gatewayPrivate(process.env.MASTRA_PRIVATE_MODEL ?? 'ollama/llama3.2')
+export const privateModel = gatewayPrivate(process.env.MASTRA_PRIVATE_MODEL ?? 'ollama/llama3.2')

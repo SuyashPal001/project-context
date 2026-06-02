@@ -1,12 +1,12 @@
 import { Agent } from '@mastra/core/agent'
 
 import { tenantContextSchema } from '../context.js'
-import { saarthiModel } from '../model.js'
+import { platformModel } from '../model.js'
 import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 
 export const architectAgent = new Agent({
-  id: 'saarthi-architect',
+  id: 'pc-architect',
   name: 'Architect',
 
   instructions: `You are the technical architect for this engineering team.
@@ -38,6 +38,6 @@ You know about:
   requestContextSchema: tenantContextSchema,
 
   tools: { retrieve_knowledge: retrieveKnowledge },
-  model: saarthiModel,
+  model: platformModel,
   memory: architectMemory,
 })

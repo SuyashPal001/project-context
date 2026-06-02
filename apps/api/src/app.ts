@@ -54,7 +54,18 @@ initCognito({
 
 const app = new Hono<AppEnv>();
 
-app.use('*', cors());
+app.use('*', cors({
+    origin: (origin) => {
+        if (!origin) return '';
+        if (
+            origin === 'https://projectcontext.co' ||
+            /^https:\/\/[a-zA-Z0-9-]+\.projectcontext\.co$/.test(origin) ||
+            origin === 'http://localhost:3000'
+        ) return origin;
+        return '';
+    },
+    credentials: true,
+}));
 
 app.use('*', async (c, next) => {
     c.set('traceId', randomUUID());

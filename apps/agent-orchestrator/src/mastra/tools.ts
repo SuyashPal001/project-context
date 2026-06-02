@@ -13,7 +13,7 @@ export function getMCPClientForTenant(tenantId: string): MCPClient {
 
   const client = new MCPClient({
     servers: {
-      saarthiTools: {
+      pcTools: {
         url: new URL(
           process.env.MCP_SERVER_HTTP_URL ??
           'http://localhost:3002/sse'

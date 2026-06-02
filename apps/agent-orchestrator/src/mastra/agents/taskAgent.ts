@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent'
-import { saarthiModel } from '../model.js'
+import { platformModel } from '../model.js'
 import { taskWorkspace } from '../workspace/taskWorkspace.js'
 import { taskWorkflow } from '../workflows/taskWorkflow.js'
 import { fetchPlan } from '../tools/fetchPlan.js'
@@ -7,7 +7,7 @@ import { saveTasks } from '../tools/saveTasks.js'
 import { taskCompletenessScorer } from '../scorers/taskCompleteness.js'
 
 export const taskAgent = new Agent({
-  id: 'saarthi-task',
+  id: 'pc-task',
   name: 'Saarthi Task',
   description: 'Breaks approved project milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates. Call this agent when the user wants to generate tasks, create a task breakdown, or decompose milestones into work items. Requires a plan ID. Returns the saved tasks grouped by milestone.',
   instructions: `You are a task breakdown specialist.
@@ -24,7 +24,7 @@ When only a planId is provided in context:
 - Call save-tasks with the result
 
 Never generate PRD or roadmap content — only tasks.`,
-  model: saarthiModel,
+  model: platformModel,
   workspace: taskWorkspace,
   workflows: { tasks: taskWorkflow },
   tools: { fetchPlan, saveTasks },

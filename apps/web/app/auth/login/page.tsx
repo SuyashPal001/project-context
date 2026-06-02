@@ -43,8 +43,8 @@ function LoginPageContent() {
             setSuccessMessage(`Invitation accepted! Please log in again to access ${slug}.`);
     }, [searchParams]);
 
-    const emailForm = useForm<EmailSchema>({ resolver: zodResolver(emailSchema), defaultValues: { email: '' } });
-    const passwordForm = useForm<PasswordSchema>({ resolver: zodResolver(passwordSchema), defaultValues: { password: '' } });
+    const emailForm = useForm<EmailSchema>({ resolver: zodResolver(emailSchema as any), defaultValues: { email: '' } });
+    const passwordForm = useForm<PasswordSchema>({ resolver: zodResolver(passwordSchema as any), defaultValues: { password: '' } });
 
     async function onEmailSubmit(data: EmailSchema) {
         setIsLoading(true);
@@ -108,7 +108,7 @@ function LoginPageContent() {
             <StarfieldCanvas speedMode="idle" />
             <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
                 <div className="text-center space-y-2">
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Platform</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Project Context</h1>
                     <p className="text-sm text-muted-foreground">
                         {step === 'email' ? 'Sign in to your account' : step === 'google' ? 'Continue with Google' : 'Enter your password'}
                     </p>

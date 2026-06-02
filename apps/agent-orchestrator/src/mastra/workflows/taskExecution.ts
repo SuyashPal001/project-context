@@ -3,7 +3,7 @@ import { createAnswerRelevancyScorer } from '@mastra/evals/scorers/prebuilt'
 import { z } from 'zod'
 
 import { platformAgent, formatterAgent } from '../index.js'
-import { saarthiModel } from '../model.js'
+import { platformModel } from '../model.js'
 import { dodVerifyStep } from './steps/dodVerifyStep.js'
 import { dodPassScorer } from './scorers.js'
 
@@ -252,7 +252,7 @@ export const composeStep = createStep({
   outputSchema: composeOutputSchema,
   scorers: {
     answerRelevancy: {
-      scorer: createAnswerRelevancyScorer({ model: saarthiModel }),
+      scorer: createAnswerRelevancyScorer({ model: platformModel }),
       sampling: { type: 'ratio', rate: 0.5 },
     },
     dodPass: {

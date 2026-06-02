@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { signUp } from "@/lib/auth";
 import { initiateGoogleSignIn } from "@/lib/auth-google";
 import { StarfieldCanvas } from "@/components/starfield-canvas";
-import { SaarthiLogo } from "@/components/platform/SaarthiLogo";
+import { SaarthiLogo as ProjectContextLogo } from "@/components/platform/SaarthiLogo";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -70,7 +70,7 @@ export default function SignupPage() {
             <StarfieldCanvas speedMode="idle" />
             <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
                 <div className="flex flex-col items-center space-y-3">
-                    <SaarthiLogo variant="full" iconSize={36} />
+                    <ProjectContextLogo variant="full" iconSize={36} />
                     <p className="text-sm text-muted-foreground">Create your account to get started</p>
                 </div>
 

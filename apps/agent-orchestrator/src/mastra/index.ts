@@ -1,7 +1,7 @@
 // Mastra proper orchestrator — ADR: Mastra Proper Orchestrator Adoption
 //
 // One Mastra instance registered at startup.
-// One platform-level Agent (saarthi) serving all tenants.
+// One platform-level Agent (disco) serving all tenants.
 // Per-tenant isolation via RequestContext + MASTRA_RESOURCE_ID_KEY.
 //
 // Backward-compat re-exports let app.ts and workflow.ts import unchanged.
@@ -43,7 +43,7 @@ import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 export const mastra = new Mastra({
   agents: {
-    saarthi: platformAgent,
+    disco: platformAgent,
     architect: architectAgent,
     formatter: formatterAgent,
     prd: prdAgent,
@@ -80,7 +80,7 @@ export const mastra = new Mastra({
   observability: new Observability({
     configs: {
       default: {
-        serviceName: 'saarthi-relay',
+        serviceName: 'project-context-agent-orchestrator',
         exporters: [new DefaultExporter()],
       },
     },
@@ -91,7 +91,7 @@ export const mastra = new Mastra({
 // Re-exports — all consumers import from this file unchanged.
 // ---------------------------------------------------------------------------
 
-export { saarthiModel } from './model.js'
+export { platformModel } from './model.js'
 export { platformAgent, SERVER_TOOLS }
 export { formatterAgent }
 export { prdAgent }

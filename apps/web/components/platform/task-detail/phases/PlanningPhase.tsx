@@ -57,8 +57,8 @@ export function PlanningPhase({ task: _task, steps, events }: PlanningPhaseProps
     const slotCount = Math.max(MIN_SLOTS, steps.length + 1)
 
     const statusText = steps.length === 0
-        ? 'Saarthi is planning...'
-        : `Saarthi is planning · ${steps.length} step${steps.length !== 1 ? 's' : ''} so far`
+        ? 'Project Context is planning...'
+        : `Project Context is planning · ${steps.length} step${steps.length !== 1 ? 's' : ''} so far`
 
     return (
         <div>

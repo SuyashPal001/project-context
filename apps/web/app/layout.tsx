@@ -28,8 +28,8 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Platform Dashboard",
-  description: "Multi-tenant SaaS Platform",
+  title: "Project Context",
+  description: "Your AI engineering team, shipping with you.",
 };
 
 export default function RootLayout({

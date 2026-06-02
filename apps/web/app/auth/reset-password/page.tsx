@@ -28,7 +28,7 @@ function ResetPasswordContent() {
     const [done, setDone] = useState(false);
 
     const form = useForm<Schema>({
-        resolver: zodResolver(schema),
+        resolver: zodResolver(schema as any),
         defaultValues: { code: '', password: '', confirm: '' },
     });
 

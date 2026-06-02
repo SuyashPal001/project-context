@@ -1,6 +1,6 @@
 import { createScorer } from '@mastra/core/evals'
 
-import { saarthiModel } from '../model.js'
+import { platformModel } from '../model.js'
 
 // ─── roadmapCompletenessScorer ────────────────────────────────────────────────
 // Heuristic pass checks for the four required roadmap elements in the output.
@@ -26,7 +26,7 @@ export const roadmapCompletenessScorer = createScorer({
     const lower = output.toLowerCase()
     const present = REQUIRED_ELEMENTS.filter(e => lower.includes(e))
     const missing = REQUIRED_ELEMENTS.filter(e => !lower.includes(e))
-    const result = await saarthiModel.doGenerate({
+    const result = await platformModel.doGenerate({
       inputFormat: 'messages',
       mode: { type: 'regular' },
       prompt: [

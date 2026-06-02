@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent'
 import { tenantContextSchema } from '../context.js'
-import { saarthiModel } from '../model.js'
+import { platformModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { fetchAgentContext } from '../tools/fetchAgentContext.js'
 import { prdAgent } from './prdAgent.js'
@@ -10,7 +10,7 @@ import { delegationAccuracyScorer } from '../scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from '../scorers/clarityBeforeDelegate.js'
 
 export const pmAgent = new Agent({
-  id: 'saarthi-pm',
+  id: 'pc-pm',
   name: 'Saarthi PM',
   description: 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.',
   instructions: `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
@@ -40,7 +40,7 @@ export const pmAgent = new Agent({
 - Never write PRD content, milestones, or tasks yourself — always delegate
 - If the request is ambiguous, ask ONE clarifying question before delegating`,
   requestContextSchema: tenantContextSchema,
-  model: saarthiModel,
+  model: platformModel,
   memory: getMastraMemory(),
   tools: { fetchAgentContext },
   agents: { prdAgent, roadmapAgent, taskAgent },

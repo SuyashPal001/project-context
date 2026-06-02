@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent';
-import { saarthiModel } from '../model.js';
+import { platformModel } from '../model.js';
 
 export const classifierAgent = new Agent({
   id: 'doc-classifier',
@@ -21,5 +21,5 @@ Respond with ONLY a JSON object in this exact format:
 
 Do not include any other text. Do not include markdown code fences.`,
   tools: {},
-  model: saarthiModel,
+  model: platformModel,
 });

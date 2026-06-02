@@ -321,7 +321,7 @@ const TOOL_NAME_MAP: Record<string, string> = {
   web_fetch: 'web_fetch',
 }
 
-// Strip MCP server prefix (e.g. "saarthiTools_web_search" → "internet_search").
+// Strip MCP server prefix (e.g. "pcTools_web_search" → "internet_search").
 // Plans created before the server-tool filter fix may have stored prefixed names.
 function normalizeToolName(toolName: string): string {
   // Check against known server tool names (with or without MCP prefix)

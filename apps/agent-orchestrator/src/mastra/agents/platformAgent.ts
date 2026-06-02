@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { Exa as ExaClass } from 'exa-js'
 import pg from 'pg'
 
-import { saarthiModel, saarthiLiteModel, saarthiPrivateModel } from '../model.js'
+import { platformModel, liteModel, privateModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { createViolationHandler } from '../guardrails.js'
@@ -57,7 +57,7 @@ async function fetchPlatformPrompt(): Promise<string> {
   } catch (err) {
     console.warn('[mastra:platform] fetchPlatformPrompt DB error:', (err as Error).message)
   }
-  const fallback = 'You are Saarthi, a helpful AI assistant.'
+  const fallback = 'You are Disco, a helpful AI assistant.'
   _promptCache = { prompt: fallback, expiresAt: Date.now() + PROMPT_CACHE_TTL_MS }
   return fallback
 }
@@ -179,7 +179,7 @@ type AnyProcessor = { onViolation?: (v: any) => void }
 const violationHandler = createViolationHandler()
 
 const promptInjectionDetector = new PromptInjectionDetector({
-  model: saarthiLiteModel,
+  model: liteModel,
   strategy: 'warn',
   threshold: 0.7,
   lastMessageOnly: true,
@@ -187,7 +187,7 @@ const promptInjectionDetector = new PromptInjectionDetector({
 ;(promptInjectionDetector as AnyProcessor).onViolation = violationHandler
 
 const moderationProcessor = new ModerationProcessor({
-  model: saarthiLiteModel,
+  model: liteModel,
   strategy: 'warn',
   threshold: 0.5,
   lastMessageOnly: true,
@@ -195,7 +195,7 @@ const moderationProcessor = new ModerationProcessor({
 ;(moderationProcessor as AnyProcessor).onViolation = violationHandler
 
 const piiDetector = new PIIDetector({
-  model: saarthiLiteModel,
+  model: liteModel,
   strategy: 'redact',
   redactionMethod: 'placeholder',
   lastMessageOnly: true,
@@ -203,7 +203,7 @@ const piiDetector = new PIIDetector({
 ;(piiDetector as AnyProcessor).onViolation = violationHandler
 
 const systemPromptScrubber = new SystemPromptScrubber({
-  model: saarthiLiteModel,
+  model: liteModel,
 })
 ;(systemPromptScrubber as AnyProcessor).onViolation = violationHandler
 
@@ -219,8 +219,8 @@ const systemPromptScrubber = new SystemPromptScrubber({
 // ---------------------------------------------------------------------------
 
 export const platformAgent = new Agent({
-  id: 'saarthi',
-  name: 'Saarthi',
+  id: 'disco',
+  name: 'Disco',
 
   instructions: async ({ requestContext }: { requestContext?: RequestContext }) => {
     // Per-agent override takes precedence over the global agent_templates prompt.
@@ -279,8 +279,8 @@ export const platformAgent = new Agent({
   //   default                    → full model
   model: ({ requestContext }: { requestContext: RequestContext }) => {
     const sensitivity = requestContext?.get('maxDataSensitivity') as string | undefined
-    if (sensitivity === 'restricted') return saarthiPrivateModel
+    if (sensitivity === 'restricted') return privateModel
     const budget = requestContext?.get('thinkingBudget') as number | undefined
-    return budget === 0 ? saarthiLiteModel : saarthiModel
+    return budget === 0 ? liteModel : platformModel
   },
 })
