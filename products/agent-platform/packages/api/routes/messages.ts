@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { conversations, messages } from '@serverless-saas/agent-schema/conversations';
 import { usageRecords } from '@serverless-saas/database/schema/billing';
-import { runMessageRelay, RelayError } from './_relay';
+import { runMessageRelay, RelayError } from './_orchestrator';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 

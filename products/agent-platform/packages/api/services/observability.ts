@@ -49,7 +49,7 @@ export async function getSummary(tenantId: TenantScope): Promise<SummaryStats> {
   const failed = Number((workflows as any).failed24 ?? 0)
   const total = done + failed
 
-  const relayHealth = await probe(process.env.RELAY_INTERNAL_URL ?? 'http://localhost:3001')
+  const relayHealth = await probe(process.env.AGENT_ORCHESTRATOR_INTERNAL_URL ?? 'http://localhost:3001')
   const lakehouseHealth = await probe(process.env.LAKEHOUSE_URL ?? 'http://localhost:8001')
 
   return {

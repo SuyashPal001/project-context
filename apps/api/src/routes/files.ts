@@ -10,7 +10,7 @@ import { eq, and, ne, isNull } from 'drizzle-orm';
 import { personFolders } from '@serverless-saas/database/schema';
 import type { AppEnv } from '../types';
 
-const RELAY_URL = process.env.RELAY_URL ?? 'http://localhost:3001';
+const AGENT_ORCHESTRATOR_URL = process.env.AGENT_ORCHESTRATOR_URL ?? 'http://localhost:3001';
 
 function classifyDocument(filename: string): string {
   const name = filename.toLowerCase();
@@ -341,7 +341,7 @@ filesRoutes.post('/:id/ingest', async (c) => {
         extractedText = buffer.toString('utf-8')
       }
 
-      const relayRes = await fetch(`${RELAY_URL}/internal/ingest`, {
+      const relayRes = await fetch(`${AGENT_ORCHESTRATOR_URL}/internal/ingest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

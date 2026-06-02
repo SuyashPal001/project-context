@@ -2,7 +2,7 @@ import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/agen
 import { eq, and, asc } from 'drizzle-orm';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { getCacheClient } from '@serverless-saas/cache';
-import { db, RELAY_URL, INTERNAL_SERVICE_KEY, sanitizeTaskInput, makeLog, extractAttachments } from './taskWorker.utils';
+import { db, AGENT_ORCHESTRATOR_URL, INTERNAL_SERVICE_KEY, sanitizeTaskInput, makeLog, extractAttachments } from './taskWorker.utils';
 
 export async function handleExecution(taskId: string, traceId: string) {
     const log = makeLog(traceId, taskId);
@@ -28,7 +28,7 @@ export async function handleExecution(taskId: string, traceId: string) {
 
     let response: Response;
     try {
-        response = await fetch(`${RELAY_URL}/api/tasks/execute`, {
+        response = await fetch(`${AGENT_ORCHESTRATOR_URL}/api/tasks/execute`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-internal-service-key': INTERNAL_SERVICE_KEY(), 'x-trace-id': traceId },
             body: JSON.stringify({

@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { relayPost } from "./relayClient";
+import { relayPost } from "./orchestratorClient";
 
 const scheduleSchema = z.object({
   templatePrompt: z.string().min(10, "Prompt must be at least 10 characters"),

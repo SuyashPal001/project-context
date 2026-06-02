@@ -238,7 +238,7 @@ type MessageRow = {
   createdAt: Date;
 };
 
-// Reserve 30K tokens for conversation history; rough 4 chars/token estimate (RELAY-7)
+// Reserve 30K tokens for conversation history; rough 4 chars/token estimate (ORCHESTRATOR)
 const MAX_CONTEXT_TOKENS = 30_000;
 const CHARS_PER_TOKEN = 4;
 
@@ -307,7 +307,7 @@ async function checkHasMcpIntegrations(tenantId: string): Promise<boolean> {
 function formatLLMProvider(
   provider: typeof llmProviders.$inferSelect,
 ): LLMProviderConfig {
-  // RELAY-2: Never send raw API keys to the VM relay.
+  // ORCHESTRATOR: Never send raw API keys to the VM relay.
   // The VM must have its own LLM credentials configured via its environment.
   // For Vertex AI, send only non-secret location identifiers.
   const credentials: LLMProviderConfig['credentials'] = {};

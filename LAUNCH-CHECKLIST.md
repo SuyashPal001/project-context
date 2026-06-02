@@ -46,7 +46,7 @@
   - [ ] `upstash_redis_rest_url` + `upstash_redis_rest_token`
   - [ ] `ws_token_secret` → `openssl rand -hex 32`
   - [ ] `cognito_domain_prefix` (must be globally unique)
-  - [ ] All redirect URIs, frontend_url, relay_url, domain values
+  - [ ] All redirect URIs, frontend_url, agent_orchestrator_url, domain values
 - [ ] `cd infra/terraform/foundation`
 - [ ] `terraform init -backend-config=../environments/dev/backend.hcl`
 - [ ] `terraform plan` — review, no surprises
@@ -72,12 +72,12 @@
 
 - [ ] Point root domain `projectcontext.co` → GCP VM IP (A record)
 - [ ] Point `www.projectcontext.co` → GCP VM IP (A record)
-- [ ] Point `relay.projectcontext.co` → GCP VM IP (A record)
+- [ ] Point `agent-orchestrator.projectcontext.co` → GCP VM IP (A record)
 - [ ] Point API subdomain (or use API Gateway custom domain) → API Gateway URL
 - [ ] SSL certificate on NGINX for all above domains (Let's Encrypt / Certbot)
 - [ ] Verify NGINX config routes:
   - `:443` → `apps/web` (port 3000)
-  - `/relay` or `relay.projectcontext.co` → `apps/relay` (port 3001)
+  - `/relay` or `agent-orchestrator.projectcontext.co` → `apps/agent-orchestrator` (port 3001)
   - `/mcp` → `mcp-server/` (port 3002)
   - `/lakehouse` → `apps/lakehouse` (port 8001)
 
@@ -107,10 +107,10 @@
 - [ ] Set up `.env` files for each service (copy from `.env.example`):
   - [ ] `apps/api/.env` — fill Cognito IDs from terraform output, all secrets
   - [ ] `apps/web/.env.local` — fill Cognito IDs, API Gateway URL, WS endpoint
-  - [ ] `apps/relay/.env` — fill all vars
+  - [ ] `apps/agent-orchestrator/.env` — fill all vars
   - [ ] `apps/inference-gateway/.env` — fill `VERTEX_PROJECT`, `ANTHROPIC_API_KEY`
   - [ ] `apps/ai-service/.env` — fill `DATABASE_URL`, `INTERNAL_SERVICE_KEY`
-  - [ ] `apps/agent-server/.env` — fill relay keys, extensions dir
+  - [ ] `apps/agent-server/.env` — fill orchestrator keys, extensions dir
   - [ ] `mcp-server/.env` — fill Google OAuth creds, `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY`
 
 ---
@@ -169,7 +169,7 @@
 - [ ] Integrate Sentry (or similar) into:
   - [ ] `apps/web` — Next.js Sentry SDK
   - [ ] `apps/api` — Lambda error capture
-  - [ ] `apps/relay` — Node.js Sentry SDK
+  - [ ] `apps/agent-orchestrator` — Node.js Sentry SDK
 - [ ] Verify test errors appear in Sentry dashboard
 
 ---
@@ -218,7 +218,7 @@
 
 - [ ] Record Lambda cold start times (CloudWatch → Init Duration metric)
 - [ ] Record API p50/p95 latency on key routes (`/auth/me`, `/agents`, `/conversations`)
-- [ ] Load test relay WebSocket with realistic concurrent connections
+- [ ] Load test agent-orchestrator WebSocket with realistic concurrent connections
 - [ ] Confirm Upstash Redis cache hit rate > 80% on entitlements/permissions
 
 ---

@@ -1,2 +1,0 @@
-// @serverless-saas/worker
-export {};

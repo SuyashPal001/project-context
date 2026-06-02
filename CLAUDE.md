@@ -2,7 +2,7 @@
 
 ## What this repo is
 
-A multi-tenant SaaS platform with an agentic AI layer built on top. The foundation handles auth, tenancy, billing, roles, notifications, webhooks, files, and audit. The agent platform adds async task planning, real-time relay, MCP tool integrations, and a Delta Lake data store for domain-specific knowledge (pension records).
+A multi-tenant SaaS platform with an agentic AI layer built on top. The foundation handles auth, tenancy, billing, roles, notifications, webhooks, files, and audit. The agent platform adds async task planning, real-time agent orchestration, MCP tool integrations, and a Delta Lake data store for domain-specific knowledge (pension records).
 
 Domain: **projectcontext.co**
 
@@ -14,7 +14,7 @@ Domain: **projectcontext.co**
 - **API:** Hono on AWS Lambda (SAM-deployed), Lambdalith pattern
 - **Web:** Next.js (App Router) + Tailwind + shadcn/ui
 - **Worker:** SQS-driven Lambda for background jobs
-- **Agent relay:** Hono + Mastra + WebSocket on GCP VM (port 3001)
+- **Agent orchestrator:** Hono + Mastra + WebSocket on GCP VM (port 3001)
 - **MCP server:** Standalone Node.js service on GCP VM (port 3002) — Gmail, Google integrations
 - **AI service:** Python FastAPI (port 3004) — document processing
 - **Inference gateway:** Node.js proxy (port 4001) — Vertex AI / Gemini
@@ -35,7 +35,7 @@ apps/
   api/              Hono Lambda — REST API (Lambdalith)
   web/              Next.js — auth, dashboard, ops console
   worker/           SQS Lambda — background jobs
-  relay/            Mastra agent relay — SSE + WebSocket bridge to frontend
+  agent-orchestrator/ Mastra agent orchestrator — SSE + WebSocket bridge to frontend
   mcp-server/       (root, not apps/) — standalone MCP server for Gmail/GCP integrations
   agent-server/     OpenClaw agent runtime
   ai-service/       Python FastAPI — document AI processing
@@ -98,7 +98,7 @@ bootstrap.sh        Creates S3 + DynamoDB resources before first deploy
 | `apps/api` | Lambda (SAM) | AWS ap-south-1 | — |
 | `apps/worker` | Lambda (SAM) | AWS ap-south-1 | — |
 | `apps/web` | Next.js (PM2) | GCP VM | 3000 |
-| `apps/relay` | Node.js (PM2) | GCP VM | 3001 |
+| `apps/agent-orchestrator` | Node.js (PM2) | GCP VM | 3001 |
 | `mcp-server/` | Node.js (PM2) | GCP VM | 3002 |
 | `apps/agent-server` | Node.js (PM2) | GCP VM | 3003 |
 | `apps/ai-service` | Python (PM2) | GCP VM | 3004 |
@@ -165,7 +165,7 @@ Agent platform handlers registered via `registerProductHandlers`.
 - **WebSocket Lambda is live.** Unlike the foundation baseline, this project uses WebSocket for real-time task/notification push. `websocket.ts` handles `$connect`, `$disconnect`, `$default`.
 - **Agent task queue is separate from processing queue.** `AGENT_TASK_QUEUE_URL` drives `TaskWorkerFunction`. The foundation processing queue drives `FoundationWorkerFunction`. Don't mix them.
 - **WatchdogFunction runs on a schedule.** EventBridge fires it every 5 minutes. It marks `in_progress` tasks that have stalled as `blocked`. No manual trigger needed.
-- **Relay is Mastra-based.** `apps/relay` uses `@mastra/core` and `@mastra/hono`. It bridges SSE (browser chat) and WebSocket (mobile/OpenClaw) to the `platformAgent`. Memory is per-tenant via Mastra's PostgresStore.
+- **Agent orchestrator is Mastra-based.** `apps/agent-orchestrator` uses `@mastra/core` and `@mastra/hono`. It bridges SSE (browser chat) and WebSocket (mobile/OpenClaw) to the `platformAgent`. Memory is per-tenant via Mastra's PostgresStore.
 - **mcp-server/ (root) is canonical.** `apps/mcp-server/` was removed (duplicate). The root `mcp-server/` runs on GCP VM port 3002, uses its own npm (not pnpm), and is NOT part of the pnpm workspace.
 - **Google OAuth credentials are Terraform-managed.** `google_client_id` and `google_client_secret` are Terraform input variables — they seed the `project-context/{env}/google-oauth` secret and wire Cognito's Google IdP in a single `terraform apply`. No manual seeding needed for Google.
 - **These 6 secrets must be seeded manually** before `terraform apply`:
@@ -177,7 +177,7 @@ Agent platform handlers registered via `registerProductHandlers`.
   - `project-context/{env}/zoho-oauth`
 - **SSM namespace is `/project-context/{env}/...`** — not `serverless-saas`. The package scope `@serverless-saas/*` is internal-only and never touches AWS.
 - **Tenant routing in web.** Dashboard URLs are `/{tenantSlug}/dashboard/*`. Subdomain routing (`acme.projectcontext.co`) is handled by `apps/web/middleware.ts` via `NEXT_PUBLIC_ROOT_DOMAIN`.
-- **Inference gateway proxies Vertex AI.** `apps/inference-gateway` on port 4001 is the single point for all Gemini/Vertex calls. Relay and other services hit it via `VERTEX_PROXY_URL`.
+- **Inference gateway proxies Vertex AI.** `apps/inference-gateway` on port 4001 is the single point for all Gemini/Vertex calls. Agent orchestrator and other services hit it via `VERTEX_PROXY_URL`.
 - **Lakehouse holds pension data.** `apps/lakehouse` is a Python FastAPI service backed by Delta Lake at `/data/pension_records`. It's stateful — volume must persist.
 - **pgvector required.** Use `pgvector/pgvector:pg16` not vanilla postgres for local dev. The agent platform uses vector search.
 

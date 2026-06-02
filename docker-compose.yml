@@ -7,31 +7,22 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: serverless_saas
+      POSTGRES_DB: project_context
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: project-context-redis
     ports:
       - "6379:6379"
-
-  lakehouse:
-    build:
-      context: ./apps/lakehouse
-      dockerfile: Dockerfile
-    container_name: saarthi-lakehouse
-    ports:
-      - "8001:8001"
-    environment:
-      DELTA_PATH: /data/pension_records
     volumes:
-      - lakehouse_data:/data
+      - redis_data:/data
     restart: unless-stopped
 
 volumes:
   postgres_data:
-  lakehouse_data:
+  redis_data:

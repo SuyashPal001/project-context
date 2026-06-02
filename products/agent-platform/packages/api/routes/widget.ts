@@ -5,7 +5,7 @@ import { db } from '../db';
 import { conversations, messages } from '@serverless-saas/agent-schema/conversations';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
-import { runMessageRelay, RelayError } from './_relay';
+import { runMessageRelay, RelayError } from './_orchestrator';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const widgetRoutes = new Hono<AppEnv>();

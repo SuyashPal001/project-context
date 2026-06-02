@@ -192,7 +192,7 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
     if (!task) return c.json({ error: 'Task not found' }, 404);
     if (task.status !== 'awaiting_approval') return c.json({ error: 'Task is not awaiting workflow approval' }, 400);
 
-    const relayUrl = process.env.RELAY_URL;
+    const relayUrl = process.env.AGENT_ORCHESTRATOR_URL;
     if (!relayUrl) return c.json({ error: 'Relay not configured' }, 503);
 
     const res = await fetch(`${relayUrl}/api/tasks/${taskId}/resume`, {

@@ -2,7 +2,7 @@ import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/agen
 import { eq, and } from 'drizzle-orm';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '@serverless-saas/queue';
-import { db, RELAY_URL, INTERNAL_SERVICE_KEY, MAX_STEPS_PER_TASK, sanitizeTaskInput, makeLog, extractAttachments, getPastSuccessfulPlans } from './taskWorker.utils';
+import { db, AGENT_ORCHESTRATOR_URL, INTERNAL_SERVICE_KEY, MAX_STEPS_PER_TASK, sanitizeTaskInput, makeLog, extractAttachments, getPastSuccessfulPlans } from './taskWorker.utils';
 
 export async function handlePlanning(
     taskId: string,
@@ -35,7 +35,7 @@ export async function handlePlanning(
         const combinedExtraContext = [ragContext, extraContext].filter(Boolean).join('\n\n') || undefined;
 
         log('info', 'relay call starting');
-        const response = await fetch(`${RELAY_URL}/api/tasks/plan`, {
+        const response = await fetch(`${AGENT_ORCHESTRATOR_URL}/api/tasks/plan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'x-internal-service-key': INTERNAL_SERVICE_KEY(), 'x-trace-id': traceId },
             body: JSON.stringify({

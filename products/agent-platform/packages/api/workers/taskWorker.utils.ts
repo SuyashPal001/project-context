@@ -9,7 +9,7 @@ import { db } from '../db';
 
 export { db };
 
-export const RELAY_URL = process.env.RELAY_URL!;
+export const AGENT_ORCHESTRATOR_URL = process.env.AGENT_ORCHESTRATOR_URL!;
 export const INTERNAL_SERVICE_KEY = () => process.env.INTERNAL_SERVICE_KEY!;
 export const MAX_STEPS_PER_TASK = 20;
 

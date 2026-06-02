@@ -1,6 +1,6 @@
 # Team Onboarding — project-context
 
-> **What this is:** A multi-tenant SaaS platform with an agentic AI layer. The foundation handles auth, tenancy, billing, roles, notifications, webhooks, files, and audit. The agent platform adds async task planning, real-time relay (Mastra), MCP tool integrations, and a Delta Lake data store. Domain: **projectcontext.co**
+> **What this is:** A multi-tenant SaaS platform with an agentic AI layer. The foundation handles auth, tenancy, billing, roles, notifications, webhooks, files, and audit. The agent platform adds async task planning, real-time agent orchestration (Mastra), MCP tool integrations, and a Delta Lake data store. Domain: **projectcontext.co**
 
 ---
 
@@ -162,14 +162,14 @@ NEXT_PUBLIC_API_URL=http://localhost:3001
 API_URL=http://localhost:3001
 NEXT_PUBLIC_ROOT_DOMAIN=localhost:3000
 NEXT_PUBLIC_WS_URL=                   # leave blank for local dev
-NEXT_PUBLIC_AGENT_WS_URL=             # leave blank for local dev (relay not needed for basic UI)
+NEXT_PUBLIC_AGENT_WS_URL=             # leave blank for local dev (agent orchestrator not needed for basic UI)
 ```
 
 ### Other services (optional for local dev)
 
 | Service | Config | When you need it |
 |---|---|---|
-| `apps/relay` | `apps/relay/.env.example` → `.env` | Testing agent chat |
+| `apps/agent-orchestrator` | `apps/agent-orchestrator/.env.example` → `.env` | Testing agent chat |
 | `apps/inference-gateway` | `apps/inference-gateway/.env.example` → `.env` | Testing AI inference |
 | `apps/ai-service` | `apps/ai-service/.env.example` → `.env` | Testing document processing |
 | `mcp-server/` (root) | `mcp-server/.env.example` → `.env` | Testing Gmail/MCP tools |
@@ -208,9 +208,9 @@ cd apps/web && pnpm dev
 
 Open `http://localhost:3000` → login page.
 
-> **Worker, relay, MCP, inference gateway, agent server:** These are not needed for basic UI/API development. Start them individually only when testing features that require them.
+> **Worker, agent-orchestrator, MCP, inference gateway, agent server:** These are not needed for basic UI/API development. Start them individually only when testing features that require them.
 
-> **Relay (port 3001):** `cd apps/relay && pnpm dev`
+> **Agent orchestrator (port 3001):** `cd apps/agent-orchestrator && pnpm dev`
 > **Inference gateway (port 4001):** `cd apps/inference-gateway && pnpm dev`
 
 ---
@@ -299,7 +299,7 @@ The following services run on the GCP VM under PM2, not on AWS Lambda:
 | Service | PM2 name | Port | Start command |
 |---|---|---|---|
 | `apps/web` | `web-frontend` | 3000 | `pnpm build` → PM2 |
-| `apps/relay` | `agent-relay` | 3001 | `pnpm build` → PM2 |
+| `apps/agent-orchestrator` | `agent-orchestrator` | 3001 | `pnpm build` → PM2 |
 | `mcp-server/` | `mcp-server` | 3002 | `npm run build` → PM2 |
 | `apps/agent-server` | `agent-server` | 3003 | PM2 |
 | `apps/ai-service` | `ai-service` | 3004 | PM2 (Python) |
@@ -311,9 +311,9 @@ The following services run on the GCP VM under PM2, not on AWS Lambda:
 ./deploy.sh
 ```
 
-**Redeploy relay after a code change:**
+**Redeploy agent-orchestrator after a code change:**
 ```bash
-cd apps/relay && npm run build && pm2 restart agent-relay
+cd apps/agent-orchestrator && npm run build && pm2 restart agent-orchestrator
 ```
 
 > `mcp-server/` uses npm (not pnpm) — it's a standalone package not in the pnpm workspace.

@@ -3,7 +3,7 @@ import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { db } from '../db';
 import { agentWorkflows, agentWorkflowRuns } from '@serverless-saas/agent-schema';
 
-const RELAY_URL = process.env.RELAY_URL!;
+const AGENT_ORCHESTRATOR_URL = process.env.AGENT_ORCHESTRATOR_URL!;
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY!;
 const SQS_PROCESSING_QUEUE_URL = process.env.SQS_PROCESSING_QUEUE_URL;
 
@@ -77,7 +77,7 @@ export async function handleWorkflowFire(body: Record<string, unknown>): Promise
       runId = run.id;
       const resolvedRunId = run.id;
 
-      const response = await fetch(`${RELAY_URL}/api/workflows/execute`, {
+      const response = await fetch(`${AGENT_ORCHESTRATOR_URL}/api/workflows/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

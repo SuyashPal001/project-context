@@ -204,7 +204,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     if (!artifact?.pmRunId || !artifact?.pmStepId) return;
     setArtifact(prev => prev ? { ...prev, approveStatus: 'loading' } : prev);
     try {
-      const relayBase = (process.env.NEXT_PUBLIC_AGENT_WS_URL ?? 'wss://relay.projectcontext.co')
+      const relayBase = (process.env.NEXT_PUBLIC_AGENT_WS_URL ?? 'wss://agent-orchestrator.projectcontext.co')
         .replace(/^wss?:\/\//, 'https://');
       const cookies = document.cookie.split('; ');
       const accessToken = cookies.find(r => r.startsWith('platform_access_token='))?.split('=')[1] ?? '';
@@ -239,7 +239,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     try {
       // Mastra HITL path: resume the pm-workflow suspension
       if (artifact.pmRunId && artifact.pmStepId) {
-        const relayBase = (process.env.NEXT_PUBLIC_AGENT_WS_URL ?? 'wss://relay.projectcontext.co')
+        const relayBase = (process.env.NEXT_PUBLIC_AGENT_WS_URL ?? 'wss://agent-orchestrator.projectcontext.co')
           .replace(/^wss?:\/\//, 'https://');
         const cookies = document.cookie.split('; ');
         const accessToken = cookies.find(r => r.startsWith('platform_access_token='))?.split('=')[1] ?? '';

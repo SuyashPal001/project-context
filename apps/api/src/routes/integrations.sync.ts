@@ -34,7 +34,7 @@ export async function syncToolsAndNotifyRelay(tenantId: string, provider: string
             .set({ tools: updated, updatedAt: new Date() })
             .where(eq(agentSkills.id, skill.id));
 
-        const relayUrl = process.env.RELAY_URL;
+        const relayUrl = process.env.AGENT_ORCHESTRATOR_URL;
         if (relayUrl) {
             fetch(`${relayUrl}/update/${tenantId}/${agent.id}`, {
                 method: 'POST',

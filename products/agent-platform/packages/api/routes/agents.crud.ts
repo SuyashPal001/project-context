@@ -123,7 +123,7 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
         } catch (auditErr) { console.error('Audit log write failed:', auditErr); }
     }
 
-    const relayUrl = process.env.RELAY_URL;
+    const relayUrl = process.env.AGENT_ORCHESTRATOR_URL;
     const serviceKey = process.env.INTERNAL_SERVICE_KEY;
     if (relayUrl && serviceKey) {
         Promise.resolve().then(async () => {

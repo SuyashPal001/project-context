@@ -29,7 +29,7 @@ export async function handleEnsureReady(c: Context<AppEnv>) {
         return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
-    const relayUrl = process.env.RELAY_URL;
+    const relayUrl = process.env.AGENT_ORCHESTRATOR_URL;
     const serviceKey = process.env.INTERNAL_SERVICE_KEY;
 
     if (!relayUrl || !serviceKey) return c.json({ ready: true, skipped: true });
@@ -62,7 +62,7 @@ export async function handleAgentStatus(c: Context<AppEnv>) {
     const agent = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!agent) return c.json({ error: 'Agent not found' }, 404);
 
-    const relayUrl = process.env.RELAY_URL;
+    const relayUrl = process.env.AGENT_ORCHESTRATOR_URL;
     const serviceKey = process.env.INTERNAL_SERVICE_KEY;
 
     if (!relayUrl || !serviceKey) return c.json({ status: 'ready' });

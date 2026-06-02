@@ -48,7 +48,7 @@ export function createEventHandler(context: EventHandlerContext): {
 
   const handler: AgentEventHandler = async (event: AgentEvent) => {
     // Forward every event to the frontend (best-effort — failures are non-fatal)
-    // RELAY-9: circuit breaker — stop pushing after 3 consecutive failures to
+    // ORCHESTRATOR: circuit breaker — stop pushing after 3 consecutive failures to
     // avoid log spam and wasted network calls for a broken WS connection.
     if (context.pushToFrontend && consecutivePushFailures < MAX_PUSH_FAILURES) {
       try {

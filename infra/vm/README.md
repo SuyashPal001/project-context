@@ -36,7 +36,7 @@ terraform output env_block
 
 | Variable | Services |
 |---|---|
-| `DATABASE_URL` | `apps/api/.env`, `apps/ai-service/.env`, `apps/mcp-server/.env`, `apps/relay/.env` |
+| `DATABASE_URL` | `apps/api/.env`, `apps/ai-service/.env`, `apps/mcp-server/.env`, `apps/agent-orchestrator/.env` |
 | `UPSTASH_REDIS_URL` | `apps/api/.env` (leave `UPSTASH_REDIS_TOKEN` empty for local Redis) |
 | `LAKEHOUSE_URL` | `apps/api/.env` (used by the agent API for document retrieval) |
 

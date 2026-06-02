@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { AgentDetail } from "@/components/platform/agents/types";
-import { relayGet, relayDelete, type SchedulesResponse } from "./relayClient";
+import { relayGet, relayDelete, type SchedulesResponse } from "./orchestratorClient";
 import { NewScheduleDialog } from "./NewScheduleDialog";
 
 function formatNextFire(ts: number): string {

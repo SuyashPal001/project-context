@@ -94,7 +94,7 @@ Resources:
           GITHUB_APP_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/github-app"
           TOKEN_ENCRYPTION_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/token-encryption-key"
           FRONTEND_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/frontend-url}}"
-          RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
+          AGENT_ORCHESTRATOR_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/agent-orchestrator-url}}"
           LAKEHOUSE_URL: "https://projectcontext.co/api/lakehouse"
           INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
           AGENT_TASK_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/agent-task-queue-url}}"
@@ -191,7 +191,7 @@ Resources:
         Variables:
           LAMBDA_TYPE: task-worker
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
-          RELAY_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/relay-url}}"
+          AGENT_ORCHESTRATOR_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/agent-orchestrator-url}}"
           INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
           UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"

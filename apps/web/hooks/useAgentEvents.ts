@@ -205,7 +205,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
         }
         // ─────────────────────────────────────────────────────────────────────
 
-        const wsUrl = process.env.NEXT_PUBLIC_AGENT_WS_URL || "wss://relay.projectcontext.co";
+        const wsUrl = process.env.NEXT_PUBLIC_AGENT_WS_URL || "wss://agent-orchestrator.projectcontext.co";
 
         if (!wsUrl) {
           console.error('NEXT_PUBLIC_AGENT_WS_URL is not defined');
@@ -267,7 +267,7 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
 
               case 'error':
                 // Error from relay
-                onErrorRef.current?.('RELAY_ERROR', event.message, false);
+                onErrorRef.current?.('ORCHESTRATOR_ERROR', event.message, false);
                 break;
 
               case 'approval_request':
