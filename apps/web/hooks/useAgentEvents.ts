@@ -238,7 +238,6 @@ export function useAgentEvents(options: UseAgentEventsOptions) {
           try {
             const event = JSON.parse(eventMsg.data);
 
-            // Handle OpenClaw relay protocol
             switch (event.type) {
               case 'session.started':
                 // Defensive handling as per instructions

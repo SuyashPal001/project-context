@@ -87,7 +87,6 @@ export interface OpsProvider {
     provider: 'openai' | 'anthropic' | 'mistral' | 'openrouter' | 'kimi' | 'vertex'
     model: string
     displayName: string
-    openclawModelId: string | null
     isDefault: boolean
     status: 'live' | 'coming_soon'
     createdAt: string

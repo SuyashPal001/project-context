@@ -18,7 +18,7 @@ Domain: **projectcontext.co**
 - **MCP server:** Standalone Node.js service on GCP VM (port 3002) — Gmail, Google integrations
 - **AI service:** Python FastAPI (port 3004) — document processing
 - **Inference gateway:** Node.js proxy (port 4001) — Vertex AI / Gemini
-- **Agent server:** OpenClaw runtime (port 3003)
+- **Agent server:** Node.js agent runtime (port 3003)
 - **DB:** Neon PostgreSQL + Drizzle ORM
 - **Cache:** Upstash Redis
 - **Auth:** AWS Cognito with Google OAuth + pre-token generation Lambda
@@ -36,7 +36,7 @@ apps/
   worker/           SQS Lambda — background jobs
   agent-orchestrator/ Mastra agent orchestrator — SSE + WebSocket bridge to frontend
   mcp-server/       (root, not apps/) — standalone MCP server for Gmail/GCP integrations
-  agent-server/     OpenClaw agent runtime
+  agent-server/     Agent runtime
   ai-service/       Python FastAPI — document AI processing
   inference-gateway/ Node.js proxy — Vertex AI / Gemini
 
@@ -162,7 +162,7 @@ Agent platform handlers registered via `registerProductHandlers`.
 - **WebSocket Lambda is live.** Unlike the foundation baseline, this project uses WebSocket for real-time task/notification push. `websocket.ts` handles `$connect`, `$disconnect`, `$default`.
 - **Agent task queue is separate from processing queue.** `AGENT_TASK_QUEUE_URL` drives `TaskWorkerFunction`. The foundation processing queue drives `FoundationWorkerFunction`. Don't mix them.
 - **WatchdogFunction runs on a schedule.** EventBridge fires it every 5 minutes. It marks `in_progress` tasks that have stalled as `blocked`. No manual trigger needed.
-- **Agent orchestrator is Mastra-based.** `apps/agent-orchestrator` uses `@mastra/core` and `@mastra/hono`. It bridges SSE (browser chat) and WebSocket (mobile/OpenClaw) to the `platformAgent`. Memory is per-tenant via Mastra's PostgresStore.
+- **Agent orchestrator is Mastra-based.** `apps/agent-orchestrator` uses `@mastra/core` and `@mastra/hono`. It bridges SSE (browser chat) and WebSocket (mobile) to the `platformAgent`. Memory is per-tenant via Mastra's PostgresStore.
 - **mcp-server/ (root) is canonical.** `apps/mcp-server/` was removed (duplicate). The root `mcp-server/` runs on GCP VM port 3002, uses its own npm (not pnpm), and is NOT part of the pnpm workspace.
 - **Google OAuth credentials are Terraform-managed.** `google_client_id` and `google_client_secret` are Terraform input variables — they seed the `project-context/{env}/google-oauth` secret and wire Cognito's Google IdP in a single `terraform apply`. No manual seeding needed for Google.
 - **These 6 secrets must be seeded manually** before `terraform apply`:

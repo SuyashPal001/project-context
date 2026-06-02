@@ -11,7 +11,6 @@ vi.mock('../usage.js', () => ({
   recordUsage: vi.fn(),
 }))
 vi.mock('../auth.js', () => ({ validateToken: vi.fn() }))
-vi.mock('../openclaw.js', () => ({ OpenClawClient: vi.fn() }))
 vi.mock('../persistence.js', () => ({
   createConversation: vi.fn(),
   saveUserMessage: vi.fn(),

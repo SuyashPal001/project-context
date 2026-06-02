@@ -14,7 +14,6 @@ llmProvidersRoutes.get('/', async (c) => {
             provider: llmProviders.provider,
             model: llmProviders.model,
             displayName: llmProviders.displayName,
-            openclawModelId: llmProviders.openclawModelId,
             isDefault: llmProviders.isDefault,
             status: llmProviders.status,
         })
@@ -28,7 +27,6 @@ llmProvidersRoutes.get('/', async (c) => {
             provider: row.provider,
             model: row.model,
             displayName: row.displayName ?? row.model,
-            openclawModelId: row.openclawModelId ?? '',
             isDefault: row.isDefault,
             status: row.status as 'live' | 'coming_soon',
         })),

@@ -62,7 +62,7 @@ export interface WorkflowStep {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const MEDIA_DIR = join(homedir(), '.openclaw', 'media', 'inbound')
+export const MEDIA_DIR = join(homedir(), '.project-context', 'media', 'inbound')
 
 export const API_BASE_URL = process.env.API_BASE_URL ?? ''
 export const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY ?? ''

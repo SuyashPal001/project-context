@@ -31,7 +31,6 @@ export const llmProviders = pgTable('llm_providers', {
   isDefault: boolean('is_default').notNull().default(false),
   costPerToken: decimal('cost_per_token', { precision: 10, scale: 8 }),
   displayName: text('display_name'),
-  openclawModelId: text('openclaw_model_id'),
   isPlatform: boolean('is_platform').notNull().default(false),
   status: text('status').notNull().default('live'),
   createdAt: timestamp('created_at').notNull().defaultNow(),

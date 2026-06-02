@@ -7,9 +7,9 @@
 
 import type { AgentSessionRuntime } from './interface';
 
-export type RuntimeType = 'openclaw';
+export type RuntimeType = 'mastra';
 
-export function getRuntime(_type: RuntimeType = 'openclaw'): AgentSessionRuntime {
+export function getRuntime(_type: RuntimeType = 'mastra'): AgentSessionRuntime {
   throw new Error(
     '[getRuntime] No agent runtime configured. ' +
     'Implement an AgentSessionRuntime adapter and register it in factory.ts.',
@@ -17,5 +17,5 @@ export function getRuntime(_type: RuntimeType = 'openclaw'): AgentSessionRuntime
 }
 
 export function selectRuntime(_tenantId: string): RuntimeType {
-  return 'openclaw';
+  return 'mastra';
 }

@@ -6,7 +6,7 @@ Runs on GCP VM port 3001. Publicly exposed via NGINX at `wss://agent-orchestrato
 ## Architecture
 
 - **SSE path** (`/sse`) — browser EventSource for chat UI
-- **WebSocket path** (`/ws`) — mobile / OpenClaw clients
+- **WebSocket path** (`/ws`) — mobile clients
 - **Model** — `gemini-2.5-flash` via `@ai-sdk/google` → vertex-proxy (`:4001`) → Vertex AI
 - **Memory** — Mastra Memory with PostgresStore (`mastra` schema, Neon DB)
 - **Tools** — SERVER_TOOLS (`internet_search`, `web_fetch`, `create_plan_from_prd`) + per-tenant MCP tools (`:3002/sse`)

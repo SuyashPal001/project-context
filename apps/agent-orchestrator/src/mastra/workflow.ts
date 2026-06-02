@@ -116,8 +116,6 @@ export async function runMastraWorkflow(
   // success, early return (clarification/fail), or thrown exception.
   try {
     // Execute steps sequentially
-    // Mirrors existing runTaskSteps() behavior
-    // but uses Mastra agent instead of OpenClaw
     let isFirstStep = true
     const completedStepOutputs: string[] = []
     for (const rawStep of ctx.steps.sort(
@@ -281,7 +279,6 @@ export async function runMastraWorkflow(
         }
 
         // If agent needs clarification — stop execution
-        // Same behavior as existing OpenClaw path
         if (parsed.status === 'needs_clarification') {
           await ctx.onTaskComment(
             `❓ ${parsed.question ??

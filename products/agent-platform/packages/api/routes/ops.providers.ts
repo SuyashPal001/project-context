@@ -20,7 +20,7 @@ export async function handleListProviders(c: Context<AppEnv>) {
         const rows = await db
             .select({
                 id: llmProviders.id, provider: llmProviders.provider, model: llmProviders.model,
-                displayName: llmProviders.displayName, openclawModelId: llmProviders.openclawModelId,
+                displayName: llmProviders.displayName,
                 isDefault: llmProviders.isDefault, status: llmProviders.status, createdAt: llmProviders.createdAt,
             })
             .from(llmProviders)
@@ -54,7 +54,7 @@ export async function handleCreateProvider(c: Context<AppEnv>) {
     const schema = z.object({
         provider: z.enum(['openai', 'anthropic', 'mistral', 'openrouter', 'kimi', 'vertex']),
         model: z.string().min(1), displayName: z.string().optional(),
-        openclawModelId: z.string().optional(), apiKey: z.string().min(1),
+        apiKey: z.string().min(1),
         isDefault: z.boolean().optional().default(false),
     });
 

@@ -5,7 +5,6 @@ import type { db as DB } from './index';
 const PLATFORM_LLM_PROVIDERS: {
     provider: 'openai' | 'anthropic' | 'mistral' | 'openrouter' | 'kimi' | 'vertex';
     model: string;
-    openclawModelId: string;
     isDefault: boolean;
     isPlatform: boolean;
     status: string;
@@ -14,7 +13,6 @@ const PLATFORM_LLM_PROVIDERS: {
     {
         provider: 'vertex',
         model: 'gemini-2.5-flash',
-        openclawModelId: 'google/gemini-2.5-flash',
         isDefault: true,
         isPlatform: true,
         status: 'live',
@@ -23,7 +21,6 @@ const PLATFORM_LLM_PROVIDERS: {
     {
         provider: 'anthropic',
         model: 'claude-sonnet-4-6',
-        openclawModelId: 'anthropic/claude-sonnet-4-6',
         isDefault: false,
         isPlatform: true,
         status: 'inactive',
@@ -50,7 +47,7 @@ export async function seedLlmProviders(db: typeof DB) {
             .limit(1);
 
         if (existing.length > 0) {
-            console.log(`  skip ${row.openclawModelId}`);
+            console.log(`  skip ${row.provider}/${row.model}`);
             continue;
         }
 
@@ -59,6 +56,6 @@ export async function seedLlmProviders(db: typeof DB) {
             apiKeyEncrypted: '',  // platform key injected at runtime via env/secrets
             tenantId: null,
         });
-        console.log(`  inserted ${row.openclawModelId}`);
+        console.log(`  inserted ${row.provider}/${row.model}`);
     }
 }

@@ -2,25 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.hoisted(() => {
   process.env.INTERNAL_SERVICE_KEY = 'test-key'
-  process.env.OPENCLAW_GATEWAY_URL = 'ws://localhost:9999'
 })
-
-const MockOpenClawClient = vi.hoisted(() =>
-  vi.fn().mockImplementation((opts: any) => ({
-    connect: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn(),
-    patchSessionMcp: vi.fn().mockResolvedValue(undefined),
-    patchSessionModel: vi.fn(),
-    setActorId: vi.fn(),
-    resolveApproval: vi.fn(),
-    sendMessage: vi.fn().mockImplementation(() => {
-      // Synchronously fires onDone with prose — non-JSON, toolName present → guard fires
-      opts.onDone('This is plain prose with absolutely no JSON structure whatsoever.')
-    }),
-  }))
-)
-
-vi.mock('../openclaw.js', () => ({ OpenClawClient: MockOpenClawClient }))
 vi.mock('../usage.js', () => ({
   checkMessageQuota: vi.fn().mockResolvedValue({ allowed: true, used: 0, limit: 100, unlimited: false }),
   fetchAgentModelId: vi.fn().mockResolvedValue(null),

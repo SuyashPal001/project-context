@@ -30,12 +30,11 @@ const PROVIDER_COLORS: Record<OpsProvider["provider"], string> = {
 };
 
 const addSchema = z.object({
-    provider:        z.enum(["openai", "anthropic", "mistral", "openrouter", "kimi", "vertex"]),
-    model:           z.string().min(1, "Model ID is required"),
-    displayName:     z.string().optional(),
-    openclawModelId: z.string().optional(),
-    apiKey:          z.string().min(1, "API key is required"),
-    isDefault:       z.boolean().optional().default(false),
+    provider:    z.enum(["openai", "anthropic", "mistral", "openrouter", "kimi", "vertex"]),
+    model:       z.string().min(1, "Model ID is required"),
+    displayName: z.string().optional(),
+    apiKey:      z.string().min(1, "API key is required"),
+    isDefault:   z.boolean().optional().default(false),
 });
 type AddFormValues = z.infer<typeof addSchema>;
 
@@ -52,7 +51,7 @@ export default function ProvidersPage() {
 
     const form = useForm<AddFormValues, unknown, AddFormValues>({
         resolver: zodResolver(addSchema as any),
-        defaultValues: { provider: "openai", model: "", displayName: "", openclawModelId: "", apiKey: "", isDefault: false },
+        defaultValues: { provider: "openai", model: "", displayName: "", apiKey: "", isDefault: false },
     });
 
     const createMutation = useMutation({
@@ -120,13 +119,6 @@ export default function ProvidersPage() {
                                         <FormMessage />
                                     </FormItem>
                                 )} />
-                                <FormField control={form.control} name="openclawModelId" render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel className="text-zinc-300">OpenClaw Model ID <span className="text-zinc-600">(optional)</span></FormLabel>
-                                        <FormControl><Input placeholder="openclaw-model-id…" {...field} className="bg-zinc-950 border-zinc-700 font-mono text-sm" /></FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )} />
                                 <FormField control={form.control} name="apiKey" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel className="text-zinc-300">API Key</FormLabel>
@@ -168,7 +160,6 @@ export default function ProvidersPage() {
                                 <TableHead className="text-zinc-500 text-xs">Name</TableHead>
                                 <TableHead className="text-zinc-500 text-xs">Provider</TableHead>
                                 <TableHead className="text-zinc-500 text-xs">Model ID</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">OpenClaw ID</TableHead>
                                 <TableHead className="text-zinc-500 text-xs">Tenants Using</TableHead>
                                 <TableHead className="text-zinc-500 text-xs">Status</TableHead>
                                 <TableHead className="w-20" />
@@ -178,7 +169,7 @@ export default function ProvidersPage() {
                             {isLoading
                                 ? Array.from({ length: 4 }).map((_, i) => (
                                     <TableRow key={i} className="border-zinc-800">
-                                        {Array.from({ length: 7 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
+                                        {Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
                                     </TableRow>
                                 ))
                                 : providers.map((p) => (
@@ -195,7 +186,6 @@ export default function ProvidersPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="font-mono text-xs text-zinc-400">{p.model}</TableCell>
-                                        <TableCell className="font-mono text-xs text-zinc-600">{p.openclawModelId ?? "—"}</TableCell>
                                         <TableCell>
                                             <span className="text-zinc-300 font-medium text-sm">{p.tenantsUsing}</span>
                                             <span className="text-zinc-600 text-xs ml-1">tenants</span>

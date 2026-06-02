@@ -139,7 +139,6 @@ export async function downloadMediaAttachment(att: Attachment, sessionId: string
     if (att.type?.startsWith('video/')) {
       const frames = await extractVideoFrames(filePath, name, sessionId)
       if (frames.length > 0) return frames
-      // frame extraction failed — fall through will hit OpenClaw's 5MB limit, but at least we tried
       console.warn(`[session:${sessionId}] video frame extraction failed, skipping video attachment`)
       return null
     }
@@ -149,8 +148,6 @@ export async function downloadMediaAttachment(att: Attachment, sessionId: string
         const textBase64 = `data:text/plain;base64,${Buffer.from(transcript).toString('base64')}`
         return { filePath, base64: textBase64, mimeType: 'text/plain', name }
       }
-      // Transcription failed — fall through to raw base64
-      // OpenClaw will drop it but at least we tried
       console.warn(`[session:${sessionId}] transcription failed, sending raw audio`)
     }
     const mimeType = att.type ?? 'application/octet-stream'
