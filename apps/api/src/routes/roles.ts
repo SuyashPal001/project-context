@@ -5,7 +5,7 @@ import { db, features } from '@serverless-saas/database';
 import { roles, permissions, rolePermissions } from '@serverless-saas/database/schema/authorization';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { hasPermission } from '@serverless-saas/permissions';
-import { logWithDiff } from '../services/audit-log.js';
+import { logWithDiff } from '@serverless-saas/agent-api/services/audit-log';
 import type { AppEnv } from '../types';
 
 export const rolesRoutes = new Hono<AppEnv>();

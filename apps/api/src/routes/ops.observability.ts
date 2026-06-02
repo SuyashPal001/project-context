@@ -1,5 +1,5 @@
 import { isPlatformAdmin } from './ops.guard'
-import { getSummary, getWorkflowMetrics, getCostBreakdown, getAuditVolume, getAgentActivity } from '../services/observability'
+import { getSummary, getWorkflowMetrics, getCostBreakdown, getAuditVolume, getAgentActivity } from '@serverless-saas/agent-api/services/observability'
 import type { Context } from 'hono'
 import type { AppEnv } from '../types'
 

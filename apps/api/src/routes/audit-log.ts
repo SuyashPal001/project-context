@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db, auditLog } from '@serverless-saas/database';
 import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
-import { verifyAuditChain } from '../services/audit-log.js';
+import { verifyAuditChain } from '@serverless-saas/agent-api/services/audit-log';
 import type { AppEnv } from '../types';
 
 export const auditLogRoutes = new Hono<AppEnv>();

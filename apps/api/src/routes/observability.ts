@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { AppEnv } from '../types'
-import { getSummary, getWorkflowMetrics, getCostBreakdown, getAuditVolume, getAgentActivity } from '../services/observability'
+import { getSummary, getWorkflowMetrics, getCostBreakdown, getAuditVolume, getAgentActivity } from '@serverless-saas/agent-api/services/observability'
 
 const observabilityRoutes = new Hono<AppEnv>()
 

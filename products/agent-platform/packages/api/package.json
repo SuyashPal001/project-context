@@ -4,6 +4,11 @@
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": { "require": "./dist/index.js", "types": "./dist/index.d.ts" },
+    "./services/audit-log": { "require": "./dist/services/audit-log.js", "types": "./dist/services/audit-log.d.ts" },
+    "./services/observability": { "require": "./dist/services/observability.js", "types": "./dist/services/observability.d.ts" }
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
