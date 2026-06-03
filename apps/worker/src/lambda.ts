@@ -1,6 +1,8 @@
 import type { SQSEvent, SQSBatchResponse, SQSBatchItemFailure } from 'aws-lambda';
 import { route } from './router';
 import { initSecrets } from './lib/initSecrets';
+import { IdempotencyStore } from '@serverless-saas/idempotency';
+import { getRedis } from './redis';
 
 /**
  * Foundation Worker Lambda — SQS consumer
@@ -10,9 +12,16 @@ import { initSecrets } from './lib/initSecrets';
  */
 export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
   await initSecrets();
+  const store = new IdempotencyStore(getRedis());
   const failures: SQSBatchItemFailure[] = [];
 
   for (const record of event.Records) {
+    const acquired = await store.acquire(record.messageId);
+    if (!acquired) {
+      console.log(JSON.stringify({ level: 'info', message: 'idempotency_skip', messageId: record.messageId }));
+      continue;
+    }
+
     try {
       const body = JSON.parse(record.body);
 
@@ -23,7 +32,9 @@ export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
       });
 
       await route(body);
+      await store.complete(record.messageId);
     } catch (err) {
+      await store.release(record.messageId);
       console.error('Worker failed to process message', {
         messageId: record.messageId,
         error: err instanceof Error ? err.message : String(err),

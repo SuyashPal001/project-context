@@ -1,4 +1,4 @@
-import type { Redis } from '@upstash/redis';
+import type { CacheClient } from '@serverless-saas/cache';
 import { TTL } from '@serverless-saas/cache';
 
 export interface IdempotencyRecord {
@@ -7,7 +7,7 @@ export interface IdempotencyRecord {
 }
 
 export class IdempotencyStore {
-  constructor(private redis: Redis) {}
+  constructor(private redis: CacheClient) {}
 
   async isProcessed(key: string): Promise<boolean> {
     const exists = await this.redis.exists(`idempotency:${key}`);

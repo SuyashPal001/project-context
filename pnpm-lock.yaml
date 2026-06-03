@@ -490,6 +490,9 @@ importers:
       '@serverless-saas/database':
         specifier: workspace:*
         version: link:../../packages/foundation/database
+      '@serverless-saas/idempotency':
+        specifier: workspace:*
+        version: link:../../packages/foundation/idempotency
       '@serverless-saas/notifications':
         specifier: workspace:*
         version: link:../../packages/foundation/notifications

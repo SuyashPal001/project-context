@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createHash, randomBytes } from 'crypto';
 import { db } from '@serverless-saas/database';
+import { provisionNotificationWorkflows } from '@serverless-saas/database/seeds/notification-workflows';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
@@ -234,7 +235,14 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
-    // Step 6: Return response
+    // Step 6: Provision notification workflows for new tenant (non-fatal)
+    try {
+        await provisionNotificationWorkflows(db, tenantId, userId);
+    } catch (err) {
+        console.error('[onboarding] provisionNotificationWorkflows failed (non-fatal):', err);
+    }
+
+    // Step 7: Return response
     return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
 });
 
