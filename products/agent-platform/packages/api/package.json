@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1011.0",
+    "pg": "^8.13.0",
+    "postgres": "^3.4.0",
     "@aws-sdk/client-secrets-manager": "^3.1011.0",
     "@aws-sdk/s3-request-presigner": "^3.1011.0",
     "@serverless-saas/agent-schema": "workspace:*",
@@ -41,7 +43,9 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.0",
     "@types/pdf-parse": "^1.1.5",
+    "@types/pg": "^8.11.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.5"
   }

@@ -57,7 +57,7 @@ let _pool: pg.Pool | null = null
 export function getPool(): pg.Pool {
   if (!_pool) {
     _pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
-    _pool.on('error', (err) => {
+    _pool.on('error', (err: Error) => {
       console.error('[pageService] pool error:', err.message)
     })
   }
