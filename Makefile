@@ -1,4 +1,7 @@
-REPO_ROOT := $(shell git rev-parse --show-toplevel)
+REPO_ROOT ?= $(shell git rev-parse --show-toplevel 2>/dev/null)
+ifeq ($(REPO_ROOT),)
+  REPO_ROOT := $(abspath $(ARTIFACTS_DIR)/../../..)
+endif
 ESBUILD   := $(REPO_ROOT)/node_modules/.bin/esbuild
 ESBUILD_FLAGS := --bundle --platform=node --target=es2020 --minify --sourcemap \
   --external:@aws-sdk/*
