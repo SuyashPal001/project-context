@@ -192,7 +192,7 @@ pnpm install
 make build
 
 # 4. Deploy Lambdas (writes ARNs to SSM)
-sam deploy --config-env dev
+sam deploy --config-file samconfig.dev.toml
 
 # 5. Fill terraform vars (Lambda ARNs come from step 4)
 cd infra/terraform/foundation
@@ -227,9 +227,9 @@ pnpm exec drizzle-kit generate   # regenerate from schema
 pnpm exec drizzle-kit migrate    # apply to DATABASE_URL
 
 # SAM deploy
-sam deploy --config-env dev
-sam deploy --config-env staging
-sam deploy --config-env prod
+sam deploy --config-file samconfig.dev.toml
+sam deploy --config-file samconfig.staging.toml
+sam deploy --config-file samconfig.prod.toml
 
 # Terraform
 cd infra/terraform/foundation
