@@ -21,9 +21,9 @@
       "types": "./dist/schema/*.d.ts",
       "default": "./dist/schema/*.js"
     },
-    "./seeds/notification-workflows": {
-      "types": "./dist/seeds/notification-workflows.d.ts",
-      "default": "./dist/seeds/notification-workflows.js"
+    "./notification-workflows": {
+      "types": "./dist/notification-workflows.d.ts",
+      "default": "./dist/notification-workflows.js"
     }
   },
   "scripts": {
