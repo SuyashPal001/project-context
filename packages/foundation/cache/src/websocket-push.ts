@@ -14,8 +14,8 @@ async function getWsApiEndpoint(): Promise<string> {
     return wsApiEndpoint;
   }
 
-  const project = process.env.PROJECT ?? 'serverless-saas';
-  const env = process.env.NODE_ENV ?? 'dev';
+  const project = process.env.PROJECT ?? 'project-context';
+  const env = process.env.ENVIRONMENT ?? 'dev';
   const endpointParamName = `/${project}/${env}/api-gateway/ws-api-endpoint`;
   const ssm = new SSMClient({});
   try {

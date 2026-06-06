@@ -23,7 +23,7 @@ let wsTokenSecret: Uint8Array | undefined;
 async function getWsTokenSecret(): Promise<Uint8Array> {
     if (wsTokenSecret) return wsTokenSecret;
 
-    const env = process.env.APP_ENV ?? 'dev';
+    const env = process.env.ENVIRONMENT ?? 'dev';
     const secretName = `/project-context/${env}/ws-token-secret`;
     const ssm = new SSMClient({});
     try {
