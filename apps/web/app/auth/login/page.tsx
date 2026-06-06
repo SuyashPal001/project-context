@@ -75,6 +75,7 @@ function LoginPageContent() {
 
         const { tenants }: { tenants: Workspace[] } = await (await fetch('/api/proxy/api/v1/auth/tenants')).json();
         if (redirectParam || tenants.length <= 1) {
+            finishHyperspace();
             router.push(redirectParam ?? (tenants[0]?.slug ? `/${tenants[0].slug}/dashboard` : '/auth/onboarding'));
             router.refresh();
             return;

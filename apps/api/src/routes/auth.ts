@@ -23,7 +23,8 @@ let wsTokenSecret: Uint8Array | undefined;
 async function getWsTokenSecret(): Promise<Uint8Array> {
     if (wsTokenSecret) return wsTokenSecret;
 
-    const secretName = '/serverless-saas/dev/ws-token-secret';
+    const env = process.env.APP_ENV ?? 'dev';
+    const secretName = `/project-context/${env}/ws-token-secret`;
     const ssm = new SSMClient({});
     try {
         const output = await ssm.send(new GetParameterCommand({ Name: secretName, WithDecryption: true }));
