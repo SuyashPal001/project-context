@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { decodeTenantClaims } from "@/lib/tenant";
 import { TenantProvider } from "./tenant-provider";
 import { UpgradePromptProvider } from "@/components/platform/UpgradePromptProvider";
+import { PostHogIdentifier } from "@/components/posthog-identifier";
 import { Agent, fetch as undiciFetch } from 'undici';
 
 export default async function TenantLayout({
@@ -84,6 +85,7 @@ export default async function TenantLayout({
 
     return (
         <TenantProvider claims={claims}>
+            <PostHogIdentifier />
             <UpgradePromptProvider>
                 <div className="tenant-context-wrapper" data-tenant={tenant}>
                     {children}
