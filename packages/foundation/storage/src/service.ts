@@ -13,7 +13,7 @@ async function getBucketFromSSM(): Promise<string> {
   if (cachedBucket) return cachedBucket;
 
   const env = process.env.ENVIRONMENT || 'dev';
-  const paramName = `/serverless-saas/${env}/storage/bucket`;
+  const paramName = `/project-context/${env}/storage/bucket`;
 
   const command = new GetParameterCommand({ Name: paramName });
   const result = await ssm.send(command);

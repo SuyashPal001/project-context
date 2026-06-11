@@ -11,7 +11,8 @@ async function getWsTokenSecret(): Promise<Uint8Array> {
         return wsTokenSecret;
     }
 
-    const secretName = '/serverless-saas/dev/ws-token-secret';
+    const env = process.env.ENVIRONMENT ?? 'dev';
+    const secretName = `/project-context/${env}/ws-token-secret`;
     const ssm = new SSMClient({});
 
     try {

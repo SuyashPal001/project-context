@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { createHash, randomBytes } from 'crypto';
 import { db } from '@serverless-saas/database';
-import { provisionNotificationWorkflows } from '@serverless-saas/database/seeds/notification-workflows';
+import { provisionNotificationWorkflows } from '@serverless-saas/database/notification-workflows';
 import { roles } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';

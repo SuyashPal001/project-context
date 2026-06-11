@@ -29,6 +29,15 @@
   "pnpm": {
     "overrides": {
       "protobufjs": ">=7.5.8"
+    },
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "@ai-sdk/google-vertex>zod": ">=3",
+        "@ai-sdk/provider-utils>zod": ">=3",
+        "@ai-sdk/react>zod": ">=3",
+        "@ai-sdk/ui-utils>zod": ">=3",
+        "ai>zod": ">=3"
+      }
     }
   }
 }

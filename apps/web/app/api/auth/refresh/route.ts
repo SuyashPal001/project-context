@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
             path: '/',
-            maxAge: 7200,
+            maxAge: 3600,
         });
 
         // ID Token - NOT httpOnly (so useChat can read it for X-Id-Token after refresh)
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
             path: '/',
-            maxAge: 7200,
+            maxAge: 3600,
         });
 
         // Access Token - NOT httpOnly (for relay auth)
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
                 secure: process.env.NODE_ENV === 'production',
                 sameSite: 'strict',
                 path: '/',
-                maxAge: 7200,
+                maxAge: 3600,
             });
         }
 

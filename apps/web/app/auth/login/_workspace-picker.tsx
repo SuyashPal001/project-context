@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { refreshSession } from "@/lib/auth";
 import { useHyperspace } from "@/components/hyperspace-provider";
 import { StarfieldCanvas } from "@/components/starfield-canvas";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,21 +29,28 @@ export function WorkspacePicker({ workspaces, pendingTokens }: Props) {
         setIsLoading(true);
         setError(null);
         try {
-            let { idToken, accessToken } = pendingTokens;
-            const { refreshToken } = pendingTokens;
+            const { idToken, accessToken, refreshToken } = pendingTokens;
 
-            if (!ws.isCurrent) {
-                const refreshed = await refreshSession(refreshToken, { tenantId: ws.tenantId });
-                idToken = refreshed.idToken;
-                accessToken = refreshed.accessToken;
-            }
-
-            const res = await fetch('/api/auth/session', {
+            // Write the initial session cookie first so /api/auth/refresh can attach
+            // platform_token to the set-pending-tenant call. Cognito drops ClientMetadata
+            // on REFRESH_TOKEN_AUTH, so the pre-token Lambda reads pendingTenantId from
+            // DB instead — /api/auth/refresh handles that write before calling Cognito.
+            const initRes = await fetch('/api/auth/session', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token: idToken, accessToken, refreshToken }),
             });
-            if (!res.ok) throw new Error('Failed to create secure session');
+            if (!initRes.ok) throw new Error('Failed to create secure session');
+
+            if (!ws.isCurrent) {
+                const refreshRes = await fetch('/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tenantId: ws.tenantId }),
+                });
+                if (!refreshRes.ok) throw new Error('Failed to switch workspace');
+            }
+
             startHyperspace();
             router.push(`/${ws.slug}/dashboard`);
             router.refresh();
