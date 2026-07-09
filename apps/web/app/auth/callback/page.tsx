@@ -15,15 +15,6 @@ function CallbackContent() {
   useEffect(() => {
     const code = searchParams.get("code");
 
-    // Post-Cognito-logout redirect: no code, but we flagged a pending Google sign-in.
-    // Kick off Google OAuth now — Cognito session is clear, so Google shows the account picker.
-    if (!code && sessionStorage.getItem("google_signin_pending")) {
-      sessionStorage.removeItem("google_signin_pending");
-      const { buildGoogleAuthorizeUrl } = require("@/lib/auth-google");
-      window.location.href = buildGoogleAuthorizeUrl();
-      return;
-    }
-
     if (!code) {
       setError("No authorization code found in the URL.");
       return;
