@@ -62,7 +62,16 @@ export async function signOut() {
         } catch (e) {
             console.error('Failed to clear session cookie', e);
         }
-        window.location.href = '/auth/login';
+
+        // End the Cognito hosted UI session too — otherwise Google OAuth users
+        // are silently re-logged-in on the next "Sign in with Google" click.
+        const domain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN;
+        const logoutUrl = process.env.NEXT_PUBLIC_COGNITO_LOGOUT_URL;
+        if (domain && logoutUrl) {
+            window.location.href = `${domain}/logout?client_id=${CLIENT_ID}&logout_uri=${encodeURIComponent(logoutUrl)}`;
+        } else {
+            window.location.href = '/auth/login';
+        }
     }
 }
 
