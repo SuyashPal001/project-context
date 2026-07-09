@@ -52,7 +52,7 @@ module "cognito" {
       callback_urls                = var.cognito_callback_urls
       logout_urls                  = var.cognito_logout_urls
       supported_identity_providers = ["COGNITO","Google"]
-      read_attributes              = ["email", "name", "custom:tenantId", "custom:role", "custom:plan"]
+      read_attributes              = ["email", "email_verified", "name", "custom:tenantId", "custom:role", "custom:plan"]
       write_attributes             = ["email", "name"]
       generate_secret              = false
     }
@@ -69,9 +69,10 @@ module "cognito" {
         authorize_scopes = "email openid profile"
       }
       attribute_mapping = {
-        email    = "email"
-        name     = "name"
-        username = "sub"
+        email          = "email"
+        email_verified = "email_verified"
+        name           = "name"
+        username       = "sub"
       }
     }
   }
