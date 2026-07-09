@@ -44,14 +44,17 @@ authPublicRoutes.get('/check-email', async (c) => {
     if (!result.success) return c.json({ error: 'Invalid email format' }, 400);
 
     const validatedEmail = result.data;
-    const cacheClient = await getCacheClient();
-    const rateLimitKey = `ratelimit:check-email:${validatedEmail.toLowerCase()}`;
-    const requestCount = await cacheClient.incr(rateLimitKey);
 
-    if (requestCount === 1) await cacheClient.expire(rateLimitKey, 60);
-
-    if (requestCount > 5) {
-        return c.json({ error: 'Too many requests. Please try again later.', code: 'RATE_LIMIT_EXCEEDED', retryAfter: 60 }, 429);
+    try {
+        const cacheClient = getCacheClient();
+        const rateLimitKey = `ratelimit:check-email:${validatedEmail.toLowerCase()}`;
+        const requestCount = await cacheClient.incr(rateLimitKey);
+        if (requestCount === 1) await cacheClient.expire(rateLimitKey, 60);
+        if (requestCount > 5) {
+            return c.json({ error: 'Too many requests. Please try again later.', code: 'RATE_LIMIT_EXCEEDED', retryAfter: 60 }, 429);
+        }
+    } catch {
+        // Rate limiting unavailable — degrade gracefully
     }
 
     const cognitoProvider = await getUserProvider(validatedEmail).catch(() => 'not_found' as const);
