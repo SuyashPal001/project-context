@@ -30,4 +30,7 @@ pm2 start /home/suyashresearchwork/project-context/apps/web/.next/standalone/app
   --update-env 2>/dev/null || \
 pm2 restart web-frontend --update-env
 
+echo "→ Restarting API..."
+pm2 restart api --update-env
+
 echo "✓ Deploy complete"
