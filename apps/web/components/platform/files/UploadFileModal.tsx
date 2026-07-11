@@ -60,6 +60,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
   const [isDragActive, setIsDragActive] = useState(false)
   const [fileStatuses, setFileStatuses] = useState<Record<string, FileStatus>>({})
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const prefixedName = (originalName: string) => `${folderName}-${originalName}`
@@ -109,6 +110,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
       setSelectedFiles([])
       setFileStatuses({})
       setNewFolderName('')
+      setUploadError(null)
     }, 300)
   }
 
@@ -163,6 +165,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
   async function handleUpload() {
     if (!selectedFiles.length || !folderReady) return
     setIsUploading(true)
+    setUploadError(null)
 
     let personFolderId = ''
     try {
@@ -171,11 +174,15 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier: folderName }),
       })
-      if (!res.ok) throw new Error('Failed to create folder')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || body.message || `Failed to create folder (HTTP ${res.status})`)
+      }
       const { data } = await res.json()
       personFolderId = data.id
       queryClient.invalidateQueries({ queryKey: ['person-folders'] })
-    } catch {
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to create folder')
       setIsUploading(false)
       return
     }
@@ -303,6 +310,13 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
             </div>
           )}
         </div>
+
+        {uploadError && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/40 border border-red-900/50 text-xs text-red-400">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>{uploadError}</span>
+          </div>
+        )}
 
         <DialogFooter className="pt-4 border-t border-zinc-800/50">
           {allSettled ? (

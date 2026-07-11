@@ -29,6 +29,7 @@ import { usageRoutes } from './routes/usage';
 import { webhooksRoutes } from './routes/webhooks';
 import { filesRoutes } from './routes/files';
 import { filesFolderRoutes } from './routes/files.folder';
+import { personFoldersRoutes } from './routes/personFolders';
 
 import { eventsRoutes } from './routes/events';
 import { integrationsRoutes, googleOAuthCallbackRoute, zohoOAuthCallbackRoute, jiraOAuthCallbackRoute } from './routes/integrations';
@@ -160,6 +161,7 @@ api.route('/webhooks', webhooksRoutes);
 api.route('/events', eventsRoutes);
 api.route('/files', filesRoutes);
 api.route('/files', filesFolderRoutes);
+api.route('/person-folders', personFoldersRoutes);
 
 api.route('/integrations', integrationsRoutes);
 api.route('/integrations', githubIntegrationRoute);

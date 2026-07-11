@@ -90,6 +90,8 @@ filesRoutes.post(
     const fileId = c.req.param('id');
     const { size } = c.req.valid('json');
 
+    if (!tenantId || !userId) return c.json({ error: 'User or tenant not found', code: 'UNAUTHORIZED' }, 401);
+
     const permissions = requestContext?.permissions || [];
     if (!hasPermission(permissions, 'files', 'create')) {
       return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
