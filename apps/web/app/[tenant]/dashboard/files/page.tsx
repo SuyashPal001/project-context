@@ -23,16 +23,16 @@ export default function FilesPage() {
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                            Document Ingestion
+                            Knowledge Base
                         </h1>
                         <p className="text-muted-foreground mt-2">
-                            Upload documents to your knowledge base. Multi-format detection · OCR extraction · RAG indexed.
+                            Upload documents for your AI team. Multi-format detection · OCR extraction · RAG indexed.
                         </p>
                     </div>
                     {canUpload && (
                         <Button onClick={() => setIsUploadOpen(true)}>
                             <Upload className="w-4 h-4 mr-2" />
-                            {currentPrefix ? 'Add Files' : 'Ingest Document'}
+                            {currentPrefix ? 'Add Files' : 'Upload Document'}
                         </Button>
                     )}
                 </div>

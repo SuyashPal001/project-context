@@ -14,7 +14,7 @@ export const workflowTriggerEnum = pgEnum('workflow_trigger', ['incident_created
 export const workflowStatusEnum = pgEnum('workflow_status', ['active', 'paused', 'archived']);
 export const workflowRunStatusEnum = pgEnum('workflow_run_status', ['running', 'completed', 'failed', 'awaiting_approval']);
 
-export const agentTypeEnum = pgEnum('agent_type', ['ops', 'support', 'billing', 'custom']);
+export const agentTypeEnum = pgEnum('agent_type', ['ops', 'support', 'billing', 'custom', 'product_manager', 'analyst', 'project_manager', 'tech_lead', 'architect']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'paused', 'retired']);
 
 export const agents = pgTable('agents', {

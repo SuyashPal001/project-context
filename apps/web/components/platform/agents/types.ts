@@ -4,13 +4,13 @@ import * as z from "zod";
 
 export const agentSchema = z.object({
     name: z.string().min(2, { message: "Name must be at least 2 characters." }),
-    type: z.enum(["ops", "support", "billing", "custom"]),
+    type: z.enum(["ops", "support", "billing", "custom", "product_manager", "analyst", "project_manager", "tech_lead", "architect"]),
     model: z.string().optional(),
 });
 
 export type AgentFormValues = z.infer<typeof agentSchema>;
 
-export type AgentType = "ops" | "support" | "billing" | "custom";
+export type AgentType = "ops" | "support" | "billing" | "custom" | "product_manager" | "analyst" | "project_manager" | "tech_lead" | "architect";
 export type AgentStatus = "active" | "paused" | "retired";
 
 export interface Agent {

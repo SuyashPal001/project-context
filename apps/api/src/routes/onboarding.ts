@@ -140,7 +140,7 @@ onboardingRoutes.post('/complete', async (c) => {
 
     const resolvedSystemPrompt = publishedTemplate
         ? publishedTemplate.systemPrompt.replace(/\$\{workspaceName\}/g, workspaceName)
-        : `You are Saarthi, an AI assistant for ${workspaceName}. You help users by answering questions from their organization's uploaded documents. Always call retrieve_documents when the user asks about company-specific information. Cite retrieved content inline as [1][2][3].`;
+        : `You are the Research Engineer for ${workspaceName}. Answer questions from the organization's uploaded documents and knowledge base. Always call retrieve_documents before responding to company-specific questions. Cite retrieved content inline as [1][2][3]. Say "I don't know" when the answer is not in the knowledge base.`;
 
     const resolvedTools = publishedTemplate?.tools ?? [];
     const resolvedModel = publishedTemplate?.model ?? null;
@@ -148,9 +148,9 @@ onboardingRoutes.post('/complete', async (c) => {
     const rawKey = `ak_${randomBytes(32).toString('hex')}`;
     const keyHash = createHash('sha256').update(rawKey).digest('hex');
 
-    const [saarthiKey] = await db.insert(apiKeys).values({
+    const [researchKey] = await db.insert(apiKeys).values({
         tenantId,
-        name: 'Saarthi API Key',
+        name: 'Research Engineer API Key',
         type: 'agent',
         keyHash,
         permissions: [],
@@ -158,18 +158,19 @@ onboardingRoutes.post('/complete', async (c) => {
         createdBy: userId,
     }).returning();
 
-    const [saarthiAgent] = await db.insert(agents).values({
+    const [researchAgent] = await db.insert(agents).values({
         tenantId,
-        name: 'Saarthi',
+        name: 'Research Engineer',
         type: 'custom',
+        description: 'Answers questions from your uploaded documents and knowledge base. Always retrieves before responding. Cites sources inline.',
         status: 'active',
-        apiKeyId: saarthiKey.id,
+        apiKeyId: researchKey.id,
         model: resolvedModel,
         createdBy: userId,
     }).returning();
 
     await db.insert(agentSkills).values({
-        agentId: saarthiAgent.id,
+        agentId: researchAgent.id,
         tenantId,
         name: 'default',
         systemPrompt: resolvedSystemPrompt,
@@ -177,12 +178,12 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
-    // Seed PM Agent as inactive — visible as locked on free plan, activated on upgrade
+    // Seed Product Manager Agent as paused — visible as locked on free plan, activated on upgrade
     const pmRawKey = `ak_${randomBytes(32).toString('hex')}`;
     const pmKeyHash = createHash('sha256').update(pmRawKey).digest('hex');
     const [pmKey] = await db.insert(apiKeys).values({
         tenantId,
-        name: 'PM Agent API Key',
+        name: 'Product Manager API Key',
         type: 'agent',
         keyHash: pmKeyHash,
         permissions: [],
@@ -191,9 +192,10 @@ onboardingRoutes.post('/complete', async (c) => {
     }).returning();
     const [pmAgent] = await db.insert(agents).values({
         tenantId,
-        name: 'PM Agent',
-        type: 'custom',
+        name: 'Product Manager',
+        type: 'product_manager',
         status: 'paused',
+        description: 'Captures intent, asks the one clarifying question that matters, and orchestrates the full PM workflow from discovery to tasks.',
         apiKeyId: pmKey.id,
         createdBy: userId,
     }).returning();
@@ -201,7 +203,97 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: pmAgent.id,
         tenantId,
         name: 'default',
-        systemPrompt: 'You are a PM Agent that helps with product planning, PRDs, roadmaps, and task breakdowns.',
+        systemPrompt: 'You are the Product Manager. Capture user intent, ask one clarifying question, load product context, and hand off to the Analyst. Keep every phase aligned.',
+        tools: [],
+        status: 'active',
+    });
+
+    // Seed Analyst Agent
+    const prdRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const prdKeyHash = createHash('sha256').update(prdRawKey).digest('hex');
+    const [prdKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Analyst API Key',
+        type: 'agent',
+        keyHash: prdKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [prdAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'Analyst',
+        type: 'analyst',
+        status: 'active',
+        description: 'Drafts complete PRDs — problem, goals, user stories, functional and non-functional requirements, and success metrics. Edits surgically when you push back.',
+        apiKeyId: prdKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: prdAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are the Analyst. Draft a complete PRD covering problem, goals, user stories, functional and non-functional requirements, and success metrics. Edit surgically on feedback. Auto-save every version.',
+        tools: [],
+        status: 'active',
+    });
+
+    // Seed Project Manager Agent
+    const roadmapRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const roadmapKeyHash = createHash('sha256').update(roadmapRawKey).digest('hex');
+    const [roadmapKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Project Manager API Key',
+        type: 'agent',
+        keyHash: roadmapKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [roadmapAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'Project Manager',
+        type: 'project_manager',
+        status: 'active',
+        description: 'Turns an approved PRD into 3–7 milestones with priorities, target dates, and dependencies. Refuses to plan from an unapproved spec.',
+        apiKeyId: roadmapKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: roadmapAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are the Project Manager. Turn approved PRDs into 3–7 milestones with priorities, target dates, and dependencies ordered chronologically. Never plan from an unapproved spec.',
+        tools: [],
+        status: 'active',
+    });
+
+    // Seed Tech Lead Agent
+    const taskRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const taskKeyHash = createHash('sha256').update(taskRawKey).digest('hex');
+    const [taskKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Tech Lead API Key',
+        type: 'agent',
+        keyHash: taskKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [taskAgentRow] = await db.insert(agents).values({
+        tenantId,
+        name: 'Tech Lead',
+        type: 'tech_lead',
+        status: 'active',
+        description: 'Decomposes each milestone into 3–7 concrete tasks with acceptance criteria, effort estimates, and priorities. Tasks land on your board, ready to assign.',
+        apiKeyId: taskKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: taskAgentRow.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are the Tech Lead. Decompose milestones into 3–7 concrete engineering tasks with acceptance criteria, effort estimates, and priorities. Output board-ready tasks.',
         tools: [],
         status: 'active',
     });
@@ -221,9 +313,9 @@ onboardingRoutes.post('/complete', async (c) => {
     const [archAgent] = await db.insert(agents).values({
         tenantId,
         name: 'Architect',
-        type: 'custom',
+        type: 'architect',
         status: 'active',
-        description: 'Technical architect that answers codebase and system design questions using your knowledge base.',
+        description: 'Knows your migrations, routes, tests, and architectural decisions. Never answers without retrieving. Always cites the file.',
         apiKeyId: archKey.id,
         createdBy: userId,
     }).returning();
@@ -231,97 +323,7 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: archAgent.id,
         tenantId,
         name: 'default',
-        systemPrompt: 'You are the technical architect. Always call retrieve_knowledge before answering any technical question about the codebase.',
-        tools: [],
-        status: 'active',
-    });
-
-    // Seed PRD Agent
-    const prdRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const prdKeyHash = createHash('sha256').update(prdRawKey).digest('hex');
-    const [prdKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'PRD Agent API Key',
-        type: 'agent',
-        keyHash: prdKeyHash,
-        permissions: [],
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [prdAgent] = await db.insert(agents).values({
-        tenantId,
-        name: 'Saarthi PRD',
-        type: 'custom',
-        status: 'active',
-        description: 'Creates, writes, and refines Product Requirements Documents from your ideas and goals.',
-        apiKeyId: prdKey.id,
-        createdBy: userId,
-    }).returning();
-    await db.insert(agentSkills).values({
-        agentId: prdAgent.id,
-        tenantId,
-        name: 'default',
-        systemPrompt: 'You are a senior engineering lead specialising in Product Requirements Documents. Create thorough, structured PRDs from user input.',
-        tools: [],
-        status: 'active',
-    });
-
-    // Seed Roadmap Agent
-    const roadmapRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const roadmapKeyHash = createHash('sha256').update(roadmapRawKey).digest('hex');
-    const [roadmapKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Roadmap Agent API Key',
-        type: 'agent',
-        keyHash: roadmapKeyHash,
-        permissions: [],
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [roadmapAgent] = await db.insert(agents).values({
-        tenantId,
-        name: 'Saarthi Roadmap',
-        type: 'custom',
-        status: 'active',
-        description: 'Generates roadmaps, project plans, and milestones from an approved PRD.',
-        apiKeyId: roadmapKey.id,
-        createdBy: userId,
-    }).returning();
-    await db.insert(agentSkills).values({
-        agentId: roadmapAgent.id,
-        tenantId,
-        name: 'default',
-        systemPrompt: 'You are a roadmap planning specialist. Break approved PRDs into phased milestones with clear deliverables and timelines.',
-        tools: [],
-        status: 'active',
-    });
-
-    // Seed Task Agent
-    const taskRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const taskKeyHash = createHash('sha256').update(taskRawKey).digest('hex');
-    const [taskKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Task Agent API Key',
-        type: 'agent',
-        keyHash: taskKeyHash,
-        permissions: [],
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [taskAgentRow] = await db.insert(agents).values({
-        tenantId,
-        name: 'Saarthi Task',
-        type: 'custom',
-        status: 'active',
-        description: 'Breaks approved milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates.',
-        apiKeyId: taskKey.id,
-        createdBy: userId,
-    }).returning();
-    await db.insert(agentSkills).values({
-        agentId: taskAgentRow.id,
-        tenantId,
-        name: 'default',
-        systemPrompt: 'You are a task breakdown specialist. Decompose milestones into well-defined engineering tasks with clear acceptance criteria.',
+        systemPrompt: 'You are the Architect. Always call retrieve_knowledge before answering any technical question about the codebase. Always cite the file. Say "I don\'t know" when the answer is not in the knowledge base.',
         tools: [],
         status: 'active',
     });
@@ -334,7 +336,7 @@ onboardingRoutes.post('/complete', async (c) => {
     }
 
     // Step 7: Return response
-    return c.json({ tenantId, agentId: saarthiAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
+    return c.json({ tenantId, agentId: researchAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
 });
 
 export { onboardingRoutes };

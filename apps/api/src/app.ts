@@ -29,7 +29,7 @@ import { usageRoutes } from './routes/usage';
 import { webhooksRoutes } from './routes/webhooks';
 import { filesRoutes } from './routes/files';
 import { filesFolderRoutes } from './routes/files.folder';
-import { personFoldersRoutes } from './routes/personFolders';
+import { personFoldersRoutes } from './routes/person-folders';
 
 import { eventsRoutes } from './routes/events';
 import { integrationsRoutes, googleOAuthCallbackRoute, zohoOAuthCallbackRoute, jiraOAuthCallbackRoute } from './routes/integrations';

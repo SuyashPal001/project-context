@@ -267,6 +267,20 @@
       "when": 1779912974055,
       "tag": "0038_rapid_vision",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1752192000000,
+      "tag": "0039_agent_type_pm_team",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1752192060000,
+      "tag": "0040_person_folders",
+      "breakpoints": true
     }
   ]
 }

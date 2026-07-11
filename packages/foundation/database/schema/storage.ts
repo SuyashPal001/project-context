@@ -1,6 +1,17 @@
-import { pgTable, uuid, varchar, integer, timestamp, pgEnum, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, integer, timestamp, pgEnum, jsonb, text, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy';
 import { users } from './auth';
+
+export const personFolders = pgTable('person_folders', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  identifier: text('identifier').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  tenantIdentifierUniq: uniqueIndex('person_folders_tenant_identifier_uniq').on(t.tenantId, t.identifier),
+  tenantIdx: index('person_folders_tenant_idx').on(t.tenantId),
+}));
 
 // File status enum
 export const fileStatusEnum = pgEnum('file_status', ['pending', 'uploaded', 'deleted']);
@@ -40,6 +51,5 @@ export const files = pgTable('files', {
   chunkCount: integer('chunk_count').default(0),
   ingestionStatus: ingestionStatusEnum('ingestion_status').default('pending'),
   extractedFields: jsonb('extracted_fields'),
-  // Person folder link
   personFolderId: uuid('person_folder_id').references(() => personFolders.id),
 });
