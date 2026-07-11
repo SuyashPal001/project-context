@@ -206,7 +206,7 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
-    // Seed Architect Agent as paused — visible in agent list, routes to architectAgent in relay
+    // Seed Architect Agent
     const archRawKey = `ak_${randomBytes(32).toString('hex')}`;
     const archKeyHash = createHash('sha256').update(archRawKey).digest('hex');
     const [archKey] = await db.insert(apiKeys).values({
@@ -223,6 +223,7 @@ onboardingRoutes.post('/complete', async (c) => {
         name: 'Architect',
         type: 'custom',
         status: 'active',
+        description: 'Technical architect that answers codebase and system design questions using your knowledge base.',
         apiKeyId: archKey.id,
         createdBy: userId,
     }).returning();
@@ -231,6 +232,96 @@ onboardingRoutes.post('/complete', async (c) => {
         tenantId,
         name: 'default',
         systemPrompt: 'You are the technical architect. Always call retrieve_knowledge before answering any technical question about the codebase.',
+        tools: [],
+        status: 'active',
+    });
+
+    // Seed PRD Agent
+    const prdRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const prdKeyHash = createHash('sha256').update(prdRawKey).digest('hex');
+    const [prdKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'PRD Agent API Key',
+        type: 'agent',
+        keyHash: prdKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [prdAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'Saarthi PRD',
+        type: 'custom',
+        status: 'active',
+        description: 'Creates, writes, and refines Product Requirements Documents from your ideas and goals.',
+        apiKeyId: prdKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: prdAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are a senior engineering lead specialising in Product Requirements Documents. Create thorough, structured PRDs from user input.',
+        tools: [],
+        status: 'active',
+    });
+
+    // Seed Roadmap Agent
+    const roadmapRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const roadmapKeyHash = createHash('sha256').update(roadmapRawKey).digest('hex');
+    const [roadmapKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Roadmap Agent API Key',
+        type: 'agent',
+        keyHash: roadmapKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [roadmapAgent] = await db.insert(agents).values({
+        tenantId,
+        name: 'Saarthi Roadmap',
+        type: 'custom',
+        status: 'active',
+        description: 'Generates roadmaps, project plans, and milestones from an approved PRD.',
+        apiKeyId: roadmapKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: roadmapAgent.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are a roadmap planning specialist. Break approved PRDs into phased milestones with clear deliverables and timelines.',
+        tools: [],
+        status: 'active',
+    });
+
+    // Seed Task Agent
+    const taskRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const taskKeyHash = createHash('sha256').update(taskRawKey).digest('hex');
+    const [taskKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Task Agent API Key',
+        type: 'agent',
+        keyHash: taskKeyHash,
+        permissions: [],
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [taskAgentRow] = await db.insert(agents).values({
+        tenantId,
+        name: 'Saarthi Task',
+        type: 'custom',
+        status: 'active',
+        description: 'Breaks approved milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates.',
+        apiKeyId: taskKey.id,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: taskAgentRow.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are a task breakdown specialist. Decompose milestones into well-defined engineering tasks with clear acceptance criteria.',
         tools: [],
         status: 'active',
     });

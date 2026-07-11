@@ -66,7 +66,7 @@ export function AgentsView() {
             ) : data?.data && data.data.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {data.data
-                        .filter(agent => !agent.isInternal && (isPlatformAdmin || agent.status === 'active'))
+                        .filter(agent => !agent.isInternal && agent.status !== 'retired')
                         .map((agent) => (
                             <AgentCard key={agent.id} agent={agent} />
                         ))}
