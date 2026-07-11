@@ -12,8 +12,14 @@ let cachedBucket: string | null = null;
 async function getBucketFromSSM(): Promise<string> {
   if (cachedBucket) return cachedBucket;
 
+  // Lambdas get the bucket injected directly; SSM is the fallback for other runtimes
+  if (process.env.DOCUMENTS_BUCKET) {
+    cachedBucket = process.env.DOCUMENTS_BUCKET;
+    return cachedBucket;
+  }
+
   const env = process.env.ENVIRONMENT || 'dev';
-  const paramName = `/project-context/${env}/storage/bucket`;
+  const paramName = `/project-context/${env}/s3/documents-bucket-name`;
 
   const command = new GetParameterCommand({ Name: paramName });
   const result = await ssm.send(command);
