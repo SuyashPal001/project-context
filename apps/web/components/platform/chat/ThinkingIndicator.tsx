@@ -7,10 +7,9 @@ import { ToolCall, CompletedToolCall } from "./types";
 import { ToolCallCard } from "./ToolCallCard";
 
 const WARMUP_STEPS = [
-    "Starting your workspace...",
-    "Loading agent runtime...",
-    "Registering tools...",
-    "Almost ready...",
+    "Thinking...",
+    "Still working on it...",
+    "Taking a bit longer than usual...",
 ];
 
 const WARMUP_STEP_INTERVAL_MS = 8_000;
