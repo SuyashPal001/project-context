@@ -8,7 +8,7 @@ const steps = [
 
 export function AgentFlow() {
   return (
-    <section className="marketing-section mx-auto max-w-6xl px-6">
+    <section id="how" className="marketing-section mx-auto max-w-6xl px-6">
       <div className="marketing-rule mb-16" />
       <div className="max-w-3xl">
         <span className="eyebrow">the flow</span>
