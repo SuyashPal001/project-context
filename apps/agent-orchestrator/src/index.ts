@@ -1,4 +1,8 @@
 import 'dotenv/config'
+import dns from 'dns'
+// GCP VM has no IPv6 route to Neon/AWS. Force all DNS lookups (including pg
+// node-postgres connections) to prefer IPv4, bypassing Happy Eyeballs ETIMEDOUT.
+dns.setDefaultResultOrder('ipv4first')
 import type { Server } from 'node:http'
 import type { IncomingMessage } from 'node:http'
 import type { Socket } from 'node:net'

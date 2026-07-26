@@ -1,6 +1,7 @@
 import { PostgresStore, PgVector } from '@mastra/pg'
 import { Memory } from '@mastra/memory'
 import pg from 'pg'
+import dns from 'dns/promises'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 
 // Separate pg.Pool for Mastra
@@ -8,32 +9,67 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 // All 33 Mastra tables land in 'mastra' schema
 // Zero collision with application tables
 
+// Node.js 22 Happy Eyeballs tries all 6 Neon DNS addresses (3 IPv4 + 3 IPv6)
+// concurrently and ETIMEDOUT because the GCP VM has no IPv6 route to AWS.
+// Fix: top-level await on DNS resolution so makePool() can use a single IPv4
+// address synchronously. The module won't finish loading until DNS resolves,
+// so platformAgent.ts's getMastraMemory() call will always see a ready pool.
+const _dbUrl = new URL(process.env.DATABASE_URL ?? 'postgresql://localhost/db')
+const _isNeon = _dbUrl.hostname.includes('.neon.tech')
+
+const _resolvedHost: string = _isNeon
+  ? (await dns.resolve4(_dbUrl.hostname).then(addrs => addrs[0]).catch(() => _dbUrl.hostname))
+  : _dbUrl.hostname
+
+function makePool(max: number): pg.Pool {
+  if (_isNeon) {
+    return new pg.Pool({
+      host: _resolvedHost,
+      port: Number(_dbUrl.port) || 5432,
+      user: decodeURIComponent(_dbUrl.username),
+      password: decodeURIComponent(_dbUrl.password),
+      database: _dbUrl.pathname.slice(1),
+      ssl: { servername: _dbUrl.hostname, rejectUnauthorized: false },
+      max,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+    })
+  }
+  return new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    max,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  })
+}
+
 let store: PostgresStore | null = null
 let vector: PgVector | null = null
 let memory: Memory | null = null
 
 export function getMastraStore(): PostgresStore {
-  if (store) return store
-
-  const pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: 5, // small pool — Mastra only
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
-  })
-
-  store = new PostgresStore({
-    id: 'mastra-pg-store',
-    pool,
-    schemaName: 'mastra',
-  })
-
+  if (!store) {
+    store = new PostgresStore({ id: 'mastra-pg-store', pool: makePool(5), schemaName: 'mastra' })
+  }
   return store
 }
 
 export function getMastraVector(): PgVector {
-  if (vector) return vector
-  vector = new PgVector({ id: 'mastra-pg-vector', connectionString: process.env.DATABASE_URL! })
+  if (!vector) {
+    vector = _isNeon
+      ? new PgVector({
+          id: 'mastra-pg-vector',
+          host: _resolvedHost,
+          port: Number(_dbUrl.port) || 5432,
+          user: decodeURIComponent(_dbUrl.username),
+          password: decodeURIComponent(_dbUrl.password),
+          database: _dbUrl.pathname.slice(1),
+          ssl: { servername: _dbUrl.hostname, rejectUnauthorized: false } as any,
+          max: 3,
+          idleTimeoutMillis: 30_000,
+        })
+      : new PgVector({ id: 'mastra-pg-vector', connectionString: process.env.DATABASE_URL! })
+  }
   return vector
 }
 
@@ -47,7 +83,6 @@ export const embedder = google.embedding('gemini-embedding-001')
 // Singleton Memory instance — shared across all tenants.
 // Isolation is enforced per-request via resourceId (MASTRA_RESOURCE_ID_KEY)
 // set on the RequestContext before each generate() call.
-// Created once at startup; never recreated per request.
 export function getMastraMemory(): Memory {
   if (memory) return memory
 

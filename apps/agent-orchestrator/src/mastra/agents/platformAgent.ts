@@ -69,8 +69,15 @@ async function fetchPlatformPrompt(): Promise<string> {
 // behavior which is incompatible with responseSchema/structured output.
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const exa = new ExaClass(process.env.EXA_API_KEY ?? '')
+// Lazy — avoids crash at module load when EXA_API_KEY is not set.
+let _exa: ExaClass | null = null
+function getExa(): ExaClass {
+  if (!_exa) {
+    if (!process.env.EXA_API_KEY) throw new Error('EXA_API_KEY is not configured')
+    _exa = new ExaClass(process.env.EXA_API_KEY)
+  }
+  return _exa
+}
 
 export const SERVER_TOOLS = {
   internet_search: createTool({
@@ -82,7 +89,7 @@ export const SERVER_TOOLS = {
     }),
     execute: async (inputData) => {
       const { query } = inputData
-      const { results } = await exa.searchAndContents(query, {
+      const { results } = await getExa().searchAndContents(query, {
         livecrawl: 'always',
         numResults: 5,
         text: { maxCharacters: 3000 },
