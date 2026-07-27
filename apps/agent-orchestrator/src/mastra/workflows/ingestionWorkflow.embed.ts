@@ -2,6 +2,7 @@ import { createStep } from '@mastra/core/workflows'
 import * as crypto from 'crypto'
 import pg from 'pg'
 import { validateOutputSchema, embedOutputSchema } from './ingestionWorkflow.schemas.js'
+import { makeAppPool } from '../../db.js'
 
 const CHUNK_SIZE = 1000
 const CHUNK_OVERLAP = 200
@@ -9,7 +10,7 @@ const CHUNK_OVERLAP = 200
 let _pool: pg.Pool | null = null
 function getPool(): pg.Pool {
   if (!_pool) {
-    _pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    _pool = makeAppPool(5)
     _pool.on('error', (err) => console.error('[embed] pool error:', (err as Error).message))
   }
   return _pool

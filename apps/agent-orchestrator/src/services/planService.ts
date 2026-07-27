@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import pg from 'pg'
+import { makeAppPool } from '../db.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ let _planPool: pg.Pool | null = null
 
 function getPlanPool(): pg.Pool {
   if (!_planPool) {
-    _planPool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    _planPool = makeAppPool(5)
     _planPool.on('error', (err) => {
       console.error('[planService] pool error:', err.message)
     })

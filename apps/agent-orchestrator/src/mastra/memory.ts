@@ -21,6 +21,11 @@ const _resolvedHost: string = _isNeon
   ? (await dns.resolve4(_dbUrl.hostname).then(addrs => addrs[0]).catch(() => _dbUrl.hostname))
   : _dbUrl.hostname
 
+// Exported for other pools in the orchestrator that also need the IPv4 fix.
+export const resolvedDbHost: string = _resolvedHost
+export const isNeonDb: boolean = _isNeon
+export const dbUrl: URL = _dbUrl
+
 function makePool(max: number): pg.Pool {
   if (_isNeon) {
     return new pg.Pool({
@@ -56,19 +61,17 @@ export function getMastraStore(): PostgresStore {
 
 export function getMastraVector(): PgVector {
   if (!vector) {
-    vector = _isNeon
-      ? new PgVector({
-          id: 'mastra-pg-vector',
-          host: _resolvedHost,
-          port: Number(_dbUrl.port) || 5432,
-          user: decodeURIComponent(_dbUrl.username),
-          password: decodeURIComponent(_dbUrl.password),
-          database: _dbUrl.pathname.slice(1),
-          ssl: { servername: _dbUrl.hostname, rejectUnauthorized: false } as any,
-          max: 3,
-          idleTimeoutMillis: 30_000,
-        })
-      : new PgVector({ id: 'mastra-pg-vector', connectionString: process.env.DATABASE_URL! })
+    if (_isNeon) {
+      // Build a connectionString with the pre-resolved IPv4 host so PgVector
+      // takes the isConnectionStringConfig path (avoids isHostConfig validation
+      // differences across pnpm peer-dep resolutions of @mastra/pg).
+      const resolved = new URL(_dbUrl.toString())
+      resolved.hostname = _resolvedHost
+      const connStr = resolved.toString()
+      vector = new PgVector({ id: 'mastra-pg-vector', connectionString: connStr })
+    } else {
+      vector = new PgVector({ id: 'mastra-pg-vector', connectionString: process.env.DATABASE_URL! })
+    }
   }
   return vector
 }

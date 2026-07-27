@@ -30,8 +30,16 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Project Context",
+  title: {
+    default: "project context — your AI engineering team",
+    template: "%s | project context",
+  },
   description: "Your AI engineering team, shipping with you.",
+  metadataBase: new URL("https://projectcontext.co"),
+  themeColor: "#0a0a0a",
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({

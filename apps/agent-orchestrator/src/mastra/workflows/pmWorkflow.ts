@@ -3,13 +3,14 @@ import { z } from 'zod'
 import pg from 'pg'
 import { fetchPRD } from '../tools/fetchPRD.js'
 import { fetchPlan } from '../tools/fetchPlan.js'
+import { makeAppPool } from '../../db.js'
 
 // ─── Shared DB pool (plan activation only) ───────────────────────────────────
 
 let _pool: pg.Pool | null = null
 function getPool(): pg.Pool {
   if (!_pool) {
-    _pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    _pool = makeAppPool(5)
     _pool.on('error', (err) => console.error('[pmWorkflow] pool error:', err.message))
   }
   return _pool

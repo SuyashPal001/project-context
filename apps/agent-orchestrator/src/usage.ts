@@ -1,4 +1,5 @@
 import pg from 'pg'
+import { makeAppPool } from './db.js'
 
 // DDL (run once at deploy time):
 //
@@ -17,7 +18,7 @@ let pool: pg.Pool | null = null
 
 export function getPool(): pg.Pool {
   if (!pool) {
-    pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    pool = makeAppPool(5)
     pool.on('error', (err) => {
       console.error('[usage] pool error:', err.message)
     })

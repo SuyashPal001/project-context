@@ -2,12 +2,13 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import pg from 'pg'
 import { randomUUID } from 'crypto'
+import { makeAppPool } from '../../db.js'
 
 let _pool: pg.Pool | null = null
 
 function getPool(): pg.Pool {
   if (!_pool) {
-    _pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    _pool = makeAppPool(5)
     _pool.on('error', (err) => {
       console.error('[saveTasks] pool error:', err.message)
     })

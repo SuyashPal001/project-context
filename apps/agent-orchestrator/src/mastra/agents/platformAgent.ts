@@ -11,6 +11,7 @@ import { platformModel, liteModel, privateModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { createViolationHandler } from '../guardrails.js'
+import { makeAppPool } from '../../db.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -22,12 +23,7 @@ let platformPool: pg.Pool | null = null
 
 function getPlatformPool(): pg.Pool {
   if (!platformPool) {
-    platformPool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 2, // small — platform config queries only
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
-    })
+    platformPool = makeAppPool(2)
     platformPool.on('error', (err) => {
       console.error('[mastra:platform] pool error:', err.message)
     })
