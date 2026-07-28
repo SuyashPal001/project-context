@@ -273,9 +273,6 @@ export const platformAgent = new Agent({
   // aiParasAgent's tool list when called as a sub-agent. AI-PARAS is
   // registered standalone in the Mastra registry and testable directly in Studio.
 
-  inputProcessors: [promptInjectionDetector, moderationProcessor],
-  outputProcessors: [piiDetector, moderationProcessor, systemPromptScrubber],
-
   // Dynamic model selection:
   //   restricted data (CASA/KYC) → private model only (set by fetchAgentContext tool)
   //   thinkingBudget=0           → lite model (conversational turns)

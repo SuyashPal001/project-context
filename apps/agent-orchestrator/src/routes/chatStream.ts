@@ -254,7 +254,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             : (process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
           costUsd = calculateCostUsd(modelName, inputTokens, outputTokens)
           persistCost({ tenantId, agentId: agentName ?? agentId, model: modelName, inputTokens, outputTokens })
-          console.log(`[tokens] model=${modelName} input=${inputTokens} output=${outputTokens} total=${totalTokens} cost=$${costUsd.toFixed(6)}`)
+          console.log(`[tokens] model=${modelName} input=${inputTokens} output=${outputTokens} total=${totalTokens} cost=$${costUsd.toFixed(6)} fullTextLen=${fullText.length}`)
 
           const responseTimeMs = Date.now() - startTime
           const cached = lastRagResult.get(tenantId)

@@ -147,9 +147,10 @@ function toGeminiContents(messages: OpenAIMessage[]): {
 }
 
 // Tool names handled outside of functionDeclarations — excluded from function tool list.
-// web_search is now handled by Exa (real function call) so it's no longer excluded.
-// code_execution and web_fetch map to native Gemini codeExecution/urlContext.
-const GEMINI_SERVER_TOOL_NAMES = new Set(['code_execution', 'web_fetch']);
+// Gemini native tools (codeExecution, urlContext) cannot be mixed with regular function tools.
+// code_execution is kept here only when it is the SOLE tool. web_fetch is intentionally
+// left as a regular function call — mixing urlContext with function tools causes a 400.
+const GEMINI_SERVER_TOOL_NAMES = new Set(['code_execution']);
 
 // Vertex AI rejects $schema, propertyNames, and bare anyOf — strip them recursively.
 // Zod v4 (used by @ai-sdk/openai-compatible) adds these; @ai-sdk/google stripped them automatically.
@@ -206,14 +207,11 @@ function toGeminiTools(tools: OpenAITool[] | undefined): Tool[] | undefined {
     result.push({ functionDeclarations });
   }
 
-  // Native Gemini server tools for code_execution and web_fetch only.
-  // web_search is now handled by Exa (real function call) — no googleSearch needed.
+  // Native Gemini code_execution tool — only when no other function tools are present
+  // (mixing native tools with function tools causes 400 INVALID_ARGUMENT from Vertex AI).
   const names = tools.map((t) => t.function?.name);
-  if (names.includes('code_execution')) {
+  if (names.includes('code_execution') && functionDeclarations.length === 0) {
     result.push({ codeExecution: {} } as unknown as Tool);
-  }
-  if (names.includes('web_fetch')) {
-    result.push({ urlContext: {} } as unknown as Tool);
   }
 
   return result.length > 0 ? result : undefined;
@@ -375,6 +373,7 @@ export class VertexAdapter implements ProviderAdapter {
       `[vertex-adapter] model=${modelName} messages=${openaiReq.messages.length}` +
         ` hasImages=${hasImages} hasTools=${hasTools} stream=${openaiReq.stream ?? false}`,
     );
+    if (hasTools) console.log(`[vertex-adapter] tools sent to gemini:`, JSON.stringify(geminiRequest.tools));
 
     if (openaiReq.stream) {
       await this.handleStream(model, geminiRequest, modelName, res);
@@ -400,6 +399,16 @@ export class VertexAdapter implements ProviderAdapter {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async handleStream(model: any, request: GenerateContentRequest, modelName: string, res: ServerResponse): Promise<void> {
+    // Call Vertex AI BEFORE writing headers so that init errors (400, 403, etc.)
+    // can propagate to the fallback chain — once headers are sent we cannot fall back.
+    let streamResult: Awaited<ReturnType<typeof model.generateContentStream>>;
+    try {
+      streamResult = await model.generateContentStream(request);
+    } catch (initErr) {
+      console.error(`[vertex-adapter] generateContentStream init error: ${initErr instanceof Error ? initErr.message : JSON.stringify(initErr)}`);
+      throw initErr;
+    }
+
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -413,14 +422,6 @@ export class VertexAdapter implements ProviderAdapter {
     res.write(
       `data: ${JSON.stringify(makeStreamChunk(id, modelName, { role: 'assistant', content: '' }))}\n\n`,
     );
-
-    let streamResult: Awaited<ReturnType<typeof model.generateContentStream>>;
-    try {
-      streamResult = await model.generateContentStream(request);
-    } catch (initErr) {
-      console.error(`[vertex-adapter] generateContentStream init error: ${initErr instanceof Error ? initErr.message : JSON.stringify(initErr)}`);
-      throw initErr;
-    }
     const t0 = Date.now();
     let ttftFired = false;
 
