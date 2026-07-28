@@ -281,6 +281,27 @@
       "when": 1752192060000,
       "tag": "0040_person_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1780243200000,
+      "tag": "0041_api_keys_agent_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1780243260000,
+      "tag": "0042_token_costs",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1780243320000,
+      "tag": "0043_project_milestones_acceptance_criteria",
+      "breakpoints": true
     }
   ]
 }

@@ -7,7 +7,7 @@ dotenv.config({ path: '../../../apps/api/.env' });
 export default defineConfig({
   schema: [
     './schema/index.ts',
-    '../../../products/agent-platform/packages/schema/src/index.ts',
+    '../../../products/agent-platform/packages/schema/index.ts',
   ],
   out: './migrations',
   dialect: 'postgresql',

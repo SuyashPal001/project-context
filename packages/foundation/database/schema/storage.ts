@@ -16,7 +16,6 @@ export const personFolders = pgTable('person_folders', {
 // File status enum
 export const fileStatusEnum = pgEnum('file_status', ['pending', 'uploaded', 'deleted']);
 export const ingestionStatusEnum = pgEnum('ingestion_status', ['pending', 'processing', 'done', 'failed']);
-export const folderStatusEnum = pgEnum('folder_status', ['pending', 'verified', 'ingested']);
 
 // Files table - tracks uploaded files metadata
 export const files = pgTable('files', {
