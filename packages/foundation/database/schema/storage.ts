@@ -18,18 +18,6 @@ export const fileStatusEnum = pgEnum('file_status', ['pending', 'uploaded', 'del
 export const ingestionStatusEnum = pgEnum('ingestion_status', ['pending', 'processing', 'done', 'failed']);
 export const folderStatusEnum = pgEnum('folder_status', ['pending', 'verified', 'ingested']);
 
-// Person folders — one folder per person, identified by free-text (customer ID, case no, etc.)
-export const personFolders = pgTable('person_folders', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
-  identifier: varchar('identifier', { length: 255 }).notNull(), // free-text external identifier
-  displayName: varchar('display_name', { length: 255 }),        // optional human-readable name
-  status: folderStatusEnum('status').notNull().default('pending'),
-  createdBy: uuid('created_by').references(() => users.id),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
 // Files table - tracks uploaded files metadata
 export const files = pgTable('files', {
   id: uuid('id').primaryKey().defaultRandom(),
