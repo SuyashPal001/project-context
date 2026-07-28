@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { getSidebarItems, getDeveloperPanelItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
+import { getSidebarItems, getDeveloperPanelItems, getSettingsPanelItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
 import { UsageBar } from "./UsageBar"
 import { SaarthiLogo } from "./SaarthiLogo"
@@ -155,6 +155,29 @@ export function Sidebar() {
         (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
     )
 
+    const settingsPanelItems = getSettingsPanelItems(role, tenantSlug || '', entitlements)
+
+    // /settings/profile is intentionally absent: it is reached from the avatar
+    // menu, and matching it here would swap the nav on a page the panel omits.
+    const settingsRoutePrefixes = [
+        `/${tenantSlug || ''}/dashboard/settings/workspace`,
+        `/${tenantSlug || ''}/dashboard/settings/members`,
+        `/${tenantSlug || ''}/dashboard/settings/roles`,
+        `/${tenantSlug || ''}/dashboard/integrations`,
+        `/${tenantSlug || ''}/dashboard/billing`,
+        `/${tenantSlug || ''}/dashboard/branding`,
+    ]
+    const isSettingsPanelActive = !isDeveloperPanelActive && settingsRoutePrefixes.some(
+        (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    )
+
+    // Whichever nested panel the current route belongs to, or null for main nav.
+    const activePanel = isDeveloperPanelActive
+        ? { label: 'Developers', items: developerPanelItems }
+        : isSettingsPanelActive
+            ? { label: 'Settings', items: settingsPanelItems }
+            : null
+
     const handleLockedClick = (item: SidebarItemType) => {
         window.dispatchEvent(new CustomEvent('plan-gate', {
             detail: {
@@ -197,7 +220,7 @@ export function Sidebar() {
 
                 {/* Navigation Items */}
                 <nav className="flex-1 space-y-1 overflow-y-auto custom-scrollbar pr-1 -mr-1">
-                    {isDeveloperPanelActive ? (
+                    {activePanel ? (
                         <>
                             {isSidebarCollapsed ? (
                                 <Tooltip delayDuration={0}>
@@ -213,7 +236,7 @@ export function Sidebar() {
                                         </Link>
                                     </TooltipTrigger>
                                     <TooltipContent side="right" className="ml-2">
-                                        Developers
+                                        {activePanel.label}
                                     </TooltipContent>
                                 </Tooltip>
                             ) : (
@@ -222,10 +245,10 @@ export function Sidebar() {
                                     className="flex items-center gap-3 px-3 py-2 mb-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground transition-all"
                                 >
                                     <ChevronLeft className="w-4 h-4 shrink-0" />
-                                    <span>Developers</span>
+                                    <span>{activePanel.label}</span>
                                 </Link>
                             )}
-                            {developerPanelItems.map((item) => (
+                            {activePanel.items.map((item) => (
                                 <SidebarNavLink
                                     key={item.href}
                                     item={item}

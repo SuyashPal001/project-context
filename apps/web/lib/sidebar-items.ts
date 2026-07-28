@@ -14,10 +14,10 @@ import {
     FolderOpen,
     Plug,
     Palette,
-    UserCircle,
     KanbanSquare,
     LayoutList,
     Code2,
+    Settings,
 
 } from "lucide-react";
 import React from 'react';
@@ -47,7 +47,6 @@ export function getSidebarItems(
     const isPlatformAdmin = role === 'platform_admin';
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
 
-    const brandingLocked     = entitlements['branding']?.enabled === false;
     const auditLocked        = entitlements['audit_log']?.enabled === false;
 
     const items: SidebarItem[] = [];
@@ -76,26 +75,13 @@ export function getSidebarItems(
         });
     }
 
-    // 2. SETTINGS SECTION — all users
-    items.push({ label: "Profile", href: `${base}/settings/profile`, icon: UserCircle, sectionLabel: "Settings" });
-    items.push({ label: "Workspace", href: `${base}/settings/workspace`, icon: Building2 });
+    // 2. SETTINGS — collapses into a nested panel (see getSettingsPanelItems).
+    // Profile deliberately omitted: it is reachable from the avatar menu in
+    // Topbar.tsx, which targets the same /settings/profile route.
+    items.push({ label: "Settings", href: `${base}/settings/workspace`, icon: Settings, sectionLabel: "Settings" });
 
-    // Admin/Owner only — platform management
+    // 3. DEVELOPER SECTION — admin/owner only
     if (isAdminOrOwner) {
-        items.push({ label: "Connectors", href: `${base}/integrations`, icon: Plug });
-        items.push({ label: "Members", href: `${base}/settings/members`, icon: Users });
-        items.push({ label: "Roles", href: `${base}/settings/roles`, icon: Shield });
-        items.push({ label: "Billing", href: `${base}/billing`, icon: CreditCard });
-        items.push({
-            label: "Branding",
-            href: `${base}/branding`,
-            icon: Palette,
-            planRequired: 'starter',
-            planGateFeature: 'branding',
-            locked: brandingLocked,
-        });
-
-        // 3. DEVELOPER SECTION — admin/owner only
         items.push({
             label: "Developers",
             href: `${base}/developer`,
@@ -111,6 +97,41 @@ export function getSidebarItems(
             href: "/ops/tenants",
             icon: Building2,
             sectionLabel: "Admin"
+        });
+    }
+
+    return items;
+}
+
+export function getSettingsPanelItems(
+    role: string,
+    tenantSlug: string,
+    entitlements: Record<string, { enabled?: boolean; valueLimit?: number; unlimited?: boolean }> = {}
+): SidebarItem[] {
+    const base = `/${tenantSlug}/dashboard`;
+    const isAdminOrOwner = role === 'admin' || role === 'owner' || role === 'platform_admin';
+
+    const brandingLocked = entitlements['branding']?.enabled === false;
+
+    // Workspace is visible to every role — matches the pre-panel behaviour.
+    const items: SidebarItem[] = [
+        { label: "Workspace", href: `${base}/settings/workspace`, icon: Building2 },
+    ];
+
+    // Everything below was admin/owner-only before the panel existed. Keep it
+    // that way, or members see settings pages they cannot use.
+    if (isAdminOrOwner) {
+        items.push({ label: "Connectors", href: `${base}/integrations`, icon: Plug });
+        items.push({ label: "Members", href: `${base}/settings/members`, icon: Users });
+        items.push({ label: "Roles", href: `${base}/settings/roles`, icon: Shield });
+        items.push({ label: "Billing", href: `${base}/billing`, icon: CreditCard });
+        items.push({
+            label: "Branding",
+            href: `${base}/branding`,
+            icon: Palette,
+            planRequired: 'starter',
+            planGateFeature: 'branding',
+            locked: brandingLocked,
         });
     }
 
