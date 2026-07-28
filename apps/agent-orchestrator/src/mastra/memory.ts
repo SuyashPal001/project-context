@@ -16,6 +16,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 // so platformAgent.ts's getMastraMemory() call will always see a ready pool.
 const _dbUrl = new URL(process.env.DATABASE_URL ?? 'postgresql://localhost/db')
 const _isNeon = _dbUrl.hostname.includes('.neon.tech')
+const _isSupabase = _dbUrl.hostname.includes('.supabase.com')
 
 const _resolvedHost: string = _isNeon
   ? (await dns.resolve4(_dbUrl.hostname).then(addrs => addrs[0]).catch(() => _dbUrl.hostname))
@@ -35,6 +36,19 @@ function makePool(max: number): pg.Pool {
       password: decodeURIComponent(_dbUrl.password),
       database: _dbUrl.pathname.slice(1),
       ssl: { servername: _dbUrl.hostname, rejectUnauthorized: false },
+      max,
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 10_000,
+    })
+  }
+  if (_isSupabase) {
+    return new pg.Pool({
+      host: _dbUrl.hostname,
+      port: Number(_dbUrl.port) || 5432,
+      user: decodeURIComponent(_dbUrl.username),
+      password: decodeURIComponent(_dbUrl.password),
+      database: _dbUrl.pathname.slice(1),
+      ssl: { rejectUnauthorized: false },
       max,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 10_000,
@@ -61,14 +75,12 @@ export function getMastraStore(): PostgresStore {
 
 export function getMastraVector(): PgVector {
   if (!vector) {
-    if (_isNeon) {
-      // Build a connectionString with the pre-resolved IPv4 host so PgVector
-      // takes the isConnectionStringConfig path (avoids isHostConfig validation
-      // differences across pnpm peer-dep resolutions of @mastra/pg).
+    if (_isNeon || _isSupabase) {
       const resolved = new URL(_dbUrl.toString())
-      resolved.hostname = _resolvedHost
-      const connStr = resolved.toString()
-      vector = new PgVector({ id: 'mastra-pg-vector', connectionString: connStr })
+      if (_isNeon) resolved.hostname = _resolvedHost
+      // Disable strict TLS for Neon/Supabase self-signed cert chains
+      resolved.searchParams.set('sslmode', 'no-verify')
+      vector = new PgVector({ id: 'mastra-pg-vector', connectionString: resolved.toString() })
     } else {
       vector = new PgVector({ id: 'mastra-pg-vector', connectionString: process.env.DATABASE_URL! })
     }
