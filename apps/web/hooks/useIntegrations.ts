@@ -16,7 +16,7 @@ interface IntegrationsResponse {
 }
 
 export function useIntegrations() {
-    const { data, isLoading, refetch } = useQuery<IntegrationsResponse>({
+    const { data, isLoading, isError, refetch } = useQuery<IntegrationsResponse>({
         queryKey: ['integrations'],
         queryFn: () => api.get<IntegrationsResponse>('/api/v1/integrations'),
     });
@@ -29,5 +29,5 @@ export function useIntegrations() {
     const getIntegration = (provider: string): Integration | undefined =>
         integrations.find((i) => i.provider === provider);
 
-    return { integrations, isLoading, refetch, isConnected, getIntegration };
+    return { integrations, isLoading, isError, refetch, isConnected, getIntegration };
 }

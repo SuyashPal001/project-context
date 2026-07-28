@@ -17,6 +17,7 @@ import {
     UserCircle,
     KanbanSquare,
     LayoutList,
+    Code2,
 
 } from "lucide-react";
 import React from 'react';
@@ -47,10 +48,7 @@ export function getSidebarItems(
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
 
     const brandingLocked     = entitlements['branding']?.enabled === false;
-    const integrationsLocked = entitlements['mcp_integrations']?.enabled === false;
     const auditLocked        = entitlements['audit_log']?.enabled === false;
-    const webhooksLocked     = entitlements['webhooks']?.enabled === false;
-    const apiKeysLocked      = entitlements['api_keys_access']?.enabled === false;
 
     const items: SidebarItem[] = [];
 
@@ -99,29 +97,10 @@ export function getSidebarItems(
 
         // 3. DEVELOPER SECTION — admin/owner only
         items.push({
-            label: "API keys",
-            href: `${base}/api-keys`,
-            icon: Key,
+            label: "Developers",
+            href: `${base}/developer`,
+            icon: Code2,
             sectionLabel: "Developer settings",
-            planRequired: 'starter',
-            planGateFeature: 'api_keys_access',
-            locked: apiKeysLocked,
-        });
-        items.push({
-            label: "Webhooks",
-            href: `${base}/webhooks`,
-            icon: Webhook,
-            planRequired: 'starter',
-            planGateFeature: 'webhooks',
-            locked: webhooksLocked,
-        });
-        items.push({
-            label: "Integrations",
-            href: `${base}/custom-integrations`,
-            icon: Sliders,
-            planRequired: 'business',
-            planGateFeature: 'mcp_integrations',
-            locked: integrationsLocked,
         });
     }
 
@@ -136,4 +115,43 @@ export function getSidebarItems(
     }
 
     return items;
+}
+
+export function getDeveloperPanelItems(
+    tenantSlug: string,
+    entitlements: Record<string, { enabled?: boolean; valueLimit?: number; unlimited?: boolean }> = {}
+): SidebarItem[] {
+    const base = `/${tenantSlug}/dashboard`;
+
+    const apiKeysLocked      = entitlements['api_keys_access']?.enabled === false;
+    const webhooksLocked     = entitlements['webhooks']?.enabled === false;
+    const integrationsLocked = entitlements['mcp_integrations']?.enabled === false;
+
+    return [
+        { label: "Overview", href: `${base}/developer`, icon: LayoutDashboard },
+        {
+            label: "API keys",
+            href: `${base}/api-keys`,
+            icon: Key,
+            planRequired: 'starter',
+            planGateFeature: 'api_keys_access',
+            locked: apiKeysLocked,
+        },
+        {
+            label: "Webhooks",
+            href: `${base}/webhooks`,
+            icon: Webhook,
+            planRequired: 'starter',
+            planGateFeature: 'webhooks',
+            locked: webhooksLocked,
+        },
+        {
+            label: "Connections",
+            href: `${base}/custom-integrations`,
+            icon: Sliders,
+            planRequired: 'business',
+            planGateFeature: 'mcp_integrations',
+            locked: integrationsLocked,
+        },
+    ];
 }

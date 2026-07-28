@@ -13,7 +13,7 @@ export function IntegrationsGrid() {
 
     const { data: response, isLoading } = useQuery({
         queryKey: ['integrations'],
-        queryFn: () => api.get<{ data: any[] }>('/api/v1/integrations')
+        queryFn: () => api.get<{ integrations: any[] }>('/api/v1/integrations')
     });
 
     if (isLoading) {
@@ -25,7 +25,7 @@ export function IntegrationsGrid() {
         );
     }
 
-    const integrations = response?.data || [];
+    const integrations = response?.integrations || [];
 
     if (integrations.length === 0) {
         return (

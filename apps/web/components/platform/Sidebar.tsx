@@ -20,6 +20,7 @@ import {
     Plug,
     Lock,
     ChevronRight,
+    ChevronLeft,
     PanelLeftClose,
     PanelLeftOpen,
     LogOut
@@ -36,7 +37,7 @@ import {
 } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { getSidebarItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
+import { getSidebarItems, getDeveloperPanelItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
 import { UsageBar } from "./UsageBar"
 import { SaarthiLogo } from "./SaarthiLogo"
@@ -135,11 +136,35 @@ export function Sidebar() {
     const { tenantSlug, role, plan, name, email, entitlementFeatures = {} } = useTenant()
     const { unreadCount } = useNotifications()
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
+    const pathname = usePathname()
 
     const entitlements = Object.fromEntries(
         Object.entries(entitlementFeatures).map(([k, v]) => [k, { enabled: v as boolean }])
     )
     const sidebarItems = getSidebarItems(role, plan, tenantSlug || '', entitlements)
+    const developerPanelItems = getDeveloperPanelItems(tenantSlug || '', entitlements)
+
+    const developerRoutePrefixes = [
+        `/${tenantSlug || ''}/dashboard/developer`,
+        `/${tenantSlug || ''}/dashboard/api-keys`,
+        `/${tenantSlug || ''}/dashboard/webhooks`,
+        `/${tenantSlug || ''}/dashboard/custom-integrations`,
+    ]
+    const isAdminOrOwner = role === 'admin' || role === 'owner' || role === 'platform_admin'
+    const isDeveloperPanelActive = isAdminOrOwner && developerRoutePrefixes.some(
+        (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+    )
+
+    const handleLockedClick = (item: SidebarItemType) => {
+        window.dispatchEvent(new CustomEvent('plan-gate', {
+            detail: {
+                feature: item.planGateFeature || '',
+                requiredPlan: item.planRequired
+                    ? item.planRequired.charAt(0).toUpperCase() + item.planRequired.slice(1)
+                    : 'Starter',
+            }
+        }))
+    }
 
     const getInitials = () => {
         if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
@@ -172,40 +197,70 @@ export function Sidebar() {
 
                 {/* Navigation Items */}
                 <nav className="flex-1 space-y-1 overflow-y-auto custom-scrollbar pr-1 -mr-1">
-                    {sidebarItems.map((item, index) => {
-                        if (item.isDivider) {
-                            return !isSidebarCollapsed && (
-                                <div key={`divider-${index}`} className="my-4 px-3">
-                                    <div className="h-px bg-border/50 w-full" />
-                                </div>
-                            )
-                        }
-
-                        return (
-                            <React.Fragment key={item.href || `section-${index}`}>
-                                {item.sectionLabel && !isSidebarCollapsed && (
-                                    <p className="px-3 mt-6 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 font-mono">
-                                        {item.sectionLabel}
-                                    </p>
-                                )}
+                    {isDeveloperPanelActive ? (
+                        <>
+                            {isSidebarCollapsed ? (
+                                <Tooltip delayDuration={0}>
+                                    <TooltipTrigger asChild>
+                                        <Link
+                                            href={`/${tenantSlug}/dashboard/chat`}
+                                            className={cn(
+                                                "flex items-center gap-3 px-3 py-2 mb-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground transition-all",
+                                                "justify-center px-2"
+                                            )}
+                                        >
+                                            <ChevronLeft className="w-4 h-4 shrink-0" />
+                                        </Link>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="right" className="ml-2">
+                                        Developers
+                                    </TooltipContent>
+                                </Tooltip>
+                            ) : (
+                                <Link
+                                    href={`/${tenantSlug}/dashboard/chat`}
+                                    className="flex items-center gap-3 px-3 py-2 mb-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground transition-all"
+                                >
+                                    <ChevronLeft className="w-4 h-4 shrink-0" />
+                                    <span>Developers</span>
+                                </Link>
+                            )}
+                            {developerPanelItems.map((item) => (
                                 <SidebarNavLink
+                                    key={item.href}
                                     item={item}
                                     isCollapsed={isSidebarCollapsed}
-                                    unreadCount={item.label === "Notifications" ? unreadCount : undefined}
-                                    onLockedClick={() => {
-                                        window.dispatchEvent(new CustomEvent('plan-gate', {
-                                            detail: {
-                                                feature: item.planGateFeature || '',
-                                                requiredPlan: item.planRequired
-                                                    ? item.planRequired.charAt(0).toUpperCase() + item.planRequired.slice(1)
-                                                    : 'Starter',
-                                            }
-                                        }))
-                                    }}
+                                    onLockedClick={() => handleLockedClick(item)}
                                 />
-                            </React.Fragment>
-                        )
-                    })}
+                            ))}
+                        </>
+                    ) : (
+                        sidebarItems.map((item, index) => {
+                            if (item.isDivider) {
+                                return !isSidebarCollapsed && (
+                                    <div key={`divider-${index}`} className="my-4 px-3">
+                                        <div className="h-px bg-border/50 w-full" />
+                                    </div>
+                                )
+                            }
+
+                            return (
+                                <React.Fragment key={item.href || `section-${index}`}>
+                                    {item.sectionLabel && !isSidebarCollapsed && (
+                                        <p className="px-3 mt-6 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 font-mono">
+                                            {item.sectionLabel}
+                                        </p>
+                                    )}
+                                    <SidebarNavLink
+                                        item={item}
+                                        isCollapsed={isSidebarCollapsed}
+                                        unreadCount={item.label === "Notifications" ? unreadCount : undefined}
+                                        onLockedClick={() => handleLockedClick(item)}
+                                    />
+                                </React.Fragment>
+                            )
+                        })
+                    )}
                 </nav>
 
                 {/* Messages usage — hidden when collapsed */}
