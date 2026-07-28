@@ -32,6 +32,21 @@ import { eq, and, inArray, desc } from 'drizzle-orm';
 export const handler: PreTokenGenerationTriggerHandler = async (
   event: PreTokenGenerationTriggerEvent
 ) => {
+  try {
+    return await pretokenCore(event);
+  } catch (err) {
+    // Never let a DB/infra error block login — Cognito would surface a
+    // UserLambdaValidationException and the user cannot log in at all.
+    // Falling back to empty claims sends the user to onboarding instead,
+    // which is recoverable on retry.
+    console.error('[pretoken] unhandled error — falling back to empty claims', err);
+    return emptyClaimsResponse(event);
+  }
+};
+
+const pretokenCore = async (
+  event: PreTokenGenerationTriggerEvent
+): Promise<PreTokenGenerationTriggerEvent> => {
   // Always use the Cognito sub (UUID) — event.userName for email/password users
   // may be the raw email string, which won't match cognitoId in our DB.
   // event.request.userAttributes.sub is always the stable UUID.
