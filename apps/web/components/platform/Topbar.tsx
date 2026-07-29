@@ -3,8 +3,9 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
-import { LogOut, User, ChevronDown, Check, Plus } from "lucide-react"
+import { LogOut, User, ChevronDown, Check, Plus, Bell } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
+import { useNotifications } from "@/lib/notifications-context"
 import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -214,6 +215,7 @@ export function Topbar() {
     const pathname = usePathname()
     const { tenantSlug, plan, email, name, role } = useTenant()
     const { isSidebarCollapsed } = useSidebar()
+    const { unreadCount } = useNotifications()
     
     const [workspaces, setWorkspaces] = React.useState<any[]>([])
     const [isLoadingWorkspaces, setIsLoadingWorkspaces] = React.useState(true)
@@ -249,6 +251,8 @@ export function Topbar() {
         enterprise: "bg-amber-500/10 text-amber-500 border-amber-500/20",
     }
 
+    const isNotificationsActive = pathname === `/${tenantSlug}/dashboard/notifications`
+
     const currentPlanColor = planColors[plan?.toLowerCase()] || planColors.free
     const isStarterPlan = ['free', 'starter'].includes(plan?.toLowerCase() || '')
 
@@ -259,7 +263,23 @@ export function Topbar() {
         )}>
             <WorkspaceSwitcher currentPlanColor={currentPlanColor} plan={plan} tenantSlug={tenantSlug} workspaces={workspaces} isLoading={isLoadingWorkspaces} />
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+                <Link
+                    href={`/${tenantSlug}/dashboard/notifications`}
+                    aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}
+                    className={cn(
+                        "relative flex items-center justify-center w-9 h-9 rounded-lg transition-all hover:bg-accent/50",
+                        isNotificationsActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                >
+                    <Bell className="w-[18px] h-[18px]" />
+                    {unreadCount > 0 && (
+                        <span className="absolute top-1 right-1 bg-primary text-primary-foreground rounded-full text-[10px] h-4 min-w-4 px-1 flex items-center justify-center font-bold border-2 border-card">
+                            {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                    )}
+                </Link>
+
                 <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
                     <DropdownMenuTrigger className="focus:outline-none">
                         <div className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all hover:bg-accent/50 group max-w-[220px]">

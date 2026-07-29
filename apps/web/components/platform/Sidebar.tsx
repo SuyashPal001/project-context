@@ -27,7 +27,6 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
-import { useNotifications } from "@/lib/notifications-context"
 import { useSidebar } from "./SidebarContext"
 import {
     Tooltip,
@@ -46,11 +45,10 @@ import { SaarthiLogo } from "./SaarthiLogo"
 interface SidebarNavLinkProps {
     item: SidebarItemType
     isCollapsed?: boolean
-    unreadCount?: number
     onLockedClick?: () => void
 }
 
-function SidebarNavLink({ item, isCollapsed, unreadCount, onLockedClick }: SidebarNavLinkProps) {
+function SidebarNavLink({ item, isCollapsed, onLockedClick }: SidebarNavLinkProps) {
     const pathname = usePathname()
     const isActive = pathname === item.href
     const Icon = item.icon
@@ -84,19 +82,8 @@ function SidebarNavLink({ item, isCollapsed, unreadCount, onLockedClick }: Sideb
                             </Badge>
                         )}
                         {item.locked && <Lock className="w-3 h-3 text-muted-foreground" />}
-                        {item.label === "Notifications" && unreadCount !== undefined && unreadCount > 0 && (
-                            <span className="bg-primary text-primary-foreground rounded-full text-[10px] h-4 w-4 flex items-center justify-center font-bold">
-                                {unreadCount > 9 ? "9+" : unreadCount}
-                            </span>
-                        )}
                     </div>
                 </div>
-            )}
-
-            {isCollapsed && item.label === "Notifications" && unreadCount !== undefined && unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground rounded-full text-[10px] h-4 w-4 flex items-center justify-center font-bold border-2 border-card">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
             )}
         </div>
     )
@@ -134,7 +121,6 @@ function SidebarNavLink({ item, isCollapsed, unreadCount, onLockedClick }: Sideb
 
 export function Sidebar() {
     const { tenantSlug, role, plan, name, email, entitlementFeatures = {} } = useTenant()
-    const { unreadCount } = useNotifications()
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
     const pathname = usePathname()
 
@@ -277,7 +263,6 @@ export function Sidebar() {
                                     <SidebarNavLink
                                         item={item}
                                         isCollapsed={isSidebarCollapsed}
-                                        unreadCount={item.label === "Notifications" ? unreadCount : undefined}
                                         onLockedClick={() => handleLockedClick(item)}
                                     />
                                 </React.Fragment>

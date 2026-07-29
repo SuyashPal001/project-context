@@ -6,7 +6,6 @@ import {
     Key,
     Bot,
     MessageSquare,
-    Bell,
     FileText,
     Building2,
     Sliders,
@@ -61,7 +60,8 @@ export function getSidebarItems(
 
     items.push({ isDivider: true, href: '', icon: () => null, label: '' });
 
-    items.push({ label: "Notifications", href: `${base}/notifications`, icon: Bell });
+    // Notifications deliberately omitted: it lives in the Topbar, left of the
+    // avatar menu, so the unread badge is visible from every page.
 
     // Audit log — admin/owner only (platform management)
     if (isAdminOrOwner) {
