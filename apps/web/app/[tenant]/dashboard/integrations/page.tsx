@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, Search, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PermissionGate } from "@/components/platform/PermissionGate";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { api } from "@/lib/api";
@@ -40,41 +41,38 @@ function ComposioCard({
     onDisconnect: (app: ComposioApp) => void;
 }) {
     return (
-        <div className="rounded-xl border bg-card p-6 flex flex-col gap-4 transition-colors border-border">
-            <div className="flex items-start justify-between">
-                <div className="h-14 w-14 rounded-xl bg-muted flex items-center justify-center shrink-0 text-xl font-bold text-muted-foreground">
+        <div className="rounded-xl border bg-card p-5 flex flex-col gap-3 transition-colors border-border hover:border-border/80">
+            <div className="flex items-start justify-between gap-2">
+                <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center shrink-0 text-base font-bold text-muted-foreground">
                     {app.label.charAt(0)}
                 </div>
                 {app.connected && (
-                    <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-500">
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-500 shrink-0">
                         <CheckCircle2 className="h-3.5 w-3.5" />
                         Connected
                     </span>
                 )}
             </div>
 
-            <div className="flex-1 space-y-1">
+            <div className="flex-1 space-y-0.5">
                 <h3 className="font-semibold text-foreground text-sm">{app.label}</h3>
-                <p className="text-xs text-muted-foreground">{app.description}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{app.description}</p>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1">
                 {app.scopes.map((scope) => (
-                    <span
-                        key={scope}
-                        className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
-                    >
+                    <span key={scope} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
                         {scope}
                     </span>
                 ))}
             </div>
 
-            <div className="border-t border-border/50 pt-4 flex items-center justify-end">
+            <div className="border-t border-border/50 pt-3 flex items-center justify-end">
                 {app.connected ? (
                     <Button
                         variant="outline"
                         size="sm"
-                        className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                        className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive h-7 text-xs"
                         onClick={() => onDisconnect(app)}
                         disabled={!canDelete}
                     >
@@ -83,17 +81,13 @@ function ComposioCard({
                 ) : (
                     <Button
                         size="sm"
+                        className="h-7 text-xs"
                         onClick={() => onConnect(app)}
                         disabled={connecting !== null || !canConnect}
                     >
                         {connecting === app.appName ? (
-                            <>
-                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                                Connecting...
-                            </>
-                        ) : (
-                            'Connect'
-                        )}
+                            <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Connecting...</>
+                        ) : 'Connect'}
                     </Button>
                 )}
             </div>
@@ -132,6 +126,8 @@ export default function IntegrationsPage() {
     const [composioDisconnecting, setComposioDisconnecting] = useState(false);
     const [composioDisconnectTarget, setComposioDisconnectTarget] = useState<ComposioApp | null>(null);
 
+    const [search, setSearch] = useState('');
+
     useEffect(() => {
         const connected = searchParams.get('connected');
         if (connected && CONNECTED_NAMES[connected]) {
@@ -152,11 +148,11 @@ export default function IntegrationsPage() {
         const error = searchParams.get('error');
         if (error) {
             const messages: Record<string, string> = {
-                google_denied:          'Google connection was cancelled.',
-                state_expired:          'The OAuth session expired. Please try again.',
-                token_exchange_failed:  'Failed to connect Google. Please try again.',
-                configuration_error:    'OAuth is not configured. Contact support.',
-                db_error:               'Failed to save connection. Please try again.',
+                google_denied: 'Google connection was cancelled.',
+                state_expired: 'The OAuth session expired. Please try again.',
+                token_exchange_failed: 'Failed to connect Google. Please try again.',
+                configuration_error: 'OAuth is not configured. Contact support.',
+                db_error: 'Failed to save connection. Please try again.',
             };
             toast.error(messages[error] ?? 'Connection failed. Please try again.');
             const url = new URL(window.location.href);
@@ -219,6 +215,35 @@ export default function IntegrationsPage() {
         }
     };
 
+    // Search + group by category
+    const filteredComposioApps = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return composioApps;
+        return composioApps.filter(
+            (a) =>
+                a.label.toLowerCase().includes(q) ||
+                a.description.toLowerCase().includes(q) ||
+                a.category.toLowerCase().includes(q) ||
+                a.scopes.some((s) => s.toLowerCase().includes(q))
+        );
+    }, [composioApps, search]);
+
+    const composioByCategory = useMemo(() => {
+        const map = new Map<string, ComposioApp[]>();
+        for (const app of filteredComposioApps) {
+            const cat = app.category ?? 'Other';
+            if (!map.has(cat)) map.set(cat, []);
+            map.get(cat)!.push(app);
+        }
+        // Connected apps always appear first within each category
+        for (const [cat, apps] of map) {
+            map.set(cat, [...apps.filter(a => a.connected), ...apps.filter(a => !a.connected)]);
+        }
+        return map;
+    }, [filteredComposioApps]);
+
+    const connectedComposioCount = composioApps.filter(a => a.connected).length;
+
     return (
         <PermissionGate resource="integrations" action="read">
             <div className="space-y-8">
@@ -240,13 +265,12 @@ export default function IntegrationsPage() {
                     />
                 )}
 
+                {/* Native Integrations */}
                 <div className="space-y-3">
                     <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Native Integrations</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         {isLoading
-                            ? Array.from({ length: 5 }).map((_, i) => (
-                                <Skeleton key={i} className="h-48 rounded-xl" />
-                            ))
+                            ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-48 rounded-xl" />)
                             : CATALOGUE.map((entry) => (
                                 <IntegrationCard
                                     key={entry.provider}
@@ -263,28 +287,78 @@ export default function IntegrationsPage() {
                     </div>
                 </div>
 
-                <div className="space-y-3">
-                    <div>
-                        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">AI Agent Tools</h2>
-                        <p className="text-xs text-muted-foreground mt-1">Connected apps are available as tools in your AI agent conversations.</p>
+                {/* AI Agent Tools */}
+                <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                                AI Agent Tools
+                                {connectedComposioCount > 0 && (
+                                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-500">
+                                        {connectedComposioCount} connected
+                                    </span>
+                                )}
+                            </h2>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Connected apps become tools your AI agent can use in conversations.
+                            </p>
+                        </div>
+                        <div className="relative w-full sm:w-64 shrink-0">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                            <Input
+                                placeholder="Search 100+ connectors..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="pl-8 pr-8 h-8 text-sm"
+                            />
+                            {search && (
+                                <button
+                                    onClick={() => setSearch('')}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                >
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            )}
+                        </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {composioLoading
-                            ? Array.from({ length: 6 }).map((_, i) => (
-                                <Skeleton key={i} className="h-48 rounded-xl" />
-                            ))
-                            : composioApps.map((app) => (
-                                <ComposioCard
-                                    key={app.appName}
-                                    app={app}
-                                    connecting={composioConnecting}
-                                    canConnect={can('integrations', 'create')}
-                                    canDelete={can('integrations', 'delete')}
-                                    onConnect={handleComposioConnect}
-                                    onDisconnect={setComposioDisconnectTarget}
-                                />
+
+                    {composioLoading ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
+                        </div>
+                    ) : composioByCategory.size === 0 ? (
+                        <div className="text-center py-12 text-muted-foreground text-sm">
+                            No connectors match &ldquo;{search}&rdquo;
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {Array.from(composioByCategory.entries()).map(([category, apps]) => (
+                                <div key={category} className="space-y-2">
+                                    <h3 className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-2">
+                                        {category}
+                                        <span className="font-normal normal-case tracking-normal text-muted-foreground/50">
+                                            {apps.filter(a => a.connected).length > 0
+                                                ? `${apps.filter(a => a.connected).length}/${apps.length} connected`
+                                                : `${apps.length} apps`}
+                                        </span>
+                                    </h3>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                        {apps.map((app) => (
+                                            <ComposioCard
+                                                key={app.appName}
+                                                app={app}
+                                                connecting={composioConnecting}
+                                                canConnect={can('integrations', 'create')}
+                                                canDelete={can('integrations', 'delete')}
+                                                onConnect={handleComposioConnect}
+                                                onDisconnect={setComposioDisconnectTarget}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
                             ))}
-                    </div>
+                        </div>
+                    )}
                 </div>
 
                 {isConnected('github') && <GithubRepos />}
@@ -299,7 +373,14 @@ export default function IntegrationsPage() {
 
             {composioDisconnectTarget && (
                 <DisconnectDialog
-                    target={{ provider: composioDisconnectTarget.appName, name: composioDisconnectTarget.label, description: composioDisconnectTarget.description, scopes: [...composioDisconnectTarget.scopes], icon: null, available: true }}
+                    target={{
+                        provider: composioDisconnectTarget.appName,
+                        name: composioDisconnectTarget.label,
+                        description: composioDisconnectTarget.description,
+                        scopes: [...composioDisconnectTarget.scopes],
+                        icon: null,
+                        available: true,
+                    }}
                     disconnecting={composioDisconnecting}
                     onOpenChange={(open) => !open && setComposioDisconnectTarget(null)}
                     onConfirm={handleComposioDisconnectConfirm}

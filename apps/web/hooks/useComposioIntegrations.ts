@@ -8,6 +8,7 @@ export interface ComposioApp {
     label: string;
     description: string;
     scopes: readonly string[];
+    category: string;
     connected: boolean;
 }
 
