@@ -6,7 +6,7 @@ import "./marketing.css";
 const BASE_URL = "https://projectcontext.co";
 const TITLE = "project context — your AI engineering team";
 const DESCRIPTION =
-  "A coordinated team of AI specialists — PM, analyst, project manager, tech lead, and architect — that plan, write, and execute alongside your engineering team.";
+  "project context is an AI-powered engineering workspace with a built-in team of AI specialists — Product Manager, Analyst, Project Manager, Tech Lead, and Architect — that turns ideas into PRDs, roadmaps, and task boards. Free to start.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -49,6 +49,15 @@ export const metadata: Metadata = {
     "software development AI",
     "AI roadmap",
     "PRD generator",
+    "AI workspace",
+    "multi-agent AI",
+    "AI task management",
+    "AI sprint planning",
+    "AI product requirements document",
+    "agentic project management",
+    "AI engineering workspace",
+    "MCP tool integrations",
+    "AI team for developers",
   ],
   authors: [{ name: "project context", url: BASE_URL }],
   robots: {

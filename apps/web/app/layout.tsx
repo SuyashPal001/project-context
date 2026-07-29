@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/providers";
@@ -29,14 +29,18 @@ const jetBrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+export const viewport: Viewport = {
+  themeColor: "#0a0a0a",
+};
+
 export const metadata: Metadata = {
   title: {
     default: "project context — your AI engineering team",
     template: "%s | project context",
   },
-  description: "Your AI engineering team, shipping with you.",
+  description:
+    "project context gives your team a coordinated AI engineering team — PM, Analyst, Project Manager, Tech Lead, and Architect — that turns ideas into PRDs, roadmaps, and task boards. Free to start.",
   metadataBase: new URL("https://projectcontext.co"),
-  themeColor: "#0a0a0a",
   icons: {
     icon: "/favicon.ico",
   },
