@@ -10,6 +10,7 @@ import pg from 'pg'
 import { platformModel, liteModel, privateModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
+import { isComposioEnabled, getComposioTools } from '../composio.js'
 import { createViolationHandler } from '../guardrails.js'
 import { makeAppPool } from '../../db.js'
 
@@ -241,9 +242,31 @@ export const platformAgent = new Agent({
       return SERVER_TOOLS
     }
 
-    // Reuse the pre-created MCPClient stored in requestContext by createTenantAgent().
-    // This ensures one MCPClient per task execution — avoids creating a second client
-    // alongside the one returned for disconnect in TenantAgentWithClient.
+    // --- Composio path (primary when COMPOSIO_ENABLED=true) ---
+    if (isComposioEnabled()) {
+      try {
+        const composioTools = await getComposioTools(tenantId)
+
+        // Filter out any Composio tools that conflict with SERVER_TOOLS.
+        const filteredComposioTools = Object.fromEntries(
+          Object.entries(composioTools).filter(([key]) => {
+            const blocked = Array.from(SERVER_TOOL_NAMES).some(
+              (name) => key === name || key.endsWith(`_${name}`)
+            )
+            if (blocked) console.log(`[mastra] platformAgent filtering Composio tool: ${key}`)
+            return !blocked
+          })
+        )
+
+        console.log(`[mastra] using Composio tools (${Object.keys(filteredComposioTools).length}) for tenant ${tenantId}`)
+        return { ...filteredComposioTools, ...SERVER_TOOLS }
+      } catch (err) {
+        // Composio failed — fall through to MCP backup.
+        console.warn('[mastra] Composio tool fetch failed, falling back to MCP:', (err as Error).message)
+      }
+    }
+
+    // --- MCP path (backup / default when Composio is disabled or errored) ---
     const storedClient = requestContext.get('__mcpClient') as MCPClient | undefined
     const mcpClient = storedClient ?? getMCPClientForTenant(tenantId)
 

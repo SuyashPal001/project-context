@@ -29,6 +29,7 @@
     "@serverless-saas/ai": "workspace:*",
     "@serverless-saas/database": "workspace:*",
     "@serverless-saas/types": "workspace:*",
+    "composio-core": "^0.5.39",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.45.2",
     "exa-js": "^2.12.1",
