@@ -151,10 +151,15 @@ export function WidgetChat({ tenantId, agentId, externalUserId }: WidgetChatProp
                 />
                 <div className="mt-2 text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">
                     <span>Powered by</span>
-                    <span className="font-bold flex items-center gap-0.5">
+                    <a
+                        href="https://projectcontext.co"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-bold flex items-center gap-0.5 hover:text-foreground transition-colors"
+                    >
                         <Bot className="h-2.5 w-2.5" />
-                        Feature Zero
-                    </span>
+                        project context
+                    </a>
                 </div>
             </div>
         </div>
