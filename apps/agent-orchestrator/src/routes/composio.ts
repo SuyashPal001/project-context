@@ -181,11 +181,31 @@ composioRouter.post('/internal/composio/connect', async (c) => {
   const catalogue = COMPOSIO_CATALOGUE.find((a) => a.appName === appName)
   if (!catalogue) return c.json({ error: `Unknown app: ${appName}` }, 400)
 
-  // Resolve authConfigId for this toolkit from Composio's auth config registry.
+  // Resolve authConfigId for this toolkit. If none exists, auto-create a
+  // Composio-managed config (uses Composio's own OAuth credentials).
+  // Requires auth_configs write permission on the Composio API key.
   const composio = getComposioClient()
-  const authConfigs = await composio.authConfigs.list({ toolkit: appName })
-  const authConfigId = authConfigs?.items?.[0]?.id
-  if (!authConfigId) return c.json({ error: `No auth config found for app: ${appName}` }, 404)
+  let authConfigs = await composio.authConfigs.list({ toolkit: appName })
+  let authConfigId = authConfigs?.items?.[0]?.id
+
+  if (!authConfigId) {
+    try {
+      const created = await (composio.authConfigs as any).create({
+        toolkit: appName,
+        type: 'use_composio_managed_auth',
+        name: `${appName}-managed`,
+      })
+      authConfigId = created?.id
+    } catch (createErr) {
+      console.error(`[composio] auto-create auth config failed for ${appName}:`, (createErr as Error).message)
+    }
+  }
+
+  if (!authConfigId) {
+    return c.json({
+      error: `No auth config available for ${appName}. Add one in the Composio dashboard or grant auth_configs write permission to the API key.`,
+    }, 404)
+  }
 
   // link() is the non-deprecated OAuth initiation method in @composio/core v0.14+
   const request = await composio.connectedAccounts.link(tenantId, authConfigId, {
