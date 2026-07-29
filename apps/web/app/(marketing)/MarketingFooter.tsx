@@ -8,6 +8,10 @@ export function MarketingFooter() {
         </div>
         <div className="flex flex-wrap gap-6 font-mono-mk text-[11px] uppercase tracking-[0.22em] text-[var(--mk-muted)]">
           <span>© {new Date().getFullYear()}</span>
+          <a href="/use-cases" className="transition-colors hover:text-[var(--mk-fg)]">use cases</a>
+          <a href="/use-cases/ai-prd-generator" className="transition-colors hover:text-[var(--mk-fg)]">AI PRD</a>
+          <a href="/use-cases/ai-project-planning" className="transition-colors hover:text-[var(--mk-fg)]">AI planning</a>
+          <a href="/use-cases/ai-engineering-team" className="transition-colors hover:text-[var(--mk-fg)]">AI team</a>
           <a href="/privacy" className="transition-colors hover:text-[var(--mk-fg)]">privacy</a>
           <a href="/terms" className="transition-colors hover:text-[var(--mk-fg)]">terms</a>
           <a href="mailto:hello@projectcontext.co" className="transition-colors hover:text-[var(--mk-fg)]">contact</a>
