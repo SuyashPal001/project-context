@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { timingSafeEqual } from 'crypto'
-import { Composio } from 'composio-core'
-import { invalidateComposioCache } from '../mastra/composio.js'
+import { getComposioClient, invalidateComposioCache } from '../mastra/composio.js'
 
 // Curated list of Composio apps available for tenant connection.
 // uniqueKey must match Composio's app registry (case-insensitive).
@@ -137,15 +136,6 @@ function isAuthorized(key: string | undefined): boolean {
   }
 }
 
-let _composio: Composio | null = null
-function getComposio(): Composio {
-  if (!_composio) {
-    if (!process.env.COMPOSIO_API_KEY) throw new Error('COMPOSIO_API_KEY not set')
-    _composio = new Composio({ apiKey: process.env.COMPOSIO_API_KEY })
-  }
-  return _composio
-}
-
 export const composioRouter = new Hono()
 
 // GET /internal/composio/apps?tenantId=<id>
@@ -158,9 +148,14 @@ composioRouter.get('/internal/composio/apps', async (c) => {
 
   let connectedAppNames = new Set<string>()
   try {
-    const res = await getComposio().connectedAccounts.list({ entityId: tenantId, status: 'ACTIVE' })
-    const items: any[] = (res as any)?.items ?? []
-    connectedAppNames = new Set(items.map((a: any) => (a.appUniqueId ?? a.appName ?? '').toLowerCase()))
+    const res = await getComposioClient().connectedAccounts.list({
+      userIds: [tenantId],
+      statuses: ['ACTIVE' as any],
+    })
+    const items: any[] = res?.items ?? []
+    connectedAppNames = new Set(
+      items.map((a: any) => (a.toolkitSlug ?? a.appName ?? a.appUniqueId ?? '').toLowerCase())
+    )
   } catch (err) {
     console.warn('[composio] list connected accounts failed:', (err as Error).message)
   }
@@ -186,13 +181,19 @@ composioRouter.post('/internal/composio/connect', async (c) => {
   const catalogue = COMPOSIO_CATALOGUE.find((a) => a.appName === appName)
   if (!catalogue) return c.json({ error: `Unknown app: ${appName}` }, 400)
 
-  const request = await getComposio().connectedAccounts.initiate({
-    appName,
-    entityId: tenantId,
-    redirectUri: redirectUrl,
+  // Resolve authConfigId for this toolkit from Composio's auth config registry.
+  const composio = getComposioClient()
+  const authConfigs = await composio.authConfigs.list({ toolkit: appName })
+  const authConfigId = authConfigs?.items?.[0]?.id
+  if (!authConfigId) return c.json({ error: `No auth config found for app: ${appName}` }, 404)
+
+  // link() is the non-deprecated OAuth initiation method in @composio/core v0.14+
+  const request = await composio.connectedAccounts.link(tenantId, authConfigId, {
+    callbackUrl: redirectUrl,
+    allowMultiple: false,
   })
 
-  const url = (request as any).redirectUrl ?? (request as any).connectionUrl
+  const url = request.redirectUrl
   if (!url) return c.json({ error: 'Composio did not return a redirect URL' }, 502)
 
   return c.json({ url })
@@ -209,12 +210,17 @@ composioRouter.delete('/internal/composio/disconnect', async (c) => {
 
   let disconnected = false
   try {
-    const res = await getComposio().connectedAccounts.list({ entityId: tenantId, appName })
-    const items: any[] = (res as any)?.items ?? []
+    const composio = getComposioClient()
+    const res = await composio.connectedAccounts.list({
+      userIds: [tenantId],
+      toolkitSlugs: [appName],
+      statuses: ['ACTIVE' as any],
+    })
+    const items: any[] = res?.items ?? []
     for (const account of items) {
       const id = account.id ?? account.connectedAccountId
       if (id) {
-        await getComposio().connectedAccounts.delete({ connectedAccountId: id })
+        await composio.connectedAccounts.delete(id)
         disconnected = true
       }
     }
