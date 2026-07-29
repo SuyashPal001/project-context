@@ -36,6 +36,7 @@ import { integrationsRoutes, googleOAuthCallbackRoute, zohoOAuthCallbackRoute, j
 import { githubIntegrationRoute } from './routes/integrations.github';
 import { githubCallbackRoute } from './routes/integrations.github.callback';
 import { githubWebhookRoute } from './routes/integrations.github.webhook';
+import { composioIntegrationsRoute } from './routes/integrations.composio';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { sessionsRoutes } from './routes/sessions';
 import { usersRoutes } from './routes/users';
@@ -165,6 +166,7 @@ api.route('/person-folders', personFoldersRoutes);
 
 api.route('/integrations', integrationsRoutes);
 api.route('/integrations', githubIntegrationRoute);
+api.route('/integrations', composioIntegrationsRoute);
 api.route('/sessions', sessionsRoutes);
 api.route('/users', usersRoutes);
 api.route('/workspaces', workspacesRoutes);
