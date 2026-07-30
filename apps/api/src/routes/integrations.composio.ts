@@ -20,6 +20,58 @@ function serviceHeaders() {
     };
 }
 
+interface OrchestratorResult {
+    ok: boolean;
+    status: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    data: any;
+}
+
+/**
+ * Calls the orchestrator and always resolves to a status + parsed body.
+ *
+ * Reads the response as text before parsing: anything between us and the
+ * orchestrator (Cloudflare challenge pages, gateway errors, nginx 502s)
+ * answers with HTML, and calling res.json() on that throws a SyntaxError
+ * that says nothing about what actually happened. Parsing defensively keeps
+ * the real status code and a body snippet in the log.
+ */
+async function callOrchestrator(
+    label: string,
+    path: string,
+    init?: RequestInit,
+): Promise<OrchestratorResult> {
+    const res = await fetch(`${orchestratorUrl()}${path}`, {
+        ...init,
+        headers: serviceHeaders(),
+    });
+
+    const raw = await res.text();
+
+    let data: unknown;
+    try {
+        data = JSON.parse(raw);
+    } catch {
+        console.error(
+            `[${label}] non-JSON response from orchestrator:`,
+            `status=${res.status}`,
+            `content-type=${res.headers.get('content-type')}`,
+            `body=${raw.slice(0, 200)}`,
+        );
+        return {
+            ok: false,
+            status: 502,
+            data: { error: 'Orchestrator returned an unexpected response', code: 'ORCHESTRATOR_BAD_RESPONSE' },
+        };
+    }
+
+    if (!res.ok) {
+        console.error(`[${label}] orchestrator error:`, `status=${res.status}`, `body=${raw.slice(0, 200)}`);
+    }
+
+    return { ok: res.ok, status: res.status, data };
+}
+
 // GET /integrations/composio/apps
 composioIntegrationsRoute.get('/composio/apps', async (c) => {
     const requestContext = c.get('requestContext') as any;
@@ -29,15 +81,22 @@ composioIntegrationsRoute.get('/composio/apps', async (c) => {
     const tenantId = requestContext?.tenant?.id as string;
 
     try {
-        const res = await fetch(`${orchestratorUrl()}/internal/composio/apps?tenantId=${tenantId}`, {
-            headers: serviceHeaders(),
-        });
-        const data = await res.json();
-        if (!res.ok) return c.json(data, res.status as any);
-        return c.json(data);
+        const result = await callOrchestrator(
+            'composio/apps',
+            `/internal/composio/apps?tenantId=${tenantId}`,
+        );
+        if (!result.ok) {
+            // Degrade rather than fail: this is a read-only listing rendered on
+            // page load, and a non-2xx here surfaces as a console error plus an
+            // empty grid the user can't act on. Return an explicit `degraded`
+            // flag so the UI can say "unavailable" instead of "no results".
+            // The real status is already in the log above.
+            return c.json({ apps: [], degraded: true });
+        }
+        return c.json(result.data);
     } catch (err) {
         console.error('[composio/apps] proxy error:', (err as Error).message);
-        return c.json({ error: 'Failed to fetch Composio apps' }, 502);
+        return c.json({ apps: [], degraded: true });
     }
 });
 
@@ -55,14 +114,11 @@ composioIntegrationsRoute.post('/composio/:app/connect', async (c) => {
     const redirectUrl = `${frontendUrl}/${slug}/dashboard/integrations?composio_connected=${appName}`;
 
     try {
-        const res = await fetch(`${orchestratorUrl()}/internal/composio/connect`, {
+        const result = await callOrchestrator('composio/connect', '/internal/composio/connect', {
             method: 'POST',
-            headers: serviceHeaders(),
             body: JSON.stringify({ tenantId, appName, redirectUrl }),
         });
-        const data = await res.json();
-        if (!res.ok) return c.json(data, res.status as any);
-        return c.json(data);
+        return c.json(result.data, result.status as any);
     } catch (err) {
         console.error('[composio/connect] proxy error:', (err as Error).message);
         return c.json({ error: 'Failed to initiate Composio connection' }, 502);
@@ -79,14 +135,11 @@ composioIntegrationsRoute.delete('/composio/:app', async (c) => {
     const appName = c.req.param('app');
 
     try {
-        const res = await fetch(`${orchestratorUrl()}/internal/composio/disconnect`, {
+        const result = await callOrchestrator('composio/disconnect', '/internal/composio/disconnect', {
             method: 'DELETE',
-            headers: serviceHeaders(),
             body: JSON.stringify({ tenantId, appName }),
         });
-        const data = await res.json();
-        if (!res.ok) return c.json(data, res.status as any);
-        return c.json(data);
+        return c.json(result.data, result.status as any);
     } catch (err) {
         console.error('[composio/disconnect] proxy error:', (err as Error).message);
         return c.json({ error: 'Failed to disconnect Composio app' }, 502);

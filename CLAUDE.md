@@ -189,7 +189,7 @@ Agent platform handlers registered via `registerProductHandlers`.
 
 # 3. Install + build
 pnpm install
-make build
+sam build --config-file samconfig.dev.toml
 
 # 4. Deploy Lambdas (writes ARNs to SSM)
 sam deploy --config-file samconfig.dev.toml
@@ -215,7 +215,7 @@ pnpm type-check
 pnpm lint
 
 # Local API (SAM emulator)
-make build
+sam build --config-file samconfig.dev.toml
 sam local start-api
 
 # Local dev server (Node)

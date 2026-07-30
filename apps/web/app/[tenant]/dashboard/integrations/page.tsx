@@ -101,7 +101,13 @@ export default function IntegrationsPage() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const { isLoading, refetch, isConnected, getIntegration } = useIntegrations();
-    const { apps: composioApps, isLoading: composioLoading, refetch: composioRefetch } = useComposioIntegrations();
+    const {
+        apps: composioApps,
+        isLoading: composioLoading,
+        isError: composioError,
+        degraded: composioDegraded,
+        refetch: composioRefetch,
+    } = useComposioIntegrations();
 
     const { data: entData } = useQuery<EntitlementsResponse>({
         queryKey: ['entitlements', tenantSlug],
@@ -325,6 +331,19 @@ export default function IntegrationsPage() {
                     {composioLoading ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
+                        </div>
+                    ) : composioError || composioDegraded ? (
+                        <div className="text-center py-12 space-y-3">
+                            <p className="text-sm text-muted-foreground">
+                                Connectors are temporarily unavailable.
+                            </p>
+                            <Button variant="outline" size="sm" onClick={() => composioRefetch()}>
+                                Retry
+                            </Button>
+                        </div>
+                    ) : composioApps.length === 0 ? (
+                        <div className="text-center py-12 text-muted-foreground text-sm">
+                            No connectors available yet.
                         </div>
                     ) : composioByCategory.size === 0 ? (
                         <div className="text-center py-12 text-muted-foreground text-sm">
