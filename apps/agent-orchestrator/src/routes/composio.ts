@@ -154,7 +154,7 @@ composioRouter.get('/internal/composio/apps', async (c) => {
     })
     const items: any[] = res?.items ?? []
     connectedAppNames = new Set(
-      items.map((a: any) => (a.toolkitSlug ?? a.appName ?? a.appUniqueId ?? '').toLowerCase())
+      items.map((a: any) => (a.toolkit?.slug ?? a.toolkitSlug ?? a.appName ?? a.appUniqueId ?? '').toLowerCase())
     )
   } catch (err) {
     console.warn('[composio] list connected accounts failed:', (err as Error).message)
