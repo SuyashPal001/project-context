@@ -5,6 +5,13 @@ import type { AppEnv } from '../types';
 // Proxy routes to agent-orchestrator for Composio-managed integrations.
 // The orchestrator holds COMPOSIO_API_KEY and manages the Composio SDK.
 
+// Bumped on deploy. Logged once per cold start so CloudWatch shows which build
+// is actually serving — without it there is no way to tell a stale bundle from
+// a fix that did not work. Change this to force a new bundle hash when
+// CloudFormation reports "No changes to deploy".
+const BUILD_MARKER = '2026-07-30T14:10Z-composio-proxy-diagnostics';
+console.log(`[composio] route module loaded — build ${BUILD_MARKER}`);
+
 export const composioIntegrationsRoute = new Hono<AppEnv>();
 
 function orchestratorUrl(): string {
