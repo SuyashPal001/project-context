@@ -190,8 +190,7 @@ composioRouter.post('/internal/composio/connect', async (c) => {
 
   if (!authConfigId) {
     try {
-      const created = await (composio.authConfigs as any).create({
-        toolkit: appName,
+      const created = await (composio.authConfigs as any).create(appName, {
         type: 'use_composio_managed_auth',
         name: `${appName}-managed`,
       })
