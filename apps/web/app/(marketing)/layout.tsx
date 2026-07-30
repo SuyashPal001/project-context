@@ -7,6 +7,7 @@ const BASE_URL = "https://projectcontext.co";
 const TITLE = "project context — your AI engineering team";
 const DESCRIPTION =
   "project context is an AI-powered engineering workspace with a built-in team of AI specialists — Product Manager, Analyst, Project Manager, Tech Lead, and Architect — that turns ideas into PRDs, roadmaps, and task boards. Free to start.";
+const OG_IMAGE = `${BASE_URL}/og?title=project+context&subtitle=your+AI+engineering+team`;
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
     images: [
       {
-        url: "/og-image.png",
+        url: OG_IMAGE,
         width: 1200,
         height: 630,
         alt: "project context — your AI engineering team",
@@ -35,7 +36,7 @@ export const metadata: Metadata = {
     site: "@projectcontext",
     title: TITLE,
     description: DESCRIPTION,
-    images: ["/og-image.png"],
+    images: [OG_IMAGE],
   },
   keywords: [
     "AI engineering team",
