@@ -28,19 +28,39 @@ function InlineChange({ field, from, to }: { field: TimelineTrackedField; from: 
 }
 
 function CriteriaChange({ from, to }: { from: unknown; to: unknown }) {
-    const list = (v: unknown): string[] =>
-        Array.isArray(v) ? v.map((i) => (i && typeof i === 'object' && 'text' in i ? String((i as any).text) : String(i))) : []
+    type Criterion = { text: string; checked: boolean }
+    const list = (v: unknown): Criterion[] =>
+        Array.isArray(v)
+            ? v.map((i) =>
+                i && typeof i === 'object' && 'text' in i
+                    ? { text: String((i as any).text), checked: Boolean((i as any).checked) }
+                    : { text: String(i), checked: false },
+            )
+            : []
+
     const before = list(from)
     const after = list(to)
-    const added = after.filter((t) => !before.includes(t))
-    const removed = before.filter((t) => !after.includes(t))
+    const beforeTexts = before.map((c) => c.text)
+    const afterTexts = after.map((c) => c.text)
+
+    const added = after.filter((c) => !beforeTexts.includes(c.text))
+    const removed = before.filter((c) => !afterTexts.includes(c.text))
+    const toggled = after.filter((c) => {
+        const prev = before.find((b) => b.text === c.text)
+        return prev && prev.checked !== c.checked
+    })
 
     return (
         <div className="text-xs text-muted-foreground/60">
             changed acceptance criteria
             <div className="mt-1 space-y-0.5">
-                {added.map((t) => <div key={`+${t}`} className="text-emerald-500/70">+ {t}</div>)}
-                {removed.map((t) => <div key={`-${t}`} className="text-red-500/70 line-through">− {t}</div>)}
+                {added.map((c, i) => <div key={`+${c.text}-${i}`} className="text-emerald-500/70">+ {c.text}</div>)}
+                {removed.map((c, i) => <div key={`-${c.text}-${i}`} className="text-red-500/70 line-through">− {c.text}</div>)}
+                {toggled.map((c, i) => (
+                    <div key={`~${c.text}-${i}`} className="text-foreground/70">
+                        {c.checked ? '☑' : '☐'} {c.text}
+                    </div>
+                ))}
             </div>
         </div>
     )

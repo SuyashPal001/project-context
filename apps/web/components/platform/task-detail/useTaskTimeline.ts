@@ -13,5 +13,6 @@ export function useTaskTimeline(taskId: string) {
     return {
         rows: query.data?.data ?? [],
         isLoading: query.isLoading,
+        isError: query.isError,
     }
 }

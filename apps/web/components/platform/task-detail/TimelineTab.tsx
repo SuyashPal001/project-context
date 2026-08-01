@@ -4,10 +4,13 @@ import { useTaskTimeline } from './useTaskTimeline'
 import { TimelineRowItem } from './timeline/rows'
 
 export function TimelineTab({ taskId }: { taskId: string }) {
-    const { rows, isLoading } = useTaskTimeline(taskId)
+    const { rows, isLoading, isError } = useTaskTimeline(taskId)
 
     if (isLoading) {
         return <p className="text-sm text-muted-foreground/40 italic py-4">Loading timeline…</p>
+    }
+    if (isError) {
+        return <p className="text-sm text-red-500/60 italic py-4">Could not load the timeline.</p>
     }
     if (rows.length === 0) {
         return <p className="text-sm text-muted-foreground/40 italic py-4">No events yet.</p>
