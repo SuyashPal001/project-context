@@ -3,6 +3,7 @@ import {
     primaryKey, uniqueIndex, index,
 } from 'drizzle-orm/pg-core';
 import { taskPriorityEnum, agents } from './agents';
+import { clients } from './clients';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { users } from '@serverless-saas/database/schema/auth';
 
@@ -26,6 +27,7 @@ export const planStatusEnum = pgEnum('plan_status', ['draft', 'active', 'complet
 export const projectPlans = pgTable('project_plans', {
     id:          uuid('id').primaryKey().defaultRandom(),
     tenantId:    uuid('tenant_id').notNull().references(() => tenants.id),
+    clientId:    uuid('client_id').references(() => clients.id),
     sequenceId:  integer('sequence_id').notNull(),
     title:       text('title').notNull(),
     description: text('description'),
@@ -39,6 +41,7 @@ export const projectPlans = pgTable('project_plans', {
 }, (t) => ({
     tenantStatusIdx: index('project_plans_tenant_status_idx').on(t.tenantId, t.status),
     tenantSeqUniq:   uniqueIndex('project_plans_tenant_seq_uniq').on(t.tenantId, t.sequenceId),
+    clientIdx: index('project_plans_client_idx').on(t.clientId),
 }));
 
 // ── Milestones ────────────────────────────────────────────────────────────────

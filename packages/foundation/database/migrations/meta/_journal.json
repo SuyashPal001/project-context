@@ -302,6 +302,13 @@
       "when": 1780243320000,
       "tag": "0043_project_milestones_acceptance_criteria",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1785573120541,
+      "tag": "0044_clients",
+      "breakpoints": true
     }
   ]
 }

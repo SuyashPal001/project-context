@@ -1,4 +1,5 @@
 export * from './agents';
+export * from './clients';
 export * from './conversations';
 export * from './documents';
 export * from './knowledge';
