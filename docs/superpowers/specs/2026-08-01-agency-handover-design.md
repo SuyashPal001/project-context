@@ -119,8 +119,9 @@ next client project answers this.
    `apps/api/src/routes/billing.ts`. The pricing model requires it. Moves from
    post-launch to blocker.
 2. **No error tracking.** No Sentry in web, api, or orchestrator.
-3. **No CI, no tests.** `pnpm test` unwired; no test files in this repo
-   (saarthi-ai has them).
+3. **No CI.** Vitest *is* configured (4 packages, 10 test files, root
+   `pnpm test` wired) — but coverage is thin and nothing runs it on push, so
+   every deploy is unverified.
 4. **Audit-log concurrency bug** — needs `SELECT FOR UPDATE` in
    `products/agent-platform/packages/api/services/audit-log.ts`.
 
