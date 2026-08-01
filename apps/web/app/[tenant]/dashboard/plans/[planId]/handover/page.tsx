@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -21,13 +21,17 @@ export default function HandoverBuilderPage() {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
+    const mountedRef = useRef(true);
+
     const loadPack = useCallback(async (packId: string) => {
         const detail = await api.get<{ data: { pack: Pack; sections: Section[]; items: Item[] } }>(`/handover/packs/${packId}`);
+        if (!mountedRef.current) return;
         setPack(detail.data.pack);
         setSections(detail.data.sections);
         setItems(detail.data.items);
         setSelectedId((current) => current ?? detail.data.sections[0]?.id ?? null);
         const r = await api.get<{ data: Readiness }>(`/handover/packs/${packId}/readiness`);
+        if (!mountedRef.current) return;
         setReadiness(r.data);
     }, []);
 
@@ -35,6 +39,7 @@ export default function HandoverBuilderPage() {
     // create data — the agency creates the pack explicitly.
     useEffect(() => {
         let cancelled = false;
+        mountedRef.current = true;
         (async () => {
             try {
                 const existing = await api.get<{ data: Pack | null }>(`/handover/packs?planId=${planId}`);
@@ -46,7 +51,7 @@ export default function HandoverBuilderPage() {
                 if (!cancelled) setLoading(false);
             }
         })();
-        return () => { cancelled = true; };
+        return () => { cancelled = true; mountedRef.current = false; };
     }, [planId, loadPack]);
 
     async function createPack() {
