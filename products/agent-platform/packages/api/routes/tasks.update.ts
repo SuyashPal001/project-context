@@ -2,9 +2,11 @@ import { and, eq, sql, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db';
 import { agentTasks, agents } from '@serverless-saas/agent-schema/agents';
+import { taskRevisions } from '@serverless-saas/agent-schema/task-revisions';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';
+import { buildTaskRevisions } from '../lib/revisions';
 import { VALID_USER_TRANSITIONS } from './tasks.constants';
 import type { Context } from 'hono';
 import type { AppEnv } from '@serverless-saas/types';
@@ -38,6 +40,14 @@ const patchTaskSchema = z.object({
     referenceText: z.string().nullable().optional(),
     descriptionHtml: z.string().nullable().optional(),
 });
+
+/**
+ * Fields that exist on agent_tasks but must never be settable through PATCH.
+ * rawInput is the original ask — writing it twice destroys the diff the
+ * handover pack is built from. Kept as an exported constant so the guarantee
+ * is testable rather than implied by the absence of a Zod key.
+ */
+export const PROVENANCE_IMMUTABLE_FIELDS = ['rawInput', 'conversationId', 'sourceMessageId'] as const;
 
 // PATCH /tasks/:taskId
 export async function handleUpdateTask(c: Context<AppEnv>) {
@@ -101,6 +111,22 @@ export async function handleUpdateTask(c: Context<AppEnv>) {
         .set(updateValues)
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
         .returning();
+
+    // Append the intent diff. Non-fatal: a failed revision write must never
+    // fail the user's edit, matching how the audit-log write behaves below.
+    try {
+        const revisions = buildTaskRevisions(task, result.data, {
+            taskId,
+            tenantId,
+            actorType: 'human',
+            actorId: userId,
+        });
+        if (revisions.length > 0) {
+            await db.insert(taskRevisions).values(revisions);
+        }
+    } catch (revErr) {
+        console.error('Task revision write failed (non-fatal):', revErr);
+    }
 
     if (status === 'todo' && task.status === 'backlog') {
         try {

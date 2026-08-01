@@ -64,6 +64,7 @@ export async function handleCreateTask(c: Context<AppEnv>) {
         createdBy: userId,
         title,
         description,
+        rawInput: description ?? title,
         referenceText: referenceText ?? null,
         acceptanceCriteria,
         estimatedHours: estimatedHours !== undefined ? String(estimatedHours) : undefined,
