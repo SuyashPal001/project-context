@@ -931,11 +931,13 @@ Then, inside `handleUpdateTask`, insert this block **after** the `const [updated
 
 - [ ] **Step 6: Set `rawInput` once at creation**
 
-In `products/agent-platform/packages/api/routes/tasks.create.ts`, find the object literal passed to `db.insert(agentTasks).values({...})`. Add a `rawInput` key set from the incoming description, falling back to the title when no description was supplied:
+In `products/agent-platform/packages/api/routes/tasks.create.ts`, find the object literal passed to `db.insert(agentTasks).values({...})`. Add a `rawInput` key set from the incoming description, falling back to the title when no meaningful description was supplied:
 
 ```typescript
-        rawInput: description ?? title,
+        rawInput: description?.trim() || title,
 ```
+
+Use `||`, not `??`. `description` is `z.string().optional()` with no `.min(1)`, so an empty string is a valid distinct value — `??` would store `""` as the original ask. `?.trim()` handles the undefined case and `||` catches both empty and whitespace-only. `title` is required and `.min(1)`, so the fallback is always real.
 
 Place it directly after the existing `description` key. Do not add `rawInput` to the create request's Zod schema — it is derived, never client-supplied.
 
