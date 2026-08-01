@@ -13,7 +13,19 @@
 - Package scope is `@serverless-saas/*`. Agent-platform tables live in `products/agent-platform/packages/schema` and are exported from its `index.ts`.
 - Every table carries `tenant_id uuid NOT NULL REFERENCES tenants(id)`. Every query filters by `tenantId`. No exceptions.
 - No new table may be added to a foundation schema file. New tables get their own file under `products/agent-platform/packages/schema/`.
-- Migrations are generated with `pnpm db:generate` from `packages/foundation/database`, then renamed to a descriptive tag in both the filename and `migrations/meta/_journal.json`.
+- **Migrations are hand-written.** Do NOT run `pnpm db:generate`. The snapshot
+  chain in `migrations/meta/` ends at `0036`; migrations `0037`–`0043` were
+  written by hand without snapshots, so drizzle-kit diffs against a stale
+  snapshot and sweeps seven migrations of already-applied drift — including
+  destructive `DROP`s — into any new file. Write the `.sql` by hand, add a
+  matching `_journal.json` entry continuing the `+60000` `when` sequence, and
+  add no snapshot. This matches `0039_agent_type_pm_team` through
+  `0043_project_milestones_acceptance_criteria`.
+- Every DDL statement must be idempotent: `IF NOT EXISTS` on tables, columns,
+  and indexes; `DO $$ ... EXCEPTION WHEN duplicate_object THEN null; END $$;`
+  around `ADD CONSTRAINT`, which has no `IF NOT EXISTS` form. Statements are
+  separated by `--> statement-breakpoint`.
+- No migration may contain a `DROP`. The database is live.
 - Existing tests are pure-unit with `vi.mock` and never touch a database. Follow that pattern — see `products/agent-platform/packages/api/__tests__/tasks.state.test.ts`.
 - Run tests from `products/agent-platform/packages/api` with `pnpm vitest run <path>`.
 - Indentation in `products/agent-platform/packages/schema/*.ts` is 2 spaces in `agents.ts` and 4 in `pm.ts`. New files use **2 spaces**.
@@ -206,29 +218,65 @@ And add an index to the `projectPlans` table's index block:
 
 `clientId` is nullable because plans created before this change have no client.
 
-- [ ] **Step 8: Generate the migration**
+- [ ] **Step 8: Hand-write the migration**
 
-```bash
-cd packages/foundation/database && pnpm db:generate
+Do **not** run `pnpm db:generate` — see Global Constraints. Create
+`packages/foundation/database/migrations/0044_clients.sql` with exactly this
+content:
+
+```sql
+CREATE TYPE "public"."client_status" AS ENUM('active', 'archived');--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "clients" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"slug" text NOT NULL,
+	"brand_name" text,
+	"logo_url" text,
+	"brand_color" text,
+	"status" "client_status" DEFAULT 'active' NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"deleted_at" timestamp,
+	CONSTRAINT "clients_tenant_slug_unique" UNIQUE("tenant_id","slug")
+);--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "clients" ADD CONSTRAINT "clients_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "clients_tenant_status_idx" ON "clients" USING btree ("tenant_id","status");--> statement-breakpoint
+ALTER TABLE "project_plans" ADD COLUMN IF NOT EXISTS "client_id" uuid;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "project_plans" ADD CONSTRAINT "project_plans_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "project_plans_client_idx" ON "project_plans" USING btree ("client_id");
 ```
 
-Expected: a new file `migrations/00NN_<random_name>.sql` creating the `client_status` enum and `clients` table, and adding `project_plans.client_id`. It also appends an entry to `migrations/meta/_journal.json`.
+`CREATE TYPE` has no `IF NOT EXISTS` form in PostgreSQL — that is expected and
+matches the existing migrations.
 
-- [ ] **Step 9: Rename the migration to a descriptive tag**
+- [ ] **Step 9: Add the journal entry**
 
-```bash
-cd packages/foundation/database/migrations && mv 00NN_<random_name>.sql 0044_clients.sql
+Append to `entries` in `packages/foundation/database/migrations/meta/_journal.json`
+(`0043` is `idx` 42, `when` 1780243320000):
+
+```json
+{ "idx": 43, "version": "7", "when": 1780243380000, "tag": "0044_clients", "breakpoints": true }
 ```
 
-Then edit `migrations/meta/_journal.json` and change the `"tag"` on the newest entry from `"00NN_<random_name>"` to `"0044_clients"`. Leave `idx`, `when`, and `version` as generated. This matches the convention set by `0043_project_milestones_acceptance_criteria`.
+Add no snapshot file.
 
-- [ ] **Step 10: Verify the generated SQL**
+- [ ] **Step 10: Verify the migration is self-contained**
 
 ```bash
-cat packages/foundation/database/migrations/0044_clients.sql
+grep -c DROP packages/foundation/database/migrations/0044_clients.sql
+grep -oE '"(clients|project_plans|tenants)"' packages/foundation/database/migrations/0044_clients.sql | sort -u
 ```
 
-Confirm it contains `CREATE TABLE`/`CREATE TYPE` for `clients` and `client_status`, and `ALTER TABLE "project_plans" ADD COLUMN "client_id"`. It must **not** contain any `DROP` statement. If a `DROP` appears, the local schema has drifted from the database — stop and investigate before applying.
+Expected: `0` DROPs, and only those three table names appear.
 
 - [ ] **Step 11: Type-check the workspace**
 
@@ -236,7 +284,10 @@ Confirm it contains `CREATE TABLE`/`CREATE TYPE` for `clients` and `client_statu
 cd /Users/suyash/Desktop/projects/project-context && pnpm type-check
 ```
 
-Expected: PASS.
+Expected: passes for every package except `packages/foundation/idempotency`,
+which fails with `'nx' does not exist` on a Redis call. That failure is
+pre-existing on this branch — confirm with `git stash` if unsure, and leave it
+alone.
 
 - [ ] **Step 12: Commit**
 
@@ -299,39 +350,55 @@ cd /Users/suyash/Desktop/projects/project-context && pnpm type-check
 
 Expected: PASS.
 
-- [ ] **Step 4: Generate the migration**
+- [ ] **Step 4: Hand-write the migration**
 
-```bash
-cd packages/foundation/database && pnpm db:generate
-```
-
-- [ ] **Step 5: Rename the migration**
-
-```bash
-cd packages/foundation/database/migrations && mv 00NN_<random_name>.sql 0045_task_provenance.sql
-```
-
-Update the newest `"tag"` in `migrations/meta/_journal.json` to `"0045_task_provenance"`.
-
-- [ ] **Step 6: Add the foreign keys and backfill to the migration**
-
-Append the following to the end of `packages/foundation/database/migrations/0045_task_provenance.sql`. The `DO` blocks make the constraint adds idempotent, since `ALTER TABLE ... ADD CONSTRAINT` has no `IF NOT EXISTS` form in PostgreSQL:
+Do **not** run `pnpm db:generate` — see Global Constraints. Create
+`packages/foundation/database/migrations/0045_task_provenance.sql` with exactly
+this content:
 
 ```sql
---> statement-breakpoint
+ALTER TABLE "agent_tasks" ADD COLUMN IF NOT EXISTS "raw_input" text;--> statement-breakpoint
+ALTER TABLE "agent_tasks" ADD COLUMN IF NOT EXISTS "conversation_id" uuid;--> statement-breakpoint
+ALTER TABLE "agent_tasks" ADD COLUMN IF NOT EXISTS "source_message_id" uuid;--> statement-breakpoint
 DO $$ BEGIN
-  ALTER TABLE "agent_tasks" ADD CONSTRAINT "agent_tasks_conversation_id_fk"
-    FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
+ ALTER TABLE "agent_tasks" ADD CONSTRAINT "agent_tasks_conversation_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."conversations"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 DO $$ BEGIN
-  ALTER TABLE "agent_tasks" ADD CONSTRAINT "agent_tasks_source_message_id_fk"
-    FOREIGN KEY ("source_message_id") REFERENCES "messages"("id") ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
+ ALTER TABLE "agent_tasks" ADD CONSTRAINT "agent_tasks_source_message_id_fk" FOREIGN KEY ("source_message_id") REFERENCES "public"."messages"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "agent_tasks_conversation_idx" ON "agent_tasks" USING btree ("conversation_id");--> statement-breakpoint
 UPDATE "agent_tasks" SET "raw_input" = "description"
   WHERE "raw_input" IS NULL AND "description" IS NOT NULL;
 ```
 
-The final `UPDATE` backfills existing tasks. It is the best available approximation — the true original ask was lost for those rows — and it is safe to re-run because of the `IS NULL` guard.
+The final `UPDATE` backfills existing tasks. It is the best available
+approximation — the true original ask was lost for those rows — and the
+`IS NULL` guard makes it safe to re-run.
+
+- [ ] **Step 5: Add the journal entry**
+
+In `packages/foundation/database/migrations/meta/_journal.json`, append to
+`entries`, continuing the sequence (the `0044_clients` entry from Task 1 has
+`idx` 43 and `when` 1780243380000):
+
+```json
+{ "idx": 44, "version": "7", "when": 1780243440000, "tag": "0045_task_provenance", "breakpoints": true }
+```
+
+Add no snapshot file.
+
+- [ ] **Step 6: Verify the migration is self-contained**
+
+```bash
+grep -c DROP packages/foundation/database/migrations/0045_task_provenance.sql
+grep -oE '"(agent_tasks|conversations|messages)"' packages/foundation/database/migrations/0045_task_provenance.sql | sort -u
+```
+
+Expected: `0` DROPs, and only those three table names appear.
 
 - [ ] **Step 7: Add the relation**
 
@@ -630,23 +697,63 @@ export * from './task-revisions';
 export * from './conversations';
 ```
 
-- [ ] **Step 7: Generate and rename the migration**
+- [ ] **Step 7: Hand-write the migration**
 
-```bash
-cd packages/foundation/database && pnpm db:generate
-cd migrations && mv 00NN_<random_name>.sql 0046_task_revisions.sql
+Do **not** run `pnpm db:generate` — see Global Constraints. Create
+`packages/foundation/database/migrations/0046_task_revisions.sql` with exactly
+this content:
+
+```sql
+CREATE TYPE "public"."revision_actor_type" AS ENUM('human', 'agent');--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "task_revisions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid NOT NULL,
+	"task_id" uuid NOT NULL,
+	"field" text NOT NULL,
+	"original_content" jsonb,
+	"corrected_content" jsonb,
+	"was_edited" boolean NOT NULL,
+	"actor_type" "revision_actor_type" NOT NULL,
+	"actor_id" uuid,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "task_revisions" ADD CONSTRAINT "task_revisions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "task_revisions" ADD CONSTRAINT "task_revisions_task_id_agent_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "public"."agent_tasks"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "task_revisions" ADD CONSTRAINT "task_revisions_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "task_revisions_task_created_at_idx" ON "task_revisions" USING btree ("task_id","created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "task_revisions_tenant_field_idx" ON "task_revisions" USING btree ("tenant_id","field");
 ```
 
-Update the newest `"tag"` in `migrations/meta/_journal.json` to `"0046_task_revisions"`.
+Then append to `entries` in `packages/foundation/database/migrations/meta/_journal.json`:
 
-- [ ] **Step 8: Verify the generated SQL and type-check**
+```json
+{ "idx": 45, "version": "7", "when": 1780243500000, "tag": "0046_task_revisions", "breakpoints": true }
+```
+
+Add no snapshot file.
+
+- [ ] **Step 8: Verify the migration and type-check**
 
 ```bash
-cat packages/foundation/database/migrations/0046_task_revisions.sql
+grep -c DROP packages/foundation/database/migrations/0046_task_revisions.sql
 cd /Users/suyash/Desktop/projects/project-context && pnpm type-check
 ```
 
-Confirm the SQL creates the `revision_actor_type` enum and `task_revisions` table with no `DROP` statements. Type-check: PASS.
+Expected: `0` DROPs. Type-check passes for every package except
+`packages/foundation/idempotency`, which fails with `'nx' does not exist` on a
+Redis call — that failure is pre-existing on this branch and out of scope.
 
 - [ ] **Step 9: Commit**
 
