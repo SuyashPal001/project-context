@@ -29,7 +29,7 @@ describe('task update patch schema — provenance', () => {
       expect(typeof field).toBe('string')
     }
     expect(TRACKED_FIELDS).toContain('title')
-    expect(TRACKED_FIELDS).toContain('description')
+    expect(TRACKED_FIELDS).toContain('descriptionHtml')
   })
 })
 

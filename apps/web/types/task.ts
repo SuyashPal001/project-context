@@ -97,7 +97,7 @@ export type TaskDetailResponse = {
 
 export type TimelineTrackedField =
     | 'title'
-    | 'description'
+    | 'descriptionHtml'
     | 'acceptanceCriteria'
     | 'estimatedHours'
 

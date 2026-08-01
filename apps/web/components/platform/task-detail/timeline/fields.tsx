@@ -5,7 +5,7 @@ import type { TimelineTrackedField } from '@/types/task'
 
 const FIELD_LABELS: Record<TimelineTrackedField, string> = {
     title: 'title',
-    description: 'description',
+    descriptionHtml: 'description',
     acceptanceCriteria: 'acceptance criteria',
     estimatedHours: 'estimate',
 }
@@ -14,6 +14,28 @@ function asText(value: unknown): string {
     if (value === null || value === undefined) return '—'
     if (typeof value === 'string') return value
     return JSON.stringify(value)
+}
+
+/** Render stored rich text as plain text. The revision ledger stores the HTML
+ *  the editor produced; the timeline shows what changed, not how it was marked
+ *  up. Entities are decoded after tags are removed so an escaped angle bracket
+ *  in the original survives as a literal character. */
+function htmlToText(value: unknown): string {
+    if (value === null || value === undefined) return '—'
+    if (typeof value !== 'string') return JSON.stringify(value)
+    const withoutTags = value
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+        .replace(/<[^>]*>/g, '')
+    const decoded = withoutTags
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&')
+    const trimmed = decoded.replace(/\n{3,}/g, '\n\n').trim()
+    return trimmed === '' ? '—' : trimmed
 }
 
 function InlineChange({ field, from, to }: { field: TimelineTrackedField; from: unknown; to: unknown }) {
@@ -81,11 +103,11 @@ function DescriptionChange({ from, to }: { from: unknown; to: unknown }) {
                 <div className="mt-2 space-y-2">
                     <div>
                         <div className="text-[10px] uppercase tracking-wide opacity-40 mb-0.5">before</div>
-                        <div className="rounded border border-[#1e1e1e] p-2 whitespace-pre-wrap opacity-60">{asText(from)}</div>
+                        <div className="rounded border border-[#1e1e1e] p-2 whitespace-pre-wrap opacity-60">{htmlToText(from)}</div>
                     </div>
                     <div>
                         <div className="text-[10px] uppercase tracking-wide opacity-40 mb-0.5">after</div>
-                        <div className="rounded border border-[#1e1e1e] p-2 whitespace-pre-wrap text-foreground/80">{asText(to)}</div>
+                        <div className="rounded border border-[#1e1e1e] p-2 whitespace-pre-wrap text-foreground/80">{htmlToText(to)}</div>
                     </div>
                 </div>
             )}
@@ -94,7 +116,7 @@ function DescriptionChange({ from, to }: { from: unknown; to: unknown }) {
 }
 
 export function FieldChange({ field, from, to }: { field: TimelineTrackedField; from: unknown; to: unknown }) {
-    if (field === 'description') return <DescriptionChange from={from} to={to} />
+    if (field === 'descriptionHtml') return <DescriptionChange from={from} to={to} />
     if (field === 'acceptanceCriteria') return <CriteriaChange from={from} to={to} />
     return <InlineChange field={field} from={from} to={to} />
 }
