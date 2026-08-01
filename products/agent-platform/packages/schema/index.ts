@@ -1,5 +1,6 @@
 export * from './agents';
 export * from './clients';
+export * from './task-revisions';
 export * from './conversations';
 export * from './documents';
 export * from './knowledge';
