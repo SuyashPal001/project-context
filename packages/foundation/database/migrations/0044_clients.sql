@@ -1,4 +1,8 @@
-CREATE TYPE "public"."client_status" AS ENUM('active', 'archived');--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "public"."client_status" AS ENUM('active', 'archived');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "clients" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
