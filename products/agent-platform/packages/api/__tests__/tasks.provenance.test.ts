@@ -32,3 +32,24 @@ describe('task update patch schema — provenance', () => {
     expect(TRACKED_FIELDS).toContain('description')
   })
 })
+
+describe('rawInput fallback', () => {
+  const rawInputFor = (description: string | undefined, title: string) =>
+    description?.trim() || title
+
+  it('uses the description when one was given', () => {
+    expect(rawInputFor('Add SSO to the login flow', 'Add auth')).toBe('Add SSO to the login flow')
+  })
+
+  it('falls back to the title when description is absent', () => {
+    expect(rawInputFor(undefined, 'Add auth')).toBe('Add auth')
+  })
+
+  it('falls back to the title when description is empty', () => {
+    expect(rawInputFor('', 'Add auth')).toBe('Add auth')
+  })
+
+  it('falls back to the title when description is only whitespace', () => {
+    expect(rawInputFor('   \n  ', 'Add auth')).toBe('Add auth')
+  })
+})
