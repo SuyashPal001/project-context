@@ -4,6 +4,7 @@ import { eq, and, asc, isNull } from 'drizzle-orm';
 import { db } from '../db';
 import { handoverPacks, packSections, packItems } from '@serverless-saas/agent-schema/handover';
 import { projectPlans } from '@serverless-saas/agent-schema/pm';
+import { files } from '@serverless-saas/database/schema/storage';
 import { hasPermission } from '@serverless-saas/permissions';
 import { seedSections } from '../lib/handover-template';
 import { computeReadiness } from '../lib/handover-readiness';
@@ -232,6 +233,15 @@ handoverRoutes.post('/packs/:packId/items', async (c) => {
         .where(and(eq(packSections.id, result.data.sectionId), eq(packSections.packId, pack.id)))
         .limit(1);
     if (!section) return c.json({ error: 'Section not found' }, 404);
+
+    // fileId is a foreign id supplied by the caller. Without this check a pack
+    // item could point at another tenant's file row.
+    if (result.data.fileId) {
+        const [file] = await db.select({ id: files.id }).from(files)
+            .where(and(eq(files.id, result.data.fileId), eq(files.tenantId, tenantId), isNull(files.deletedAt)))
+            .limit(1);
+        if (!file) return c.json({ error: 'File not found' }, 404);
+    }
 
     const [item] = await db.insert(packItems).values({
         ...result.data,

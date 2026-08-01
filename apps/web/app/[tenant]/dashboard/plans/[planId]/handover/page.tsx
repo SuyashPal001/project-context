@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { PackDetails } from './PackDetails';
 import { ReadinessChecklist } from './ReadinessChecklist';
 import { SectionRail } from './SectionRail';
 import { ItemEditor } from './ItemEditor';
@@ -18,7 +19,11 @@ export default function HandoverBuilderPage() {
     const [readiness, setReadiness] = useState<Readiness | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [sentUrl, setSentUrl] = useState<string | null>(null);
+    // `error` is fatal — it replaces the whole builder — so only the initial
+    // load and pack creation may set it. Everything else reports inline.
     const [error, setError] = useState<string | null>(null);
+    const [sendError, setSendError] = useState<string | null>(null);
+    const [itemError, setItemError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
 
     const mountedRef = useRef(true);
@@ -72,25 +77,37 @@ export default function HandoverBuilderPage() {
 
     async function createItem(input: { title: string; description: string; statusLabel: string; categoryLabel: string }) {
         if (!pack || !selected) return;
-        await api.post(`/handover/packs/${pack.id}/items`, { sectionId: selected.id, ...input });
-        await loadPack(pack.id);
+        setItemError(null);
+        try {
+            await api.post(`/handover/packs/${pack.id}/items`, { sectionId: selected.id, ...input });
+            await loadPack(pack.id);
+        } catch (err: any) {
+            setItemError(err?.data?.error ?? 'Could not add the record');
+        }
     }
 
     async function deleteItem(itemId: string) {
         if (!pack) return;
-        // The client exposes DELETE as `del`, not `delete` — see apps/web/lib/api.ts.
-        await api.del(`/handover/packs/${pack.id}/items/${itemId}`);
-        await loadPack(pack.id);
+        setItemError(null);
+        try {
+            // The client exposes DELETE as `del`, not `delete` — see apps/web/lib/api.ts.
+            await api.del(`/handover/packs/${pack.id}/items/${itemId}`);
+            await loadPack(pack.id);
+        } catch (err: any) {
+            setItemError(err?.data?.error ?? 'Could not delete the record');
+        }
     }
 
     async function send() {
         if (!pack) return;
+        setSendError(null);
         try {
             const res = await api.post<{ data: { url: string } }>(`/handover/packs/${pack.id}/send`, {});
             setSentUrl(res.data.url);
             await loadPack(pack.id);
         } catch (err: any) {
-            setError(err?.data?.error ?? 'Could not send the pack');
+            // Inline, not fatal: a failed send must leave the builder intact.
+            setSendError(err?.data?.error ?? 'Could not send the pack');
         }
     }
 
@@ -117,9 +134,12 @@ export default function HandoverBuilderPage() {
                     <h1 className="text-2xl font-bold">{pack.title}</h1>
                     <p className="text-sm text-muted-foreground">Status: {pack.status}</p>
                 </div>
-                <Button onClick={send} disabled={readOnly || !readiness || readiness.complete < readiness.total}>
-                    Send to client
-                </Button>
+                <div className="text-right">
+                    <Button onClick={send} disabled={readOnly || !readiness || readiness.complete < readiness.total}>
+                        Send to client
+                    </Button>
+                    {sendError ? <p className="mt-2 text-sm text-destructive">{sendError}</p> : null}
+                </div>
             </div>
 
             {sentUrl ? (
@@ -132,11 +152,18 @@ export default function HandoverBuilderPage() {
                 </div>
             ) : null}
 
+            {readOnly ? null : (
+                <div className="mb-6">
+                    <PackDetails pack={pack} onSaved={() => loadPack(pack.id)} />
+                </div>
+            )}
+
             {readiness ? <div className="mb-6"><ReadinessChecklist readiness={readiness} /></div> : null}
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
                 <SectionRail sections={sections} items={items} selectedId={selectedId} onSelect={setSelectedId} />
                 <div className="rounded-xl border border-border bg-card p-6">
+                    {itemError ? <p className="mb-4 text-sm text-destructive">{itemError}</p> : null}
                     {selected ? (
                         <ItemEditor
                             section={selected}

@@ -101,7 +101,11 @@ publicPackRoutes.post('/:token/sign', async (c) => {
     if (!pack) return c.json({ error: 'Not found' }, 404);
     if (pack.status === 'signed') return c.json({ error: 'This pack has already been signed', code: 'ALREADY_SIGNED' }, 409);
 
-    await db.update(handoverPacks)
+    // The pre-check above is racy on its own: two concurrent signs both pass it.
+    // Making 'sent' part of the update predicate means only one write can win,
+    // and the loser is told the pack is already signed rather than silently
+    // overwriting a legal record.
+    const signed = await db.update(handoverPacks)
         .set({
             status: 'signed',
             signedAt: new Date(),
@@ -109,7 +113,9 @@ publicPackRoutes.post('/:token/sign', async (c) => {
             signedByEmail: result.data.email,
             updatedAt: new Date(),
         })
-        .where(eq(handoverPacks.id, pack.id));
+        .where(and(eq(handoverPacks.id, pack.id), eq(handoverPacks.status, 'sent')))
+        .returning({ id: handoverPacks.id });
+    if (signed.length === 0) return c.json({ error: 'This pack has already been signed', code: 'ALREADY_SIGNED' }, 409);
 
     return c.json({ data: { status: 'signed' } });
 });

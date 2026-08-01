@@ -70,7 +70,10 @@ handoverLifecycleRoutes.post('/packs/:packId/revoke', async (c) => {
     const tenantId = requestContext?.tenant?.id;
     const permissions = requestContext?.permissions ?? [];
 
-    if (!hasPermission(permissions, 'handover_packs', 'delete')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    // Revoke is gated on 'update', the same action as send. Anyone who can put a
+    // private link in front of a client must be able to kill it — revocation is
+    // the only mitigation for a mis-sent or forwarded token.
+    if (!hasPermission(permissions, 'handover_packs', 'update')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
     const packId = c.req.param('packId');
     const [pack] = await db.select().from(handoverPacks)
