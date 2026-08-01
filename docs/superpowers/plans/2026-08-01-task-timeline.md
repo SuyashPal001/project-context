@@ -281,9 +281,16 @@ export function mergeTimeline(input: TimelineInput): TimelineRow[] {
     // Origin always leads. On backfilled tasks raw_input was copied from
     // description, so its timestamp is the task's creation time and cannot be
     // trusted to precede the rows it conceptually comes before.
+    // The both-origin case must come first: without it, cmp(a,b) and cmp(b,a)
+    // would both return -1, and an inconsistent comparator makes
+    // Array.prototype.sort engine-dependent.
+    if (a.kind === 'origin' && b.kind === 'origin') return 0;
     if (a.kind === 'origin') return -1;
     if (b.kind === 'origin') return 1;
 
+    // Lexicographic comparison is correct for ISO 8601 only while every value
+    // shares one format. These all originate from Postgres timestamp columns
+    // serialized to JSON with a trailing Z, so the precondition holds.
     if (a.at !== b.at) return a.at < b.at ? -1 : 1;
     if (KIND_RANK[a.kind] !== KIND_RANK[b.kind]) {
       return KIND_RANK[a.kind] - KIND_RANK[b.kind];
@@ -295,7 +302,10 @@ export function mergeTimeline(input: TimelineInput): TimelineRow[] {
 }
 ```
 
-Timestamps are compared as ISO strings, which sort correctly lexicographically as long as every value carries the same UTC format. Every value here comes from Postgres `timestamp`/`timestamptz` columns serialized to JSON, so that holds.
+Two subtleties are in the comparator rather than the prose, deliberately: the
+both-origin guard keeps the comparator a valid total order (without it,
+`cmp(a,b)` and `cmp(b,a)` both return `-1`, making `sort` engine-dependent), and
+the ISO-string comparison is only sound while every timestamp shares one format.
 
 - [ ] **Step 4: Run the test and confirm it passes**
 
