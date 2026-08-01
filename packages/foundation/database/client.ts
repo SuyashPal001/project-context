@@ -7,6 +7,24 @@ import * as schema from './schema';
 const connectionString = process.env.DATABASE_URL!;
 const isNeon = connectionString.includes('.neon.tech');
 
+// Supabase's transaction pooler (PgBouncer, port 6543) hands a connection to a
+// different backend between statements, so named prepared statements — which
+// postgres.js uses by default — break with `prepared statement "sN" already
+// exists`. The failure needs concurrency to show up, so it survives light
+// manual testing and appears under real traffic. Session pooler (5432) and
+// direct connections keep prepared statements.
+// Parsed rather than substring-matched so a password containing "6543" can't
+// false-positive.
+function usesTransactionPooler(url: string): boolean {
+  try {
+    return new URL(url).port === '6543';
+  } catch {
+    return false;
+  }
+}
+
+const isTransactionPooler = usesTransactionPooler(connectionString);
+
 // GCP VM has no IPv6 routing to AWS. Node.js 22 Happy Eyeballs tries all 6
 // Neon addresses (3 IPv4 + 3 IPv6) and ETIMEDOUT before succeeding.
 // Return a Promise so postgres.js awaits a fully connected IPv4 socket,
@@ -33,6 +51,7 @@ function neonSocket(opts: any): Promise<net.Socket> {
 const client = postgres(connectionString, {
   max: 10,
   ...(isNeon && { socket: neonSocket }),
+  ...(isTransactionPooler && { prepare: false }),
 });
 
 export const db = drizzle(client, { schema });
