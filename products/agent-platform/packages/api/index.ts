@@ -22,6 +22,7 @@ import { pagesRoutes } from './routes/pages';
 import { llmProvidersRoutes } from './routes/llm-providers';
 import { widgetRoutes } from './routes/widget';
 import { handoverRoutes } from './routes/handover';
+import { publicPackRoutes } from './routes/packs.public';
 
 // Internal routes
 import internalRetrieveRoute from './routes/internal/retrieve';
@@ -54,6 +55,7 @@ function registerCounters(): void {
 
 export function mountPublicRoutes(publicApi: Hono<AppEnv>): void {
     publicApi.route('/widget', widgetRoutes);
+    publicApi.route('/packs', publicPackRoutes);
 }
 
 export function mountApiRoutes(api: Hono<AppEnv>): void {

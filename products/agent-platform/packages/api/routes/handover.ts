@@ -7,6 +7,7 @@ import { projectPlans } from '@serverless-saas/agent-schema/pm';
 import { hasPermission } from '@serverless-saas/permissions';
 import { seedSections } from '../lib/handover-template';
 import { computeReadiness } from '../lib/handover-readiness';
+import { handoverLifecycleRoutes } from './handover.lifecycle';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const handoverRoutes = new Hono<AppEnv>();
@@ -311,3 +312,5 @@ handoverRoutes.get('/packs', async (c) => {
     const { tokenHash, ...safePack } = pack;
     return c.json({ data: safePack });
 });
+
+handoverRoutes.route('/', handoverLifecycleRoutes);
