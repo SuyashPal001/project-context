@@ -52,7 +52,7 @@ handoverLifecycleRoutes.post('/packs/:packId/send', async (c) => {
                 tenantId,
                 to: pack.recipientEmail,
                 subject: `${pack.title} — project handover`,
-                body: `Your handover pack is ready.\n\n${url}\n\nThis link is private. Please do not forward it.`,
+                html: `<p>Your handover pack is ready.</p><p><a href="${url}">${url}</a></p><p>This link is private. Please do not forward it.</p>`,
             },
         } as any);
     } catch (err) {
@@ -72,10 +72,17 @@ handoverLifecycleRoutes.post('/packs/:packId/revoke', async (c) => {
 
     if (!hasPermission(permissions, 'handover_packs', 'delete')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
+    const packId = c.req.param('packId');
+    const [pack] = await db.select().from(handoverPacks)
+        .where(and(eq(handoverPacks.id, packId), eq(handoverPacks.tenantId, tenantId), isNull(handoverPacks.deletedAt)))
+        .limit(1);
+    if (!pack) return c.json({ error: 'Pack not found' }, 404);
+    if (pack.status === 'signed') return c.json({ error: 'This pack has been signed and cannot be revoked', code: 'PACK_LOCKED' }, 409);
+
     const [updated] = await db.update(handoverPacks)
         .set({ status: 'revoked', tokenHash: null, updatedAt: new Date() })
         .where(and(
-            eq(handoverPacks.id, c.req.param('packId')),
+            eq(handoverPacks.id, pack.id),
             eq(handoverPacks.tenantId, tenantId),
             isNull(handoverPacks.deletedAt),
         ))
