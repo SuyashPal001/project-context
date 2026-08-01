@@ -225,7 +225,11 @@ Do **not** run `pnpm db:generate` — see Global Constraints. Create
 content:
 
 ```sql
-CREATE TYPE "public"."client_status" AS ENUM('active', 'archived');--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "public"."client_status" AS ENUM('active', 'archived');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "clients" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
@@ -255,8 +259,11 @@ END $$;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "project_plans_client_idx" ON "project_plans" USING btree ("client_id");
 ```
 
-`CREATE TYPE` has no `IF NOT EXISTS` form in PostgreSQL — that is expected and
-matches the existing migrations.
+`CREATE TYPE` has no `IF NOT EXISTS` form in PostgreSQL, so it gets the same
+`DO $$ ... EXCEPTION WHEN duplicate_object THEN null; END $$;` wrapper as an
+`ADD CONSTRAINT`. This is the pattern already established by the hand-written
+`0034_document_sensitivity.sql:4-7`. A bare `CREATE TYPE` fails on any
+re-application.
 
 - [ ] **Step 9: Add the journal entry**
 
@@ -704,7 +711,11 @@ Do **not** run `pnpm db:generate` — see Global Constraints. Create
 this content:
 
 ```sql
-CREATE TYPE "public"."revision_actor_type" AS ENUM('human', 'agent');--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "public"."revision_actor_type" AS ENUM('human', 'agent');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "task_revisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
