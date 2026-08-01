@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeTimeline } from '../lib/timeline'
+import { mergeTimeline, compareTimelineRows } from '../lib/timeline'
 
 const rev = (id: string, at: string, field = 'title') => ({
   id,
@@ -117,5 +117,19 @@ describe('mergeTimeline', () => {
     mergeTimeline({ rawInput: null, revisions, events })
     expect(revisions.map((r) => r.id)).toEqual(['r2', 'r1'])
     expect(events.map((e) => e.id)).toEqual(['e1'])
+  })
+
+  it('is a valid total order when compared rows are both origin', () => {
+    const rows = mergeTimeline({
+      rawInput: 'the ask',
+      originAt: '2026-08-01T10:00:00Z',
+      revisions: [],
+      events: [],
+    })
+    // One origin row is all mergeTimeline can produce, so exercise the
+    // comparator directly against the degenerate pair it must survive.
+    expect(rows).toHaveLength(1)
+    const origin = rows[0]
+    expect(compareTimelineRows(origin, origin)).toBe(0)
   })
 })

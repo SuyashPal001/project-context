@@ -60,6 +60,29 @@ const KIND_RANK: Record<TimelineRow['kind'], number> = {
 };
 
 /**
+ * Comparator for TimelineRow sorting. Exported for testing the total order property.
+ */
+export function compareTimelineRows(a: TimelineRow, b: TimelineRow): number {
+  // Origin always leads. On backfilled tasks raw_input was copied from
+  // description, so its timestamp is the task's creation time and cannot be
+  // trusted to precede the rows it conceptually comes before.
+  if (a.kind === 'origin' && b.kind === 'origin') return 0;
+  if (a.kind === 'origin') return -1;
+  if (b.kind === 'origin') return 1;
+
+  // Lexicographic comparison is correct for ISO 8601 only while every value
+  // shares one format. These all originate from Postgres timestamp columns
+  // serialized to JSON with a trailing Z, so the precondition holds.
+  if (a.at !== b.at) return a.at < b.at ? -1 : 1;
+  if (KIND_RANK[a.kind] !== KIND_RANK[b.kind]) {
+    return KIND_RANK[a.kind] - KIND_RANK[b.kind];
+  }
+  const aId = 'id' in a ? a.id : '';
+  const bId = 'id' in b ? b.id : '';
+  return aId < bId ? -1 : aId > bId ? 1 : 0;
+}
+
+/**
  * Merge the three provenance sources into one chronological feed.
  *
  * Pure: no React, no database, no fetch. The handover pack generator calls this
@@ -101,19 +124,5 @@ export function mergeTimeline(input: TimelineInput): TimelineRow[] {
     });
   }
 
-  return rows.sort((a, b) => {
-    // Origin always leads. On backfilled tasks raw_input was copied from
-    // description, so its timestamp is the task's creation time and cannot be
-    // trusted to precede the rows it conceptually comes before.
-    if (a.kind === 'origin') return -1;
-    if (b.kind === 'origin') return 1;
-
-    if (a.at !== b.at) return a.at < b.at ? -1 : 1;
-    if (KIND_RANK[a.kind] !== KIND_RANK[b.kind]) {
-      return KIND_RANK[a.kind] - KIND_RANK[b.kind];
-    }
-    const aId = 'id' in a ? a.id : '';
-    const bId = 'id' in b ? b.id : '';
-    return aId < bId ? -1 : aId > bId ? 1 : 0;
-  });
+  return rows.sort(compareTimelineRows);
 }
