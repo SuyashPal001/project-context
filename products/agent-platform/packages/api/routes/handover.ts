@@ -211,7 +211,14 @@ handoverRoutes.post('/packs/:packId/items', async (c) => {
         sourceType: z.enum(['manual', 'task', 'milestone', 'file']).optional(),
         sourceId: z.string().uuid().optional(),
         fileId: z.string().uuid().optional(),
-        url: z.string().url().optional(),
+        url: z.string().url().optional().refine((url) => {
+            if (url === undefined) return true;
+            try {
+                return ['http:', 'https:'].includes(new URL(url).protocol);
+            } catch {
+                return false;
+            }
+        }, { message: 'url must be http or https' }),
         sortOrder: z.number().int().min(0).optional(),
     }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
@@ -249,7 +256,14 @@ handoverRoutes.patch('/packs/:packId/items/:itemId', async (c) => {
         description: z.string().max(2000).nullable().optional(),
         statusLabel: z.string().max(50).nullable().optional(),
         categoryLabel: z.string().max(50).nullable().optional(),
-        url: z.string().url().nullable().optional(),
+        url: z.string().url().nullable().optional().refine((url) => {
+            if (url === undefined || url === null) return true;
+            try {
+                return ['http:', 'https:'].includes(new URL(url).protocol);
+            } catch {
+                return false;
+            }
+        }, { message: 'url must be http or https' }),
         sortOrder: z.number().int().min(0).optional(),
     }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);

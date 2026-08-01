@@ -27,6 +27,16 @@ interface PortalPack {
     sections: PortalSection[];
 }
 
+function safeHref(url: string | null): string | null {
+    if (!url) return null;
+    try {
+        const parsed = new URL(url);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : null;
+    } catch {
+        return null;
+    }
+}
+
 export default async function PortalPage({ params }: { params: Promise<{ token: string }> }) {
     const { token } = await params;
 
@@ -57,11 +67,14 @@ export default async function PortalPage({ params }: { params: Promise<{ token: 
                                         ) : null}
                                     </div>
                                     {item.description ? <p className="mt-1 text-sm text-muted-foreground">{item.description}</p> : null}
-                                    {item.url ? (
-                                        <a href={item.url} className="mt-2 inline-block text-sm text-amber-500 underline" rel="noreferrer noopener" target="_blank">
-                                            Open
-                                        </a>
-                                    ) : null}
+                                    {(() => {
+                                        const href = safeHref(item.url);
+                                        return href ? (
+                                            <a href={href} className="mt-2 inline-block text-sm text-amber-500 underline" rel="noreferrer noopener" target="_blank">
+                                                Open
+                                            </a>
+                                        ) : null;
+                                    })()}
                                 </div>
                             ))}
                         </div>
