@@ -105,6 +105,24 @@ describe('buildTaskRevisions', () => {
     expect(result[0].actorType).toBe('agent')
   })
 
+  it('does not record a revision when a decimal estimate is numerically unchanged', () => {
+    expect(buildTaskRevisions(before, { estimatedHours: 4 }, meta)).toEqual([])
+  })
+
+  it('records a revision when the estimate actually changes', () => {
+    const result = buildTaskRevisions(before, { estimatedHours: 6 }, meta)
+    expect(result).toHaveLength(1)
+    expect(result[0].field).toBe('estimatedHours')
+    expect(result[0].originalContent).toBe(4)
+    expect(result[0].correctedContent).toBe(6)
+  })
+
+  it('stores a cleared estimate as null', () => {
+    const result = buildTaskRevisions(before, { estimatedHours: null }, meta)
+    expect(result).toHaveLength(1)
+    expect(result[0].correctedContent).toBeNull()
+  })
+
   it('tracks exactly the intent-carrying fields', () => {
     expect(TRACKED_FIELDS).toEqual([
       'title',

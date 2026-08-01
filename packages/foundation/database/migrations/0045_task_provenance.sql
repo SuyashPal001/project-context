@@ -12,5 +12,5 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "agent_tasks_conversation_idx" ON "agent_tasks" USING btree ("conversation_id");--> statement-breakpoint
-UPDATE "agent_tasks" SET "raw_input" = "description"
-  WHERE "raw_input" IS NULL AND "description" IS NOT NULL;
+UPDATE "agent_tasks" SET "raw_input" = COALESCE(NULLIF(TRIM("description"), ''), "title")
+  WHERE "raw_input" IS NULL;

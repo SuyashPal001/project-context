@@ -216,6 +216,7 @@ export async function handleBulkCreate(c: Context<AppEnv>) {
 
     const rows = result.data.tasks.map(t => ({
         tenantId, createdBy: userId, title: t.title, description: t.description ?? null,
+        rawInput: t.description?.trim() || t.title,
         milestoneId: t.milestoneId ?? null, planId: t.planId ?? null,
         priority: (t.priority ?? 'medium') as 'low' | 'medium' | 'high' | 'urgent',
         assigneeId: t.assigneeId ?? null, status: 'backlog' as const,

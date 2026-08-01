@@ -53,6 +53,18 @@ function isUnchanged(a: unknown, b: unknown): boolean {
   return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
 }
 
+/** Postgres `decimal` columns come back from the driver as strings ("4.00")
+ *  while a validated patch carries a number (4). Compare and store them
+ *  numerically so an unchanged estimate does not look like an edit, and so
+ *  the ledger holds one type per field. */
+function normalizeForCompare(field: TrackedField, value: unknown): unknown {
+  if (field === 'estimatedHours' && value !== null && value !== undefined) {
+    const n = Number(value);
+    return Number.isNaN(n) ? value : n;
+  }
+  return value;
+}
+
 /**
  * Compare a validated patch against the task as it stands and return one
  * revision row per tracked field that actually changed. Returns [] when
@@ -68,8 +80,8 @@ export function buildTaskRevisions(
   for (const field of TRACKED_FIELDS) {
     if (!(field in patch)) continue;
 
-    const originalContent = before[field] ?? null;
-    const correctedContent = patch[field] ?? null;
+    const originalContent = normalizeForCompare(field, before[field] ?? null);
+    const correctedContent = normalizeForCompare(field, patch[field] ?? null);
     if (isUnchanged(originalContent, correctedContent)) continue;
 
     rows.push({
