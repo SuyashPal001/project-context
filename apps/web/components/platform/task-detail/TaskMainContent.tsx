@@ -314,7 +314,7 @@ export function TaskMainContent({ task, steps, events, taskId, taskOperations, e
                     startTask: taskOperations.startTask,
                 }}
             />
-            <ActivityFeed taskId={taskId} events={events} />
+            <ActivityFeed taskId={taskId} />
         </div>
     )
 }

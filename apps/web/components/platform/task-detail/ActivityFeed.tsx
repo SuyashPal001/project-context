@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import type { TaskEvent } from '@/types/task'
 
 import { useTaskComments } from './useTaskComments'
 import { ThreadTab } from './ThreadTab'
@@ -10,10 +9,9 @@ import { TimelineTab } from './TimelineTab'
 
 interface ActivityFeedProps {
     taskId: string
-    events: TaskEvent[]
 }
 
-export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
+export function ActivityFeed({ taskId }: ActivityFeedProps) {
     const [activeTab, setActiveTab] = useState<'Thread' | 'Timeline'>('Thread')
     const { comments, addComment } = useTaskComments(taskId)
 
@@ -53,7 +51,7 @@ export function ActivityFeed({ taskId, events }: ActivityFeedProps) {
                 />
             )}
 
-            {activeTab === 'Timeline' && <TimelineTab events={events} />}
+            {activeTab === 'Timeline' && <TimelineTab taskId={taskId} />}
         </div>
     )
 }
