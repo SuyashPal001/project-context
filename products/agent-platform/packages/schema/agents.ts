@@ -86,6 +86,13 @@ export const agentTasks = pgTable('agent_tasks', {
   title: text('title').notNull(),
   description: text('description'),
   descriptionHtml: text('description_html'),
+  // Provenance. rawInput is the original ask exactly as it arrived — written
+  // once at creation and never updated. Every later change to description is
+  // recorded in task_revisions instead. conversationId/sourceMessageId point
+  // back at the exchange the task was extracted from, when there was one.
+  rawInput: text('raw_input'),
+  conversationId: uuid('conversation_id'),
+  sourceMessageId: uuid('source_message_id'),
   acceptanceCriteria: jsonb('acceptance_criteria').notNull().default([]),
   status: taskStatusEnum('status').notNull().default('backlog'),
   priority: taskPriorityEnum('priority').default('medium'),
@@ -121,6 +128,7 @@ export const agentTasks = pgTable('agent_tasks', {
   tenantCreatedByIdx: index('agent_tasks_tenant_created_by_idx').on(t.tenantId, t.createdBy),
   milestoneIdx:     index('agent_tasks_milestone_idx').on(t.milestoneId),
   planIdx:          index('agent_tasks_plan_idx').on(t.planId),
+  conversationIdx: index('agent_tasks_conversation_idx').on(t.conversationId),
 }));
 
 export const taskSteps = pgTable('task_steps', {

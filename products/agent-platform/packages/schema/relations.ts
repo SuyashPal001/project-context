@@ -3,6 +3,7 @@ import { users } from '@serverless-saas/database/schema/auth';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { agents, agentTasks, taskSteps, taskEvents, taskDependencies } from './agents';
 import { githubInstallations, githubRepos } from './github';
+import { conversations } from './conversations';
 
 export const agentTasksRelations = relations(agentTasks, ({ one, many }) => ({
     tenant: one(tenants, {
@@ -22,6 +23,10 @@ export const agentTasksRelations = relations(agentTasks, ({ one, many }) => ({
         fields: [agentTasks.planApprovedBy],
         references: [users.id],
         relationName: 'agentTasksPlanApprovedBy',
+    }),
+    conversation: one(conversations, {
+        fields: [agentTasks.conversationId],
+        references: [conversations.id],
     }),
     steps: many(taskSteps),
     events: many(taskEvents),
