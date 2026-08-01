@@ -30,6 +30,7 @@ export const RESOURCES: Record<string, Action[]> = {
     project_plans: ['create', 'read', 'update', 'delete'],
     project_milestones: ['create', 'read', 'update', 'delete'],
     project_pages: ['create', 'read', 'update', 'delete'],
+    handover_packs: ['create', 'read', 'update', 'delete'],
 };
 
 export async function seedPermissions(db: typeof DB) {

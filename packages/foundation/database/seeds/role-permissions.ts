@@ -51,6 +51,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'project_pages:read',
         'project_pages:update',
         'project_pages:delete',
+        'handover_packs:read',
+        'handover_packs:update',
     ],
 
     'ops-agent': [

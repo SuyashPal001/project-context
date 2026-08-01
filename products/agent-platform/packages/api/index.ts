@@ -21,6 +21,7 @@ import { milestonesRoutes } from './routes/milestones';
 import { pagesRoutes } from './routes/pages';
 import { llmProvidersRoutes } from './routes/llm-providers';
 import { widgetRoutes } from './routes/widget';
+import { handoverRoutes } from './routes/handover';
 
 // Internal routes
 import internalRetrieveRoute from './routes/internal/retrieve';
@@ -69,6 +70,7 @@ export function mountApiRoutes(api: Hono<AppEnv>): void {
     api.route('/documents', documentsRoutes);
     api.route('/tasks', tasksRoutes);
     api.route('/plans', plansRoutes);
+    api.route('/handover', handoverRoutes);
     api.route('/prds', prdsRoutes);
     api.route('/milestones', milestonesRoutes);
     api.route('/pages', pagesRoutes);
