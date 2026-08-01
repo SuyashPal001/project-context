@@ -70,6 +70,25 @@ describe('buildTaskRevisions', () => {
     expect(changed[0].field).toBe('acceptanceCriteria')
   })
 
+  it('ignores object key order, which jsonb does not preserve', () => {
+    const result = buildTaskRevisions(
+      before,
+      { acceptanceCriteria: [{ checked: false, text: 'login works' }] },
+      meta,
+    )
+    expect(result).toEqual([])
+  })
+
+  it('still detects a real change when keys are reordered', () => {
+    const result = buildTaskRevisions(
+      before,
+      { acceptanceCriteria: [{ checked: true, text: 'login works' }] },
+      meta,
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0].field).toBe('acceptanceCriteria')
+  })
+
   it('records a null correction as a real change', () => {
     const result = buildTaskRevisions(before, { description: null }, meta)
     expect(result).toHaveLength(1)

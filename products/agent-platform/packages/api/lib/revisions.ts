@@ -32,8 +32,25 @@ export interface TaskRevisionRow {
   actorId: string;
 }
 
+/** Recursively sort object keys so comparison is independent of key order.
+ *  Postgres jsonb does not preserve key order on round-trip, so a value read
+ *  back from the database can serialize differently from an equivalent value
+ *  sent by a client. */
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value !== null && typeof value === 'object') {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, key) => {
+        acc[key] = canonicalize((value as Record<string, unknown>)[key]);
+        return acc;
+      }, {});
+  }
+  return value ?? null;
+}
+
 function isUnchanged(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
 }
 
 /**
