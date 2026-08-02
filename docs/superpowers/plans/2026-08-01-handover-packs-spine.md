@@ -25,6 +25,11 @@
 - Successful responses are `c.json({ data: ... })`, `201` on create.
 - Do not modify `apps/api/src/app.ts` middleware.
 - The credentials section ships **seeded but hidden** (`is_visible = false`). No credential storage, no encryption, no reveal path in this plan.
+  > **Superseded 2026-08-02.** This plan executed as written. The section was
+  > later made visible as an **access record** (accounts and ownership, never
+  > secrets), which removed the deferred credential subsystem entirely rather
+  > than building it. See the spec's "Out of scope" section for the reasoning.
+  > Do not re-derive the hidden-section behaviour from this plan.
 
 ## File Structure
 

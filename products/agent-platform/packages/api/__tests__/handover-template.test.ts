@@ -26,15 +26,19 @@ describe('SECTION_TEMPLATE', () => {
     })
   })
 
-  it('hides the credentials section, because credential storage is not built yet', () => {
-    const credentials = SECTION_TEMPLATE.find((s) => s.kind === 'credentials')!
-    expect(credentials.isVisible).toBe(false)
-  })
-
-  it('makes every other section visible', () => {
-    for (const section of SECTION_TEMPLATE.filter((s) => s.kind !== 'credentials')) {
+  it('makes every section visible by default', () => {
+    for (const section of SECTION_TEMPLATE) {
       expect(section.isVisible).toBe(true)
     }
+  })
+
+  it('frames the credentials section as an access record, not a secret store', () => {
+    // The portal is reachable by anyone holding the link, so this section
+    // must never invite passwords. The copy is the guardrail.
+    const credentials = SECTION_TEMPLATE.find((s) => s.kind === 'credentials')!
+    expect(credentials.title).toBe('Access handover')
+    expect(credentials.subtitle).toMatch(/who owns it now/i)
+    expect(credentials.subtitle).not.toMatch(/password|secret/i)
   })
 })
 

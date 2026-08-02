@@ -59,11 +59,21 @@ specs. Only the spine is load-bearing:
 
 ## Out of scope, and why the order is this way
 
-- **Credentials.** A bare URL token is adequate for "here is what we delivered"
-  and inadequate for a DNS password. The Credential spec must first harden the
-  portal's auth model — email-code verification, per-reveal audit — before any
-  secret sits behind that link. The `credentials` section kind exists in the
-  enum from day one so it slots in without a migration.
+- ~~**Credentials.**~~ **RESOLVED 2026-08-02 — no longer deferred, and no
+  secret store is being built.** The original reasoning stands: a bare URL token
+  is adequate for "here is what we delivered" and inadequate for a DNS password.
+  The resolution is to not put secrets in the product at all. The `credentials`
+  section ships **visible**, as an **access record**: what accounts exist, who
+  owns each one after handover, and how access was transferred — which is
+  exactly what the reference screenshots show ("Admin access transferred to
+  Rebecca with Jamie retained as collaborator"). Passwords stay in the agency's
+  password manager.
+
+  This removes the entire subsystem that was deferred — no encrypted value
+  column, no portal email-code verification, no per-reveal audit — because
+  there is no secret to protect. The builder shows an explicit warning in that
+  section, and an agency with no accounts to hand over hides it, which also
+  drops it from the readiness checklist.
 - **Certificate and PDF export.** Signing here sets a status and locks editing.
   It does not yet produce a hashed immutable snapshot or a certificate ID.
 - **Agent auto-fill.** The provenance columns land now; nothing calls an agent.
@@ -276,4 +286,4 @@ handover. That number is the Track B input and the Product Hunt first comment.
 
 If the pack has to be heavily rewritten by hand before it is presentable, the
 problem is content quality, and spec 2 (auto-fill) becomes the priority over
-credentials and PDF.
+the remaining deferred work (certificate and PDF).

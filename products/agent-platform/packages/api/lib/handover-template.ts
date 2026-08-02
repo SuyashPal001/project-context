@@ -15,8 +15,17 @@ export interface SeedSection {
  * template library arrives, it replaces this constant and seedSections() takes
  * a template id; nothing else has to change.
  *
- * credentials ships hidden: the section exists so it needs no migration later,
- * but no credential storage or reveal path is built yet.
+ * The credentials section is an ACCESS RECORD, not a secret store. It documents
+ * what accounts exist, who owns each one after handover, and how access was
+ * transferred — never the passwords themselves. That is a deliberate product
+ * decision, not a missing feature: the portal is reachable by anyone holding
+ * the link, so a forwarded URL must never expose live credentials. Secrets stay
+ * in the agency's password manager. Nothing here is encrypted because nothing
+ * here is a secret.
+ *
+ * An agency with no accounts to hand over hides this section via
+ * PATCH /handover/packs/:id/sections/:id, which also drops it from the
+ * readiness checklist.
  */
 export const SECTION_TEMPLATE: readonly SeedSection[] = [
   {
@@ -29,11 +38,11 @@ export const SECTION_TEMPLATE: readonly SeedSection[] = [
   },
   {
     kind: 'credentials',
-    title: 'Credentials',
-    subtitle: 'Access details stay inside the signed portal.',
-    eyebrow: 'SECURE DELIVERY',
+    title: 'Access handover',
+    subtitle: 'Every account, who owns it now, and how access was transferred.',
+    eyebrow: 'ACCOUNT OWNERSHIP',
     sortOrder: 1,
-    isVisible: false,
+    isVisible: true,
   },
   {
     kind: 'training',

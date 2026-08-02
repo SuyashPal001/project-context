@@ -45,6 +45,14 @@ export function ItemEditor({
             <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">{section.eyebrow}</p>
             <h2 className="mt-2 text-2xl font-bold">{section.subtitle}</h2>
 
+            {section.kind === 'credentials' ? (
+                <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-500/90">
+                    Record <strong className="font-semibold">who owns each account</strong> and how access was
+                    transferred — not passwords. Anyone with the pack link can read this section, so share
+                    credentials themselves through your password manager.
+                </p>
+            ) : null}
+
             <div className="mt-6 space-y-3">
                 {items.length === 0 ? (
                     <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
