@@ -10,7 +10,7 @@ const meta = {
 
 const before = {
   title: 'Add auth',
-  description: 'Draft written by the analyst agent.',
+  descriptionHtml: 'Draft written by the analyst agent.',
   acceptanceCriteria: [{ text: 'login works', checked: false }],
   estimatedHours: '4.00',
   status: 'todo',
@@ -47,10 +47,10 @@ describe('buildTaskRevisions', () => {
   it('records one revision per changed tracked field, in TRACKED_FIELDS order', () => {
     const result = buildTaskRevisions(
       before,
-      { description: 'Rewritten by a human.', title: 'Add SSO auth' },
+      { descriptionHtml: 'Rewritten by a human.', title: 'Add SSO auth' },
       meta,
     )
-    expect(result.map((r) => r.field)).toEqual(['title', 'description'])
+    expect(result.map((r) => r.field)).toEqual(['title', 'descriptionHtml'])
   })
 
   it('deep-compares structured fields rather than comparing references', () => {
@@ -90,7 +90,7 @@ describe('buildTaskRevisions', () => {
   })
 
   it('records a null correction as a real change', () => {
-    const result = buildTaskRevisions(before, { description: null }, meta)
+    const result = buildTaskRevisions(before, { descriptionHtml: null }, meta)
     expect(result).toHaveLength(1)
     expect(result[0].correctedContent).toBeNull()
   })
@@ -126,7 +126,7 @@ describe('buildTaskRevisions', () => {
   it('tracks exactly the intent-carrying fields', () => {
     expect(TRACKED_FIELDS).toEqual([
       'title',
-      'description',
+      'descriptionHtml',
       'acceptanceCriteria',
       'estimatedHours',
     ])

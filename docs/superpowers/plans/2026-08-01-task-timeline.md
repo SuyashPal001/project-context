@@ -4,7 +4,9 @@
 
 **Goal:** Render a task's intent diff — the original ask, what the AI drafted, what a human changed, what was approved — as one chronological feed in the existing Timeline tab.
 
-**Architecture:** A pure `mergeTimeline` function in the API package turns three data sources into one sorted `TimelineRow[]`. It has no React, no database, and no fetch, so the handover pack generator can call it server-side later. A new `GET /tasks/:taskId/timeline` endpoint returns the three sources; the web layer fetches via a hook matching the existing `useTaskComments` pattern, merges, and dispatches each row to a renderer.
+**Architecture:** A pure `mergeTimeline` function in the API package turns three data sources into one sorted `TimelineRow[]`. It has no React, no database, and no fetch, so the handover pack generator can call it server-side later. A new `GET /tasks/:taskId/timeline` endpoint **calls it and returns finished rows**; the web layer fetches via a hook matching the existing `useTaskComments` pattern and dispatches each row to a renderer.
+
+**Why the merge is server-side:** `apps/web` has zero `@serverless-saas/*` dependencies — it is HTTP-only by design. Merging in the endpoint keeps the ordering logic in one tested place without wiring the web app into the workspace (`transpilePackages`, deploy build ordering, its first workspace dependency). The web layer renders what it is given.
 
 **Tech Stack:** TypeScript, Hono, Drizzle ORM, Vitest, Next.js App Router, TanStack Query, Tailwind, lucide-react.
 
@@ -279,9 +281,16 @@ export function mergeTimeline(input: TimelineInput): TimelineRow[] {
     // Origin always leads. On backfilled tasks raw_input was copied from
     // description, so its timestamp is the task's creation time and cannot be
     // trusted to precede the rows it conceptually comes before.
+    // The both-origin case must come first: without it, cmp(a,b) and cmp(b,a)
+    // would both return -1, and an inconsistent comparator makes
+    // Array.prototype.sort engine-dependent.
+    if (a.kind === 'origin' && b.kind === 'origin') return 0;
     if (a.kind === 'origin') return -1;
     if (b.kind === 'origin') return 1;
 
+    // Lexicographic comparison is correct for ISO 8601 only while every value
+    // shares one format. These all originate from Postgres timestamp columns
+    // serialized to JSON with a trailing Z, so the precondition holds.
     if (a.at !== b.at) return a.at < b.at ? -1 : 1;
     if (KIND_RANK[a.kind] !== KIND_RANK[b.kind]) {
       return KIND_RANK[a.kind] - KIND_RANK[b.kind];
@@ -293,7 +302,10 @@ export function mergeTimeline(input: TimelineInput): TimelineRow[] {
 }
 ```
 
-Timestamps are compared as ISO strings, which sort correctly lexicographically as long as every value carries the same UTC format. Every value here comes from Postgres `timestamp`/`timestamptz` columns serialized to JSON, so that holds.
+Two subtleties are in the comparator rather than the prose, deliberately: the
+both-origin guard keeps the comparator a valid total order (without it,
+`cmp(a,b)` and `cmp(b,a)` both return `-1`, making `sort` engine-dependent), and
+the ISO-string comparison is only sound while every timestamp shares one format.
 
 - [ ] **Step 4: Run the test and confirm it passes**
 
@@ -328,8 +340,8 @@ git commit -m "feat(timeline): add mergeTimeline pure function"
 - Modify: `products/agent-platform/packages/api/routes/tasks.ts`
 
 **Interfaces:**
-- Consumes: `TimelineRevision` and `TimelineEvent` shapes from Task 1's `lib/timeline.ts` — the response arrays must match them field for field.
-- Produces: `handleGetTimeline(c: Context<AppEnv>)`, mounted at `GET /tasks/:taskId/timeline`. Response body: `{ data: { rawInput: string | null, originAt: string, revisions: TimelineRevision[], events: TimelineEvent[] } }`.
+- Consumes: `mergeTimeline`, `TimelineRevision`, and `TimelineEvent` from Task 1's `lib/timeline.ts`.
+- Produces: `handleGetTimeline(c: Context<AppEnv>)`, mounted at `GET /tasks/:taskId/timeline`. Response body: `{ data: TimelineRow[] }` — **already merged and sorted**. The web layer renders the array as-is.
 
 - [ ] **Step 1: Write the handler**
 
@@ -342,12 +354,15 @@ import { agentTasks, taskEvents } from '@serverless-saas/agent-schema/agents';
 import { taskRevisions } from '@serverless-saas/agent-schema/task-revisions';
 import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
+import { mergeTimeline } from '../lib/timeline';
+import type { TimelineRevision } from '../lib/timeline';
 import type { Context } from 'hono';
 import type { AppEnv } from '@serverless-saas/types';
 
 // GET /tasks/:taskId/timeline — provenance feed for one task.
-// Returns the three sources unmerged; the caller runs mergeTimeline() so the
-// ordering logic stays in tested TypeScript rather than in a query.
+// Merges server-side and returns finished rows: apps/web is HTTP-only (no
+// workspace dependencies), so keeping the ordering logic here means it exists
+// and is tested in exactly one place.
 export async function handleGetTimeline(c: Context<AppEnv>) {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
@@ -401,14 +416,28 @@ export async function handleGetTimeline(c: Context<AppEnv>) {
         ))
         .orderBy(asc(taskEvents.createdAt));
 
-    return c.json({
-        data: {
-            rawInput: task.rawInput,
-            originAt: task.createdAt,
-            revisions: revisionRows,
-            events: eventRows,
-        },
+    const rows = mergeTimeline({
+        rawInput: task.rawInput,
+        originAt: task.createdAt.toISOString(),
+        revisions: revisionRows.map(r => ({
+            id: r.id,
+            field: r.field as TimelineRevision['field'],
+            originalContent: r.originalContent,
+            correctedContent: r.correctedContent,
+            actorType: r.actorType,
+            actorName: r.actorName ?? undefined,
+            createdAt: r.createdAt.toISOString(),
+        })),
+        events: eventRows.map(e => ({
+            id: e.id,
+            eventType: e.eventType,
+            actorType: e.actorType,
+            payload: (e.payload ?? undefined) as Record<string, unknown> | undefined,
+            createdAt: e.createdAt.toISOString(),
+        })),
     });
+
+    return c.json({ data: rows });
 }
 ```
 
@@ -514,28 +543,12 @@ export type TimelineRow =
     }
 
 export type TimelineResponse = {
-    data: {
-        rawInput: string | null
-        originAt: string
-        revisions: Array<{
-            id: string
-            field: TimelineTrackedField
-            originalContent: unknown
-            correctedContent: unknown
-            actorType: 'human' | 'agent'
-            actorName?: string | null
-            createdAt: string
-        }>
-        events: Array<{
-            id: string
-            eventType: string
-            actorType: 'agent' | 'human' | 'system'
-            payload?: Record<string, any>
-            createdAt: string
-        }>
-    }
+    data: TimelineRow[]
 }
 ```
+
+The endpoint merges and sorts server-side, so the web layer receives finished
+rows and renders them in order.
 
 - [ ] **Step 2: Add the fetching hook**
 
@@ -556,7 +569,7 @@ export function useTaskTimeline(taskId: string) {
     })
 
     return {
-        timeline: query.data?.data ?? null,
+        rows: query.data?.data ?? [],
         isLoading: query.isLoading,
     }
 }
@@ -758,47 +771,11 @@ Replace the entire contents of
 ```tsx
 'use client'
 
-import { useMemo } from 'react'
-import type { TimelineRow } from '@/types/task'
 import { useTaskTimeline } from './useTaskTimeline'
 import { TimelineRowItem } from './timeline/rows'
 
-const KIND_RANK: Record<TimelineRow['kind'], number> = { origin: 0, event: 1, revision: 2 }
-
-// Mirrors mergeTimeline() in products/agent-platform/packages/api/lib/timeline.ts.
-// Kept in sync by hand: the web app does not import across the workspace
-// boundary, matching how types/task.ts already redeclares TaskEvent.
-function mergeRows(data: NonNullable<ReturnType<typeof useTaskTimeline>['timeline']>): TimelineRow[] {
-    const rows: TimelineRow[] = []
-
-    if (data.rawInput !== null && data.rawInput !== undefined) {
-        rows.push({ kind: 'origin', at: data.originAt ?? '', content: data.rawInput })
-    }
-    for (const e of data.events) {
-        rows.push({ kind: 'event', at: e.createdAt, id: e.id, eventType: e.eventType, actorType: e.actorType, payload: e.payload })
-    }
-    for (const r of data.revisions) {
-        rows.push({
-            kind: 'revision', at: r.createdAt, id: r.id, field: r.field,
-            originalContent: r.originalContent, correctedContent: r.correctedContent,
-            actorType: r.actorType, actorName: r.actorName,
-        })
-    }
-
-    return rows.sort((a, b) => {
-        if (a.kind === 'origin') return -1
-        if (b.kind === 'origin') return 1
-        if (a.at !== b.at) return a.at < b.at ? -1 : 1
-        if (KIND_RANK[a.kind] !== KIND_RANK[b.kind]) return KIND_RANK[a.kind] - KIND_RANK[b.kind]
-        const aId = 'id' in a ? a.id : ''
-        const bId = 'id' in b ? b.id : ''
-        return aId < bId ? -1 : aId > bId ? 1 : 0
-    })
-}
-
 export function TimelineTab({ taskId }: { taskId: string }) {
-    const { timeline, isLoading } = useTaskTimeline(taskId)
-    const rows = useMemo(() => (timeline ? mergeRows(timeline) : []), [timeline])
+    const { rows, isLoading } = useTaskTimeline(taskId)
 
     if (isLoading) {
         return <p className="text-sm text-muted-foreground/40 italic py-4">Loading timeline…</p>
@@ -882,16 +859,17 @@ git commit -m "feat(timeline): render origin, revisions, and events in the timel
 
 ---
 
-## Known duplication
+## On the type redeclaration
 
-`mergeRows` in `TimelineTab.tsx` duplicates `mergeTimeline` in the API package.
-This is deliberate: `apps/web` does not import from
-`products/agent-platform/packages/api`, and `apps/web/types/task.ts` already
-redeclares `TaskEvent` and `TaskComment` for the same reason. The API copy is
-the tested one and is what the handover pack will use server-side.
+`apps/web/types/task.ts` redeclares `TimelineRow` rather than importing it,
+matching how it already redeclares `TaskEvent` and `TaskComment`. `apps/web` has
+zero `@serverless-saas/*` dependencies — it is HTTP-only by design, and wiring it
+into the workspace would mean `transpilePackages`, deploy build ordering, and its
+first workspace dependency.
 
-If the two drift, the API copy governs. Extracting a shared package is the right
-fix once a second consumer exists — not before.
+This is a type mirror, not duplicated logic: the merge and sort exist once, in
+the API package, and are tested there. If the shapes drift, the API governs and
+the failure is a visible render bug rather than a silent ordering difference.
 
 ## Verifying by hand
 

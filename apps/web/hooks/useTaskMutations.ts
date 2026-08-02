@@ -42,13 +42,19 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
 
     const patchTask = useMutation({
         mutationFn: (updates: TaskPatch) => api.patch(`/api/v1/tasks/${taskId}`, updates),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+            queryClient.invalidateQueries({ queryKey: ['task-timeline', taskId] })
+        },
         onError: (err) => toast.error(errorMessage(err, 'Failed to save change')),
     })
 
     const voteMutation = useMutation({
         mutationFn: (type: 'up' | 'down') => api.post(`/api/v1/tasks/${taskId}/vote`, { type }),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task', taskId] }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+            queryClient.invalidateQueries({ queryKey: ['task-timeline', taskId] })
+        },
         onError: (err) => toast.error(errorMessage(err, 'Failed to vote')),
     })
 
@@ -82,6 +88,7 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
                 // No invalidateQueries — WS events will stream new steps as they arrive
             } else {
                 queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+                queryClient.invalidateQueries({ queryKey: ['task-timeline', taskId] })
             }
             toast.success(variables.approved ? 'Plan approved' : 'Feedback sent, agent is replanning.')
         },

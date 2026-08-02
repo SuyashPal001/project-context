@@ -94,3 +94,35 @@ export type TaskDetailResponse = {
         assignee?: { name: string }
     }
 }
+
+export type TimelineTrackedField =
+    | 'title'
+    | 'descriptionHtml'
+    | 'acceptanceCriteria'
+    | 'estimatedHours'
+
+export type TimelineRow =
+    | { kind: 'origin'; at: string; content: string }
+    | {
+        kind: 'revision'
+        at: string
+        id: string
+        field: TimelineTrackedField
+        originalContent: unknown
+        correctedContent: unknown
+        actorType: 'human' | 'agent'
+        actorName?: string | null
+    }
+    | {
+        kind: 'event'
+        at: string
+        id: string
+        eventType: string
+        actorType: 'agent' | 'human' | 'system'
+        actorName?: string | null
+        payload?: Record<string, any>
+    }
+
+export type TimelineResponse = {
+    data: TimelineRow[]
+}

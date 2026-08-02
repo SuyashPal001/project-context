@@ -7,7 +7,7 @@ export type RevisionActorType = 'human' | 'agent';
  */
 export const TRACKED_FIELDS = [
   'title',
-  'description',
+  'descriptionHtml',
   'acceptanceCriteria',
   'estimatedHours',
 ] as const;
