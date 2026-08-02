@@ -8,21 +8,17 @@ import { files } from '@serverless-saas/database/schema/storage';
 import { hasPermission } from '@serverless-saas/permissions';
 import { seedSections } from '../lib/handover-template';
 import { computeReadiness } from '../lib/handover-readiness';
+import { isSafeHttpUrl, SAFE_URL_MESSAGE } from '../lib/safe-url';
+import { assertEditable } from '../lib/pack-status';
 import { handoverLifecycleRoutes } from './handover.lifecycle';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const handoverRoutes = new Hono<AppEnv>();
 
-/**
- * A signed pack is a record, not a draft. Every mutating handler calls this
- * before touching anything. Enforced here rather than in the UI so that an
- * API client cannot rewrite what a client already put their name to.
- */
-export function assertEditable(pack: { status: string }): string | null {
-    if (pack.status === 'signed') return 'This pack has been signed and can no longer be edited';
-    if (pack.status === 'revoked') return 'This pack has been revoked';
-    return null;
-}
+// Re-exported so existing importers of this module keep working; the single
+// implementation now lives in ../lib/pack-status so the lifecycle router can
+// share it without a circular import.
+export { assertEditable };
 
 async function loadPack(packId: string, tenantId: string) {
     const [pack] = await db
@@ -64,7 +60,7 @@ handoverRoutes.post('/packs', async (c) => {
     const [existing] = await db
         .select({ id: handoverPacks.id })
         .from(handoverPacks)
-        .where(and(eq(handoverPacks.planId, planId), isNull(handoverPacks.deletedAt)))
+        .where(and(eq(handoverPacks.planId, planId), eq(handoverPacks.tenantId, tenantId), isNull(handoverPacks.deletedAt)))
         .limit(1);
     if (existing) return c.json({ error: 'This project already has a handover pack', code: 'PACK_EXISTS' }, 409);
 
@@ -100,10 +96,10 @@ handoverRoutes.get('/packs/:packId', async (c) => {
     if (!pack) return c.json({ error: 'Pack not found' }, 404);
 
     const sections = await db.select().from(packSections)
-        .where(eq(packSections.packId, pack.id))
+        .where(and(eq(packSections.packId, pack.id), eq(packSections.tenantId, tenantId)))
         .orderBy(asc(packSections.sortOrder));
     const items = await db.select().from(packItems)
-        .where(eq(packItems.packId, pack.id))
+        .where(and(eq(packItems.packId, pack.id), eq(packItems.tenantId, tenantId)))
         .orderBy(asc(packItems.sortOrder));
 
     // tokenHash is a stored secret digest and never leaves the server.
@@ -122,8 +118,10 @@ handoverRoutes.get('/packs/:packId/readiness', async (c) => {
     const pack = await loadPack(c.req.param('packId'), tenantId);
     if (!pack) return c.json({ error: 'Pack not found' }, 404);
 
-    const sections = await db.select().from(packSections).where(eq(packSections.packId, pack.id));
-    const items = await db.select({ sectionId: packItems.sectionId }).from(packItems).where(eq(packItems.packId, pack.id));
+    const sections = await db.select().from(packSections)
+        .where(and(eq(packSections.packId, pack.id), eq(packSections.tenantId, tenantId)));
+    const items = await db.select({ sectionId: packItems.sectionId }).from(packItems)
+        .where(and(eq(packItems.packId, pack.id), eq(packItems.tenantId, tenantId)));
 
     return c.json({ data: computeReadiness(pack, sections, items) });
 });
@@ -212,14 +210,7 @@ handoverRoutes.post('/packs/:packId/items', async (c) => {
         sourceType: z.enum(['manual', 'task', 'milestone', 'file']).optional(),
         sourceId: z.string().uuid().optional(),
         fileId: z.string().uuid().optional(),
-        url: z.string().url().optional().refine((url) => {
-            if (url === undefined) return true;
-            try {
-                return ['http:', 'https:'].includes(new URL(url).protocol);
-            } catch {
-                return false;
-            }
-        }, { message: 'url must be http or https' }),
+        url: z.string().url().optional().refine(isSafeHttpUrl, { message: SAFE_URL_MESSAGE }),
         sortOrder: z.number().int().min(0).optional(),
     }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
@@ -230,7 +221,7 @@ handoverRoutes.post('/packs/:packId/items', async (c) => {
     if (locked) return c.json({ error: locked, code: 'PACK_LOCKED' }, 409);
 
     const [section] = await db.select({ id: packSections.id }).from(packSections)
-        .where(and(eq(packSections.id, result.data.sectionId), eq(packSections.packId, pack.id)))
+        .where(and(eq(packSections.id, result.data.sectionId), eq(packSections.packId, pack.id), eq(packSections.tenantId, tenantId)))
         .limit(1);
     if (!section) return c.json({ error: 'Section not found' }, 404);
 
@@ -266,14 +257,7 @@ handoverRoutes.patch('/packs/:packId/items/:itemId', async (c) => {
         description: z.string().max(2000).nullable().optional(),
         statusLabel: z.string().max(50).nullable().optional(),
         categoryLabel: z.string().max(50).nullable().optional(),
-        url: z.string().url().nullable().optional().refine((url) => {
-            if (url === undefined || url === null) return true;
-            try {
-                return ['http:', 'https:'].includes(new URL(url).protocol);
-            } catch {
-                return false;
-            }
-        }, { message: 'url must be http or https' }),
+        url: z.string().url().nullable().optional().refine(isSafeHttpUrl, { message: SAFE_URL_MESSAGE }),
         sortOrder: z.number().int().min(0).optional(),
     }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
@@ -311,6 +295,42 @@ handoverRoutes.delete('/packs/:packId/items/:itemId', async (c) => {
     if (deleted.length === 0) return c.json({ error: 'Item not found' }, 404);
 
     return c.json({ data: { id: deleted[0].id } });
+});
+
+// DELETE /handover/packs/:packId — soft-delete a pack.
+// Without this, deleted_at is never written: a mistakenly created pack can
+// never be removed, and handover_packs_plan_live_uniq then blocks the project
+// from ever getting another one. A signed pack is refused — the client holds a
+// link to what they signed, and resolveByToken filters on deleted_at, so
+// deleting it would revoke their copy of a completed legal record. Revoke the
+// link instead if access needs to end.
+handoverRoutes.delete('/packs/:packId', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'handover_packs', 'delete')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+    const pack = await loadPack(c.req.param('packId'), tenantId);
+    if (!pack) return c.json({ error: 'Pack not found' }, 404);
+    if (pack.status === 'signed') {
+        return c.json({ error: 'This pack has been signed and cannot be deleted', code: 'PACK_LOCKED' }, 409);
+    }
+
+    // Clear the token in the same write: a soft-deleted pack must not stay
+    // resolvable, and leaving the hash behind would also collide with the
+    // unique index if the same token were ever minted again.
+    const [deleted] = await db.update(handoverPacks)
+        .set({ deletedAt: new Date(), tokenHash: null, updatedAt: new Date() })
+        .where(and(
+            eq(handoverPacks.id, pack.id),
+            eq(handoverPacks.tenantId, tenantId),
+            isNull(handoverPacks.deletedAt),
+        ))
+        .returning({ id: handoverPacks.id });
+    if (!deleted) return c.json({ error: 'Pack not found' }, 404);
+
+    return c.json({ data: { id: deleted.id } });
 });
 
 // GET /handover/packs?planId=... — resolve the pack for a project.

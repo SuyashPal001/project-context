@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,15 @@ export function PackDetails({ pack, onSaved }: { pack: Pack; onSaved: () => Prom
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Same guard the parent page uses: onSaved() refetches the pack, so a user
+    // navigating away mid-save would otherwise leave setSaving/setError firing
+    // against an unmounted component.
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
+
     async function save() {
         if (!title.trim() || saving) return;
         setSaving(true);
@@ -41,9 +50,9 @@ export function PackDetails({ pack, onSaved }: { pack: Pack; onSaved: () => Prom
             });
             await onSaved();
         } catch (err: any) {
-            setError(err?.data?.error ?? 'Could not save the pack details');
+            if (mountedRef.current) setError(err?.data?.error ?? 'Could not save the pack details');
         } finally {
-            setSaving(false);
+            if (mountedRef.current) setSaving(false);
         }
     }
 

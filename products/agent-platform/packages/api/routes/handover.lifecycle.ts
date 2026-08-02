@@ -6,6 +6,7 @@ import { hasPermission } from '@serverless-saas/permissions';
 import { publishToQueue } from '@serverless-saas/queue';
 import { mintToken, hashToken } from '../lib/pack-token';
 import { computeReadiness } from '../lib/handover-readiness';
+import { assertEditable } from '../lib/pack-status';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const handoverLifecycleRoutes = new Hono<AppEnv>();
@@ -28,10 +29,15 @@ handoverLifecycleRoutes.post('/packs/:packId/send', async (c) => {
         .where(and(eq(handoverPacks.id, packId), eq(handoverPacks.tenantId, tenantId), isNull(handoverPacks.deletedAt)))
         .limit(1);
     if (!pack) return c.json({ error: 'Pack not found' }, 404);
-    if (pack.status === 'signed') return c.json({ error: 'This pack has been signed and can no longer be sent', code: 'PACK_LOCKED' }, 409);
+    // Blocks signed AND revoked. Re-sending a `sent` pack stays legal — that
+    // re-mints the token and kills the previously shared link.
+    const locked = assertEditable(pack);
+    if (locked) return c.json({ error: locked, code: 'PACK_LOCKED' }, 409);
 
-    const sections = await db.select().from(packSections).where(eq(packSections.packId, pack.id));
-    const items = await db.select({ sectionId: packItems.sectionId }).from(packItems).where(eq(packItems.packId, pack.id));
+    const sections = await db.select().from(packSections)
+        .where(and(eq(packSections.packId, pack.id), eq(packSections.tenantId, tenantId)));
+    const items = await db.select({ sectionId: packItems.sectionId }).from(packItems)
+        .where(and(eq(packItems.packId, pack.id), eq(packItems.tenantId, tenantId)));
     const readiness = computeReadiness(pack, sections, items);
     if (readiness.complete < readiness.total) {
         return c.json({ error: 'Pack is not ready to send', code: 'NOT_READY', details: readiness }, 422);
@@ -80,7 +86,9 @@ handoverLifecycleRoutes.post('/packs/:packId/revoke', async (c) => {
         .where(and(eq(handoverPacks.id, packId), eq(handoverPacks.tenantId, tenantId), isNull(handoverPacks.deletedAt)))
         .limit(1);
     if (!pack) return c.json({ error: 'Pack not found' }, 404);
-    if (pack.status === 'signed') return c.json({ error: 'This pack has been signed and cannot be revoked', code: 'PACK_LOCKED' }, 409);
+    // A signed pack keeps its record; an already-revoked one is a no-op.
+    const locked = assertEditable(pack);
+    if (locked) return c.json({ error: locked, code: 'PACK_LOCKED' }, 409);
 
     const [updated] = await db.update(handoverPacks)
         .set({ status: 'revoked', tokenHash: null, updatedAt: new Date() })

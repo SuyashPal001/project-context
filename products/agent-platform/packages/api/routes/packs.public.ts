@@ -4,9 +4,38 @@ import { eq, and, asc, isNull, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { handoverPacks, packSections, packItems } from '@serverless-saas/agent-schema/handover';
 import { hashToken } from '../lib/pack-token';
+import { getCacheClient } from '@serverless-saas/cache';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const publicPackRoutes = new Hono<AppEnv>();
+
+/**
+ * Per-IP throttle for the public routes.
+ *
+ * These handlers are mounted on the unauthenticated router, so they bypass the
+ * middleware chain entirely — nothing else limits them. Token entropy makes
+ * enumeration impractical, but an unthrottled unauthenticated write is still
+ * worth a ceiling.
+ *
+ * Degrades open: if the cache is unavailable the request proceeds, matching
+ * the existing pattern in apps/api/src/routes/auth.public.ts. A signature
+ * being refused because Redis blinked would be worse than the rate it guards.
+ */
+async function overRateLimit(c: any, bucket: string, limit: number): Promise<boolean> {
+    const ip =
+        c.req.header('cf-connecting-ip') ??
+        c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
+        'unknown';
+    try {
+        const cache = getCacheClient();
+        const key = `ratelimit:packs:${bucket}:${ip}`;
+        const count = await cache.incr(key);
+        if (count === 1) await cache.expire(key, 60);
+        return count > limit;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Build the client-facing view of a pack.
@@ -75,6 +104,12 @@ async function resolveByToken(token: string) {
 
 // GET /packs/:token
 publicPackRoutes.get('/:token', async (c) => {
+    // Higher ceiling than sign — a client legitimately reloads the pack while
+    // reading it, but a scanner walking the token space should still hit a wall.
+    if (await overRateLimit(c, 'read', 60)) {
+        return c.json({ error: 'Too many requests. Please try again later.', code: 'RATE_LIMIT_EXCEEDED', retryAfter: 60 }, 429);
+    }
+
     const pack = await resolveByToken(c.req.param('token'));
     if (!pack) return c.json({ error: 'Not found' }, 404);
 
@@ -91,6 +126,10 @@ publicPackRoutes.get('/:token', async (c) => {
 
 // POST /packs/:token/sign
 publicPackRoutes.post('/:token/sign', async (c) => {
+    if (await overRateLimit(c, 'sign', 10)) {
+        return c.json({ error: 'Too many requests. Please try again later.', code: 'RATE_LIMIT_EXCEEDED', retryAfter: 60 }, 429);
+    }
+
     const result = z.object({
         name: z.string().min(1).max(200),
         email: z.string().email(),

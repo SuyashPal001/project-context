@@ -161,7 +161,12 @@ export default function HandoverBuilderPage() {
             {readiness ? <div className="mb-6"><ReadinessChecklist readiness={readiness} /></div> : null}
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
-                <SectionRail sections={sections} items={items} selectedId={selectedId} onSelect={setSelectedId} />
+                <SectionRail
+                    sections={sections}
+                    items={items}
+                    selectedId={selectedId}
+                    onSelect={(id) => { setItemError(null); setSelectedId(id); }}
+                />
                 <div className="rounded-xl border border-border bg-card p-6">
                     {itemError ? <p className="mb-4 text-sm text-destructive">{itemError}</p> : null}
                     {selected ? (

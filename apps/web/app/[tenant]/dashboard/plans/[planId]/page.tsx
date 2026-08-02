@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format, isPast } from 'date-fns'
-import { Trash2, ChevronRight, CalendarDays, CalendarRange } from 'lucide-react'
+import { Trash2, ChevronRight, CalendarDays, CalendarRange, PackageCheck } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -154,6 +154,13 @@ export default function PlanDetailPage() {
                             {format(new Date(plan.targetDate), 'MMM d, yyyy')}
                         </span>
                     )}
+                    <Link
+                        href={`/${tenantSlug}/dashboard/plans/${planId}/handover`}
+                        className="text-xs flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#1e1e1e] bg-[#111] text-muted-foreground hover:text-foreground hover:border-[#2a2a2a] transition-colors"
+                    >
+                        <PackageCheck className="w-3.5 h-3.5" />
+                        Handover pack
+                    </Link>
                     <button
                         onClick={() => setDeleteConfirmOpen(true)}
                         className="text-muted-foreground/40 hover:text-destructive transition-colors"
