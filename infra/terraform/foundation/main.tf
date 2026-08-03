@@ -292,6 +292,22 @@ module "api_gateway" {
       integration_key = "foundation_api"
       requires_auth   = false
     }
+    # Client handover portal. Clients are not users — they hold no account and
+    # no JWT — so the pack link must resolve without the gateway authorizer.
+    # Authorisation is the 43-char token in the path, verified against a stored
+    # sha256 by the handler, which returns an identical 404 for an unknown,
+    # draft, revoked, or deleted pack. The handler also rate-limits per IP,
+    # since these routes bypass the middleware chain entirely.
+    packs_get = {
+      route_key       = "GET /api/v1/packs/{proxy+}"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
+    packs_sign = {
+      route_key       = "POST /api/v1/packs/{proxy+}"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     api_internal = {
       route_key       = "POST /api/v1/internal/{proxy+}"
       integration_key = "foundation_api"
