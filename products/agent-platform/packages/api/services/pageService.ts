@@ -56,7 +56,18 @@ let _pool: pg.Pool | null = null
 
 export function getPool(): pg.Pool {
   if (!_pool) {
-    _pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+    // node-postgres treats sslmode=require as verify-full, unlike libpq — see
+    // its own runtime warning. Supabase's pooler presents a chain Node cannot
+    // verify, so every query threw SELF_SIGNED_CERT_IN_CHAIN and the Pages tab
+    // was dead after the move off Neon. Keep TLS on, skip chain verification,
+    // which is what sslmode=require means everywhere else. Neon verifies fine,
+    // so it keeps the stricter default.
+    const connectionString = process.env.DATABASE_URL!
+    const isNeon = connectionString.includes('.neon.tech')
+    _pool = new pg.Pool({
+      connectionString,
+      ...(isNeon ? {} : { ssl: { rejectUnauthorized: false } }),
+    })
     _pool.on('error', (err: Error) => {
       console.error('[pageService] pool error:', err.message)
     })
