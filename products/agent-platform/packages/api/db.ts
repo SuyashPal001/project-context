@@ -4,6 +4,7 @@ import net from 'net';
 import dns from 'dns';
 import * as foundationSchema from '@serverless-saas/database/schema';
 import * as agentSchema from '@serverless-saas/agent-schema';
+import { resolveDbOptions } from './lib/db-options';
 
 const schema = { ...foundationSchema, ...agentSchema };
 
@@ -24,28 +25,19 @@ function neonSocket(opts: any): Promise<net.Socket> {
   });
 }
 
-// Supabase's transaction pooler (PgBouncer, port 6543) hands a connection to a
-// different backend between statements, so postgres.js's named prepared
-// statements break with `prepared statement "sN" already exists`. It needs
-// concurrency to surface, so it survives light manual testing and appears under
-// real traffic. The foundation client already does this; this one did not, so
-// every agent-platform route — handover included — was exposed.
-// Parsed rather than substring-matched so a password containing "6543" cannot
-// false-positive.
-function usesTransactionPooler(url: string): boolean {
-  try {
-    return new URL(url).port === '6543';
-  } catch {
-    return false;
-  }
-}
-
-const isTransactionPooler = usesTransactionPooler(connectionString);
+// A transaction pooler hands each statement to a different backend, so
+// postgres.js's named prepared statements fail with `prepared statement "sN"
+// already exists`. It takes concurrency to surface, so it survives light manual
+// testing and appears under real traffic. Driven by configuration
+// (`pgbouncer=true` in the URL, or DATABASE_DISABLE_PREPARE) rather than by
+// inspecting the port, so a deployment declares its own topology.
+const { disablePrepare, sslNoVerify } = resolveDbOptions(connectionString);
 
 const client = postgres(connectionString, {
   max: 10,
   ...(isNeon && { socket: neonSocket }),
-  ...(isTransactionPooler && { prepare: false }),
+  ...(disablePrepare && { prepare: false }),
+  ...(sslNoVerify && { ssl: { rejectUnauthorized: false } }),
 });
 
 export const db = drizzle(client, { schema });

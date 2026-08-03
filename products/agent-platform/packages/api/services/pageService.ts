@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import pg from 'pg'
+import { resolveDbOptions } from '../lib/db-options'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,17 +57,16 @@ let _pool: pg.Pool | null = null
 
 export function getPool(): pg.Pool {
   if (!_pool) {
-    // node-postgres treats sslmode=require as verify-full, unlike libpq — see
-    // its own runtime warning. Supabase's pooler presents a chain Node cannot
-    // verify, so every query threw SELF_SIGNED_CERT_IN_CHAIN and the Pages tab
-    // was dead after the move off Neon. Keep TLS on, skip chain verification,
-    // which is what sslmode=require means everywhere else. Neon verifies fine,
-    // so it keeps the stricter default.
+    // node-postgres treats sslmode=require as verify-full, unlike libpq — it
+    // emits its own warning saying so. A pooler whose chain Node cannot verify
+    // then throws SELF_SIGNED_CERT_IN_CHAIN on every query. Whether to skip
+    // chain verification comes from configuration (sslmode=no-verify in the
+    // URL, or DATABASE_SSL_NO_VERIFY), never from sniffing the hostname.
     const connectionString = process.env.DATABASE_URL!
-    const isNeon = connectionString.includes('.neon.tech')
+    const { sslNoVerify } = resolveDbOptions(connectionString)
     _pool = new pg.Pool({
       connectionString,
-      ...(isNeon ? {} : { ssl: { rejectUnauthorized: false } }),
+      ...(sslNoVerify ? { ssl: { rejectUnauthorized: false } } : {}),
     })
     _pool.on('error', (err: Error) => {
       console.error('[pageService] pool error:', err.message)
