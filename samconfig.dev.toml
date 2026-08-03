@@ -12,4 +12,4 @@ region                  = "ap-south-1"
 capabilities            = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
 confirm_changeset       = false
 fail_on_empty_changeset = false
-parameter_overrides     = "ProjectName=project-context EnvironmentName=dev PlatformAdminEmails=suyash@fitnearn.com,ops@fitnearn.com"
+parameter_overrides     = "ProjectName=project-context EnvironmentName=dev PlatformAdminEmails=suyash@fitnearn.com,ops@fitnearn.com DatabaseSslNoVerify=true DatabaseDisablePrepare=true"

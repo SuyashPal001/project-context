@@ -30,6 +30,28 @@ Parameters:
   PlatformAdminEmails:
     Type: String
     Default: ""
+
+  # Database topology. Declared per environment rather than inferred from the
+  # hostname or port at runtime, and kept out of the connection URL because a
+  # dynamic secretsmanager reference is only re-resolved when the template text
+  # itself changes — editing the secret alone leaves the Lambda on a stale value.
+  DatabaseSslNoVerify:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Keep TLS on but skip certificate-chain verification. Required for managed
+      poolers whose chain Node cannot verify; node-postgres treats
+      sslmode=require as verify-full and throws SELF_SIGNED_CERT_IN_CHAIN.
+
+  DatabaseDisablePrepare:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Disable named prepared statements. Required behind a transaction pooler,
+      which hands each statement to a different backend and otherwise fails with
+      'prepared statement "sN" already exists' under concurrency.
     Description: Comma-separated list of emails that get platform_admin JWT role
 
   FoundationWebSocketRoleArn:
@@ -51,6 +73,8 @@ Globals:
       Variables:
         NODE_ENV: !Ref EnvironmentName
         PROJECT: !Ref ProjectName
+        DATABASE_SSL_NO_VERIFY: !Ref DatabaseSslNoVerify
+        DATABASE_DISABLE_PREPARE: !Ref DatabaseDisablePrepare
 
 Resources:
 
