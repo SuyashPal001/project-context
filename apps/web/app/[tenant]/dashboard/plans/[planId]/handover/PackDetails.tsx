@@ -39,7 +39,7 @@ export function PackDetails({ pack, onSaved }: { pack: Pack; onSaved: () => Prom
         setSaving(true);
         setError(null);
         try {
-            await api.patch(`/handover/packs/${pack.id}`, {
+            await api.patch(`/api/v1/handover/packs/${pack.id}`, {
                 title: title.trim(),
                 scopeSummary: scopeSummary.trim() ? scopeSummary.trim() : null,
                 // The Zod schema is .datetime(); a bare YYYY-MM-DD is rejected.

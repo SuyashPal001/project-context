@@ -40,7 +40,10 @@ function safeHref(url: string | null): string | null {
 export default async function PortalPage({ params }: { params: Promise<{ token: string }> }) {
     const { token } = await params;
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/packs/${token}`, { cache: 'no-store' });
+    // NEXT_PUBLIC_API_URL is the gateway origin without a path; every call site
+    // in this app carries /api/v1 itself. This page bypasses /api/proxy because
+    // the client has no session, so it spells the prefix out too.
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/packs/${token}`, { cache: 'no-store' });
     if (!res.ok) notFound();
     const pack: PortalPack = (await res.json()).data;
 

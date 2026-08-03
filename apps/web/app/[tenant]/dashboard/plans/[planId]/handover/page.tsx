@@ -29,13 +29,13 @@ export default function HandoverBuilderPage() {
     const mountedRef = useRef(true);
 
     const loadPack = useCallback(async (packId: string) => {
-        const detail = await api.get<{ data: { pack: Pack; sections: Section[]; items: Item[] } }>(`/handover/packs/${packId}`);
+        const detail = await api.get<{ data: { pack: Pack; sections: Section[]; items: Item[] } }>(`/api/v1/handover/packs/${packId}`);
         if (!mountedRef.current) return;
         setPack(detail.data.pack);
         setSections(detail.data.sections);
         setItems(detail.data.items);
         setSelectedId((current) => current ?? detail.data.sections[0]?.id ?? null);
-        const r = await api.get<{ data: Readiness }>(`/handover/packs/${packId}/readiness`);
+        const r = await api.get<{ data: Readiness }>(`/api/v1/handover/packs/${packId}/readiness`);
         if (!mountedRef.current) return;
         setReadiness(r.data);
     }, []);
@@ -47,7 +47,7 @@ export default function HandoverBuilderPage() {
         mountedRef.current = true;
         (async () => {
             try {
-                const existing = await api.get<{ data: Pack | null }>(`/handover/packs?planId=${planId}`);
+                const existing = await api.get<{ data: Pack | null }>(`/api/v1/handover/packs?planId=${planId}`);
                 if (cancelled) return;
                 if (existing.data) await loadPack(existing.data.id);
             } catch (err: any) {
@@ -62,7 +62,7 @@ export default function HandoverBuilderPage() {
     async function createPack() {
         setError(null);
         try {
-            const created = await api.post<{ data: Pack }>('/handover/packs', {
+            const created = await api.post<{ data: Pack }>('/api/v1/handover/packs', {
                 planId,
                 title: 'Project handover',
             });
@@ -79,7 +79,7 @@ export default function HandoverBuilderPage() {
         if (!pack || !selected) return;
         setItemError(null);
         try {
-            await api.post(`/handover/packs/${pack.id}/items`, { sectionId: selected.id, ...input });
+            await api.post(`/api/v1/handover/packs/${pack.id}/items`, { sectionId: selected.id, ...input });
             await loadPack(pack.id);
         } catch (err: any) {
             setItemError(err?.data?.error ?? 'Could not add the record');
@@ -91,7 +91,7 @@ export default function HandoverBuilderPage() {
         setItemError(null);
         try {
             // The client exposes DELETE as `del`, not `delete` — see apps/web/lib/api.ts.
-            await api.del(`/handover/packs/${pack.id}/items/${itemId}`);
+            await api.del(`/api/v1/handover/packs/${pack.id}/items/${itemId}`);
             await loadPack(pack.id);
         } catch (err: any) {
             setItemError(err?.data?.error ?? 'Could not delete the record');
@@ -102,7 +102,7 @@ export default function HandoverBuilderPage() {
         if (!pack) return;
         setSendError(null);
         try {
-            const res = await api.post<{ data: { url: string } }>(`/handover/packs/${pack.id}/send`, {});
+            const res = await api.post<{ data: { url: string } }>(`/api/v1/handover/packs/${pack.id}/send`, {});
             setSentUrl(res.data.url);
             await loadPack(pack.id);
         } catch (err: any) {
