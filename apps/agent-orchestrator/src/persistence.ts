@@ -40,7 +40,9 @@ export function saveUserMessage(
 ): void {
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
     method: 'POST',
-    headers: authHeaders(idToken),
+    // Both: the user token identifies the conversation owner, the service key
+    // proves this is the relay rather than a user posting forged assistant text.
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
     body: JSON.stringify({ role: 'user', content, attachments: attachments ?? [], createdAt: new Date().toISOString() }),
   }).then(async (res) => {
     if (!res.ok) {
@@ -86,7 +88,7 @@ export function saveAssistantMessage(
   if (artifactRef) payload.artifactRef = artifactRef
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
     method: 'POST',
-    headers: authHeaders(idToken),
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
     body: JSON.stringify(payload),
   }).then(async (res) => {
     if (!res.ok) {

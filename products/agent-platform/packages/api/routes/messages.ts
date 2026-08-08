@@ -6,6 +6,7 @@ import { conversations, messages } from '@serverless-saas/agent-schema/conversat
 import { usageRecords } from '@serverless-saas/database/schema/billing';
 import { runMessageRelay, RelayError } from './_orchestrator';
 import { hasPermission } from '@serverless-saas/permissions';
+import { isAuthorized } from './internal/tasks.auth';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const messagesRoutes = new Hono<AppEnv>();
@@ -109,7 +110,17 @@ messagesRoutes.post('/:conversationId/messages', async (c) => {
 });
 
 // POST /conversations/:conversationId/messages/save — internal route for relay to save messages
+//
+// Infrastructure-only. Without this gate any tenant member could POST directly
+// with role: 'assistant' and forge AI output the model never produced, and — because
+// the legitimate POST /messages route is the one that writes usageRecords —
+// route around metering entirely. A user JWT is not sufficient here: the caller
+// must prove it is the relay, not merely that it owns the conversation.
 messagesRoutes.post('/:conversationId/messages/save', async (c) => {
+    if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) {
+        return c.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
+    }
+
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const userId = c.get('userId') as string | undefined;
