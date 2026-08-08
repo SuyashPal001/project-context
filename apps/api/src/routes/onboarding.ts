@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { createHash, randomBytes } from 'crypto';
 import { db } from '@serverless-saas/database';
 import { provisionNotificationWorkflows } from '@serverless-saas/database/notification-workflows';
-import { roles } from '@serverless-saas/database/schema/authorization';
+import { roles, rolePermissions, permissions } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
@@ -145,6 +145,18 @@ onboardingRoutes.post('/complete', async (c) => {
     const resolvedTools = publishedTemplate?.tools ?? [];
     const resolvedModel = publishedTemplate?.model ?? null;
 
+    // Resolve the agent role's permission strings once, shared across all six
+    // agents seeded below — avoids six identical role_permissions joins.
+    const agentRole = (await db.select().from(roles).where(eq(roles.isAgentRole, true)).limit(1))[0];
+    const agentRolePermissionRows = agentRole
+        ? await db
+              .select({ resource: permissions.resource, action: permissions.action })
+              .from(rolePermissions)
+              .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+              .where(eq(rolePermissions.roleId, agentRole.id))
+        : [];
+    const agentRolePermissionStrings = agentRolePermissionRows.map((p: { resource: string; action: string }) => `${p.resource}:${p.action}`);
+
     const rawKey = `ak_${randomBytes(32).toString('hex')}`;
     const keyHash = createHash('sha256').update(rawKey).digest('hex');
 
@@ -153,7 +165,7 @@ onboardingRoutes.post('/complete', async (c) => {
         name: 'Research Engineer API Key',
         type: 'agent',
         keyHash,
-        permissions: [],
+        permissions: agentRolePermissionStrings,
         status: 'active',
         createdBy: userId,
     }).returning();
@@ -186,7 +198,7 @@ onboardingRoutes.post('/complete', async (c) => {
         name: 'Product Manager API Key',
         type: 'agent',
         keyHash: pmKeyHash,
-        permissions: [],
+        permissions: agentRolePermissionStrings,
         status: 'active',
         createdBy: userId,
     }).returning();
@@ -216,7 +228,7 @@ onboardingRoutes.post('/complete', async (c) => {
         name: 'Analyst API Key',
         type: 'agent',
         keyHash: prdKeyHash,
-        permissions: [],
+        permissions: agentRolePermissionStrings,
         status: 'active',
         createdBy: userId,
     }).returning();
@@ -246,7 +258,7 @@ onboardingRoutes.post('/complete', async (c) => {
         name: 'Project Manager API Key',
         type: 'agent',
         keyHash: roadmapKeyHash,
-        permissions: [],
+        permissions: agentRolePermissionStrings,
         status: 'active',
         createdBy: userId,
     }).returning();
@@ -276,7 +288,7 @@ onboardingRoutes.post('/complete', async (c) => {
         name: 'Tech Lead API Key',
         type: 'agent',
         keyHash: taskKeyHash,
-        permissions: [],
+        permissions: agentRolePermissionStrings,
         status: 'active',
         createdBy: userId,
     }).returning();
@@ -306,7 +318,7 @@ onboardingRoutes.post('/complete', async (c) => {
         name: 'Architect API Key',
         type: 'agent',
         keyHash: archKeyHash,
-        permissions: [],
+        permissions: agentRolePermissionStrings,
         status: 'active',
         createdBy: userId,
     }).returning();

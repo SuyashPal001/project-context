@@ -6,7 +6,7 @@ import { agents } from '@serverless-saas/agent-schema/agents';
 import { users } from '@serverless-saas/database/schema/auth';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
-import { roles } from '@serverless-saas/database/schema/authorization';
+import { roles, rolePermissions, permissions as permissionsTable } from '@serverless-saas/database/schema/authorization';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { llmProviders } from '@serverless-saas/database/schema/integrations';
@@ -83,8 +83,15 @@ export async function handleCreateAgent(c: Context<AppEnv>) {
     const agentRole = (await db.select().from(roles).where(eq(roles.isAgentRole, true)).limit(1))[0];
     if (!agentRole) return c.json({ error: 'Agent role not configured', code: 'AGENT_ROLE_MISSING' }, 500);
 
+    const agentRolePermissionRows = await db
+        .select({ resource: permissionsTable.resource, action: permissionsTable.action })
+        .from(rolePermissions)
+        .innerJoin(permissionsTable, eq(rolePermissions.permissionId, permissionsTable.id))
+        .where(eq(rolePermissions.roleId, agentRole.id));
+    const agentRolePermissionStrings = agentRolePermissionRows.map((p: { resource: string; action: string }) => `${p.resource}:${p.action}`);
+
     const rawKey = generateApiKey('ak');
-    const [newKey] = await db.insert(apiKeys).values({ tenantId, name: `${result.data.name} API Key`, type: 'agent', keyHash: hashKey(rawKey), permissions: [], status: 'active', createdBy: userId }).returning();
+    const [newKey] = await db.insert(apiKeys).values({ tenantId, name: `${result.data.name} API Key`, type: 'agent', keyHash: hashKey(rawKey), permissions: agentRolePermissionStrings, status: 'active', createdBy: userId }).returning();
     const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model: result.data.model, llmProviderId: result.data.llmProviderId, apiKeyId: newKey.id, createdBy: userId }).returning();
     await db.insert(memberships).values({ agentId: newAgent.id, tenantId, roleId: agentRole.id, memberType: 'agent', status: 'active' });
 

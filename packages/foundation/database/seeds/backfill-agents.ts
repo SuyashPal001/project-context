@@ -39,7 +39,7 @@ import { apiKeys } from '../schema/access';
 // @ts-ignore
 import { tenants, memberships } from '../schema/tenancy';
 // @ts-ignore
-import { roles } from '../schema/authorization';
+import { roles, rolePermissions, permissions } from '../schema/authorization';
 
 const connectionString = process.env.DATABASE_URL!;
 const isNeon = connectionString.includes('.neon.tech');
@@ -83,6 +83,17 @@ async function run() {
     const allTenants = await db.select({ id: tenants.id, name: tenants.name }).from(tenants);
     console.log(`Found ${allTenants.length} tenant(s)`);
 
+    // Resolve the agent role's permission strings once — the role is global (not per-tenant).
+    const agentRole = (await db.select({ id: roles.id }).from(roles).where(eq(roles.isAgentRole, true)).limit(1))[0];
+    const agentRolePermissionRows = agentRole
+        ? await db
+              .select({ resource: permissions.resource, action: permissions.action })
+              .from(rolePermissions)
+              .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
+              .where(eq(rolePermissions.roleId, agentRole.id))
+        : [];
+    const agentRolePermissionStrings = agentRolePermissionRows.map((p: { resource: string; action: string }) => `${p.resource}:${p.action}`);
+
     for (const tenant of allTenants) {
         console.log(`\nProcessing tenant: ${tenant.name} (${tenant.id})`);
 
@@ -118,7 +129,7 @@ async function run() {
                 name: `${def.name} API Key`,
                 type: 'agent',
                 keyHash: hash,
-                permissions: [],
+                permissions: agentRolePermissionStrings,
                 status: 'active',
                 createdBy: userId,
             }).returning();
