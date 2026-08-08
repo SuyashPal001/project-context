@@ -24,7 +24,12 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
     // tenantId is stamped into the JWT by the pre-token Lambda at login (ADR-008)
     // API Gateway validates the JWT signature upstream — we just read the claims
     const jwtPayload = c.get('jwtPayload');
-    const tenantId = jwtPayload?.['custom:tenantId'];
+
+    // Agent-authenticated requests never carry a JWT — apiKeyAuthMiddleware (which runs
+    // before this middleware) already resolved and validated tenantId for them, via a
+    // NOT NULL column, so apiKeyContext.tenantId is always a real value when present.
+    const apiKeyContext = c.get('apiKeyContext' as never) as { tenantId?: string } | undefined;
+    const tenantId = jwtPayload?.['custom:tenantId'] ?? apiKeyContext?.tenantId;
 
     // Empty tenantId = new user who hasn't created a workspace yet
     // Set onboarding flag and only allow specific routes through
@@ -50,7 +55,8 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
         // ioredis always returns strings — so we handle both cases here
         // Calling JSON.parse on an already-deserialized object throws: "[object Object] is not valid JSON"
         const parsed = typeof cached === 'string' ? JSON.parse(cached) : cached;
-        c.set('requestContext', { tenant: parsed } as any);
+        const existingRequestContext = (c.get('requestContext') as any) ?? {};
+        c.set('requestContext', { ...existingRequestContext, tenant: parsed } as any);
         return next();
     }
 
@@ -82,6 +88,7 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
     // Upstash will store as JSON and return already parsed on next get
     await getCacheClient().set(cacheKey, JSON.stringify(tenantContext), { ex: TENANT_CACHE_TTL_SECONDS });
 
-    c.set('requestContext', { tenant: tenantContext } as any);
+    const existingRequestContext = (c.get('requestContext') as any) ?? {};
+    c.set('requestContext', { ...existingRequestContext, tenant: tenantContext } as any);
     return next();
 });
