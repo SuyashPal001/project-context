@@ -6,6 +6,7 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { pushWebSocketEvent } from '../../lib/websocket';
 import { getCacheClient } from '@serverless-saas/cache';
 import { isAuthorized } from './tasks.auth';
+import { refreshTaskHeartbeat, clearTaskHeartbeat } from '../../lib/task-heartbeat';
 import type { Context } from 'hono';
 import type { AppEnv } from '@serverless-saas/types';
 
@@ -53,7 +54,7 @@ export async function handleStartStep(c: Context<AppEnv>) {
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId: task.agentId ?? 'system', eventType: 'status_changed', payload: { stepId, stepStatus: 'running' } });
     db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_started', resource: 'task_step', resourceId: stepId, metadata: { taskId, stepNumber: step.stepNumber }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'running' });
-    getCacheClient().expire(`task:watchdog:${taskId}`, 600).catch(() => {});
+    void refreshTaskHeartbeat(getCacheClient() as never, taskId, tenantId);
 
     return c.json({ success: true });
 }
@@ -132,7 +133,7 @@ export async function handleCompleteStep(c: Context<AppEnv>) {
     await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId: task.agentId ?? 'system', eventType: 'step_completed', payload: { stepId } });
     db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_completed', resource: 'task_step', resourceId: stepId, metadata: { taskId, summary: summary ?? null }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'done', agentOutput, summary });
-    getCacheClient().expire(`task:watchdog:${taskId}`, 600).catch(() => {});
+    void refreshTaskHeartbeat(getCacheClient() as never, taskId, tenantId);
 
     return c.json({ success: true });
 }
@@ -170,7 +171,7 @@ export async function handleFailStep(c: Context<AppEnv>) {
     db.insert(auditLog).values({ tenantId, actorId: task.agentId ?? 'system', actorType: 'agent', action: 'task_step_failed', resource: 'task_step', resourceId: stepId, metadata: { taskId, error: failError }, traceId: traceId }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await pushWebSocketEvent(tenantId, { type: 'task.step.updated', taskId, stepId, status: 'failed' });
     await pushWebSocketEvent(tenantId, { type: 'task.status.changed', taskId, status: 'blocked', blockedReason: failError });
-    getCacheClient().del(`task:watchdog:${taskId}`).catch(() => {});
+    void clearTaskHeartbeat(getCacheClient() as never, taskId);
 
     return c.json({ success: true });
 }

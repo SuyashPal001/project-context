@@ -7,6 +7,7 @@ import { getCacheClient } from '@serverless-saas/cache';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '@serverless-saas/queue';
 import { initRuntimeSecrets } from '@serverless-saas/secrets';
+import { taskHeartbeatKey } from '../lib/task-heartbeat';
 
 const wlog = (level: 'info' | 'warn' | 'error', msg: string, data?: Record<string, unknown>) =>
   console.log(JSON.stringify({ level, msg, component: 'watchdog', ts: Date.now(), ...data }));
@@ -39,7 +40,7 @@ export const handler: ScheduledHandler = async () => {
     const stalled: typeof inProgressTasks = [];
 
     for (const task of inProgressTasks) {
-      const exists = await cache.exists(`task:watchdog:${task.id}`);
+      const exists = await cache.exists(taskHeartbeatKey(task.id));
       if (!exists) {
         stalled.push(task);
       }

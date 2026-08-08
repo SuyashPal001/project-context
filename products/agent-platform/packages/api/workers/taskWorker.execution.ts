@@ -3,6 +3,7 @@ import { eq, and, asc } from 'drizzle-orm';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { getCacheClient } from '@serverless-saas/cache';
 import { db, AGENT_ORCHESTRATOR_URL, INTERNAL_SERVICE_KEY, sanitizeTaskInput, makeLog, extractAttachments } from './taskWorker.utils';
+import { startTaskHeartbeat } from '../lib/task-heartbeat';
 
 export async function handleExecution(taskId: string, traceId: string) {
     const log = makeLog(traceId, taskId);
@@ -20,9 +21,7 @@ export async function handleExecution(taskId: string, traceId: string) {
         return;
     }
 
-    const watchdogKey = `task:watchdog:${taskId}`;
-    const cache = getCacheClient();
-    await cache.set(watchdogKey, JSON.stringify({ taskId, tenantId: task.tenantId, startedAt: Date.now() }), { ex: 600 });
+    await startTaskHeartbeat(getCacheClient() as never, taskId, task.tenantId);
 
     const { attachmentContext } = await extractAttachments(task.tenantId, task.attachmentFileIds ?? []);
 
