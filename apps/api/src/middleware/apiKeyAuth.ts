@@ -49,16 +49,18 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
         return c.json({ error: 'API key expired' }, 401);
     }
 
-    if (!apiKey.agentId) {
+    // Look up the agent this key belongs to via agents.apiKeyId — the link that's
+    // actually populated by every agent-creation path. apiKeys.agentId is never
+    // written anywhere in this repo and must not be used for this lookup.
+    const [agent] = await db.select().from(agents).where(eq(agents.apiKeyId, apiKey.id)).limit(1);
+
+    if (!agent) {
         console.log('401 reason: api key not linked to agent', { path: c.req.path, keyId: apiKey.id, tenantId: apiKey.tenantId });
         return c.json({ error: 'API key is not linked to an agent' }, 401);
     }
 
-    // Confirm agent is still active
-    const [agent] = await db.select().from(agents).where(eq(agents.id, apiKey.agentId!)).limit(1);
-
-    if (!agent || agent.status !== 'active') {
-        console.log('401 reason: agent not active', { path: c.req.path, agentId: apiKey.agentId, agentStatus: agent?.status });
+    if (agent.status !== 'active') {
+        console.log('401 reason: agent not active', { path: c.req.path, agentId: agent.id, agentStatus: agent.status });
         return c.json({ error: 'Agent is not active' }, 401);
     }
 
