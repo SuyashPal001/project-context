@@ -18,7 +18,18 @@ export const handler = async (event: SQSEvent): Promise<SQSBatchResponse> => {
   for (const record of event.Records) {
     const acquired = await store.acquire(record.messageId);
     if (!acquired) {
-      console.log(JSON.stringify({ level: 'info', message: 'idempotency_skip', messageId: record.messageId }));
+      // Distinguish "already done" from "someone else is mid-flight". Treating
+      // both as done is what silently destroyed jobs: a consumer killed without
+      // a catchable error left a claim behind, and every redelivery was then
+      // mistaken for a duplicate and deleted rather than retried.
+      if (await store.isProcessed(record.messageId)) {
+        console.log(JSON.stringify({ level: 'info', message: 'idempotency_skip_completed', messageId: record.messageId }));
+        continue;
+      }
+      // A live claim held by another invocation. Report it as failed so SQS
+      // redelivers later rather than dropping it on this consumer's behalf.
+      console.log(JSON.stringify({ level: 'info', message: 'idempotency_in_flight_requeue', messageId: record.messageId }));
+      failures.push({ itemIdentifier: record.messageId });
       continue;
     }
 
