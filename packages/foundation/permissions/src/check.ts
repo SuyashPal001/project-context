@@ -10,7 +10,7 @@ export const hasPermission = (
   action: PermissionAction,
 ): boolean => {
   if (!permissions || !Array.isArray(permissions)) return false;
-  
+
   return permissions.some((p) => {
     if (!p) return false;
     if (typeof p === 'string') {
@@ -18,6 +18,23 @@ export const hasPermission = (
     }
     return p.resource === resource && p.action === action;
   });
+};
+
+/**
+ * Narrow a set of key-scoped permission strings down to those also present
+ * in the current role's permission set. Used to enforce that an API key can
+ * never exceed either its own stored scope or its holder's current role.
+ */
+export const intersectPermissions = (
+  keyPermissions: string[],
+  rolePermissions: string[],
+): string[] => {
+  const roleSet = new Set(rolePermissions);
+  const result = new Set<string>();
+  for (const permission of keyPermissions) {
+    if (roleSet.has(permission)) result.add(permission);
+  }
+  return Array.from(result);
 };
 
 /**
