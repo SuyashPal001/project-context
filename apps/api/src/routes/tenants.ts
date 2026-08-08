@@ -6,7 +6,8 @@ import { roles } from '@serverless-saas/database/schema/authorization';
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { eq, isNull, and, sql } from 'drizzle-orm';
+import { eq, isNull, and, ne, sql } from 'drizzle-orm';
+import { resolveWorkspaceLimit } from './tenants.limit';
 import type { AppEnv } from '../types';
 
 const tenantCreateSchema = z.object({
@@ -27,7 +28,10 @@ const tenantsRoutes = new Hono<AppEnv>();
 tenantsRoutes.post('/', async (c) => {
     const requestContext = c.get('requestContext') as any;
     const userId = c.get('userId');
-    const entitlements = requestContext?.entitlements ?? {};
+    // Deliberately NOT `?? {}` — an absent map means entitlementsMiddleware did
+    // not run, and coercing it to an empty object is exactly what silently
+    // capped every paid plan at one workspace. Let resolveWorkspaceLimit throw.
+    const entitlements = requestContext?.entitlements;
 
     if (!userId) {
         return c.json({ error: 'Unauthorized' }, 401);
@@ -47,25 +51,32 @@ tenantsRoutes.post('/', async (c) => {
         return c.json({ error: 'Feature configuration missing', code: 'FEATURE_NOT_FOUND' }, 500);
     }
 
-    const entitlement = entitlements[feature.id];
-    
-    // Default limit if no entitlement found (e.g. free plan default)
-    const isUnlimited = entitlement?.unlimited ?? false;
-    const limit = entitlement?.valueLimit ?? 1;
+    const { unlimited: isUnlimited, limit } = resolveWorkspaceLimit(entitlements, feature.id);
 
     if (!isUnlimited) {
-        // Count workspaces where user is 'owner'
+        // Count workspaces the user actively owns.
+        //
+        // Both filters matter. Without the membership status filter, 'invited'
+        // and 'suspended' rows count toward the cap; without the tenant filter,
+        // workspaces the user already deleted keep counting. Either one lets the
+        // count drift upward permanently and lock a user out of creating a
+        // workspace they are entitled to. Mirrors the seat check in
+        // invitations.ts, which filters on status for the same reason.
         const result = await db
             .select({ count: sql<number>`cast(count(*) as integer)` })
             .from(memberships)
             .innerJoin(roles, eq(memberships.roleId, roles.id))
+            .innerJoin(tenants, eq(memberships.tenantId, tenants.id))
             .where(
                 and(
                     eq(memberships.userId, userId),
-                    eq(roles.name, 'owner')
+                    eq(roles.name, 'owner'),
+                    eq(memberships.status, 'active'),
+                    isNull(tenants.deletedAt),
+                    ne(tenants.status, 'deleted')
                 )
             );
-        
+
         const ownerCount = result[0]?.count || 0;
 
         if (ownerCount >= limit) {

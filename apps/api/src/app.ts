@@ -132,9 +132,13 @@ api.use('*', async (c, next) => {
 
 api.use('*', userUpsertMiddleware);
 
+// These two must run before tenant resolution — the caller legitimately has no
+// tenant yet (ADR-026). Anything that needs requestContext (tenant, permissions,
+// entitlements) must be registered BELOW the secure middleware block instead:
+// Hono runs the chain in registration order and a handler that returns a
+// Response ends it, so a route registered here never sees that middleware.
 api.route('/onboarding', onboardingRoutes);
 api.route('/invitations', invitationsPublicRoutes);
-api.route('/tenants', tenantsRoutes);
 
 api.use('*', apiKeyAuthMiddleware);
 
@@ -147,6 +151,9 @@ api.use('*', queryScopeMiddleware);
 api.use('*', usageRecordingMiddleware);
 
 // ── Secure foundation routes ──────────────────────────────────────────────────
+// /tenants lives here, not above: creating a workspace reads the plan's
+// entitlement, which entitlementsMiddleware only populates from this point on.
+api.route('/tenants', tenantsRoutes);
 api.route('/auth', authRoutes);
 api.route('/members', membersRoutes);
 api.route('/members', memberInviteRoutes);
