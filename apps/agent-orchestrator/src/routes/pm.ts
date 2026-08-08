@@ -3,6 +3,7 @@ import { RequestContext, MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-con
 import { validateToken } from '../auth.js'
 import { mastra } from '../mastra/index.js'
 import { getAllowedOrigin } from '../types.js'
+import { isRunOwnedByTenant, type RunLookup } from './run-ownership.js'
 
 // ─── CORS helpers ─────────────────────────────────────────────────────────────
 
@@ -76,6 +77,22 @@ pmRouter.post('/pm/resume', async (c) => {
     runId: string; stepId: string; answers?: string; revise?: string; approved?: boolean; confirmed?: boolean
   }
   if (!runId || !stepId) return c.json({ error: 'runId and stepId required' }, 400)
+
+  // A runId is an identifier, not a credential — it is handed to the client in
+  // every suspended-phase response and persisted into message artifactRefs.
+  // Without this check any authenticated user holding another tenant's runId
+  // could resume their workflow and answer its human-approval gate.
+  // 404 rather than 403 so the endpoint cannot be used to probe run existence.
+  const owned = await isRunOwnedByTenant(
+    mastra.getStorage() as unknown as RunLookup,
+    'pm-workflow',
+    runId,
+    tenantId,
+  )
+  if (!owned) {
+    console.warn('[pm/resume] refused resume of unowned run', { runId, tenantId })
+    return c.json({ error: 'Not found' }, 404, hdrs)
+  }
 
   const requestContext = new RequestContext()
   requestContext.set(MASTRA_RESOURCE_ID_KEY, tenantId)
