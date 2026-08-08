@@ -167,7 +167,7 @@ async function handleSession(
         requestContext.set('tenantId', tenantId)
         requestContext.set('agentId', agentId)
         if (folderId) requestContext.set('folderId', folderId)
-        mcpClient = getMCPClientForTenant(tenantId)
+        mcpClient = getMCPClientForTenant(tenantId, agentId)
         requestContext.set('__mcpClient', mcpClient as any)
 
         const thinkingBudget = getThinkingBudget(effectiveMessage)

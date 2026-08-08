@@ -3,6 +3,7 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { google } from 'googleapis';
 import { getCredentials, refreshIfExpired, checkPolicy } from '../db/credentials';
+import { assertActionAllowed } from './policy-guard';
 
 interface ToolContext {
   tenantId: string;
@@ -17,19 +18,21 @@ async function getGmailClient(tenantId: string) {
   return google.gmail({ version: 'v1', auth });
 }
 
+/**
+ * Enforce agent policy before any Gmail action, including reads.
+ *
+ * Delegates to assertActionAllowed, which fails closed when agent context is
+ * absent — the previous implementation returned early in that case, so omitting
+ * the optional x-agent-id header skipped the block list and the human-approval
+ * gate entirely. Translates the denial into the MCP error shape.
+ */
 async function guardPolicy(ctx: ToolContext, action: string): Promise<void> {
-  if (!ctx.agentId) return;
-  const policy = await checkPolicy(ctx.tenantId, ctx.agentId, action);
-  if (policy.blocked) {
+  try {
+    await assertActionAllowed(ctx, action, checkPolicy);
+  } catch (err) {
     throw new McpError(
       ErrorCode.InvalidRequest,
-      `Action '${action}' is blocked by agent policy`
-    );
-  }
-  if (policy.requiresApproval) {
-    throw new McpError(
-      ErrorCode.InvalidRequest,
-      `Action '${action}' requires human approval before execution`
+      err instanceof Error ? err.message : `Action '${action}' denied`
     );
   }
 }
@@ -84,6 +87,7 @@ export function registerGmailTools(server: McpServer, ctx: ToolContext): void {
       messageId: z.string().describe('Gmail message ID to read'),
     },
     async ({ messageId }) => {
+      await guardPolicy(ctx, 'GMAIL_READ_EMAIL');
       try {
         const gmail = await getGmailClient(ctx.tenantId);
         const result = await gmail.users.messages.get({
@@ -133,6 +137,7 @@ export function registerGmailTools(server: McpServer, ctx: ToolContext): void {
       maxResults: z.number().optional().default(10),
     },
     async ({ query, maxResults }) => {
+      await guardPolicy(ctx, 'GMAIL_SEARCH_EMAILS');
       try {
         const gmail = await getGmailClient(ctx.tenantId);
         const listResult = await gmail.users.messages.list({

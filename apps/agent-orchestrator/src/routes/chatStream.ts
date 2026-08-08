@@ -143,7 +143,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('agentId', agentId)
     requestContext.set('userId', internalUserId)
 
-    const mcpClient = getMCPClientForTenant(tenantId)
+    const mcpClient = getMCPClientForTenant(tenantId, agentId)
     requestContext.set('__mcpClient', mcpClient as any)
 
     const [agentSkill, agentName] = await Promise.all([

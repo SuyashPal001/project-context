@@ -13,6 +13,7 @@ import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
 import { createViolationHandler } from '../guardrails.js'
 import { makeAppPool } from '../../db.js'
+import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -77,6 +78,10 @@ function getExa(): ExaClass {
 }
 
 export const SERVER_TOOLS = {
+  // RAG over the tenant's own uploaded corpus. Seeded prompts instruct agents to
+  // "always call retrieve_documents"; without this registration that instruction
+  // referred to a tool that did not exist and retrieval silently never ran.
+  retrieve_documents: retrieveDocumentsTool,
   internet_search: createTool({
     id: 'internet_search',
     description:
@@ -268,7 +273,7 @@ export const platformAgent = new Agent({
 
     // --- MCP path (backup / default when Composio is disabled or errored) ---
     const storedClient = requestContext.get('__mcpClient') as MCPClient | undefined
-    const mcpClient = storedClient ?? getMCPClientForTenant(tenantId)
+    const mcpClient = storedClient ?? getMCPClientForTenant(tenantId, requestContext.get('agentId') as string | undefined)
 
     const mcpTools = await getCachedMcpTools(mcpClient, tenantId)
 

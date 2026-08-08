@@ -58,7 +58,7 @@ export async function createTenantAgent(
   // Stored in requestContext so platformAgent's tools resolver reuses the same
   // instance rather than creating a second one. MCPClient is not JSON-serializable;
   // RequestContext.toJSON() silently skips non-serializable values (safe).
-  const mcpClient = getMCPClientForTenant(config.tenantId)
+  const mcpClient = getMCPClientForTenant(config.tenantId, config.agentId)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   requestContext.set('__mcpClient', mcpClient as any)
 
