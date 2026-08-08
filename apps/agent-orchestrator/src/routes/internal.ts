@@ -7,6 +7,7 @@ import { gateChunks, fastGateChunks, ScoredChunk } from '../rag/relevanceGate.js
 import { filterPII } from '../pii-filter.js'
 import { saveUserMessage, saveAssistantMessage } from '../persistence.js'
 import {
+import { isInternalServiceKey } from '../service-key.js'
   sessions, lastRagResult,
 } from '../types.js'
 
@@ -41,7 +42,7 @@ internalRouter.post('/agent-response', async (c) => {
 
 internalRouter.post('/rag/retrieve', async (c) => {
   const serviceKey = c.req.header('X-Service-Key')
-  if (!serviceKey || serviceKey !== process.env.INTERNAL_SERVICE_KEY) {
+  if (!isInternalServiceKey(serviceKey)) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 

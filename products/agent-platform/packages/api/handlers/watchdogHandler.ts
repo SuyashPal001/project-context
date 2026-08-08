@@ -39,11 +39,22 @@ export const handler: ScheduledHandler = async () => {
     const cache = getCacheClient();
     const stalled: typeof inProgressTasks = [];
 
-    for (const task of inProgressTasks) {
-      const exists = await cache.exists(taskHeartbeatKey(task.id));
-      if (!exists) {
-        stalled.push(task);
-      }
+    // Upstash is HTTP-based, so one await per task is one HTTPS round trip.
+    // Serially that is O(N) round trips every 5 minutes against a 120s Lambda
+    // timeout — fine at today's volume, a timeout as task count grows. Batched
+    // so the wall-clock cost scales with batches rather than tasks, while
+    // staying bounded enough not to open hundreds of sockets at once.
+    const HEARTBEAT_CHECK_BATCH = 25;
+    for (let i = 0; i < inProgressTasks.length; i += HEARTBEAT_CHECK_BATCH) {
+      const batch = inProgressTasks.slice(i, i + HEARTBEAT_CHECK_BATCH);
+      const present = await Promise.all(
+        batch.map((task) => cache.exists(taskHeartbeatKey(task.id)).catch(() => 1)),
+      );
+      batch.forEach((task, idx) => {
+        // On a cache error we assume the heartbeat is alive: wrongly blocking a
+        // running task is worse than deferring the check to the next sweep.
+        if (!present[idx]) stalled.push(task);
+      });
     }
 
     if (stalled.length > 0) {

@@ -4,6 +4,7 @@ import { checkMessageQuota, fetchAgentSkill, fetchConnectedProviders } from '../
 import { createTenantAgent } from '../mastra/index.js'
 import { filterPII } from '../pii-filter.js'
 import { fetchTaskComments } from './tasks.helpers.js'
+import { isInternalServiceKey } from '../service-key.js'
 
 // ─── Task planning endpoint ───────────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ export const documentsRouter = new Hono()
 
 documentsRouter.post('/api/tasks/plan', async (c) => {
   const serviceKey = c.req.header('x-internal-service-key') ?? ''
-  if (!serviceKey || serviceKey !== INTERNAL_SERVICE_KEY) {
+  if (!isInternalServiceKey(serviceKey)) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 

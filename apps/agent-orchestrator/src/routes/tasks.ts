@@ -8,6 +8,7 @@ import { runMastraTaskSteps } from './tasks.execution.js'
 import type { PlanResult } from './tasks.execution.js'
 import { runMastraWorkflowSteps } from './tasks.workflow.js'
 import { callInternalTaskApi, postTaskComment } from './tasks.helpers.js'
+import { isInternalServiceKey } from '../service-key.js'
 
 // Re-export for documents.ts and any other consumers
 export { fetchTaskComments } from './tasks.helpers.js'
@@ -20,7 +21,7 @@ export const tasksRouter = new Hono()
 
 tasksRouter.post('/api/tasks/execute', async (c) => {
   const serviceKey = c.req.header('x-internal-service-key') ?? ''
-  if (!serviceKey || serviceKey !== INTERNAL_SERVICE_KEY) {
+  if (!isInternalServiceKey(serviceKey)) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
@@ -88,7 +89,7 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
 
 tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
   const serviceKey = c.req.header('x-internal-service-key') ?? ''
-  if (!serviceKey || serviceKey !== INTERNAL_SERVICE_KEY) {
+  if (!isInternalServiceKey(serviceKey)) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
@@ -201,7 +202,7 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
 
 tasksRouter.post('/api/workflows/execute', async (c) => {
   const serviceKey = c.req.header('x-internal-service-key') ?? ''
-  if (!serviceKey || serviceKey !== INTERNAL_SERVICE_KEY) {
+  if (!isInternalServiceKey(serviceKey)) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 

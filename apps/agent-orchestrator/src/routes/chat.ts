@@ -5,6 +5,7 @@ import { checkMessageQuota, fetchWorkingMemory } from '../usage.js'
 import { filterPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
 import {
+import { isInternalServiceKey } from '../service-key.js'
   Attachment,
   getAllowedOrigin, INTERNAL_SERVICE_KEY, API_BASE_URL,
   sseApprovalChannels,
@@ -32,7 +33,7 @@ chatRouter.options('/api/chat', (c) => {
 chatRouter.post('/api/chat', async (c) => {
   // 1. Auth — same JWT validation as WebSocket upgrade
   const serviceKey = c.req.header('X-Service-Key') ?? ''
-  const isInternalCall = serviceKey !== '' && serviceKey === INTERNAL_SERVICE_KEY
+  const isInternalCall = isInternalServiceKey(serviceKey)
 
   let payload: AuthPayload
   let idToken = ''
