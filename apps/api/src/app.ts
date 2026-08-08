@@ -8,11 +8,11 @@ import { onboardingRoutes } from './routes/onboarding';
 import { apiKeyAuthMiddleware } from './middleware/apiKeyAuth';
 import { tenantResolutionMiddleware } from './middleware/tenantResolution';
 import { sessionValidationMiddleware } from './middleware/sessionValidation';
+import { isSessionValidationExempt } from './middleware/sessionExempt';
 import { entitlementsMiddleware } from './middleware/entitlements';
 import { permissionsMiddleware } from './middleware/permissions';
 import { queryScopeMiddleware } from './middleware/queryScope';
 import { authRoutes, authPublicRoutes } from './routes/auth';
-import { except } from 'hono/combine';
 import { invitationsPublicRoutes, memberInviteRoutes } from './routes/invitations';
 import { membersRoutes } from './routes/members';
 import { rolesRoutes } from './routes/roles';
@@ -144,7 +144,12 @@ api.use('*', apiKeyAuthMiddleware);
 
 // ── Secure middleware ─────────────────────────────────────────────────────────
 api.use('*', tenantResolutionMiddleware);
-api.use('*', except(['/auth/me', '/auth/tenants'], sessionValidationMiddleware));
+// Not Hono's `except` with bare paths: it matches c.req.path, the FULL path,
+// so '/auth/me' never matched '/api/v1/auth/me' and the exemption did nothing.
+api.use('*', async (c, next) => {
+    if (isSessionValidationExempt(c.req.path)) return next();
+    return sessionValidationMiddleware(c, next);
+});
 api.use('*', entitlementsMiddleware);
 api.use('*', permissionsMiddleware);
 api.use('*', queryScopeMiddleware);
