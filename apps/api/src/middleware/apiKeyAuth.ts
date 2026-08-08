@@ -6,6 +6,7 @@ import { apiKeys } from '@serverless-saas/database/schema/access';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
 import { rolePermissions, permissions } from '@serverless-saas/database/schema/authorization';
+import { intersectPermissions } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => {
@@ -83,19 +84,29 @@ export const apiKeyAuthMiddleware = createMiddleware<AppEnv>(async (c, next) => 
         .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
         .where(eq(rolePermissions.roleId, membership.roleId));
 
-    // Array of objects — same format used across the whole platform
-    const resolvedPermissions = permissionRows.map((p: { resource: string; action: string }) =>
+    // Array of strings, "resource:action" — same format used across the whole platform
+    const rolePermissionStrings = permissionRows.map((p: { resource: string; action: string }) =>
         `${p.resource}:${p.action}`
     );
 
-    // Set apiKeyContext — the correct context type for programmatic access
-    // Routes read this the same way regardless of whether caller is human or agent
+    // Narrow to what this key was actually scoped to at creation. Computed fresh
+    // on every request so a later role downgrade also narrows the key automatically.
+    const effectivePermissions = intersectPermissions(apiKey.permissions, rolePermissionStrings);
+
+    // Set apiKeyContext — key/agent metadata for other consumers
     c.set('apiKeyContext', {
         keyId: apiKey.id,
         tenantId: apiKey.tenantId,
         type: apiKey.type,
-        permissions: resolvedPermissions,
+        permissions: effectivePermissions,
     });
+
+    // Set requestContext.permissions — the field every route handler's
+    // hasPermission() check reads, regardless of JWT vs API key auth
+    const requestContext = (c.get('requestContext' as never) as any) ?? {};
+    requestContext.permissions = effectivePermissions;
+    c.set('requestContext' as never, requestContext as never);
+
     c.set('apiKeyId', apiKey.id);
     c.set('agentId', agent.id);
     c.set('actorType', 'agent');
