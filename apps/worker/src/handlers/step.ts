@@ -12,6 +12,7 @@ interface NotificationStepEvent {
   payload: Record<string, unknown>;
   stepContext: Record<string, unknown>;
   triggerId: string;
+  remainingDelaySeconds?: number;
 }
 
 export async function handleStep(body: Record<string, unknown>): Promise<void> {
@@ -49,5 +50,7 @@ export async function handleStep(body: Record<string, unknown>): Promise<void> {
     stepContext: event.stepContext,
     triggerId: event.triggerId,
     startFromOrder: event.startFromStepOrder,
+    // Present only while chaining through a delay longer than SQS allows.
+    remainingDelaySeconds: event.remainingDelaySeconds,
   });
 }

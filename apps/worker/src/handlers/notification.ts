@@ -9,6 +9,7 @@ import {
 import { resolveRecipientsByPermission } from '../lib/recipients';
 import { checkPreference } from '../lib/preferences';
 import { deliverEmail, deliverInApp } from '../lib/delivery';
+import { delaySecondsFor, planDelayHop } from '../lib/delay-chain';
 
 const sqs = new SQSClient({ region: process.env.AWS_REGION ?? 'ap-south-1' });
 
@@ -52,6 +53,8 @@ export async function walkSteps(params: {
   stepContext: Record<string, unknown>;
   triggerId: string;
   startFromOrder?: number;
+  /** Set when resuming mid-chain through a delay longer than SQS allows. */
+  remainingDelaySeconds?: number;
 }): Promise<void> {
   const {
     steps,
@@ -136,47 +139,42 @@ export async function walkSteps(params: {
         .where(eq(notificationJobs.id, jobId));
     } else if (step.type === 'delay') {
       const config = step.config as DelayConfig;
-      const multipliers: Record<string, number> = { minutes: 60, hours: 3600, days: 86400 };
-      const delaySeconds = config.duration * (multipliers[config.unit] ?? 60);
       const nextOrder = step.order + 1;
 
-      if (delaySeconds <= 900) {
-        await sqs.send(
-          new SendMessageCommand({
-            QueueUrl: process.env.SQS_PROCESSING_QUEUE_URL!,
-            MessageBody: JSON.stringify({
-              type: 'notification.step',
-              tenantId,
-              workflowId,
-              recipientId,
-              startFromStepOrder: nextOrder,
-              payload: data,
-              stepContext,
-              triggerId,
-            }),
-            DelaySeconds: delaySeconds,
+      // SQS caps DelaySeconds at 900, so anything longer is chained: this hop
+      // waits the maximum and carries the remainder, and the resumed step
+      // re-enters here until nothing is left. Previously a delay over 15 minutes
+      // wrote a 'pending' row that nothing ever read, so the workflow stopped
+      // dead and every step after the delay silently never ran.
+      const totalSeconds = params.remainingDelaySeconds ?? delaySecondsFor(config);
+      const hop = planDelayHop(totalSeconds);
+
+      await sqs.send(
+        new SendMessageCommand({
+          QueueUrl: process.env.SQS_PROCESSING_QUEUE_URL!,
+          MessageBody: JSON.stringify({
+            type: 'notification.step',
+            tenantId,
+            workflowId,
+            recipientId,
+            // While time remains, resume AT this same delay step so the chain
+            // continues; only once it is exhausted do we advance past it.
+            startFromStepOrder: hop.remainingSeconds > 0 ? step.order : nextOrder,
+            remainingDelaySeconds: hop.remainingSeconds > 0 ? hop.remainingSeconds : undefined,
+            payload: data,
+            stepContext,
+            triggerId,
           }),
-        );
+          DelaySeconds: hop.delaySeconds,
+        }),
+      );
 
-        console.log('Delay step enqueued', { recipientId, delaySeconds, nextOrder });
-      } else {
-        await db.insert(notificationJobs).values({
-          workflowId,
-          stepId: step.id,
-          tenantId,
-          recipientId,
-          recipientType: 'human',
-          scheduledAt: new Date(Date.now() + delaySeconds * 1000),
-          status: 'pending',
-          payload: { ...data, _resumeFromOrder: nextOrder, _stepContext: stepContext, _triggerId: triggerId },
-          stepContext,
-        });
-
-        console.log('Long delay job created — EventBridge pickup not yet implemented', {
-          recipientId,
-          delaySeconds,
-        });
-      }
+      console.log('Delay step enqueued', {
+        recipientId,
+        delaySeconds: hop.delaySeconds,
+        remainingSeconds: hop.remainingSeconds,
+        nextOrder,
+      });
 
       // Remaining steps resume after delay
       return;
