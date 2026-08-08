@@ -54,23 +54,33 @@ export function encryptSecret(plain: string, salt: string = 'platform'): string 
 export function decryptSecret(encrypted: string, salt: string = 'platform'): string {
   if (!encrypted) return encrypted;
 
-  // Try new AES-256-GCM format first
+  // Detect the new AES-256-GCM format WITHOUT swallowing decryption failures.
+  //
+  // Only "this is not the new format" may fall through to the compat paths. A
+  // value that IS the new format but fails to decrypt means the wrong key/salt
+  // or a tampered ciphertext, and GCM's authentication tag exists precisely to
+  // surface that — catching it and returning the input as "plaintext" would hand
+  // the caller ciphertext dressed up as a secret and discard the integrity
+  // guarantee the algorithm was chosen for.
+  let parsed: { iv?: string; authTag?: string; data?: string } | null = null;
   try {
-    const parsed = JSON.parse(Buffer.from(encrypted, 'base64').toString('utf8'));
-    if (parsed.iv && parsed.authTag && parsed.data) {
-      const masterKey = process.env.TOKEN_ENCRYPTION_KEY;
-      if (!masterKey) throw new Error('TOKEN_ENCRYPTION_KEY not set');
-      const key = scryptSync(masterKey, salt, 32);
-      const decipher = createDecipheriv(
-        'aes-256-gcm',
-        key,
-        Buffer.from(parsed.iv, 'base64')
-      );
-      decipher.setAuthTag(Buffer.from(parsed.authTag, 'base64'));
-      return decipher.update(Buffer.from(parsed.data, 'base64')) + decipher.final('utf8');
-    }
+    parsed = JSON.parse(Buffer.from(encrypted, 'base64').toString('utf8'));
   } catch {
-    // Not new format — fall through to backward compat paths
+    parsed = null; // genuinely not the new envelope
+  }
+
+  if (parsed && parsed.iv && parsed.authTag && parsed.data) {
+    const masterKey = process.env.TOKEN_ENCRYPTION_KEY;
+    if (!masterKey) throw new Error('TOKEN_ENCRYPTION_KEY not set');
+    const key = scryptSync(masterKey, salt, 32);
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      key,
+      Buffer.from(parsed.iv, 'base64')
+    );
+    decipher.setAuthTag(Buffer.from(parsed.authTag, 'base64'));
+    // Throws on auth-tag mismatch — intentionally propagated.
+    return decipher.update(Buffer.from(parsed.data, 'base64')) + decipher.final('utf8');
   }
 
   // Backward compat: old enc: prefix (base64)

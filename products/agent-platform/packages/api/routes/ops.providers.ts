@@ -7,6 +7,7 @@ import { isPlatformAdmin } from './ops.guard';
 import { getLogger } from '@serverless-saas/logger';
 import type { Context } from 'hono';
 import type { AppEnv } from '@serverless-saas/types';
+import { encryptSecret } from '@serverless-saas/ai/src/utils/encryption';
 
 const logger = getLogger({ serviceName: 'ops-api' });
 
@@ -63,12 +64,17 @@ export async function handleCreateProvider(c: Context<AppEnv>) {
 
     try {
         const { apiKey, ...rest } = result.data;
+        // AES-256-GCM, not base64. The column name says "encrypted" and the
+        // logger masks it as a secret; storing a reversible encoding made every
+        // provider credential recoverable from any backup with `base64 -d`.
         const [created] = await db.insert(llmProviders).values({
-            ...rest, apiKeyEncrypted: Buffer.from(apiKey).toString('base64'), isPlatform: true, status: 'live',
+            ...rest, apiKeyEncrypted: encryptSecret(apiKey), isPlatform: true, status: 'live',
         }).returning();
 
         logger.info('ops_provider_created', { traceId, providerId: created.id, provider: created.provider, model: created.model, actorId: c.get('userId') });
-        return c.json({ data: created }, 201);
+        // Never echo the stored credential back, even to a platform admin.
+        const { apiKeyEncrypted: _omitted, ...safe } = created;
+        return c.json({ data: safe }, 201);
     } catch (err) {
         logger.error('ops_create_provider_failed', { traceId, provider: result.data.provider, error: err as Error });
         return c.json({ error: 'Failed to create provider', code: 'QUERY_ERROR' }, 500);
