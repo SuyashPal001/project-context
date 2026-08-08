@@ -7,7 +7,7 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { agents, agentWorkflows } from '@serverless-saas/agent-schema/agents';
 import { webhookEndpoints } from '@serverless-saas/database/schema/webhooks';
-import { getCacheClient } from '@serverless-saas/cache';
+import { getCacheClient, permissionSetKey } from '@serverless-saas/cache';
 import { deleteUser } from '@serverless-saas/auth';
 import type { Context } from 'hono';
 import type { AppEnv } from '../types';
@@ -94,7 +94,7 @@ export async function handleDeleteAccount(c: Context<AppEnv>) {
                 await cache.set(`session:blacklist:${jti}`, '1', { ex: ttl > 0 ? ttl : 1 });
             }
             for (const m of userMemberships) {
-                await cache.del(`tenant:${m.tenantId}:user:${userId}:perms`);
+                await cache.del(permissionSetKey(m.tenantId, userId));
             }
         } catch (cacheErr) { console.error('Cache cleanup error during account deletion:', cacheErr); }
 

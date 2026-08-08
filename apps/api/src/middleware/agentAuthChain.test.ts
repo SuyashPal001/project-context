@@ -25,7 +25,8 @@ const mockRolePermissionRows = [
 ]
 const mockTenantRow = { id: 'tenant-1', slug: 'acme', status: 'active' as const }
 
-vi.mock('@serverless-saas/cache', () => ({
+vi.mock('@serverless-saas/cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@serverless-saas/cache')>()),
   getCacheClient: () => ({ get: () => Promise.resolve(null), set: () => Promise.resolve() }),
 }))
 

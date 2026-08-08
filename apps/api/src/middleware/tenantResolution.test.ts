@@ -4,7 +4,10 @@ import { tenantResolutionMiddleware } from './tenantResolution'
 
 const mockTenantRow = { id: 'tenant-1', slug: 'acme', status: 'active' as const }
 
-vi.mock('@serverless-saas/cache', () => ({
+vi.mock('@serverless-saas/cache', async (importOriginal) => ({
+  // Spread the real module so key helpers (tenantContextKey, permissionSetKey)
+  // and constants (TTL) stay available; only the client is faked.
+  ...(await importOriginal<typeof import('@serverless-saas/cache')>()),
   getCacheClient: () => ({
     get: () => Promise.resolve(null),
     set: () => Promise.resolve(),

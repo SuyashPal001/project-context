@@ -3,7 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { planEntitlements, tenantFeatureOverrides } from '@serverless-saas/database/schema/entitlements';
-import { getCacheClient } from '@serverless-saas/cache';
+import { getCacheClient, entitlementSetKey } from '@serverless-saas/cache';
 import type { AppEnv } from '../types';
 
 // 15 minutes — same TTL as tenant context cache
@@ -19,7 +19,7 @@ export const entitlementsMiddleware = createMiddleware<AppEnv>(async (c, next) =
 
     // Cache check — entitlements are expensive to compute (3 DB queries)
     // Key convention: tenant:{tenantId}:entitlements
-    const cacheKey = `tenant:${tenantId}:entitlements`;
+    const cacheKey = entitlementSetKey(tenantId);
     const cached = await getCacheClient().get(cacheKey);
 
     if (cached) {

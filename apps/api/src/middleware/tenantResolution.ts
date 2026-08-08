@@ -2,7 +2,7 @@ import { createMiddleware } from 'hono/factory';
 import { eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
-import { getCacheClient } from '@serverless-saas/cache';
+import { getCacheClient, tenantContextKey } from '@serverless-saas/cache';
 import type { AppEnv } from '../types';
 
 // Routes accessible before onboarding is complete (ADR-026)
@@ -47,7 +47,7 @@ export const tenantResolutionMiddleware = createMiddleware<AppEnv>(async (c, nex
 
     // Cache check — avoid DB round trip on every request
     // Key convention: tenant:{tenantId}:context (from cache key ADR)
-    const cacheKey = `tenant:${tenantId}:context`;
+    const cacheKey = tenantContextKey(tenantId);
     const cached = await getCacheClient().get(cacheKey);
 
     if (cached) {

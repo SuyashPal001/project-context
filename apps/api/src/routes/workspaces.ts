@@ -9,7 +9,7 @@ import { agents, agentWorkflows } from '@serverless-saas/agent-schema/agents';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { webhookEndpoints } from '@serverless-saas/database/schema/webhooks';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { getCacheClient } from '@serverless-saas/cache';
+import { getCacheClient, permissionSetKey, tenantContextKey, entitlementSetKey } from '@serverless-saas/cache';
 import type { AppEnv } from '../types';
 
 export const workspacesRoutes = new Hono<AppEnv>();
@@ -197,7 +197,7 @@ workspacesRoutes.delete('/:tenantId/members/me', async (c) => {
     // Flush Redis permission cache for this user in this tenant
     try {
         const cache = await getCacheClient();
-        await cache.del(`tenant:${activeTenantId}:user:${userId}:perms`);
+        await cache.del(permissionSetKey(activeTenantId, userId));
     } catch (e) {
         console.error('Cache cleanup error on leave:', e);
     }
@@ -277,9 +277,9 @@ workspacesRoutes.delete('/:tenantId', async (c) => {
     // ── 5. Flush Redis caches for this tenant ─────────────────────────────────
     try {
         const cache = await getCacheClient();
-        await cache.del(`tenant:${activeTenantId}:context`);
-        await cache.del(`tenant:${activeTenantId}:entitlements`);
-        await cache.del(`tenant:${activeTenantId}:user:${userId}:perms`);
+        await cache.del(tenantContextKey(activeTenantId));
+        await cache.del(entitlementSetKey(activeTenantId));
+        await cache.del(permissionSetKey(activeTenantId, userId));
     } catch (e) {
         console.error('Cache cleanup error on delete workspace:', e);
     }
