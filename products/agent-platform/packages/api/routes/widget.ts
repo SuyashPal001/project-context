@@ -6,7 +6,20 @@ import { conversations, messages } from '@serverless-saas/agent-schema/conversat
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { runMessageRelay, RelayError } from './_orchestrator';
+import { getCacheClient } from '@serverless-saas/cache';
+import { overPublicRateLimit, PUBLIC_LIMITS } from '../lib/public-rate-limit';
 import type { AppEnv } from '@serverless-saas/types';
+
+// These routes are mounted on the unauthenticated router and so bypass the
+// middleware chain's rate limiting. Sending a message performs a real, metered
+// LLM call, and tenantId/agentId are visible in every embed snippet — so
+// without this ceiling anyone viewing a client's site can script unlimited
+// billable inference against their agent.
+const TOO_MANY = { error: 'Too many requests. Please try again later.', code: 'RATE_LIMIT_EXCEEDED', retryAfter: 60 } as const;
+
+async function throttled(c: any, tenantId: string, bucket: string, limit: number): Promise<boolean> {
+    return overPublicRateLimit(getCacheClient() as never, c.req.raw.headers, tenantId, bucket, limit);
+}
 
 export const widgetRoutes = new Hono<AppEnv>();
 
@@ -43,6 +56,10 @@ async function resolveConversation(conversationId: string, tenantId: string) {
 // POST /widget/:tenantId/:agentId/conversations — create conversation
 widgetRoutes.post('/:tenantId/:agentId/conversations', async (c) => {
     const { tenantId, agentId } = c.req.param();
+
+    if (await throttled(c, tenantId, 'widget-create', PUBLIC_LIMITS.widgetCreate)) {
+        return c.json(TOO_MANY, 429);
+    }
 
     const schema = z.object({
         externalUserId: z.string().optional(),
@@ -85,6 +102,10 @@ widgetRoutes.post('/:tenantId/:agentId/conversations', async (c) => {
 widgetRoutes.get('/:tenantId/conversations/:conversationId/messages', async (c) => {
     const { tenantId, conversationId } = c.req.param();
 
+    if (await throttled(c, tenantId, 'widget-read', PUBLIC_LIMITS.widgetRead)) {
+        return c.json(TOO_MANY, 429);
+    }
+
     const tenant = await resolveTenant(tenantId);
     if (!tenant) {
         return c.json({ error: 'Tenant not found', code: 'NOT_FOUND' }, 404);
@@ -113,6 +134,10 @@ widgetRoutes.get('/:tenantId/conversations/:conversationId/messages', async (c) 
 // POST /widget/:tenantId/conversations/:conversationId/messages — send message (full relay)
 widgetRoutes.post('/:tenantId/conversations/:conversationId/messages', async (c) => {
     const { tenantId, conversationId } = c.req.param();
+
+    if (await throttled(c, tenantId, 'widget-send', PUBLIC_LIMITS.widgetSend)) {
+        return c.json(TOO_MANY, 429);
+    }
 
     const schema = z.object({ content: z.string().min(1) });
     const result = schema.safeParse(await c.req.json().catch(() => ({})));
