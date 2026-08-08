@@ -20,7 +20,7 @@ async function embedQuery(query: string): Promise<number[] | null> {
   try {
     const resp = await fetch(`${proxyUrl}/v1/embeddings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
       body: JSON.stringify({ model: 'text-embedding-004', input: query }),
     })
     if (!resp.ok) {

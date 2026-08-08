@@ -15,7 +15,7 @@ const gatewayUrl = (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const gateway = createOpenAICompatible({
   name: 'inference-gateway',
   baseURL: gatewayUrl,
-  apiKey: 'placeholder',
+  apiKey: process.env.INTERNAL_SERVICE_KEY ?? '',
 })
 
 // Private gateway instance — adds x-data-classification: restricted header.
@@ -23,7 +23,7 @@ const gateway = createOpenAICompatible({
 const gatewayPrivate = createOpenAICompatible({
   name: 'inference-gateway-private',
   baseURL: gatewayUrl,
-  apiKey: 'placeholder',
+  apiKey: process.env.INTERNAL_SERVICE_KEY ?? '',
   headers: { 'x-data-classification': 'restricted' },
 })
 

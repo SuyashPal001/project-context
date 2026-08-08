@@ -59,7 +59,10 @@ export async function handleObsInferenceLatency(c: Context<AppEnv>) {
   if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden' }, 403)
   const gatewayUrl = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
   try {
-    const res = await fetch(`${gatewayUrl}/metrics`, { signal: AbortSignal.timeout(3000) })
+    const res = await fetch(`${gatewayUrl}/metrics`, {
+      headers: { 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+      signal: AbortSignal.timeout(3000),
+    })
     if (!res.ok) return c.json({ adapters: [] })
     return c.json({ adapters: parseInferenceMetrics(await res.text()) })
   } catch {

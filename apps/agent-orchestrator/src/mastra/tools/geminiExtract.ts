@@ -33,7 +33,7 @@ function makeGatewayBody(imageBase64: string, safeMime: string, prompt: string):
 
 async function callGateway(imageBase64: string, safeMime: string, prompt: string): Promise<Response> {
   const url = `${INFERENCE_GATEWAY_URL}/v1/chat/completions`
-  const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: makeGatewayBody(imageBase64, safeMime, prompt) }
+  const opts = { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' }, body: makeGatewayBody(imageBase64, safeMime, prompt) }
   for (let attempt = 0; attempt < 4; attempt++) {
     const response = await fetch(url, opts)
     if (response.status !== 503) return response
@@ -41,7 +41,7 @@ async function callGateway(imageBase64: string, safeMime: string, prompt: string
     console.warn(`[geminiExtract] 503 on attempt ${attempt + 1}, retrying in ${delay / 1000}s`)
     await new Promise(r => setTimeout(r, delay))
   }
-  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: makeGatewayBody(imageBase64, safeMime, prompt) })
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' }, body: makeGatewayBody(imageBase64, safeMime, prompt) })
 }
 
 export async function geminiExtract(imageBase64: string, mimeType: string, documentType: string, tenantId?: string): Promise<{ fields: Array<{ key: string; label: string; value: string; confidence: number; page?: number }> }> {

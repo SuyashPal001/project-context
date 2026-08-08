@@ -91,7 +91,7 @@ export function getMastraVector(): PgVector {
 // Embedder — routes through the Inference Gateway (same as LLM models).
 const google = createGoogleGenerativeAI({
   baseURL: (process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001') + '/v1',
-  apiKey: process.env.GEMINI_API_KEY ?? 'placeholder',
+  apiKey: process.env.INTERNAL_SERVICE_KEY ?? '',
 })
 export const embedder = google.embedding('gemini-embedding-001')
 

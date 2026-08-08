@@ -14,6 +14,7 @@ import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
 import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker } from './router';
 import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
+import { isAuthorizedCaller, extractServiceKey } from './auth';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -299,6 +300,21 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
     return;
   }
 
+  // ── Authentication ────────────────────────────────────────────────────────
+  // Everything past this point either spends money on model inference or
+  // discloses operational detail, and this process forwards to Vertex using the
+  // VM's own GCP credentials. Only /health above is public, so a liveness probe
+  // still works. Placed before route dispatch so a new route cannot be added
+  // unprotected by accident.
+  if (!isAuthorizedCaller(extractServiceKey(req.headers))) {
+    console.warn(`[inference-gateway] 401 unauthenticated: ${req.method} ${req.url}`);
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: { message: 'Unauthorized', type: 'invalid_request_error' },
+    }));
+    return;
+  }
+
   // Prometheus metrics scrape endpoint
   if (req.method === 'GET' && req.url === '/metrics') {
     const body = renderMetrics({
@@ -349,8 +365,24 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   res.end(JSON.stringify({ error: { message: 'Not found', type: 'invalid_request_error' } }));
 });
 
-server.listen(PORT, () => {
-  console.log(`vertex-proxy listening on http://0.0.0.0:${PORT}`);
+// Refuse to start unauthenticated rather than run as an open proxy to billable
+// inference. A process that exits on deploy is discoverable; one that silently
+// serves anonymous callers is not.
+if (!process.env.INTERNAL_SERVICE_KEY) {
+  console.error(
+    '[inference-gateway] INTERNAL_SERVICE_KEY is not set. This service holds GCP ' +
+    'credentials and bills real inference; it will not start unauthenticated.',
+  );
+  process.exit(1);
+}
+
+// Bind loopback by default. Every caller runs on this VM, so listening on all
+// interfaces put billable inference one firewall rule away from the internet.
+// Set INFERENCE_BIND_HOST only if a genuinely remote caller is introduced.
+const HOST = process.env.INFERENCE_BIND_HOST ?? '127.0.0.1';
+
+server.listen(PORT, HOST, () => {
+  console.log(`vertex-proxy listening on http://${HOST}:${PORT}`);
   console.log(`  default model: ${DEFAULT_MODEL}`);
 });
 
