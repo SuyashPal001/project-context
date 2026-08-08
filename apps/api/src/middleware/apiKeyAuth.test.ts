@@ -4,7 +4,6 @@ import { apiKeyAuthMiddleware } from './apiKeyAuth'
 
 const mockApiKeyRow = {
   id: 'key-1',
-  agentId: 'agent-1',
   tenantId: 'tenant-1',
   keyHash: 'hash',
   type: 'agent' as const,

@@ -14,7 +14,7 @@ export const entitlementsMiddleware = createMiddleware<AppEnv>(async (c, next) =
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
 
-    // No tenantId = onboarding flow or agent request — skip entitlement checks
+    // No tenantId = onboarding flow (new user, no workspace yet) — skip entitlement checks. Agent requests always have a tenantId (resolved from the API key) and do run this path.
     if (!tenantId) return next();
 
     // Cache check — entitlements are expensive to compute (3 DB queries)
