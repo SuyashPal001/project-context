@@ -22,7 +22,11 @@ documentsRoutes.post(
     mimeType: z.enum([
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
+      'text/plain',
+      // Archives — browsers report zip under either name depending on platform,
+      // so both must be accepted or the picker silently rejects the file.
+      'application/zip',
+      'application/x-zip-compressed',
     ]),
   })),
   async (c) => {
@@ -31,6 +35,11 @@ documentsRoutes.post(
 
     if (!tenantId) {
       return c.json({ error: 'Tenant resolution failed', code: 'TENANT_NOT_FOUND' }, 400);
+    }
+
+    const permissions = requestContext?.permissions ?? [];
+    if (!hasPermission(permissions, 'files', 'create')) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
     const { fileName, mimeType } = c.req.valid('json');
@@ -70,6 +79,11 @@ documentsRoutes.post(
 
     if (!tenantId) {
       return c.json({ error: 'Tenant resolution failed', code: 'TENANT_NOT_FOUND' }, 400);
+    }
+
+    const permissions = requestContext?.permissions ?? [];
+    if (!hasPermission(permissions, 'files', 'create')) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
     // Check for duplicate
@@ -138,7 +152,7 @@ documentsRoutes.patch(
     const { sensitivityLevel } = c.req.valid('json');
 
     const permissions = requestContext?.permissions ?? [];
-    if (!hasPermission(permissions, 'documents', 'create')) {
+    if (!hasPermission(permissions, 'files', 'create')) {
       return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
     }
 
@@ -172,6 +186,11 @@ documentsRoutes.get('/', async (c) => {
     return c.json({ error: 'Tenant resolution failed', code: 'TENANT_NOT_FOUND' }, 400);
   }
 
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'files', 'read')) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+
   const data = await db.query.documents.findMany({
     where: eq(documents.tenantId, tenantId),
     orderBy: [desc(documents.createdAt)],
@@ -198,6 +217,11 @@ documentsRoutes.get('/:id', async (c) => {
     return c.json({ error: 'Tenant resolution failed', code: 'TENANT_NOT_FOUND' }, 400);
   }
 
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'files', 'read')) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+
   const document = await db.query.documents.findFirst({
     where: and(
       eq(documents.id, id),
@@ -220,6 +244,11 @@ documentsRoutes.delete('/:id', async (c) => {
 
   if (!tenantId) {
     return c.json({ error: 'Tenant resolution failed', code: 'TENANT_NOT_FOUND' }, 400);
+  }
+
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'files', 'delete')) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
 
   const existing = await db.query.documents.findFirst({
