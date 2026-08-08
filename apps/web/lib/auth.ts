@@ -16,13 +16,43 @@ async function cognitoRequest(target: string, body: object) {
     return data;
 }
 
-export async function signIn(email: string, password: string) {
+export type SignInResult =
+    | { challenge?: undefined; idToken: string; accessToken: string; refreshToken: string }
+    | { challenge: 'NEW_PASSWORD_REQUIRED'; session: string };
+
+export async function signIn(email: string, password: string): Promise<SignInResult> {
     const data = await cognitoRequest('InitiateAuth', {
         AuthFlow: 'USER_PASSWORD_AUTH',
         ClientId: CLIENT_ID,
         AuthParameters: {
             USERNAME: email,
             PASSWORD: password,
+        },
+    });
+
+    // Cognito returns a challenge instead of tokens when the account has a
+    // temporary/admin-set password still pending a user-chosen replacement
+    // (e.g. accounts created via admin-create-user). No AuthenticationResult
+    // exists yet in this case — the caller must complete the challenge first.
+    if (data.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
+        return { challenge: 'NEW_PASSWORD_REQUIRED', session: data.Session };
+    }
+
+    return {
+        idToken: data.AuthenticationResult.IdToken,
+        accessToken: data.AuthenticationResult.AccessToken,
+        refreshToken: data.AuthenticationResult.RefreshToken,
+    };
+}
+
+export async function completeNewPasswordChallenge(email: string, newPassword: string, session: string) {
+    const data = await cognitoRequest('RespondToAuthChallenge', {
+        ClientId: CLIENT_ID,
+        ChallengeName: 'NEW_PASSWORD_REQUIRED',
+        Session: session,
+        ChallengeResponses: {
+            USERNAME: email,
+            NEW_PASSWORD: newPassword,
         },
     });
 
