@@ -12,4 +12,11 @@ region                  = "ap-south-1"
 capabilities            = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
 confirm_changeset       = true
 fail_on_empty_changeset = false
-parameter_overrides     = "ProjectName=project-context EnvironmentName=staging"
+# Database topology — MUST match the actual DB behind this environment.
+# Set BOTH to "true" if this environment connects through a managed transaction
+# pooler (e.g. Supabase 6543): node-postgres treats sslmode=require as
+# verify-full and throws SELF_SIGNED_CERT_IN_CHAIN, and PgBouncer swaps backends
+# between statements so named prepared statements fail under concurrency.
+# Left strict here deliberately — flipping them off is a real TLS downgrade and
+# should be a stated decision, not an inherited default. See commit 0d9ca34.
+parameter_overrides     = "ProjectName=project-context EnvironmentName=staging DatabaseSslNoVerify=false DatabaseDisablePrepare=false"

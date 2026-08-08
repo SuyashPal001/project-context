@@ -30,6 +30,7 @@ Parameters:
   PlatformAdminEmails:
     Type: String
     Default: ""
+    Description: Comma-separated list of emails that get platform_admin JWT role
 
   # Database topology. Declared per environment rather than inferred from the
   # hostname or port at runtime, and kept out of the connection URL because a
@@ -52,7 +53,6 @@ Parameters:
       Disable named prepared statements. Required behind a transaction pooler,
       which hands each statement to a different backend and otherwise fails with
       'prepared statement "sN" already exists' under concurrency.
-    Description: Comma-separated list of emails that get platform_admin JWT role
 
   FoundationWebSocketRoleArn:
     Type: AWS::SSM::Parameter::Value<String>
