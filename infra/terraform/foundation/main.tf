@@ -485,7 +485,8 @@ module "iam" {
               "cognito-idp:AdminRespondToAuthChallenge",
               "cognito-idp:AdminGetUser",
               "cognito-idp:AdminUpdateUserAttributes",
-              "cognito-idp:AdminSetUserPassword"
+              "cognito-idp:AdminSetUserPassword",
+              "cognito-idp:AdminCreateUser"
             ]
             Resource = module.cognito.user_pool_arn
           }]
