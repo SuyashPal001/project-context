@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 
-vi.mock('../mcp/tools', () => ({
-  registerAgentPlatformMcpTools: vi.fn(),
-}))
-
 import { mcpRoutes } from '../routes/mcp'
 import { getMcpRegistry, resetMcpRegistry, textResponse } from '@serverless-saas/mcp'
 

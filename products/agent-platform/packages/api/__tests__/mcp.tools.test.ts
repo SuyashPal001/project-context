@@ -8,16 +8,25 @@ const { mockDb } = vi.hoisted(() => ({
 
 vi.mock('../db', () => ({ db: mockDb }))
 vi.mock('@serverless-saas/agent-schema/agents', () => ({
-  agentTasks: { id: 'agentTasks.id', tenantId: 'agentTasks.tenantId' },
-  taskSteps: { taskId: 'taskSteps.taskId', tenantId: 'taskSteps.tenantId', stepNumber: 'taskSteps.stepNumber' },
+  agentTasks: {
+    id: 'agentTasks.id', tenantId: 'agentTasks.tenantId', title: 'agentTasks.title',
+    description: 'agentTasks.description', status: 'agentTasks.status', priority: 'agentTasks.priority',
+    acceptanceCriteria: 'agentTasks.acceptanceCriteria', planApprovedAt: 'agentTasks.planApprovedAt',
+    planApprovedBy: 'agentTasks.planApprovedBy', planId: 'agentTasks.planId', repoId: 'agentTasks.repoId',
+  },
+  taskSteps: {
+    id: 'taskSteps.id', taskId: 'taskSteps.taskId', tenantId: 'taskSteps.tenantId',
+    stepNumber: 'taskSteps.stepNumber', title: 'taskSteps.title', description: 'taskSteps.description',
+    status: 'taskSteps.status', toolName: 'taskSteps.toolName',
+  },
   taskComments: { taskId: 'taskComments.taskId', tenantId: 'taskComments.tenantId', authorId: 'taskComments.authorId', authorType: 'taskComments.authorType', createdAt: 'taskComments.createdAt' },
   agents: { id: 'agents.id', name: 'agents.name' },
 }))
 vi.mock('@serverless-saas/agent-schema/pm', () => ({
-  projectPlans: { id: 'projectPlans.id' },
+  projectPlans: { id: 'projectPlans.id', deletedAt: 'projectPlans.deletedAt' },
 }))
 vi.mock('@serverless-saas/agent-schema/github', () => ({
-  githubRepos: { id: 'githubRepos.id' },
+  githubRepos: { id: 'githubRepos.id', deletedAt: 'githubRepos.deletedAt', status: 'githubRepos.status' },
 }))
 vi.mock('@serverless-saas/database/schema/auth', () => ({
   users: { id: 'users.id', name: 'users.name' },
@@ -85,9 +94,15 @@ describe('start_task tool', () => {
       planId: 'plan-1', repoId: 'repo-1',
     }
     const stepsWhereArgs: unknown[] = []
+    // The mocked step row deliberately includes `toolArgs` -- an internal-only field --
+    // alongside the externally-safe ones. If the handler ever reverts to `db.select()`
+    // (full row, no projection), this field would flow straight through to the response
+    // payload below. The DB-mock only returns whatever row we hand it, so this alone
+    // can't prove the real projection strips it -- the assertion on the `db.select(...)`
+    // projection argument further below is what actually proves that.
     mockDb.select
       .mockReturnValueOnce(chain([task]))                 // task lookup
-      .mockReturnValueOnce(chain([{ id: 's1', stepNumber: 1, title: 'Step 1', status: 'done' }], stepsWhereArgs)) // steps
+      .mockReturnValueOnce(chain([{ id: 's1', stepNumber: 1, title: 'Step 1', status: 'done', toolArgs: { secret: 'internal' } }], stepsWhereArgs)) // steps
       .mockReturnValueOnce(chain([{ id: 'plan-1', title: 'Q1 Plan', description: 'plan desc', context: 'workspace notes' }])) // project
       .mockReturnValueOnce(chain([{ id: 'repo-1', repoFullName: 'acme/widget', defaultBranch: 'main' }])) // repo
 
@@ -105,6 +120,16 @@ describe('start_task tool', () => {
     expect(stepsWhereArgs).toHaveLength(1)
     expect(conditionReferencesColumn(stepsWhereArgs[0], 'taskSteps.taskId')).toBe(true)
     expect(conditionReferencesColumn(stepsWhereArgs[0], 'taskSteps.tenantId')).toBe(true)
+
+    // Projection: the steps query (2nd db.select() call) must request only the
+    // externally-safe columns -- not internal ones like toolArgs/tenantId/agentOutput/
+    // humanFeedback/feedbackHistory/confidenceScore/reasoning.
+    const stepsProjection = mockDb.select.mock.calls[1][0] as Record<string, unknown>
+    expect(Object.keys(stepsProjection).sort()).toEqual(
+      ['description', 'id', 'status', 'stepNumber', 'title', 'toolName'].sort(),
+    )
+    expect(stepsProjection).not.toHaveProperty('toolArgs')
+    expect(stepsProjection).not.toHaveProperty('tenantId')
   })
 
   it('returns null project/repo when task has no planId/repoId', async () => {

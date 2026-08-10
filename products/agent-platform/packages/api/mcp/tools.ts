@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { agentTasks, taskSteps, taskComments, agents } from '@serverless-saas/agent-schema/agents';
 import { projectPlans } from '@serverless-saas/agent-schema/pm';
@@ -10,7 +10,18 @@ import type { McpToolCallResponse, McpAuthContext } from '@serverless-saas/mcp';
 const REQUIRED_READ_PERMISSION = ['agent_tasks:read'];
 
 async function loadTaskForTenant(taskId: string, tenantId: string) {
-  const [task] = await db.select().from(agentTasks).where(and(
+  const [task] = await db.select({
+    id: agentTasks.id,
+    title: agentTasks.title,
+    description: agentTasks.description,
+    status: agentTasks.status,
+    priority: agentTasks.priority,
+    acceptanceCriteria: agentTasks.acceptanceCriteria,
+    planApprovedAt: agentTasks.planApprovedAt,
+    planApprovedBy: agentTasks.planApprovedBy,
+    planId: agentTasks.planId,
+    repoId: agentTasks.repoId,
+  }).from(agentTasks).where(and(
     eq(agentTasks.id, taskId),
     eq(agentTasks.tenantId, tenantId),
   )).limit(1);
@@ -27,7 +38,14 @@ async function handleStartTask(
   const task = await loadTaskForTenant(taskId, auth.tenantId);
   if (!task) return errorResponse('Task not found');
 
-  const steps = await db.select().from(taskSteps)
+  const steps = await db.select({
+    id: taskSteps.id,
+    stepNumber: taskSteps.stepNumber,
+    title: taskSteps.title,
+    description: taskSteps.description,
+    status: taskSteps.status,
+    toolName: taskSteps.toolName,
+  }).from(taskSteps)
     .where(and(eq(taskSteps.taskId, taskId), eq(taskSteps.tenantId, auth.tenantId)))
     .orderBy(asc(taskSteps.stepNumber));
 
@@ -41,6 +59,7 @@ async function handleStartTask(
     }).from(projectPlans).where(and(
       eq(projectPlans.id, task.planId),
       eq(projectPlans.tenantId, auth.tenantId),
+      isNull(projectPlans.deletedAt),
     )).limit(1);
     project = plan ?? null;
   }
@@ -53,6 +72,7 @@ async function handleStartTask(
     }).from(githubRepos).where(and(
       eq(githubRepos.id, task.repoId),
       eq(githubRepos.tenantId, auth.tenantId),
+      isNull(githubRepos.deletedAt),
     )).limit(1);
     repo = repoRow
       ? { fullName: repoRow.repoFullName, defaultBranch: repoRow.defaultBranch, cloneUrl: `https://github.com/${repoRow.repoFullName}.git` }
@@ -118,7 +138,7 @@ export function registerAgentPlatformMcpTools(): void {
   registry.register(
     {
       name: 'start_task',
-      description: 'Claim a task and receive its context: title/description/status, resolved plan steps, linked project context, and repo reference.',
+      description: "Fetch everything needed to start work on a task: title/description/status, resolved plan steps, linked project context, and repo reference. Does not change the task's status or assignment.",
       inputSchema: {
         type: 'object',
         properties: { taskId: { type: 'string', description: 'The task ID to start' } },
