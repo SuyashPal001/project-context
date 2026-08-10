@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { agentTasks, taskSteps, taskComments, agents, agentTools, agentToolAssignments } from '@serverless-saas/agent-schema/agents';
 import { projectPlans } from '@serverless-saas/agent-schema/pm';
@@ -133,8 +133,20 @@ async function requireToolAssignment(
 ): Promise<McpToolCallResponse | null> {
   if (!auth.agentId) return null; // human-session caller — gated by role permission only, not by assignment
 
+  // A tool name is not globally unique: a tenant-owned row (tenantId set) and a
+  // platform-wide row (tenantId null) can share a name. Prefer the tenant-owned
+  // row deterministically via an explicit CASE priority rather than relying on
+  // Postgres's ASC-NULLS-LAST default, which is a convention, not a guarantee
+  // enforced anywhere in this codebase.
+  const tenantPriority = sql<number>`CASE WHEN ${agentTools.tenantId} IS NULL THEN 1 ELSE 0 END`;
   const [tool] = await db.select({ id: agentTools.id }).from(agentTools)
-    .where(eq(agentTools.name, toolName)).limit(1);
+    .where(and(
+      eq(agentTools.name, toolName),
+      eq(agentTools.status, 'active'),
+      or(isNull(agentTools.tenantId), eq(agentTools.tenantId, auth.tenantId)),
+    ))
+    .orderBy(asc(tenantPriority))
+    .limit(1);
   if (!tool) return errorResponse(`Tool not registered: ${toolName}`);
 
   const [assignment] = await db.select({ id: agentToolAssignments.id }).from(agentToolAssignments)

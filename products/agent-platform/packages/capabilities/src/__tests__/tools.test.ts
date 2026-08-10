@@ -21,7 +21,7 @@ vi.mock('@serverless-saas/agent-schema/agents', () => ({
   },
   taskComments: { taskId: 'taskComments.taskId', tenantId: 'taskComments.tenantId', authorId: 'taskComments.authorId', authorType: 'taskComments.authorType', createdAt: 'taskComments.createdAt' },
   agents: { id: 'agents.id', name: 'agents.name' },
-  agentTools: { id: 'agentTools.id', name: 'agentTools.name' },
+  agentTools: { id: 'agentTools.id', name: 'agentTools.name', tenantId: 'agentTools.tenantId', status: 'agentTools.status' },
   agentToolAssignments: { agentId: 'agentToolAssignments.agentId', toolId: 'agentToolAssignments.toolId', tenantId: 'agentToolAssignments.tenantId' },
 }))
 vi.mock('@serverless-saas/agent-schema/pm', () => ({
@@ -51,8 +51,13 @@ function chain(rows: unknown[], whereArgs?: unknown[]) {
     whereArgs?.push(cond)
     return q
   })
-  q.orderBy = vi.fn(() => Promise.resolve(rows))
+  // orderBy is chainable (some queries call .limit() after it, e.g. the agentTools
+  // lookup's tenant-priority ordering) but also resolvable on its own (some queries,
+  // e.g. taskSteps/taskComments, use it as the terminal call and `await` it directly).
+  q.orderBy = vi.fn(() => q)
   q.limit = vi.fn(() => Promise.resolve(rows))
+  q.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+    Promise.resolve(rows).then(resolve, reject)
   return q
 }
 
@@ -191,8 +196,9 @@ describe('permission enforcement', () => {
 
 describe('agent_tool_assignments gate', () => {
   it('denies an agent caller with the right permission but no assignment row', async () => {
+    const toolWhereArgs: unknown[] = []
     mockDb.select
-      .mockReturnValueOnce(chain([{ id: 'tool-1' }]))  // agentTools lookup by name
+      .mockReturnValueOnce(chain([{ id: 'tool-1' }], toolWhereArgs))  // agentTools lookup by name
       .mockReturnValueOnce(chain([]))                   // agentToolAssignments lookup — empty, not assigned
     const result = await getMcpRegistry().execute(
       { name: 'start_task', arguments: { taskId: 't1' } },
@@ -200,18 +206,35 @@ describe('agent_tool_assignments gate', () => {
     )
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('not assigned')
+
+    // The agentTools lookup must scope to active tools and to (tenant-owned OR
+    // platform-wide) rows, so a same-named row belonging to a different tenant is
+    // never matched.
+    expect(toolWhereArgs).toHaveLength(1)
+    expect(conditionReferencesColumn(toolWhereArgs[0], 'agentTools.name')).toBe(true)
+    expect(conditionReferencesColumn(toolWhereArgs[0], 'agentTools.status')).toBe(true)
+    expect(conditionReferencesColumn(toolWhereArgs[0], 'agentTools.tenantId')).toBe(true)
   })
 
   it('allows an agent caller with an assignment row', async () => {
+    const assignmentWhereArgs: unknown[] = []
     mockDb.select
-      .mockReturnValueOnce(chain([{ id: 'tool-1' }]))                        // agentTools lookup
-      .mockReturnValueOnce(chain([{ id: 'assignment-1' }]))                  // agentToolAssignments — assigned
-      .mockReturnValueOnce(chain([]))                                        // loadTaskForTenant (task not found — fine, just proving the gate passed through to the handler)
+      .mockReturnValueOnce(chain([{ id: 'tool-1' }]))                                          // agentTools lookup
+      .mockReturnValueOnce(chain([{ id: 'assignment-1' }], assignmentWhereArgs))                // agentToolAssignments — assigned
+      .mockReturnValueOnce(chain([]))                                                            // loadTaskForTenant (task not found — fine, just proving the gate passed through to the handler)
     const result = await getMcpRegistry().execute(
       { name: 'start_task', arguments: { taskId: 't1' } },
       { ...AUTH, agentId: 'agent-1' },
     )
     expect(result.content[0].text).toContain('Task not found')
+
+    // Tenant isolation: the assignment lookup must filter on tenantId, not just
+    // agentId/toolId. If a future change drops `eq(agentToolAssignments.tenantId, ...)`
+    // from the gate's `.where()`, this fails.
+    expect(assignmentWhereArgs).toHaveLength(1)
+    expect(conditionReferencesColumn(assignmentWhereArgs[0], 'agentToolAssignments.agentId')).toBe(true)
+    expect(conditionReferencesColumn(assignmentWhereArgs[0], 'agentToolAssignments.toolId')).toBe(true)
+    expect(conditionReferencesColumn(assignmentWhereArgs[0], 'agentToolAssignments.tenantId')).toBe(true)
   })
 
   it('skips the gate entirely for a human caller (no agentId)', async () => {
