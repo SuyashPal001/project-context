@@ -111,6 +111,7 @@ export async function handleDeleteAccount(c: Context<AppEnv>) {
                         tenantsLeft: userMemberships.filter((m: { tenantId: string }) => !soloTenantIds.includes(m.tenantId)).map((m: { tenantId: string }) => m.tenantId),
                     },
                     traceId: c.get('traceId') ?? '',
+                    ipAddress: c.get('clientIp'),
                 });
             } catch (auditErr) { console.error('Audit log write failed during account deletion:', auditErr); }
         }

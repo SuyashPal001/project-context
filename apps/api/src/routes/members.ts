@@ -111,6 +111,7 @@ membersRoutes.patch('/:id/role', async (c) => {
             resourceId: updated.id,
             metadata: { roleId },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
@@ -252,6 +253,7 @@ membersRoutes.patch('/:id/status', async (c) => {
             resourceId: target.id,
             metadata: actionResponse === 'invite_resent' ? { email: target.email, reason: 'reactivation' } : {},
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
@@ -321,6 +323,7 @@ membersRoutes.delete('/:id', async (c) => {
             resourceId: removed.id,
             metadata: {},
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);

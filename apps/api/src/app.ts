@@ -72,6 +72,11 @@ app.use('*', cors({
 app.use('*', async (c, next) => {
     c.set('traceId', randomUUID());
     c.set('startTime', Date.now());
+    c.set('clientIp',
+        c.req.header('x-forwarded-for')?.split(',')[0].trim()
+        ?? c.req.header('x-real-ip')
+        ?? 'unknown'
+    );
     await next();
 });
 
@@ -109,10 +114,7 @@ api.use('*', async (c, next) => {
         key = `ratelimit:${tenantId}:${minute}`;
         limit = 60;
     } else {
-        const ip = c.req.header('x-forwarded-for')?.split(',')[0].trim()
-            ?? c.req.header('x-real-ip')
-            ?? 'unknown';
-        key = `ratelimit:ip:${ip}:${minute}`;
+        key = `ratelimit:ip:${c.get('clientIp')}:${minute}`;
         limit = 20;
     }
 

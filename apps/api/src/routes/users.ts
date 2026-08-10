@@ -68,6 +68,7 @@ usersRoutes.patch('/profile', async (c) => {
                 resourceId: userId,
                 metadata: { fields: Object.keys(parsed.data) },
                 traceId: c.get('traceId') ?? '',
+                ipAddress: c.get('clientIp'),
             });
         } catch (e) {
             console.error('Audit log write failed:', e);

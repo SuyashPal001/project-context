@@ -55,6 +55,7 @@ export async function handleCreateOverride(c: Context<AppEnv>) {
             action: 'override_granted', resource: 'tenant_feature_override', resourceId: override.id,
             metadata: { featureId: result.data.featureId, reason: result.data.reason },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         logger.warn('ops_audit_log_write_failed', { traceId: c.get('traceId') ?? 'unknown', action: 'override_granted', overrideId: override.id, error: auditErr as Error });
@@ -83,7 +84,7 @@ export async function handleRevokeOverride(c: Context<AppEnv>) {
         await db.insert(auditLog).values({
             tenantId: existing.tenantId, actorId: userId ?? 'system', actorType: 'human',
             action: 'override_revoked', resource: 'tenant_feature_override', resourceId: overrideId,
-            metadata: {}, traceId: c.get('traceId') ?? '',
+            metadata: {}, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         logger.warn('ops_audit_log_write_failed', { traceId: c.get('traceId') ?? 'unknown', action: 'override_revoked', overrideId, error: auditErr as Error });

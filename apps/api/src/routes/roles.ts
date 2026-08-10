@@ -106,6 +106,7 @@ rolesRoutes.post('/', async (c) => {
         action: 'role_created', resource: 'role', resourceId: role.id,
         newState: { name: role.name, description: role.description },
         traceId: c.get('traceId') ?? '',
+        ipAddress: c.get('clientIp'),
     }).catch(err => console.error('Audit log write failed:', err));
 
     return c.json({ data: role }, 201);
@@ -147,6 +148,7 @@ rolesRoutes.patch('/:id', async (c) => {
         previousState: { name: existing.name, description: existing.description },
         newState: { name: updated.name, description: updated.description },
         traceId: c.get('traceId') ?? '',
+        ipAddress: c.get('clientIp'),
     }).catch(err => console.error('Audit log write failed:', err));
 
     return c.json({ data: updated });
@@ -187,6 +189,7 @@ rolesRoutes.post('/:id/permissions', async (c) => {
         action: 'role_permissions_assigned', resource: 'role', resourceId: roleId,
         newState: { permissionIds: result.data.permissionIds },
         traceId: c.get('traceId') ?? '',
+        ipAddress: c.get('clientIp'),
     }).catch(err => console.error('Audit log write failed:', err));
 
     return c.json({ success: true });
@@ -219,6 +222,7 @@ rolesRoutes.delete('/:id/permissions/:permId', async (c) => {
         action: 'role_permission_revoked', resource: 'role', resourceId: roleId,
         previousState: { permissionId: permId },
         traceId: c.get('traceId') ?? '',
+        ipAddress: c.get('clientIp'),
     }).catch(err => console.error('Audit log write failed:', err));
 
     return c.json({ success: true });
@@ -255,6 +259,7 @@ rolesRoutes.delete('/:id', async (c) => {
         action: 'role_deleted', resource: 'role', resourceId: roleId,
         previousState: { name: existing.name, description: existing.description },
         traceId: c.get('traceId') ?? '',
+        ipAddress: c.get('clientIp'),
     }).catch(err => console.error('Audit log write failed:', err));
 
     return c.json({ success: true });

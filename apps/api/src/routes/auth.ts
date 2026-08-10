@@ -123,7 +123,7 @@ authRoutes.post('/logout', async (c) => {
             await db.insert(auditLog).values({
                 tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
                 action: 'user_logged_out', resource: 'session', resourceId: invalidatedSession?.id ?? null,
-                metadata: {}, traceId: c.get('traceId') ?? '',
+                metadata: {}, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp'),
             });
         } catch (auditErr) { console.error('Audit log write failed:', auditErr); }
     }

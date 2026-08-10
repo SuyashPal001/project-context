@@ -175,6 +175,7 @@ webhooksRoutes.post('/', async (c) => {
             resourceId: created.id,
             metadata: { url: created.url, events: created.events },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
         // rawSecret returned ONCE at the top level — not inside data — so the frontend can read res.secret directly.
@@ -254,6 +255,7 @@ webhooksRoutes.patch('/:id', async (c) => {
             resourceId: id,
             metadata: { updates: Object.keys(result.data) },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
         return c.json({ data: updated });
@@ -304,6 +306,7 @@ webhooksRoutes.delete('/:id', async (c) => {
             resourceId: id,
             metadata: {},
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
         return c.json({ success: true });

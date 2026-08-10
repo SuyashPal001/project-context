@@ -135,7 +135,7 @@ export async function handlePatchTenant(c: Context<AppEnv>) {
     try {
         await db.insert(auditLog).values({
             tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
-            action, resource: 'tenant', resourceId: tenantId, metadata: {}, traceId: c.get('traceId') ?? '',
+            action, resource: 'tenant', resourceId: tenantId, metadata: {}, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         logger.warn('ops_audit_log_write_failed', { traceId: c.get('traceId') ?? 'unknown', tenantId, action, error: auditErr as Error });

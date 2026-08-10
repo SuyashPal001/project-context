@@ -275,6 +275,7 @@ memberInviteRoutes.post('/invite', async (c) => {
             resourceId: membership.id,
             metadata: { email, roleId },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);

@@ -188,7 +188,7 @@ integrationsRoutes.post('/', async (c) => {
         await db.insert(auditLog).values({
             tenantId, actorId: userId ?? 'system', actorType: 'human',
             action: 'integration_connected', resource: 'integration', resourceId: created.id,
-            metadata: { provider: created.provider }, traceId: c.get('traceId') ?? '',
+            metadata: { provider: created.provider }, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp'),
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
         return c.json({ data: created }, 201);
@@ -232,7 +232,7 @@ integrationsRoutes.patch('/:id', async (c) => {
         await db.insert(auditLog).values({
             tenantId, actorId: userId ?? 'system', actorType: 'human',
             action: 'integration_updated', resource: 'integration', resourceId: id,
-            metadata: { updates: Object.keys(result.data) }, traceId: c.get('traceId') ?? '',
+            metadata: { updates: Object.keys(result.data) }, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp'),
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
         return c.json({ data: updated });
@@ -271,7 +271,7 @@ integrationsRoutes.delete('/:idOrProvider', async (c) => {
         await db.insert(auditLog).values({
             tenantId, actorId: userId ?? 'system', actorType: 'human',
             action: 'integration_disconnected', resource: 'integration', resourceId: existing.id,
-            metadata: { provider: existing.provider }, traceId: c.get('traceId') ?? '',
+            metadata: { provider: existing.provider }, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp'),
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
         void syncToolsAndNotifyRelay(tenantId, existing.provider, 'remove');

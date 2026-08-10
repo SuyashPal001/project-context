@@ -104,6 +104,7 @@ const upgradeHandler = async (c: Context<AppEnv>) => {
             resourceId: newSub.id,
             metadata: { plan: result.data.plan },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
@@ -181,6 +182,7 @@ billingRoutes.post('/cancel', async (c) => {
             resourceId: cancelled.id,
             metadata: { plan: cancelled.plan },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);

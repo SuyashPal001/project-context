@@ -92,5 +92,6 @@ export interface AppEnv {
     traceId: string;
     startTime: number;
     jwtPayload?: Record<string, string>;
+    clientIp: string;
   };
 }

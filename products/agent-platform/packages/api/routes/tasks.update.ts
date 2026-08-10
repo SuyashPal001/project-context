@@ -141,6 +141,7 @@ export async function handleUpdateTask(c: Context<AppEnv>) {
             tenantId, actorId: userId ?? 'system', actorType: 'human',
             action: 'task_updated', resource: 'agent_task', resourceId: taskId,
             metadata: { fields: Object.keys(result.data) }, traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
@@ -181,6 +182,7 @@ export async function handleDeleteTask(c: Context<AppEnv>) {
             tenantId, actorId: userId ?? 'system', actorType: 'human',
             action: 'task_deleted', resource: 'agent_task', resourceId: taskId,
             metadata: {}, traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
@@ -224,7 +226,7 @@ export async function handleBulkCreate(c: Context<AppEnv>) {
     }));
 
     const created = await db.insert(agentTasks).values(rows).returning();
-    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'tasks_bulk_created', resource: 'agent_task', resourceId: null, metadata: { count: created.length }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'tasks_bulk_created', resource: 'agent_task', resourceId: null, metadata: { count: created.length }, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp') }).catch((err: unknown) => console.error('Audit log write failed:', err));
     return c.json({ data: created }, 201);
 }
 
@@ -266,6 +268,6 @@ export async function handleBulkUpdate(c: Context<AppEnv>) {
         .where(and(inArray(agentTasks.id, task_ids), eq(agentTasks.tenantId, tenantId)))
         .returning({ id: agentTasks.id });
 
-    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'tasks_bulk_updated', resource: 'agent_task', resourceId: null, metadata: { count: updated.length, fields: Object.keys(properties) }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'tasks_bulk_updated', resource: 'agent_task', resourceId: null, metadata: { count: updated.length, fields: Object.keys(properties) }, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp') }).catch((err: unknown) => console.error('Audit log write failed:', err));
     return c.json({ data: { updated: updated.length } });
 }

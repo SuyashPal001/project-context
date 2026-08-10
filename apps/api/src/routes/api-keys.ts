@@ -196,6 +196,7 @@ apiKeysRoutes.post('/', async (c) => {
             resourceId: created.id,
             metadata: { type: result.data.type },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
@@ -241,6 +242,7 @@ apiKeysRoutes.delete('/:id', async (c) => {
             resourceId: keyId,
             metadata: {},
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);

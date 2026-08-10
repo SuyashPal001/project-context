@@ -131,6 +131,7 @@ workspacesRoutes.patch('/:tenantId', async (c) => {
             resourceId: activeTenantId,
             metadata: { updated: parsed.data },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (e) {
         console.error('Audit log write failed:', e);
@@ -212,6 +213,7 @@ workspacesRoutes.delete('/:tenantId/members/me', async (c) => {
             resourceId: caller.id,
             metadata: {},
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (e) {
         console.error('Audit log write failed:', e);
@@ -295,6 +297,7 @@ workspacesRoutes.delete('/:tenantId', async (c) => {
             resourceId: activeTenantId,
             metadata: { deletedBy: userId },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (e) {
         console.error('Audit log write failed:', e);

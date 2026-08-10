@@ -71,6 +71,7 @@ filesRoutes.post(
       resourceId: result.fileId,
       metadata: { filename, contentType },
       traceId: c.get('traceId') ?? '',
+      ipAddress: c.get('clientIp'),
     });
 
     return c.json({ data: result }, 201);
@@ -143,6 +144,7 @@ filesRoutes.post(
         resourceId: existing.id,
         metadata: { size, deduplicated: true },
         traceId: c.get('traceId') ?? '',
+        ipAddress: c.get('clientIp'),
       });
 
       return c.json({ success: true, fileId: existing.id });
@@ -159,6 +161,7 @@ filesRoutes.post(
       resourceId: fileId,
       metadata: { size },
       traceId: c.get('traceId') ?? '',
+      ipAddress: c.get('clientIp'),
     });
 
     return c.json({ success: true, fileId });
@@ -265,6 +268,7 @@ filesRoutes.delete('/:id', async (c) => {
     resourceId: fileId,
     metadata: {},
     traceId: c.get('traceId') ?? '',
+    ipAddress: c.get('clientIp'),
   });
 
   return c.json({ success: true });

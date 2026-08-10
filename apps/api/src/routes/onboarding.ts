@@ -113,6 +113,7 @@ onboardingRoutes.post('/complete', async (c) => {
             resourceId: tenantId,
             metadata: { slug: finalSlug },
             traceId: c.get('traceId') ?? '',
+            ipAddress: c.get('clientIp'),
         });
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
