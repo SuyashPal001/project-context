@@ -28,7 +28,7 @@ async function handleStartTask(
   if (!task) return errorResponse('Task not found');
 
   const steps = await db.select().from(taskSteps)
-    .where(eq(taskSteps.taskId, taskId))
+    .where(and(eq(taskSteps.taskId, taskId), eq(taskSteps.tenantId, auth.tenantId)))
     .orderBy(asc(taskSteps.stepNumber));
 
   let project: { id: string; title: string; description: string | null; context: string | null } | null = null;
