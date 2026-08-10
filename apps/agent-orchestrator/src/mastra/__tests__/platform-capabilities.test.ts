@@ -1,0 +1,59 @@
+import { describe, it, expect, vi } from 'vitest'
+
+vi.mock('@serverless-saas/database', () => ({ db: {} }))
+vi.mock('@serverless-saas/mcp', () => ({
+  getMcpRegistry: vi.fn(),
+}))
+vi.mock('@serverless-saas/agent-capabilities', () => ({
+  registerAgentPlatformMcpTools: vi.fn(),
+}))
+vi.mock('@serverless-saas/permissions', () => ({
+  resolveUserPermissions: vi.fn(),
+}))
+
+describe('platform-capabilities Mastra tools', () => {
+  it('exposes start_task and get_task_thread', async () => {
+    const { platformCapabilityTools } = await import('../tools/platform-capabilities.js')
+    expect(Object.keys(platformCapabilityTools)).toEqual(
+      expect.arrayContaining(['start_task', 'get_task_thread']),
+    )
+  })
+
+  it('resolves the human caller auth context and calls the registry with no agentId', async () => {
+    const { getMcpRegistry } = await import('@serverless-saas/mcp')
+    const { resolveUserPermissions } = await import('@serverless-saas/permissions')
+    const execute = vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'ok' }] })
+    vi.mocked(getMcpRegistry).mockReturnValue({ execute } as any)
+    vi.mocked(resolveUserPermissions).mockResolvedValue([{ resource: 'agent_tasks', action: 'read' }])
+
+    const { platformCapabilityTools } = await import('../tools/platform-capabilities.js')
+    const requestContext = new Map([['tenantId', 'tenant-1'], ['userId', 'user-1']])
+    const result = await platformCapabilityTools.start_task.execute(
+      { taskId: 't1' },
+      { requestContext: { get: (k: string) => requestContext.get(k) } } as any,
+    )
+
+    expect(execute).toHaveBeenCalledWith(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      { tenantId: 'tenant-1', keyId: 'session', keyType: 'rest', permissions: ['agent_tasks:read'] },
+    )
+    expect(result).toEqual({ content: [{ type: 'text', text: 'ok' }] })
+  })
+
+  it('surfaces an isError response as agent-readable text, not a throw', async () => {
+    const { getMcpRegistry } = await import('@serverless-saas/mcp')
+    const { resolveUserPermissions } = await import('@serverless-saas/permissions')
+    const execute = vi.fn().mockResolvedValue({ isError: true, content: [{ type: 'text', text: 'Permission denied for tool: start_task' }] })
+    vi.mocked(getMcpRegistry).mockReturnValue({ execute } as any)
+    vi.mocked(resolveUserPermissions).mockResolvedValue([])
+
+    const { platformCapabilityTools } = await import('../tools/platform-capabilities.js')
+    const requestContext = new Map([['tenantId', 'tenant-1'], ['userId', 'user-1']])
+    const result = await platformCapabilityTools.start_task.execute(
+      { taskId: 't1' },
+      { requestContext: { get: (k: string) => requestContext.get(k) } } as any,
+    )
+
+    expect(result.content[0].text).toBe('Permission denied for tool: start_task')
+  })
+})

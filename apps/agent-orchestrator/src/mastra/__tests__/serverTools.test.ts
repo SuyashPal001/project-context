@@ -20,6 +20,10 @@ vi.mock('../composio.js', () => ({ isComposioEnabled: () => false, getComposioTo
 vi.mock('../guardrails.js', () => ({ createViolationHandler: () => vi.fn() }))
 // Pulls in the Drizzle client, which reads DATABASE_URL at module load.
 vi.mock('@serverless-saas/ai', () => ({ retrieveChunks: vi.fn() }))
+vi.mock('@serverless-saas/database', () => ({ db: {} }))
+vi.mock('@serverless-saas/mcp', () => ({ getMcpRegistry: vi.fn() }))
+vi.mock('@serverless-saas/agent-capabilities', () => ({ registerAgentPlatformMcpTools: vi.fn() }))
+vi.mock('@serverless-saas/permissions', () => ({ resolveUserPermissions: vi.fn() }))
 
 describe('SERVER_TOOLS', () => {
   it('registers the document retrieval tool the prompts instruct agents to call', async () => {
@@ -32,8 +36,10 @@ describe('SERVER_TOOLS', () => {
     const { SERVER_TOOLS } = await import('../agents/platformAgent.js')
 
     expect(Object.keys(SERVER_TOOLS).sort()).toEqual([
+      'get_task_thread',
       'internet_search',
       'retrieve_documents',
+      'start_task',
       'web_fetch',
     ])
   })

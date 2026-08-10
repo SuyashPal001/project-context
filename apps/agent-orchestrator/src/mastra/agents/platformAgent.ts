@@ -14,6 +14,7 @@ import { isComposioEnabled, getComposioTools } from '../composio.js'
 import { createViolationHandler } from '../guardrails.js'
 import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
+import { platformCapabilityTools } from '../tools/platform-capabilities.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -82,6 +83,11 @@ export const SERVER_TOOLS = {
   // "always call retrieve_documents"; without this registration that instruction
   // referred to a tool that did not exist and retrieval silently never ran.
   retrieve_documents: retrieveDocumentsTool,
+  // start_task / get_task_thread — in-process calls into the shared
+  // agent-platform MCP tool registry (no MCP protocol, no network hop). The
+  // human/session caller carries no agentId, so Task 4's agent_tool_assignments
+  // gate never applies here; access is checked purely on role permission.
+  ...platformCapabilityTools,
   internet_search: createTool({
     id: 'internet_search',
     description:
