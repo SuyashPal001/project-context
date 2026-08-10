@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import { db } from '../db';
-import { agentTasks, taskSteps, taskComments, agents } from '@serverless-saas/agent-schema/agents';
+import { db } from '@serverless-saas/database';
+import { agentTasks, taskSteps, taskComments, agents, agentTools, agentToolAssignments } from '@serverless-saas/agent-schema/agents';
 import { projectPlans } from '@serverless-saas/agent-schema/pm';
 import { githubRepos } from '@serverless-saas/agent-schema/github';
 import { users } from '@serverless-saas/database/schema/auth';
@@ -127,6 +127,38 @@ async function handleGetTaskThread(
   return jsonResponse({ comments });
 }
 
+async function requireToolAssignment(
+  toolName: string,
+  auth: McpAuthContext,
+): Promise<McpToolCallResponse | null> {
+  if (!auth.agentId) return null; // human-session caller — gated by role permission only, not by assignment
+
+  const [tool] = await db.select({ id: agentTools.id }).from(agentTools)
+    .where(eq(agentTools.name, toolName)).limit(1);
+  if (!tool) return errorResponse(`Tool not registered: ${toolName}`);
+
+  const [assignment] = await db.select({ id: agentToolAssignments.id }).from(agentToolAssignments)
+    .where(and(
+      eq(agentToolAssignments.agentId, auth.agentId),
+      eq(agentToolAssignments.toolId, tool.id),
+      eq(agentToolAssignments.tenantId, auth.tenantId),
+    )).limit(1);
+  if (!assignment) return errorResponse(`Agent is not assigned tool: ${toolName}`);
+
+  return null;
+}
+
+function withToolAssignmentGate(
+  toolName: string,
+  handler: (args: Record<string, unknown>, auth: McpAuthContext) => Promise<McpToolCallResponse>,
+) {
+  return async (args: Record<string, unknown>, auth: McpAuthContext): Promise<McpToolCallResponse> => {
+    const denied = await requireToolAssignment(toolName, auth);
+    if (denied) return denied;
+    return handler(args, auth);
+  };
+}
+
 let registered = false;
 
 export function registerAgentPlatformMcpTools(): void {
@@ -146,7 +178,7 @@ export function registerAgentPlatformMcpTools(): void {
       },
       requiredPermissions: REQUIRED_READ_PERMISSION,
     },
-    handleStartTask,
+    withToolAssignmentGate('start_task', handleStartTask),
   );
 
   registry.register(
@@ -160,7 +192,7 @@ export function registerAgentPlatformMcpTools(): void {
       },
       requiredPermissions: REQUIRED_READ_PERMISSION,
     },
-    handleGetTaskThread,
+    withToolAssignmentGate('get_task_thread', handleGetTaskThread),
   );
 }
 

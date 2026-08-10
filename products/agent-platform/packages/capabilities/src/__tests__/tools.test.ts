@@ -6,7 +6,7 @@ const { mockDb } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../db', () => ({ db: mockDb }))
+vi.mock('@serverless-saas/database', () => ({ db: mockDb }))
 vi.mock('@serverless-saas/agent-schema/agents', () => ({
   agentTasks: {
     id: 'agentTasks.id', tenantId: 'agentTasks.tenantId', title: 'agentTasks.title',
@@ -21,6 +21,8 @@ vi.mock('@serverless-saas/agent-schema/agents', () => ({
   },
   taskComments: { taskId: 'taskComments.taskId', tenantId: 'taskComments.tenantId', authorId: 'taskComments.authorId', authorType: 'taskComments.authorType', createdAt: 'taskComments.createdAt' },
   agents: { id: 'agents.id', name: 'agents.name' },
+  agentTools: { id: 'agentTools.id', name: 'agentTools.name' },
+  agentToolAssignments: { agentId: 'agentToolAssignments.agentId', toolId: 'agentToolAssignments.toolId', tenantId: 'agentToolAssignments.tenantId' },
 }))
 vi.mock('@serverless-saas/agent-schema/pm', () => ({
   projectPlans: { id: 'projectPlans.id', deletedAt: 'projectPlans.deletedAt' },
@@ -32,7 +34,7 @@ vi.mock('@serverless-saas/database/schema/auth', () => ({
   users: { id: 'users.id', name: 'users.name' },
 }))
 
-import { registerAgentPlatformMcpTools, __resetRegisteredFlagForTests } from '../mcp/tools'
+import { registerAgentPlatformMcpTools, __resetRegisteredFlagForTests } from '../tools'
 import { getMcpRegistry, resetMcpRegistry } from '@serverless-saas/mcp'
 
 const AUTH = { tenantId: 'tenant-1', keyId: 'key-1', keyType: 'agent' as const, permissions: ['agent_tasks:read'] }
@@ -184,5 +186,42 @@ describe('permission enforcement', () => {
     )
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('Permission denied')
+  })
+})
+
+describe('agent_tool_assignments gate', () => {
+  it('denies an agent caller with the right permission but no assignment row', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: 'tool-1' }]))  // agentTools lookup by name
+      .mockReturnValueOnce(chain([]))                   // agentToolAssignments lookup — empty, not assigned
+    const result = await getMcpRegistry().execute(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      { ...AUTH, agentId: 'agent-1' },
+    )
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('not assigned')
+  })
+
+  it('allows an agent caller with an assignment row', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: 'tool-1' }]))                        // agentTools lookup
+      .mockReturnValueOnce(chain([{ id: 'assignment-1' }]))                  // agentToolAssignments — assigned
+      .mockReturnValueOnce(chain([]))                                        // loadTaskForTenant (task not found — fine, just proving the gate passed through to the handler)
+    const result = await getMcpRegistry().execute(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      { ...AUTH, agentId: 'agent-1' },
+    )
+    expect(result.content[0].text).toContain('Task not found')
+  })
+
+  it('skips the gate entirely for a human caller (no agentId)', async () => {
+    mockDb.select.mockReturnValueOnce(chain([]))  // straight to loadTaskForTenant, no agentTools/assignment lookups
+    const result = await getMcpRegistry().execute(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      AUTH,  // no agentId field
+    )
+    expect(result.content[0].text).toContain('Task not found')
+    // Only one select call happened — the gate made zero DB calls for a human caller
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 })
