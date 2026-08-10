@@ -1,9 +1,7 @@
 import { createMiddleware } from 'hono/factory';
-import { and, eq } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { memberships } from '@serverless-saas/database/schema/tenancy';
-import { rolePermissions, permissions } from '@serverless-saas/database/schema/authorization';
 import { getCacheClient, permissionSetKey, TTL } from '@serverless-saas/cache';
+import { resolveUserPermissions } from '@serverless-saas/permissions';
 import type { AppEnv } from '../types';
 
 // 15 minutes — same TTL as tenant and entitlements cache.
@@ -35,31 +33,13 @@ export const permissionsMiddleware = createMiddleware<AppEnv>(async (c, next) =>
         return next();
     }
 
-    // Load membership to get the user's roleId for this tenant
-    const [membership] = await db.select().from(memberships).where(
-        and(
-            eq(memberships.userId, userId),
-            eq(memberships.tenantId, tenantId),
-            eq(memberships.status, 'active')
-        )
-    ).limit(1);
+    // Load membership + resolve the role's permission set (shared with any
+    // other service that needs the same resolution — see @serverless-saas/permissions).
+    const resolvedPermissions = await resolveUserPermissions(db, tenantId, userId);
 
     // No membership = pass through with no permissions set
     // Route handlers decide if a permission is required
-    if (!membership) return next();
-
-    // Join role_permissions → permissions to get full permission set for this role
-    // Result flattened to "resource:action" strings e.g. ["incidents:create", "billing:read"]
-    const permissionRows = await db
-        .select({ resource: permissions.resource, action: permissions.action })
-        .from(rolePermissions)
-        .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
-        .where(eq(rolePermissions.roleId, membership.roleId));
-
-    const resolvedPermissions = permissionRows.map((p: { resource: string; action: string }) => ({
-        resource: p.resource,
-        action: p.action,
-    }));
+    if (resolvedPermissions === null) return next();
 
     // Cache and attach to context for route handlers to read
     await getCacheClient().set(cacheKey, JSON.stringify(resolvedPermissions), { ex: PERMISSIONS_CACHE_TTL_SECONDS });
@@ -69,4 +49,3 @@ export const permissionsMiddleware = createMiddleware<AppEnv>(async (c, next) =>
     updatedRequestContext.permissions = resolvedPermissions;
     return next();
 });
-

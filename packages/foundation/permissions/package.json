@@ -13,6 +13,7 @@
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
     "@serverless-saas/cache": "workspace:*",
+    "@serverless-saas/database": "workspace:*",
     "@serverless-saas/types": "workspace:*",
     "@upstash/redis": "^1.36.3",
     "drizzle-orm": "^0.45.2"
