@@ -80,13 +80,18 @@ describe('retrieveDocumentsTool', () => {
     expect(contextChunks.length).toBeLessThanOrEqual(5)
   })
 
-  it('calls retrieveChunks with correct tenantId and folderId', async () => {
+  // Folder-scoped retrieval is not implemented: retrieveChunks takes
+  // (query, tenantId, limit, scoreThreshold) and the tool's inputSchema accepts
+  // only { query }. This test previously asserted a fifth folderId argument and
+  // had been failing ever since it was written. It now pins the real contract —
+  // tenant scoping, which is the part that matters for isolation.
+  it('scopes retrieval to the caller tenant', async () => {
     mockRetrieveChunks.mockResolvedValue([])
     mockFastGate.mockReturnValue([])
     mockGateChunks.mockResolvedValue([])
 
     await (retrieveDocumentsTool as any).execute(
-      { query: 'pension rules', folderId: 'folder-42' },
+      { query: 'pension rules' },
       { requestContext: makeRequestContext('tenant-99') }
     )
 
@@ -94,8 +99,7 @@ describe('retrieveDocumentsTool', () => {
       'pension rules',
       'tenant-99',
       expect.any(Number),
-      expect.any(Number),
-      'folder-42'
+      expect.any(Number)
     )
   })
 

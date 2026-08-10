@@ -10,6 +10,10 @@ vi.mock('../usage.js', () => ({
   recordUsage: vi.fn(),
 }))
 vi.mock('../auth.js', () => ({ validateToken: vi.fn() }))
+// Mastra memory opens a PgVector/PgStore connection and creates tables on first
+// use. This suite exercises the step-output guard, not persistence, so the
+// memory singleton is stubbed rather than pointed at a real database.
+vi.mock('../mastra/memory.js', () => ({ getMastraMemory: () => ({}) }))
 vi.mock('../persistence.js', () => ({
   createConversation: vi.fn(),
   saveUserMessage: vi.fn(),

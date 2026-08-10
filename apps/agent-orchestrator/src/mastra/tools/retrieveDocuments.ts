@@ -21,7 +21,7 @@ const requestContextSchema = z.object({
 
 export const retrieveDocumentsTool = createTool({
   id: 'retrieve_documents',
-  description: `Search indexed documents in a folder.
+  description: `Search the workspace's indexed documents.
 Call this BEFORE answering ANY factual question.
 Returns the most relevant chunks from uploaded documents with source and score.
 If this returns no results, say you cannot find the information — never guess.`,

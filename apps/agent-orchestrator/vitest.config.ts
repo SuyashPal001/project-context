@@ -5,5 +5,6 @@ export default defineConfig({
     name: 'agent-orchestrator',
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    setupFiles: ['./vitest.setup.ts'],
   },
 })
