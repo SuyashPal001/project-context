@@ -28,6 +28,19 @@ interface LLMProvider {
     status: 'live' | 'coming_soon';
 }
 
+// Keep in sync with the mimeType allowlist in
+// products/agent-platform/packages/api/routes/documents.ts and
+// SUPPORTED_UPLOAD_EXTENSIONS in apps/api/src/lib/agentPrompts.ts.
+// A missing entry here greys the file out in the OS picker with no explanation,
+// which is how a user with a zip of documents ended up asking the agent how to
+// send it and being told to use WeTransfer.
+const DOCUMENT_ACCEPT = [
+    "application/pdf", ".pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx",
+    "text/plain", ".txt",
+    "application/zip", "application/x-zip-compressed", ".zip",
+].join(",");
+
 interface ChatInputProps {
     onSend: (content: string, attachments?: Attachment[]) => void;
     onStop?: () => void;
@@ -134,8 +147,8 @@ export function ChatInput({
                 accept={
                     uploadTypeRef.current === 'video' ? "video/*" :
                     uploadTypeRef.current === 'audio' ? "audio/*" :
-                    uploadTypeRef.current === 'document' ? "application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx" :
-                    "image/*,video/*,audio/*,application/pdf"
+                    uploadTypeRef.current === 'document' ? DOCUMENT_ACCEPT :
+                    `image/*,video/*,audio/*,${DOCUMENT_ACCEPT}`
                 }
                 onChange={handleFileChange}
             />

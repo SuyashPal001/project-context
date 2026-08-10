@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import * as mammoth from 'mammoth';
 import { toast } from 'sonner';
 import { FileText, Trash2, Plus, Download, Loader2 } from 'lucide-react';
+import { ingestDocument } from '@/lib/ingestDocument';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -91,39 +92,16 @@ export function KnowledgeBaseSection() {
     setDocuments(prev => [newDoc, ...prev]);
 
     try {
-      const buffer = await file.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+      // Shared with the chat composer — see apps/web/lib/ingestDocument.ts.
+      const { documentId } = await ingestDocument(file);
 
-      const urlRes = await fetch('/api/proxy/api/v1/documents/upload-url', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name, mimeType: file.type }),
-      });
-      if (!urlRes.ok) throw new Error(`Failed to get upload URL: ${urlRes.status}`);
-      const { uploadUrl, fileKey } = await urlRes.json();
-
-      const s3Res = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-      if (!s3Res.ok) throw new Error(`S3 upload failed: ${s3Res.status}`);
-
-      const regRes = await fetch('/api/proxy/api/v1/documents', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, mimeType: file.type, fileKey, hash }),
-      });
-      if (!regRes.ok) {
-        if (regRes.status === 409) {
-          const errData = await regRes.json().catch(() => ({}));
-          const dupDocumentId: string | undefined = errData.documentId;
-          if (dupDocumentId) {
-            setDocuments(prev => prev.map(d => d.id === localId ? { ...d, documentId: dupDocumentId, isPolling: true } : d));
-            pollDocumentStatus(localId, dupDocumentId);
-          } else {
-            setDocuments(prev => prev.map(d => d.id === localId ? { ...d, status: 'ready' as const } : d));
-          }
-          return;
-        }
-        throw new Error(`Document registration failed: ${regRes.status}`);
+      // A duplicate with no id means the server already finished ingesting it,
+      // so there is nothing left to poll for.
+      if (!documentId) {
+        setDocuments(prev => prev.map(d => d.id === localId ? { ...d, status: 'ready' as const } : d));
+        return;
       }
-      const { documentId } = await regRes.json();
+
       setDocuments(prev => prev.map(d => d.id === localId ? { ...d, documentId, isPolling: true } : d));
       pollDocumentStatus(localId, documentId);
     } catch {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { ingestDocument, isIngestibleDocument } from "@/lib/ingestDocument";
 import { Attachment } from "@/types/agent-events";
 
 export interface PendingUpload {
@@ -91,7 +92,26 @@ export function useFileUpload() {
                 size: fileSize,
                 previewUrl,
             }]);
-            toast.success("File uploaded successfully");
+
+            // Documents additionally go through the ingestion pipeline so they
+            // are chunked, embedded and retrievable in later conversations.
+            // The /files upload above only stores the object; on its own it
+            // leaves the document invisible to retrieve_documents.
+            if (isIngestibleDocument(file)) {
+                try {
+                    const { duplicate } = await ingestDocument(file);
+                    toast.success(duplicate
+                        ? "Already in your knowledge base"
+                        : "Added to your knowledge base");
+                } catch (ingestError) {
+                    // The attachment itself succeeded — the agent can still see
+                    // it in this conversation, just not in future ones.
+                    console.error("Knowledge base ingestion failed:", ingestError);
+                    toast.warning("Attached, but could not add it to your knowledge base");
+                }
+            } else {
+                toast.success("File uploaded successfully");
+            }
         } catch (error) {
             console.error("Upload error:", error);
             toast.error("Failed to upload file");
