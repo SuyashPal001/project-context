@@ -18,8 +18,7 @@ Domain: **projectcontext.co**
 - **MCP server:** Standalone Node.js service on GCP VM (port 3002) — Gmail, Google integrations
 - **AI service:** Python FastAPI (port 3004) — document processing
 - **Inference gateway:** Node.js proxy (port 4001) — Vertex AI / Gemini
-- **Agent server:** Node.js agent runtime (port 3003)
-- **DB:** Neon PostgreSQL + Drizzle ORM
+- **DB:** Supabase PostgreSQL (pgvector) + Drizzle ORM
 - **Cache:** Upstash Redis
 - **Auth:** AWS Cognito with Google OAuth + pre-token generation Lambda
 - **Storage:** S3
@@ -35,8 +34,6 @@ apps/
   web/              Next.js — auth, dashboard, ops console
   worker/           SQS Lambda — background jobs
   agent-orchestrator/ Mastra agent orchestrator — SSE + WebSocket bridge to frontend
-  mcp-server/       (root, not apps/) — standalone MCP server for Gmail/GCP integrations
-  agent-server/     Agent runtime
   ai-service/       Python FastAPI — document AI processing
   inference-gateway/ Node.js proxy — Vertex AI / Gemini
 
@@ -98,11 +95,23 @@ bootstrap.sh        Creates S3 + DynamoDB resources before first deploy
 | `apps/web` | Next.js (PM2) | GCP VM | 3000 |
 | `apps/agent-orchestrator` | Node.js (PM2) | GCP VM | 3001 |
 | `mcp-server/` | Node.js (PM2) | GCP VM | 3002 |
-| `apps/agent-server` | Node.js (PM2) | GCP VM | 3003 |
 | `apps/ai-service` | Python (PM2) | GCP VM | 3004 |
 | `apps/inference-gateway` | Node.js (PM2) | GCP VM | 4001 |
 
-**Deploy script for GCP VM services:** `./deploy.sh` (rebuilds Next.js + restarts PM2)
+Port 3003 is unused — there is no `apps/agent-server`. The agent runtime lives inside
+`apps/agent-orchestrator`.
+
+**`./deploy.sh` does NOT deploy every VM service.** It rebuilds Next.js and restarts
+exactly two PM2 processes: `web-frontend` and `api`. The orchestrator, `mcp-server`,
+`ai-service` and `inference-gateway` must be restarted by hand (`pm2 restart <name>
+--update-env`) — including after any env change.
+
+**`mcp-server` and `inference-gateway` require `INTERNAL_SERVICE_KEY` to start.** Both
+call `process.exit(1)` when it is unset, so a PM2 env missing it takes the service down
+rather than running it unauthenticated. The value must match
+`project-context/{env}/internal-service-key` in Secrets Manager, which is what the
+Lambdas and the orchestrator send. Both also bind `127.0.0.1` by default
+(`MCP_BIND_HOST` / `INFERENCE_BIND_HOST`) — they are not meant to be reachable off-host.
 
 ---
 
@@ -135,6 +144,18 @@ Applied in order on every secure request:
 8. `permissionsMiddleware` — RBAC enforcement
 9. `queryScopeMiddleware` — scopes DB queries to tenantId
 10. `usageRecordingMiddleware` — records usage metrics
+
+**Registration order is enforcement order — a route only gets the middleware registered
+above it.** `/onboarding` and `/invitations` are mounted deliberately between steps 3 and
+4, so they run *without* tenant resolution, entitlements or permissions. That is intended
+for those two, but it means adding an `api.route(...)` in the wrong place silently ships
+an unprotected endpoint that still looks guarded when you read the list above. Mount new
+secure routes below step 10.
+
+For the same reason, `sessionValidationMiddleware` exemptions use the
+`isSessionValidationExempt` predicate in `apps/api/src/middleware/sessionExempt.ts`, not
+Hono's `except()`. `except()` matches `c.req.path`, which includes the `/api/v1` mount
+prefix — patterns written without it match nothing and the exemption silently never fires.
 
 ---
 
@@ -172,10 +193,29 @@ Agent platform handlers registered via `registerProductHandlers`.
   - `project-context/{env}/jira-oauth`
   - `project-context/{env}/github-app`
   - `project-context/{env}/zoho-oauth`
+- **Only `dev` exists today.** There is no staging or prod CloudFormation stack, and no
+  staging or prod secrets. The 6 above must be seeded when those environments are first
+  created, along with deciding `DatabaseSslNoVerify` / `DatabaseDisablePrepare` in the
+  matching `samconfig.*.toml` — both currently `false`, which is correct only until the
+  real topology is known.
+- **`apps/api/.env` holds `FILL_IN` placeholders — treat it as incomplete, not as config.**
+  `TOKEN_ENCRYPTION_KEY` is one of them. Any script that encrypts with the local env would
+  write ciphertext under the literal string `FILL_IN`, which the deployed API can never
+  decrypt and which re-running the migration cannot detect or undo. For anything touching
+  encrypted columns, read the real key from Secrets Manager:
+  `aws secretsmanager get-secret-value --secret-id project-context/dev/token-encryption-key`
 - **SSM namespace is `/project-context/{env}/...`** — not `serverless-saas`. The package scope `@serverless-saas/*` is internal-only and never touches AWS.
 - **Tenant routing in web.** Dashboard URLs are `/{tenantSlug}/dashboard/*`. Subdomain routing (`acme.projectcontext.co`) is handled by `apps/web/middleware.ts` via `NEXT_PUBLIC_ROOT_DOMAIN`.
 - **Inference gateway proxies Vertex AI.** `apps/inference-gateway` on port 4001 is the single point for all Gemini/Vertex calls. Agent orchestrator and other services hit it via `VERTEX_PROXY_URL`.
 - **pgvector required.** Use `pgvector/pgvector:pg16` not vanilla postgres for local dev. The agent platform uses vector search.
+- **The database is Supabase, reached through a pooler.** Deployed environments use the
+  *transaction* pooler (port 6543); local `.env` files point at the session pooler (5432).
+  Same database, different connection semantics: a transaction pooler hands each statement
+  to a different backend, so postgres.js named prepared statements fail under concurrency.
+  `products/agent-platform/packages/api/lib/db-options.ts` disables them from configuration
+  (`pgbouncer=true` in the URL, or `DATABASE_DISABLE_PREPARE`) rather than by sniffing the
+  port, so each deployment declares its own topology. `db.ts` still carries a Neon code path
+  (`isNeon`, a custom `neonSocket` for IPv4 resolution); it is dormant against Supabase.
 
 ---
 
@@ -219,7 +259,9 @@ sam build --config-file samconfig.dev.toml
 sam local start-api
 
 # Local dev server (Node)
-cd apps/api && pnpm dev   # port 3001
+cd apps/api && pnpm dev   # PORT from apps/api/.env — currently 3001, which
+                          # collides with agent-orchestrator. Change one of them
+                          # before running both locally.
 
 # Database migrations
 cd packages/foundation/database

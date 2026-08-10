@@ -42,7 +42,7 @@
 - [ ] Fill in all values in `terraform.tfvars`:
   - [ ] Lambda ARNs from SAM deploy (step 3)
   - [ ] `google_client_id` + `google_client_secret`
-  - [ ] `database_url` (Neon connection string)
+  - [ ] `database_url` (Supabase connection string — transaction pooler, port 6543)
   - [ ] `upstash_redis_rest_url` + `upstash_redis_rest_token`
   - [ ] `ws_token_secret` → `openssl rand -hex 32`
   - [ ] `cognito_domain_prefix` (must be globally unique)
@@ -108,9 +108,8 @@
   - [ ] `apps/api/.env` — fill Cognito IDs from terraform output, all secrets
   - [ ] `apps/web/.env.local` — fill Cognito IDs, API Gateway URL, WS endpoint
   - [ ] `apps/agent-orchestrator/.env` — fill all vars
-  - [ ] `apps/inference-gateway/.env` — fill `VERTEX_PROJECT`, `ANTHROPIC_API_KEY`
+  - [ ] `apps/inference-gateway/.env` — fill `VERTEX_PROJECT`, `ANTHROPIC_API_KEY`, `INTERNAL_SERVICE_KEY` (service exits without it)
   - [ ] `apps/ai-service/.env` — fill `DATABASE_URL`, `INTERNAL_SERVICE_KEY`
-  - [ ] `apps/agent-server/.env` — fill orchestrator keys, extensions dir
   - [ ] `mcp-server/.env` — fill Google OAuth creds, `DATABASE_URL`, `TOKEN_ENCRYPTION_KEY`
 
 ---
@@ -133,9 +132,9 @@
 ### 11. Database — Run Migrations + Seed
 
 - [ ] `cd packages/foundation/database`
-- [ ] `pnpm db:migrate` — run all migrations against production Neon DB
+- [ ] `pnpm db:migrate` — run all migrations against the production Supabase DB
 - [ ] `pnpm db:seed` — seed roles, permissions, plans, features
-- [ ] Verify tables exist in Neon Console
+- [ ] Verify tables exist in the Supabase dashboard
 
 ---
 
@@ -207,7 +206,7 @@
 
 ### 18. Backups
 
-- [ ] Neon PostgreSQL — enable point-in-time recovery in Neon Console
+- [ ] Supabase PostgreSQL — enable point-in-time recovery in the Supabase dashboard
 - [ ] S3 files bucket — versioning already enabled (done in Terraform)
 - [ ] Terraform state — versioning already enabled on state bucket
 - [ ] GCP VM — snapshot schedule for persistent disk (lakehouse Delta Lake data)

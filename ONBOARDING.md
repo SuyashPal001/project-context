@@ -272,7 +272,7 @@ cp terraform.tfvars.example terraform.tfvars
 Fill in `terraform.tfvars` — pay attention to:
 - Lambda ARNs from Step 3
 - `google_client_id` + `google_client_secret` from GCP Console
-- `database_url` — your Neon PostgreSQL connection string
+- `database_url` — your Supabase PostgreSQL connection string (transaction pooler, port 6543)
 - `upstash_redis_rest_url` + `upstash_redis_rest_token` — from Upstash console
 
 ```bash
@@ -301,7 +301,6 @@ The following services run on the GCP VM under PM2, not on AWS Lambda:
 | `apps/web` | `web-frontend` | 3000 | `pnpm build` → PM2 |
 | `apps/agent-orchestrator` | `agent-orchestrator` | 3001 | `pnpm build` → PM2 |
 | `mcp-server/` | `mcp-server` | 3002 | `npm run build` → PM2 |
-| `apps/agent-server` | `agent-server` | 3003 | PM2 |
 | `apps/ai-service` | `ai-service` | 3004 | PM2 (Python) |
 | `apps/inference-gateway` | `inference-gateway` | 4001 | PM2 |
 | `apps/lakehouse` | `saarthi-lakehouse` | 8001 | PM2 (Python/uvicorn) |
