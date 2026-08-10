@@ -3,7 +3,7 @@ import { eq, and, asc } from 'drizzle-orm';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { getCacheClient } from '@serverless-saas/cache';
 import { db, AGENT_ORCHESTRATOR_URL, INTERNAL_SERVICE_KEY, sanitizeTaskInput, makeLog, extractAttachments } from './taskWorker.utils';
-import { startTaskHeartbeat } from '../lib/task-heartbeat';
+import { startTaskHeartbeat, clearTaskHeartbeat } from '../lib/task-heartbeat';
 
 export async function handleExecution(taskId: string, traceId: string) {
     const log = makeLog(traceId, taskId);
@@ -45,6 +45,7 @@ export async function handleExecution(taskId: string, traceId: string) {
     } catch (err: unknown) {
         const isTimeout = err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
         const reason = isTimeout ? 'Execution timeout — relay took too long' : `Relay execution failed: ${err instanceof Error ? err.message : String(err)}`;
+        await clearTaskHeartbeat(getCacheClient() as never, taskId);
         await db.update(agentTasks).set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() }).where(eq(agentTasks.id, taskId));
         await pushWebSocketEvent(task.tenantId, { type: 'task.status.changed', taskId, status: 'blocked', blockedReason: reason });
         return;
@@ -52,7 +53,7 @@ export async function handleExecution(taskId: string, traceId: string) {
 
     if (!response.ok) {
         const reason = `Relay rejected execution: HTTP ${response.status}`;
-        await cache.del(watchdogKey);
+        await clearTaskHeartbeat(getCacheClient() as never, taskId);
         await db.update(agentTasks).set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() }).where(eq(agentTasks.id, taskId));
         await db.insert(taskEvents).values({ taskId: task.id, tenantId: task.tenantId, actorType: 'agent', actorId: 'system', eventType: 'status_changed', payload: { from: task.status, to: 'blocked', reason } });
         await pushWebSocketEvent(task.tenantId, { type: 'task.status.changed', taskId: task.id, status: 'blocked' });
