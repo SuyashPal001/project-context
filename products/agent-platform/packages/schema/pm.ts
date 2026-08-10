@@ -31,6 +31,7 @@ export const projectPlans = pgTable('project_plans', {
     sequenceId:  integer('sequence_id').notNull(),
     title:       text('title').notNull(),
     description: text('description'),
+    context:     text('context'),
     status:      planStatusEnum('status').notNull().default('draft'),
     startDate:   timestamp('start_date'),
     targetDate:  timestamp('target_date'),
