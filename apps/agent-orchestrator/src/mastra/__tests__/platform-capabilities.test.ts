@@ -56,4 +56,50 @@ describe('platform-capabilities Mastra tools', () => {
 
     expect(result.content[0].text).toBe('Permission denied for tool: start_task')
   })
+
+  it('degrades gracefully when resolveUserPermissions rejects, instead of throwing out of execute()', async () => {
+    const { getMcpRegistry } = await import('@serverless-saas/mcp')
+    const { resolveUserPermissions } = await import('@serverless-saas/permissions')
+    const execute = vi.fn()
+    vi.mocked(getMcpRegistry).mockReturnValue({ execute } as any)
+    vi.mocked(resolveUserPermissions).mockRejectedValue(new Error('pool exhausted'))
+
+    const { platformCapabilityTools } = await import('../tools/platform-capabilities.js')
+    const requestContext = new Map([['tenantId', 'tenant-1'], ['userId', 'user-1']])
+
+    await expect(
+      platformCapabilityTools.start_task.execute(
+        { taskId: 't1' },
+        { requestContext: { get: (k: string) => requestContext.get(k) } } as any,
+      ),
+    ).resolves.toEqual({
+      content: [{ type: 'text', text: 'Could not verify your permissions right now — please try again.' }],
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('reports unresolved workspace membership distinctly from zero-permission membership, without calling the registry', async () => {
+    const { getMcpRegistry } = await import('@serverless-saas/mcp')
+    const { resolveUserPermissions } = await import('@serverless-saas/permissions')
+    const execute = vi.fn()
+    vi.mocked(getMcpRegistry).mockReturnValue({ execute } as any)
+    vi.mocked(resolveUserPermissions).mockResolvedValue(null)
+
+    const { platformCapabilityTools } = await import('../tools/platform-capabilities.js')
+    const requestContext = new Map([['tenantId', 'tenant-1'], ['userId', 'user-1']])
+    const result = await platformCapabilityTools.start_task.execute(
+      { taskId: 't1' },
+      { requestContext: { get: (k: string) => requestContext.get(k) } } as any,
+    )
+
+    expect(result).toEqual({
+      content: [
+        {
+          type: 'text',
+          text: 'Could not resolve your workspace membership — please make sure you are signed in to a workspace.',
+        },
+      ],
+    })
+    expect(execute).not.toHaveBeenCalled()
+  })
 })

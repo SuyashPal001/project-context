@@ -30,8 +30,30 @@ function buildTool(name: (typeof TOOL_NAMES)[number]) {
       // Human/session caller — no agentId set, so Task 4's agent_tool_assignments
       // gate never fires for this path; the caller is checked purely on role
       // permission, resolved from their tenant membership.
-      const resolved = await resolveUserPermissions(db, tenantId, userId)
-      const permissions = (resolved ?? []).map((p) => `${p.resource}:${p.action}`)
+      let resolved: { resource: string; action: string }[] | null
+      try {
+        resolved = await resolveUserPermissions(db, tenantId, userId)
+      } catch (err) {
+        console.error('[platform-capabilities] resolveUserPermissions failed:', err instanceof Error ? err.message : err)
+        return { content: [{ type: 'text' as const, text: 'Could not verify your permissions right now — please try again.' }] }
+      }
+
+      // `null` means no resolvable tenant membership at all (e.g. chat.ts's
+      // fallback-to-Cognito-sub path when /auth/me fails) — a distinct condition
+      // from a real membership with zero granted permissions ([]). Report it
+      // separately so the agent doesn't say "permission denied" when the real
+      // problem is upstream identity resolution.
+      if (resolved === null) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: 'Could not resolve your workspace membership — please make sure you are signed in to a workspace.',
+            },
+          ],
+        }
+      }
+      const permissions = resolved.map((p) => `${p.resource}:${p.action}`)
 
       const result = await getMcpRegistry().execute(
         { name, arguments: inputData },
