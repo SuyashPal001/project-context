@@ -61,30 +61,45 @@ Gmail tools (owned by the existing `mcp-server/`) get proxied into the same exte
 
 ### 1. Shared capability package (new)
 
-`products/agent-platform/packages/capabilities/` — new pnpm workspace package, `@serverless-saas/agent-capabilities`. Moves the logic currently in `products/agent-platform/packages/api/mcp/tools.ts` (the `handleStartTask`/`handleGetTaskThread` functions and `registerAgentPlatformMcpTools`) here, with zero Hono/Express dependency — just Drizzle, the registry types from `@serverless-saas/mcp`, and `@serverless-saas/agent-schema`. Both `apps/api` and `apps/agent-orchestrator` depend on it directly (`workspace:*`).
+`products/agent-platform/packages/capabilities/` — new pnpm workspace package, `@serverless-saas/agent-capabilities`. Moves the logic currently in `products/agent-platform/packages/api/mcp/tools.ts` (the `handleStartTask`/`handleGetTaskThread` functions and `registerAgentPlatformMcpTools`) here, with zero Hono/Express dependency — just Drizzle, the registry types from `@serverless-saas/mcp`, and `@serverless-saas/agent-schema`. Both `apps/api` and `apps/agent-orchestrator` depend on it directly (`workspace:*`). Package shape follows `packages/foundation/mcp` (flat `main`/`types`, `src/` rootDir, no subpath `exports` map needed — it consumes `@serverless-saas/agent-schema`'s subpath exports, it doesn't provide its own), not `agent-schema`'s wildcard-`exports` shape.
 
 Registration adds the `agent_tools`/`agent_tool_assignments` gate: before `registry.execute()` calls a handler, it must also confirm (via a new lookup this package owns) that the calling agent has an active `agent_tool_assignments` row for this tool. This applies to both adapters — the internal path's "agent" is the platform's own system agent, not exempted from the check just because it's internal, and the human-session case is checked purely on the user's own role permission on the tool, as passed through today (this design does not change how the internal path's human-scoped access is checked, only formalizes the agent-facing gate for the external path where a specific automated agent identity, not a human, is the caller).
 
+**Correction from implementation-plan research:** `agent_tools` is not currently unused — it's actively seeded (`packages/foundation/database/seeds/tools.ts`'s `PLATFORM_TOOLS`, ~20 platform-wide rows) and read by **two independent, already-duplicated code paths**: `packages/foundation/ai/src/tools/registry.ts` (`getAgentTools`, Drizzle) and `apps/agent-orchestrator/src/usage.ts` (`fetchToolGovernance`, raw `pg`, explicitly commented as mirroring the first). Only `agent_tool_assignments` — the actual per-agent grant table — has zero writers anywhere today; this phase is its first writer. Fixed now rather than left as adjacent debt: this phase also **deduplicates the two read paths**, extracting one shared Drizzle-based `getAgentTools`-equivalent that both `@serverless-saas/ai` and `apps/agent-orchestrator` call, since `agent-orchestrator` already depends on `@serverless-saas/database` and this work is touching exactly these tables anyway.
+
 ### 2. Internal adapter (new)
 
-`apps/agent-orchestrator/src/mastra/tools/platform-capabilities.ts` — for each tool the shared registry exposes, defines a Mastra-compatible tool (`{id, description, inputSchema, execute}`) whose `execute()`:
-1. Reads the calling human's `tenantId` and role permissions from the already-resolved session context (the same resolution `apps/api` does, reused via the shared `@serverless-saas/permissions` package — not reimplemented).
+`apps/agent-orchestrator/src/mastra/tools/platform-capabilities.ts` — for each tool the shared registry exposes, defines a Mastra-compatible tool (`{id, description, inputSchema, execute}`, matching the exact shape of the existing `fetchAgentContext.ts` tool: `id` kebab-case, `inputSchema`/`outputSchema` as Zod, `execute: async (inputData, execContext) => ...`) whose `execute()`:
+1. Reads the calling human's `tenantId` from `execContext.requestContext.get('tenantId')` (already set by `chatStream.ts` today) and resolves their current role permissions via a **new exported function**, `resolveUserPermissions(db, tenantId, userId)`, added to `@serverless-saas/permissions`.
 2. Calls `registry.execute({name, arguments}, authContext)` in-process.
 3. Maps an `isError` response into a clear string the agent's own reasoning can act on (e.g., surfacing "you don't have access to that task" back to the user), rather than letting the chat turn fail opaquely.
 
-Registered into `platformAgent`'s existing tool set (`apps/agent-orchestrator/src/mastra/agents/platformAgent.ts`) alongside its current tools.
+**Correction from implementation-plan research:** the design originally assumed permission resolution could be "reused via `@serverless-saas/permissions` — not reimplemented." No such function exists — `packages/foundation/permissions` only exports pure functions over an *already-resolved* permission set (`hasPermission`, `intersectPermissions`, etc.); the actual DB query (tenant+user → role → `role_permissions` join `permissions`) is private, inline logic in `apps/api/src/middleware/permissions.ts:38-62`, and `agent-orchestrator`'s `RequestContext` never carries `permissions` today (only `tenantId`/`agentId`/`userId`). Fixed now, not deferred: this phase extracts that query into `resolveUserPermissions(db, tenantId, userId)` in `@serverless-saas/permissions` (Drizzle-based — `agent-orchestrator` already depends on `@serverless-saas/database`, so it can call a Drizzle-based function directly for this new code path even though its own *existing* code elsewhere uses raw `pg`; no migration of `agent-orchestrator`'s existing queries required), and `apps/api/src/middleware/permissions.ts` is updated to call the same extracted function instead of keeping its own copy.
+
+Registered into `platformAgent`'s existing tool set (`apps/agent-orchestrator/src/mastra/agents/platformAgent.ts`'s `tools: async ({ requestContext }) => {...}` factory, spread alongside the existing `SERVER_TOOLS` map — matching how tenant-scoped tools are already registered there, not as a separate static export).
 
 ### 3. External adapter (rewrite of the earlier plain-JSON route)
 
 `apps/api/src/routes/mcp.ts` (moved from `products/agent-platform/packages/api/routes/mcp.ts` — this is now a foundation-level concern, not agent-platform-specific, since it may host other products' tools later) — a stateless MCP server built fresh per Lambda invocation:
-- `@modelcontextprotocol/sdk`'s `McpServer` + `StreamableHTTPServerTransport`, mirroring the exact pattern already proven in `mcp-server/src/server.ts` (fresh server per request, no persistent session state — the right fit for Lambda's request/response model, and none of these tools need server-initiated push).
-- Mounted via the existing `mountApiRoutes` path, so it inherits the full middleware chain (`apiKeyAuthMiddleware` etc.) unchanged.
-- On `tools/list`: merges the shared registry's local tool definitions with a short-cached (60s) fetch of `mcp-server`'s live tool list (internal-service-key channel).
+- `@modelcontextprotocol/sdk`'s `McpServer` + **`WebStandardStreamableHTTPServerTransport`** (`@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js`) — **not** the Express-oriented `StreamableHTTPServerTransport` that `mcp-server/src/server.ts` uses. `mcp-server` runs on a persistent VM with real Node `http.IncomingMessage`/`ServerResponse` objects (via Express); `apps/api` runs on Lambda via `hono/aws-lambda`, which only ever has Web-standard `Request`/`Response` — no raw Node socket. The SDK ships a first-party Hono-compatible transport for exactly this case (confirmed present in the installed SDK, with an official Hono example: `transport.handleRequest(c.req.raw)` returns a `Response` directly, usable as a Hono handler's return value with no adapter shim needed). Route body:
+  ```ts
+  mcpRoutes.all('/', async (c) => {
+    const transport = new WebStandardStreamableHTTPServerTransport();
+    const server = buildMcpServer(/* registry + auth context for this request */);
+    await server.connect(transport);
+    return transport.handleRequest(c.req.raw);
+  });
+  ```
+  Fresh `McpServer` per request (stateless — no persistent session state), matching the design's original intent, now on the correct transport class.
+- Mounted via the existing `mountApiRoutes` path, so it inherits the full middleware chain (`apiKeyAuthMiddleware` etc.) unchanged. `apps/api/src/types.ts`'s `AppEnv` needs `apiKeyContext` added as a typed `Variables` entry (currently every consumer in `apps/api` casts through `as never`/`any` to read it — `products/agent-platform/packages/api`'s copy of `AppEnv` already types it properly; align `apps/api`'s own type to match rather than adding another untyped cast).
+- On `tools/list`: merges the shared registry's local tool definitions with a short-cached (60s) fetch of `mcp-server`'s live tool list (internal-service-key channel). No existing internal-HTTP-client helper exists anywhere in the repo (confirmed by repo-wide search) — this phase writes one small fetch wrapper for the `x-internal-service-key`/`x-tenant-id`/`x-agent-id` header pattern, since it's now needed in two new places (list-merge and call-proxy) and didn't exist before.
 - On `tools/call`: dispatches to the local registry if the tool name is registered there; otherwise proxies to `mcp-server` using the caller's already-resolved `tenantId`/`agentId` as `x-tenant-id`/`x-agent-id` headers — the same trust model `mcp-server` already expects from internal callers, unchanged on its side.
+
+`apps/api/package.json` needs `@modelcontextprotocol/sdk` added at the version already pinned in `mcp-server/package.json` (`^1.10.2`), to keep both services on the same SDK version.
 
 ### 4. `agent_tools` / `agent_tool_assignments` wiring (new)
 
-A migration seeds `agent_tools` rows for `start_task` and `get_task_thread` (both `stakes: 'low'`, `requires_approval: false` — they're read-only). `agent_tool_assignments` is not auto-populated for existing agents — a tenant (or, for now, an idempotent backfill migration granting assignment to every currently-active `ops-agent`/`custom-agent`, matching how permission grants were backfilled in the previous branch) must have a row before an agent can call either tool. Exact backfill behavior is an implementation-plan-level decision, not fixed here.
+A migration adds `start_task`/`get_task_thread` to the existing `PLATFORM_TOOLS` seed list (`packages/foundation/database/seeds/tools.ts`) — both `stakes: 'low'`, `requires_approval: false` (they're read-only) — following the established seeding path rather than inventing a new one. `agent_tool_assignments` is not auto-populated for existing agents; a backfill migration grants assignment to every currently-active `ops-agent`/`custom-agent` (matching how permission grants were backfilled in the previous branch — `packages/foundation/database/migrations/0050_grant_agent_tasks_read.sql` is the direct precedent), so existing agents aren't silently locked out the moment this ships. This is decided here, not left open: auto-grant on backfill, explicit tenant action required only for *new* agents going forward.
 
 ## Data flow
 
@@ -99,10 +114,12 @@ The registry already converts unknown-tool, permission-denied, and handler-throw
 ## Testing
 
 - Shared capability package: existing unit tests for `handleStartTask`/`handleGetTaskThread` move with the code, unchanged in substance; add coverage for the new `agent_tool_assignments` gate (agent with the right permission but no assignment row is denied).
+- `resolveUserPermissions` (new, `@serverless-saas/permissions`): unit test directly against the extracted query logic; `apps/api/src/middleware/permissions.ts`'s existing tests continue to pass unchanged since it now calls the extracted function rather than inlining the query.
+- Deduplicated `getAgentTools`: `packages/foundation/ai/src/tools/registry.ts`'s existing tests continue to cover the merged logic; `apps/agent-orchestrator/src/usage.ts`'s raw-`pg` version is deleted, not tested separately.
 - Internal adapter: unit test the auth-context resolution in isolation (mocked session → correct tenant/permissions reach `registry.execute()`), and that an `isError` response is surfaced as agent-readable text, not a crash.
 - External adapter: extend the existing route-test pattern (`mcp.route.test.ts`) to the new JSON-RPC surface — `tools/list` merge behavior (local + proxied), `tools/call` dispatch (local vs. proxied), and the auth-rejection paths.
 
-## Open questions for the implementation plan (not resolved here)
+## Resolved decisions (previously open questions)
 
-- Exact backfill strategy for `agent_tool_assignments` on existing agents (auto-grant vs. requiring explicit tenant action).
-- Whether the internal adapter's tool set should be identical to the external one, or whether some tools should be internal-only (no MCP exposure) or external-only.
+- **`agent_tool_assignments` backfill:** auto-grant to every currently-active `ops-agent`/`custom-agent` via migration (same pattern as `0050_grant_agent_tasks_read.sql`); explicit tenant action required only for new agents going forward.
+- **Internal vs. external tool set:** identical for this phase — both `start_task` and `get_task_thread` are exposed through both adapters, since the design's whole premise is one registry serving both front doors. A tool being internal-only or external-only is a per-tool decision for whenever a tool actually needs that asymmetry; nothing in this phase does.
