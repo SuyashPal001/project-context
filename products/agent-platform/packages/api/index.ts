@@ -23,6 +23,8 @@ import { llmProvidersRoutes } from './routes/llm-providers';
 import { widgetRoutes } from './routes/widget';
 import { handoverRoutes } from './routes/handover';
 import { publicPackRoutes } from './routes/packs.public';
+import { mcpRoutes } from './routes/mcp';
+import { registerAgentPlatformMcpTools } from './mcp/tools';
 
 // Internal routes
 import internalRetrieveRoute from './routes/internal/retrieve';
@@ -60,6 +62,7 @@ export function mountPublicRoutes(publicApi: Hono<AppEnv>): void {
 
 export function mountApiRoutes(api: Hono<AppEnv>): void {
     registerCounters();
+    registerAgentPlatformMcpTools();
     api.route('/agents', agentsRoutes);
     api.route('/agents', agentSkillsRoutes);
     api.route('/agents', agentPoliciesRoutes);
@@ -76,6 +79,7 @@ export function mountApiRoutes(api: Hono<AppEnv>): void {
     api.route('/prds', prdsRoutes);
     api.route('/milestones', milestonesRoutes);
     api.route('/pages', pagesRoutes);
+    api.route('/mcp', mcpRoutes);
 }
 
 export function mountInternalRoutes(internalApi: Hono<AppEnv>): void {

@@ -317,8 +317,40 @@
       "tag": "0045_task_provenance",
       "breakpoints": true
     },
-    { "idx": 45, "version": "7", "when": 1780243500000, "tag": "0046_task_revisions", "breakpoints": true },
-    { "idx": 46, "version": "7", "when": 1780243560000, "tag": "0047_handover_packs", "breakpoints": true },
-    { "idx": 47, "version": "7", "when": 1780243620000, "tag": "0048_backfill_agent_key_permissions", "breakpoints": true }
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1780243500000,
+      "tag": "0046_task_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1780243560000,
+      "tag": "0047_handover_packs",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1780243620000,
+      "tag": "0048_backfill_agent_key_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1786353761922,
+      "tag": "0049_task_context_carrying",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1786353821922,
+      "tag": "0050_grant_agent_tasks_read",
+      "breakpoints": true
+    }
   ]
 }

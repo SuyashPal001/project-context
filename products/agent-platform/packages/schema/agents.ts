@@ -1,6 +1,7 @@
 import { pgTable, uuid, text, timestamp, boolean, integer, decimal, pgEnum, index, uniqueIndex, customType } from 'drizzle-orm/pg-core';
 import { json, jsonb } from 'drizzle-orm/pg-core';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { githubRepos } from './github';
 
 const vector = customType<{ data: number[] | null; driverData: string | null }>({
   dataType() { return 'vector(768)'; },
@@ -117,6 +118,7 @@ export const agentTasks = pgTable('agent_tasks', {
   milestoneId:  uuid('milestone_id'),
   planId:       uuid('plan_id'),
   parentTaskId: uuid('parent_task_id').references((): AnyPgColumn => agentTasks.id),
+  repoId: uuid('repo_id').references(() => githubRepos.id),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
   embedding: vector('embedding'),

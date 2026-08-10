@@ -893,6 +893,9 @@ importers:
       '@serverless-saas/logger':
         specifier: workspace:*
         version: link:../../../../packages/foundation/logger
+      '@serverless-saas/mcp':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/mcp
       '@serverless-saas/notifications':
         specifier: workspace:*
         version: link:../../../../packages/foundation/notifications
