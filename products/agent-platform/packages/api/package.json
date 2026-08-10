@@ -5,22 +5,35 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": { "require": "./dist/index.js", "types": "./dist/index.d.ts" },
-    "./services/audit-log": { "require": "./dist/services/audit-log.js", "types": "./dist/services/audit-log.d.ts" },
-    "./services/observability": { "require": "./dist/services/observability.js", "types": "./dist/services/observability.d.ts" }
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./services/audit-log": {
+      "require": "./dist/services/audit-log.js",
+      "types": "./dist/services/audit-log.d.ts"
+    },
+    "./services/observability": {
+      "require": "./dist/services/observability.js",
+      "types": "./dist/services/observability.d.ts"
+    },
+    "./lib/agentPrompts": {
+      "require": "./dist/lib/agentPrompts.js",
+      "types": "./dist/lib/agentPrompts.d.ts"
+    }
   },
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist",
     "type-check": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:seed:templates": "tsx seeds/agent-templates.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1011.0",
-    "pg": "^8.13.0",
-    "postgres": "^3.4.0",
     "@aws-sdk/client-secrets-manager": "^3.1011.0",
     "@aws-sdk/s3-request-presigner": "^3.1011.0",
+    "@hono/zod-validator": "^0.2.2",
     "@serverless-saas/agent-schema": "workspace:*",
     "@serverless-saas/ai": "workspace:*",
     "@serverless-saas/cache": "workspace:*",
@@ -35,10 +48,12 @@
     "@serverless-saas/storage": "workspace:*",
     "@serverless-saas/types": "workspace:*",
     "@serverless-saas/validators": "workspace:*",
-    "@hono/zod-validator": "^0.2.2",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.18",
+    "jszip": "3.10.1",
     "pdf-parse": "^1.1.1",
+    "pg": "^8.13.0",
+    "postgres": "^3.4.0",
     "striptags": "^3.2.0",
     "zod": "^3.23.0"
   },

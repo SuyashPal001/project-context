@@ -1,4 +1,5 @@
 import pdfParse from 'pdf-parse';
+import JSZip from 'jszip';
 
 export interface ExtractedField {
   key: string;
@@ -11,6 +12,8 @@ export interface IngestionResult {
   formatDetected: string;
   chunkCount: number;
   extractedFields: ExtractedField[] | null;
+  /** Number of member files ingested. Only set for archive uploads. */
+  memberCount?: number;
 }
 
 const SCANNED_TEXT_THRESHOLD = 100;
@@ -50,6 +53,92 @@ export function detectFormat(filename: string, mimeType: string, textLength: num
   }
 
   return 'Unknown';
+}
+
+/**
+ * Archive expansion.
+ *
+ * A user's document corpus normally arrives as a zip. Accepting the archive and
+ * unpacking it here is cheaper than asking them to upload files one at a time —
+ * and the alternative we shipped first was telling them to use WeTransfer.
+ *
+ * Nested archives are deliberately not recursed into: one level keeps the
+ * expansion bounded and there is no legitimate corpus shape that needs more.
+ */
+
+const ARCHIVE_EXTENSIONS = ['zip'];
+const ARCHIVE_MIME_TYPES = ['application/zip', 'application/x-zip-compressed', 'multipart/x-zip'];
+
+/** Extensions the downstream pipeline can actually extract text from. */
+const INGESTIBLE_EXTENSIONS = ['pdf', 'docx', 'txt'];
+
+const MAX_ARCHIVE_ENTRIES = 200;
+const MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
+
+export interface ArchiveEntry {
+  filename: string;
+  buffer: Buffer;
+}
+
+export function isArchive(filename: string, mimeType: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  return ARCHIVE_EXTENSIONS.includes(ext) || ARCHIVE_MIME_TYPES.includes(mimeType.toLowerCase());
+}
+
+/** Resource forks, dotfiles and directory markers carry no ingestible content. */
+function isJunkEntry(path: string): boolean {
+  const base = path.split('/').pop() ?? '';
+  return path.startsWith('__MACOSX/') || base.startsWith('.') || base === '';
+}
+
+export async function expandArchive(buffer: Buffer): Promise<ArchiveEntry[]> {
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(buffer);
+  } catch {
+    throw new Error('The archive could not be read. It may be corrupt or password protected.');
+  }
+
+  const files = Object.values(zip.files).filter(f => !f.dir);
+
+  if (files.length > MAX_ARCHIVE_ENTRIES) {
+    throw new Error(
+      `The archive contains too many files (${files.length}). The limit is ${MAX_ARCHIVE_ENTRIES} per upload.`
+    );
+  }
+
+  const entries: ArchiveEntry[] = [];
+  let totalBytes = 0;
+
+  for (const file of files) {
+    if (isJunkEntry(file.name)) continue;
+
+    const filename = file.name.split('/').pop() as string;
+    const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+    if (!INGESTIBLE_EXTENSIONS.includes(ext)) continue;
+
+    // Trust the declared uncompressed size when the reader exposes it, so a zip
+    // bomb is rejected before it is decompressed into memory.
+    const declared = (file as unknown as { _data?: { uncompressedSize?: number } })._data
+      ?.uncompressedSize;
+    if (typeof declared === 'number' && totalBytes + declared > MAX_UNCOMPRESSED_BYTES) {
+      throw new Error(
+        `The archive contents are too large once unpacked. The limit is ${MAX_UNCOMPRESSED_BYTES / (1024 * 1024)}MB.`
+      );
+    }
+
+    const content = await file.async('nodebuffer');
+    totalBytes += content.length;
+    if (totalBytes > MAX_UNCOMPRESSED_BYTES) {
+      throw new Error(
+        `The archive contents are too large once unpacked. The limit is ${MAX_UNCOMPRESSED_BYTES / (1024 * 1024)}MB.`
+      );
+    }
+
+    entries.push({ filename, buffer: content });
+  }
+
+  return entries;
 }
 
 export function chunkText(text: string): number {
@@ -136,8 +225,35 @@ export async function ingestFile(
   mimeType: string,
   buffer: Buffer
 ): Promise<IngestionResult> {
+  if (isArchive(filename, mimeType)) {
+    const entries = await expandArchive(buffer);
+    if (entries.length === 0) {
+      throw new Error(
+        `The archive contains no supported documents. Supported types are ${INGESTIBLE_EXTENSIONS.map(e => `.${e}`).join(', ')}.`
+      );
+    }
+
+    let chunkCount = 0;
+    for (const entry of entries) {
+      const member = await ingestFile(entry.filename, '', entry.buffer);
+      chunkCount += member.chunkCount;
+    }
+
+    return {
+      formatDetected: 'Archive (zip)',
+      chunkCount,
+      extractedFields: null,
+      memberCount: entries.length,
+    };
+  }
+
   let textLength = 0;
   let extractedText = '';
+
+  if (mimeType === 'text/plain' || filename.toLowerCase().endsWith('.txt')) {
+    const text = buffer.toString('utf8');
+    return { formatDetected: 'Text', chunkCount: chunkText(text), extractedFields: null };
+  }
 
   if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
     extractedText = await extractTextFromPdf(buffer);
