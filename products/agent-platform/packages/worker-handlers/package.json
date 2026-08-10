@@ -31,11 +31,13 @@
     "mammoth": "^1.7.0",
     "pdf-parse": "^1.1.1",
     "postgres": "^3.4.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "yauzl": "^3.2.0"
   },
   "devDependencies": {
     "@types/pdf-parse": "^1.1.5",
     "@types/uuid": "^11.0.0",
+    "@types/yauzl": "^2.10.3",
     "typescript": "^5.9.3"
   }
 }
