@@ -16,13 +16,13 @@ WHERE NOT EXISTS (
 -- Mirrors the 0050_grant_agent_tasks_read.sql precedent (auto-grant on backfill, explicit
 -- tenant action required only for new agents going forward).
 INSERT INTO "agent_tool_assignments" ("agent_id", "tool_id", "tenant_id")
-SELECT DISTINCT a."id", at."id", a."tenant_id"
+SELECT DISTINCT a."id", t."id", a."tenant_id"
 FROM "agents" a
 INNER JOIN "memberships" m ON m."agent_id" = a."id" AND m."tenant_id" = a."tenant_id"
 INNER JOIN "roles" r ON r."id" = m."role_id"
-CROSS JOIN "agent_tools" at
+CROSS JOIN "agent_tools" t
 WHERE r."name" IN ('ops-agent', 'custom-agent')
   AND m."status" = 'active'
-  AND at."name" IN ('start_task', 'get_task_thread')
-  AND at."tenant_id" IS NULL
+  AND t."name" IN ('start_task', 'get_task_thread')
+  AND t."tenant_id" IS NULL
 ON CONFLICT ("agent_id", "tool_id") DO NOTHING;

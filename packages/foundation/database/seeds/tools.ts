@@ -252,7 +252,7 @@ const PLATFORM_TOOLS: {
   {
     name: 'start_task',
     displayName: 'Start Task',
-    description: "Fetch everything needed to start work on a task: title/description/status, resolved plan steps, linked project context, and repo reference.",
+    description: 'Fetch everything needed to start work on a task: title/description/status, resolved plan steps, linked project context, and repo reference.',
     provider: null,
     stakes: 'low',
     requiresApproval: false,
