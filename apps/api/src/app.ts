@@ -42,6 +42,7 @@ import { sessionsRoutes } from './routes/sessions';
 import { usersRoutes } from './routes/users';
 import { workspacesRoutes } from './routes/workspaces';
 import { observabilityRoutes } from './routes/observability';
+import { mcpRoutes } from './routes/mcp';
 import internalIntegrationsRoute from './routes/internal/integrations';
 import { agentProduct } from '@serverless-saas/agent-api';
 import { randomUUID } from 'crypto';
@@ -183,6 +184,7 @@ api.route('/sessions', sessionsRoutes);
 api.route('/users', usersRoutes);
 api.route('/workspaces', workspacesRoutes);
 api.route('/observability', observabilityRoutes);
+api.route('/mcp', mcpRoutes);
 
 // ── Secure product routes (agent-platform) ────────────────────────────────────
 agentProduct.mountApiRoutes(api);
