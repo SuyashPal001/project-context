@@ -13,6 +13,7 @@ import { apiKeys } from '@serverless-saas/database/schema/access';
 import { eq, isNull, and, desc } from 'drizzle-orm';
 
 import type { AppEnv } from '../types';
+import { buildResearchEngineerPrompt, withUploadGuidance } from '@serverless-saas/agent-api/lib/agentPrompts';
 
 const onboardingSchema = z.object({
     workspaceName: z.string().min(3).max(20),
@@ -138,9 +139,11 @@ onboardingRoutes.post('/complete', async (c) => {
         console.warn('[onboarding] No published agent template found, using fallback prompt');
     }
 
-    const resolvedSystemPrompt = publishedTemplate
-        ? publishedTemplate.systemPrompt.replace(/\$\{workspaceName\}/g, workspaceName)
-        : `You are the Research Engineer for ${workspaceName}. Answer questions from the organization's uploaded documents and knowledge base. Always call retrieve_documents before responding to company-specific questions. Cite retrieved content inline as [1][2][3]. Say "I don't know" when the answer is not in the knowledge base.`;
+    const resolvedSystemPrompt = withUploadGuidance(
+        publishedTemplate
+            ? publishedTemplate.systemPrompt.replace(/\$\{workspaceName\}/g, workspaceName)
+            : buildResearchEngineerPrompt(workspaceName)
+    );
 
     const resolvedTools = publishedTemplate?.tools ?? [];
     const resolvedModel = publishedTemplate?.model ?? null;
@@ -215,7 +218,7 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: pmAgent.id,
         tenantId,
         name: 'default',
-        systemPrompt: 'You are the Product Manager. Capture user intent, ask one clarifying question, load product context, and hand off to the Analyst. Keep every phase aligned.',
+        systemPrompt: withUploadGuidance('You are the Product Manager. Capture user intent, ask one clarifying question, load product context, and hand off to the Analyst. Keep every phase aligned.'),
         tools: [],
         status: 'active',
     });
@@ -245,7 +248,7 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: prdAgent.id,
         tenantId,
         name: 'default',
-        systemPrompt: 'You are the Analyst. Draft a complete PRD covering problem, goals, user stories, functional and non-functional requirements, and success metrics. Edit surgically on feedback. Auto-save every version.',
+        systemPrompt: withUploadGuidance('You are the Analyst. Draft a complete PRD covering problem, goals, user stories, functional and non-functional requirements, and success metrics. Edit surgically on feedback. Auto-save every version.'),
         tools: [],
         status: 'active',
     });
@@ -275,7 +278,7 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: roadmapAgent.id,
         tenantId,
         name: 'default',
-        systemPrompt: 'You are the Project Manager. Turn approved PRDs into 3–7 milestones with priorities, target dates, and dependencies ordered chronologically. Never plan from an unapproved spec.',
+        systemPrompt: withUploadGuidance('You are the Project Manager. Turn approved PRDs into 3–7 milestones with priorities, target dates, and dependencies ordered chronologically. Never plan from an unapproved spec.'),
         tools: [],
         status: 'active',
     });
@@ -305,7 +308,7 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: taskAgentRow.id,
         tenantId,
         name: 'default',
-        systemPrompt: 'You are the Tech Lead. Decompose milestones into 3–7 concrete engineering tasks with acceptance criteria, effort estimates, and priorities. Output board-ready tasks.',
+        systemPrompt: withUploadGuidance('You are the Tech Lead. Decompose milestones into 3–7 concrete engineering tasks with acceptance criteria, effort estimates, and priorities. Output board-ready tasks.'),
         tools: [],
         status: 'active',
     });
@@ -335,7 +338,7 @@ onboardingRoutes.post('/complete', async (c) => {
         agentId: archAgent.id,
         tenantId,
         name: 'default',
-        systemPrompt: 'You are the Architect. Always call retrieve_knowledge before answering any technical question about the codebase. Always cite the file. Say "I don\'t know" when the answer is not in the knowledge base.',
+        systemPrompt: withUploadGuidance('You are the Architect. Always call retrieve_knowledge before answering any technical question about the codebase. Always cite the file. Say "I don\'t know" when the answer is not in the knowledge base.'),
         tools: [],
         status: 'active',
     });
