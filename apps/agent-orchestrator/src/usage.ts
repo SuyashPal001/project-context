@@ -1,5 +1,7 @@
 import pg from 'pg'
 import { makeAppPool } from './db.js'
+import { db } from '@serverless-saas/database'
+import { getAgentTools } from '@serverless-saas/ai'
 
 // DDL (run once at deploy time):
 //
@@ -196,41 +198,9 @@ export async function fetchToolGovernance(
   tenantId: string,
   connectedProviders: string[],
 ): Promise<ToolGovernance> {
-  const p = getPool()
   try {
-    // Tools explicitly assigned to this agent
-    const assignedRes = await p.query<{ name: string; stakes: string; requires_approval: boolean }>(
-      `SELECT at.name, at.stakes, at.requires_approval
-       FROM agent_tool_assignments ata
-       JOIN agent_tools at ON ata.tool_id = at.id
-       WHERE ata.agent_id = $1 AND ata.tenant_id = $2 AND at.status = 'active'`,
-      [agentId, tenantId],
-    )
-
-    // Platform tools (tenant_id IS NULL) scoped to connected providers
-    const platformRes = await p.query<{ name: string; stakes: string; requires_approval: boolean }>(
-      connectedProviders.length > 0
-        ? `SELECT name, stakes, requires_approval
-           FROM agent_tools
-           WHERE tenant_id IS NULL AND status = 'active'
-             AND (provider IS NULL OR provider = ANY($1::text[]))`
-        : `SELECT name, stakes, requires_approval
-           FROM agent_tools
-           WHERE tenant_id IS NULL AND status = 'active' AND provider IS NULL`,
-      connectedProviders.length > 0 ? [connectedProviders] : [],
-    )
-
-    // Merge — assigned tools take precedence, no duplicates by name
-    const assignedNames = new Set(assignedRes.rows.map(r => r.name))
-    const allTools = [
-      ...assignedRes.rows,
-      ...platformRes.rows.filter(r => !assignedNames.has(r.name)),
-    ]
-
-    return {
-      requiresApprovalTools: allTools.filter(t => t.requires_approval).map(t => t.name),
-      highStakeTools: allTools.filter(t => t.stakes === 'high' || t.stakes === 'critical').map(t => t.name),
-    }
+    const { requiresApprovalTools, highStakeTools } = await getAgentTools(db, tenantId, agentId, connectedProviders)
+    return { requiresApprovalTools, highStakeTools }
   } catch (err) {
     // Fail open — governance errors must never block task execution
     console.error('[tools] fetchToolGovernance error:', (err as Error).message)
