@@ -76,4 +76,5 @@ export interface McpAuthContext {
   keyId: string;
   keyType: ApiKeyType;
   permissions: string[];
+  agentId?: string;
 }

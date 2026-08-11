@@ -6,7 +6,7 @@ const { mockDb } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../db', () => ({ db: mockDb }))
+vi.mock('@serverless-saas/database', () => ({ db: mockDb }))
 vi.mock('@serverless-saas/agent-schema/agents', () => ({
   agentTasks: {
     id: 'agentTasks.id', tenantId: 'agentTasks.tenantId', title: 'agentTasks.title',
@@ -21,6 +21,8 @@ vi.mock('@serverless-saas/agent-schema/agents', () => ({
   },
   taskComments: { taskId: 'taskComments.taskId', tenantId: 'taskComments.tenantId', authorId: 'taskComments.authorId', authorType: 'taskComments.authorType', createdAt: 'taskComments.createdAt' },
   agents: { id: 'agents.id', name: 'agents.name' },
+  agentTools: { id: 'agentTools.id', name: 'agentTools.name', tenantId: 'agentTools.tenantId', status: 'agentTools.status' },
+  agentToolAssignments: { agentId: 'agentToolAssignments.agentId', toolId: 'agentToolAssignments.toolId', tenantId: 'agentToolAssignments.tenantId' },
 }))
 vi.mock('@serverless-saas/agent-schema/pm', () => ({
   projectPlans: { id: 'projectPlans.id', deletedAt: 'projectPlans.deletedAt' },
@@ -32,7 +34,7 @@ vi.mock('@serverless-saas/database/schema/auth', () => ({
   users: { id: 'users.id', name: 'users.name' },
 }))
 
-import { registerAgentPlatformMcpTools, __resetRegisteredFlagForTests } from '../mcp/tools'
+import { registerAgentPlatformMcpTools, __resetRegisteredFlagForTests } from '../tools'
 import { getMcpRegistry, resetMcpRegistry } from '@serverless-saas/mcp'
 
 const AUTH = { tenantId: 'tenant-1', keyId: 'key-1', keyType: 'agent' as const, permissions: ['agent_tasks:read'] }
@@ -49,8 +51,13 @@ function chain(rows: unknown[], whereArgs?: unknown[]) {
     whereArgs?.push(cond)
     return q
   })
-  q.orderBy = vi.fn(() => Promise.resolve(rows))
+  // orderBy is chainable (some queries call .limit() after it, e.g. the agentTools
+  // lookup's tenant-priority ordering) but also resolvable on its own (some queries,
+  // e.g. taskSteps/taskComments, use it as the terminal call and `await` it directly).
+  q.orderBy = vi.fn(() => q)
   q.limit = vi.fn(() => Promise.resolve(rows))
+  q.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+    Promise.resolve(rows).then(resolve, reject)
   return q
 }
 
@@ -184,5 +191,76 @@ describe('permission enforcement', () => {
     )
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain('Permission denied')
+  })
+})
+
+describe('agent_tool_assignments gate', () => {
+  it('denies an agent caller with a tenant-owned tool and no assignment row (mechanism must still work for future custom tools)', async () => {
+    const toolWhereArgs: unknown[] = []
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: 'tool-1', tenantId: 'tenant-1' }], toolWhereArgs))  // agentTools lookup by name — tenant-owned row
+      .mockReturnValueOnce(chain([]))                   // agentToolAssignments lookup — empty, not assigned
+    const result = await getMcpRegistry().execute(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      { ...AUTH, agentId: 'agent-1' },
+    )
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('not assigned')
+
+    // The agentTools lookup must scope to active tools and to (tenant-owned OR
+    // platform-wide) rows, so a same-named row belonging to a different tenant is
+    // never matched.
+    expect(toolWhereArgs).toHaveLength(1)
+    expect(conditionReferencesColumn(toolWhereArgs[0], 'agentTools.name')).toBe(true)
+    expect(conditionReferencesColumn(toolWhereArgs[0], 'agentTools.status')).toBe(true)
+    expect(conditionReferencesColumn(toolWhereArgs[0], 'agentTools.tenantId')).toBe(true)
+  })
+
+  it('allows an agent caller with a platform-wide tool and NO assignment row (implicit assignment)', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: 'tool-1', tenantId: null }]))  // agentTools lookup — platform-wide row
+      .mockReturnValueOnce(chain([]))                                  // loadTaskForTenant (task not found — fine, just proving the gate passed through)
+    const result = await getMcpRegistry().execute(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      { ...AUTH, agentId: 'agent-1' },
+    )
+    expect(result.content[0].text).toContain('Task not found')
+
+    // Only 2 select calls: the tool lookup and the handler's task lookup — the
+    // agentToolAssignments lookup must have been skipped entirely for a
+    // platform-wide tool.
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows an agent caller with an assignment row', async () => {
+    const assignmentWhereArgs: unknown[] = []
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: 'tool-1', tenantId: 'tenant-1' }]))                     // agentTools lookup — tenant-owned row
+      .mockReturnValueOnce(chain([{ id: 'assignment-1' }], assignmentWhereArgs))                // agentToolAssignments — assigned
+      .mockReturnValueOnce(chain([]))                                                            // loadTaskForTenant (task not found — fine, just proving the gate passed through to the handler)
+    const result = await getMcpRegistry().execute(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      { ...AUTH, agentId: 'agent-1' },
+    )
+    expect(result.content[0].text).toContain('Task not found')
+
+    // Tenant isolation: the assignment lookup must filter on tenantId, not just
+    // agentId/toolId. If a future change drops `eq(agentToolAssignments.tenantId, ...)`
+    // from the gate's `.where()`, this fails.
+    expect(assignmentWhereArgs).toHaveLength(1)
+    expect(conditionReferencesColumn(assignmentWhereArgs[0], 'agentToolAssignments.agentId')).toBe(true)
+    expect(conditionReferencesColumn(assignmentWhereArgs[0], 'agentToolAssignments.toolId')).toBe(true)
+    expect(conditionReferencesColumn(assignmentWhereArgs[0], 'agentToolAssignments.tenantId')).toBe(true)
+  })
+
+  it('skips the gate entirely for a human caller (no agentId)', async () => {
+    mockDb.select.mockReturnValueOnce(chain([]))  // straight to loadTaskForTenant, no agentTools/assignment lookups
+    const result = await getMcpRegistry().execute(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      AUTH,  // no agentId field
+    )
+    expect(result.content[0].text).toContain('Task not found')
+    // Only one select call happened — the gate made zero DB calls for a human caller
+    expect(mockDb.select).toHaveBeenCalledTimes(1)
   })
 })

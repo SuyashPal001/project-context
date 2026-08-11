@@ -1,6 +1,6 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import { db } from '../db';
-import { agentTasks, taskSteps, taskComments, agents } from '@serverless-saas/agent-schema/agents';
+import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
+import { db } from '@serverless-saas/database';
+import { agentTasks, taskSteps, taskComments, agents, agentTools, agentToolAssignments } from '@serverless-saas/agent-schema/agents';
 import { projectPlans } from '@serverless-saas/agent-schema/pm';
 import { githubRepos } from '@serverless-saas/agent-schema/github';
 import { users } from '@serverless-saas/database/schema/auth';
@@ -127,6 +127,57 @@ async function handleGetTaskThread(
   return jsonResponse({ comments });
 }
 
+async function requireToolAssignment(
+  toolName: string,
+  auth: McpAuthContext,
+): Promise<McpToolCallResponse | null> {
+  if (!auth.agentId) return null; // human-session caller — gated by role permission only, not by assignment
+
+  // A tool name is not globally unique: a tenant-owned row (tenantId set) and a
+  // platform-wide row (tenantId null) can share a name. Prefer the tenant-owned
+  // row deterministically via an explicit CASE priority rather than relying on
+  // Postgres's ASC-NULLS-LAST default, which is a convention, not a guarantee
+  // enforced anywhere in this codebase.
+  const tenantPriority = sql<number>`CASE WHEN ${agentTools.tenantId} IS NULL THEN 1 ELSE 0 END`;
+  const [tool] = await db.select({ id: agentTools.id, tenantId: agentTools.tenantId }).from(agentTools)
+    .where(and(
+      eq(agentTools.name, toolName),
+      eq(agentTools.status, 'active'),
+      or(isNull(agentTools.tenantId), eq(agentTools.tenantId, auth.tenantId)),
+    ))
+    .orderBy(asc(tenantPriority))
+    .limit(1);
+  if (!tool) return errorResponse(`Tool not registered: ${toolName}`);
+
+  // Platform-wide tools (tenantId null) are implicitly assigned to every agent —
+  // the assignment table only gates tenant-owned custom tools. Without this,
+  // any agent created after the backfill migration (dd4982a) would be locked
+  // out of start_task/get_task_thread forever, since nothing writes new rows
+  // into agent_tool_assignments.
+  if (tool.tenantId === null) return null;
+
+  const [assignment] = await db.select({ id: agentToolAssignments.id }).from(agentToolAssignments)
+    .where(and(
+      eq(agentToolAssignments.agentId, auth.agentId),
+      eq(agentToolAssignments.toolId, tool.id),
+      eq(agentToolAssignments.tenantId, auth.tenantId),
+    )).limit(1);
+  if (!assignment) return errorResponse(`Agent is not assigned tool: ${toolName}`);
+
+  return null;
+}
+
+function withToolAssignmentGate(
+  toolName: string,
+  handler: (args: Record<string, unknown>, auth: McpAuthContext) => Promise<McpToolCallResponse>,
+) {
+  return async (args: Record<string, unknown>, auth: McpAuthContext): Promise<McpToolCallResponse> => {
+    const denied = await requireToolAssignment(toolName, auth);
+    if (denied) return denied;
+    return handler(args, auth);
+  };
+}
+
 let registered = false;
 
 export function registerAgentPlatformMcpTools(): void {
@@ -146,7 +197,7 @@ export function registerAgentPlatformMcpTools(): void {
       },
       requiredPermissions: REQUIRED_READ_PERMISSION,
     },
-    handleStartTask,
+    withToolAssignmentGate('start_task', handleStartTask),
   );
 
   registry.register(
@@ -160,7 +211,7 @@ export function registerAgentPlatformMcpTools(): void {
       },
       requiredPermissions: REQUIRED_READ_PERMISSION,
     },
-    handleGetTaskThread,
+    withToolAssignmentGate('get_task_thread', handleGetTaskThread),
   );
 }
 

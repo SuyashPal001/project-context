@@ -41,7 +41,6 @@
     "@serverless-saas/entitlements": "workspace:*",
     "@serverless-saas/events": "workspace:*",
     "@serverless-saas/logger": "workspace:*",
-    "@serverless-saas/mcp": "workspace:*",
     "@serverless-saas/notifications": "workspace:*",
     "@serverless-saas/permissions": "workspace:*",
     "@serverless-saas/queue": "workspace:*",

@@ -250,6 +250,24 @@ const PLATFORM_TOOLS: {
   },
   // ── Platform (no provider required) ───────────────────────────────────────
   {
+    name: 'start_task',
+    displayName: 'Start Task',
+    description: 'Fetch everything needed to start work on a task: title/description/status, resolved plan steps, linked project context, and repo reference.',
+    provider: null,
+    stakes: 'low',
+    requiresApproval: false,
+    parametersSchema: { type: 'object', properties: { taskId: { type: 'string' } }, required: ['taskId'] },
+  },
+  {
+    name: 'get_task_thread',
+    displayName: 'Get Task Thread',
+    description: 'Fetch the full comment history for a task.',
+    provider: null,
+    stakes: 'low',
+    requiresApproval: false,
+    parametersSchema: { type: 'object', properties: { taskId: { type: 'string' } }, required: ['taskId'] },
+  },
+  {
     name: 'web_search',
     displayName: 'Web Search',
     description: 'Search the web for current information, news, facts, and real-time data',

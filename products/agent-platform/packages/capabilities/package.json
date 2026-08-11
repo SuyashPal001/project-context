@@ -1,5 +1,5 @@
 {
-  "name": "@serverless-saas/permissions",
+  "name": "@serverless-saas/agent-capabilities",
   "version": "0.0.1",
   "private": true,
   "main": "dist/index.js",
@@ -11,14 +11,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.10.4",
-    "@serverless-saas/cache": "workspace:*",
+    "@serverless-saas/agent-schema": "workspace:*",
     "@serverless-saas/database": "workspace:*",
-    "@serverless-saas/types": "workspace:*",
-    "@upstash/redis": "^1.36.3",
+    "@serverless-saas/mcp": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
+    "typescript": "^5.9.3",
     "vitest": "^4.1.5"
   }
 }
