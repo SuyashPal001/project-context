@@ -22,13 +22,13 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
 
     if (oauthErr || !code || !stateB64) return fail('google_denied');
 
-    let tenantId: string, userId: string, service: 'gmail' | 'drive' | 'calendar';
+    let tenantId: string, userId: string, service: 'drive' | 'calendar';
     try {
         const decoded = JSON.parse(Buffer.from(stateB64, 'base64').toString('utf8')) as {
-            tenantId: string; userId: string; slug: string; service: 'gmail' | 'drive' | 'calendar'; ts: number;
+            tenantId: string; userId: string; slug: string; service: 'drive' | 'calendar'; ts: number;
         };
         if (Date.now() - decoded.ts > 600_000) return fail('state_expired');
-        if (!['gmail', 'drive', 'calendar'].includes(decoded.service)) return fail('invalid_state');
+        if (!['drive', 'calendar'].includes(decoded.service)) return fail('invalid_state');
         tenantId = decoded.tenantId; userId = decoded.userId; slug = decoded.slug; service = decoded.service;
     } catch {
         return fail('invalid_state');
