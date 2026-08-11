@@ -190,6 +190,10 @@ export default function IntegrationsPage() {
                             refetch();
                             setConnecting(null);
                         }
+                        if (event.type === 'error') {
+                            toast.error(event.payload.errorMessage || 'Failed to connect Gmail. Please try again.');
+                            setConnecting(null);
+                        }
                     },
                 });
                 connectUI.setSessionToken(token);
