@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Hono } from 'hono'
 
 vi.mock('@serverless-saas/agent-capabilities', () => ({ registerAgentPlatformMcpTools: vi.fn() }))
@@ -19,9 +19,21 @@ function appWithAuth(ctx?: { tenantId: string; keyId: string; type: string; perm
   return app
 }
 
+const ORIGINAL_MCP_SERVER_URL = process.env.MCP_SERVER_URL
+
 beforeEach(() => {
   resetMcpRegistry()
   vi.mocked(callMcpServer).mockReset()
+  // Tests that exercise the remote (mcp-server) path opt in explicitly by
+  // setting this themselves; default to "set" here since most tests in this
+  // file predate the disabled-by-default gating and expect callMcpServer to
+  // actually be invoked. The dedicated "disabled" describe block below unsets it.
+  process.env.MCP_SERVER_URL = 'http://127.0.0.1:3002'
+})
+
+afterEach(() => {
+  if (ORIGINAL_MCP_SERVER_URL === undefined) delete process.env.MCP_SERVER_URL
+  else process.env.MCP_SERVER_URL = ORIGINAL_MCP_SERVER_URL
 })
 
 describe('POST /mcp', () => {
@@ -170,5 +182,55 @@ describe('POST /mcp', () => {
       params: { name: 'GMAIL_SEND_EMAIL', arguments: { to: 'a@example.com' } },
     })
     expect(vi.mocked(callMcpServer).mock.calls[1][2]).toEqual({ tenantId: 'tenant-proxy', agentId: 'agent-1' })
+  })
+
+  describe('when MCP_SERVER_URL is unset (Gmail proxy disabled this release)', () => {
+    beforeEach(() => {
+      delete process.env.MCP_SERVER_URL
+    })
+
+    it('lists only local tools and never calls callMcpServer', async () => {
+      getMcpRegistry().register(
+        { name: 'ping', description: 'test', inputSchema: { type: 'object', properties: {} }, requiredPermissions: [] },
+        async () => textResponse('pong'),
+      )
+      const app = appWithAuth({ tenantId: 'tenant-disabled-1', keyId: 'key-1', type: 'agent', permissions: [] }, 'agent-1')
+      const res = await app.request('/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      })
+
+      expect(res.status).toBe(200)
+      const text = await res.text()
+      expect(text).toContain('ping')
+      expect(text).not.toContain('GMAIL')
+      expect(callMcpServer).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the mcp-server call fails (URL set but unreachable)', () => {
+    it('returns [] and caches the empty result, so a second call within the TTL makes no additional callMcpServer calls', async () => {
+      vi.mocked(callMcpServer).mockRejectedValueOnce(new Error('fetch failed'))
+
+      const app = appWithAuth({ tenantId: 'tenant-fail-cache', keyId: 'key-1', type: 'agent', permissions: [] }, 'agent-1')
+      const firstRes = await app.request('/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      })
+      expect(firstRes.status).toBe(200)
+      expect(callMcpServer).toHaveBeenCalledTimes(1)
+
+      const secondRes = await app.request('/mcp', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
+      })
+      expect(secondRes.status).toBe(200)
+      // Still 1: the failed lookup's empty result was cached, so the second
+      // call within the TTL window did not re-invoke callMcpServer.
+      expect(callMcpServer).toHaveBeenCalledTimes(1)
+    })
   })
 })

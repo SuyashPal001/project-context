@@ -195,10 +195,10 @@ describe('permission enforcement', () => {
 })
 
 describe('agent_tool_assignments gate', () => {
-  it('denies an agent caller with the right permission but no assignment row', async () => {
+  it('denies an agent caller with a tenant-owned tool and no assignment row (mechanism must still work for future custom tools)', async () => {
     const toolWhereArgs: unknown[] = []
     mockDb.select
-      .mockReturnValueOnce(chain([{ id: 'tool-1' }], toolWhereArgs))  // agentTools lookup by name
+      .mockReturnValueOnce(chain([{ id: 'tool-1', tenantId: 'tenant-1' }], toolWhereArgs))  // agentTools lookup by name — tenant-owned row
       .mockReturnValueOnce(chain([]))                   // agentToolAssignments lookup — empty, not assigned
     const result = await getMcpRegistry().execute(
       { name: 'start_task', arguments: { taskId: 't1' } },
@@ -216,10 +216,26 @@ describe('agent_tool_assignments gate', () => {
     expect(conditionReferencesColumn(toolWhereArgs[0], 'agentTools.tenantId')).toBe(true)
   })
 
+  it('allows an agent caller with a platform-wide tool and NO assignment row (implicit assignment)', async () => {
+    mockDb.select
+      .mockReturnValueOnce(chain([{ id: 'tool-1', tenantId: null }]))  // agentTools lookup — platform-wide row
+      .mockReturnValueOnce(chain([]))                                  // loadTaskForTenant (task not found — fine, just proving the gate passed through)
+    const result = await getMcpRegistry().execute(
+      { name: 'start_task', arguments: { taskId: 't1' } },
+      { ...AUTH, agentId: 'agent-1' },
+    )
+    expect(result.content[0].text).toContain('Task not found')
+
+    // Only 2 select calls: the tool lookup and the handler's task lookup — the
+    // agentToolAssignments lookup must have been skipped entirely for a
+    // platform-wide tool.
+    expect(mockDb.select).toHaveBeenCalledTimes(2)
+  })
+
   it('allows an agent caller with an assignment row', async () => {
     const assignmentWhereArgs: unknown[] = []
     mockDb.select
-      .mockReturnValueOnce(chain([{ id: 'tool-1' }]))                                          // agentTools lookup
+      .mockReturnValueOnce(chain([{ id: 'tool-1', tenantId: 'tenant-1' }]))                     // agentTools lookup — tenant-owned row
       .mockReturnValueOnce(chain([{ id: 'assignment-1' }], assignmentWhereArgs))                // agentToolAssignments — assigned
       .mockReturnValueOnce(chain([]))                                                            // loadTaskForTenant (task not found — fine, just proving the gate passed through to the handler)
     const result = await getMcpRegistry().execute(

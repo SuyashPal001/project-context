@@ -166,6 +166,13 @@ async function handleSession(
         requestContext.set(MASTRA_THREAD_ID_KEY, conversationId ?? crypto.randomUUID())
         requestContext.set('tenantId', tenantId)
         requestContext.set('agentId', agentId)
+        // Mirrors chatStream.ts's resolution: internalUserId is already resolved
+        // once per connection in the upgrade handler below (auth/me, falling back
+        // to the Cognito sub on failure) — without this, start_task/get_task_thread
+        // are advertised to the model on this path but can never succeed, since
+        // requireToolAssignment's human-caller branch and any userId-scoped logic
+        // downstream have nothing to read.
+        requestContext.set('userId', internalUserId)
         if (folderId) requestContext.set('folderId', folderId)
         mcpClient = getMCPClientForTenant(tenantId, agentId)
         requestContext.set('__mcpClient', mcpClient as any)

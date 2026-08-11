@@ -139,7 +139,7 @@ async function requireToolAssignment(
   // Postgres's ASC-NULLS-LAST default, which is a convention, not a guarantee
   // enforced anywhere in this codebase.
   const tenantPriority = sql<number>`CASE WHEN ${agentTools.tenantId} IS NULL THEN 1 ELSE 0 END`;
-  const [tool] = await db.select({ id: agentTools.id }).from(agentTools)
+  const [tool] = await db.select({ id: agentTools.id, tenantId: agentTools.tenantId }).from(agentTools)
     .where(and(
       eq(agentTools.name, toolName),
       eq(agentTools.status, 'active'),
@@ -148,6 +148,13 @@ async function requireToolAssignment(
     .orderBy(asc(tenantPriority))
     .limit(1);
   if (!tool) return errorResponse(`Tool not registered: ${toolName}`);
+
+  // Platform-wide tools (tenantId null) are implicitly assigned to every agent —
+  // the assignment table only gates tenant-owned custom tools. Without this,
+  // any agent created after the backfill migration (dd4982a) would be locked
+  // out of start_task/get_task_thread forever, since nothing writes new rows
+  // into agent_tool_assignments.
+  if (tool.tenantId === null) return null;
 
   const [assignment] = await db.select({ id: agentToolAssignments.id }).from(agentToolAssignments)
     .where(and(

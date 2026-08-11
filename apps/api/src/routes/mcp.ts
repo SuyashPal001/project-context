@@ -88,12 +88,20 @@ async function parseSseJsonResponse<T>(res: Response): Promise<T> {
 }
 
 async function getRemoteTools(tenantId: string): Promise<RemoteToolListEntry[]> {
+  if (!process.env.MCP_SERVER_URL) {
+    // Explicitly disabled this release — apps/api's Lambda cannot reach
+    // mcp-server without violating its no-new-network-exposure constraint.
+    // This is distinct from "attempted and failed": no fetch is made.
+    logger.info('Remote MCP tools (Gmail proxy) disabled: MCP_SERVER_URL is unset', { tenantId });
+    return [];
+  }
   const cached = remoteToolsCache.get(tenantId);
   if (cached && cached.expiresAt > Date.now()) return cached.tools;
   try {
     const res = await callMcpServer('/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/list' }, { tenantId });
     if (!res.ok) {
       logger.error('mcp-server tools/list returned non-OK status', { tenantId, status: res.status });
+      remoteToolsCache.set(tenantId, { tools: [], expiresAt: Date.now() + REMOTE_TOOLS_TTL_MS });
       return [];
     }
     const body = await parseSseJsonResponse<{ result?: { tools?: RemoteToolListEntry[] } }>(res);
@@ -102,6 +110,7 @@ async function getRemoteTools(tenantId: string): Promise<RemoteToolListEntry[]> 
     return tools;
   } catch (err) {
     logger.error('Failed to fetch remote tools from mcp-server', { tenantId, error: err instanceof Error ? err : undefined });
+    remoteToolsCache.set(tenantId, { tools: [], expiresAt: Date.now() + REMOTE_TOOLS_TTL_MS });
     return [];
   }
 }

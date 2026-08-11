@@ -1,4 +1,8 @@
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL ?? 'http://127.0.0.1:3002';
+// No fallback: apps/api's Lambda cannot reach mcp-server (127.0.0.1:3002) without
+// violating mcp-server's no-new-network-exposure constraint, so the Gmail proxy
+// ships disabled this release. Callers (getRemoteTools in routes/mcp.ts) must
+// treat an unset MCP_SERVER_URL as "explicitly disabled," not "misconfigured."
+const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
 export interface McpServerCallOptions {
   tenantId: string;
@@ -23,5 +27,8 @@ export async function callMcpServer(
       ...(options.agentId ? { 'x-agent-id': options.agentId } : {}),
     },
     body: JSON.stringify(body),
+    // Fail fast on a misconfigured or unreachable URL rather than stalling until
+    // the Lambda's own timeout (29s for FoundationApiFunction).
+    signal: AbortSignal.timeout(2000),
   });
 }
