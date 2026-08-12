@@ -83,7 +83,9 @@ export default function InvitePage() {
         try {
             await confirmSignUp(invite.email, data.code);
 
-            const { idToken, accessToken, refreshToken } = await signIn(invite.email, pendingCredentials.password);
+            const signInResult = await signIn(invite.email, pendingCredentials.password);
+            if (signInResult.challenge) throw new Error("Unexpected auth challenge after sign-up");
+            const { idToken, accessToken, refreshToken } = signInResult;
 
             const sessionRes = await fetch("/api/auth/session", {
                 method: "POST",
