@@ -20,7 +20,9 @@ describe('createNangoConnectSession', () => {
   it('creates a session scoped to google-mail for the given tenant', async () => {
     (fetch as any).mockResolvedValue({
       ok: true,
-      json: async () => ({ token: 'session-tok', expires_at: '2026-08-11T20:00:00Z' }),
+      json: async () => ({
+        data: { token: 'session-tok', connect_link: 'https://connect.example.com/x', expires_at: '2026-08-11T20:00:00Z' },
+      }),
     });
 
     const result = await createNangoConnectSession('tenant-1');

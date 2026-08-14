@@ -26,6 +26,12 @@ export async function createNangoConnectSession(tenantId: string): Promise<{ tok
     throw new Error(`Nango connect session creation failed with status ${resp.status}`);
   }
 
-  const data = (await resp.json()) as { token: string };
-  return { token: data.token };
+  // Nango wraps the response in a `data` envelope
+  // (packages/server/lib/controllers/connect/postSessions.ts:173-179 in
+  // Nango's own source) — { data: { token, connect_link, expires_at } },
+  // not a flat { token }. Reading `.token` directly silently produced
+  // `undefined`, which Nango's Connect UI then rejected with
+  // invalid_connect_session_token_format once it reached Google.
+  const body = (await resp.json()) as { data: { token: string } };
+  return { token: body.data.token };
 }
