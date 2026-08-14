@@ -181,6 +181,13 @@ export default function IntegrationsPage() {
                     host: process.env.NEXT_PUBLIC_NANGO_HOST,
                 });
                 const connectUI = nango.openConnectUI({
+                    // openConnectUI does not inherit `host` from the Nango client above —
+                    // it has its own separate apiURL/baseURL, defaulting to Nango Cloud
+                    // (api.nango.dev / connect.nango.dev) regardless of `host`. Must be
+                    // set explicitly here or every connect attempt silently targets Cloud
+                    // instead of this shared self-hosted instance.
+                    apiURL: process.env.NEXT_PUBLIC_NANGO_HOST,
+                    baseURL: process.env.NEXT_PUBLIC_NANGO_CONNECT_URL,
                     onEvent: (event) => {
                         if (event.type === 'close') {
                             setConnecting(null);

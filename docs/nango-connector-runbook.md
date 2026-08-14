@@ -146,3 +146,14 @@ verbatim — it's already correct.
 - **`apps/api`'s `googleConnectHandler`-style helpers stay in place** for
   providers not yet migrated to Nango — don't touch them when adding a new
   Nango-backed one. Only the specific provider you're migrating changes.
+- **`@nangohq/frontend`'s `openConnectUI()` does NOT inherit `host` from
+  the `new Nango({ host })` client it's called on** — it has its own
+  separate `apiURL`/`baseURL` options that silently default to Nango
+  Cloud (`api.nango.dev` / `connect.nango.dev`) if not passed explicitly.
+  Symptom: the connect popup opens, but authorization fails with a
+  confusing `invalid_client`/"OAuth client was not found" error (because
+  it's asking *Nango Cloud* about an integration that only exists on our
+  self-hosted instance), plus a CSP violation in the browser console
+  referencing `api.nango.dev`. Always pass `apiURL: NEXT_PUBLIC_NANGO_HOST`
+  and `baseURL: NEXT_PUBLIC_NANGO_CONNECT_URL` explicitly to
+  `openConnectUI({...})` itself, not just to the `Nango` constructor.
