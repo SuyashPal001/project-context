@@ -158,9 +158,37 @@ verbatim — it's already correct.
   and `baseURL: NEXT_PUBLIC_NANGO_CONNECT_URL` explicitly to
   `openConnectUI({...})` itself, not just to the `Nango` constructor.
 
-## Known issues (unresolved as of 2026-08-15 — read before re-investigating)
+## Nango wraps every API response in a `data` envelope — check this for every new endpoint you call
 
-### Connect UI shows "This page can't be opened directly"
+**RESOLVED 2026-08-15.** This was the actual root cause of the issue
+below, and it's a systemic pattern, not a one-off: Nango's REST API wraps
+essentially all responses as `{ data: {...} }`, confirmed against Nango's
+own server source for two different endpoints:
+- `POST /connect/sessions` → `{ data: { token, connect_link, expires_at } }`
+  (`packages/server/lib/controllers/connect/postSessions.ts:173-179`)
+- `GET /connection/:id` (the modern v1 one) → `{ data: { connection: {...}, provider, endUser, errorLog } }`
+  (`packages/server/lib/controllers/v1/connections/connectionId/getConnection.ts:104`)
+
+`integrations.nango.ts`'s `createNangoConnectSession` originally read
+`.token` directly off the parsed body instead of `.data.token` — this
+silently produced `undefined` (not a thrown error, since the field was
+just missing), which `JSON.stringify` then drops entirely, so the
+response `apps/api` sent to the frontend had no `token` key at all. The
+frontend faithfully forwarded that `undefined` into the Connect UI, which
+Nango's own server then rejected.
+
+**The one exception found so far**: `mcp-server`'s `getGmailAccessToken`
+calls the older, `@deprecated` `GET /connection/:connectionId` route
+(`routes.public.ts`, no `/v1/` prefix) — that one returns a genuinely flat
+body (`res.status(200).send(response.value)` with no `data` wrapper,
+`packages/server/lib/controllers/connection/connectionId/getConnection.ts:144`),
+so `data.credentials?.access_token` there is correct as written. **Don't
+assume this pattern is consistent** — check the exact response shape in
+Nango's own source (or a real request/response, not docs summaries) for
+every new endpoint before writing the parsing code, since v1 vs.
+deprecated vs. public API routes don't all agree.
+
+### Connect UI shows "This page can't be opened directly" (symptom of the bug above)
 
 Symptom: clicking "Connect" on the Gmail card in `apps/web` opens the Nango
 Connect UI popup, but it immediately shows *"This page can't be opened
@@ -170,7 +198,9 @@ the Google auth flow.
 This message comes from `packages/connect-ui/src/views/Home.tsx` in
 Nango's own source (self-hosted instance runs this same code) — it fires
 when the iframe's `sessionToken` state is still `null` after a 10s
-timeout (`NO_SESSION_TOKEN_TIMEOUT_MS`).
+timeout (`NO_SESSION_TOKEN_TIMEOUT_MS`). Root cause confirmed via Nango's
+own self-hosted server logs: the session token being sent was the literal
+string `"undefined"` — see the `data`-envelope bug above, now fixed.
 
 **Already ruled out, do not re-check these:**
 - The `apps/api` connect-session endpoint itself: confirmed working,
@@ -213,20 +243,26 @@ timeout (`NO_SESSION_TOKEN_TIMEOUT_MS`).
 - A separate, real, but confirmed-unrelated `401` on `GET /api/v1/integrations`
   and `GET /api/v1/integrations/composio/apps` was observed during testing —
   different endpoints entirely from the Gmail connect flow, does not block
-  it (the Gmail connect `POST` succeeds independently). Worth its own
-  investigation later — see below.
+  it (the Gmail connect `POST` succeeds independently). Still open — see
+  below.
 
-**Next concrete step for whoever picks this up**: get real browser
-DevTools access (this session's `claude-in-chrome` extension never
-connected all night — extension/login issue, not a Nango issue) and
-inspect the live `<iframe id="connect-ui">` element's actual `src`
-attribute during a real attempt. If `session_token` is present and
-correct there, the bug is inside Connect UI's own React code in a way
-static reading didn't surface (worth attaching a debugger/breakpoint at
-`Home.tsx:66-71`). If it's missing or malformed, the bug is in how
-`apps/web`'s `page.tsx` constructs the `baseURL` — but the deployed code
-doesn't match this git branch, so **check what's actually deployed on the
-VM before editing `page.tsx` again** — `git log`/`git diff` there first.
+**Actual fix** (`apps/api/src/routes/integrations.nango.ts`, commit
+`92f7228`): unwrap the real `{ data: { token } }` shape instead of reading
+`.token` directly off the response. No DevTools access ended up being
+needed — the self-hosted Nango server's own logs (tailed directly on the
+VM: `docker compose logs nango-server -f` or equivalent) showed the exact
+malformed request (`GET /?session_token=undefined&apiURL=...`) and
+Nango's own `invalid_connect_session_token_format` error, which pointed
+straight at the token never actually being set correctly upstream. If a
+similar "popup stuck / silent failure" symptom shows up again for a future
+provider, check the self-hosted instance's own server logs before
+suspecting the browser/CSP/network layer — that's genuinely faster than
+static tracing across three codebases.
+
+The "deployed code differs from git" observation above turned out to be
+a red herring from testing an in-progress VM edit mid-flight, not a real
+concern — confirm with whoever's on the VM which commit is actually
+running before assuming drift.
 
 ### `GET /api/v1/integrations` and `/integrations/composio/apps` return 401
 
