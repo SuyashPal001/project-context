@@ -68,7 +68,18 @@ nangoWebhookRoute.post('/webhooks/nango', async (c) => {
                 permissions = EXCLUDED.permissions, updated_at = NOW()
         `);
     } catch (err) {
-        console.error('[nango/webhook] DB upsert failed:', (err as Error).message);
+        // postgres.js wraps the real Postgres error in `.cause` with `.code`
+        // (e.g. 23503 = foreign_key_violation, 23502 = not_null_violation) —
+        // `.message` alone is just the query text, not the actual reason.
+        const cause = (err as any)?.cause;
+        console.error('[nango/webhook] DB upsert failed:', {
+            message: (err as Error).message,
+            code: cause?.code,
+            detail: cause?.detail,
+            constraint: cause?.constraint,
+            tenantId,
+            internalProvider,
+        });
         return c.json({ error: 'db_error' }, 500);
     }
 
