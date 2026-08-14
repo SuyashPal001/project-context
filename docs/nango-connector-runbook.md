@@ -157,3 +157,84 @@ verbatim — it's already correct.
   referencing `api.nango.dev`. Always pass `apiURL: NEXT_PUBLIC_NANGO_HOST`
   and `baseURL: NEXT_PUBLIC_NANGO_CONNECT_URL` explicitly to
   `openConnectUI({...})` itself, not just to the `Nango` constructor.
+
+## Known issues (unresolved as of 2026-08-15 — read before re-investigating)
+
+### Connect UI shows "This page can't be opened directly"
+
+Symptom: clicking "Connect" on the Gmail card in `apps/web` opens the Nango
+Connect UI popup, but it immediately shows *"This page can't be opened
+directly. Please start a connection from your application."* instead of
+the Google auth flow.
+
+This message comes from `packages/connect-ui/src/views/Home.tsx` in
+Nango's own source (self-hosted instance runs this same code) — it fires
+when the iframe's `sessionToken` state is still `null` after a 10s
+timeout (`NO_SESSION_TOKEN_TIMEOUT_MS`).
+
+**Already ruled out, do not re-check these:**
+- The `apps/api` connect-session endpoint itself: confirmed working,
+  returns `200` with a real token (verified via Network tab).
+- The Google OAuth client: confirmed valid — a raw authorize URL with a
+  freshly-copied Client ID successfully reached Google's consent flow and
+  redirected back to Nango's callback (got as far as Nango's own
+  "No state found in callback", which is expected for a hand-built test
+  URL that skips Nango's real session/state creation).
+- CSP: no `Content-Security-Policy` header is sent by `apps/web` (no code
+  sets one), by `connect.projectcontext.co` (checked via `curl -I`), or by
+  Cloudflare (no Transform Rules on the zone — confirmed via Cloudflare's
+  own AI assistant). The CSP violation seen once in console was likely a
+  stale/unrelated artifact, not reproduced on retest.
+- `X-Frame-Options` / `frame-ancestors`: not set anywhere in the chain —
+  confirmed via `curl -I` on `connect.projectcontext.co`.
+- Asset serving: the Connect UI's HTML and its entry JS bundle
+  (`/assets/index-*.js`) both load correctly via direct `curl` — real
+  content, correct `Content-Type`, no 404s.
+- Token timing/buffering: confirmed via Nango's own SDK source
+  (`connectUI.ts`) that `setSessionToken()` buffers the token if called
+  before the iframe's `ready` event, then sends it once ready fires — so
+  call-order relative to `openConnectUI()` isn't the issue in principle.
+- **The actual deployed code differs from what's in this git branch** —
+  the live bundle (confirmed by downloading and reading the real deployed
+  JS chunk, not assuming from source) uses a *third* mechanism neither
+  this repo's `git log` nor the earlier-proposed fix used: it constructs
+  `new URL("https://connect.projectcontext.co")`, sets a `session_token`
+  query param on it via `.searchParams.set(...)`, and passes that as
+  `baseURL` to `openConnectUI()` — relying on `Home.tsx`'s own
+  `search.get('session_token')` fallback (lines 65-71) instead of the
+  postMessage-based `setSessionToken()` path. This is a legitimate,
+  Nango-supported mechanism (same one used by Nango's own "Share connect
+  link" feature) and traced through `Home.tsx` line by line — by that
+  reading it *should* work if the token really reaches the iframe's URL.
+  **Never verified: whether the token is actually present in the live
+  iframe's `src` at the moment it loads** (needs real DevTools access —
+  `Elements` tab, inspect the live `<iframe id="connect-ui">` element's
+  `src` attribute during a real attempt, not curl or source reading).
+- A separate, real, but confirmed-unrelated `401` on `GET /api/v1/integrations`
+  and `GET /api/v1/integrations/composio/apps` was observed during testing —
+  different endpoints entirely from the Gmail connect flow, does not block
+  it (the Gmail connect `POST` succeeds independently). Worth its own
+  investigation later — see below.
+
+**Next concrete step for whoever picks this up**: get real browser
+DevTools access (this session's `claude-in-chrome` extension never
+connected all night — extension/login issue, not a Nango issue) and
+inspect the live `<iframe id="connect-ui">` element's actual `src`
+attribute during a real attempt. If `session_token` is present and
+correct there, the bug is inside Connect UI's own React code in a way
+static reading didn't surface (worth attaching a debugger/breakpoint at
+`Home.tsx:66-71`). If it's missing or malformed, the bug is in how
+`apps/web`'s `page.tsx` constructs the `baseURL` — but the deployed code
+doesn't match this git branch, so **check what's actually deployed on the
+VM before editing `page.tsx` again** — `git log`/`git diff` there first.
+
+### `GET /api/v1/integrations` and `/integrations/composio/apps` return 401
+
+Observed in the browser console during Gmail-connect testing, on a normal
+authenticated dashboard page load (not specific to the Nango flow).
+Confirmed unrelated to the Gmail connect popup issue above (different
+endpoints; the Gmail connect `POST` succeeds independently in the same
+session). Not yet investigated further — possibly related to the
+`SignInResult` union-type auth fix deployed the same night
+(`429b8f1`), possibly pre-existing. Check whether this reproduces outside
+the Nango testing session before assuming a connection to it.
