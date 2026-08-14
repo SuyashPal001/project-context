@@ -96,8 +96,9 @@ function LoginPageContent() {
         setError(null);
         startHyperspace('signin');
         try {
-            const { idToken, accessToken, refreshToken } = await signIn(email, data.password);
-            await completeLogin(idToken, accessToken, refreshToken);
+            const signInResult = await signIn(email, data.password);
+            if (signInResult.challenge) throw new Error("Unexpected auth challenge");
+            await completeLogin(signInResult.idToken, signInResult.accessToken, signInResult.refreshToken);
         } catch (err: any) {
             finishHyperspace();
             setError(err.message || 'Invalid email or password.');

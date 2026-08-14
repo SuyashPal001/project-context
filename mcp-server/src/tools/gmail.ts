@@ -39,6 +39,7 @@ async function guardPolicy(ctx: ToolContext, action: string): Promise<void> {
 
 export function registerGmailTools(server: McpServer, ctx: ToolContext): void {
   // ── GMAIL_SEND_EMAIL ────────────────────────────────────────────────────────
+  // @ts-ignore — MCP SDK v1.x Zod schema inference exceeds TS recursion limit
   server.tool(
     'GMAIL_SEND_EMAIL',
     'Send an email from the connected Gmail account',
