@@ -54,9 +54,17 @@ nangoWebhookRoute.post('/webhooks/nango', async (c) => {
         return c.json({ received: true, skipped: `provider=${payload.providerConfigKey}` });
     }
 
-    const tenantId = payload.connectionId as string;
+    // payload.connectionId is Nango's OWN internal connection identifier —
+    // NOT the same as our tenantId (Nango's /connect/sessions API has no way
+    // to set connection_id directly; it's generated internally). Our real
+    // tenantId only survives in payload.endUser.endUserId, which Nango
+    // documents as present specifically because auth happened via a
+    // session token (packages/types/lib/webhooks/api.ts:63) — always true
+    // for us. Confirmed the wrong field live: every failed webhook insert
+    // tonight had a tenant_id that matched no row in `tenants` at all.
+    const tenantId = (payload.endUser?.endUserId ?? payload.connectionId) as string;
     if (!tenantId) {
-        return c.json({ error: 'missing connectionId' }, 400);
+        return c.json({ error: 'missing tenantId' }, 400);
     }
 
     try {

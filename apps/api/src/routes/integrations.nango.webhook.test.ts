@@ -49,12 +49,19 @@ describe('POST /integrations/webhooks/nango', () => {
     expect(res.status).toBe(401);
   });
 
-  it('records the connection and syncs tools on a successful google-mail auth event', async () => {
+  it('records the connection using endUser.endUserId, not Nango\'s own connectionId', async () => {
+    // connectionId is deliberately a different value here — Nango generates
+    // its own internal connection identifier via /connect/sessions (no way
+    // to set it directly), so it is NOT our tenantId. Only endUser.endUserId
+    // carries the real tenantId we set as end_user.id when creating the
+    // session. Confirmed live: every webhook insert that used connectionId
+    // as tenantId failed with a foreign_key_violation against `tenants`.
     const payload = {
       type: 'auth',
       success: true,
-      connectionId: 'tenant-1',
+      connectionId: 'nango-internal-connection-id-xyz',
       providerConfigKey: 'google-mail',
+      endUser: { endUserId: 'tenant-1', endUserEmail: null, tags: {} },
     };
     const body = JSON.stringify(payload);
     const res = await app.request('/integrations/webhooks/nango', {
@@ -74,6 +81,24 @@ describe('POST /integrations/webhooks/nango', () => {
       resource: 'integration',
       metadata: { provider: 'gmail' },
     }));
+    expect(syncToolsAndNotifyRelay).toHaveBeenCalledWith('tenant-1', 'gmail', 'add');
+  });
+
+  it('falls back to connectionId if endUser is absent', async () => {
+    const payload = {
+      type: 'auth',
+      success: true,
+      connectionId: 'tenant-1',
+      providerConfigKey: 'google-mail',
+    };
+    const body = JSON.stringify(payload);
+    const res = await app.request('/integrations/webhooks/nango', {
+      method: 'POST',
+      headers: { 'x-nango-hmac-sha256': sign(body), 'content-type': 'application/json' },
+      body,
+    });
+
+    expect(res.status).toBe(200);
     expect(syncToolsAndNotifyRelay).toHaveBeenCalledWith('tenant-1', 'gmail', 'add');
   });
 
