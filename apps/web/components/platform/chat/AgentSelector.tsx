@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Agent, AgentsResponse } from "../agents/types";
-import { Bot } from "lucide-react";
+import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 
 interface AgentSelectorProps {
     open: boolean;
@@ -52,9 +52,7 @@ export function AgentSelector({ open, onOpenChange, onSelect }: AgentSelectorPro
                                     className="flex items-center justify-start gap-3 h-auto py-3 w-full text-left"
                                     onClick={() => onSelect(agent)}
                                 >
-                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                                        <Bot className="h-4 w-4" />
-                                    </div>
+                                    <PersonaAvatar persona={agent.persona} size={32} className="rounded-full" />
                                     <div className="flex flex-col items-start overflow-hidden">
                                         <span className="font-medium truncate w-full">{agent.name}</span>
                                         <span className="text-xs text-muted-foreground line-clamp-2 whitespace-normal">

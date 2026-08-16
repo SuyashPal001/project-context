@@ -6,9 +6,10 @@ import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, MoreVertical, Trash2, Archive, Bot, LockKeyhole } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole } from "lucide-react";
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
+import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -95,7 +96,7 @@ function AgentSection({ agent, conversations, selectedId, onSelect, onNewChat, o
             <div className="flex items-start justify-between px-2 mb-1">
                 <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-1.5">
-                        <Bot className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                        <PersonaAvatar persona={agent.persona} size={16} className="rounded" />
                         <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider truncate">
                             {agent.name}
                         </span>
@@ -250,7 +251,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                                         onClick={() => router.push(`/${tenantSlug}/dashboard/agents/${agent.id}`)}
                                     >
                                         <div className="flex items-center gap-1.5">
-                                            <Bot className="h-3 w-3 text-muted-foreground/40 shrink-0" />
+                                            <PersonaAvatar persona={agent.persona} size={16} className="rounded" />
                                             <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider truncate">
                                                 {agent.name}
                                             </span>
