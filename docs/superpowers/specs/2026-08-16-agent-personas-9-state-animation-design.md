@@ -28,8 +28,8 @@ trigger.
 | `running` | a tool call just started | SSE `tool_call` event (`chatStream.ts:211`) |
 | `thinking` | a tool result just came back, agent deciding what's next | SSE `tool_done` event (`chatStream.ts:224`) |
 | `responding` | streaming the reply text | SSE `delta` event (`chatStream.ts:192,200`) |
-| `waiting` | paused mid-workflow on a human-approval gate (HITL) | `Message.artifactRef.pmRunId`/`pmStepId` (`chat/types.ts:73-74`) present — the PM workflow's Mastra HITL resumption data, only set when a run is paused awaiting approval |
-| `review` | just produced a completed artifact (PRD/plan/tasks) for the user to look at | `Message.artifactRef` (`chat/types.ts:88`) present **without** `pmRunId`/`pmStepId` — a finished artifact, nothing pending |
+| `waiting` | paused on a human-approval gate (an MCP tool needs the user's OK before it runs) | the real `approval_request` SSE event, forwarded end to end — see below |
+| `review` | just produced a completed artifact (PRD/plan/tasks) for the user to look at | `Message.artifactRef` (`chat/types.ts:88`) present on the latest assistant message |
 | `done` | finished cleanly | SSE `done` event (`chatStream.ts:276`), no error, no pending approval |
 | `failed` | an error occurred | SSE `error` event (`chatStream.ts:298`) |
 
@@ -83,21 +83,49 @@ all — they're derived from conversation/message state:
   whatever component renders `PersonaAvatar` for the chat header/conversation view: if
   `conversation.messages.length === 0`, render `waving` regardless of stream state; once
   the first message is sent, hand off to the SSE-driven reducer.
-- **`waiting`** and **`review`**: not present in the current `ChatStreamEventType` union at
-  all (no `approval_requested` or `artifact_ready` SSE event exists — both are read from the
-  persisted `Message.artifactRef` field after the message lands, not from a stream event).
-  **Important correction from an earlier draft of this spec:** `Message.approvalRequest`
-  (`chat/types.ts:84`) looked like the obvious signal for `waiting`, but it is dead — grep
-  confirms no backend code anywhere in `products/agent-platform` or `apps/agent-orchestrator`
-  ever sets it, and its only UI consumer is literally gated behind `{false && ...}`
-  (`MessageItem.tsx:184`). Building `waiting` on that field would make it permanently
-  unreachable — exactly the "art with no real trigger" anti-pattern this addendum exists to
-  avoid. The actual, already-wired HITL pause signal is `artifactRef.pmRunId`/`pmStepId`
-  (`chat/types.ts:73-74`, "Mastra HITL: approval-gate resumption data persisted on the
-  message") — present only when a PM workflow run is paused mid-step awaiting approval to
-  resume. So: `artifactRef` present **with** `pmRunId`/`pmStepId` → `waiting`; `artifactRef`
-  present **without** them → `review` (a finished artifact, nothing pending). Both derive
-  from the same field, distinguished by whether the resumption keys are set.
+- **`review`**: not an SSE event at all — derived by inspecting `Message.artifactRef` after a
+  message lands, since there's no dedicated wire event for "artifact ready" (the `artifactRef`
+  payload rides inside the existing `done` event, per `chatStream.ts:280`).
+- **`waiting`**: unlike `review`, this one **is** a real, distinct SSE event on the wire — the
+  literal event name `approval_request` — but tracing it required two earlier, wrong guesses
+  in this spec's drafting, corrected here for the record:
+
+  1. First draft assumed `Message.approvalRequest` was the signal. Reasonable-looking, but
+     an earlier revision of this spec "corrected" it away after grepping only backend
+     DB-persistence code and finding no writer — that grep missed that the field is
+     constructed **client-side**, not persisted server-side.
+  2. Second draft (the correction just described) replaced it with
+     `artifactRef.pmRunId`/`pmStepId`, based on a *different* HITL mechanism (the PM
+     workflow's Mastra resumption gate). Real, but the wrong one — a distinct approval
+     mechanism from what actually fires during ordinary chat.
+
+  The accurate chain, traced end to end:
+  - `apps/agent-orchestrator/src/routes/chat.ts:165` registers an approval channel per
+    session: `sseApprovalChannels.set(sessionId, (payload) => sendEvent('approval_request', payload))`.
+  - `apps/agent-orchestrator/src/routes/sessions.ts:47-48` pushes into that channel — a
+    genuine MCP tool-call approval gate ("agent wants to call a stakes-gated tool, needs the
+    user's OK"), separate from `chatStream.ts`'s own `delta`/`tool_call`/`tool_done`/`done`/
+    `error` events but delivered on the *same* SSE stream.
+  - `apps/web/hooks/useChat.ts:300-308` already has a live `case 'approval_request':` handler
+    calling `onApprovalRequired`.
+  - `apps/web/app/[tenant]/dashboard/chat/useChatStream.ts:162-167` — `onApprovalRequired`
+    constructs a real `Message` with `approvalRequest: { ..., status: 'pending' }` and pushes
+    it into the `['messages', conversationId]` query cache. This field is genuinely populated
+    today, in production, on every real MCP approval gate.
+  - `apps/web/app/[tenant]/dashboard/chat/page.tsx:72-84` — `handleApprove`/`handleDismiss`
+    flip that same message's `approvalRequest.status` to `'approved'`/`'dismissed'` once
+    resolved, so it doesn't stay `'pending'` forever.
+  - `MessageItem.tsx:184`'s `{false && message.approvalRequest && (...)}` only disables the
+    *visual approval banner* — a separate, already-known gap (nothing in the current UI lets
+    a user actually resolve a pending approval by clicking anything in that banner). The
+    underlying `approvalRequest` **data** is real and correctly reflects pending/resolved
+    state regardless of that banner being hidden — which is itself a reason to build the
+    `waiting` persona state, since today it would be the *only* visible signal that a
+    conversation is blocked on something.
+
+  Conclusion: `approval_request` is forwarded as a **real** SSE event into the reducer
+  (matching the literal wire event name, no renaming needed), not synthesized after the fact
+  like `review` is.
 
 Proposed reducer shape — extend the event union rather than bolting on side-channel state,
 so the whole thing stays a single pure function:
@@ -109,7 +137,7 @@ export type PersonaAnimationState =
 
 export type ChatStreamEventType =
     | "tool_call" | "tool_done" | "delta" | "done" | "error"
-    | "approval_pending" | "artifact_ready";
+    | "approval_request" | "artifact_ready";
 
 export function reducePersonaAnimationState(
     _current: PersonaAnimationState,
@@ -119,7 +147,7 @@ export function reducePersonaAnimationState(
         case "tool_call": return "running";
         case "tool_done": return "thinking";
         case "delta": return "responding";
-        case "approval_pending": return "waiting";
+        case "approval_request": return "waiting";
         case "artifact_ready": return "review";
         case "done": return "done";
         case "error": return "failed";
@@ -128,12 +156,14 @@ export function reducePersonaAnimationState(
 }
 ```
 
-`approval_pending` and `artifact_ready` are **not** real SSE event names — they're
-synthetic events the calling component dispatches after inspecting the completed
-message's `approvalRequest`/`artifactRef` fields (e.g. right after the `done` SSE event
-lands and the assistant message is persisted). This keeps the reducer pure and testable
-exactly like the existing one, while acknowledging these two states derive from message
-data, not the wire event.
+`approval_request` is the real SSE event name (matches the literal string used by
+`chat.ts`/`sessions.ts` on the wire) — the calling component forwards it directly, the same
+way it forwards `tool_call`/`delta`/etc. `artifact_ready` is the one synthetic event: no wire
+event by that name exists, so the calling component dispatches it after inspecting the
+latest message's `artifactRef` field (populated via the `done` event's payload, per
+`chatStream.ts:280`). This keeps the reducer pure and testable exactly like the existing
+one, while being precise about which of the two is a real forwarded event and which is
+derived from message state.
 
 `waving` is deliberately **not** a reducer case — it's a rendering decision made before the
 reducer is even relevant (empty conversation), not a state transition triggered by an
