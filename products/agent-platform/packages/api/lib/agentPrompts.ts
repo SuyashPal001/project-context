@@ -37,14 +37,26 @@ export function withUploadGuidance(prompt: string): string {
   return `${prompt}\n\n${UPLOAD_GUIDANCE}`;
 }
 
+export const CLARIFICATION_GUIDANCE = `Handling ambiguous requests:
+- The ask_clarifying_questions tool lets you pause and ask the user one or more multiple-choice questions before proceeding, instead of guessing.
+- Use it when a request could reasonably resolve to more than one distinct output (e.g. "write up the launch" — which launch, what format, for whom) and the wrong guess would waste the user's time redoing the work.
+- Do not use it for requests that are merely open-ended but not ambiguous (e.g. "summarize this doc") — pick a sensible default and proceed.
+- Ask only the questions you actually need answered; each question should change what you'd do depending on the answer.`;
+
+/** Appends the shared clarifying-questions guidance to a prompt, once. */
+export function withClarificationGuidance(prompt: string): string {
+  if (prompt.includes(CLARIFICATION_GUIDANCE)) return prompt;
+  return `${prompt}\n\n${CLARIFICATION_GUIDANCE}`;
+}
+
 /**
  * The platform-wide prompt seeded into agent_templates. Agents reaching the
  * orchestrator without a per-agent override fall back to this.
  */
 export function buildPlatformPrompt(): string {
-  return withUploadGuidance(
+  return withClarificationGuidance(withUploadGuidance(
     `You are Disco, the assistant for this workspace. Answer from the organization's own documents and knowledge base whenever the question is about their work, and say "I don't know" rather than guessing.`
-  );
+  ));
 }
 
 export function buildResearchEngineerPrompt(workspaceName: string): string {

@@ -1,7 +1,8 @@
 import { Agent } from '@mastra/core/agent'
+import { RequestContext } from '@mastra/core/request-context'
 
 import { tenantContextSchema } from '../context.js'
-import { platformModel } from '../model.js'
+import { selectModel } from './modelSelection.js'
 import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 
@@ -9,7 +10,8 @@ export const architectAgent = new Agent({
   id: 'pc-architect',
   name: 'Architect',
 
-  instructions: `You are the technical architect for this engineering team.
+  instructions: async ({ requestContext }: { requestContext?: RequestContext }) => {
+    const base = `You are the technical architect for this engineering team.
 You have deep knowledge of this codebase through indexed
 migrations, routes, tests, and architectural patterns.
 
@@ -33,11 +35,16 @@ You know about:
 - Data model: all migration files and table structures
 - API surface: all route handlers and their contracts
 - System behavior: all test files and what they protect
-- Patterns: CLAUDE.md architectural decisions and rules`,
+- Patterns: CLAUDE.md architectural decisions and rules`
+    // Persona personality is a layer composed ahead of the base prompt, never a
+    // replacement for it — see platformAgent.ts for the same pattern.
+    const persona = requestContext?.get('personaPersonality') as string | undefined
+    return persona ? `${persona}\n\n${base}` : base
+  },
 
   requestContextSchema: tenantContextSchema,
 
   tools: { retrieve_knowledge: retrieveKnowledge },
-  model: platformModel,
+  model: selectModel,
   memory: architectMemory,
 })

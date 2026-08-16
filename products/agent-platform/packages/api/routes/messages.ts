@@ -150,6 +150,10 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             entityId: z.string(),
             title: z.string(),
         }).nullish(),
+        completedTrace: z.object({
+            elapsedSec: z.number(),
+            toolCallCount: z.number(),
+        }).nullish(),
         createdAt: z.string().datetime().optional(),
     });
 
@@ -205,6 +209,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             content: result.data.content,
             attachments: result.data.attachments ?? null,
             artifactRef: result.data.artifactRef ?? null,
+            completedTrace: result.data.completedTrace ?? null,
             createdAt: result.data.createdAt ? new Date(result.data.createdAt) : undefined,
         })
         .returning();

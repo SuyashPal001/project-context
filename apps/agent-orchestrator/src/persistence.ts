@@ -72,12 +72,18 @@ export interface ArtifactRefPayload {
   pmStepId?: string
 }
 
+export interface CompletedTracePayload {
+  elapsedSec: number
+  toolCallCount: number
+}
+
 export function saveAssistantMessage(
   idToken: string,
   conversationId: string,
   content: string,
   messageId?: string,
   artifactRef?: ArtifactRefPayload | null,
+  completedTrace?: CompletedTracePayload | null,
 ): void {
   const payload: Record<string, unknown> = {
     role: 'assistant',
@@ -86,6 +92,7 @@ export function saveAssistantMessage(
   }
   if (messageId) payload.id = messageId
   if (artifactRef) payload.artifactRef = artifactRef
+  if (completedTrace) payload.completedTrace = completedTrace
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
     method: 'POST',
     headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },

@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "completed_trace" jsonb;

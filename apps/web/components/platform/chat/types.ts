@@ -22,6 +22,25 @@ export interface ApprovalRequest {
     decisionAt?: string;
 }
 
+export interface ClarificationOption {
+    label: string;
+    rationale?: string;
+}
+
+export interface ClarificationQuestion {
+    prompt: string;
+    options: ClarificationOption[];
+    allowFreeText?: boolean;
+    allowSkip?: boolean;
+}
+
+export interface ClarificationRequest {
+    id: string;
+    questions: ClarificationQuestion[];
+    status: 'pending' | 'answered' | 'skipped';
+    answeredAt?: string;
+}
+
 export interface MessageAttachment {
     id: string;        // local UI id (uuid)
     fileId?: string;   // S3 fileId — used to re-fetch presigned URL on reload
@@ -74,6 +93,16 @@ export interface ArtifactRef {
     pmStepId?: string;
 }
 
+export interface CompletedTrace {
+    elapsedSec: number;
+    // Populated live by useChatStream's onDone for the turn that just finished.
+    // A message loaded from GET /messages only carries the durable summary
+    // (elapsedSec + toolCallCount persisted in messages.completed_trace) — the
+    // per-call cards were never persisted, so toolCalls is absent there.
+    toolCalls?: CompletedToolCall[];
+    toolCallCount?: number;
+}
+
 export interface Message {
     id: string;
     conversationId: string;
@@ -82,10 +111,17 @@ export interface Message {
     createdAt: string;
     toolCalls?: ToolCall[];
     approvalRequest?: ApprovalRequest;
+    clarificationRequest?: ClarificationRequest;
     isStreaming?: boolean;
     attachments?: MessageAttachment[];
     planResult?: PlanResult;
     artifactRef?: ArtifactRef;
+    // Snapshot of "how long this turn took / what tools it used", stashed once
+    // streaming finishes (see useChatStream's onDone). Lives on the message
+    // itself — not on ThinkingIndicator's component state — so the collapsed
+    // "Worked for Ns" summary survives ThinkingIndicator unmounting the moment
+    // isStreaming flips false, and stays visible on scroll-back/re-render.
+    completedTrace?: CompletedTrace;
 }
 
 export interface Conversation {

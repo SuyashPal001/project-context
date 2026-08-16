@@ -8,7 +8,8 @@ import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentSkill, fetchAgentName } from '../usage.js'
+import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection } from '../usage.js'
+import { buildGatewayModelString } from '../mastra/model.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
 
@@ -142,16 +143,30 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('tenantId', tenantId)
     requestContext.set('agentId', agentId)
     requestContext.set('userId', internalUserId)
+    requestContext.set('sendEvent', sendEvent)
+    requestContext.set('sessionId', sessionId)
 
     const mcpClient = getMCPClientForTenant(tenantId, agentId)
     requestContext.set('__mcpClient', mcpClient as any)
 
-    const [agentSkill, agentName] = await Promise.all([
+    const [agentSkill, agentName, personaPersonality, agentModelSelection] = await Promise.all([
       fetchAgentSkill(agentId),
       fetchAgentName(agentId),
+      fetchAgentPersonality(agentId),
+      fetchAgentModelSelection(agentId).catch((err) => {
+        console.warn(`[sse:${sessionId}] fetchAgentModelSelection failed, falling back to default model:`, (err as Error).message)
+        return null
+      }),
     ])
     if (agentSkill?.systemPrompt) {
       requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
+    }
+    if (personaPersonality) {
+      requestContext.set('personaPersonality', personaPersonality)
+    }
+    if (agentModelSelection && agentModelSelection.status === 'live') {
+      const modelString = buildGatewayModelString(agentModelSelection.provider, agentModelSelection.model)
+      if (modelString) requestContext.set('selectedModel', modelString)
     }
 
     const thinkingBudget = getThinkingBudget(message)
@@ -277,7 +292,14 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
           saveUserMessage(idToken, conversationId, message, atts)
-          saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef)
+          // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
+          // turn that's too fast/toolless to show a summary live doesn't get one
+          // materialize after a reload either.
+          const elapsedSec = Math.max(0, Math.floor(responseTimeMs / 1000))
+          const completedTrace = (toolCallCount > 0 || elapsedSec >= 2)
+            ? { elapsedSec, toolCallCount }
+            : null
+          saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef, completedTrace)
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
 
           // FREE-AI Sutra 1 — non-blocking, runs after client already received `done`

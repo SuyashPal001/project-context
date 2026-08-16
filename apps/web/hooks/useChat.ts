@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from 'react';
 import type { Attachment } from '@/types/agent-events';
 import { SSEParser } from './useChat/sseParser';
 import { getAuthTokens, attemptRefresh } from './useChat/auth';
+import type { ClarificationQuestion } from '@/components/platform/chat/types';
 
 const CHAT_ENDPOINT = `${process.env.NEXT_PUBLIC_AGENT_CHAT_URL ?? 'https://projectcontext.co'}/api/chat`;
 const RETRY_INTERVAL_MS = 5_000;
@@ -20,11 +21,13 @@ export interface UseChatOptions {
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
+    onClarificationRequired?: (clarificationId: string, questions: ClarificationQuestion[]) => void;
 }
 
 export interface UseChatReturn {
     sendMessage: (text: string, attachments?: Attachment[]) => Promise<void>;
     sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
+    sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     cancel: () => void;
     isStreaming: boolean;
     isRetrying: boolean;
@@ -42,6 +45,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onToolCall,
         onToolDone,
         onApprovalRequired,
+        onClarificationRequired,
     } = options;
 
     const [isStreaming, setIsStreaming] = useState(false);
@@ -63,6 +67,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onToolCallRef = useRef(onToolCall);
     const onToolDoneRef = useRef(onToolDone);
     const onApprovalRequiredRef = useRef(onApprovalRequired);
+    const onClarificationRequiredRef = useRef(onClarificationRequired);
     const conversationIdRef = useRef(conversationId);
     const agentIdRef = useRef(agentId);
     const folderIdRef = useRef(folderId);
@@ -74,6 +79,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onToolCallRef.current = onToolCall;
     onToolDoneRef.current = onToolDone;
     onApprovalRequiredRef.current = onApprovalRequired;
+    onClarificationRequiredRef.current = onClarificationRequired;
     conversationIdRef.current = conversationId;
     agentIdRef.current = agentId;
 
@@ -307,6 +313,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                             break;
                         }
 
+                        case 'clarification_request': {
+                            onClarificationRequiredRef.current?.(
+                                payload.clarificationId as string,
+                                (payload.questions as ClarificationQuestion[]) ?? [],
+                            );
+                            break;
+                        }
+
                         case 'auth_expired': {
                             authExpired = true;
                             break;
@@ -374,11 +388,35 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         }
     }, []);
 
+    const sendClarificationAnswer = useCallback(async (
+        clarificationId: string,
+        questionIndex: number,
+        answer: { selectedIndex?: number; freeText?: string; skipped?: boolean },
+    ): Promise<boolean> => {
+        const { accessToken } = getAuthTokens();
+        if (!accessToken) return false;
+
+        try {
+            const res = await fetch(`${CHAT_ENDPOINT}/clarification`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({ clarificationId, questionIndex, ...answer }),
+            });
+            return res.ok;
+        } catch {
+            return false;
+        }
+    }, []);
+
     sendMessageRef.current = sendMessage;
 
     return {
         sendMessage,
         sendApproval,
+        sendClarificationAnswer,
         cancel,
         isStreaming,
         isRetrying,

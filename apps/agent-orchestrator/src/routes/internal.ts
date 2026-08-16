@@ -6,8 +6,8 @@ import { rewriteQuery } from '../rag/queryRewrite.js'
 import { gateChunks, fastGateChunks, ScoredChunk } from '../rag/relevanceGate.js'
 import { filterPII } from '../pii-filter.js'
 import { saveUserMessage, saveAssistantMessage } from '../persistence.js'
-import {
 import { isInternalServiceKey } from '../service-key.js'
+import {
   sessions, lastRagResult,
 } from '../types.js'
 

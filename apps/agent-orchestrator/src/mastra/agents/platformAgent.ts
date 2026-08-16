@@ -8,6 +8,7 @@ import { Exa as ExaClass } from 'exa-js'
 import pg from 'pg'
 
 import { platformModel, liteModel, privateModel } from '../model.js'
+import { selectModel } from './modelSelection.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
@@ -15,6 +16,7 @@ import { createViolationHandler } from '../guardrails.js'
 import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
+import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -154,6 +156,7 @@ export const SERVER_TOOLS = {
       }
     },
   }),
+  ask_clarifying_questions: askClarifyingQuestionsTool,
 }
 
 // Server tool names used to filter out duplicate MCP tool registrations.
@@ -242,7 +245,13 @@ export const platformAgent = new Agent({
     // Set by chatStream.ts from agentSkills.systemPrompt before calling stream().
     // PRD generation is handled by prdWorkflow (gatherStep → writeStep → formatStep).
     const override = requestContext?.get('agentSystemPrompt') as string | undefined
-    return override ?? await fetchPlatformPrompt()
+    const base = override ?? await fetchPlatformPrompt()
+    // Persona personality is a layer composed ahead of the base prompt, never a
+    // replacement for it — an agent with a persona keeps 100% of its normal
+    // capabilities, just with a personality prepended. Set by chatStream.ts from
+    // agentPersonas.basePersonality.
+    const persona = requestContext?.get('personaPersonality') as string | undefined
+    return persona ? `${persona}\n\n${base}` : base
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext }) => {
@@ -307,14 +316,8 @@ export const platformAgent = new Agent({
   // aiParasAgent's tool list when called as a sub-agent. AI-PARAS is
   // registered standalone in the Mastra registry and testable directly in Studio.
 
-  // Dynamic model selection:
-  //   restricted data (CASA/KYC) → private model only (set by fetchAgentContext tool)
-  //   thinkingBudget=0           → lite model (conversational turns)
-  //   default                    → full model
-  model: ({ requestContext }: { requestContext: RequestContext }) => {
-    const sensitivity = requestContext?.get('maxDataSensitivity') as string | undefined
-    if (sensitivity === 'restricted') return privateModel
-    const budget = requestContext?.get('thinkingBudget') as number | undefined
-    return budget === 0 ? liteModel : platformModel
-  },
+  // Dynamic model selection — see modelSelection.ts for the precedence order and
+  // why it's a separate module (testability: this file eagerly builds DB/network
+  // singletons like getMastraMemory() at import time).
+  model: selectModel,
 })

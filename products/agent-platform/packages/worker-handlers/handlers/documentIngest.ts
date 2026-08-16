@@ -147,12 +147,6 @@ async function ingestParsedText(params: {
     DELETE FROM document_chunks WHERE document_id = ${documentId}
   `);
 
-  // Look up person_folder_id so chunks are folder-scoped for RAG
-  const fileRow = await db.execute(sql`
-    SELECT person_folder_id FROM files WHERE id = ${documentId} LIMIT 1
-  `)
-  const personFolderId = (fileRow as any).rows?.[0]?.person_folder_id ?? null
-
   for (let i = 0; i < embedded.length; i++) {
     const content = contextualChunks[i];
     const { embedding } = embedded[i];
@@ -183,7 +177,7 @@ async function ingestParsedText(params: {
 
     await db.execute(sql`
       INSERT INTO document_chunks
-        (id, tenant_id, document_id, content, embedding, chunk_index, metadata, tsv, person_folder_id)
+        (id, tenant_id, document_id, content, embedding, chunk_index, metadata, tsv)
       VALUES (
         ${id},
         ${tenantId},
@@ -192,15 +186,13 @@ async function ingestParsedText(params: {
         ${vectorStr}::vector,
         ${i},
         ${JSON.stringify(metadata)}::jsonb,
-        to_tsvector('english', ${tsvSource}),
-        ${personFolderId}
+        to_tsvector('english', ${tsvSource})
       )
       ON CONFLICT (id) DO UPDATE SET
         content = EXCLUDED.content,
         embedding = EXCLUDED.embedding,
         metadata = EXCLUDED.metadata,
-        tsv = EXCLUDED.tsv,
-        person_folder_id = EXCLUDED.person_folder_id
+        tsv = EXCLUDED.tsv
     `);
   }
 
