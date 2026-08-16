@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
-import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals } from '../types.js'
+import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications } from '../types.js'
 import { validateToken } from '../auth.js'
 
 export const sessionsRouter = new Hono()
@@ -92,4 +92,49 @@ sessionsRouter.post('/api/chat/approval', async (c) => {
   pending.resolve(decision === 'allow' || decision === 'approved')
 
   return c.json({ ok: true }, 200, corsHeaders)
+})
+
+// ─── Clarification answer — called by frontend as each ClarificationCard question is answered ──
+sessionsRouter.post('/api/chat/clarification', async (c) => {
+  const origin = getAllowedOrigin(c.req.header('Origin'))
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  }
+
+  const authHeader = c.req.header('Authorization') ?? ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+  if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
+
+  try { await validateToken(token) } catch {
+    return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
+  }
+
+  let body: { clarificationId?: unknown; questionIndex?: unknown; selectedIndex?: unknown; freeText?: unknown; skipped?: unknown }
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid_body' }, 400, corsHeaders) }
+
+  const clarificationId = typeof body.clarificationId === 'string' ? body.clarificationId.trim() : ''
+  const questionIndex = typeof body.questionIndex === 'number' ? body.questionIndex : -1
+  if (!clarificationId || questionIndex < 0) {
+    return c.json({ ok: false, error: 'clarificationId and questionIndex required' }, 400, corsHeaders)
+  }
+
+  const pending = pendingClarifications.get(clarificationId)
+  if (!pending) return c.json({ ok: false, error: 'clarification_not_found' }, 404, corsHeaders)
+
+  pending.collected.push({
+    questionIndex,
+    selectedIndex: typeof body.selectedIndex === 'number' ? body.selectedIndex : undefined,
+    freeText: typeof body.freeText === 'string' ? body.freeText : undefined,
+    skipped: body.skipped === true,
+  })
+
+  if (pending.collected.length >= pending.expectedCount) {
+    clearTimeout(pending.timer)
+    pendingClarifications.delete(clarificationId)
+    pending.resolve(pending.collected)
+  }
+
+  return c.json({ ok: true, remaining: Math.max(0, pending.expectedCount - pending.collected.length) }, 200, corsHeaders)
 })
