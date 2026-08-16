@@ -8,7 +8,8 @@ import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality } from '../usage.js'
+import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection } from '../usage.js'
+import { buildGatewayModelString } from '../mastra/model.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
 
@@ -148,16 +149,24 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const mcpClient = getMCPClientForTenant(tenantId, agentId)
     requestContext.set('__mcpClient', mcpClient as any)
 
-    const [agentSkill, agentName, personaPersonality] = await Promise.all([
+    const [agentSkill, agentName, personaPersonality, agentModelSelection] = await Promise.all([
       fetchAgentSkill(agentId),
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
+      fetchAgentModelSelection(agentId).catch((err) => {
+        console.warn(`[sse:${sessionId}] fetchAgentModelSelection failed, falling back to default model:`, (err as Error).message)
+        return null
+      }),
     ])
     if (agentSkill?.systemPrompt) {
       requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
     }
     if (personaPersonality) {
       requestContext.set('personaPersonality', personaPersonality)
+    }
+    if (agentModelSelection && agentModelSelection.status === 'live') {
+      const modelString = buildGatewayModelString(agentModelSelection.provider, agentModelSelection.model)
+      if (modelString) requestContext.set('selectedModel', modelString)
     }
 
     const thinkingBudget = getThinkingBudget(message)
