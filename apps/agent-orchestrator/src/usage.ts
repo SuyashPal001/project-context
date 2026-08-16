@@ -71,6 +71,26 @@ export async function fetchAgentPersonality(agentId: string): Promise<string | n
   return res.rows[0]?.base_personality ?? null
 }
 
+export interface AgentModelSelection {
+  provider: string
+  model: string
+  status: string
+}
+
+export async function fetchAgentModelSelection(agentId: string): Promise<AgentModelSelection | null> {
+  const p = getPool()
+  const res = await p.query<{ provider: string; model: string; status: string }>(
+    `SELECT lp.provider, lp.model, lp.status
+     FROM agents a
+     JOIN llm_providers lp ON lp.id = a.llm_provider_id
+     WHERE a.id = $1`,
+    [agentId],
+  )
+  const row = res.rows[0]
+  if (!row) return null
+  return { provider: row.provider, model: row.model, status: row.status }
+}
+
 // Lightweight cache — agent names are immutable after creation
 const agentNameCache = new Map<string, string>()
 
