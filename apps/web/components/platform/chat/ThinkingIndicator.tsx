@@ -41,6 +41,9 @@ export function ThinkingIndicator({
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
     const [messageIndex, setMessageIndex] = useState(0);
+    const [startedAt, setStartedAt] = useState<number | null>(null);
+    const [elapsedSec, setElapsedSec] = useState(0);
+    const [traceCollapsed, setTraceCollapsed] = useState(true);
 
     const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
     const isPRD = activeToolCalls.some(tc =>
@@ -114,7 +117,42 @@ export function ThinkingIndicator({
         return () => clearInterval(id);
     }, [isStreaming, thinkingMessages.length]);
 
-    if (hasContent && !isSaveTool) return null;
+    useEffect(() => {
+        if (isStreaming && startedAt === null) {
+            setStartedAt(Date.now());
+        }
+        if (!isStreaming && startedAt !== null) {
+            setElapsedSec(Math.max(1, Math.round((Date.now() - startedAt) / 1000)));
+        }
+    }, [isStreaming, startedAt]);
+
+    const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2;
+
+    if (hasContent && !isSaveTool) {
+        if (!hadTrace) return null;
+        return (
+            <button
+                type="button"
+                onClick={() => setTraceCollapsed(c => !c)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
+            >
+                <svg
+                    width="10" height="10" viewBox="0 0 10 10" fill="none"
+                    className={cn("shrink-0 transition-transform", traceCollapsed ? "" : "rotate-90")}
+                >
+                    <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span>Worked for {elapsedSec}s</span>
+                {!traceCollapsed && completedToolCalls.length > 0 && (
+                    <span className="ml-2 flex flex-col gap-1 normal-case">
+                        {completedToolCalls.map(tc => (
+                            <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} />
+                        ))}
+                    </span>
+                )}
+            </button>
+        );
+    }
 
     // Phase 1 — container warmup
     if (isRetrying) {
@@ -171,13 +209,14 @@ export function ThinkingIndicator({
 
     // Phase 2a — plain thinking
     if (isStreaming) {
+        const liveElapsed = startedAt !== null ? Math.max(0, Math.round((Date.now() - startedAt) / 1000)) : 0;
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
                 <AgentOrb size={40} state="thinking" />
                 <div className="flex items-center gap-2 pt-1.5">
                     <PulsingDots />
                     <span className="text-sm text-[#c4b5fd] font-mono animate-in fade-in duration-500" key={messageIndex}>
-                        {thinkingMessages[messageIndex]}
+                        {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
                     </span>
                 </div>
             </div>
