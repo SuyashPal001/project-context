@@ -242,7 +242,13 @@ export const platformAgent = new Agent({
     // Set by chatStream.ts from agentSkills.systemPrompt before calling stream().
     // PRD generation is handled by prdWorkflow (gatherStep → writeStep → formatStep).
     const override = requestContext?.get('agentSystemPrompt') as string | undefined
-    return override ?? await fetchPlatformPrompt()
+    const base = override ?? await fetchPlatformPrompt()
+    // Persona personality is a layer composed ahead of the base prompt, never a
+    // replacement for it — an agent with a persona keeps 100% of its normal
+    // capabilities, just with a personality prepended. Set by chatStream.ts from
+    // agentPersonas.basePersonality.
+    const persona = requestContext?.get('personaPersonality') as string | undefined
+    return persona ? `${persona}\n\n${base}` : base
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext }) => {

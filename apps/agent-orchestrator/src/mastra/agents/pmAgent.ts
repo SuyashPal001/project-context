@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent'
+import { RequestContext } from '@mastra/core/request-context'
 import { tenantContextSchema } from '../context.js'
 import { platformModel } from '../model.js'
 import { getMastraMemory } from '../memory.js'
@@ -13,7 +14,8 @@ export const pmAgent = new Agent({
   id: 'pc-pm',
   name: 'Saarthi PM',
   description: 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.',
-  instructions: `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
+  instructions: async ({ requestContext }: { requestContext?: RequestContext }) => {
+    const base = `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
 
 ## Your specialist agents
 - prdAgent: Writes, drafts, and saves PRDs. Delegate when the user wants a PRD, product spec, or requirements document.
@@ -38,7 +40,12 @@ export const pmAgent = new Agent({
 ## Rules
 - Never return raw JSON to the user
 - Never write PRD content, milestones, or tasks yourself — always delegate
-- If the request is ambiguous, ask ONE clarifying question before delegating`,
+- If the request is ambiguous, ask ONE clarifying question before delegating`
+    // Persona personality is a layer composed ahead of the base prompt, never a
+    // replacement for it — see platformAgent.ts for the same pattern.
+    const persona = requestContext?.get('personaPersonality') as string | undefined
+    return persona ? `${persona}\n\n${base}` : base
+  },
   requestContextSchema: tenantContextSchema,
   model: platformModel,
   memory: getMastraMemory(),

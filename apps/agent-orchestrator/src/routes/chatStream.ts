@@ -151,11 +151,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
     ])
-    if (agentSkill?.systemPrompt || personaPersonality) {
-      const composed = [personaPersonality, agentSkill?.systemPrompt]
-        .filter((part): part is string => !!part)
-        .join('\n\n')
-      requestContext.set('agentSystemPrompt', composed)
+    if (agentSkill?.systemPrompt) {
+      requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
+    }
+    if (personaPersonality) {
+      requestContext.set('personaPersonality', personaPersonality)
     }
 
     const thinkingBudget = getThinkingBudget(message)

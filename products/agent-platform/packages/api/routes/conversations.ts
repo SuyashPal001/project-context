@@ -10,6 +10,22 @@ import type { AppEnv } from '@serverless-saas/types';
 
 export const conversationsRoutes = new Hono<AppEnv>();
 
+// Drizzle's left-join null-collapsing only nullifies a nested selected object
+// when its field path has length === 2 (e.g. `agent: { persona: { id } }` in
+// agents.crud.ts). The `agent.persona` shape here is nested three levels deep
+// (row -> agent -> persona), so a persona-less agent (left join returns no
+// matching persona row) comes back as `agent.persona = { id: null, name: null,
+// tagline: null, animationStates: null }` instead of `agent.persona = null`.
+// Collapse that all-null sub-object back to null to match the `PersonaSummary
+// | null` contract the frontend (and any future `if (conversation.agent.persona)`
+// check) expects.
+const normalizeAgentPersona = <T extends { agent: { persona: { id: string | null } | null } }>(row: T): T => {
+    if (row.agent?.persona && row.agent.persona.id == null) {
+        return { ...row, agent: { ...row.agent, persona: null } };
+    }
+    return row;
+};
+
 const conversationSelect = {
     id: conversations.id,
     tenantId: conversations.tenantId,
@@ -90,7 +106,7 @@ conversationsRoutes.get('/', async (c) => {
             .where(and(...filters))
             .orderBy(desc(conversations.createdAt));
 
-        return c.json({ data });
+        return c.json({ data: data.map(normalizeAgentPersona) });
     } catch (error) {
         console.error('Fetch conversations failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
@@ -166,7 +182,7 @@ conversationsRoutes.get('/:id', async (c) => {
             .limit(1);
 
         if (!data) return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
-        return c.json({ data });
+        return c.json({ data: normalizeAgentPersona(data) });
     } catch (error) {
         console.error('Fetch conversation failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
@@ -216,7 +232,7 @@ conversationsRoutes.patch('/:id', async (c) => {
             .where(scope)
             .limit(1);
 
-        return c.json({ data: updated });
+        return c.json({ data: updated ? normalizeAgentPersona(updated) : updated });
     } catch (error) {
         console.error('Update conversation failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
