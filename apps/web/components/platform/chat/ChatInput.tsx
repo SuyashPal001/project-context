@@ -280,7 +280,7 @@ export function ChatInput({
                     />
                 )}
 
-                <div className="flex flex-col rounded-[28px] border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-sm overflow-hidden">
+                <div className="flex flex-col rounded-[28px] border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-elevated overflow-hidden">
 
                     <AttachmentStrip
                         attachments={uploader.attachments}
@@ -333,7 +333,7 @@ export function ChatInput({
                                 }}
                                 onKeyDown={handleKeyDown}
                                 placeholder="Ask anything, @ to mention, / for workflows..."
-                                className="w-full min-h-[44px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50"
+                                className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50"
                                 disabled={disabled}
                             />
 
