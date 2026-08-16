@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { AgentOrb } from "./AgentOrb";
-import { cn } from "@/lib/utils";
 import { ToolCall, CompletedToolCall } from "./types";
 import { ToolCallCard } from "./ToolCallCard";
 
@@ -24,12 +23,17 @@ function PulsingDots() {
     );
 }
 
+// This component only handles the LIVE in-progress states — the single
+// "Working for Ns · <message>" line and the active tool-call cards. The
+// collapsed post-completion "Worked for Ns" summary is a MessageItem/
+// TraceSummary concern now: it reads `message.completedTrace`, which is
+// stashed once by useChatStream's onDone, so it survives this component
+// being unmounted the instant isStreaming flips false.
 export interface ThinkingIndicatorProps {
     isRetrying: boolean;
     isStreaming: boolean;
     activeToolCalls: ToolCall[];
     completedToolCalls: CompletedToolCall[];
-    hasContent: boolean;
 }
 
 export function ThinkingIndicator({
@@ -37,13 +41,10 @@ export function ThinkingIndicator({
     isStreaming,
     activeToolCalls,
     completedToolCalls,
-    hasContent,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
     const [messageIndex, setMessageIndex] = useState(0);
     const [startedAt, setStartedAt] = useState<number | null>(null);
-    const [elapsedSec, setElapsedSec] = useState(0);
-    const [traceCollapsed, setTraceCollapsed] = useState(true);
 
     const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
     const isPRD = activeToolCalls.some(tc =>
@@ -55,7 +56,6 @@ export function ThinkingIndicator({
     const isTasks = activeToolCalls.some(tc =>
         tc.toolName === 'save-tasks' || tc.toolName === 'saveTasks'
         || tc.toolName?.startsWith('agent-task'));
-    const isSaveTool = isPRD || isRoadmap || isTasks;
 
     const THINKING_MESSAGES = [
         "Thinking...",
@@ -122,49 +122,6 @@ export function ThinkingIndicator({
             setStartedAt(Date.now());
         }
     }, [isStreaming, startedAt]);
-
-    // The parent (MessageThread) only mounts this component while
-    // `isStreaming || isRetrying` is true, and unmounts it in the same commit
-    // that flips both to false — there is no render of this component with
-    // `isStreaming === false`. So `elapsedSec` can't be frozen on that
-    // transition; instead it ticks live every second for as long as this
-    // component is mounted, which keeps it accurate up to the last second
-    // before the parent removes it from the tree.
-    useEffect(() => {
-        if ((!isStreaming && !isRetrying) || startedAt === null) return;
-        const tick = () => setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
-        tick();
-        const id = setInterval(tick, 1000);
-        return () => clearInterval(id);
-    }, [isStreaming, isRetrying, startedAt]);
-
-    const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2;
-
-    if (hasContent && !isSaveTool) {
-        if (!hadTrace) return null;
-        return (
-            <button
-                type="button"
-                onClick={() => setTraceCollapsed(c => !c)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
-            >
-                <svg
-                    width="10" height="10" viewBox="0 0 10 10" fill="none"
-                    className={cn("shrink-0 transition-transform", traceCollapsed ? "" : "rotate-90")}
-                >
-                    <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <span>Worked for {elapsedSec}s</span>
-                {!traceCollapsed && completedToolCalls.length > 0 && (
-                    <span className="ml-2 flex flex-col gap-1 normal-case">
-                        {completedToolCalls.map(tc => (
-                            <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} />
-                        ))}
-                    </span>
-                )}
-            </button>
-        );
-    }
 
     // Phase 1 — container warmup
     if (isRetrying) {

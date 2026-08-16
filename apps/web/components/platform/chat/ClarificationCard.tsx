@@ -7,7 +7,10 @@ import { ClarificationRequest } from './types';
 
 interface ClarificationCardProps {
     request: ClarificationRequest;
-    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }) => void;
+    // `isLast` tells the caller this was the final question in the wizard —
+    // wire-format answer fields only, so it's passed as a separate argument
+    // rather than folded into `answer` (which is forwarded to the backend as-is).
+    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }, isLast: boolean) => void;
 }
 
 export function ClarificationCard({ request, onAnswer }: ClarificationCardProps) {
@@ -31,15 +34,20 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
 
     const commitCurrent = () => {
         const trimmedFreeText = freeText.trim();
-        const answer = trimmedFreeText
-            ? { questionIndex: pageIndex, freeText: trimmedFreeText }
-            : { questionIndex: pageIndex, selectedIndex };
-        onAnswer(answer);
+        // Send whichever of selectedIndex/freeText are actually present — a user
+        // can click an option AND add free text, and both should reach the
+        // backend rather than one silently overwriting the other.
+        const answer = {
+            questionIndex: pageIndex,
+            ...(selectedIndex !== undefined ? { selectedIndex } : {}),
+            ...(trimmedFreeText ? { freeText: trimmedFreeText } : {}),
+        };
+        onAnswer(answer, isLast);
         if (!isLast) setPageIndex(p => p + 1);
     };
 
     const handleSkip = () => {
-        onAnswer({ questionIndex: pageIndex, skipped: true });
+        onAnswer({ questionIndex: pageIndex, skipped: true }, isLast);
         if (!isLast) setPageIndex(p => p + 1);
     };
 

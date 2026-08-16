@@ -195,41 +195,41 @@ export function ChatInput({
                 onChange={handleFileChange}
             />
 
-            <div className="max-w-3xl mx-auto w-full">
-                <div className="relative flex flex-col rounded-[28px] border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-sm overflow-hidden">
+            <div className="relative max-w-3xl mx-auto w-full">
+                {paletteMode === 'slash' && (
+                    <SlashPalette
+                        query={paletteQuery}
+                        onSelect={(agent: Agent) => {
+                            setContent(c => {
+                                if (!paletteRange) return c;
+                                return c.slice(0, paletteRange.start) + `@${agent.name} ` + c.slice(paletteRange.end);
+                            });
+                        }}
+                        onClose={() => {
+                            setPaletteMode(null);
+                            setPaletteQuery('');
+                            setPaletteRange(null);
+                        }}
+                    />
+                )}
+                {paletteMode === 'mention' && (
+                    <MentionPalette
+                        query={paletteQuery}
+                        onSelect={(label: string) => {
+                            setContent(c => {
+                                if (!paletteRange) return c;
+                                return c.slice(0, paletteRange.start) + `@${label} ` + c.slice(paletteRange.end);
+                            });
+                        }}
+                        onClose={() => {
+                            setPaletteMode(null);
+                            setPaletteQuery('');
+                            setPaletteRange(null);
+                        }}
+                    />
+                )}
 
-                    {paletteMode === 'slash' && (
-                        <SlashPalette
-                            query={paletteQuery}
-                            onSelect={(agent: Agent) => {
-                                setContent(c => {
-                                    if (!paletteRange) return c;
-                                    return c.slice(0, paletteRange.start) + `@${agent.name} ` + c.slice(paletteRange.end);
-                                });
-                            }}
-                            onClose={() => {
-                                setPaletteMode(null);
-                                setPaletteQuery('');
-                                setPaletteRange(null);
-                            }}
-                        />
-                    )}
-                    {paletteMode === 'mention' && (
-                        <MentionPalette
-                            query={paletteQuery}
-                            onSelect={(label: string) => {
-                                setContent(c => {
-                                    if (!paletteRange) return c;
-                                    return c.slice(0, paletteRange.start) + `@${label} ` + c.slice(paletteRange.end);
-                                });
-                            }}
-                            onClose={() => {
-                                setPaletteMode(null);
-                                setPaletteQuery('');
-                                setPaletteRange(null);
-                            }}
-                        />
-                    )}
+                <div className="flex flex-col rounded-[28px] border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-sm overflow-hidden">
 
                     <AttachmentStrip
                         attachments={uploader.attachments}

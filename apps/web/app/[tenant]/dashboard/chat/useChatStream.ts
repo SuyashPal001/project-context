@@ -36,6 +36,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
     const artifactToolActiveRef = useRef<string | null>(null);
     const artifactRefRef = useRef<ArtifactRef | null>(null);
+    // When the current turn's streaming began — used to compute the elapsed
+    // time stashed onto the assistant Message as `completedTrace` in onDone,
+    // since ThinkingIndicator (which used to own this timer) gets unmounted
+    // by MessageThread the instant isStreaming flips false.
+    const streamStartRef = useRef<number | null>(null);
 
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
         const call = activeToolCalls.get(toolCallId);
@@ -80,19 +85,31 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
                     entityMeta: { pmRunId: artifactRef.pmRunId, pmStepId: artifactRef.pmStepId },
                 });
             }
+
+            // Compute the same "did this turn take a while / did it use tools" trace
+            // ThinkingIndicator used to compute internally, and stash it on the
+            // Message so MessageItem can render the collapsed summary after this
+            // component (and ThinkingIndicator) unmounts.
+            const elapsedSec = streamStartRef.current !== null
+                ? Math.max(0, Math.floor((Date.now() - streamStartRef.current) / 1000))
+                : 0;
+            streamStartRef.current = null;
+            const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2;
+            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: completedToolCalls } } : {};
+
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
                 const idx = data.findIndex(m => m.id === messageId);
                 const plan = planResult ? { planResult: planResult as Message['planResult'] } : {};
                 const aref = artifactRef ? { artifactRef: artifactRef as ArtifactRef } : {};
                 if (idx >= 0) {
-                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref };
+                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace };
                 } else {
                     const zIdx = data.findIndex(m => m.isStreaming === true);
                     if (zIdx >= 0) {
-                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref };
+                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref, ...trace };
                     } else if (fullText) {
-                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref });
+                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref, ...trace });
                     }
                 }
                 return { data: [...data].sort(sortByDate) };
@@ -103,7 +120,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
                 queryClient.invalidateQueries({ queryKey: ['conversation', conversationIdRef.current] });
             }, 2000);
-        }, [queryClient, handleCanvasUpdate]),
+        }, [queryClient, handleCanvasUpdate, completedToolCalls]),
 
         onError: useCallback((code: string, message: string) => {
             if (code === 'AGENT_TIMEOUT') { setAgentTimedOut(true); return; }
@@ -236,6 +253,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         setEventError(null);
         setWarmupMessage(null);
         setHasSentFirstMessage(true);
+        streamStartRef.current = Date.now();
         await sendChatMessage(content, enriched);
     };
 

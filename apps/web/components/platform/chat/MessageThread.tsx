@@ -23,7 +23,7 @@ interface MessageThreadProps {
     warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
-    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => void;
+    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, isLast?: boolean) => void;
 }
 
 export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, hasContent, activeToolCalls, completedToolCalls, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer }: MessageThreadProps) {
@@ -158,7 +158,6 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         isStreaming={isStreaming ?? false}
                         activeToolCalls={activeToolCalls ?? []}
                         completedToolCalls={completedToolCalls ?? []}
-                        hasContent={hasContent ?? false}
                     />
                 ) : isTyping ? (
                     <ThinkingDots label="Thinking..." />

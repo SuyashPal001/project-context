@@ -83,15 +83,23 @@ function ChatPage() {
         );
     }, [conversationId, queryClient, sendApproval]);
 
-    const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => {
+    const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, isLast?: boolean) => {
         const ok = await sendClarificationAnswer(clarificationId, questionIndex, answer);
         if (!ok) {
             toast.error('Could not submit your answer. Please try again.');
+            return;
         }
-        // Mark the request answered in local cache once all questions are done —
-        // the message stays visible with its selections; status flips server-side
-        // is not tracked further since the agent's next turn supersedes it.
-    }, [sendClarificationAnswer]);
+        // Mirror handleApprove/handleDismiss: flip the request's status in the
+        // local cache once the final question has been submitted, so
+        // ClarificationCard's `status !== 'pending'` branch renders instead of
+        // leaving the card fully interactive with no acknowledgement.
+        if (isLast) {
+            const finalStatus = answer.skipped ? 'skipped' as const : 'answered' as const;
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+                old ? { data: old.data.map(m => m.id === messageId ? { ...m, clarificationRequest: m.clarificationRequest ? { ...m.clarificationRequest, status: finalStatus, answeredAt: new Date().toISOString() } : undefined } : m) } : old
+            );
+        }
+    }, [conversationId, queryClient, sendClarificationAnswer]);
 
     const hasContent = !!(messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.content.length > 0);
 

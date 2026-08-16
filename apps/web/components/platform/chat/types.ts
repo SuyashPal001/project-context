@@ -93,6 +93,11 @@ export interface ArtifactRef {
     pmStepId?: string;
 }
 
+export interface CompletedTrace {
+    elapsedSec: number;
+    toolCalls: CompletedToolCall[];
+}
+
 export interface Message {
     id: string;
     conversationId: string;
@@ -106,6 +111,12 @@ export interface Message {
     attachments?: MessageAttachment[];
     planResult?: PlanResult;
     artifactRef?: ArtifactRef;
+    // Snapshot of "how long this turn took / what tools it used", stashed once
+    // streaming finishes (see useChatStream's onDone). Lives on the message
+    // itself — not on ThinkingIndicator's component state — so the collapsed
+    // "Worked for Ns" summary survives ThinkingIndicator unmounting the moment
+    // isStreaming flips false, and stays visible on scroll-back/re-render.
+    completedTrace?: CompletedTrace;
 }
 
 export interface Conversation {

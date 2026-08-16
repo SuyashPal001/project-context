@@ -130,16 +130,37 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
 
   const clarificationId = typeof body.clarificationId === 'string' ? body.clarificationId.trim() : ''
   const questionIndex = typeof body.questionIndex === 'number' ? body.questionIndex : -1
-  if (!clarificationId || questionIndex < 0) {
+  if (!clarificationId || !Number.isInteger(questionIndex) || questionIndex < 0) {
     return c.json({ ok: false, error: 'clarificationId and questionIndex required' }, 400, corsHeaders)
   }
 
   const pending = pendingClarifications.get(clarificationId)
   if (!pending) return c.json({ ok: false, error: 'clarification_not_found' }, 404, corsHeaders)
 
+  // We only have `expectedCount` at this layer (the question/option definitions
+  // live in the tool that issued the clarification, not in pendingClarifications),
+  // so this is the one bound we can enforce here. `questionIndex` out of range
+  // would otherwise sit in `pending.collected` as a phantom answer that never
+  // matches a real question and can never be overwritten by a corrected retry.
+  if (questionIndex >= pending.expectedCount) {
+    return c.json({ ok: false, error: 'questionIndex out of range' }, 400, corsHeaders)
+  }
+
+  const MAX_FREE_TEXT_LEN = 2000
+  if (typeof body.freeText === 'string' && body.freeText.length > MAX_FREE_TEXT_LEN) {
+    return c.json({ ok: false, error: 'freeText too long' }, 400, corsHeaders)
+  }
+
   const answer: ClarificationAnswer = {
     questionIndex,
-    selectedIndex: typeof body.selectedIndex === 'number' ? body.selectedIndex : undefined,
+    // selectedIndex isn't bounds-checked here — this layer doesn't know the
+    // target question's option count (only `expectedCount`, the question
+    // total). askClarifyingQuestions.ts's optional chaining on
+    // `questions[a.questionIndex]?.options[a.selectedIndex]?.label` already
+    // degrades an out-of-range value to `undefined` rather than crashing.
+    selectedIndex: typeof body.selectedIndex === 'number' && Number.isInteger(body.selectedIndex) && body.selectedIndex >= 0
+      ? body.selectedIndex
+      : undefined,
     freeText: typeof body.freeText === 'string' ? body.freeText : undefined,
     skipped: body.skipped === true,
   }

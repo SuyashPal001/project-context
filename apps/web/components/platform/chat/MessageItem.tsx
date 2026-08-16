@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ToolCallCard } from "./ToolCallCard";
+import { TraceSummary } from "./TraceSummary";
 import { ApprovalCard } from "./ApprovalCard";
 import { ClarificationCard } from "./ClarificationCard";
 import { StreamingMessage } from "./StreamingMessage";
@@ -24,7 +25,7 @@ interface MessageItemProps {
     isNewExchange?: boolean;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
-    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => void;
+    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, isLast?: boolean) => void;
     creatingPlanId: string | null;
     planErrors: Record<string, string>;
     onCreateInSystem: (messageId: string, planResult: PlanResult) => Promise<void>;
@@ -212,11 +213,12 @@ export function MessageItem({
                 {message.clarificationRequest && (
                     <ClarificationCard
                         request={message.clarificationRequest}
-                        onAnswer={(answer) => onClarificationAnswer?.(
+                        onAnswer={(answer, isLast) => onClarificationAnswer?.(
                             message.id,
                             message.clarificationRequest!.id,
                             answer.questionIndex,
                             { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
+                            isLast,
                         )}
                     />
                 )}
@@ -232,6 +234,13 @@ export function MessageItem({
                             />
                         ))}
                     </div>
+                )}
+
+                {isAssistant && !message.isStreaming && message.completedTrace && (
+                    <TraceSummary
+                        elapsedSec={message.completedTrace.elapsedSec}
+                        toolCalls={message.completedTrace.toolCalls}
+                    />
                 )}
 
                 {isAssistant && !message.isStreaming && (
