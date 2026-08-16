@@ -147,10 +147,10 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
     const existing = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!existing) return c.json({ error: 'Agent not found' }, 404);
 
-    const result = z.object({ name: z.string().min(1).max(100).optional(), description: z.string().max(500).nullable().optional(), avatarUrl: z.string().url().nullable().optional(), status: z.enum(['active', 'paused', 'retired']).optional(), model: z.string().optional(), llmProviderId: z.string().uuid().optional() }).safeParse(await c.req.json());
+    const result = z.object({ name: z.string().min(1).max(100).optional(), description: z.string().max(500).nullable().optional(), avatarUrl: z.string().url().nullable().optional(), status: z.enum(['active', 'paused', 'retired']).optional(), model: z.string().optional(), llmProviderId: z.string().uuid().optional(), personaId: z.string().uuid().nullable().optional() }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 
-    const updateData = canFullUpdate ? result.data : { name: result.data.name, avatarUrl: result.data.avatarUrl };
+    const updateData = canFullUpdate ? result.data : { name: result.data.name, avatarUrl: result.data.avatarUrl, personaId: result.data.personaId };
     const [updated] = await db.update(agents).set({ ...updateData, updatedAt: new Date() }).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).returning();
 
     if (result.data.status && canFullUpdate) {
