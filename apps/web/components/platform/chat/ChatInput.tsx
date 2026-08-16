@@ -32,6 +32,24 @@ interface LLMProvider {
     costPerToken: string | null;
 }
 
+// Ranks providers by costPerToken into thirds for a relative $ / $$ / $$$ badge —
+// no hardcoded dollar thresholds, since costPerToken values will shift as models are
+// added/removed from the picker. Providers with no costPerToken get no badge.
+function costTierBadges(providers: LLMProvider[]): Map<string, string> {
+    const withCost = providers
+        .filter((p): p is LLMProvider & { costPerToken: string } => p.costPerToken !== null)
+        .map(p => ({ id: p.id, cost: parseFloat(p.costPerToken) }))
+        .sort((a, b) => a.cost - b.cost);
+
+    const badges = new Map<string, string>();
+    const n = withCost.length;
+    withCost.forEach((p, i) => {
+        const tier = n <= 1 ? 1 : Math.floor((i / n) * 3);
+        badges.set(p.id, '$'.repeat(Math.min(tier + 1, 3)));
+    });
+    return badges;
+}
+
 // Keep in sync with the mimeType allowlist in
 // products/agent-platform/packages/api/routes/documents.ts and
 // SUPPORTED_UPLOAD_EXTENSIONS in apps/api/src/lib/agentPrompts.ts.
@@ -66,6 +84,9 @@ export function ChatInput({
     disabled,
     isLoading,
     isStreaming,
+    llmProviderId,
+    providers,
+    onModelChange,
     prefill,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
@@ -328,6 +349,38 @@ export function ChatInput({
                                         </svg>
                                         Use employee
                                     </button>
+
+                                    {providers && providers.length > 0 && (
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="h-8 px-3 flex items-center gap-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                                >
+                                                    {providers.find(p => p.id === llmProviderId)?.displayName ?? 'Model'}
+                                                </button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent side="top" align="start" className="w-56 p-2">
+                                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Model</div>
+                                                {(() => {
+                                                    const badges = costTierBadges(providers);
+                                                    return providers.map(provider => (
+                                                        <DropdownMenuItem
+                                                            key={provider.id}
+                                                            disabled={provider.status !== 'live'}
+                                                            onClick={() => onModelChange?.(provider.id)}
+                                                            className="flex items-center justify-between gap-2 cursor-pointer py-2"
+                                                        >
+                                                            <span>{provider.displayName}</span>
+                                                            <span className="text-[10px] text-muted-foreground">
+                                                                {provider.status !== 'live' ? 'Coming soon' : badges.get(provider.id) ?? ''}
+                                                            </span>
+                                                        </DropdownMenuItem>
+                                                    ));
+                                                })()}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    )}
                                 </div>
 
                                 <div className="flex items-center gap-1.5">
