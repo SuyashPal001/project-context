@@ -27,7 +27,8 @@
     "clean": "rimraf dist",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "db:seed:templates": "tsx seeds/agent-templates.ts"
+    "db:seed:templates": "tsx seeds/agent-templates.ts",
+    "db:seed:personas": "tsx seeds/personas.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1011.0",

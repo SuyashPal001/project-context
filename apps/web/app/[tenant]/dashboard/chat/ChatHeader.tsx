@@ -1,5 +1,5 @@
 'use client';
-import { Bot, Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive } from 'lucide-react';
+import { Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { Conversation } from '@/components/platform/chat/types';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
+import { PersonaAvatar } from '@/components/platform/personas/PersonaAvatar';
 
 interface Props {
     selectedConversation: Conversation;
@@ -36,9 +37,7 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
                         ? <PanelLeftOpen className="h-4 w-4" />
                         : <PanelLeftClose className="h-4 w-4" />}
                 </Button>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted border border-border/50">
-                    <Bot className="h-5 w-5 text-muted-foreground" />
-                </div>
+                <PersonaAvatar persona={selectedConversation.agent?.persona} size={40} />
                 <div>
                     <div className="flex items-center gap-2">
                         <h2 className="font-bold text-base tracking-tight truncate max-w-[200px] sm:max-w-[400px]">

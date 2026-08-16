@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
+import { personas } from '@serverless-saas/agent-schema/personas';
 import { users } from '@serverless-saas/database/schema/auth';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
@@ -25,7 +26,21 @@ export async function handleListAgents(c: Context<AppEnv>) {
 
     if (!hasPermission(permissions, 'agents', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const data = await db.select().from(agents).where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)));
+    const data = await db
+        .select({
+            id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
+            model: agents.model, status: agents.status, llmProviderId: agents.llmProviderId,
+            isInternal: agents.isInternal, description: agents.description, avatarUrl: agents.avatarUrl,
+            createdAt: agents.createdAt,
+            persona: {
+                id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
+                animationStates: personas.animationStates, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+            },
+        })
+        .from(agents)
+        .leftJoin(personas, eq(agents.personaId, personas.id))
+        .where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)));
+
     return c.json({ data });
 }
 
@@ -38,7 +53,22 @@ export async function handleGetAgent(c: Context<AppEnv>) {
     if (!hasPermission(permissions, 'agents', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
     const agentId = c.req.param('id') as string;
-    const agent = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
+    const agent = (await db
+        .select({
+            id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
+            model: agents.model, status: agents.status, apiKeyId: agents.apiKeyId,
+            llmProviderId: agents.llmProviderId, avatarUrl: agents.avatarUrl, description: agents.description,
+            isInternal: agents.isInternal, createdBy: agents.createdBy, personaId: agents.personaId,
+            createdAt: agents.createdAt, updatedAt: agents.updatedAt,
+            persona: {
+                id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
+                animationStates: personas.animationStates, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+            },
+        })
+        .from(agents)
+        .leftJoin(personas, eq(agents.personaId, personas.id))
+        .where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId)))
+        .limit(1))[0];
     if (!agent) return c.json({ error: 'Agent not found' }, 404);
 
     const creator = agent.createdBy
@@ -77,7 +107,7 @@ export async function handleCreateAgent(c: Context<AppEnv>) {
         }
     }
 
-    const result = z.object({ name: z.string().min(1).max(100), type: z.enum(['ops', 'support', 'billing', 'custom']), model: z.string().optional(), llmProviderId: z.string().uuid().optional() }).safeParse(await c.req.json());
+    const result = z.object({ name: z.string().min(1).max(100), type: z.enum(['ops', 'support', 'billing', 'custom']), model: z.string().optional(), llmProviderId: z.string().uuid().optional(), personaId: z.string().uuid().optional() }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 
     const agentRole = (await db.select().from(roles).where(eq(roles.isAgentRole, true)).limit(1))[0];
@@ -92,7 +122,7 @@ export async function handleCreateAgent(c: Context<AppEnv>) {
 
     const rawKey = generateApiKey('ak');
     const [newKey] = await db.insert(apiKeys).values({ tenantId, name: `${result.data.name} API Key`, type: 'agent', keyHash: hashKey(rawKey), permissions: agentRolePermissionStrings, status: 'active', createdBy: userId }).returning();
-    const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model: result.data.model, llmProviderId: result.data.llmProviderId, apiKeyId: newKey.id, createdBy: userId }).returning();
+    const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model: result.data.model, llmProviderId: result.data.llmProviderId, personaId: result.data.personaId, apiKeyId: newKey.id, createdBy: userId }).returning();
     await db.insert(memberships).values({ agentId: newAgent.id, tenantId, roleId: agentRole.id, memberType: 'agent', status: 'active' });
 
     try {
@@ -117,10 +147,10 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
     const existing = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!existing) return c.json({ error: 'Agent not found' }, 404);
 
-    const result = z.object({ name: z.string().min(1).max(100).optional(), description: z.string().max(500).nullable().optional(), avatarUrl: z.string().url().nullable().optional(), status: z.enum(['active', 'paused', 'retired']).optional(), model: z.string().optional(), llmProviderId: z.string().uuid().optional() }).safeParse(await c.req.json());
+    const result = z.object({ name: z.string().min(1).max(100).optional(), description: z.string().max(500).nullable().optional(), avatarUrl: z.string().url().nullable().optional(), status: z.enum(['active', 'paused', 'retired']).optional(), model: z.string().optional(), llmProviderId: z.string().uuid().optional(), personaId: z.string().uuid().nullable().optional() }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 
-    const updateData = canFullUpdate ? result.data : { name: result.data.name, avatarUrl: result.data.avatarUrl };
+    const updateData = canFullUpdate ? result.data : { name: result.data.name, avatarUrl: result.data.avatarUrl, personaId: result.data.personaId };
     const [updated] = await db.update(agents).set({ ...updateData, updatedAt: new Date() }).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).returning();
 
     if (result.data.status && canFullUpdate) {

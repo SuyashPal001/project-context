@@ -1,6 +1,7 @@
 "use client";
 
 import * as z from "zod";
+import type { PersonaSummary } from "@/components/platform/personas/types";
 
 export const agentSchema = z.object({
     name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -23,6 +24,7 @@ export interface Agent {
     llmProviderId: string | null;
     isInternal: boolean;
     description: string | null;
+    persona: PersonaSummary | null;
     createdAt: string;
 }
 
