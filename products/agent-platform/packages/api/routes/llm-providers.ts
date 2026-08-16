@@ -16,6 +16,7 @@ llmProvidersRoutes.get('/', async (c) => {
             displayName: llmProviders.displayName,
             isDefault: llmProviders.isDefault,
             status: llmProviders.status,
+            costPerToken: llmProviders.costPerToken,
         })
         .from(llmProviders)
         .where(eq(llmProviders.isPlatform, true))
@@ -29,6 +30,7 @@ llmProvidersRoutes.get('/', async (c) => {
             displayName: row.displayName ?? row.model,
             isDefault: row.isDefault,
             status: row.status as 'live' | 'coming_soon',
+            costPerToken: row.costPerToken as string | null,
         })),
     });
 });
