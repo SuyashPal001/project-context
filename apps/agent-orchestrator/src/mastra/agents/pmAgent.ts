@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
 import { tenantContextSchema } from '../context.js'
-import { platformModel } from '../model.js'
+import { selectModel } from './modelSelection.js'
 import { getMastraMemory } from '../memory.js'
 import { fetchAgentContext } from '../tools/fetchAgentContext.js'
 import { prdAgent } from './prdAgent.js'
@@ -47,7 +47,7 @@ export const pmAgent = new Agent({
     return persona ? `${persona}\n\n${base}` : base
   },
   requestContextSchema: tenantContextSchema,
-  model: platformModel,
+  model: selectModel,
   memory: getMastraMemory(),
   tools: { fetchAgentContext },
   agents: { prdAgent, roadmapAgent, taskAgent },

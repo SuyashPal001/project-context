@@ -2,7 +2,7 @@ import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
 
 import { tenantContextSchema } from '../context.js'
-import { platformModel } from '../model.js'
+import { selectModel } from './modelSelection.js'
 import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 
@@ -45,6 +45,6 @@ You know about:
   requestContextSchema: tenantContextSchema,
 
   tools: { retrieve_knowledge: retrieveKnowledge },
-  model: platformModel,
+  model: selectModel,
   memory: architectMemory,
 })
