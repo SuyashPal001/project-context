@@ -121,10 +121,22 @@ export function ThinkingIndicator({
         if (isStreaming && startedAt === null) {
             setStartedAt(Date.now());
         }
-        if (!isStreaming && startedAt !== null) {
-            setElapsedSec(Math.max(1, Math.round((Date.now() - startedAt) / 1000)));
-        }
     }, [isStreaming, startedAt]);
+
+    // The parent (MessageThread) only mounts this component while
+    // `isStreaming || isRetrying` is true, and unmounts it in the same commit
+    // that flips both to false — there is no render of this component with
+    // `isStreaming === false`. So `elapsedSec` can't be frozen on that
+    // transition; instead it ticks live every second for as long as this
+    // component is mounted, which keeps it accurate up to the last second
+    // before the parent removes it from the tree.
+    useEffect(() => {
+        if ((!isStreaming && !isRetrying) || startedAt === null) return;
+        const tick = () => setElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [isStreaming, isRetrying, startedAt]);
 
     const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2;
 
@@ -209,7 +221,7 @@ export function ThinkingIndicator({
 
     // Phase 2a — plain thinking
     if (isStreaming) {
-        const liveElapsed = startedAt !== null ? Math.max(0, Math.round((Date.now() - startedAt) / 1000)) : 0;
+        const liveElapsed = startedAt !== null ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
                 <AgentOrb size={40} state="thinking" />
