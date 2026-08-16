@@ -96,7 +96,12 @@ function AgentSection({ agent, conversations, selectedId, onSelect, onNewChat, o
             <div className="flex items-start justify-between px-2 mb-1">
                 <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-1.5">
-                        <PersonaAvatar persona={agent.persona} size={16} className="rounded" />
+                        <PersonaAvatar
+                            persona={agent.persona}
+                            size={16}
+                            className="rounded bg-transparent border-0"
+                            iconClassName="text-muted-foreground/50"
+                        />
                         <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider truncate">
                             {agent.name}
                         </span>
@@ -251,7 +256,12 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                                         onClick={() => router.push(`/${tenantSlug}/dashboard/agents/${agent.id}`)}
                                     >
                                         <div className="flex items-center gap-1.5">
-                                            <PersonaAvatar persona={agent.persona} size={16} className="rounded" />
+                                            <PersonaAvatar
+                                                persona={agent.persona}
+                                                size={16}
+                                                className="rounded bg-transparent border-0"
+                                                iconClassName="text-muted-foreground/40"
+                                            />
                                             <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider truncate">
                                                 {agent.name}
                                             </span>

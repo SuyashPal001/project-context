@@ -10,9 +10,10 @@ interface PersonaAvatarProps {
     state?: PersonaAnimationState;
     size?: number;
     className?: string;
+    iconClassName?: string;
 }
 
-export function PersonaAvatar({ persona, state = "idle", size = 40, className }: PersonaAvatarProps) {
+export function PersonaAvatar({ persona, state = "idle", size = 40, className, iconClassName }: PersonaAvatarProps) {
     const asset = persona?.animationStates?.[state] ?? persona?.animationStates?.idle;
 
     if (!asset) {
@@ -21,7 +22,7 @@ export function PersonaAvatar({ persona, state = "idle", size = 40, className }:
                 className={cn("flex shrink-0 items-center justify-center rounded-xl bg-muted border border-border/50", className)}
                 style={{ width: size, height: size }}
             >
-                <Bot className="h-1/2 w-1/2 text-muted-foreground" />
+                <Bot className={cn("h-1/2 w-1/2 text-muted-foreground", iconClassName)} />
             </div>
         );
     }

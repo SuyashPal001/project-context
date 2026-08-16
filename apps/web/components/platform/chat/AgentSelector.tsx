@@ -52,7 +52,12 @@ export function AgentSelector({ open, onOpenChange, onSelect }: AgentSelectorPro
                                     className="flex items-center justify-start gap-3 h-auto py-3 w-full text-left"
                                     onClick={() => onSelect(agent)}
                                 >
-                                    <PersonaAvatar persona={agent.persona} size={32} className="rounded-full" />
+                                    <PersonaAvatar
+                                        persona={agent.persona}
+                                        size={32}
+                                        className="rounded-full bg-primary/10 border-0"
+                                        iconClassName="text-primary"
+                                    />
                                     <div className="flex flex-col items-start overflow-hidden">
                                         <span className="font-medium truncate w-full">{agent.name}</span>
                                         <span className="text-xs text-muted-foreground line-clamp-2 whitespace-normal">
