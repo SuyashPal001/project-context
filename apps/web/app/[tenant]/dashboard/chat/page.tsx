@@ -83,8 +83,11 @@ function ChatPage() {
         );
     }, [conversationId, queryClient, sendApproval]);
 
-    const handleClarificationAnswer = useCallback((messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => {
-        sendClarificationAnswer(clarificationId, questionIndex, answer);
+    const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => {
+        const ok = await sendClarificationAnswer(clarificationId, questionIndex, answer);
+        if (!ok) {
+            toast.error('Could not submit your answer. Please try again.');
+        }
         // Mark the request answered in local cache once all questions are done —
         // the message stays visible with its selections; status flips server-side
         // is not tracked further since the agent's next turn supersedes it.

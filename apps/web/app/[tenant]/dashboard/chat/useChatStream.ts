@@ -168,14 +168,18 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [queryClient]),
 
         onClarificationRequired: useCallback((clarificationId: string, questions: ClarificationQuestion[]) => {
+            // A malformed/empty payload would leave ClarificationCard indexing an empty
+            // array (request.questions[pageIndex]) and crash — skip building the card.
+            if (questions.length === 0) return;
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const request: ClarificationRequest = { id: clarificationId, questions, status: 'pending' };
                 const msg: Message = {
                     id: crypto.randomUUID(),
                     conversationId: conversationIdRef.current!,
                     role: 'assistant',
                     content: '',
                     createdAt: new Date().toISOString(),
-                    clarificationRequest: { id: clarificationId, questions, status: 'pending' } as ClarificationRequest,
+                    clarificationRequest: request,
                 };
                 return old ? { data: [...old.data, msg] } : { data: [msg] };
             });
