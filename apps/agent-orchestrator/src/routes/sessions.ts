@@ -49,6 +49,7 @@ sessionsRouter.post('/mcp/approval-request', async (c) => {
   const approvalId = typeof body.approvalId === 'string' ? body.approvalId : ''
   const toolName   = typeof body.toolName  === 'string' ? body.toolName  : 'unknown_tool'
   const args       = (typeof body.args === 'object' && body.args !== null) ? body.args as Record<string, unknown> : {}
+  const tenantId   = typeof body.tenantId === 'string' ? body.tenantId : ''
 
   if (!approvalId) return c.json({ approved: false, reason: 'approvalId_required' }, 400)
 
@@ -67,7 +68,7 @@ sessionsRouter.post('/mcp/approval-request', async (c) => {
       console.log(`[mcp-approval] timeout approvalId=${approvalId} tool=${toolName} — auto-deny`)
       resolve(false)
     }, 30_000)
-    pendingMcpApprovals.set(approvalId, { resolve, timer })
+    pendingMcpApprovals.set(approvalId, { resolve, timer, tenantId })
   })
 
   console.log(`[mcp-approval] resolved approvalId=${approvalId} tool=${toolName} approved=${approved}`)
@@ -87,7 +88,11 @@ sessionsRouter.post('/api/chat/approval', async (c) => {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
   if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
 
-  try { await validateToken(token) } catch {
+  let callerTenantId = ''
+  try {
+    const payload = await validateToken(token)
+    callerTenantId = payload['custom:tenantId'] ?? ''
+  } catch {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
 
@@ -100,6 +105,9 @@ sessionsRouter.post('/api/chat/approval', async (c) => {
 
   const pending = pendingMcpApprovals.get(approvalId)
   if (!pending) return c.json({ ok: false, error: 'approval_not_found' }, 404, corsHeaders)
+  if (!callerTenantId || pending.tenantId !== callerTenantId) {
+    return c.json({ ok: false, error: 'approval_not_found' }, 404, corsHeaders)
+  }
 
   clearTimeout(pending.timer)
   pendingMcpApprovals.delete(approvalId)
@@ -121,7 +129,13 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
   if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
 
-  try { await validateToken(token) } catch {
+  let callerTenantId = ''
+  let callerUserId = ''
+  try {
+    const payload = await validateToken(token)
+    callerTenantId = payload['custom:tenantId'] ?? ''
+    callerUserId = payload.sub
+  } catch {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
 
@@ -136,6 +150,9 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
 
   const pending = pendingClarifications.get(clarificationId)
   if (!pending) return c.json({ ok: false, error: 'clarification_not_found' }, 404, corsHeaders)
+  if (!callerTenantId || pending.tenantId !== callerTenantId || pending.userId !== callerUserId) {
+    return c.json({ ok: false, error: 'clarification_not_found' }, 404, corsHeaders)
+  }
 
   // We only have `expectedCount` at this layer (the question/option definitions
   // live in the tool that issued the clarification, not in pendingClarifications),

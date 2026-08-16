@@ -6,7 +6,12 @@ describe('askClarifyingQuestionsTool', () => {
   it('resolves once all questions are answered via pendingClarifications', async () => {
     const sendEvent = vi.fn()
     const requestContext = {
-      get: (key: string) => (key === 'sendEvent' ? sendEvent : key === 'sessionId' ? 'session-1' : undefined),
+      get: (key: string) =>
+        key === 'sendEvent' ? sendEvent
+        : key === 'sessionId' ? 'session-1'
+        : key === 'tenantId' ? 'tenant-1'
+        : key === 'userId' ? 'user-1'
+        : undefined,
     }
 
     const input = {
@@ -42,5 +47,42 @@ describe('askClarifyingQuestionsTool', () => {
     }
     const result = await askClarifyingQuestionsTool.execute!(input as any, { requestContext } as any)
     expect((result as any).error).toBe('no_active_session')
+  })
+
+  it('returns partial answers on timeout instead of discarding them', async () => {
+    vi.useFakeTimers()
+    try {
+      const sendEvent = vi.fn()
+      const requestContext = {
+        get: (key: string) =>
+          key === 'sendEvent' ? sendEvent
+          : key === 'sessionId' ? 'session-2'
+          : key === 'tenantId' ? 'tenant-1'
+          : key === 'userId' ? 'user-1'
+          : undefined,
+      }
+
+      const input = {
+        questions: [
+          { prompt: 'Length?', options: [{ label: '30s' }, { label: '60s' }] },
+          { prompt: 'Tone?', options: [{ label: 'Formal' }, { label: 'Casual' }] },
+        ],
+      }
+
+      const resultPromise = askClarifyingQuestionsTool.execute!(input as any, { requestContext } as any)
+
+      // Only the first of two questions gets answered before the user goes idle.
+      await vi.waitFor(() => expect(pendingClarifications.size).toBe(1), { timeout: 5000 })
+      const [[, pending]] = pendingClarifications.entries()
+      pending.collected.push({ questionIndex: 0, selectedIndex: 1 })
+
+      await vi.advanceTimersByTimeAsync(120_000)
+
+      const result = await resultPromise
+      expect((result as any).answers).toHaveLength(1)
+      expect((result as any).answers[0].selectedLabel).toBe('60s')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -127,11 +127,12 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             });
             setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); }, 1500);
             setTimeout(() => {
-                // completedTrace is client-only — there's no DB column for it — so
-                // the refetch triggered by this invalidation replaces the cached
-                // message with server data that has no completedTrace, wiping the
-                // "Worked for Ns" summary right after it appeared. Re-merge it back
-                // onto the same messageId once the refetch settles.
+                // The backend persists completedTrace too (messages.completed_trace),
+                // but only the {elapsedSec, toolCallCount} summary — not the detailed
+                // per-call cards this `trace` object carries. Re-merge the full client
+                // trace back onto the same messageId once the refetch settles, so the
+                // expandable tool-call detail survives this invalidation rather than
+                // being narrowed down to the DB's summary-only version.
                 queryClient.invalidateQueries({ queryKey: ['messages', conversationIdRef.current] }).then(() => {
                     if (!hadTrace) return;
                     queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {

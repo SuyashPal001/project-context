@@ -29,8 +29,10 @@ export const askClarifyingQuestionsTool = createTool({
     const sendEvent = execContext?.requestContext?.get('sendEvent') as
       ((event: string, data: object) => void) | undefined
     const sessionId = execContext?.requestContext?.get('sessionId') as string | undefined
+    const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined
+    const userId = execContext?.requestContext?.get('userId') as string | undefined
 
-    if (!sendEvent || !sessionId) {
+    if (!sendEvent || !sessionId || !tenantId || !userId) {
       return { answers: [], error: 'no_active_session' }
     }
 
@@ -39,14 +41,19 @@ export const askClarifyingQuestionsTool = createTool({
 
     const answers = await new Promise<Array<{ questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }>>((resolve) => {
       const timer = setTimeout(() => {
+        // Timeout still returns whatever the user had already answered before
+        // going idle, rather than discarding partial progress as a full blank.
+        const pending = pendingClarifications.get(clarificationId)
         pendingClarifications.delete(clarificationId)
-        resolve([])
+        resolve(pending?.collected ?? [])
       }, CLARIFICATION_TIMEOUT_MS)
       pendingClarifications.set(clarificationId, {
         resolve,
         timer,
         expectedCount: inputData.questions.length,
         collected: [],
+        tenantId,
+        userId,
       })
     })
 

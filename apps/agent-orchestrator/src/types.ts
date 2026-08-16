@@ -77,7 +77,7 @@ export const sessions = new Map<string, RelaySessionCtx>()
 export const lastRagResult = new Map<string, { chunks: string[]; count: number; ts: number; topScore: number }>()
 
 // MCP write-tool approval state
-export const pendingMcpApprovals = new Map<string, { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout> }>()
+export const pendingMcpApprovals = new Map<string, { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout>; tenantId: string }>()
 
 // sseApprovalChannels: orchestrator sessionId → function that sends an SSE event on the open stream
 export const sseApprovalChannels = new Map<string, (payload: Record<string, unknown>) => void>()
@@ -97,6 +97,8 @@ export const pendingClarifications = new Map<string, {
   timer: ReturnType<typeof setTimeout>
   expectedCount: number
   collected: ClarificationAnswer[]
+  tenantId: string
+  userId: string
 }>()
 
 // ─── Rate limiter ─────────────────────────────────────────────────────────────

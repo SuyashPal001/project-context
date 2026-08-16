@@ -18,7 +18,7 @@ import { useFileUpload } from "./useFileUpload";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { RecordingBar } from "./RecordingBar";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
-import { SlashPalette } from "./SlashPalette";
+import { SlashPalette, PaletteHandle } from "./SlashPalette";
 import { MentionPalette } from "./MentionPalette";
 import { Agent } from "../agents/types";
 
@@ -85,6 +85,7 @@ export function ChatInput({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const uploadTypeRef = useRef<'image' | 'video' | 'audio' | 'document' | null>(null);
+    const paletteRef = useRef<PaletteHandle>(null);
 
     const handleSend = async () => {
         if (isStreaming) {
@@ -145,17 +146,38 @@ export function ChatInput({
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (paletteMode && ((e.key === "Enter" && !e.shiftKey) || e.key === "Escape")) {
-            // A palette is open: Enter/Escape close it instead of sending the raw
-            // "/foo" or "@bar" trigger text as a chat message. Without this, Enter
-            // sends the literal trigger, clears content, and leaves the palette
-            // rendered and filtered on an now-orphaned query with nothing left to
-            // anchor to.
-            e.preventDefault();
-            setPaletteMode(null);
-            setPaletteQuery('');
-            setPaletteRange(null);
-            return;
+        if (paletteMode) {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                paletteRef.current?.moveActive(1);
+                return;
+            }
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                paletteRef.current?.moveActive(-1);
+                return;
+            }
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                // Enter selects the highlighted item when the palette has one; with
+                // no items (still loading, or nothing matches the query) it falls
+                // back to just closing instead of sending the raw "/foo" or "@bar"
+                // trigger text as a chat message.
+                const selected = paletteRef.current?.selectActive();
+                if (!selected) {
+                    setPaletteMode(null);
+                    setPaletteQuery('');
+                    setPaletteRange(null);
+                }
+                return;
+            }
+            if (e.key === "Escape") {
+                e.preventDefault();
+                setPaletteMode(null);
+                setPaletteQuery('');
+                setPaletteRange(null);
+                return;
+            }
         }
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -198,6 +220,7 @@ export function ChatInput({
             <div className="relative max-w-3xl mx-auto w-full">
                 {paletteMode === 'slash' && (
                     <SlashPalette
+                        ref={paletteRef}
                         query={paletteQuery}
                         onSelect={(agent: Agent) => {
                             setContent(c => {
@@ -214,6 +237,7 @@ export function ChatInput({
                 )}
                 {paletteMode === 'mention' && (
                     <MentionPalette
+                        ref={paletteRef}
                         query={paletteQuery}
                         onSelect={(label: string) => {
                             setContent(c => {

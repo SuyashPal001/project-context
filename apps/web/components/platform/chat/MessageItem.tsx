@@ -239,7 +239,7 @@ export function MessageItem({
                 {isAssistant && !message.isStreaming && message.completedTrace && (
                     <TraceSummary
                         elapsedSec={message.completedTrace.elapsedSec}
-                        toolCalls={message.completedTrace.toolCalls}
+                        toolCalls={message.completedTrace.toolCalls ?? []}
                     />
                 )}
 

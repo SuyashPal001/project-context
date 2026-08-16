@@ -50,6 +50,10 @@ export const messages = pgTable('messages', {
   model: text('model'),
   attachments: jsonb('attachments'),
   artifactRef: jsonb('artifact_ref'),
+  // { elapsedSec, toolCallCount } — durable version of the "Worked for Ns" trace
+  // summary. Detailed per-tool-call cards (name/query/results) stay client-only
+  // for the live turn; only the summary line survives a reload or later refetch.
+  completedTrace: jsonb('completed_trace'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

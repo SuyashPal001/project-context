@@ -283,7 +283,14 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
           saveUserMessage(idToken, conversationId, message, atts)
-          saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef)
+          // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
+          // turn that's too fast/toolless to show a summary live doesn't get one
+          // materialize after a reload either.
+          const elapsedSec = Math.max(0, Math.floor(responseTimeMs / 1000))
+          const completedTrace = (toolCallCount > 0 || elapsedSec >= 2)
+            ? { elapsedSec, toolCallCount }
+            : null
+          saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef, completedTrace)
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
 
           // FREE-AI Sutra 1 — non-blocking, runs after client already received `done`

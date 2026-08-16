@@ -95,7 +95,12 @@ export interface ArtifactRef {
 
 export interface CompletedTrace {
     elapsedSec: number;
-    toolCalls: CompletedToolCall[];
+    // Populated live by useChatStream's onDone for the turn that just finished.
+    // A message loaded from GET /messages only carries the durable summary
+    // (elapsedSec + toolCallCount persisted in messages.completed_trace) — the
+    // per-call cards were never persisted, so toolCalls is absent there.
+    toolCalls?: CompletedToolCall[];
+    toolCallCount?: number;
 }
 
 export interface Message {
