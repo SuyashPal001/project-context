@@ -64,6 +64,11 @@ function ChatPage() {
     const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
     const decayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastArtifactMessageIdRef = useRef<string | null>(null);
+    // Which conversation lastArtifactMessageIdRef's seed/last-dispatched value belongs to.
+    // Distinct from decayedStateConversationIdRef below: this one is only allowed to update
+    // once messages for the new conversation have actually settled (!isLoadingMessages), so
+    // it never seeds off a stale/empty messages array from the instant conversationId changes.
+    const seededArtifactConversationIdRef = useRef<string | null>(null);
     // Tracks which conversation decayedState currently belongs to, so the effect below can
     // tell "animationState changed because of a real stream event in THIS conversation" apart
     // from "animationState is just stale leftover from the PREVIOUS conversation".
@@ -75,12 +80,27 @@ function ChatPage() {
     }, [lastStreamEvent, onStreamEvent]);
 
     useEffect(() => {
+        if (isLoadingMessages) return; // wait for messages to actually reflect `conversationId` before seeding or dispatching
         const latest = messages[messages.length - 1];
-        if (latest?.role === 'assistant' && latest.artifactRef && latest.id !== lastArtifactMessageIdRef.current) {
-            lastArtifactMessageIdRef.current = latest.id;
+        const latestHasArtifact = latest?.role === 'assistant' && !!latest.artifactRef;
+
+        if (conversationId !== seededArtifactConversationIdRef.current) {
+            // First settled pass for this conversation: seed from its own latest message
+            // instead of dispatching. A historical artifact already on the latest message
+            // is "already seen", not "just produced" — dispatching here would show `review`
+            // for an artifact that was saved hours/days ago, on every switch/reopen.
+            seededArtifactConversationIdRef.current = conversationId;
+            lastArtifactMessageIdRef.current = latestHasArtifact ? latest!.id : null;
+            return;
+        }
+
+        // Same conversation as last settled pass: a genuinely new/changed artifact-bearing
+        // message is a live event and should dispatch.
+        if (latestHasArtifact && latest!.id !== lastArtifactMessageIdRef.current) {
+            lastArtifactMessageIdRef.current = latest!.id;
             onStreamEvent('artifact_ready');
         }
-    }, [messages, onStreamEvent]);
+    }, [conversationId, messages, isLoadingMessages, onStreamEvent]);
 
     // Single effect drives decayedState from two triggers: a genuinely new animationState
     // (normal decay behavior) OR a conversation switch (instant reset, no decay, no flash of
@@ -91,7 +111,6 @@ function ChatPage() {
 
         if (conversationId !== decayedStateConversationIdRef.current) {
             decayedStateConversationIdRef.current = conversationId;
-            lastArtifactMessageIdRef.current = null;
             setDecayedState('idle');
             return;
         }
