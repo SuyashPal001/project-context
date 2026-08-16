@@ -1,11 +1,25 @@
 import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
-import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications } from '../types.js'
+import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, type ClarificationAnswer } from '../types.js'
 import { validateToken } from '../auth.js'
 
 export const sessionsRouter = new Hono()
 
 sessionsRouter.options('/api/chat/approval', (c) => {
+  const origin = getAllowedOrigin(c.req.header('Origin'))
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+      'Vary': 'Origin',
+    },
+  })
+})
+
+sessionsRouter.options('/api/chat/clarification', (c) => {
   const origin = getAllowedOrigin(c.req.header('Origin'))
   return new Response(null, {
     status: 204,
@@ -123,12 +137,18 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   const pending = pendingClarifications.get(clarificationId)
   if (!pending) return c.json({ ok: false, error: 'clarification_not_found' }, 404, corsHeaders)
 
-  pending.collected.push({
+  const answer: ClarificationAnswer = {
     questionIndex,
     selectedIndex: typeof body.selectedIndex === 'number' ? body.selectedIndex : undefined,
     freeText: typeof body.freeText === 'string' ? body.freeText : undefined,
     skipped: body.skipped === true,
-  })
+  }
+  const existingIndex = pending.collected.findIndex((a) => a.questionIndex === questionIndex)
+  if (existingIndex >= 0) {
+    pending.collected[existingIndex] = answer
+  } else {
+    pending.collected.push(answer)
+  }
 
   if (pending.collected.length >= pending.expectedCount) {
     clearTimeout(pending.timer)
