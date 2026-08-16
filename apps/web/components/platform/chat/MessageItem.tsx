@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from "react";
 import { Terminal, Info, Image as ImageIcon, FileText } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
 import { Message, PlanResult } from "./types";
@@ -42,6 +43,13 @@ export function MessageItem({
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system' || message.role === 'tool';
 
+    const [userExpanded, setUserExpanded] = useState(false);
+    const USER_TRUNCATE_LEN = 280;
+    const isLongUserMessage = isUser && message.content.length > USER_TRUNCATE_LEN;
+    const displayedUserContent = isLongUserMessage && !userExpanded
+        ? message.content.slice(0, USER_TRUNCATE_LEN) + '…'
+        : message.content;
+
     if (isSystem) {
         return (
             <div className="flex justify-center my-4">
@@ -55,7 +63,7 @@ export function MessageItem({
 
     const markdownContent = isAssistant && message.planResult
         ? message.planResult.summary
-        : message.content;
+        : isUser ? displayedUserContent : message.content;
 
     return (
         <div className={cn(
@@ -93,8 +101,8 @@ export function MessageItem({
                         className={cn(
                             "text-sm",
                             isUser
-                                ? "px-5 py-4 bg-[#1a1a1a] border border-[#2a2a2a]/50 text-[#e8e8e8] leading-[1.55]"
-                                : "text-[#d4d4d4] leading-[1.75] w-full"
+                                ? "px-5 py-4 bg-muted border border-border/50 text-foreground leading-[1.55]"
+                                : "text-foreground/90 leading-[1.75] w-full"
                         )}
                         style={isUser ? { borderRadius: '18px 18px 4px 18px' } : undefined}
                     >
@@ -125,6 +133,15 @@ export function MessageItem({
                             >
                                 {markdownContent}
                             </ReactMarkdown>
+                        )}
+                        {isLongUserMessage && (
+                            <button
+                                type="button"
+                                onClick={() => setUserExpanded(e => !e)}
+                                className="text-xs text-muted-foreground hover:text-foreground underline mt-1"
+                            >
+                                {userExpanded ? 'Show less' : 'Show more'}
+                            </button>
                         )}
                     </div>
                 )}
