@@ -116,7 +116,22 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
             });
             setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); }, 1500);
             setTimeout(() => {
-                queryClient.invalidateQueries({ queryKey: ['messages', conversationIdRef.current] });
+                // completedTrace is client-only — there's no DB column for it — so
+                // the refetch triggered by this invalidation replaces the cached
+                // message with server data that has no completedTrace, wiping the
+                // "Worked for Ns" summary right after it appeared. Re-merge it back
+                // onto the same messageId once the refetch settles.
+                queryClient.invalidateQueries({ queryKey: ['messages', conversationIdRef.current] }).then(() => {
+                    if (!hadTrace) return;
+                    queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                        if (!old) return old;
+                        const idx = old.data.findIndex(m => m.id === messageId);
+                        if (idx < 0) return old;
+                        const data = [...old.data];
+                        data[idx] = { ...data[idx], ...trace };
+                        return { data };
+                    });
+                });
                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
                 queryClient.invalidateQueries({ queryKey: ['conversation', conversationIdRef.current] });
             }, 2000);

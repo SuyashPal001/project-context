@@ -16,17 +16,16 @@ interface MessageThreadProps {
     isTyping?: boolean;
     isStreaming?: boolean;
     isRetrying?: boolean;
-    hasContent?: boolean;
     activeToolCalls?: Message["toolCalls"];
     completedToolCalls?: CompletedToolCall[];
     error?: string | null;
     warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
-    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, isLast?: boolean) => void;
+    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, hasContent, activeToolCalls, completedToolCalls, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
     const [showScrollToBottom, setShowScrollToBottom] = useState(false);

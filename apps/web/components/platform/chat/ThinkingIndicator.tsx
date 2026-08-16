@@ -45,6 +45,11 @@ export function ThinkingIndicator({
     const [stepIndex, setStepIndex] = useState(0);
     const [messageIndex, setMessageIndex] = useState(0);
     const [startedAt, setStartedAt] = useState<number | null>(null);
+    // Ticks the live "Working for Ns" counter once a second. This is separate
+    // from the completedTrace concept (which lives on the Message once
+    // streaming finishes) — purely a local display value for the in-progress
+    // Phase 2a line, so it doesn't need to survive this component unmounting.
+    const [liveElapsed, setLiveElapsed] = useState(0);
 
     const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
     const isPRD = activeToolCalls.some(tc =>
@@ -123,6 +128,14 @@ export function ThinkingIndicator({
         }
     }, [isStreaming, startedAt]);
 
+    useEffect(() => {
+        if (!isStreaming || startedAt === null) return;
+        const tick = () => setLiveElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [isStreaming, startedAt]);
+
     // Phase 1 — container warmup
     if (isRetrying) {
         return (
@@ -178,7 +191,6 @@ export function ThinkingIndicator({
 
     // Phase 2a — plain thinking
     if (isStreaming) {
-        const liveElapsed = startedAt !== null ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
                 <AgentOrb size={40} state="thinking" />

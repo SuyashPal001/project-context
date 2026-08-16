@@ -25,7 +25,7 @@ interface MessageItemProps {
     isNewExchange?: boolean;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
-    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, isLast?: boolean) => void;
+    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
     creatingPlanId: string | null;
     planErrors: Record<string, string>;
     onCreateInSystem: (messageId: string, planResult: PlanResult) => Promise<void>;
@@ -213,12 +213,12 @@ export function MessageItem({
                 {message.clarificationRequest && (
                     <ClarificationCard
                         request={message.clarificationRequest}
-                        onAnswer={(answer, isLast) => onClarificationAnswer?.(
+                        onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
                             message.id,
                             message.clarificationRequest!.id,
                             answer.questionIndex,
                             { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
-                            isLast,
+                            allAnswered,
                         )}
                     />
                 )}

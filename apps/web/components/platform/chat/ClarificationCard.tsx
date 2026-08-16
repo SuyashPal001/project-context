@@ -7,16 +7,25 @@ import { ClarificationRequest } from './types';
 
 interface ClarificationCardProps {
     request: ClarificationRequest;
-    // `isLast` tells the caller this was the final question in the wizard —
-    // wire-format answer fields only, so it's passed as a separate argument
-    // rather than folded into `answer` (which is forwarded to the backend as-is).
-    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }, isLast: boolean) => void;
+    // Second argument is `allAnswered` — true only once EVERY question index
+    // has been answered/skipped at least once, not merely "this was the last
+    // page". Chevron nav lets the user jump straight to the last page and
+    // submit out of order, so "last page" alone is not a safe signal that the
+    // backend's full answer set is complete. `answer` itself is forwarded to
+    // the backend as the wire payload, so this stays a separate argument
+    // rather than a field on it.
+    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered: boolean) => void;
 }
 
 export function ClarificationCard({ request, onAnswer }: ClarificationCardProps) {
     const [pageIndex, setPageIndex] = useState(0);
     const [selectedByQuestion, setSelectedByQuestion] = useState<Record<number, number>>({});
     const [freeTextByQuestion, setFreeTextByQuestion] = useState<Record<number, string>>({});
+    // Which question indices have actually been submitted (via Continue/Submit
+    // or Skip) at least once — independent of `pageIndex`, since free chevron
+    // navigation means "on the last page" doesn't imply "every question has
+    // been answered".
+    const [answeredIndices, setAnsweredIndices] = useState<Set<number>>(new Set());
 
     if (request.status !== 'pending') {
         return (
@@ -32,6 +41,17 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     const freeText = freeTextByQuestion[pageIndex] ?? '';
     const isLast = pageIndex === total - 1;
 
+    // Mark `pageIndex` as answered and report whether that completes the full
+    // set. Computed synchronously (not from the setState updater) since the
+    // caller needs the "is this submission the completing one" answer
+    // immediately, before the async state update flushes.
+    const markAnsweredAndCheckComplete = () => {
+        const next = new Set(answeredIndices);
+        next.add(pageIndex);
+        setAnsweredIndices(next);
+        return next.size >= total;
+    };
+
     const commitCurrent = () => {
         const trimmedFreeText = freeText.trim();
         // Send whichever of selectedIndex/freeText are actually present — a user
@@ -42,12 +62,14 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
             ...(selectedIndex !== undefined ? { selectedIndex } : {}),
             ...(trimmedFreeText ? { freeText: trimmedFreeText } : {}),
         };
-        onAnswer(answer, isLast);
+        const allAnswered = markAnsweredAndCheckComplete();
+        onAnswer(answer, allAnswered);
         if (!isLast) setPageIndex(p => p + 1);
     };
 
     const handleSkip = () => {
-        onAnswer({ questionIndex: pageIndex, skipped: true }, isLast);
+        const allAnswered = markAnsweredAndCheckComplete();
+        onAnswer({ questionIndex: pageIndex, skipped: true }, allAnswered);
         if (!isLast) setPageIndex(p => p + 1);
     };
 
