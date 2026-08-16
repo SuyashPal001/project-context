@@ -28,6 +28,7 @@ interface MessageThreadProps {
 export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, hasContent, activeToolCalls, completedToolCalls, error, warmupMessage, onApprove, onDismiss }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
+    const [showScrollToBottom, setShowScrollToBottom] = useState(false);
     const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
     const [planErrors, setPlanErrors] = useState<Record<string, string>>({});
     const { tenantId, userId } = useTenant();
@@ -40,6 +41,17 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages, isTyping]);
+
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const onScroll = () => {
+            const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            setShowScrollToBottom(distanceFromBottom > 200);
+        };
+        el.addEventListener('scroll', onScroll);
+        return () => el.removeEventListener('scroll', onScroll);
+    }, []);
 
     useEffect(() => {
         const refreshUrls = async () => {
@@ -105,7 +117,8 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     }
 
     return (
-        <div ref={scrollRef} className="flex-1 px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
+        <div className="relative flex-1 overflow-hidden">
+        <div ref={scrollRef} className="h-full px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
             <div className="max-w-4xl mx-auto space-y-2 pb-4">
                 {messages.length === 0 && !isTyping && (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -165,6 +178,18 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     </div>
                 )}
             </div>
+        </div>
+        {showScrollToBottom && (
+            <button
+                type="button"
+                onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })}
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 h-8 w-8 rounded-full bg-muted border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+            </button>
+        )}
         </div>
     );
 }

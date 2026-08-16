@@ -109,6 +109,11 @@ export function ChatInput({
         onMediaClick?.(type);
     };
 
+    const handleUseEmployee = () => {
+        setContent((prev) => (prev.trim() ? prev : "/"));
+        textareaRef.current?.focus();
+    };
+
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         await uploader.handleFileChange(e, fileInputRef);
         uploadTypeRef.current = null;
@@ -154,7 +159,7 @@ export function ChatInput({
             />
 
             <div className="max-w-3xl mx-auto w-full">
-                <div className="flex flex-col rounded-2xl border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-sm overflow-hidden">
+                <div className="flex flex-col rounded-[28px] border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-sm overflow-hidden">
 
                     <AttachmentStrip
                         attachments={uploader.attachments}
@@ -211,6 +216,21 @@ export function ChatInput({
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     )}
+
+                                    <button
+                                        type="button"
+                                        onClick={handleUseEmployee}
+                                        className="h-8 px-3 flex items-center gap-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                    >
+                                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
+                                            <rect x="3" y="5" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1"/>
+                                            <circle cx="5.5" cy="8" r="0.6" fill="currentColor"/>
+                                            <circle cx="8.5" cy="8" r="0.6" fill="currentColor"/>
+                                            <line x1="7" y1="5" x2="7" y2="3.2" stroke="currentColor" strokeWidth="1"/>
+                                            <circle cx="7" cy="2.6" r="0.6" fill="currentColor"/>
+                                        </svg>
+                                        Use employee
+                                    </button>
                                 </div>
 
                                 <div className="flex items-center gap-1.5">
@@ -235,6 +255,7 @@ export function ChatInput({
                                         <button
                                             onClick={handleSend}
                                             disabled={(!content.trim() && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading}
+                                            title="Enter to send, Shift+Enter for a new line"
                                             className={cn(
                                                 "h-8 w-8 flex items-center justify-center rounded-lg transition-all active:scale-95 shadow-sm",
                                                 (content.trim() || uploader.attachments.length > 0) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground opacity-40"
@@ -253,8 +274,8 @@ export function ChatInput({
                     )}
                 </div>
 
-                <p className="text-[10px] text-center text-muted-foreground mt-2">
-                    Shift + Enter for a new line. Press Enter to send.
+                <p className="text-[10px] text-center text-muted-foreground/70 mt-2">
+                    AI can make mistakes. Please verify important information.
                 </p>
             </div>
         </div>
