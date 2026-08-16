@@ -4,8 +4,8 @@ import { validateToken } from '../auth.js'
 import { checkMessageQuota, fetchWorkingMemory } from '../usage.js'
 import { filterPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
-import {
 import { isInternalServiceKey } from '../service-key.js'
+import {
   Attachment,
   getAllowedOrigin, INTERNAL_SERVICE_KEY, API_BASE_URL,
   sseApprovalChannels,
