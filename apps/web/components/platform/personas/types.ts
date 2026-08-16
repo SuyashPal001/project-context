@@ -1,7 +1,13 @@
 export interface PersonaAnimationStates {
     idle: string;
+    waving: string;
+    running: string;
     thinking: string;
     responding: string;
+    waiting: string;
+    review: string;
+    done: string;
+    failed: string;
 }
 
 export interface PersonaSummary {
