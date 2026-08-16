@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
 import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
+import type { ClarificationRequest, ClarificationQuestion } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
 
 // Relay emits tool names using the JS variable name as key (e.g. savePRD, not save-prd)
@@ -43,7 +44,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         setActiveToolCalls(prev => { const next = new Map(prev); next.delete(toolCallId); return next; });
     }, [activeToolCalls]);
 
-    const { sendMessage: sendChatMessage, sendApproval, cancel, isStreaming, isRetrying } = useChat({
+    const { sendMessage: sendChatMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying } = useChat({
         conversationId: conversationId || undefined,
         agentId,
 
@@ -165,6 +166,20 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
                 return old ? { data: [...old.data, msg] } : { data: [msg] };
             });
         }, [queryClient]),
+
+        onClarificationRequired: useCallback((clarificationId: string, questions: ClarificationQuestion[]) => {
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const msg: Message = {
+                    id: crypto.randomUUID(),
+                    conversationId: conversationIdRef.current!,
+                    role: 'assistant',
+                    content: '',
+                    createdAt: new Date().toISOString(),
+                    clarificationRequest: { id: clarificationId, questions, status: 'pending' } as ClarificationRequest,
+                };
+                return old ? { data: [...old.data, msg] } : { data: [msg] };
+            });
+        }, [queryClient]),
     });
 
     // Cancel any in-flight stream when navigating to a different conversation
@@ -221,7 +236,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
     };
 
     return {
-        sendMessage, sendApproval, cancel, isStreaming, isRetrying,
+        sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying,
         activeToolCalls, completedToolCalls,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
     };

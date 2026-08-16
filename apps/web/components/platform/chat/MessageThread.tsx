@@ -23,9 +23,10 @@ interface MessageThreadProps {
     warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
+    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => void;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, hasContent, activeToolCalls, completedToolCalls, error, warmupMessage, onApprove, onDismiss }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, hasContent, activeToolCalls, completedToolCalls, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
     const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -143,6 +144,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             freshUrls={freshUrls}
                             onApprove={onApprove}
                             onDismiss={onDismiss}
+                            onClarificationAnswer={onClarificationAnswer}
                             creatingPlanId={creatingPlanId}
                             planErrors={planErrors}
                             onCreateInSystem={handleCreateInSystem}

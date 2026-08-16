@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ToolCallCard } from "./ToolCallCard";
 import { ApprovalCard } from "./ApprovalCard";
+import { ClarificationCard } from "./ClarificationCard";
 import { StreamingMessage } from "./StreamingMessage";
 import { MessageAudioPlayer } from "./MessageAudioPlayer";
 import { MessageFeedback } from "./MessageFeedback";
@@ -23,6 +24,7 @@ interface MessageItemProps {
     isNewExchange?: boolean;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
+    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => void;
     creatingPlanId: string | null;
     planErrors: Record<string, string>;
     onCreateInSystem: (messageId: string, planResult: PlanResult) => Promise<void>;
@@ -35,6 +37,7 @@ export function MessageItem({
     isNewExchange,
     onApprove,
     onDismiss,
+    onClarificationAnswer,
     creatingPlanId,
     planErrors,
     onCreateInSystem,
@@ -203,6 +206,18 @@ export function MessageItem({
                         request={message.approvalRequest!}
                         onApprove={() => onApprove?.(message.id, message.approvalRequest!.id)}
                         onDismiss={() => onDismiss?.(message.id, message.approvalRequest!.id)}
+                    />
+                )}
+
+                {message.clarificationRequest && (
+                    <ClarificationCard
+                        request={message.clarificationRequest}
+                        onAnswer={(answer) => onClarificationAnswer?.(
+                            message.id,
+                            message.clarificationRequest!.id,
+                            answer.questionIndex,
+                            { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
+                        )}
                     />
                 )}
 
