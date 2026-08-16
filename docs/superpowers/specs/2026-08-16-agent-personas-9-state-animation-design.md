@@ -110,22 +110,34 @@ all — they're derived from conversation/message state:
     calling `onApprovalRequired`.
   - `apps/web/app/[tenant]/dashboard/chat/useChatStream.ts:162-167` — `onApprovalRequired`
     constructs a real `Message` with `approvalRequest: { ..., status: 'pending' }` and pushes
-    it into the `['messages', conversationId]` query cache. This field is genuinely populated
-    today, in production, on every real MCP approval gate.
+    it into the `['messages', conversationId]` query cache.
   - `apps/web/app/[tenant]/dashboard/chat/page.tsx:72-84` — `handleApprove`/`handleDismiss`
     flip that same message's `approvalRequest.status` to `'approved'`/`'dismissed'` once
     resolved, so it doesn't stay `'pending'` forever.
   - `MessageItem.tsx:184`'s `{false && message.approvalRequest && (...)}` only disables the
     *visual approval banner* — a separate, already-known gap (nothing in the current UI lets
-    a user actually resolve a pending approval by clicking anything in that banner). The
-    underlying `approvalRequest` **data** is real and correctly reflects pending/resolved
-    state regardless of that banner being hidden — which is itself a reason to build the
-    `waiting` persona state, since today it would be the *only* visible signal that a
-    conversation is blocked on something.
+    a user actually resolve a pending approval by clicking anything in that banner).
+
+  **Correction added after the 9-state animation branch's final review:** the paragraph
+  above traces the *frontend/orchestrator* half of the chain accurately — that half is real
+  and live. But the final whole-branch review found the *producer* side is not: nothing in
+  this repo ever actually triggers `sessions.ts`'s approval push in production today.
+  `mcp-server`'s `assertActionAllowed` (`mcp-server/src/tools/policy-guard.ts:58-62`) throws
+  `PolicyDeniedError` for a stakes-gated tool instead of routing through the orchestrator's
+  approval channel, and the per-request `sessionId` minted in `chat.ts:139` is never
+  propagated to `mcp-server` in any header — so even a correctly-triggered approval could
+  not address the right channel. The claim two lines above ("this field is genuinely
+  populated today, in production, on every real MCP approval gate") was **wrong** — corrected
+  here rather than silently reworded, so the pattern of this section (get it wrong twice,
+  then a third time in a different way) is visible rather than repeating unnoticed. Practical
+  upshot: Task 4 of the 9-state animation plan correctly wires `approval_request` →
+  `waiting`, and that wiring is real and correct — it will fire the moment `mcp-server`'s
+  approval flow is actually built to call it. Until then, `waiting` is reachable code with no
+  live producer, not a bug in the animation branch.
 
   Conclusion: `approval_request` is forwarded as a **real** SSE event into the reducer
   (matching the literal wire event name, no renaming needed), not synthesized after the fact
-  like `review` is.
+  like `review` is — but as of this writing, no code path actually triggers it in production.
 
 Proposed reducer shape — extend the event union rather than bolting on side-channel state,
 so the whole thing stays a single pure function:
