@@ -70,7 +70,7 @@ export function MessageItem({
         : isUser ? displayedUserContent : message.content;
 
     return (
-        <div className={cn(
+        <div id={`message-${message.id}`} className={cn(
             "flex items-start gap-4 group/msg",
             isUser ? "flex-row-reverse" : "flex-row",
             isNewExchange && "mt-6"

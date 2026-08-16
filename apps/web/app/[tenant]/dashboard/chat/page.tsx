@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
+import { ChatTimeline } from "@/components/platform/chat/ChatTimeline";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
 import { WelcomeView } from "@/components/platform/chat/WelcomeView";
 import { WizardView } from "@/components/platform/chat/WizardView";
@@ -58,7 +59,7 @@ function ChatPage() {
         handleCanvasUpdate,
         openCanvas,
     });
-    const { sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent } = stream;
+    const { sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent } = stream;
 
     const { state: animationState, onStreamEvent } = usePersonaAnimationState();
     const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
@@ -249,8 +250,9 @@ function ChatPage() {
                                     )
                                 ) : (
                                     <>
-                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onClarificationAnswer={handleClarificationAnswer} />
-                                        <div className="shrink-0 pt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onClarificationAnswer={handleClarificationAnswer} />
+                                        <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                                            <ChatTimeline messages={messages} />
                                             <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                         </div>
                                     </>

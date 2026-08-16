@@ -190,7 +190,8 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): Record<string, unknown> {
   if (openaiReq.max_tokens !== undefined) generationConfig.maxOutputTokens = openaiReq.max_tokens
   if (openaiReq.top_p !== undefined) generationConfig.topP = openaiReq.top_p
   if ((openaiReq as unknown as Record<string, unknown>).thinkingBudget !== undefined) {
-    generationConfig.thinkingConfig = { thinkingBudget: (openaiReq as unknown as Record<string, unknown>).thinkingBudget }
+    const thinkingBudget = (openaiReq as unknown as Record<string, unknown>).thinkingBudget as number
+    generationConfig.thinkingConfig = { thinkingBudget, includeThoughts: thinkingBudget > 0 }
   }
   const req: Record<string, unknown> = { contents }
   if (systemInstruction) req.systemInstruction = systemInstruction
@@ -326,8 +327,11 @@ export class GeminiAdapter implements ProviderAdapter {
           const parts = ((candidate?.content as Record<string, unknown>)?.parts ?? []) as GeminiPart[]
 
           for (const part of parts) {
-            const p = part as { text?: string; functionCall?: { name: string; args: unknown } }
-            if (p.text) {
+            const p = part as { text?: string; thought?: boolean; functionCall?: { name: string; args: unknown } }
+            if (p.text && p.thought) {
+              if (!ttftFired) { latency.observe({ adapter: 'gemini', metric: 'ttft' }, Date.now() - t0); ttftFired = true }
+              res.write(`data: ${JSON.stringify(makeStreamChunk(id, modelName, { reasoning_content: p.text }))}\n\n`)
+            } else if (p.text) {
               if (!ttftFired) { latency.observe({ adapter: 'gemini', metric: 'ttft' }, Date.now() - t0); ttftFired = true }
               totalChars += p.text.length
               res.write(`data: ${JSON.stringify(makeStreamChunk(id, modelName, { content: p.text }))}\n\n`)

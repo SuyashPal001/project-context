@@ -16,6 +16,7 @@ export interface UseChatOptions {
     agentId?: string;
     folderId?: string;
     onDelta?: (delta: string, messageId: string, conversationId?: string) => void;
+    onReasoning?: (delta: string) => void;
     onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown) => void;
     onError?: (code: string, message: string) => void;
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
@@ -40,6 +41,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         agentId,
         folderId,
         onDelta,
+        onReasoning,
         onDone,
         onError,
         onToolCall,
@@ -62,6 +64,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
     // Keep latest option callbacks in refs so they never stale-close over props.
     const onDeltaRef = useRef(onDelta);
+    const onReasoningRef = useRef(onReasoning);
     const onDoneRef = useRef(onDone);
     const onErrorRef = useRef(onError);
     const onToolCallRef = useRef(onToolCall);
@@ -73,6 +76,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const folderIdRef = useRef(folderId);
 
     onDeltaRef.current = onDelta;
+    onReasoningRef.current = onReasoning;
     folderIdRef.current = folderId;
     onDoneRef.current = onDone;
     onErrorRef.current = onError;
@@ -246,6 +250,12 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 currentMessageId,
                                 (payload.conversationId as string) ?? conversationIdRef.current,
                             );
+                            break;
+                        }
+
+                        case 'reasoning': {
+                            const reasoningDelta = (payload.text as string) ?? '';
+                            if (reasoningDelta) onReasoningRef.current?.(reasoningDelta);
                             break;
                         }
 

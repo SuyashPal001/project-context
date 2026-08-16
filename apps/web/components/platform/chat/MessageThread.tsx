@@ -18,6 +18,7 @@ interface MessageThreadProps {
     isRetrying?: boolean;
     activeToolCalls?: Message["toolCalls"];
     completedToolCalls?: CompletedToolCall[];
+    reasoningText?: string;
     error?: string | null;
     warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
@@ -25,7 +26,7 @@ interface MessageThreadProps {
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
     const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -157,6 +158,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         isStreaming={isStreaming ?? false}
                         activeToolCalls={activeToolCalls ?? []}
                         completedToolCalls={completedToolCalls ?? []}
+                        reasoningText={reasoningText ?? ''}
                     />
                 ) : isTyping ? (
                     <ThinkingDots label="Thinking..." />

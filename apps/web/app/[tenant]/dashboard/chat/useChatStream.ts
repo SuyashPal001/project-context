@@ -43,6 +43,9 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
     const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
+    // Extended-thinking trace for the live "thinking it through" row — never part of
+    // the persisted message, reset per turn in sendMessage/onDone below.
+    const [reasoningText, setReasoningText] = useState('');
     const artifactToolActiveRef = useRef<string | null>(null);
     const artifactRefRef = useRef<ArtifactRef | null>(null);
     // When the current turn's streaming began — used to compute the elapsed
@@ -61,6 +64,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
     const { sendMessage: sendChatMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying } = useChat({
         conversationId: conversationId || undefined,
         agentId,
+
+        onReasoning: useCallback((delta: string) => {
+            emitStreamEvent('reasoning');
+            setReasoningText(prev => prev + delta);
+        }, [emitStreamEvent]),
 
         onDelta: useCallback((delta: string, messageId: string) => {
             emitStreamEvent('delta');
@@ -125,7 +133,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
                 }
                 return { data: [...data].sort(sortByDate) };
             });
-            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); }, 1500);
+            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); setReasoningText(''); }, 1500);
             setTimeout(() => {
                 // The backend persists completedTrace too (messages.completed_trace),
                 // but only the {elapsedSec, toolCallCount} summary — not the detailed
@@ -285,12 +293,13 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         setWarmupMessage(null);
         setHasSentFirstMessage(true);
         streamStartRef.current = Date.now();
+        setReasoningText('');
         await sendChatMessage(content, enriched);
     };
 
     return {
         sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying,
-        activeToolCalls, completedToolCalls,
+        activeToolCalls, completedToolCalls, reasoningText,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
         lastStreamEvent,
     };

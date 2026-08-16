@@ -6,7 +6,7 @@ export type PersonaAnimationState =
 
 export type ChatStreamEventType =
     | "tool_call" | "tool_done" | "delta" | "done" | "error"
-    | "approval_request" | "artifact_ready";
+    | "approval_request" | "artifact_ready" | "reasoning";
 
 export function reducePersonaAnimationState(
     _current: PersonaAnimationState,
@@ -15,6 +15,8 @@ export function reducePersonaAnimationState(
     switch (event) {
         case "tool_call":
             return "running";
+        case "reasoning":
+            return "thinking";
         case "tool_done":
             return "thinking";
         case "delta":

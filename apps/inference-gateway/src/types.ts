@@ -97,6 +97,10 @@ export interface OpenAIStreamDelta {
   role?: string;
   content?: string;
   tool_calls?: OpenAIStreamToolCallDelta[];
+  // Extended-thinking / reasoning text, distinct from the final answer in `content`.
+  // Read by @ai-sdk/openai-compatible (delta.reasoning_content ?? delta.reasoning) to
+  // emit reasoning-delta fullStream parts — see thinkingBudget in vertex.ts/gemini.ts.
+  reasoning_content?: string;
 }
 
 export interface OpenAIStreamChoice {

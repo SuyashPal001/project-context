@@ -207,6 +207,14 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           sendEvent('delta', { text, conversationId })
           break
         }
+        // Extended-thinking trace — never part of fullText/the persisted message,
+        // just forwarded live for the "thinking it through" UI. See thinkingBudget
+        // above and includeThoughts in the inference-gateway Vertex/Gemini adapters.
+        case 'reasoning-delta': {
+          const text = (part.payload?.text ?? part.delta ?? part.textDelta ?? '') as string
+          if (text) sendEvent('reasoning', { text, conversationId })
+          break
+        }
         // Text streamed from a delegated sub-agent
         case 'agent-execution-event-text-delta': {
           const text = (part.payload?.textDelta ?? part.payload?.text ?? '') as string

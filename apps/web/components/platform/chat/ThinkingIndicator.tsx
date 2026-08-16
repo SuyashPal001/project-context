@@ -5,6 +5,48 @@ import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall } from "./types";
 import { ToolCallCard } from "./ToolCallCard";
 
+// Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
+// useChatStream's onReasoning). Collapsed by default — same disclosure pattern
+// as TraceSummary's post-completion "Worked for Ns" row.
+function ReasoningRow({ text }: { text: string }) {
+    const [expanded, setExpanded] = useState(false);
+    if (!text) return null;
+
+    return (
+        <div
+            className="my-1 overflow-hidden text-foreground"
+            style={{
+                background: 'var(--muted)',
+                border: '0.5px solid var(--color-border-tertiary)',
+                borderRadius: 'var(--border-radius-md, 8px)',
+                padding: '8px 12px',
+            }}
+        >
+            <button
+                type="button"
+                onClick={() => setExpanded(e => !e)}
+                className="flex items-center gap-2 w-full text-left"
+            >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+                    <path d="M2 3.5h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5.5L3 12v-2.5H2a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+                </svg>
+                <span className="text-xs text-muted-foreground flex-1 truncate">Thinking it through</span>
+                <svg
+                    width="10" height="10" viewBox="0 0 10 10" fill="none"
+                    className={`shrink-0 transition-transform text-muted-foreground ${expanded ? "rotate-90" : ""}`}
+                >
+                    <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </button>
+            {expanded && (
+                <div className="mt-2 pt-2 text-xs text-muted-foreground whitespace-pre-wrap" style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
+                    {text}
+                </div>
+            )}
+        </div>
+    );
+}
+
 const WARMUP_STEPS = [
     "Thinking...",
     "Still working on it...",
@@ -34,6 +76,7 @@ export interface ThinkingIndicatorProps {
     isStreaming: boolean;
     activeToolCalls: ToolCall[];
     completedToolCalls: CompletedToolCall[];
+    reasoningText?: string;
 }
 
 export function ThinkingIndicator({
@@ -41,6 +84,7 @@ export function ThinkingIndicator({
     isStreaming,
     activeToolCalls,
     completedToolCalls,
+    reasoningText = '',
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
     const [messageIndex, setMessageIndex] = useState(0);
@@ -167,6 +211,12 @@ export function ThinkingIndicator({
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
                 <AgentOrb size={40} state="searching" isLoading />
                 <div className="flex-1 pt-1">
+                    {liveElapsed >= 2 && (
+                        <div className="text-sm text-[#c4b5fd] font-mono mb-1.5">
+                            Working for {liveElapsed}s
+                        </div>
+                    )}
+                    <ReasoningRow text={reasoningText} />
                     {completedToolCalls.map(tc => (
                         <ToolCallCard
                             key={tc.id}
@@ -194,11 +244,14 @@ export function ThinkingIndicator({
         return (
             <div className="flex items-start gap-4 animate-in fade-in duration-300">
                 <AgentOrb size={40} state="thinking" />
-                <div className="flex items-center gap-2 pt-1.5">
-                    <PulsingDots />
-                    <span className="text-sm text-[#c4b5fd] font-mono animate-in fade-in duration-500" key={messageIndex}>
-                        {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
-                    </span>
+                <div className="flex-1 pt-1.5">
+                    <div className="flex items-center gap-2">
+                        <PulsingDots />
+                        <span className="text-sm text-[#c4b5fd] font-mono animate-in fade-in duration-500" key={messageIndex}>
+                            {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
+                        </span>
+                    </div>
+                    <ReasoningRow text={reasoningText} />
                 </div>
             </div>
         );

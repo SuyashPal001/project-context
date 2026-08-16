@@ -336,7 +336,13 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): GenerateContentRequest {
   if (openaiReq.max_tokens !== undefined) generationConfig.maxOutputTokens = openaiReq.max_tokens;
   if (openaiReq.top_p !== undefined) generationConfig.topP = openaiReq.top_p;
   if (openaiReq.thinkingBudget !== undefined) {
-    generationConfig.thinkingConfig = { thinkingBudget: openaiReq.thinkingBudget };
+    // includeThoughts is required for Gemini to return thought summaries at all —
+    // without it thinkingBudget still affects internal reasoning quality/token spend,
+    // but the parts never come back on the wire (only thoughtsTokenCount in usage).
+    generationConfig.thinkingConfig = {
+      thinkingBudget: openaiReq.thinkingBudget,
+      includeThoughts: openaiReq.thinkingBudget > 0,
+    };
   }
 
   const request: GenerateContentRequest = { contents };
@@ -439,9 +445,20 @@ export class VertexAdapter implements ProviderAdapter {
       const parts: Part[] = candidate?.content?.parts ?? [];
 
       for (const part of parts) {
-        const p = part as { text?: string; functionCall?: { name: string; args: unknown } };
+        const p = part as { text?: string; thought?: boolean; functionCall?: { name: string; args: unknown } };
 
-        if (p.text) {
+        if (p.text && p.thought) {
+          // Thought-summary part — Gemini's extended-thinking trace, never the final
+          // answer. Kept out of `content` so it can't leak into the persisted message;
+          // carried as reasoning_content for @ai-sdk/openai-compatible to pick up.
+          if (!ttftFired) {
+            latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0);
+            ttftFired = true;
+          }
+          res.write(
+            `data: ${JSON.stringify(makeStreamChunk(id, modelName, { reasoning_content: p.text }))}\n\n`,
+          );
+        } else if (p.text) {
           if (!ttftFired) {
             latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0);
             ttftFired = true;
