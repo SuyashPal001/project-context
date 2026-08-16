@@ -70,6 +70,14 @@ export function ChatInput({
     const [content, setContent] = useState("");
     const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | null>(null);
     const [paletteQuery, setPaletteQuery] = useState('');
+    // Character range in `content` covered by the trigger (e.g. "/foo" or "@bar"),
+    // captured at the moment it was typed. Used to splice the selection back into
+    // whatever `content` looks like at click time, since content can keep changing
+    // while the palette is open — re-deriving the range from a fresh regex match
+    // against the *current* content at select time only works if the trigger is
+    // still the last thing in the string, which breaks for multi-line drafts or
+    // trailing text.
+    const [paletteRange, setPaletteRange] = useState<{ start: number; end: number } | null>(null);
 
     const recorder = useAudioRecorder();
     const uploader = useFileUpload();
@@ -106,6 +114,12 @@ export function ChatInput({
         onSend(content.trim(), uploader.attachments.length > 0 ? uploader.attachments : undefined);
         setContent("");
         uploader.clearAttachments();
+        // Safety net: a send can happen with a palette still open (e.g. the Send
+        // button clicked directly instead of Enter). Never leave a stale palette
+        // floating over a now-empty input.
+        setPaletteMode(null);
+        setPaletteQuery('');
+        setPaletteRange(null);
     };
 
     const handleMediaClick = (type: 'image' | 'video' | 'audio' | 'document') => {
@@ -122,6 +136,18 @@ export function ChatInput({
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (paletteMode && (e.key === "Enter" || e.key === "Escape")) {
+            // A palette is open: Enter/Escape close it instead of sending the raw
+            // "/foo" or "@bar" trigger text as a chat message. Without this, Enter
+            // sends the literal trigger, clears content, and leaves the palette
+            // rendered and filtered on an now-orphaned query with nothing left to
+            // anchor to.
+            e.preventDefault();
+            setPaletteMode(null);
+            setPaletteQuery('');
+            setPaletteRange(null);
+            return;
+        }
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSend();
@@ -167,18 +193,32 @@ export function ChatInput({
                         <SlashPalette
                             query={paletteQuery}
                             onSelect={(agent: Agent) => {
-                                setContent(c => c.replace(/(?:^|\s)\/(\w*)$/, ` @${agent.name} `));
+                                setContent(c => {
+                                    if (!paletteRange) return c;
+                                    return c.slice(0, paletteRange.start) + `@${agent.name} ` + c.slice(paletteRange.end);
+                                });
                             }}
-                            onClose={() => setPaletteMode(null)}
+                            onClose={() => {
+                                setPaletteMode(null);
+                                setPaletteQuery('');
+                                setPaletteRange(null);
+                            }}
                         />
                     )}
                     {paletteMode === 'mention' && (
                         <MentionPalette
                             query={paletteQuery}
                             onSelect={(label: string) => {
-                                setContent(c => c.replace(/(?:^|\s)@(\w*)$/, ` @${label} `));
+                                setContent(c => {
+                                    if (!paletteRange) return c;
+                                    return c.slice(0, paletteRange.start) + `@${label} ` + c.slice(paletteRange.end);
+                                });
                             }}
-                            onClose={() => setPaletteMode(null)}
+                            onClose={() => {
+                                setPaletteMode(null);
+                                setPaletteQuery('');
+                                setPaletteRange(null);
+                            }}
                         />
                     )}
 
@@ -212,13 +252,23 @@ export function ChatInput({
                                     const slashMatch = upToCursor.match(/(?:^|\s)\/(\w*)$/);
                                     const mentionMatch = upToCursor.match(/(?:^|\s)@(\w*)$/);
                                     if (slashMatch) {
+                                        const query = slashMatch[1];
                                         setPaletteMode('slash');
-                                        setPaletteQuery(slashMatch[1]);
+                                        setPaletteQuery(query);
+                                        // The matched trigger ("/" + query) always ends exactly at the
+                                        // cursor, regardless of any leading whitespace the (?:^|\s)
+                                        // branch consumed — so its start is just cursor minus its own
+                                        // length, independent of match.index quirks.
+                                        setPaletteRange({ start: cursor - 1 - query.length, end: cursor });
                                     } else if (mentionMatch) {
+                                        const query = mentionMatch[1];
                                         setPaletteMode('mention');
-                                        setPaletteQuery(mentionMatch[1]);
+                                        setPaletteQuery(query);
+                                        setPaletteRange({ start: cursor - 1 - query.length, end: cursor });
                                     } else {
                                         setPaletteMode(null);
+                                        setPaletteQuery('');
+                                        setPaletteRange(null);
                                     }
                                 }}
                                 onKeyDown={handleKeyDown}
