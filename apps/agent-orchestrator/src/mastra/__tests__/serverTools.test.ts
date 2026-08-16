@@ -36,6 +36,7 @@ describe('SERVER_TOOLS', () => {
     const { SERVER_TOOLS } = await import('../agents/platformAgent.js')
 
     expect(Object.keys(SERVER_TOOLS).sort()).toEqual([
+      'ask_clarifying_questions',
       'get_task_thread',
       'internet_search',
       'retrieve_documents',

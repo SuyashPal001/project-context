@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { AgentOrb } from "./AgentOrb";
-import { cn } from "@/lib/utils";
 import { ToolCall, CompletedToolCall } from "./types";
 import { ToolCallCard } from "./ToolCallCard";
 
@@ -24,12 +23,17 @@ function PulsingDots() {
     );
 }
 
+// This component only handles the LIVE in-progress states — the single
+// "Working for Ns · <message>" line and the active tool-call cards. The
+// collapsed post-completion "Worked for Ns" summary is a MessageItem/
+// TraceSummary concern now: it reads `message.completedTrace`, which is
+// stashed once by useChatStream's onDone, so it survives this component
+// being unmounted the instant isStreaming flips false.
 export interface ThinkingIndicatorProps {
     isRetrying: boolean;
     isStreaming: boolean;
     activeToolCalls: ToolCall[];
     completedToolCalls: CompletedToolCall[];
-    hasContent: boolean;
 }
 
 export function ThinkingIndicator({
@@ -37,10 +41,15 @@ export function ThinkingIndicator({
     isStreaming,
     activeToolCalls,
     completedToolCalls,
-    hasContent,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
     const [messageIndex, setMessageIndex] = useState(0);
+    const [startedAt, setStartedAt] = useState<number | null>(null);
+    // Ticks the live "Working for Ns" counter once a second. This is separate
+    // from the completedTrace concept (which lives on the Message once
+    // streaming finishes) — purely a local display value for the in-progress
+    // Phase 2a line, so it doesn't need to survive this component unmounting.
+    const [liveElapsed, setLiveElapsed] = useState(0);
 
     const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
     const isPRD = activeToolCalls.some(tc =>
@@ -52,7 +61,6 @@ export function ThinkingIndicator({
     const isTasks = activeToolCalls.some(tc =>
         tc.toolName === 'save-tasks' || tc.toolName === 'saveTasks'
         || tc.toolName?.startsWith('agent-task'));
-    const isSaveTool = isPRD || isRoadmap || isTasks;
 
     const THINKING_MESSAGES = [
         "Thinking...",
@@ -114,7 +122,19 @@ export function ThinkingIndicator({
         return () => clearInterval(id);
     }, [isStreaming, thinkingMessages.length]);
 
-    if (hasContent && !isSaveTool) return null;
+    useEffect(() => {
+        if (isStreaming && startedAt === null) {
+            setStartedAt(Date.now());
+        }
+    }, [isStreaming, startedAt]);
+
+    useEffect(() => {
+        if (!isStreaming || startedAt === null) return;
+        const tick = () => setLiveElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [isStreaming, startedAt]);
 
     // Phase 1 — container warmup
     if (isRetrying) {
@@ -177,7 +197,7 @@ export function ThinkingIndicator({
                 <div className="flex items-center gap-2 pt-1.5">
                     <PulsingDots />
                     <span className="text-sm text-[#c4b5fd] font-mono animate-in fade-in duration-500" key={messageIndex}>
-                        {thinkingMessages[messageIndex]}
+                        {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
                     </span>
                 </div>
             </div>

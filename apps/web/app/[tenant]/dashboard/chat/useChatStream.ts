@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
 import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
+import type { ClarificationRequest, ClarificationQuestion } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
 import type { ChatStreamEventType } from '@/components/platform/personas/usePersonaAnimationState';
 
@@ -44,6 +45,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
     const artifactToolActiveRef = useRef<string | null>(null);
     const artifactRefRef = useRef<ArtifactRef | null>(null);
+    // When the current turn's streaming began — used to compute the elapsed
+    // time stashed onto the assistant Message as `completedTrace` in onDone,
+    // since ThinkingIndicator (which used to own this timer) gets unmounted
+    // by MessageThread the instant isStreaming flips false.
+    const streamStartRef = useRef<number | null>(null);
 
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
         const call = activeToolCalls.get(toolCallId);
@@ -52,7 +58,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         setActiveToolCalls(prev => { const next = new Map(prev); next.delete(toolCallId); return next; });
     }, [activeToolCalls]);
 
-    const { sendMessage: sendChatMessage, sendApproval, cancel, isStreaming, isRetrying } = useChat({
+    const { sendMessage: sendChatMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying } = useChat({
         conversationId: conversationId || undefined,
         agentId,
 
@@ -90,30 +96,57 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
                     entityMeta: { pmRunId: artifactRef.pmRunId, pmStepId: artifactRef.pmStepId },
                 });
             }
+
+            // Compute the same "did this turn take a while / did it use tools" trace
+            // ThinkingIndicator used to compute internally, and stash it on the
+            // Message so MessageItem can render the collapsed summary after this
+            // component (and ThinkingIndicator) unmounts.
+            const elapsedSec = streamStartRef.current !== null
+                ? Math.max(0, Math.floor((Date.now() - streamStartRef.current) / 1000))
+                : 0;
+            streamStartRef.current = null;
+            const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2;
+            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: completedToolCalls } } : {};
+
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
                 const idx = data.findIndex(m => m.id === messageId);
                 const plan = planResult ? { planResult: planResult as Message['planResult'] } : {};
                 const aref = artifactRef ? { artifactRef: artifactRef as ArtifactRef } : {};
                 if (idx >= 0) {
-                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref };
+                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace };
                 } else {
                     const zIdx = data.findIndex(m => m.isStreaming === true);
                     if (zIdx >= 0) {
-                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref };
+                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref, ...trace };
                     } else if (fullText) {
-                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref });
+                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref, ...trace });
                     }
                 }
                 return { data: [...data].sort(sortByDate) };
             });
             setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); }, 1500);
             setTimeout(() => {
-                queryClient.invalidateQueries({ queryKey: ['messages', conversationIdRef.current] });
+                // completedTrace is client-only — there's no DB column for it — so
+                // the refetch triggered by this invalidation replaces the cached
+                // message with server data that has no completedTrace, wiping the
+                // "Worked for Ns" summary right after it appeared. Re-merge it back
+                // onto the same messageId once the refetch settles.
+                queryClient.invalidateQueries({ queryKey: ['messages', conversationIdRef.current] }).then(() => {
+                    if (!hadTrace) return;
+                    queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                        if (!old) return old;
+                        const idx = old.data.findIndex(m => m.id === messageId);
+                        if (idx < 0) return old;
+                        const data = [...old.data];
+                        data[idx] = { ...data[idx], ...trace };
+                        return { data };
+                    });
+                });
                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
                 queryClient.invalidateQueries({ queryKey: ['conversation', conversationIdRef.current] });
             }, 2000);
-        }, [queryClient, handleCanvasUpdate]),
+        }, [queryClient, handleCanvasUpdate, completedToolCalls]),
 
         onError: useCallback((code: string, message: string) => {
             emitStreamEvent('error');
@@ -180,6 +213,24 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
                 return old ? { data: [...old.data, msg] } : { data: [msg] };
             });
         }, [queryClient]),
+
+        onClarificationRequired: useCallback((clarificationId: string, questions: ClarificationQuestion[]) => {
+            // A malformed/empty payload would leave ClarificationCard indexing an empty
+            // array (request.questions[pageIndex]) and crash — skip building the card.
+            if (questions.length === 0) return;
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const request: ClarificationRequest = { id: clarificationId, questions, status: 'pending' };
+                const msg: Message = {
+                    id: crypto.randomUUID(),
+                    conversationId: conversationIdRef.current!,
+                    role: 'assistant',
+                    content: '',
+                    createdAt: new Date().toISOString(),
+                    clarificationRequest: request,
+                };
+                return old ? { data: [...old.data, msg] } : { data: [msg] };
+            });
+        }, [queryClient]),
     });
 
     // Cancel any in-flight stream when navigating to a different conversation
@@ -232,11 +283,12 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         setEventError(null);
         setWarmupMessage(null);
         setHasSentFirstMessage(true);
+        streamStartRef.current = Date.now();
         await sendChatMessage(content, enriched);
     };
 
     return {
-        sendMessage, sendApproval, cancel, isStreaming, isRetrying,
+        sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying,
         activeToolCalls, completedToolCalls,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
         lastStreamEvent,

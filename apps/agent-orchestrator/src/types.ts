@@ -82,6 +82,23 @@ export const pendingMcpApprovals = new Map<string, { resolve: (approved: boolean
 // sseApprovalChannels: orchestrator sessionId → function that sends an SSE event on the open stream
 export const sseApprovalChannels = new Map<string, (payload: Record<string, unknown>) => void>()
 
+// Mid-conversation clarification-question state. Generalizes the MCP write-tool
+// approval gate above (single boolean) to an ordered array of per-question answers
+// collected across a paginated ClarificationCard in the UI.
+export interface ClarificationAnswer {
+  questionIndex: number
+  selectedIndex?: number
+  freeText?: string
+  skipped?: boolean
+}
+
+export const pendingClarifications = new Map<string, {
+  resolve: (answers: ClarificationAnswer[]) => void
+  timer: ReturnType<typeof setTimeout>
+  expectedCount: number
+  collected: ClarificationAnswer[]
+}>()
+
 // ─── Rate limiter ─────────────────────────────────────────────────────────────
 
 export const rateLimitMap = new Map<string, { count: number; windowStart: number }>()

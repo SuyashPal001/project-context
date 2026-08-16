@@ -58,7 +58,7 @@ function ChatPage() {
         handleCanvasUpdate,
         openCanvas,
     });
-    const { sendMessage, sendApproval, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent } = stream;
+    const { sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent } = stream;
 
     const { state: animationState, onStreamEvent } = usePersonaAnimationState();
     const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
@@ -151,7 +151,33 @@ function ChatPage() {
         );
     }, [conversationId, queryClient, sendApproval]);
 
-    const hasContent = !!(messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.content.length > 0);
+    // Tracks, per clarificationId, whether every answer submitted so far was a
+    // skip — used to label the completed card "Skipped" only when the WHOLE
+    // set was skipped, not just the final question answered.
+    const clarificationAllSkippedRef = useRef<Map<string, boolean>>(new Map());
+
+    const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => {
+        const ok = await sendClarificationAnswer(clarificationId, questionIndex, answer);
+        if (!ok) {
+            toast.error('Could not submit your answer. Please try again.');
+            return;
+        }
+        const tracker = clarificationAllSkippedRef.current;
+        const wasAllSkippedSoFar = tracker.get(clarificationId) ?? true;
+        tracker.set(clarificationId, wasAllSkippedSoFar && !!answer.skipped);
+
+        // Mirror handleApprove/handleDismiss: flip the request's status in the
+        // local cache once EVERY question has been answered — `allAnswered`
+        // reflects the full answered-index set, not just "this was the last
+        // page", since chevron nav lets the user submit out of order.
+        if (allAnswered) {
+            const finalStatus = (tracker.get(clarificationId) ?? false) ? 'skipped' as const : 'answered' as const;
+            tracker.delete(clarificationId);
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+                old ? { data: old.data.map(m => m.id === messageId ? { ...m, clarificationRequest: m.clarificationRequest ? { ...m.clarificationRequest, status: finalStatus, answeredAt: new Date().toISOString() } : undefined } : m) } : old
+            );
+        }
+    }, [conversationId, queryClient, sendClarificationAnswer]);
 
     const modelChangeProps = {
         providers,
@@ -223,7 +249,7 @@ function ChatPage() {
                                     )
                                 ) : (
                                     <>
-                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} hasContent={hasContent} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} />
+                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onClarificationAnswer={handleClarificationAnswer} />
                                         <div className="shrink-0 pt-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                                             <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                         </div>

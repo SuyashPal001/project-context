@@ -83,6 +83,12 @@ export function useChatPage() {
             return { ...res, data: sorted };
         },
         enabled: !!conversationId,
+        // Client-only state (e.g. a pending clarificationRequest pushed into this
+        // query's cache by useChatStream) has no server-side row yet. A focus
+        // refetch would replace the cache with the server's copy — which never had
+        // it — and silently wipe an in-progress ClarificationCard. Disabled here
+        // (not globally) since this is the only query that holds such synthetic data.
+        refetchOnWindowFocus: false,
     });
     const messages = messagesData?.data ?? [];
 
