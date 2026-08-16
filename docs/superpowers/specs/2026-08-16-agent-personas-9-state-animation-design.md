@@ -28,8 +28,8 @@ trigger.
 | `running` | a tool call just started | SSE `tool_call` event (`chatStream.ts:211`) |
 | `thinking` | a tool result just came back, agent deciding what's next | SSE `tool_done` event (`chatStream.ts:224`) |
 | `responding` | streaming the reply text | SSE `delta` event (`chatStream.ts:192,200`) |
-| `waiting` | paused on a human-approval gate (HITL) | `Message.approvalRequest` (`chat/types.ts:84`), status `'pending'` |
-| `review` | just produced an artifact (PRD/plan/tasks) for the user to look at | `Message.artifactRef` (`chat/types.ts:88`) present on the latest assistant message |
+| `waiting` | paused mid-workflow on a human-approval gate (HITL) | `Message.artifactRef.pmRunId`/`pmStepId` (`chat/types.ts:73-74`) present — the PM workflow's Mastra HITL resumption data, only set when a run is paused awaiting approval |
+| `review` | just produced a completed artifact (PRD/plan/tasks) for the user to look at | `Message.artifactRef` (`chat/types.ts:88`) present **without** `pmRunId`/`pmStepId` — a finished artifact, nothing pending |
 | `done` | finished cleanly | SSE `done` event (`chatStream.ts:276`), no error, no pending approval |
 | `failed` | an error occurred | SSE `error` event (`chatStream.ts:298`) |
 
@@ -84,11 +84,20 @@ all — they're derived from conversation/message state:
   `conversation.messages.length === 0`, render `waving` regardless of stream state; once
   the first message is sent, hand off to the SSE-driven reducer.
 - **`waiting`** and **`review`**: not present in the current `ChatStreamEventType` union at
-  all (no `approval_requested` or `artifact_ready` SSE event exists — those are read from
-  the persisted `Message` object's `approvalRequest`/`artifactRef` fields after the message
-  lands, not from a stream event). The reducer needs a way to receive "the latest assistant
-  message now has a pending approval" / "the latest assistant message now has an
-  artifactRef" as inputs, distinct from the raw SSE event stream.
+  all (no `approval_requested` or `artifact_ready` SSE event exists — both are read from the
+  persisted `Message.artifactRef` field after the message lands, not from a stream event).
+  **Important correction from an earlier draft of this spec:** `Message.approvalRequest`
+  (`chat/types.ts:84`) looked like the obvious signal for `waiting`, but it is dead — grep
+  confirms no backend code anywhere in `products/agent-platform` or `apps/agent-orchestrator`
+  ever sets it, and its only UI consumer is literally gated behind `{false && ...}`
+  (`MessageItem.tsx:184`). Building `waiting` on that field would make it permanently
+  unreachable — exactly the "art with no real trigger" anti-pattern this addendum exists to
+  avoid. The actual, already-wired HITL pause signal is `artifactRef.pmRunId`/`pmStepId`
+  (`chat/types.ts:73-74`, "Mastra HITL: approval-gate resumption data persisted on the
+  message") — present only when a PM workflow run is paused mid-step awaiting approval to
+  resume. So: `artifactRef` present **with** `pmRunId`/`pmStepId` → `waiting`; `artifactRef`
+  present **without** them → `review` (a finished artifact, nothing pending). Both derive
+  from the same field, distinguished by whether the resumption keys are set.
 
 Proposed reducer shape — extend the event union rather than bolting on side-channel state,
 so the whole thing stays a single pure function:
