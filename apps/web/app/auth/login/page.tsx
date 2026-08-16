@@ -96,11 +96,11 @@ function LoginPageContent() {
         setError(null);
         startHyperspace('signin');
         try {
-            const result = await signIn(email, data.password);
-            if (result.challenge) {
+            const signInResult = await signIn(email, data.password);
+            if (signInResult.challenge) {
                 throw new Error("This account requires a password reset. Please use 'Forgot password'.");
             }
-            await completeLogin(result.idToken, result.accessToken, result.refreshToken);
+            await completeLogin(signInResult.idToken, signInResult.accessToken, signInResult.refreshToken);
         } catch (err: any) {
             finishHyperspace();
             setError(err.message || 'Invalid email or password.');

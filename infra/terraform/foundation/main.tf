@@ -257,6 +257,15 @@ module "api_gateway" {
       integration_key = "foundation_api"
       requires_auth   = false
     }
+    # Nango's webhook has its own signature verification
+    # (X-Nango-Hmac-Sha256, checked in integrations.nango.webhook.ts) —
+    # it can't provide a Cognito JWT, so this route must bypass the
+    # catch-all authorizer the same way the OAuth callbacks above do.
+    nango_webhook = {
+      route_key       = "POST /api/v1/integrations/webhooks/nango"
+      integration_key = "foundation_api"
+      requires_auth   = false
+    }
     api = {
       route_key       = "ANY /api/v1/{proxy+}"
       integration_key = "foundation_api"
