@@ -59,4 +59,62 @@ describe('personasRoutes publish', () => {
         const body = await res.json();
         expect(body.code).toBe('INCOMPLETE_ASSETS');
     });
+
+    it('rejects publishing a persona with only the old 3-state set (idle/thinking/responding)', async () => {
+        dbMock.select.mockReturnValue({
+            from: () => ({
+                where: () => ({
+                    limit: async () => [{
+                        id: 'p1',
+                        animationStates: {
+                            idle: 'https://example.com/idle.png',
+                            thinking: 'https://example.com/thinking.png',
+                            responding: 'https://example.com/responding.png',
+                        },
+                    }],
+                }),
+            }),
+        });
+
+        const app = appWithJwt('platform_admin');
+        const res = await app.request('/ops/personas/p1/publish', { method: 'POST' });
+        expect(res.status).toBe(409);
+        const body = await res.json();
+        expect(body.code).toBe('INCOMPLETE_ASSETS');
+        expect(body.error).toContain('waving');
+    });
+
+    it('allows publishing a persona with all 9 animation states present', async () => {
+        const allStates = {
+            idle: 'https://example.com/idle.png',
+            waving: 'https://example.com/waving.png',
+            running: 'https://example.com/running.png',
+            thinking: 'https://example.com/thinking.png',
+            responding: 'https://example.com/responding.png',
+            waiting: 'https://example.com/waiting.png',
+            review: 'https://example.com/review.png',
+            done: 'https://example.com/done.png',
+            failed: 'https://example.com/failed.png',
+        };
+        dbMock.select.mockReturnValue({
+            from: () => ({
+                where: () => ({
+                    limit: async () => [{ id: 'p1', animationStates: allStates, status: 'draft' }],
+                }),
+            }),
+        });
+        dbMock.update.mockReturnValue({
+            set: () => ({
+                where: () => ({
+                    returning: async () => [{ id: 'p1', status: 'published', animationStates: allStates }],
+                }),
+            }),
+        });
+
+        const app = appWithJwt('platform_admin');
+        const res = await app.request('/ops/personas/p1/publish', { method: 'POST' });
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.persona.status).toBe('published');
+    });
 });

@@ -10,8 +10,14 @@ export const personasRoutes = new Hono<AppEnv>();
 
 const animationStatesSchema = z.object({
     idle: z.string().url(),
+    waving: z.string().url(),
+    running: z.string().url(),
     thinking: z.string().url(),
     responding: z.string().url(),
+    waiting: z.string().url(),
+    review: z.string().url(),
+    done: z.string().url(),
+    failed: z.string().url(),
 });
 
 // GET /ops/personas — list all personas, newest first
@@ -113,8 +119,10 @@ personasRoutes.post('/:id/publish', async (c) => {
     if (!existing) return c.json({ error: 'Persona not found', code: 'NOT_FOUND' }, 404);
 
     const states = existing.animationStates;
-    if (!states || !states.idle || !states.thinking || !states.responding) {
-        return c.json({ error: 'Persona needs idle, thinking, and responding assets before publishing', code: 'INCOMPLETE_ASSETS' }, 409);
+    const requiredStates = ['idle', 'waving', 'running', 'thinking', 'responding', 'waiting', 'review', 'done', 'failed'] as const;
+    const missing = requiredStates.filter((key) => !states?.[key]);
+    if (missing.length > 0) {
+        return c.json({ error: `Persona is missing animation states: ${missing.join(', ')}`, code: 'INCOMPLETE_ASSETS' }, 409);
     }
 
     const [published] = await db.update(personas).set({ status: 'published', updatedAt: new Date() }).where(eq(personas.id, id)).returning();
