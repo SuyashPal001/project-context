@@ -8,6 +8,7 @@ import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/p
 import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
+import type { ChatStreamEventType } from '@/components/platform/personas/usePersonaAnimationState';
 
 // Relay emits tool names using the JS variable name as key (e.g. savePRD, not save-prd)
 // normTool lowercases and replaces _ with - so savePRD → saveprd, save-prd → save-prd
@@ -28,6 +29,7 @@ interface Params {
 export function useChatStream({ conversationId, conversationIdRef, agentId, selectedConversation, messages, handleCanvasUpdate, openCanvas }: Params) {
     const queryClient = useQueryClient();
     const [eventError, setEventError] = useState<string | null>(null);
+    const [lastStreamEvent, setLastStreamEvent] = useState<ChatStreamEventType | null>(null);
     const [agentTimedOut, setAgentTimedOut] = useState(false);
     const [warmupMessage, setWarmupMessage] = useState<string | null>(null);
     const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
@@ -48,6 +50,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         agentId,
 
         onDelta: useCallback((delta: string, messageId: string) => {
+            setLastStreamEvent('delta');
             if (activeToolCalls.size > 0) activeToolCalls.forEach((_, id) => handleToolDone(id, undefined));
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
@@ -62,6 +65,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [queryClient, activeToolCalls, handleToolDone]),
 
         onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown) => {
+            setLastStreamEvent('done');
             if (artifactToolActiveRef.current) {
                 const aref = artifactRefRef.current;
                 handleCanvasUpdate('artifact_done', {
@@ -105,6 +109,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [queryClient, handleCanvasUpdate]),
 
         onError: useCallback((code: string, message: string) => {
+            setLastStreamEvent('error');
             if (code === 'AGENT_TIMEOUT') { setAgentTimedOut(true); return; }
             if (code === 'WARMUP_TIMEOUT') { setWarmupMessage(message); return; }
             setEventError(`[${code}] ${message}`);
@@ -112,6 +117,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, []),
 
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
+            setLastStreamEvent('tool_call');
             const query = String(args?.query ?? args?.filename ?? args?.subject ?? '');
             setActiveToolCalls(prev => { const next = new Map(prev); next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query }); return next; });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
@@ -127,6 +133,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [handleCanvasUpdate, openCanvas]),
 
         onToolDone: useCallback((toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
+            setLastStreamEvent('tool_done');
             handleToolDone(toolCallId, results);
             if (!SAVE_TOOL_NAMES.has(toolName.toLowerCase().replace(/_/g, '-')) || !artifactToolActiveRef.current) return;
 
@@ -160,6 +167,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [handleToolDone, handleCanvasUpdate]),
 
         onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
+            setLastStreamEvent('approval_request');
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const msg: Message = { id: crypto.randomUUID(), conversationId: conversationIdRef.current!, role: 'assistant', content: '', createdAt: new Date().toISOString(), approvalRequest: { id: approvalId, toolName, description, arguments: args, status: 'pending' } };
                 return old ? { data: [...old.data, msg] } : { data: [msg] };
@@ -224,5 +232,6 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         sendMessage, sendApproval, cancel, isStreaming, isRetrying,
         activeToolCalls, completedToolCalls,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
+        lastStreamEvent,
     };
 }

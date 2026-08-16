@@ -57,7 +57,7 @@ function ChatPage() {
         handleCanvasUpdate,
         openCanvas,
     });
-    const { sendMessage, sendApproval, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage } = stream;
+    const { sendMessage, sendApproval, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent } = stream;
 
     const { isModalOpen, session, openVoice, closeVoice, handleTap } = useVoice({ conversationId: conversationId || undefined });
     const [inputPrefill, setInputPrefill] = useState('');
