@@ -107,7 +107,7 @@ export async function handleCreateAgent(c: Context<AppEnv>) {
         }
     }
 
-    const result = z.object({ name: z.string().min(1).max(100), type: z.enum(['ops', 'support', 'billing', 'custom']), model: z.string().optional(), llmProviderId: z.string().uuid().optional() }).safeParse(await c.req.json());
+    const result = z.object({ name: z.string().min(1).max(100), type: z.enum(['ops', 'support', 'billing', 'custom']), model: z.string().optional(), llmProviderId: z.string().uuid().optional(), personaId: z.string().uuid().optional() }).safeParse(await c.req.json());
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 
     const agentRole = (await db.select().from(roles).where(eq(roles.isAgentRole, true)).limit(1))[0];
@@ -122,7 +122,7 @@ export async function handleCreateAgent(c: Context<AppEnv>) {
 
     const rawKey = generateApiKey('ak');
     const [newKey] = await db.insert(apiKeys).values({ tenantId, name: `${result.data.name} API Key`, type: 'agent', keyHash: hashKey(rawKey), permissions: agentRolePermissionStrings, status: 'active', createdBy: userId }).returning();
-    const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model: result.data.model, llmProviderId: result.data.llmProviderId, apiKeyId: newKey.id, createdBy: userId }).returning();
+    const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model: result.data.model, llmProviderId: result.data.llmProviderId, personaId: result.data.personaId, apiKeyId: newKey.id, createdBy: userId }).returning();
     await db.insert(memberships).values({ agentId: newAgent.id, tenantId, roleId: agentRole.id, memberType: 'agent', status: 'active' });
 
     try {

@@ -8,18 +8,30 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PersonaAvatar } from "./PersonaAvatar";
 import type { PersonaDetail } from "./types";
+import { hirePersona } from "./actions";
 
 interface PersonaDetailModalProps {
     persona: PersonaDetail | null;
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    onAssign: (personaId: string) => void;
+    onAssign?: (personaId: string) => void;
     onFire?: (personaId: string) => void;
     isHired?: boolean;
 }
 
 export function PersonaDetailModal({ persona, open, onOpenChange, onAssign, onFire, isHired }: PersonaDetailModalProps) {
     if (!persona) return null;
+
+    const handleAssign = async () => {
+        if (onAssign) return onAssign(persona.id);
+        await hirePersona(persona);
+        onOpenChange(false);
+    };
+
+    const handleFire = async () => {
+        if (!isHired) return;
+        if (onFire) return onFire(persona.id);
+    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -53,10 +65,10 @@ export function PersonaDetailModal({ persona, open, onOpenChange, onAssign, onFi
                 )}
 
                 <div className="flex justify-end gap-2 pt-2">
-                    {isHired && onFire && (
-                        <Button variant="outline" onClick={() => onFire(persona.id)}>Fire</Button>
+                    {isHired && (
+                        <Button variant="outline" onClick={handleFire}>Fire</Button>
                     )}
-                    <Button onClick={() => onAssign(persona.id)}>Assign Task Now</Button>
+                    <Button onClick={handleAssign}>Assign Task Now</Button>
                 </div>
             </DialogContent>
         </Dialog>
