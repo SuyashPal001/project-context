@@ -18,6 +18,9 @@ import { useFileUpload } from "./useFileUpload";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { RecordingBar } from "./RecordingBar";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { SlashPalette } from "./SlashPalette";
+import { MentionPalette } from "./MentionPalette";
+import { Agent } from "../agents/types";
 
 interface LLMProvider {
     id: string;
@@ -65,6 +68,8 @@ export function ChatInput({
     prefill,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
+    const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | null>(null);
+    const [paletteQuery, setPaletteQuery] = useState('');
 
     const recorder = useAudioRecorder();
     const uploader = useFileUpload();
@@ -109,10 +114,7 @@ export function ChatInput({
         onMediaClick?.(type);
     };
 
-    const handleUseEmployee = () => {
-        setContent((prev) => (prev.trim() ? prev : "/"));
-        textareaRef.current?.focus();
-    };
+    const handleUseEmployee = () => { setPaletteMode('slash'); setPaletteQuery(''); };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         await uploader.handleFileChange(e, fileInputRef);
@@ -159,7 +161,26 @@ export function ChatInput({
             />
 
             <div className="max-w-3xl mx-auto w-full">
-                <div className="flex flex-col rounded-[28px] border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-sm overflow-hidden">
+                <div className="relative flex flex-col rounded-[28px] border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-sm overflow-hidden">
+
+                    {paletteMode === 'slash' && (
+                        <SlashPalette
+                            query={paletteQuery}
+                            onSelect={(agent: Agent) => {
+                                setContent(c => c.replace(/(?:^|\s)\/(\w*)$/, ` @${agent.name} `));
+                            }}
+                            onClose={() => setPaletteMode(null)}
+                        />
+                    )}
+                    {paletteMode === 'mention' && (
+                        <MentionPalette
+                            query={paletteQuery}
+                            onSelect={(label: string) => {
+                                setContent(c => c.replace(/(?:^|\s)@(\w*)$/, ` @${label} `));
+                            }}
+                            onClose={() => setPaletteMode(null)}
+                        />
+                    )}
 
                     <AttachmentStrip
                         attachments={uploader.attachments}
@@ -183,7 +204,23 @@ export function ChatInput({
                             <Textarea
                                 ref={textareaRef}
                                 value={content}
-                                onChange={(e) => setContent(e.target.value)}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    setContent(value);
+                                    const cursor = e.target.selectionStart ?? value.length;
+                                    const upToCursor = value.slice(0, cursor);
+                                    const slashMatch = upToCursor.match(/(?:^|\s)\/(\w*)$/);
+                                    const mentionMatch = upToCursor.match(/(?:^|\s)@(\w*)$/);
+                                    if (slashMatch) {
+                                        setPaletteMode('slash');
+                                        setPaletteQuery(slashMatch[1]);
+                                    } else if (mentionMatch) {
+                                        setPaletteMode('mention');
+                                        setPaletteQuery(mentionMatch[1]);
+                                    } else {
+                                        setPaletteMode(null);
+                                    }
+                                }}
                                 onKeyDown={handleKeyDown}
                                 placeholder="Ask anything, @ to mention, / for workflows..."
                                 className="w-full min-h-[44px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50"
