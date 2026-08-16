@@ -18,6 +18,9 @@ import type { OpenAIRequest } from '../types';
 import { latency } from '../metrics.js';
 
 const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
+// Guards only the connect phase (time to first response headers) — cleared once
+// openRouterRes resolves, so it never cuts off an in-progress stream.
+const CONNECT_TIMEOUT_MS = 30_000;
 
 export class OpenRouterAdapter implements ProviderAdapter {
   async handleCompletion(req: OpenAIRequest, res: ServerResponse): Promise<void> {
@@ -33,6 +36,8 @@ export class OpenRouterAdapter implements ProviderAdapter {
     );
 
     let openRouterRes: Response;
+    const connectController = new AbortController();
+    const connectTimer = setTimeout(() => connectController.abort(), CONNECT_TIMEOUT_MS);
     try {
       openRouterRes = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
         method: 'POST',
@@ -44,11 +49,15 @@ export class OpenRouterAdapter implements ProviderAdapter {
           'X-Title': 'project-context',
         },
         body: JSON.stringify({ ...req, model }),
+        signal: connectController.signal,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[openrouter-adapter] connection error: ${message}`);
-      throw new AdapterError(502, `OpenRouter unreachable: ${message}`);
+      const status = connectController.signal.aborted ? 504 : 502;
+      throw new AdapterError(status, `OpenRouter unreachable: ${message}`);
+    } finally {
+      clearTimeout(connectTimer);
     }
 
     if (!openRouterRes.ok) {
