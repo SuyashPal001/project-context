@@ -1,8 +1,9 @@
-import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle } from "lucide-react";
+import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Bot, Zap, Check } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -266,11 +267,15 @@ export function ChatInput({
                                 if (!paletteRange) return c;
                                 return c.slice(0, paletteRange.start) + `@${label} ` + c.slice(paletteRange.end);
                             });
+                            // The palette owns its own search input (focus lives there, not
+                            // the textarea, while it's open) — hand focus back once a pick is made.
+                            textareaRef.current?.focus();
                         }}
                         onClose={() => {
                             setPaletteMode(null);
                             setPaletteQuery('');
                             setPaletteRange(null);
+                            textareaRef.current?.focus();
                         }}
                     />
                 )}
@@ -341,7 +346,7 @@ export function ChatInput({
                                                     <Plus className="h-4 w-4" />
                                                 </button>
                                             </DropdownMenuTrigger>
-                                            <DropdownMenuContent side="top" align="start" className="w-48 p-2">
+                                            <DropdownMenuContent side="top" align="start" className="w-52 p-2">
                                                 <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
                                                 <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
                                                     <ImageIcon className="h-4 w-4" />
@@ -355,24 +360,18 @@ export function ChatInput({
                                                     <FileText className="h-4 w-4" />
                                                     <span>Document (PDF, DOCX)</span>
                                                 </DropdownMenuItem>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
+                                                    <Bot className="h-4 w-4" />
+                                                    <span>Use employee</span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
+                                                    <Zap className="h-4 w-4" />
+                                                    <span>Use skill</span>
+                                                </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     )}
-
-                                    <button
-                                        type="button"
-                                        onClick={handleUseEmployee}
-                                        className="h-8 px-3 flex items-center gap-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                                    >
-                                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
-                                            <rect x="3" y="5" width="8" height="6" rx="1.5" stroke="currentColor" strokeWidth="1"/>
-                                            <circle cx="5.5" cy="8" r="0.6" fill="currentColor"/>
-                                            <circle cx="8.5" cy="8" r="0.6" fill="currentColor"/>
-                                            <line x1="7" y1="5" x2="7" y2="3.2" stroke="currentColor" strokeWidth="1"/>
-                                            <circle cx="7" cy="2.6" r="0.6" fill="currentColor"/>
-                                        </svg>
-                                        Use employee
-                                    </button>
 
                                     {providers && providers.length > 0 && (
                                         <DropdownMenu>
@@ -384,23 +383,40 @@ export function ChatInput({
                                                     {providers.find(p => p.id === llmProviderId)?.displayName ?? 'Model'}
                                                 </button>
                                             </DropdownMenuTrigger>
-                                            <DropdownMenuContent side="top" align="start" className="w-56 p-2">
+                                            <DropdownMenuContent side="top" align="start" className="w-60 p-2">
                                                 <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Model</div>
                                                 {(() => {
                                                     const badges = costTierBadges(providers);
-                                                    return providers.map(provider => (
-                                                        <DropdownMenuItem
-                                                            key={provider.id}
-                                                            disabled={provider.status !== 'live'}
-                                                            onClick={() => onModelChange?.(provider.id)}
-                                                            className="flex items-center justify-between gap-2 cursor-pointer py-2"
-                                                        >
-                                                            <span>{provider.displayName}</span>
-                                                            <span className="text-[10px] text-muted-foreground">
-                                                                {provider.status !== 'live' ? 'Coming soon' : badges.get(provider.id) ?? ''}
-                                                            </span>
-                                                        </DropdownMenuItem>
-                                                    ));
+                                                    return providers.map(provider => {
+                                                        const isSelected = provider.id === llmProviderId;
+                                                        return (
+                                                            <DropdownMenuItem
+                                                                key={provider.id}
+                                                                disabled={provider.status !== 'live'}
+                                                                onClick={() => onModelChange?.(provider.id)}
+                                                                className="flex items-center gap-2.5 cursor-pointer py-2"
+                                                            >
+                                                                <span
+                                                                    className={cn(
+                                                                        "h-1.5 w-1.5 shrink-0 rounded-full",
+                                                                        provider.status === 'live' ? "bg-primary" : "bg-muted-foreground/30",
+                                                                    )}
+                                                                />
+                                                                <span className="flex-1 truncate">{provider.displayName}</span>
+                                                                {provider.status !== 'live' ? (
+                                                                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                                                        Coming soon
+                                                                    </span>
+                                                                ) : isSelected ? (
+                                                                    <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                                                                ) : badges.get(provider.id) ? (
+                                                                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                                                                        {badges.get(provider.id)}
+                                                                    </span>
+                                                                ) : null}
+                                                            </DropdownMenuItem>
+                                                        );
+                                                    });
                                                 })()}
                                             </DropdownMenuContent>
                                         </DropdownMenu>
@@ -421,7 +437,7 @@ export function ChatInput({
                                     {isStreaming ? (
                                         <button
                                             onClick={onStop}
-                                            className="h-8 w-8 flex items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all shadow-sm"
+                                            className="h-8 w-8 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all shadow-sm"
                                         >
                                             <StopCircle className="h-4 w-4" />
                                         </button>
@@ -431,14 +447,14 @@ export function ChatInput({
                                             disabled={(!content.trim() && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading}
                                             title="Enter to send, Shift+Enter for a new line"
                                             className={cn(
-                                                "h-8 w-8 flex items-center justify-center rounded-lg transition-all active:scale-95 shadow-sm",
+                                                "h-8 w-8 flex items-center justify-center rounded-full transition-all active:scale-95 shadow-sm",
                                                 (content.trim() || uploader.attachments.length > 0) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground opacity-40"
                                             )}
                                         >
                                             {isLoading || uploader.isUploading ? (
                                                 <Loader2 className="h-4 w-4 animate-spin" />
                                             ) : (
-                                                <SendHorizontal className="h-4 w-4" />
+                                                <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
                                             )}
                                         </button>
                                     )}

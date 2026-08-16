@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight } from "lucide-react";
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
@@ -84,11 +84,19 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
 }
 
 // ─── AgentSection ─────────────────────────────────────────────────────────────
+//
+// Collapsed by default: one row per agent (avatar + name only). Clicking
+// toggles it open to reveal that agent's conversations nested underneath.
+// The row's left slot shows the avatar normally and swaps to a chevron
+// (inside a pill hover background) on hover/expanded state, rather than
+// showing both at once — matches the reference's collapsed-list treatment.
 
-function AgentSection({ agent, conversations, selectedId, onSelect, onNewChat, onArchive, onDelete, activeAgentId, activeState }: {
+function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, onSelect, onNewChat, onArchive, onDelete, activeAgentId, activeState }: {
     agent: Agent;
     conversations: Conversation[];
     selectedId?: string;
+    isExpanded: boolean;
+    onToggle: () => void;
     onSelect: (c: Conversation) => void;
     onNewChat: (agentId: string) => void;
     onArchive: (id: string) => void;
@@ -97,54 +105,58 @@ function AgentSection({ agent, conversations, selectedId, onSelect, onNewChat, o
     activeState?: PersonaAnimationState;
 }) {
     return (
-        <div className="mb-4">
-            <div className="flex items-start justify-between px-2 mb-1">
-                <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-1.5">
-                        <PersonaAvatar
-                            persona={agent.persona}
-                            state={agent.id === activeAgentId ? activeState : undefined}
-                            size={16}
-                            className="rounded bg-transparent border-0"
-                            iconClassName="text-muted-foreground/50"
-                        />
-                        <span className="text-[11px] font-semibold text-muted-foreground/60 uppercase tracking-wider truncate">
-                            {agent.name}
-                        </span>
-                    </div>
-                    {agent.description && (
-                        <p className="text-[10px] text-muted-foreground/40 mt-0.5 pl-4 leading-snug line-clamp-1">
-                            {agent.description}
-                        </p>
-                    )}
-                </div>
-                <Button
-                    variant="ghost" size="icon"
-                    className="h-5 w-5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-accent/50 shrink-0 mt-0.5"
-                    onClick={() => onNewChat(agent.id)}
-                    title={`New chat with ${agent.name}`}
-                >
-                    <Plus className="h-3 w-3" />
-                </Button>
-            </div>
-            {conversations.length === 0 ? (
-                <button
-                    onClick={() => onNewChat(agent.id)}
-                    className="w-full text-left px-2.5 py-2 text-[12px] text-muted-foreground/40 hover:text-muted-foreground transition-colors rounded-md hover:bg-accent/30"
-                >
-                    Start a conversation…
-                </button>
-            ) : (
-                conversations.map(conv => (
-                    <ConversationRow
-                        key={conv.id}
-                        conversation={conv}
-                        isSelected={selectedId === conv.id}
-                        onSelect={() => onSelect(conv)}
-                        onArchive={() => onArchive(conv.id)}
-                        onDelete={() => onDelete(conv.id)}
+        <div className="mb-1">
+            <button
+                onClick={onToggle}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-full text-left transition-colors hover:bg-accent/60 group"
+            >
+                <span className="relative h-7 w-7 shrink-0">
+                    <PersonaAvatar
+                        persona={agent.persona}
+                        state={agent.id === activeAgentId ? activeState : undefined}
+                        size={28}
+                        className="rounded-full absolute inset-0 transition-opacity group-hover:opacity-0"
+                        iconClassName="text-muted-foreground/60"
                     />
-                ))
+                    <ChevronRight
+                        className={cn(
+                            "h-4 w-4 absolute inset-0 m-auto text-muted-foreground opacity-0 group-hover:opacity-100 transition-transform",
+                            isExpanded && "opacity-100 rotate-90"
+                        )}
+                    />
+                </span>
+                <span className="text-sm font-medium truncate">{agent.name}</span>
+            </button>
+
+            {isExpanded && (
+                <div className="pl-8 pt-0.5">
+                    {conversations.length === 0 ? (
+                        <button
+                            onClick={() => onNewChat(agent.id)}
+                            className="w-full text-left px-2.5 py-2 text-[12px] text-muted-foreground/40 hover:text-muted-foreground transition-colors rounded-md hover:bg-accent/30"
+                        >
+                            Start a conversation…
+                        </button>
+                    ) : (
+                        conversations.map(conv => (
+                            <ConversationRow
+                                key={conv.id}
+                                conversation={conv}
+                                isSelected={selectedId === conv.id}
+                                onSelect={() => onSelect(conv)}
+                                onArchive={() => onArchive(conv.id)}
+                                onDelete={() => onDelete(conv.id)}
+                            />
+                        ))
+                    )}
+                    <button
+                        onClick={() => onNewChat(agent.id)}
+                        className="w-full flex items-center gap-1.5 px-2.5 h-8 rounded-md text-[12px] text-muted-foreground/50 hover:text-foreground hover:bg-accent/50 transition-colors"
+                    >
+                        <Plus className="h-3 w-3" />
+                        New chat
+                    </button>
+                </div>
             )}
         </div>
     );
@@ -156,6 +168,12 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [actionType, setActionType] = useState<'archive' | 'delete'>('archive');
     const [search, setSearch] = useState('');
+    const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
+    // Tracks the last selectedId we auto-expanded for, so a manual collapse by
+    // the user (clicking the same section closed again) doesn't get immediately
+    // re-forced open on the next render — only a genuinely NEW selection (e.g.
+    // clicking a conversation under a different agent) should auto-expand.
+    const lastAutoExpandedForRef = useRef<string | undefined>(undefined);
     const queryClient = useQueryClient();
     const router = useRouter();
     const params = useParams();
@@ -205,6 +223,14 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
 
     const isLoading = loadingConvs || loadingAgents;
 
+    useEffect(() => {
+        if (!selectedId || selectedId === lastAutoExpandedForRef.current) return;
+        const conv = allConvs.find(c => c.id === selectedId);
+        if (!conv) return;
+        setExpandedAgentId(conv.agentId);
+        lastAutoExpandedForRef.current = selectedId;
+    }, [selectedId, allConvs]);
+
     return (
         <div className="flex flex-col h-full bg-background border-r border-border">
             <div className="p-4 flex items-center justify-between">
@@ -248,6 +274,11 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
                                 agent={agent}
                                 conversations={convsByAgent[agent.id] ?? []}
                                 selectedId={selectedId}
+                                // A search in progress overrides collapse state so matching
+                                // conversations are actually visible rather than hidden inside
+                                // a closed section the user has no reason to think to open.
+                                isExpanded={search.trim() ? (convsByAgent[agent.id]?.length ?? 0) > 0 : expandedAgentId === agent.id}
+                                onToggle={() => setExpandedAgentId(id => id === agent.id ? null : agent.id)}
                                 onSelect={onSelect}
                                 onNewChat={onNewChat}
                                 onArchive={(id) => { setActionType('archive'); setDeleteId(id); }}

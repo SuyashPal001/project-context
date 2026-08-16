@@ -1,9 +1,11 @@
 'use client';
 
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { AtSign, FileText, ListChecks } from "lucide-react";
+import { Search } from "lucide-react";
+import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
+import { Agent, AgentsResponse } from "../agents/types";
 import type { PaletteHandle } from "./SlashPalette";
 
 interface MentionPaletteProps {
@@ -12,91 +14,93 @@ interface MentionPaletteProps {
     onClose: () => void;
 }
 
-interface DocumentsResponse {
-    documents: { id: string; name: string; status: string }[];
-}
-
-interface TasksResponse {
-    data: { id: string; title: string }[];
-}
-
-interface MentionItem {
-    key: string;
-    label: string;
-    type: 'document' | 'task';
-}
-
+// Typing "@" opens this to mention/tag a specific agent. Unlike SlashPalette
+// (which stays anchored to the textarea and filters off what's typed there),
+// this owns its own real search input — autofocused on open — so it behaves
+// like the reference's standalone "Search expert or team" field rather than
+// mirroring keystrokes typed elsewhere. Arrow/Enter/Escape are therefore
+// handled locally on that input, not via the imperative handle the "/"
+// trigger relies on; the handle is still exposed for interface parity with
+// SlashPalette but mouse hover/click is the primary path once this owns focus.
 export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(function MentionPalette(
-    { query, onSelect, onClose },
+    { query: initialQuery, onSelect, onClose },
     ref,
 ) {
-    const { data: documentsData, isLoading: documentsLoading } = useQuery<DocumentsResponse>({
-        queryKey: ["documents"],
-        queryFn: () => api.get<DocumentsResponse>("/api/v1/documents"),
+    const [searchValue, setSearchValue] = useState(initialQuery);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        inputRef.current?.focus();
+        // Seed once from whatever was typed after "@" before the palette mounted;
+        // further edits happen in this input, not by re-syncing from the prop.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const { data, isLoading } = useQuery<AgentsResponse>({
+        queryKey: ["agents"],
+        queryFn: () => api.get<AgentsResponse>("/api/v1/agents"),
     });
 
-    const { data: tasksData, isLoading: tasksLoading } = useQuery<TasksResponse>({
-        queryKey: ["tasks"],
-        queryFn: () => api.get<TasksResponse>("/api/v1/tasks"),
-    });
-
-    const elements = useMemo<MentionItem[]>(() => {
-        const documents = (documentsData?.documents ?? [])
-            .filter(d => d.status === 'ready')
-            .map(d => ({ key: `document:${d.id}`, label: d.name, type: 'document' as const }));
-        const tasks = (tasksData?.data ?? [])
-            .map(t => ({ key: `task:${t.id}`, label: t.title, type: 'task' as const }));
-        return [...documents, ...tasks];
-    }, [documentsData, tasksData]);
-
-    const isLoading = documentsLoading || tasksLoading;
-
-    const filtered = query
-        ? elements.filter(e => e.label.toLowerCase().includes(query.toLowerCase()))
-        : elements;
+    const activeAgents = (data?.data ?? []).filter((a: Agent) => a.status === 'active');
+    const filtered = searchValue
+        ? activeAgents.filter((a: Agent) => a.name.toLowerCase().includes(searchValue.toLowerCase()))
+        : activeAgents;
 
     const [activeIndex, setActiveIndex] = useState(0);
 
-    useEffect(() => { setActiveIndex(0); }, [query]);
+    useEffect(() => { setActiveIndex(0); }, [searchValue]);
 
-    useImperativeHandle(ref, () => ({
-        moveActive: (delta: number) => {
-            if (filtered.length === 0) return;
-            setActiveIndex(i => (i + delta + filtered.length) % filtered.length);
-        },
-        selectActive: () => {
-            const item = filtered[activeIndex];
-            if (!item) return false;
-            onSelect(item.label);
-            onClose();
-            return true;
-        },
-    }), [filtered, activeIndex, onSelect, onClose]);
+    const moveActive = (delta: number) => {
+        if (filtered.length === 0) return;
+        setActiveIndex(i => (i + delta + filtered.length) % filtered.length);
+    };
+
+    const selectActive = () => {
+        const agent = filtered[activeIndex];
+        if (!agent) return false;
+        onSelect(agent.name);
+        onClose();
+        return true;
+    };
+
+    useImperativeHandle(ref, () => ({ moveActive, selectActive }), [filtered, activeIndex, onSelect]);
 
     return (
-        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border bg-popover shadow-lg p-2 max-h-64 overflow-y-auto custom-scrollbar">
+        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border bg-popover shadow-lg p-2 max-h-80 overflow-y-auto custom-scrollbar">
+            <div className="flex items-center gap-2 px-3 h-10 mb-1 rounded-xl bg-muted/50 focus-within:ring-1 focus-within:ring-primary/30">
+                <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={searchValue}
+                    onChange={e => setSearchValue(e.target.value)}
+                    onKeyDown={e => {
+                        if (e.key === "ArrowDown") { e.preventDefault(); moveActive(1); return; }
+                        if (e.key === "ArrowUp") { e.preventDefault(); moveActive(-1); return; }
+                        if (e.key === "Enter") { e.preventDefault(); if (!selectActive()) onClose(); return; }
+                        if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+                    }}
+                    placeholder="Search expert or team"
+                    className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
+                />
+            </div>
             {isLoading ? (
-                <div className="px-2 py-3 text-xs text-muted-foreground">Loading…</div>
+                <div className="px-3 py-3 text-xs text-muted-foreground">Loading…</div>
             ) : filtered.length === 0 ? (
-                <div className="px-2 py-3 text-xs text-muted-foreground flex items-center gap-2">
-                    <AtSign className="h-3.5 w-3.5" />
-                    No mentions match &quot;{query}&quot;
+                <div className="px-3 py-3 text-xs text-muted-foreground">
+                    No experts match &quot;{searchValue}&quot;
                 </div>
             ) : (
-                filtered.map((item, i) => (
+                filtered.map((agent: Agent, i: number) => (
                     <button
-                        key={item.key}
+                        key={agent.id}
                         type="button"
-                        onClick={() => { onSelect(item.label); onClose(); }}
+                        onClick={() => { onSelect(agent.name); onClose(); }}
                         onMouseEnter={() => setActiveIndex(i)}
-                        className={`w-full flex items-center gap-2 px-2 py-2 rounded-xl text-left text-sm transition-colors ${i === activeIndex ? 'bg-muted/60' : 'hover:bg-muted/60'}`}
+                        className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-colors ${i === activeIndex ? 'bg-muted/60' : 'hover:bg-muted/60'}`}
                     >
-                        {item.type === 'document' ? (
-                            <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        ) : (
-                            <ListChecks className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        )}
-                        <span className="truncate">{item.label}</span>
+                        <PersonaAvatar persona={agent.persona} size={36} className="rounded-full" />
+                        <span className="text-sm truncate">{agent.name}</span>
                     </button>
                 ))
             )}
