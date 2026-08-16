@@ -9,6 +9,7 @@ const PLATFORM_LLM_PROVIDERS: {
     isPlatform: boolean;
     status: string;
     displayName: string;
+    costPerToken: string;
 }[] = [
     {
         provider: 'vertex',
@@ -17,6 +18,7 @@ const PLATFORM_LLM_PROVIDERS: {
         isPlatform: true,
         status: 'live',
         displayName: 'Gemini 2.5 Flash',
+        costPerToken: '0.00000400',
     },
     {
         provider: 'anthropic',
@@ -25,6 +27,7 @@ const PLATFORM_LLM_PROVIDERS: {
         isPlatform: true,
         status: 'inactive',
         displayName: 'Claude Sonnet 4.6',
+        costPerToken: '0.00002000',
     },
 ];
 

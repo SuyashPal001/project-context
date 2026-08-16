@@ -83,7 +83,8 @@ export async function fetchAgentModelSelection(agentId: string): Promise<AgentMo
     `SELECT lp.provider, lp.model, lp.status
      FROM agents a
      JOIN llm_providers lp ON lp.id = a.llm_provider_id
-     WHERE a.id = $1`,
+     WHERE a.id = $1
+       AND (lp.is_platform = true OR lp.tenant_id = a.tenant_id)`,
     [agentId],
   )
   const row = res.rows[0]

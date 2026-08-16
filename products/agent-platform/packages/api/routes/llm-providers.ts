@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, desc, asc } from 'drizzle-orm';
+import { and, eq, desc, asc, inArray } from 'drizzle-orm';
 import { db } from '@serverless-saas/database/client';
 import { llmProviders } from '@serverless-saas/database/schema/integrations';
 import type { AppEnv } from '@serverless-saas/types';
@@ -19,7 +19,7 @@ llmProvidersRoutes.get('/', async (c) => {
             costPerToken: llmProviders.costPerToken,
         })
         .from(llmProviders)
-        .where(eq(llmProviders.isPlatform, true))
+        .where(and(eq(llmProviders.isPlatform, true), inArray(llmProviders.status, ['live', 'coming_soon'])))
         .orderBy(desc(llmProviders.isDefault), asc(llmProviders.displayName));
 
     return c.json({

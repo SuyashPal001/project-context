@@ -45,4 +45,13 @@ describe('fetchAgentModelSelection', () => {
     const result = await fetchAgentModelSelection('agent-2')
     expect(result).toBeNull()
   })
+
+  it('scopes the joined llm_providers row to platform or same-tenant rows', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await fetchAgentModelSelection('agent-3')
+    expect(mockPoolQuery).toHaveBeenCalledWith(
+      expect.stringContaining('lp.is_platform = true OR lp.tenant_id = a.tenant_id'),
+      ['agent-3'],
+    )
+  })
 })
