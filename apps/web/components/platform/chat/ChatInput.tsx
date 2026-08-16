@@ -128,7 +128,16 @@ export function ChatInput({
         onMediaClick?.(type);
     };
 
-    const handleUseEmployee = () => { setPaletteMode('slash'); setPaletteQuery(''); };
+    const handleUseEmployee = () => {
+        // No typed trigger to anchor to here, so the insertion point is an empty
+        // range at the current cursor (or end of content if we can't read a
+        // selection) — onSelect below still needs a non-null paletteRange or it
+        // silently no-ops.
+        const cursor = textareaRef.current?.selectionStart ?? content.length;
+        setPaletteMode('slash');
+        setPaletteQuery('');
+        setPaletteRange({ start: cursor, end: cursor });
+    };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         await uploader.handleFileChange(e, fileInputRef);
@@ -136,7 +145,7 @@ export function ChatInput({
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (paletteMode && (e.key === "Enter" || e.key === "Escape")) {
+        if (paletteMode && ((e.key === "Enter" && !e.shiftKey) || e.key === "Escape")) {
             // A palette is open: Enter/Escape close it instead of sending the raw
             // "/foo" or "@bar" trigger text as a chat message. Without this, Enter
             // sends the literal trigger, clears content, and leaves the palette
