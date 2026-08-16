@@ -63,21 +63,39 @@ function ChatPage() {
     const { state: animationState, onStreamEvent } = usePersonaAnimationState();
     const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
     const decayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastArtifactMessageIdRef = useRef<string | null>(null);
+    // Tracks which conversation decayedState currently belongs to, so the effect below can
+    // tell "animationState changed because of a real stream event in THIS conversation" apart
+    // from "animationState is just stale leftover from the PREVIOUS conversation".
+    const decayedStateConversationIdRef = useRef(conversationId);
 
     useEffect(() => {
         if (!lastStreamEvent) return;
-        onStreamEvent(lastStreamEvent);
+        onStreamEvent(lastStreamEvent.type);
     }, [lastStreamEvent, onStreamEvent]);
 
     useEffect(() => {
         const latest = messages[messages.length - 1];
-        if (latest?.role === 'assistant' && latest.artifactRef) {
+        if (latest?.role === 'assistant' && latest.artifactRef && latest.id !== lastArtifactMessageIdRef.current) {
+            lastArtifactMessageIdRef.current = latest.id;
             onStreamEvent('artifact_ready');
         }
     }, [messages, onStreamEvent]);
 
+    // Single effect drives decayedState from two triggers: a genuinely new animationState
+    // (normal decay behavior) OR a conversation switch (instant reset, no decay, no flash of
+    // the previous conversation's terminal state). Merging them into one effect keyed on both
+    // deps avoids the two-phase race a dispatch-then-separate-decay-effect design would hit.
     useEffect(() => {
         if (decayTimerRef.current) clearTimeout(decayTimerRef.current);
+
+        if (conversationId !== decayedStateConversationIdRef.current) {
+            decayedStateConversationIdRef.current = conversationId;
+            lastArtifactMessageIdRef.current = null;
+            setDecayedState('idle');
+            return;
+        }
+
         setDecayedState(animationState);
         if (animationState === 'done' || animationState === 'failed') {
             decayTimerRef.current = setTimeout(() => setDecayedState('idle'), 2500);
@@ -85,9 +103,9 @@ function ChatPage() {
         return () => {
             if (decayTimerRef.current) clearTimeout(decayTimerRef.current);
         };
-    }, [animationState]);
+    }, [animationState, conversationId]);
 
-    const isNewConversation = messages.length === 0;
+    const isNewConversation = messages.length === 0 && !isLoadingMessages;
     const displayState = isNewConversation ? 'waving' : decayedState;
 
     const { isModalOpen, session, openVoice, closeVoice, handleTap } = useVoice({ conversationId: conversationId || undefined });

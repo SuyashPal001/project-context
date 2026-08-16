@@ -1,7 +1,8 @@
 /**
- * Seeds the 3 default personas as drafts. They cannot be published until
- * idle/thinking/responding animation assets exist (generated via Higgsfield)
- * and are attached with PUT /ops/personas/:id.
+ * Seeds the 3 default personas as drafts. They cannot be published until all nine
+ * animation assets exist (idle, waving, running, thinking, responding, waiting,
+ * review, done, failed — generated via Higgsfield) and are attached with
+ * PUT /ops/personas/:id.
  *
  * Run with: pnpm --filter @serverless-saas/agent-api db:seed:personas
  */

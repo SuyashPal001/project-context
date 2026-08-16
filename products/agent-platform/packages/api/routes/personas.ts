@@ -110,7 +110,8 @@ personasRoutes.put('/:id', async (c) => {
     return c.json({ persona: updated });
 });
 
-// POST /ops/personas/:id/publish — a persona needs all three animation states before it can publish
+// POST /ops/personas/:id/publish — a persona needs all nine animation states (idle, waving,
+// running, thinking, responding, waiting, review, done, failed) before it can publish
 personasRoutes.post('/:id/publish', async (c) => {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 

@@ -29,7 +29,14 @@ interface Params {
 export function useChatStream({ conversationId, conversationIdRef, agentId, selectedConversation, messages, handleCanvasUpdate, openCanvas }: Params) {
     const queryClient = useQueryClient();
     const [eventError, setEventError] = useState<string | null>(null);
-    const [lastStreamEvent, setLastStreamEvent] = useState<ChatStreamEventType | null>(null);
+    // Carries a seq alongside the event type so a repeated identical event (e.g. a second
+    // consecutive 'error') always produces a new object, guaranteeing the setState call is
+    // never a same-value no-op that React silently skips re-rendering for.
+    const [lastStreamEvent, setLastStreamEvent] = useState<{ type: ChatStreamEventType; seq: number } | null>(null);
+    const streamEventSeqRef = useRef(0);
+    const emitStreamEvent = useCallback((type: ChatStreamEventType) => {
+        setLastStreamEvent({ type, seq: ++streamEventSeqRef.current });
+    }, []);
     const [agentTimedOut, setAgentTimedOut] = useState(false);
     const [warmupMessage, setWarmupMessage] = useState<string | null>(null);
     const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
@@ -50,7 +57,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         agentId,
 
         onDelta: useCallback((delta: string, messageId: string) => {
-            setLastStreamEvent('delta');
+            emitStreamEvent('delta');
             if (activeToolCalls.size > 0) activeToolCalls.forEach((_, id) => handleToolDone(id, undefined));
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
@@ -65,7 +72,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [queryClient, activeToolCalls, handleToolDone]),
 
         onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown) => {
-            setLastStreamEvent('done');
+            emitStreamEvent('done');
             if (artifactToolActiveRef.current) {
                 const aref = artifactRefRef.current;
                 handleCanvasUpdate('artifact_done', {
@@ -109,7 +116,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [queryClient, handleCanvasUpdate]),
 
         onError: useCallback((code: string, message: string) => {
-            setLastStreamEvent('error');
+            emitStreamEvent('error');
             if (code === 'AGENT_TIMEOUT') { setAgentTimedOut(true); return; }
             if (code === 'WARMUP_TIMEOUT') { setWarmupMessage(message); return; }
             setEventError(`[${code}] ${message}`);
@@ -117,7 +124,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, []),
 
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
-            setLastStreamEvent('tool_call');
+            emitStreamEvent('tool_call');
             const query = String(args?.query ?? args?.filename ?? args?.subject ?? '');
             setActiveToolCalls(prev => { const next = new Map(prev); next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query }); return next; });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
@@ -133,7 +140,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [handleCanvasUpdate, openCanvas]),
 
         onToolDone: useCallback((toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
-            setLastStreamEvent('tool_done');
+            emitStreamEvent('tool_done');
             handleToolDone(toolCallId, results);
             if (!SAVE_TOOL_NAMES.has(toolName.toLowerCase().replace(/_/g, '-')) || !artifactToolActiveRef.current) return;
 
@@ -167,7 +174,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, sele
         }, [handleToolDone, handleCanvasUpdate]),
 
         onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
-            setLastStreamEvent('approval_request');
+            emitStreamEvent('approval_request');
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const msg: Message = { id: crypto.randomUUID(), conversationId: conversationIdRef.current!, role: 'assistant', content: '', createdAt: new Date().toISOString(), approvalRequest: { id: approvalId, toolName, description, arguments: args, status: 'pending' } };
                 return old ? { data: [...old.data, msg] } : { data: [msg] };
