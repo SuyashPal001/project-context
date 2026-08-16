@@ -4,11 +4,16 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database/client';
 import { conversations } from '@serverless-saas/agent-schema/conversations';
 import { agents } from '@serverless-saas/agent-schema/agents';
+import { personas } from '@serverless-saas/agent-schema/personas';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const conversationsRoutes = new Hono<AppEnv>();
 
+// Cast to `any`: drizzle's SelectedFields type only supports one level of
+// nested-object selection, but this shape nests persona inside agent (two
+// levels) to match the API response contract. Runtime flattening handles
+// arbitrary depth fine — this is a type-only escape hatch.
 const conversationSelect = {
     id: conversations.id,
     tenantId: conversations.tenantId,
@@ -21,8 +26,14 @@ const conversationSelect = {
     metadata: conversations.metadata,
     createdAt: conversations.createdAt,
     updatedAt: conversations.updatedAt,
-    agent: { id: agents.id, name: agents.name, type: agents.type },
-};
+    agent: {
+        id: agents.id, name: agents.name, type: agents.type,
+        persona: {
+            id: personas.id, name: personas.name, tagline: personas.tagline,
+            animationStates: personas.animationStates,
+        },
+    },
+} as any;
 
 // GET /conversations — list conversations strictly scoped to the calling member
 conversationsRoutes.get('/', async (c) => {
@@ -47,6 +58,10 @@ conversationsRoutes.get('/', async (c) => {
     if (status) filters.push(eq(conversations.status, status as 'active' | 'archived' | 'escalated'));
 
     try {
+        // Cast to `any`: drizzle's SelectedFields type only supports one level of
+        // nested-object selection, but this shape nests persona inside agent (two
+        // levels) to match the API response contract. Runtime flattening handles
+        // arbitrary depth fine — this is a type-only escape hatch.
         const data = await db
             .select({
                 id: conversations.id,
@@ -57,10 +72,17 @@ conversationsRoutes.get('/', async (c) => {
                 metadata: conversations.metadata,
                 createdAt: conversations.createdAt,
                 updatedAt: conversations.updatedAt,
-                agent: { id: agents.id, name: agents.name, type: agents.type },
-            })
+                agent: {
+                    id: agents.id, name: agents.name, type: agents.type,
+                    persona: {
+                        id: personas.id, name: personas.name, tagline: personas.tagline,
+                        animationStates: personas.animationStates,
+                    },
+                },
+            } as any)
             .from(conversations)
             .innerJoin(agents, eq(conversations.agentId, agents.id))
+            .leftJoin(personas, eq(agents.personaId, personas.id))
             .where(and(...filters))
             .orderBy(desc(conversations.createdAt));
 
@@ -135,6 +157,7 @@ conversationsRoutes.get('/:id', async (c) => {
         const [data] = await db.select(conversationSelect)
             .from(conversations)
             .innerJoin(agents, eq(conversations.agentId, agents.id))
+            .leftJoin(personas, eq(agents.personaId, personas.id))
             .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
             .limit(1);
 
@@ -185,6 +208,7 @@ conversationsRoutes.patch('/:id', async (c) => {
         const [updated] = await db.select(conversationSelect)
             .from(conversations)
             .innerJoin(agents, eq(conversations.agentId, agents.id))
+            .leftJoin(personas, eq(agents.personaId, personas.id))
             .where(scope)
             .limit(1);
 

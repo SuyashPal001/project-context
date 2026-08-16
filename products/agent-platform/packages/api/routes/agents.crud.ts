@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
+import { personas } from '@serverless-saas/agent-schema/personas';
 import { users } from '@serverless-saas/database/schema/auth';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
@@ -25,7 +26,21 @@ export async function handleListAgents(c: Context<AppEnv>) {
 
     if (!hasPermission(permissions, 'agents', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const data = await db.select().from(agents).where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)));
+    const data = await db
+        .select({
+            id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
+            model: agents.model, status: agents.status, llmProviderId: agents.llmProviderId,
+            isInternal: agents.isInternal, description: agents.description, avatarUrl: agents.avatarUrl,
+            createdAt: agents.createdAt,
+            persona: {
+                id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
+                animationStates: personas.animationStates, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+            },
+        })
+        .from(agents)
+        .leftJoin(personas, eq(agents.personaId, personas.id))
+        .where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)));
+
     return c.json({ data });
 }
 
@@ -38,7 +53,22 @@ export async function handleGetAgent(c: Context<AppEnv>) {
     if (!hasPermission(permissions, 'agents', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
     const agentId = c.req.param('id') as string;
-    const agent = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
+    const agent = (await db
+        .select({
+            id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
+            model: agents.model, status: agents.status, apiKeyId: agents.apiKeyId,
+            llmProviderId: agents.llmProviderId, avatarUrl: agents.avatarUrl, description: agents.description,
+            isInternal: agents.isInternal, createdBy: agents.createdBy, personaId: agents.personaId,
+            createdAt: agents.createdAt, updatedAt: agents.updatedAt,
+            persona: {
+                id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
+                animationStates: personas.animationStates, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+            },
+        })
+        .from(agents)
+        .leftJoin(personas, eq(agents.personaId, personas.id))
+        .where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId)))
+        .limit(1))[0];
     if (!agent) return c.json({ error: 'Agent not found' }, 404);
 
     const creator = agent.createdBy
