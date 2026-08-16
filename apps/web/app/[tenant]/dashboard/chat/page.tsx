@@ -145,7 +145,13 @@ function ChatPage() {
                     "flex flex-col border-r border-border transition-all duration-300 ease-in-out bg-background/50 backdrop-blur-sm z-20 overflow-hidden relative",
                     isChatSidebarCollapsed ? "w-0 opacity-0 pointer-events-none -translate-x-full" : "w-1/4 min-w-[280px] opacity-100 translate-x-0"
                 )}>
-                    <ConversationList selectedId={conversationId || undefined} onSelect={handleSelectConversation} onNewChat={handleNewChat} />
+                    <ConversationList
+                        selectedId={conversationId || undefined}
+                        onSelect={handleSelectConversation}
+                        onNewChat={handleNewChat}
+                        activeAgentId={selectedConversation?.agent?.id ?? selectedConversation?.agentId}
+                        activeState={displayState}
+                    />
                 </div>
 
                 {/* Main Chat Area */}
