@@ -22,6 +22,25 @@ export interface ApprovalRequest {
     decisionAt?: string;
 }
 
+export interface ClarificationOption {
+    label: string;
+    rationale?: string;
+}
+
+export interface ClarificationQuestion {
+    prompt: string;
+    options: ClarificationOption[];
+    allowFreeText?: boolean;
+    allowSkip?: boolean;
+}
+
+export interface ClarificationRequest {
+    id: string;
+    questions: ClarificationQuestion[];
+    status: 'pending' | 'answered' | 'skipped';
+    answeredAt?: string;
+}
+
 export interface MessageAttachment {
     id: string;        // local UI id (uuid)
     fileId?: string;   // S3 fileId — used to re-fetch presigned URL on reload
@@ -82,6 +101,7 @@ export interface Message {
     createdAt: string;
     toolCalls?: ToolCall[];
     approvalRequest?: ApprovalRequest;
+    clarificationRequest?: ClarificationRequest;
     isStreaming?: boolean;
     attachments?: MessageAttachment[];
     planResult?: PlanResult;
