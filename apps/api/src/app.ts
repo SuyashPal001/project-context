@@ -36,6 +36,7 @@ import { integrationsRoutes, googleOAuthCallbackRoute, zohoOAuthCallbackRoute, j
 import { githubIntegrationRoute } from './routes/integrations.github';
 import { githubCallbackRoute } from './routes/integrations.github.callback';
 import { githubWebhookRoute } from './routes/integrations.github.webhook';
+import { nangoWebhookRoute } from './routes/integrations.nango.webhook';
 import { composioIntegrationsRoute } from './routes/integrations.composio';
 import { usageRecordingMiddleware } from './middleware/usageRecording';
 import { sessionsRoutes } from './routes/sessions';
@@ -93,6 +94,7 @@ publicApi.route('/integrations', zohoOAuthCallbackRoute);
 publicApi.route('/integrations', jiraOAuthCallbackRoute);
 publicApi.route('/integrations', githubCallbackRoute);
 publicApi.route('/integrations', githubWebhookRoute);
+publicApi.route('/integrations', nangoWebhookRoute);
 agentProduct.mountPublicRoutes(publicApi);
 
 const api = new Hono<AppEnv>();

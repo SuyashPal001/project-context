@@ -9,6 +9,7 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { UUID_RE } from './integrations.crypto';
 import { syncToolsAndNotifyRelay } from './integrations.sync';
+import { createNangoConnectSession } from './integrations.nango';
 import type { AppEnv } from '../types';
 
 export { googleOAuthCallbackRoute, jiraOAuthCallbackRoute, zohoOAuthCallbackRoute } from './integrations.callbacks';
@@ -60,7 +61,23 @@ async function googleConnectHandler(c: Context<AppEnv>, service: 'gmail' | 'driv
     return c.json({ url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` });
 }
 
-integrationsRoutes.post('/google/gmail/connect', (c) => googleConnectHandler(c, 'gmail', 'https://www.googleapis.com/auth/gmail.modify'));
+integrationsRoutes.post('/google/gmail/connect', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id as string;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'integrations', 'create')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    try {
+        const { token } = await createNangoConnectSession(tenantId);
+        return c.json({ token });
+    } catch (err) {
+        console.error('[google/gmail/connect] Nango session creation failed:', (err as Error).message);
+        return c.json({ error: 'Failed to start Gmail connection', code: 'NANGO_ERROR' }, 502);
+    }
+});
 integrationsRoutes.post('/google/drive/connect', (c) => googleConnectHandler(c, 'drive', 'https://www.googleapis.com/auth/drive'));
 integrationsRoutes.post('/google/calendar/connect', (c) => googleConnectHandler(c, 'calendar', 'https://www.googleapis.com/auth/calendar'));
 

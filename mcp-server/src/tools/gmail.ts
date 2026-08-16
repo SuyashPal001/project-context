@@ -2,7 +2,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { google } from 'googleapis';
-import { getCredentials, refreshIfExpired, checkPolicy } from '../db/credentials';
+import { checkPolicy } from '../db/credentials';
+import { getGmailAccessToken } from '../integrations/nangoGmail';
 import { assertActionAllowed } from './policy-guard';
 
 interface ToolContext {
@@ -10,9 +11,8 @@ interface ToolContext {
   agentId?: string;
 }
 
-async function getGmailClient(tenantId: string) {
-  const credentials = await getCredentials(tenantId, 'gmail');
-  const accessToken = await refreshIfExpired(tenantId, 'gmail', credentials);
+export async function getGmailClient(tenantId: string) {
+  const accessToken = await getGmailAccessToken(tenantId);
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
   return google.gmail({ version: 'v1', auth });
@@ -39,6 +39,7 @@ async function guardPolicy(ctx: ToolContext, action: string): Promise<void> {
 
 export function registerGmailTools(server: McpServer, ctx: ToolContext): void {
   // ── GMAIL_SEND_EMAIL ────────────────────────────────────────────────────────
+  // @ts-ignore — MCP SDK v1.x Zod schema inference exceeds TS recursion limit
   server.tool(
     'GMAIL_SEND_EMAIL',
     'Send an email from the connected Gmail account',

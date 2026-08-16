@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import Nango from "@nangohq/frontend";
 import { CheckCircle2, Loader2, Search, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -171,6 +172,45 @@ export default function IntegrationsPage() {
         const connectUrl = CONNECT_URLS[entry.provider];
         if (!connectUrl) return;
         setConnecting(entry.provider);
+
+        if (entry.provider === 'gmail') {
+            try {
+                const { token } = await api.post<{ token: string }>(connectUrl);
+                const nango = new Nango({
+                    connectSessionToken: token,
+                    host: process.env.NEXT_PUBLIC_NANGO_HOST,
+                });
+                const connectUI = nango.openConnectUI({
+                    // openConnectUI does not inherit `host` from the Nango client above —
+                    // it has its own separate apiURL/baseURL, defaulting to Nango Cloud
+                    // (api.nango.dev / connect.nango.dev) regardless of `host`. Must be
+                    // set explicitly here or every connect attempt silently targets Cloud
+                    // instead of this shared self-hosted instance.
+                    apiURL: process.env.NEXT_PUBLIC_NANGO_HOST,
+                    baseURL: process.env.NEXT_PUBLIC_NANGO_CONNECT_URL,
+                    onEvent: (event) => {
+                        if (event.type === 'close') {
+                            setConnecting(null);
+                        }
+                        if (event.type === 'connect') {
+                            toast.success('Gmail connected!');
+                            refetch();
+                            setConnecting(null);
+                        }
+                        if (event.type === 'error') {
+                            toast.error(event.payload.errorMessage || 'Failed to connect Gmail. Please try again.');
+                            setConnecting(null);
+                        }
+                    },
+                });
+                connectUI.setSessionToken(token);
+            } catch {
+                toast.error('Failed to start Gmail connection. Please try again.');
+                setConnecting(null);
+            }
+            return;
+        }
+
         try {
             const { url } = await api.post<{ url: string }>(connectUrl);
             window.location.href = url;

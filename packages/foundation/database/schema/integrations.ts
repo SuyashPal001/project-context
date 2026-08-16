@@ -12,10 +12,10 @@ export const integrations = pgTable('integrations', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   provider: text('provider').notNull(),
   mcpServerUrl: text('mcp_server_url'),
-  credentialsEnc: text('credentials_enc').notNull(),
+  credentialsEnc: text('credentials_enc'),
   status: integrationStatusEnum('status').notNull().default('active'),
   permissions: text('permissions').array().notNull().default([]),
-  createdBy: uuid('created_by').notNull().references(() => users.id),
+  createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 }, (table) => [
