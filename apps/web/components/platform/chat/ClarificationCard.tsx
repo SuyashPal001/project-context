@@ -13,7 +13,7 @@ interface ClarificationCardProps {
 export function ClarificationCard({ request, onAnswer }: ClarificationCardProps) {
     const [pageIndex, setPageIndex] = useState(0);
     const [selectedByQuestion, setSelectedByQuestion] = useState<Record<number, number>>({});
-    const [freeText, setFreeText] = useState('');
+    const [freeTextByQuestion, setFreeTextByQuestion] = useState<Record<number, string>>({});
 
     if (request.status !== 'pending') {
         return (
@@ -26,6 +26,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     const total = request.questions.length;
     const question = request.questions[pageIndex];
     const selectedIndex = selectedByQuestion[pageIndex];
+    const freeText = freeTextByQuestion[pageIndex] ?? '';
     const isLast = pageIndex === total - 1;
 
     const commitCurrent = () => {
@@ -34,13 +35,11 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
             ? { questionIndex: pageIndex, freeText: trimmedFreeText }
             : { questionIndex: pageIndex, selectedIndex };
         onAnswer(answer);
-        setFreeText('');
         if (!isLast) setPageIndex(p => p + 1);
     };
 
     const handleSkip = () => {
         onAnswer({ questionIndex: pageIndex, skipped: true });
-        setFreeText('');
         if (!isLast) setPageIndex(p => p + 1);
     };
 
@@ -99,7 +98,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                 {question.allowFreeText && (
                     <input
                         value={freeText}
-                        onChange={(e) => setFreeText(e.target.value)}
+                        onChange={(e) => setFreeTextByQuestion(prev => ({ ...prev, [pageIndex]: e.target.value }))}
                         placeholder="No, and tell what to do differently"
                         className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
                     />
