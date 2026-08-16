@@ -35,3 +35,20 @@ export const liteModel = gateway(process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-fl
 // Private-only model for restricted data (CASA/KYC).
 // x-data-classification header forces OllamaAdapter — never hits cloud providers.
 export const privateModel = gatewayPrivate(process.env.MASTRA_PRIVATE_MODEL ?? 'ollama/llama3.2')
+
+// Builds a model connector from an arbitrary model string at request time — used
+// when a user has picked a specific model via the chat UI's model picker, rather
+// than one of the three module-level constants above.
+export function resolveModel(modelString: string) {
+  return gateway(modelString)
+}
+
+// Maps an llm_providers row's {provider, model} into the model-string convention
+// router.ts dispatches on (see apps/inference-gateway/src/router.ts). Returns null
+// for providers the gateway doesn't route yet (openai, mistral, kimi) so callers can
+// fall through to default model selection instead of sending a string nothing handles.
+export function buildGatewayModelString(provider: string, model: string): string | null {
+  if (provider === 'openrouter') return `openrouter/${model}`
+  if (provider === 'anthropic' || provider === 'vertex') return model
+  return null
+}
