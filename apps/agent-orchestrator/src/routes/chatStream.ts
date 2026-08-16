@@ -8,7 +8,7 @@ import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentSkill, fetchAgentName } from '../usage.js'
+import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality } from '../usage.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
 
@@ -146,12 +146,16 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const mcpClient = getMCPClientForTenant(tenantId, agentId)
     requestContext.set('__mcpClient', mcpClient as any)
 
-    const [agentSkill, agentName] = await Promise.all([
+    const [agentSkill, agentName, personaPersonality] = await Promise.all([
       fetchAgentSkill(agentId),
       fetchAgentName(agentId),
+      fetchAgentPersonality(agentId),
     ])
-    if (agentSkill?.systemPrompt) {
-      requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
+    if (agentSkill?.systemPrompt || personaPersonality) {
+      const composed = [personaPersonality, agentSkill?.systemPrompt]
+        .filter((part): part is string => !!part)
+        .join('\n\n')
+      requestContext.set('agentSystemPrompt', composed)
     }
 
     const thinkingBudget = getThinkingBudget(message)
