@@ -14,6 +14,7 @@ interface LLMProvider {
     id: string; provider: string; model: string;
     displayName: string; isDefault: boolean;
     status: 'live' | 'coming_soon';
+    costPerToken: string | null;
 }
 
 export function useChatPage() {

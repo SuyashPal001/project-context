@@ -29,6 +29,7 @@ interface LLMProvider {
     displayName: string;
     isDefault: boolean;
     status: 'live' | 'coming_soon';
+    costPerToken: string | null;
 }
 
 // Keep in sync with the mimeType allowlist in
