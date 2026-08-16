@@ -2,23 +2,36 @@ import { describe, it, expect } from "vitest";
 import { reducePersonaAnimationState } from "../usePersonaAnimationState";
 
 describe("reducePersonaAnimationState", () => {
-    it("starts idle and moves to thinking on tool_call", () => {
-        expect(reducePersonaAnimationState("idle", "tool_call")).toBe("thinking");
+    it("starts idle and moves to running on tool_call", () => {
+        expect(reducePersonaAnimationState("idle", "tool_call")).toBe("running");
+    });
+
+    it("moves to thinking on tool_done", () => {
+        expect(reducePersonaAnimationState("running", "tool_done")).toBe("thinking");
     });
 
     it("moves to responding on delta", () => {
         expect(reducePersonaAnimationState("thinking", "delta")).toBe("responding");
     });
 
-    it("returns to thinking after tool_done (agent still reasoning, not yet streaming)", () => {
-        expect(reducePersonaAnimationState("responding", "tool_done")).toBe("thinking");
+    it("moves to waiting on approval_request", () => {
+        expect(reducePersonaAnimationState("responding", "approval_request")).toBe("waiting");
     });
 
-    it("returns to idle on done", () => {
-        expect(reducePersonaAnimationState("responding", "done")).toBe("idle");
+    it("moves to review on artifact_ready", () => {
+        expect(reducePersonaAnimationState("responding", "artifact_ready")).toBe("review");
     });
 
-    it("returns to idle on error", () => {
-        expect(reducePersonaAnimationState("thinking", "error")).toBe("idle");
+    it("moves to done on done", () => {
+        expect(reducePersonaAnimationState("responding", "done")).toBe("done");
+    });
+
+    it("moves to failed on error", () => {
+        expect(reducePersonaAnimationState("thinking", "error")).toBe("failed");
+    });
+
+    it("returns the current state for an unrecognized event", () => {
+        // @ts-expect-error — exercising the default branch with a value outside ChatStreamEventType
+        expect(reducePersonaAnimationState("idle", "unknown_event")).toBe("idle");
     });
 });
