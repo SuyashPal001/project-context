@@ -10,10 +10,6 @@ import type { AppEnv } from '@serverless-saas/types';
 
 export const conversationsRoutes = new Hono<AppEnv>();
 
-// Cast to `any`: drizzle's SelectedFields type only supports one level of
-// nested-object selection, but this shape nests persona inside agent (two
-// levels) to match the API response contract. Runtime flattening handles
-// arbitrary depth fine — this is a type-only escape hatch.
 const conversationSelect = {
     id: conversations.id,
     tenantId: conversations.tenantId,
@@ -28,12 +24,18 @@ const conversationSelect = {
     updatedAt: conversations.updatedAt,
     agent: {
         id: agents.id, name: agents.name, type: agents.type,
+        // Cast to `any`: drizzle's SelectedFields type only supports one level of
+        // nested-object selection, but this shape nests persona inside agent (two
+        // levels) to match the API response contract. Runtime flattening handles
+        // arbitrary depth fine — this is a type-only escape hatch, narrowed to just
+        // the nested object so sibling columns above (id, name, type, ...) still
+        // get type-checked.
         persona: {
             id: personas.id, name: personas.name, tagline: personas.tagline,
             animationStates: personas.animationStates,
-        },
+        } as any,
     },
-} as any;
+};
 
 // GET /conversations — list conversations strictly scoped to the calling member
 conversationsRoutes.get('/', async (c) => {
@@ -58,10 +60,6 @@ conversationsRoutes.get('/', async (c) => {
     if (status) filters.push(eq(conversations.status, status as 'active' | 'archived' | 'escalated'));
 
     try {
-        // Cast to `any`: drizzle's SelectedFields type only supports one level of
-        // nested-object selection, but this shape nests persona inside agent (two
-        // levels) to match the API response contract. Runtime flattening handles
-        // arbitrary depth fine — this is a type-only escape hatch.
         const data = await db
             .select({
                 id: conversations.id,
@@ -74,12 +72,18 @@ conversationsRoutes.get('/', async (c) => {
                 updatedAt: conversations.updatedAt,
                 agent: {
                     id: agents.id, name: agents.name, type: agents.type,
+                    // Cast to `any`: drizzle's SelectedFields type only supports one level
+                    // of nested-object selection, but this shape nests persona inside
+                    // agent (two levels) to match the API response contract. Runtime
+                    // flattening handles arbitrary depth fine — this is a type-only escape
+                    // hatch, narrowed to just the nested object so sibling columns above
+                    // (id, name, type, ...) still get type-checked.
                     persona: {
                         id: personas.id, name: personas.name, tagline: personas.tagline,
                         animationStates: personas.animationStates,
-                    },
+                    } as any,
                 },
-            } as any)
+            })
             .from(conversations)
             .innerJoin(agents, eq(conversations.agentId, agents.id))
             .leftJoin(personas, eq(agents.personaId, personas.id))
