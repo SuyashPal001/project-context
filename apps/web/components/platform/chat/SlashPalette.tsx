@@ -53,7 +53,7 @@ export const SlashPalette = forwardRef<PaletteHandle, SlashPaletteProps>(functio
     }), [filtered, activeIndex, onSelect, onClose]);
 
     return (
-        <div className="absolute bottom-full left-0 right-0 mb-1.5 rounded-2xl border border-border bg-popover shadow-lg p-2 max-h-72 overflow-y-auto custom-scrollbar">
+        <div className="absolute bottom-full left-0 right-0 mb-1.5 rounded-2xl border border-border bg-popover shadow-elevated p-2 max-h-72 overflow-y-auto custom-scrollbar">
             <div className="px-2 py-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                 Skills and AI employees
             </div>

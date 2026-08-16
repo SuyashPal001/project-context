@@ -91,7 +91,7 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
 // (inside a pill hover background) on hover/expanded state, rather than
 // showing both at once — matches the reference's collapsed-list treatment.
 
-function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, onSelect, onNewChat, onArchive, onDelete, activeAgentId, activeState }: {
+function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, onSelect, onNewChat, onArchive, onDelete, activeAgentId, activeState, hasSelectedConversation }: {
     agent: Agent;
     conversations: Conversation[];
     selectedId?: string;
@@ -103,12 +103,16 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
     onDelete: (id: string) => void;
     activeAgentId?: string;
     activeState?: PersonaAnimationState;
+    hasSelectedConversation?: boolean;
 }) {
     return (
         <div className="mb-1.5">
             <button
                 onClick={onToggle}
-                className="w-full flex items-center gap-3 px-2.5 py-2.5 rounded-full text-left transition-colors hover:bg-accent/60 group"
+                className={cn(
+                    "w-full flex items-center gap-3 px-2.5 py-2.5 rounded-full text-left transition-colors group",
+                    hasSelectedConversation ? "bg-accent/60" : "hover:bg-accent/60"
+                )}
             >
                 <span className="relative h-10 w-10 shrink-0">
                     <PersonaAvatar
@@ -125,7 +129,12 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                         )}
                     />
                 </span>
-                <span className="text-[15px] font-medium truncate">{agent.name}</span>
+                <span className={cn(
+                    "text-[15px] truncate",
+                    hasSelectedConversation ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                )}>
+                    {agent.name}
+                </span>
             </button>
 
             {isExpanded && (
@@ -285,6 +294,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
                                 onDelete={(id) => { setActionType('delete'); setDeleteId(id); }}
                                 activeAgentId={activeAgentId}
                                 activeState={activeState}
+                                hasSelectedConversation={!!selectedId && (convsByAgent[agent.id] ?? []).some(c => c.id === selectedId)}
                             />
                         ))}
                         {lockedAgents.map(agent => (

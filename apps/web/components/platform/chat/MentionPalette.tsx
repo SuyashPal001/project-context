@@ -66,7 +66,7 @@ export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(fun
     useImperativeHandle(ref, () => ({ moveActive, selectActive }), [filtered, activeIndex, onSelect]);
 
     return (
-        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border bg-popover shadow-lg p-2 max-h-80 overflow-y-auto custom-scrollbar">
+        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border bg-popover shadow-elevated p-2 max-h-80 overflow-y-auto custom-scrollbar">
             <div className="flex items-center gap-2 px-3 h-10 mb-1 rounded-xl bg-muted/50 focus-within:ring-1 focus-within:ring-primary/30">
                 <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <input

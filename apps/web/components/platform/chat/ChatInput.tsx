@@ -1,4 +1,4 @@
-import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Bot, Zap, Check } from "lucide-react";
+import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Bot, Zap, Check, Sparkles } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -378,8 +378,9 @@ export function ChatInput({
                                             <DropdownMenuTrigger asChild>
                                                 <button
                                                     type="button"
-                                                    className="h-8 px-3 flex items-center gap-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                                    className="h-8 px-2 flex items-center gap-1.5 rounded-full text-xs font-medium text-foreground/90 hover:text-foreground transition-colors"
                                                 >
+                                                    <Sparkles className="h-3.5 w-3.5 text-ring" />
                                                     {providers.find(p => p.id === llmProviderId)?.displayName ?? 'Model'}
                                                 </button>
                                             </DropdownMenuTrigger>
@@ -448,7 +449,7 @@ export function ChatInput({
                                             title="Enter to send, Shift+Enter for a new line"
                                             className={cn(
                                                 "h-8 w-8 flex items-center justify-center rounded-full transition-all active:scale-95 shadow-sm",
-                                                (content.trim() || uploader.attachments.length > 0) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground opacity-40"
+                                                (content.trim() || uploader.attachments.length > 0) ? "bg-ring text-background" : "bg-muted text-muted-foreground opacity-40"
                                             )}
                                         >
                                             {isLoading || uploader.isUploading ? (
