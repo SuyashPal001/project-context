@@ -133,8 +133,8 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
     <div
       className="my-1 overflow-hidden text-foreground"
       style={{
-        background: 'var(--color-background-secondary, #111)',
-        border: '0.5px solid var(--color-border-tertiary, #222)',
+        background: 'var(--muted)',
+        border: '0.5px solid var(--color-border-tertiary)',
         borderRadius: 'var(--border-radius-md, 8px)',
         padding: hasResults ? '8px 12px 0 12px' : '8px 12px',
       }}
@@ -171,7 +171,7 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
       {hasResults && expanded && (
         <div
           className="mt-2 pt-2 pb-2 space-y-[5px]"
-          style={{ borderTop: '0.5px solid var(--color-border-tertiary, #222)' }}
+          style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}
         >
           {results!.slice(0, 3).map((r, i) => (
             <div key={i} className="flex items-center gap-2 min-w-0">

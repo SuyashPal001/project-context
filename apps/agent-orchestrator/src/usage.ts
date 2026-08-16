@@ -59,6 +59,18 @@ export async function fetchAgentSkill(agentId: string): Promise<AgentSkill | nul
   return { systemPrompt: row.system_prompt, tools, config: row.config }
 }
 
+export async function fetchAgentPersonality(agentId: string): Promise<string | null> {
+  const p = getPool()
+  const res = await p.query<{ base_personality: string | null }>(
+    `SELECT p.base_personality
+     FROM agents a
+     JOIN personas p ON p.id = a.persona_id
+     WHERE a.id = $1`,
+    [agentId],
+  )
+  return res.rows[0]?.base_personality ?? null
+}
+
 // Lightweight cache — agent names are immutable after creation
 const agentNameCache = new Map<string, string>()
 

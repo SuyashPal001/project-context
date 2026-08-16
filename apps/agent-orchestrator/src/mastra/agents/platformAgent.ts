@@ -15,6 +15,7 @@ import { createViolationHandler } from '../guardrails.js'
 import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
+import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -154,6 +155,7 @@ export const SERVER_TOOLS = {
       }
     },
   }),
+  ask_clarifying_questions: askClarifyingQuestionsTool,
 }
 
 // Server tool names used to filter out duplicate MCP tool registrations.
@@ -242,7 +244,13 @@ export const platformAgent = new Agent({
     // Set by chatStream.ts from agentSkills.systemPrompt before calling stream().
     // PRD generation is handled by prdWorkflow (gatherStep → writeStep → formatStep).
     const override = requestContext?.get('agentSystemPrompt') as string | undefined
-    return override ?? await fetchPlatformPrompt()
+    const base = override ?? await fetchPlatformPrompt()
+    // Persona personality is a layer composed ahead of the base prompt, never a
+    // replacement for it — an agent with a persona keeps 100% of its normal
+    // capabilities, just with a personality prepended. Set by chatStream.ts from
+    // agentPersonas.basePersonality.
+    const persona = requestContext?.get('personaPersonality') as string | undefined
+    return persona ? `${persona}\n\n${base}` : base
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext }) => {

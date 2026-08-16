@@ -37,6 +37,7 @@ import { handleArtifactNotify } from './routes/internal/artifacts';
 
 // Ops handlers
 import { agentTemplatesRoutes } from './routes/agentTemplates';
+import { personasRoutes } from './routes/personas';
 import { handleListProviders, handleCreateProvider, handlePatchProvider } from './routes/ops.providers';
 import { handleKnowledgeGaps, handleEvalScores, handleToolPerformance, handleEvalsResults } from './routes/ops.intelligence';
 import { handleFinops, handleOverview } from './routes/ops.finops';
@@ -106,6 +107,7 @@ export function mountOpsRoutes(opsApp: Hono<AppEnv>): void {
     agentOps.get('/fairness/response-audits', handleListResponseAudits);
     opsApp.route('/ops', agentOps);
     opsApp.route('/ops/agent-templates', agentTemplatesRoutes);
+    opsApp.route('/ops/personas', personasRoutes);
 }
 
 export const agentProduct = {

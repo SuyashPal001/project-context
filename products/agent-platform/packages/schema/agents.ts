@@ -2,6 +2,7 @@ import { pgTable, uuid, text, timestamp, boolean, integer, decimal, pgEnum, inde
 import { json, jsonb } from 'drizzle-orm/pg-core';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { githubRepos } from './github';
+import { personas } from './personas';
 
 const vector = customType<{ data: number[] | null; driverData: string | null }>({
   dataType() { return 'vector(768)'; },
@@ -28,6 +29,7 @@ export const agents = pgTable('agents', {
   apiKeyId: uuid('api_key_id').notNull(),
   llmProviderId: uuid('llm_provider_id'),
   avatarUrl: text('avatar_url'),
+  personaId: uuid('persona_id').references(() => personas.id),
   description: text('description'),
   isInternal: boolean('is_internal').notNull().default(false),
   createdBy: uuid('created_by').notNull().references(() => users.id),

@@ -4,10 +4,27 @@ import { z } from 'zod';
 import { db } from '@serverless-saas/database/client';
 import { conversations } from '@serverless-saas/agent-schema/conversations';
 import { agents } from '@serverless-saas/agent-schema/agents';
+import { personas } from '@serverless-saas/agent-schema/personas';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const conversationsRoutes = new Hono<AppEnv>();
+
+// Drizzle's left-join null-collapsing only nullifies a nested selected object
+// when its field path has length === 2 (e.g. `agent: { persona: { id } }` in
+// agents.crud.ts). The `agent.persona` shape here is nested three levels deep
+// (row -> agent -> persona), so a persona-less agent (left join returns no
+// matching persona row) comes back as `agent.persona = { id: null, name: null,
+// tagline: null, animationStates: null }` instead of `agent.persona = null`.
+// Collapse that all-null sub-object back to null to match the `PersonaSummary
+// | null` contract the frontend (and any future `if (conversation.agent.persona)`
+// check) expects.
+const normalizeAgentPersona = <T extends { agent: { persona: { id: string | null } | null } }>(row: T): T => {
+    if (row.agent?.persona && row.agent.persona.id == null) {
+        return { ...row, agent: { ...row.agent, persona: null } };
+    }
+    return row;
+};
 
 const conversationSelect = {
     id: conversations.id,
@@ -21,7 +38,19 @@ const conversationSelect = {
     metadata: conversations.metadata,
     createdAt: conversations.createdAt,
     updatedAt: conversations.updatedAt,
-    agent: { id: agents.id, name: agents.name, type: agents.type },
+    agent: {
+        id: agents.id, name: agents.name, type: agents.type,
+        // Cast to `any`: drizzle's SelectedFields type only supports one level of
+        // nested-object selection, but this shape nests persona inside agent (two
+        // levels) to match the API response contract. Runtime flattening handles
+        // arbitrary depth fine — this is a type-only escape hatch, narrowed to just
+        // the nested object so sibling columns above (id, name, type, ...) still
+        // get type-checked.
+        persona: {
+            id: personas.id, name: personas.name, tagline: personas.tagline,
+            animationStates: personas.animationStates,
+        } as any,
+    },
 };
 
 // GET /conversations — list conversations strictly scoped to the calling member
@@ -57,14 +86,27 @@ conversationsRoutes.get('/', async (c) => {
                 metadata: conversations.metadata,
                 createdAt: conversations.createdAt,
                 updatedAt: conversations.updatedAt,
-                agent: { id: agents.id, name: agents.name, type: agents.type },
+                agent: {
+                    id: agents.id, name: agents.name, type: agents.type,
+                    // Cast to `any`: drizzle's SelectedFields type only supports one level
+                    // of nested-object selection, but this shape nests persona inside
+                    // agent (two levels) to match the API response contract. Runtime
+                    // flattening handles arbitrary depth fine — this is a type-only escape
+                    // hatch, narrowed to just the nested object so sibling columns above
+                    // (id, name, type, ...) still get type-checked.
+                    persona: {
+                        id: personas.id, name: personas.name, tagline: personas.tagline,
+                        animationStates: personas.animationStates,
+                    } as any,
+                },
             })
             .from(conversations)
             .innerJoin(agents, eq(conversations.agentId, agents.id))
+            .leftJoin(personas, eq(agents.personaId, personas.id))
             .where(and(...filters))
             .orderBy(desc(conversations.createdAt));
 
-        return c.json({ data });
+        return c.json({ data: data.map(normalizeAgentPersona) });
     } catch (error) {
         console.error('Fetch conversations failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
@@ -135,11 +177,12 @@ conversationsRoutes.get('/:id', async (c) => {
         const [data] = await db.select(conversationSelect)
             .from(conversations)
             .innerJoin(agents, eq(conversations.agentId, agents.id))
+            .leftJoin(personas, eq(agents.personaId, personas.id))
             .where(and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId)))
             .limit(1);
 
         if (!data) return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
-        return c.json({ data });
+        return c.json({ data: normalizeAgentPersona(data) });
     } catch (error) {
         console.error('Fetch conversation failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
@@ -185,10 +228,11 @@ conversationsRoutes.patch('/:id', async (c) => {
         const [updated] = await db.select(conversationSelect)
             .from(conversations)
             .innerJoin(agents, eq(conversations.agentId, agents.id))
+            .leftJoin(personas, eq(agents.personaId, personas.id))
             .where(scope)
             .limit(1);
 
-        return c.json({ data: updated });
+        return c.json({ data: updated ? normalizeAgentPersona(updated) : updated });
     } catch (error) {
         console.error('Update conversation failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);

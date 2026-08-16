@@ -2,6 +2,9 @@
 node_modules/
 **/node_modules/
 
+# Worktrees
+.worktrees/
+
 # Build
 dist/
 **/dist/
