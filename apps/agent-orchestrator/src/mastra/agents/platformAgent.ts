@@ -15,6 +15,7 @@ import { createViolationHandler } from '../guardrails.js'
 import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
+import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -154,6 +155,7 @@ export const SERVER_TOOLS = {
       }
     },
   }),
+  ask_clarifying_questions: askClarifyingQuestionsTool,
 }
 
 // Server tool names used to filter out duplicate MCP tool registrations.
