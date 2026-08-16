@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, Suspense, useEffect, useState } from "react";
+import { useCallback, Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
@@ -12,6 +12,7 @@ import { AgentSelector } from "@/components/platform/chat/AgentSelector";
 import { Canvas } from "@/components/platform/canvas/Canvas";
 import { VoiceModal } from "@/components/platform/voice";
 import { ChatHeader } from "./ChatHeader";
+import { usePersonaAnimationState } from "@/components/platform/personas/usePersonaAnimationState";
 import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
 import { useCanvas } from "@/hooks/useCanvas";
@@ -58,6 +59,36 @@ function ChatPage() {
         openCanvas,
     });
     const { sendMessage, sendApproval, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent } = stream;
+
+    const { state: animationState, onStreamEvent } = usePersonaAnimationState();
+    const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
+    const decayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (!lastStreamEvent) return;
+        onStreamEvent(lastStreamEvent);
+    }, [lastStreamEvent, onStreamEvent]);
+
+    useEffect(() => {
+        const latest = messages[messages.length - 1];
+        if (latest?.role === 'assistant' && latest.artifactRef) {
+            onStreamEvent('artifact_ready');
+        }
+    }, [messages, onStreamEvent]);
+
+    useEffect(() => {
+        if (decayTimerRef.current) clearTimeout(decayTimerRef.current);
+        setDecayedState(animationState);
+        if (animationState === 'done' || animationState === 'failed') {
+            decayTimerRef.current = setTimeout(() => setDecayedState('idle'), 2500);
+        }
+        return () => {
+            if (decayTimerRef.current) clearTimeout(decayTimerRef.current);
+        };
+    }, [animationState]);
+
+    const isNewConversation = messages.length === 0;
+    const displayState = isNewConversation ? 'waving' : decayedState;
 
     const { isModalOpen, session, openVoice, closeVoice, handleTap } = useVoice({ conversationId: conversationId || undefined });
     const [inputPrefill, setInputPrefill] = useState('');
@@ -135,6 +166,7 @@ function ChatPage() {
                                     hasActivity={hasActivity}
                                     toggleCanvas={toggleCanvas}
                                     onArchive={() => setIsDeleteDialogOpen(true)}
+                                    state={displayState}
                                 />
                                 {!hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
                                     activePill !== null ? (
