@@ -50,7 +50,7 @@ export function WelcomeView({ agent, firstName, onSelectPill, onSend, children }
                     {isPm
                         ? PM_PROMPTS.map(({ icon: Icon, label, pill }) => (
                             <Button key={pill} variant="outline"
-                                className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium border-border hover:bg-muted/60 transition-colors"
+                                className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium bg-secondary/50 border-border/60 hover:bg-secondary hover:border-border transition-colors"
                                 onClick={() => onSelectPill(pill)}
                             >
                                 <Icon className="h-4 w-4 text-muted-foreground" /> {label}
@@ -58,7 +58,7 @@ export function WelcomeView({ agent, firstName, onSelectPill, onSend, children }
                         ))
                         : GENERAL_PROMPTS.map(({ icon: Icon, label, text }) => (
                             <Button key={label} variant="outline"
-                                className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium border-border hover:bg-muted/60 transition-colors"
+                                className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium bg-secondary/50 border-border/60 hover:bg-secondary hover:border-border transition-colors"
                                 onClick={() => onSend(text)}
                             >
                                 <Icon className="h-4 w-4 text-muted-foreground" /> {label}
