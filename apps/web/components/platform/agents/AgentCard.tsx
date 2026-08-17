@@ -88,15 +88,6 @@ export function AgentCard({ agent }: AgentCardProps) {
         }
     };
 
-    const getStatusHex = (status: Agent["status"]) => {
-        switch (status) {
-            case "active": return "#10B981";
-            case "paused": return "#F59E0B";
-            case "retired": return "#6B7280";
-            default: return "#6B7280";
-        }
-    };
-
     const getTypeBadgeVariant = () => "bg-secondary text-muted-foreground border-border";
 
     const getTypeLabel = (type: Agent["type"]) => {
@@ -118,13 +109,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
                 className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-            <Card
-                className="relative overflow-hidden border-x border-b transition-colors hover:border-foreground/20"
-                style={{
-                    borderTop: `2px solid ${getStatusHex(agent.status)}`,
-                    backgroundColor: `color-mix(in oklch, ${getStatusHex(agent.status)} 5%, var(--card))`,
-                }}
-            >
+            <Card className="relative overflow-hidden transition-colors hover:border-foreground/20">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                     <div className="space-y-1">
                         <CardTitle className="text-xl font-bold">{agent.name}</CardTitle>

@@ -53,9 +53,7 @@ export function TaskCard({
 }) {
     const score = task.confidenceScore != null ? Number(task.confidenceScore) : null
     const dotColor = score === null ? '' : score >= 0.8 ? 'bg-green-500' : score >= 0.6 ? 'bg-yellow-500' : 'bg-red-500'
-    const statusCfg = STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]
-    const statusLabel = statusCfg?.label ?? 'Unknown'
-    const statusColor = statusCfg?.color ?? '#6B7280'
+    const statusLabel = STATUS_CONFIG[task.status as keyof typeof STATUS_CONFIG]?.label ?? 'Unknown'
 
     let assigneeInfo: { name: string; type: 'member' | 'agent' } | null = null
     if (task.assigneeId) {
@@ -75,16 +73,7 @@ export function TaskCard({
             onDragEnd={(e) => { e.currentTarget.style.opacity = '1' }}
         >
             <Link href={`/${tenantSlug}/dashboard/board/${task.id}`} className="block" draggable={false}>
-                <div
-                    className="group border-x border-b rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-foreground/20 transition-colors relative"
-                    style={{
-                        borderTop: `2px solid ${statusColor}`,
-                        borderLeftColor: 'var(--border)',
-                        borderRightColor: 'var(--border)',
-                        borderBottomColor: 'var(--border)',
-                        backgroundColor: `color-mix(in oklch, ${statusColor} 6%, var(--card))`,
-                    }}
-                >
+                <div className="group border border-border bg-card rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-foreground/20 transition-colors relative">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <div className={cn("w-1.5 h-1.5 rounded-full", task.priority === 'urgent' && "animate-pulse")} style={{ backgroundColor: PRIORITY_CONFIG[task.priority]?.color }} />
@@ -100,10 +89,7 @@ export function TaskCard({
                     </div>
                     <p className="text-sm font-medium text-foreground leading-snug line-clamp-2 mt-1">{task.title}</p>
                     <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                        <div
-                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium"
-                            style={{ backgroundColor: `color-mix(in oklch, ${statusColor} 15%, transparent)`, color: statusColor }}
-                        >
+                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-muted/50 text-muted-foreground">
                             <StatusIcon status={task.status} />
                             <span>{statusLabel}</span>
                         </div>

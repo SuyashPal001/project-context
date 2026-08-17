@@ -56,13 +56,9 @@ export function KanbanColumn({
     return (
         <div
             className={cn(
-                "w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] border-x border-b transition-colors",
+                "w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] border bg-card transition-colors",
                 isOver ? "border-primary/50" : "border-border"
             )}
-            style={{
-                borderTop: `2px solid ${cfg.color}`,
-                backgroundColor: `color-mix(in oklch, ${cfg.color} ${isOver ? 10 : 5}%, var(--card))`,
-            }}
             onDragOver={(e) => handleDragOver(e)}
             onDragLeave={() => { setIsOver(false); setDropIndicator(null) }}
             onDrop={handleDrop}
