@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
@@ -254,19 +254,21 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
             <div className="pt-6 px-4 pb-3 flex items-center justify-between">
                 <h2 className="text-base font-semibold text-foreground">Messages</h2>
                 {onToggleCollapse && (
-                    <Tooltip delayDuration={0}>
-                        <TooltipTrigger asChild>
-                            <button
-                                onClick={onToggleCollapse}
-                                className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-                            >
-                                {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                            </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="ml-1">
-                            {isCollapsed ? "Expand" : "Collapse"}
-                        </TooltipContent>
-                    </Tooltip>
+                    <TooltipProvider>
+                        <Tooltip delayDuration={0}>
+                            <TooltipTrigger asChild>
+                                <button
+                                    onClick={onToggleCollapse}
+                                    className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                                >
+                                    {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="ml-1">
+                                {isCollapsed ? "Expand" : "Collapse"}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                 )}
             </div>
 
