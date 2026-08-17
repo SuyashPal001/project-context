@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Agent } from "./types";
 import {
     Card,
@@ -43,6 +43,7 @@ export function AgentCard({ agent }: AgentCardProps) {
     const params = useParams();
     const tenantSlug = params.tenant as string;
     const [isRetireDialogOpen, setIsRetireDialogOpen] = useState(false);
+    const [fireDependencies, setFireDependencies] = useState<{ shiftsCount: number; teamsCount: number } | null>(null);
 
     const formatRelativeTime = (date: string) => {
         const now = new Date();
@@ -59,10 +60,17 @@ export function AgentCard({ agent }: AgentCardProps) {
     };
 
     const updateStatusMutation = useMutation({
-        mutationFn: ({ status }: { status: Agent["status"] }) =>
-            api.patch(`/api/v1/agents/${agent.id}`, { status }),
+        mutationFn: ({ status, force }: { status: Agent["status"]; force?: boolean }) =>
+            api.patch(`/api/v1/agents/${agent.id}`, { status, force }),
         onSuccess: () => {
+            setFireDependencies(null);
             queryClient.invalidateQueries({ queryKey: ["agents"] });
+        },
+        onError: (err) => {
+            if (err instanceof ApiError && err.status === 409) {
+                setIsRetireDialogOpen(false);
+                setFireDependencies({ shiftsCount: err.data?.shiftsCount ?? 0, teamsCount: err.data?.teamsCount ?? 0 });
+            }
         },
     });
 
@@ -187,12 +195,30 @@ export function AgentCard({ agent }: AgentCardProps) {
                         <AlertDialogCancel variant="ghost">Cancel</AlertDialogCancel>
                         <AlertDialogAction
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => {
-                                updateStatusMutation.mutate({ status: "retired" });
-                                setIsRetireDialogOpen(false);
-                            }}
+                            onClick={() => updateStatusMutation.mutate({ status: "retired" })}
                         >
                             Fire employee
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={fireDependencies !== null} onOpenChange={(open) => !open && setFireDependencies(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Fire this employee?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This employee is related to {fireDependencies?.shiftsCount ?? 0} Shifts, {fireDependencies?.teamsCount ?? 0} Teams.
+                            Are you sure you want to fire this employee?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel variant="ghost">Cancel Fire</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => updateStatusMutation.mutate({ status: "retired", force: true })}
+                        >
+                            Fire
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

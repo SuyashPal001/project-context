@@ -1,6 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { CreateAgentDialog } from "./CreateAgentDialog";
@@ -13,7 +15,10 @@ import type { AgentsResponse } from "./types";
 
 export function AgentsView() {
     const { role } = useTenant();
+    const params = useParams();
+    const tenantSlug = params.tenant as string;
     const isPlatformAdmin = role === 'platform_admin';
+    const marketplaceHref = `/${tenantSlug}/dashboard/agents/marketplace`;
 
     const { data, isLoading, isError, error } = useQuery<AgentsResponse>({
         queryKey: ["agents"],
@@ -47,14 +52,19 @@ export function AgentsView() {
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Employees</h1>
                     <p className="text-muted-foreground mt-2">Your AI team</p>
                 </div>
-                {isPlatformAdmin && (
-                    <CreateAgentDialog>
-                        <Button>
+                <div className="flex gap-2">
+                    {isPlatformAdmin && (
+                        <CreateAgentDialog>
+                            <Button variant="outline">Create Custom</Button>
+                        </CreateAgentDialog>
+                    )}
+                    <Button asChild>
+                        <Link href={marketplaceHref}>
                             <Plus className="mr-2 h-4 w-4" />
                             Add Employee
-                        </Button>
-                    </CreateAgentDialog>
-                )}
+                        </Link>
+                    </Button>
+                </div>
             </div>
 
             {isLoading ? (
@@ -79,16 +89,14 @@ export function AgentsView() {
                         </div>
                         <h3 className="text-lg font-semibold text-foreground">No employees found</h3>
                         <p className="mb-6 mt-2 text-sm text-muted-foreground">
-                            {isPlatformAdmin ? "No employees yet. Add your first one." : "No active employees available at the moment."}
+                            No employees yet. Hire your first one from the marketplace.
                         </p>
-                        {isPlatformAdmin && (
-                            <CreateAgentDialog>
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Add Employee
-                                </Button>
-                            </CreateAgentDialog>
-                        )}
+                        <Button asChild>
+                            <Link href={marketplaceHref}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add Employee
+                            </Link>
+                        </Button>
                     </div>
                 </div>
             )}

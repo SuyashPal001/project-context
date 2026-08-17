@@ -18,12 +18,12 @@ export interface PersonaSummary {
     animationStates: PersonaAnimationStates | null;
     skillTags: string[];
     isOfficial: boolean;
+    exampleAssetUrl: string | null;
+    exampleCaption: string | null;
 }
 
 export interface PersonaDetail extends PersonaSummary {
     basePersonality: string;
-    exampleAssetUrl: string | null;
-    exampleCaption: string | null;
     status: 'draft' | 'published';
 }
 

@@ -107,6 +107,12 @@ export const api = {
             body: JSON.stringify(data)
         }),
 
-    del: <T>(path: string, options?: RequestInit) =>
-        request<T>(path, { ...options, method: 'DELETE' }),
+    del: <T>(path: string, data?: any, options?: RequestInit) =>
+        request<T>(path, {
+            ...options,
+            method: 'DELETE',
+            ...(data !== undefined
+                ? { body: JSON.stringify(data), headers: { 'Content-Type': 'application/json', ...options?.headers } }
+                : {}),
+        }),
 };

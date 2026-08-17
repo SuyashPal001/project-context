@@ -7,25 +7,30 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PersonaAvatar } from "./PersonaAvatar";
-import type { PersonaDetail } from "./types";
+import type { PersonaSummary } from "./types";
 import { hirePersona } from "./actions";
 
 interface PersonaDetailModalProps {
-    persona: PersonaDetail | null;
+    persona: PersonaSummary | null;
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    onHire?: (personaId: string) => void;
     onAssign?: (personaId: string) => void;
     onFire?: (personaId: string) => void;
     isHired?: boolean;
 }
 
-export function PersonaDetailModal({ persona, open, onOpenChange, onAssign, onFire, isHired }: PersonaDetailModalProps) {
+export function PersonaDetailModal({ persona, open, onOpenChange, onHire, onAssign, onFire, isHired }: PersonaDetailModalProps) {
     if (!persona) return null;
+
+    const handleHire = async () => {
+        if (onHire) return onHire(persona.id);
+        await hirePersona(persona);
+        onOpenChange(false);
+    };
 
     const handleAssign = async () => {
         if (onAssign) return onAssign(persona.id);
-        await hirePersona(persona);
-        onOpenChange(false);
     };
 
     const handleFire = async () => {
@@ -54,6 +59,19 @@ export function PersonaDetailModal({ persona, open, onOpenChange, onAssign, onFi
 
                 <p className="text-sm text-muted-foreground">{persona.tagline}</p>
 
+                {persona.skillTags.length > 0 && (
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <span className="h-px flex-1 bg-border" /> Skills <span className="h-px flex-1 bg-border" />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {persona.skillTags.map((tag) => (
+                                <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {persona.exampleAssetUrl && (
                     <div className="space-y-1.5">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -65,10 +83,14 @@ export function PersonaDetailModal({ persona, open, onOpenChange, onAssign, onFi
                 )}
 
                 <div className="flex justify-end gap-2 pt-2">
-                    {isHired && (
-                        <Button variant="outline" onClick={handleFire}>Fire</Button>
+                    {isHired ? (
+                        <>
+                            <Button variant="outline" onClick={handleFire}>Fire</Button>
+                            <Button onClick={handleAssign}>Assign Task Now</Button>
+                        </>
+                    ) : (
+                        <Button onClick={handleHire}>Hire</Button>
                     )}
-                    <Button onClick={handleAssign}>Assign Task Now</Button>
                 </div>
             </DialogContent>
         </Dialog>
