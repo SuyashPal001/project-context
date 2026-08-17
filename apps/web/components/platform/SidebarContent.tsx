@@ -17,12 +17,12 @@ export function SidebarContent({ children }: { children: React.ReactNode }) {
 
             <div className={cn(
                 "flex-1 flex flex-col min-w-0 transition-all duration-300",
-                isSidebarCollapsed ? "ml-16" : "ml-60"
+                isSidebarCollapsed ? "ml-[5.5rem]" : "ml-[16.5rem]"
             )}>
                 <Topbar />
 
                 <main className={cn(
-                    "flex-1 mt-16 overflow-y-auto custom-scrollbar",
+                    "flex-1 mt-[5.5rem] overflow-y-auto custom-scrollbar",
                     !isChatPage && "p-8"
                 )}>
                     <div className={cn(
