@@ -82,8 +82,8 @@ export function AgentCard({ agent }: AgentCardProps) {
     const getStatusLabel = (status: Agent["status"]) => {
         switch (status) {
             case "active": return "Hired";
-            case "paused": return "Paused";
-            case "retired": return "Retired";
+            case "paused": return "On Leave";
+            case "retired": return "Fired";
             default: return status;
         }
     };
@@ -135,13 +135,13 @@ export function AgentCard({ agent }: AgentCardProps) {
                             {agent.status === "active" && (
                                 <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "paused" })}>
                                     <Pause className="mr-2 h-4 w-4" />
-                                    Pause employee
+                                    Put on leave
                                 </DropdownMenuItem>
                             )}
                             {agent.status === "paused" && (
                                 <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "active" })}>
                                     <Play className="mr-2 h-4 w-4" />
-                                    Reactivate employee
+                                    Return from leave
                                 </DropdownMenuItem>
                             )}
                             {(agent.status === "active" || agent.status === "paused") && (
@@ -150,7 +150,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                                     onClick={() => setIsRetireDialogOpen(true)}
                                 >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Retire employee
+                                    Fire employee
                                 </DropdownMenuItem>
                             )}
                         </DropdownMenuContent>
@@ -177,7 +177,7 @@ export function AgentCard({ agent }: AgentCardProps) {
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Retire this employee?</AlertDialogTitle>
+                        <AlertDialogTitle>Fire this employee?</AlertDialogTitle>
                         <AlertDialogDescription>
                             This will permanently deactivate the employee and revoke its API
                             key. This cannot be undone.
@@ -192,7 +192,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                                 setIsRetireDialogOpen(false);
                             }}
                         >
-                            Retire employee
+                            Fire employee
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
