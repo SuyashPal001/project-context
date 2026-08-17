@@ -11,10 +11,7 @@ interface StarfieldCanvasProps {
 export function StarfieldCanvas({ speedMode = 'warp', active = true }: StarfieldCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const { resolvedTheme } = useTheme();
-    // The warp transition (hyperspace-loader) is a full-screen transient effect and
-    // stays black in both themes. The idle background (auth pages) sits behind a
-    // light-mode card by default, so it needs to read as light chrome, not space.
-    const isLightIdle = speedMode === 'idle' && resolvedTheme === 'light';
+    const isLight = resolvedTheme === 'light';
 
     useEffect(() => {
         if (!active || !canvasRef.current) return;
@@ -53,7 +50,7 @@ export function StarfieldCanvas({ speedMode = 'warp', active = true }: Starfield
         }
 
         const draw = () => {
-            ctx.fillStyle = isLightIdle ? '#fafafa' : '#000';
+            ctx.fillStyle = isLight ? '#fafafa' : '#000';
             ctx.fillRect(0, 0, w, h);
 
             speed += (targetSpeed - speed) * 0.05;
@@ -81,7 +78,7 @@ export function StarfieldCanvas({ speedMode = 'warp', active = true }: Starfield
                 const size = Math.max(0.1, (1 - s.z / w) * 2.5);
                 const opacity = Math.max(0, 1 - s.z / w);
 
-                const color = isLightIdle
+                const color = isLight
                     ? `rgba(100, 100, 130, ${opacity})`
                     : `rgba(200, 210, 255, ${opacity})`;
 
@@ -113,7 +110,7 @@ export function StarfieldCanvas({ speedMode = 'warp', active = true }: Starfield
             window.removeEventListener('resize', resize);
             if (slowDownTimeout) clearTimeout(slowDownTimeout);
         };
-    }, [active, speedMode, isLightIdle]);
+    }, [active, speedMode, isLight]);
 
     if (!active) return null;
 

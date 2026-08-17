@@ -67,7 +67,7 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
     if (!active) return null;
 
     return (
-        <div className="fixed inset-0 z-[9999] pointer-events-none bg-black flex flex-col items-center justify-center overflow-hidden text-white">
+        <div className="fixed inset-0 z-[9999] pointer-events-none bg-background flex flex-col items-center justify-center overflow-hidden text-foreground">
             <StarfieldCanvas speedMode="warp" active={active} />
 
             <div className={`relative z-10 flex flex-col items-center justify-center transition-opacity duration-500 delay-100 ${arrival ? 'opacity-0' : 'opacity-100'}`}>
@@ -85,7 +85,7 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
                             <div key={i} className={`flex items-center gap-4 transition-all duration-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
                                 <div className="relative w-5 h-5 flex items-center justify-center shrink-0">
                                     {isCompleted ? (
-                                        <svg className="w-4 h-4 text-white opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <svg className="w-4 h-4 text-foreground opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                         </svg>
                                     ) : (
@@ -105,7 +105,7 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
                                 </div>
                                 <div
                                     className="font-mono text-[12px] tracking-[0.04em] transition-colors duration-300 whitespace-nowrap"
-                                    style={{ color: isCompleted ? 'rgba(255,255,255,0.6)' : (isActive ? '#fff' : 'transparent') }}
+                                    style={{ color: isCompleted ? 'var(--muted-foreground)' : (isActive ? 'var(--foreground)' : 'transparent') }}
                                 >
                                     {cp.label}
                                 </div>
@@ -119,14 +119,14 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
                 <div className="absolute bottom-12 left-0 right-0 flex justify-center z-10 pointer-events-none">
                     <p
                         className="font-mono text-[11px] tracking-[0.08em] transition-opacity duration-500"
-                        style={{ color: 'rgba(255,255,255,0.35)' }}
+                        style={{ color: 'var(--muted-foreground)' }}
                     >
                         {statusMessage}
                     </p>
                 </div>
             )}
 
-            <div className={`absolute inset-0 z-20 flex items-center justify-center transition-opacity duration-700 ${arrival ? 'opacity-100 bg-black/60' : 'opacity-0 pointer-events-none'}`}>
+            <div className={`absolute inset-0 z-20 flex items-center justify-center transition-opacity duration-700 ${arrival ? 'opacity-100 bg-background/60' : 'opacity-0 pointer-events-none'}`}>
                 <div className={`text-[16px] font-medium tracking-wide transition-all duration-700 ${arrival ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
                     Workspace ready
                 </div>

@@ -145,9 +145,9 @@ function CallbackContent() {
   }
 
   return (
-    <div className="bg-black min-h-screen flex flex-col items-center justify-center gap-4">
-      <Loader2 className="h-8 w-8 animate-spin text-white/60" />
-      <p className="text-sm text-white/40 tracking-wide">Signing you in...</p>
+    <div className="bg-background min-h-screen flex flex-col items-center justify-center gap-4">
+      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <p className="text-sm text-muted-foreground/70 tracking-wide">Signing you in...</p>
     </div>
   );
 }
