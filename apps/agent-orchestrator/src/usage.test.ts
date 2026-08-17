@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory } from './usage.js'
 
 describe('fetchToolGovernance', () => {
   it('maps getAgentTools output into the ToolGovernance shape', async () => {
@@ -53,5 +53,61 @@ describe('fetchAgentModelSelection', () => {
       expect.stringContaining('lp.is_platform = true OR lp.tenant_id = a.tenant_id'),
       ['agent-3'],
     )
+  })
+})
+
+describe('fetchAgentPersonality', () => {
+  it('composes basePersonality with the persona core files in a fixed order', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        base_personality: 'You are warm and encouraging.',
+        identity_file: 'IDENTITY: Visual Design Director',
+        soul_file: 'SOUL: cares deeply about craft',
+        agents_file: 'AGENTS: always propose 3 options',
+        bootstrap_file: 'BOOTSTRAP: greet with a compliment',
+        user_file: 'USER: prefers concise replies',
+      }],
+    })
+    const result = await fetchAgentPersonality('agent-1')
+    expect(result).toBe(
+      'You are warm and encouraging.\n\n' +
+      'IDENTITY: Visual Design Director\n\n' +
+      'SOUL: cares deeply about craft\n\n' +
+      'AGENTS: always propose 3 options\n\n' +
+      'BOOTSTRAP: greet with a compliment\n\n' +
+      'USER: prefers concise replies'
+    )
+  })
+
+  it('falls back to just basePersonality when no core files are set', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{
+        base_personality: 'You are warm and encouraging.',
+        identity_file: null, soul_file: null, agents_file: null, bootstrap_file: null, user_file: null,
+      }],
+    })
+    const result = await fetchAgentPersonality('agent-1')
+    expect(result).toBe('You are warm and encouraging.')
+  })
+
+  it('returns null when the agent has no persona', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    const result = await fetchAgentPersonality('agent-2')
+    expect(result).toBeNull()
+  })
+})
+
+describe('fetchAgentMemory', () => {
+  it('returns the per-agent memory content', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ content: 'Tenant prefers dark mode.' }] })
+    const result = await fetchAgentMemory('agent-1')
+    expect(result).toBe('Tenant prefers dark mode.')
+    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('agent_memories'), ['agent-1'])
+  })
+
+  it('returns null when no memory row exists yet', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    const result = await fetchAgentMemory('agent-2')
+    expect(result).toBeNull()
   })
 })

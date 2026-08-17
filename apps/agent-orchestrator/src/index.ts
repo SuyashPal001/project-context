@@ -16,7 +16,7 @@ import { downloadMediaAttachment } from './media.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 import { validateToken } from './auth.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
-import { fetchWorkingMemory } from './usage.js'
+import { fetchAgentMemory } from './usage.js'
 import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
 import { getMCPClientForTenant } from './mastra/tools.js'
@@ -106,11 +106,11 @@ async function handleSession(
         }
         streamingActive = true
 
-        const workingMemory = await fetchWorkingMemory(tenantId)
+        const workingMemory = await fetchAgentMemory(agentId)
         const memPreamble = workingMemory
-          ? `[AGENT MEMORY]\nYou have remembered the following about this tenant from previous sessions:\n${workingMemory}\n\n`
+          ? `[AGENT MEMORY]\nYou have remembered the following about this agent from previous sessions:\n${workingMemory}\n\n`
           : ''
-        if (workingMemory) console.log(`[session:${sessionId}] injected working memory tenantId=${tenantId}`)
+        if (workingMemory) console.log(`[session:${sessionId}] injected working memory agentId=${agentId}`)
 
         const sessionContext = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}\n</session_context>\n\n`
 

@@ -27,6 +27,16 @@ export const personas = pgTable('personas', {
   animationStates: jsonb('animation_states').$type<PersonaAnimationStates | null>(),
   exampleAssetUrl: text('example_asset_url'),
   exampleCaption: text('example_caption'),
+  // Core Files — composed into the runtime system prompt in this order:
+  // identityFile, soulFile, agentsFile, bootstrapFile, then userFile as
+  // context. Tenant-facing UI never returns their content for official
+  // personas (see GET /agents/:id/core-files) — only MEMORY.md (agentMemories)
+  // is tenant-visible/editable.
+  identityFile: text('identity_file'),
+  soulFile: text('soul_file'),
+  agentsFile: text('agents_file'),
+  bootstrapFile: text('bootstrap_file'),
+  userFile: text('user_file'),
   isOfficial: boolean('is_official').notNull().default(true),
   status: personaStatusEnum('status').notNull().default('draft'),
   createdBy: uuid('created_by').notNull().references(() => users.id),

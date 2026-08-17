@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { AuthPayload } from '../auth.js'
 import { validateToken } from '../auth.js'
-import { checkMessageQuota, fetchWorkingMemory } from '../usage.js'
+import { checkMessageQuota, fetchAgentMemory } from '../usage.js'
 import { filterPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
 import { isInternalServiceKey } from '../service-key.js'
@@ -105,7 +105,9 @@ chatRouter.post('/api/chat', async (c) => {
   }
 
   // Parallel pre-stream fetches — auth/me, quota check, working memory run concurrently.
-  const workingMemoryPromise = fetchWorkingMemory(tenantId)
+  // Per-agent memory (MEMORY.md), not per-tenant — each hired employee keeps
+  // its own working notes rather than sharing one blob across a tenant's agents.
+  const workingMemoryPromise = fetchAgentMemory(agentId)
   const [, chatQuota] = await Promise.all([
     // auth/me — resolve Cognito sub → internal UUID
     !isInternalCall

@@ -2,7 +2,7 @@ import { and, eq, count } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '../db';
-import { agents } from '@serverless-saas/agent-schema/agents';
+import { agents, agentWorkflows } from '@serverless-saas/agent-schema/agents';
 import { personas } from '@serverless-saas/agent-schema/personas';
 import { users } from '@serverless-saas/database/schema/auth';
 import { apiKeys } from '@serverless-saas/database/schema/access';
@@ -184,6 +184,15 @@ export async function handleDeleteAgent(c: Context<AppEnv>) {
     const agentId = c.req.param('id') as string;
     const existing = (await db.select().from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1))[0];
     if (!existing) return c.json({ error: 'Agent not found' }, 404);
+
+    const force = (await c.req.json().catch(() => ({}))).force === true;
+    if (!force) {
+        const [{ value: shiftsCount }] = await db.select({ value: count() }).from(agentWorkflows).where(and(eq(agentWorkflows.agentId, agentId), eq(agentWorkflows.status, 'active')));
+        const teamsCount = 0; // Teams entity ships in a later sub-project
+        if (Number(shiftsCount) > 0 || teamsCount > 0) {
+            return c.json({ error: 'Employee has active dependencies', code: 'FIRE_BLOCKED', shiftsCount: Number(shiftsCount), teamsCount }, 409);
+        }
+    }
 
     await db.update(agents).set({ status: 'retired', updatedAt: new Date() }).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId)));
     if (existing.apiKeyId) {

@@ -54,6 +54,16 @@ export const agentWorkflows = pgTable('agent_workflows', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// Per-agent working memory — the tenant-editable MEMORY.md in the Core Files
+// tab. Distinct from Mastra's own PostgresStore conversational memory (which
+// stays tenant-scoped); this is a simple, directly editable per-agent note.
+export const agentMemories = pgTable('agent_memories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  agentId: uuid('agent_id').notNull().references(() => agents.id).unique(),
+  content: text('content').notNull().default(''),
+  updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
 export const agentWorkflowRuns = pgTable('agent_workflow_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
   workflowId: uuid('workflow_id').notNull().references(() => agentWorkflows.id),

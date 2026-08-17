@@ -61,14 +61,35 @@ export async function fetchAgentSkill(agentId: string): Promise<AgentSkill | nul
 
 export async function fetchAgentPersonality(agentId: string): Promise<string | null> {
   const p = getPool()
-  const res = await p.query<{ base_personality: string | null }>(
-    `SELECT p.base_personality
+  const res = await p.query<{
+    base_personality: string | null
+    identity_file: string | null
+    soul_file: string | null
+    agents_file: string | null
+    bootstrap_file: string | null
+    user_file: string | null
+  }>(
+    `SELECT p.base_personality, p.identity_file, p.soul_file, p.agents_file, p.bootstrap_file, p.user_file
      FROM agents a
      JOIN personas p ON p.id = a.persona_id
      WHERE a.id = $1`,
     [agentId],
   )
-  return res.rows[0]?.base_personality ?? null
+  const row = res.rows[0]
+  if (!row?.base_personality) return null
+  // Fixed composition order: identity, soul, operating instructions, bootstrap,
+  // then user-facing context — matches the Core Files tab order in the UI.
+  const layers = [row.base_personality, row.identity_file, row.soul_file, row.agents_file, row.bootstrap_file, row.user_file]
+  return layers.filter((layer): layer is string => Boolean(layer)).join('\n\n')
+}
+
+export async function fetchAgentMemory(agentId: string): Promise<string | null> {
+  const p = getPool()
+  const res = await p.query<{ content: string }>(
+    `SELECT content FROM agent_memories WHERE agent_id = $1`,
+    [agentId],
+  )
+  return res.rows[0]?.content ?? null
 }
 
 export interface AgentModelSelection {
@@ -301,28 +322,6 @@ export async function fetchAgentPolicy(
       maxTokensPerMessage: null,
       maxMessagesPerConversation: null,
     }
-  }
-}
-
-export async function fetchWorkingMemory(
-  tenantId: string
-): Promise<string | null> {
-  const p = getPool()
-  try {
-    const res = await p.query<{ value: string }>(
-      `SELECT value FROM mastra.mastra_resources
-       WHERE "resourceId" = $1
-       AND type = 'workingMemory'
-       LIMIT 1`,
-      [tenantId]
-    )
-    if (!res.rows[0]) return null
-    const parsed = JSON.parse(res.rows[0].value)
-    return typeof parsed === 'string'
-      ? parsed
-      : JSON.stringify(parsed)
-  } catch {
-    return null
   }
 }
 
