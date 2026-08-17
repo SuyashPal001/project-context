@@ -10,6 +10,7 @@ import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight 
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
+import { getAgentTypeIcon } from "../agents/agentTypeIcon";
 import type { PersonaAnimationState } from "@/components/platform/personas/usePersonaAnimationState";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -121,6 +122,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                         size={36}
                         className="rounded-full absolute inset-0 transition-opacity group-hover:opacity-0"
                         iconClassName="text-muted-foreground/60"
+                        icon={getAgentTypeIcon(agent.type)}
                     />
                     <ChevronRight
                         className={cn(
@@ -277,6 +279,9 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
                     </div>
                 ) : activeAgents.length > 0 ? (
                     <>
+                        <p className="px-2.5 pb-1.5 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest">
+                            Your Team
+                        </p>
                         {activeAgents.map(agent => (
                             <AgentSection
                                 key={agent.id}
@@ -310,6 +315,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
                                                 size={16}
                                                 className="rounded bg-transparent border-0"
                                                 iconClassName="text-muted-foreground/40"
+                                                icon={getAgentTypeIcon(agent.type)}
                                             />
                                             <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider truncate">
                                                 {agent.name}

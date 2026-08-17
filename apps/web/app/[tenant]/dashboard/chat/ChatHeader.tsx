@@ -10,6 +10,7 @@ import {
 import type { Conversation } from '@/components/platform/chat/types';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
 import { PersonaAvatar } from '@/components/platform/personas/PersonaAvatar';
+import { getAgentTypeIcon } from '@/components/platform/agents/agentTypeIcon';
 import type { PersonaAnimationState } from '@/components/platform/personas/usePersonaAnimationState';
 
 interface Props {
@@ -39,7 +40,7 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
                         ? <PanelLeftOpen className="h-4 w-4" />
                         : <PanelLeftClose className="h-4 w-4" />}
                 </Button>
-                <PersonaAvatar persona={selectedConversation.agent?.persona} state={state} size={36} className="rounded-full" />
+                <PersonaAvatar persona={selectedConversation.agent?.persona} state={state} size={36} className="rounded-full" icon={getAgentTypeIcon(selectedConversation.agent?.type)} />
                 <div>
                     <div className="flex items-center gap-2">
                         <h2 className="font-semibold text-base tracking-tight truncate max-w-[200px] sm:max-w-[400px]">

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Agent, AgentsResponse } from "../agents/types";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
+import { getAgentTypeIcon } from "../agents/agentTypeIcon";
 
 interface AgentSelectorProps {
     open: boolean;
@@ -57,6 +58,7 @@ export function AgentSelector({ open, onOpenChange, onSelect }: AgentSelectorPro
                                         size={32}
                                         className="rounded-full bg-primary/10 border-0"
                                         iconClassName="text-primary"
+                                        icon={getAgentTypeIcon(agent.type)}
                                     />
                                     <div className="flex flex-col items-start overflow-hidden">
                                         <span className="font-medium truncate w-full">{agent.name}</span>
