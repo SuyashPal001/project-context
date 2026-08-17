@@ -184,7 +184,7 @@ function ChatPage() {
         <Button
             variant="ghost" size="icon"
             onClick={toggleChatSidebar}
-            className="absolute top-4 left-4 z-10 h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            className="absolute top-6 left-4 z-10 h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
         >
             {isChatSidebarCollapsed
                 ? <PanelLeftOpen className="h-4 w-4" />

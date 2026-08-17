@@ -29,7 +29,7 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
         || (selectedConversation.agent?.name ? `Chat with ${selectedConversation.agent.name}` : 'Chat with Agent');
 
     return (
-        <div className="flex items-center justify-between px-6 py-4 bg-background z-10 shrink-0">
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 bg-background z-10 shrink-0">
             <div className="flex items-center gap-3">
                 <Button
                     variant="ghost" size="icon"
