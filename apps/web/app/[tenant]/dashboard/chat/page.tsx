@@ -18,7 +18,7 @@ import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useVoice } from "@/hooks/useVoice";
-import { MessageSquare, Plus, RefreshCw } from "lucide-react";
+import { MessageSquare, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -180,6 +180,18 @@ function ChatPage() {
         }
     }, [conversationId, queryClient, sendClarificationAnswer]);
 
+    const sidebarToggleButton = (
+        <Button
+            variant="ghost" size="icon"
+            onClick={toggleChatSidebar}
+            className="absolute top-4 left-4 z-10 h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+        >
+            {isChatSidebarCollapsed
+                ? <PanelLeftOpen className="h-4 w-4" />
+                : <PanelLeftClose className="h-4 w-4" />}
+        </Button>
+    );
+
     const modelChangeProps = {
         providers,
         llmProviderId: selectedConversation?.agent?.llmProviderId ?? activeAgents[0]?.llmProviderId,
@@ -215,8 +227,6 @@ function ChatPage() {
                         onNewChat={handleNewChat}
                         activeAgentId={selectedConversation?.agent?.id ?? selectedConversation?.agentId}
                         activeState={displayState}
-                        isCollapsed={isChatSidebarCollapsed}
-                        onToggleCollapse={toggleChatSidebar}
                     />
                 </div>
 
@@ -261,20 +271,23 @@ function ChatPage() {
                                 )}
                             </>
                         ) : isLoadingConversations ? (
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background h-full">
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background h-full relative">
+                                {sidebarToggleButton}
                                 <div className="space-y-4 w-full max-w-sm">
                                     <Skeleton className="h-12 w-full" /><Skeleton className="h-40 w-full" /><Skeleton className="h-10 w-32 mx-auto rounded-full" />
                                 </div>
                             </div>
                         ) : isErrorConversations ? (
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative">
+                                {sidebarToggleButton}
                                 <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 border border-border"><MessageSquare className="h-8 w-8 text-muted-foreground" /></div>
                                 <h2 className="text-lg font-bold tracking-tight mb-2">Failed to load chats</h2>
                                 <p className="text-muted-foreground max-w-sm mb-8">There was an error loading your conversations. Please try again.</p>
                                 <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['conversations'] })} size="lg" className="rounded-full shadow-lg h-12 px-6">Retry Loading</Button>
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full">
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative">
+                                {sidebarToggleButton}
                                 <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 border border-border"><MessageSquare className="h-8 w-8 text-muted-foreground" /></div>
                                 <h2 className="text-lg font-bold tracking-tight mb-2">Select a conversation</h2>
                                 <p className="text-muted-foreground max-w-sm mb-8">Select an existing conversation from the list or start a new one.</p>

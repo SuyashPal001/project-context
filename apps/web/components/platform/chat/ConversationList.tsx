@@ -6,8 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight } from "lucide-react";
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
@@ -29,8 +28,6 @@ interface ConversationListProps {
     onNewChat: (agentId?: string) => void;
     activeAgentId?: string;
     activeState?: PersonaAnimationState;
-    isCollapsed?: boolean;
-    onToggleCollapse?: () => void;
 }
 
 // ─── ConversationRow ──────────────────────────────────────────────────────────
@@ -182,7 +179,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
 
 // ─── ConversationList ─────────────────────────────────────────────────────────
 
-export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentId, activeState, isCollapsed, onToggleCollapse }: ConversationListProps) {
+export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentId, activeState }: ConversationListProps) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [actionType, setActionType] = useState<'archive' | 'delete'>('archive');
     const [search, setSearch] = useState('');
@@ -253,23 +250,12 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
         <div className="flex flex-col h-full bg-[var(--messages-panel)] border-r border-border">
             <div className="pt-6 px-4 pb-3 flex items-center justify-between">
                 <h2 className="text-base font-semibold text-foreground">Messages</h2>
-                {onToggleCollapse && (
-                    <TooltipProvider>
-                        <Tooltip delayDuration={0}>
-                            <TooltipTrigger asChild>
-                                <button
-                                    onClick={onToggleCollapse}
-                                    className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-                                >
-                                    {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-                                </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="ml-1">
-                                {isCollapsed ? "Expand" : "Collapse"}
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                )}
+                <Button onClick={() => onNewChat()} size="icon" variant="ghost"
+                    className="h-8 w-8 rounded-full hover:bg-accent/50 transition-colors"
+                    title="New conversation"
+                >
+                    <Plus className="h-4 w-4" />
+                </Button>
             </div>
 
             <div className="px-4 pb-4">
