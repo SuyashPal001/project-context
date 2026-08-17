@@ -19,7 +19,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 const PRIORITY_BORDER: Record<string, string> = {
     urgent: 'border-l-[3px] border-red-500',
-    high:   'border-l-[3px] border-orange-500',
+    high:   'border-l-[3px] border-amber-500',
     medium: 'border-l-[3px] border-yellow-400',
     low:    '',
 };

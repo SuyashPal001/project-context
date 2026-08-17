@@ -32,7 +32,7 @@ export function AgentActivityCard({ agents, loading }: Props) {
           {agents.slice(0, 6).map(a => (
             <div key={a.agentId} className="flex items-center justify-between gap-3 py-1.5 border-b border-zinc-800/50 last:border-0">
               <div className="flex items-center gap-2 min-w-0">
-                <Bot className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                <Bot className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span className="text-sm font-mono text-zinc-300 truncate">{a.agentId}</span>
               </div>
               <div className="flex items-center gap-3 shrink-0 text-xs text-zinc-400 font-mono">

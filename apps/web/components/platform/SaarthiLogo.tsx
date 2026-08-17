@@ -13,7 +13,7 @@ export function ProjectContextLogo({ variant = "full", className, iconSize = 32 
     return (
         <div className={cn("flex items-center gap-2.5 select-none", className)}>
             <span
-                className="shrink-0 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.55)]"
+                className="shrink-0 rounded-full bg-primary shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)]"
                 style={{ width: dotSize, height: dotSize }}
             />
             {variant === "full" && (

@@ -14,11 +14,10 @@ export function VoiceButton({ onClick, className }: VoiceButtonProps) {
       onClick={onClick}
       className={cn(
         'p-3 rounded-full',
-        'bg-gradient-to-br from-purple-500 to-blue-500',
-        'hover:from-purple-600 hover:to-blue-600',
-        'text-white shadow-lg',
+        'bg-primary hover:bg-primary/90',
+        'text-primary-foreground shadow-lg',
         'transition-all hover:scale-105 active:scale-95',
-        'focus:outline-none focus:ring-2 focus:ring-purple-500/50',
+        'focus:outline-none focus:ring-2 focus:ring-primary/50',
         className
       )}
     >

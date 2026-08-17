@@ -191,7 +191,7 @@ export function MessageItem({
                             const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
                             return (
                                 <div key={file.id ?? `att-${index}`} className="flex items-center gap-2 px-2.5 py-1.5 bg-muted/40 border border-border/40 rounded-xl text-[11px] font-medium">
-                                    <FileText className={cn("h-3 w-3", isDocx ? "text-blue-500" : "text-purple-500")} />
+                                    <FileText className={cn("h-3 w-3", isDocx ? "text-blue-500" : "text-muted-foreground")} />
                                     <span className="truncate max-w-[120px]">{file.name}</span>
                                     {url && (
                                         <a href={url} target="_blank" rel="noopener noreferrer" className="ml-1 text-primary hover:underline font-bold">↓</a>

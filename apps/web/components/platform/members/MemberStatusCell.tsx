@@ -52,7 +52,7 @@ export function MemberStatusCell({ member, isReactivating, onReactivate }: Membe
                     <Button
                         variant="outline"
                         size="sm"
-                        className="h-6 text-[10px] uppercase font-bold tracking-wider rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 px-2 shadow-none"
+                        className="h-6 text-[10px] uppercase font-bold tracking-wider rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 px-2 shadow-none"
                     >
                         Revoked
                     </Button>

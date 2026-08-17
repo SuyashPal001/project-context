@@ -119,8 +119,7 @@ export function TaskCard({
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <div className={cn(
-                                        "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium border border-[#2a2a2a] overflow-hidden",
-                                        assigneeInfo.type === 'agent' ? "bg-indigo-500/20 text-indigo-400" : "bg-[#2a2a2a] text-muted-foreground"
+                                        "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-medium border border-border overflow-hidden bg-secondary text-muted-foreground"
                                     )}>
                                         {assigneeInfo.type === 'agent' ? <Bot className="w-3 h-3" /> : <span>{getInitials(assigneeInfo.name)}</span>}
                                     </div>

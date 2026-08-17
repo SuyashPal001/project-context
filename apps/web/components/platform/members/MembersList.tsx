@@ -170,7 +170,7 @@ function MemberRow({
                             {member.memberType === "agent" && (
                                 <Badge
                                     variant="outline"
-                                    className="text-[10px] px-1.5 py-0 bg-purple-500/10 text-purple-400 border-purple-500/20"
+                                    className="text-[10px] px-1.5 py-0 bg-secondary text-muted-foreground border-border"
                                 >
                                     agent
                                 </Badge>

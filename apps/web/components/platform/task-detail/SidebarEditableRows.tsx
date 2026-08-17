@@ -160,10 +160,10 @@ export function SidebarEditableRows({
             {!task.agentId && (task.status === 'backlog' || task.status === 'todo') && (
                 <button
                     onClick={() => setAssigneeOpen(true)}
-                    className="flex items-center gap-1.5 w-full rounded-md bg-purple-950/60 border border-purple-800/40 hover:bg-purple-950 hover:border-purple-800/70 px-2 py-1.5 transition-colors cursor-pointer text-left mt-1"
+                    className="flex items-center gap-1.5 w-full rounded-md bg-primary/10 border border-primary/30 hover:bg-primary/15 hover:border-primary/40 px-2 py-1.5 transition-colors cursor-pointer text-left mt-1"
                 >
-                    <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
-                    <span className="text-xs text-purple-300">Assign agent to auto-execute</span>
+                    <Sparkles className="w-3 h-3 text-primary shrink-0" />
+                    <span className="text-xs text-primary">Assign agent to auto-execute</span>
                 </button>
             )}
         </>

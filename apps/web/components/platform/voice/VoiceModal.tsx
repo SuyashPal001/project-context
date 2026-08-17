@@ -38,7 +38,7 @@ export function VoiceModal({ isOpen, onClose, session, onTap }: VoiceModalProps)
   return (
     <div className={cn(
       'fixed inset-0 z-50',
-      'bg-gradient-to-br from-slate-900 via-purple-900/50 to-slate-900',
+      'bg-gradient-to-br from-background via-primary/10 to-background',
       'flex flex-col items-center justify-center',
       'animate-in fade-in duration-300'
     )}>

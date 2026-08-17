@@ -248,7 +248,7 @@ export function Topbar() {
     const planColors: Record<string, string> = {
         free: "bg-muted text-muted-foreground border-border",
         starter: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-        business: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+        business: "bg-primary/10 text-primary border-primary/20",
         enterprise: "bg-amber-500/10 text-amber-500 border-amber-500/20",
     }
 

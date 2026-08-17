@@ -77,7 +77,7 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick }: SidebarNavLinkProp
                     <span className="truncate">{item.label}</span>
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
                         {item.showBusinessBadge && (
-                            <Badge variant="outline" className="h-4 px-1 text-[8px] font-bold uppercase tracking-tighter bg-purple-500/10 text-purple-500 border-purple-500/20">
+                            <Badge variant="outline" className="h-4 px-1 text-[8px] font-bold uppercase tracking-tighter bg-primary/10 text-primary border-primary/20">
                                 business
                             </Badge>
                         )}

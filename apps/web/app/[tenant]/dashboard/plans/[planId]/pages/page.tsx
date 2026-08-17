@@ -35,12 +35,12 @@ type CreatePageResponse = { data: Page }
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TYPE_CFG: Record<string, { label: string; color: string; bg: string }> = {
-    prd:     { label: 'PRD',     color: 'text-violet-400', bg: 'bg-violet-500/10' },
-    roadmap: { label: 'Roadmap', color: 'text-blue-400',   bg: 'bg-blue-500/10'   },
-    runbook: { label: 'Runbook', color: 'text-orange-400', bg: 'bg-orange-500/10' },
-    adr:     { label: 'ADR',     color: 'text-amber-400',  bg: 'bg-amber-500/10'  },
-    manual:  { label: 'Manual',  color: 'text-teal-400',   bg: 'bg-teal-500/10'   },
-    custom:  { label: 'Custom',  color: 'text-gray-400',   bg: 'bg-gray-500/10'   },
+    prd:     { label: 'PRD',     color: 'text-muted-foreground', bg: 'bg-secondary' },
+    roadmap: { label: 'Roadmap', color: 'text-muted-foreground', bg: 'bg-secondary' },
+    runbook: { label: 'Runbook', color: 'text-muted-foreground', bg: 'bg-secondary' },
+    adr:     { label: 'ADR',     color: 'text-muted-foreground', bg: 'bg-secondary' },
+    manual:  { label: 'Manual',  color: 'text-muted-foreground', bg: 'bg-secondary' },
+    custom:  { label: 'Custom',  color: 'text-muted-foreground', bg: 'bg-secondary' },
 }
 
 // ─── PagesListPage ────────────────────────────────────────────────────────────

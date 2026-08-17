@@ -18,7 +18,7 @@ export function IntegrationsGrid() {
 
     if (isLoading) {
         return (
-            <div className="flex justify-center py-12 flex-col items-center gap-4 text-muted-foreground border border-zinc-800 rounded-lg bg-card">
+            <div className="flex justify-center py-12 flex-col items-center gap-4 text-muted-foreground border border-border rounded-lg bg-card">
                 <Loader2 className="w-8 h-8 animate-spin" />
                 <p>Loading integrations...</p>
             </div>
@@ -41,12 +41,12 @@ export function IntegrationsGrid() {
 
     const getProviderIcon = (provider: string) => {
         switch (provider) {
-            case 'github': return <Github className="w-8 h-8 text-zinc-100" />;
-            case 'slack': return <Slack className="w-8 h-8 text-zinc-100 fill-zinc-100" />;
-            case 'google_calendar': return <Calendar className="w-8 h-8 text-zinc-100" />;
+            case 'github': return <Github className="w-8 h-8 text-foreground" />;
+            case 'slack': return <Slack className="w-8 h-8 text-foreground fill-foreground" />;
+            case 'google_calendar': return <Calendar className="w-8 h-8 text-foreground" />;
             case 'jira': return <div className="font-bold text-2xl text-blue-500 tracking-tighter">Jira</div>;
-            case 'custom_mcp': return <Server className="w-8 h-8 text-amber-500" />;
-            default: return <Blocks className="w-8 h-8 text-zinc-400" />;
+            case 'custom_mcp': return <Server className="w-8 h-8 text-muted-foreground" />;
+            default: return <Blocks className="w-8 h-8 text-muted-foreground" />;
         }
     };
 
@@ -61,25 +61,25 @@ export function IntegrationsGrid() {
                     <div
                         key={integration.id}
                         onClick={() => setSelectedIntegration(integration)}
-                        className="group bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-all cursor-pointer flex flex-col items-start gap-5 relative overflow-hidden shadow-sm hover:shadow-md"
+                        className="group bg-card border border-border rounded-xl p-6 hover:border-input transition-all cursor-pointer flex flex-col items-start gap-5 relative overflow-hidden shadow-sm hover:shadow-md"
                     >
                         <div className="flex justify-between w-full items-start">
-                            <div className="h-16 w-16 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center shadow-inner">
+                            <div className="h-16 w-16 rounded-xl bg-background border border-border flex items-center justify-center shadow-inner">
                                 {getProviderIcon(integration.provider)}
                             </div>
-                            <Button variant="ghost" size="icon" className="text-zinc-500 hover:text-zinc-200">
+                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
                                 <MoreHorizontal className="w-5 h-5" />
                             </Button>
                         </div>
 
                         <div className="space-y-1.5 w-full">
-                            <h3 className="font-bold text-zinc-100 text-lg truncate pr-2">{integration.name}</h3>
-                            <p className="text-zinc-500 text-sm font-medium">{getProviderName(integration.provider)} Connection</p>
+                            <h3 className="font-bold text-foreground text-lg truncate pr-2">{integration.name}</h3>
+                            <p className="text-muted-foreground text-sm font-medium">{getProviderName(integration.provider)} Connection</p>
                         </div>
 
-                        <div className="mt-1 w-full flex items-center justify-between border-t border-zinc-800/50 pt-5">
+                        <div className="mt-1 w-full flex items-center justify-between border-t border-border/50 pt-5">
                             <StatusBadge status={integration.status} />
-                            <span className="text-xs text-zinc-600 font-mono tracking-wide">
+                            <span className="text-xs text-muted-foreground/80 font-mono tracking-wide">
                                 ID: {integration.id.substring(0, 8)}...
                             </span>
                         </div>

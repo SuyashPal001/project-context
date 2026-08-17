@@ -26,7 +26,7 @@ export function AttachmentStrip({ attachments, pendingUpload, onRemove }: Attach
                     ) : (
                         <div className="h-20 w-20 rounded-xl border border-border/40 bg-muted flex flex-col items-center justify-center gap-1 p-2">
                             {file.type.startsWith('video/') ? (
-                                <Video className="h-7 w-7 text-purple-500 opacity-80" />
+                                <Video className="h-7 w-7 text-muted-foreground opacity-80" />
                             ) : (
                                 <FileText className="h-7 w-7 text-muted-foreground opacity-80" />
                             )}

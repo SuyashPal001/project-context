@@ -16,7 +16,7 @@ interface PlanCardProps {
 const PRIORITY_CLASSES: Record<string, string> = {
     low:    'bg-muted/50 text-muted-foreground border-border',
     medium: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    high:   'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    high:   'bg-amber-500/10 text-amber-400 border-amber-500/20',
     urgent: 'bg-red-500/10 text-red-500 border-red-500/20',
 };
 

@@ -32,10 +32,10 @@ interface LLMProvidersResponse {
 }
 
 const typeColors: Record<string, string> = {
-    ops: "bg-blue-500/10 text-blue-500",
-    support: "bg-green-500/10 text-green-500",
-    billing: "bg-purple-500/10 text-purple-500",
-    custom: "bg-orange-500/10 text-orange-500",
+    ops: "bg-secondary text-muted-foreground",
+    support: "bg-secondary text-muted-foreground",
+    billing: "bg-secondary text-muted-foreground",
+    custom: "bg-secondary text-muted-foreground",
 };
 
 const statusColors: Record<string, string> = {

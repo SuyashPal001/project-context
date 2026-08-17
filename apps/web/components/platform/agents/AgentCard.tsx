@@ -79,25 +79,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         }
     };
 
-    const getTypeBadgeVariant = (type: Agent["type"]) => {
-        switch (type) {
-            case "ops":
-                return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-            case "support":
-                return "bg-purple-500/10 text-purple-500 border-purple-500/20";
-            case "billing":
-                return "bg-orange-500/10 text-orange-500 border-orange-500/20";
-            case "product_manager":
-            case "analyst":
-            case "project_manager":
-            case "tech_lead":
-            case "architect":
-                return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
-            case "custom":
-            default:
-                return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
-        }
-    };
+    const getTypeBadgeVariant = () => "bg-secondary text-muted-foreground border-border";
 
     const getTypeLabel = (type: Agent["type"]) => {
         switch (type) {
@@ -168,7 +150,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-wrap gap-2 mb-4">
-                        <Badge variant="outline" className={cn("capitalize", getTypeBadgeVariant(agent.type))}>
+                        <Badge variant="outline" className={cn("capitalize", getTypeBadgeVariant())}>
                             {getTypeLabel(agent.type)}
                         </Badge>
                         <Badge variant="outline" className={cn("capitalize", getStatusBadgeVariant(agent.status))}>

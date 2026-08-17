@@ -61,7 +61,7 @@ export function AuditDetailDrawer({ entry, open, onClose }: Props) {
 
     const actorColors: Record<string, string> = {
         human: "bg-blue-500/10 text-blue-500",
-        agent: "bg-purple-500/10 text-purple-500",
+        agent: "bg-secondary text-muted-foreground",
         system: "bg-gray-500/10 text-gray-500",
     };
 
