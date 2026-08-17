@@ -162,9 +162,9 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                     )}
                     <button
                         onClick={() => onNewChat(agent.id)}
-                        className="w-full flex items-center gap-1.5 px-2.5 h-8 rounded-md text-[12px] text-muted-foreground/50 hover:text-foreground hover:bg-accent/50 transition-colors"
+                        className="w-full flex items-center gap-1.5 h-9 px-2.5 rounded-md text-[13px] text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
                     >
-                        <Plus className="h-3 w-3" />
+                        <Plus className="h-3.5 w-3.5" />
                         New chat
                     </button>
                 </div>

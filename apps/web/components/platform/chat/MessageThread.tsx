@@ -202,11 +202,11 @@ function ThinkingDots({ label = 'Thinking...' }: { label?: string }) {
             <AgentOrb size={40} state="thinking" />
             <div className="flex items-center gap-2 pt-1.5">
                 <span className="flex gap-[3px] items-center">
-                    <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce [animation-delay:-0.3s]" />
-                    <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce [animation-delay:-0.15s]" />
-                    <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce" />
+                    <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce" />
                 </span>
-                <span className="text-sm text-[#c4b5fd] font-mono">{label}</span>
+                <span className="text-sm text-primary/80 font-mono">{label}</span>
             </div>
         </div>
     );

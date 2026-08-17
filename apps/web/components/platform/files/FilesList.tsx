@@ -61,22 +61,22 @@ function formatFileSize(bytes: number): string {
 }
 
 const getFileIcon = (contentType: string) => {
-    if (contentType.includes('pdf')) return <FileText className="w-4 h-4 text-zinc-400" />;
-    if (contentType.includes('image')) return <ImageIcon className="w-4 h-4 text-zinc-400" />;
-    if (contentType.includes('video')) return <Video className="w-4 h-4 text-zinc-400" />;
-    if (contentType.includes('audio')) return <Music className="w-4 h-4 text-zinc-400" />;
-    if (contentType.includes('text') || contentType.includes('json') || contentType.includes('javascript')) return <FileCode className="w-4 h-4 text-zinc-400" />;
-    return <File className="w-4 h-4 text-zinc-400" />;
+    if (contentType.includes('pdf')) return <FileText className="w-4 h-4 text-muted-foreground" />;
+    if (contentType.includes('image')) return <ImageIcon className="w-4 h-4 text-muted-foreground" />;
+    if (contentType.includes('video')) return <Video className="w-4 h-4 text-muted-foreground" />;
+    if (contentType.includes('audio')) return <Music className="w-4 h-4 text-muted-foreground" />;
+    if (contentType.includes('text') || contentType.includes('json') || contentType.includes('javascript')) return <FileCode className="w-4 h-4 text-muted-foreground" />;
+    return <File className="w-4 h-4 text-muted-foreground" />;
 };
 
 function IngestionStatusBadge({ status }: { status: string }) {
     const config: Record<string, { label: string; className: string }> = {
-        pending:    { label: 'Pending',      className: 'bg-zinc-500/10 text-zinc-400' },
+        pending:    { label: 'Pending',      className: 'bg-muted/50 text-muted-foreground' },
         processing: { label: 'Processing…',  className: 'bg-amber-500/10 text-amber-400 animate-pulse' },
         done:       { label: '✅ Done',      className: 'bg-green-500/10 text-green-400' },
         failed:     { label: '❌ Failed',    className: 'bg-red-500/10 text-red-400' },
     };
-    const cfg = config[status] ?? { label: status, className: 'bg-zinc-500/10 text-zinc-400' };
+    const cfg = config[status] ?? { label: status, className: 'bg-muted/50 text-muted-foreground' };
     return (
         <span className={`text-xs px-2 py-0.5 rounded font-medium ${cfg.className}`}>
             {cfg.label}
@@ -108,7 +108,7 @@ function ProcessingStepsIndicator({ status }: { status: string }) {
                     className={`w-1.5 h-1.5 rounded-full transition-colors ${
                         idx < currentStep ? 'bg-green-500' :
                         idx === currentStep ? 'bg-amber-400 animate-pulse' :
-                        'bg-zinc-700'
+                        'bg-muted'
                     }`}
                     title={stage}
                 />
@@ -290,14 +290,14 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     return (
         <div className="space-y-4">
             {/* Breadcrumb */}
-            <div className="flex items-center text-sm text-zinc-400 bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
-                <button onClick={() => onPrefixChange("")} className={`hover:text-zinc-200 transition-colors ${!prefix ? 'text-zinc-200 font-medium' : ''}`}>
+            <div className="flex items-center text-sm text-muted-foreground bg-secondary p-3 rounded-lg border border-border">
+                <button onClick={() => onPrefixChange("")} className={`hover:text-foreground transition-colors ${!prefix ? 'text-foreground font-medium' : ''}`}>
                     Documents
                 </button>
                 {breadcrumbs.map((crumb, idx) => (
                     <div key={crumb.path} className="flex items-center">
                         <ChevronRight className="w-4 h-4 mx-1 opacity-50" />
-                        <button onClick={() => onPrefixChange(crumb.path)} className={`hover:text-zinc-200 transition-colors ${idx === breadcrumbs.length - 1 ? 'text-zinc-200 font-medium' : ''}`}>
+                        <button onClick={() => onPrefixChange(crumb.path)} className={`hover:text-foreground transition-colors ${idx === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}`}>
                             {crumb.name}
                         </button>
                     </div>
@@ -305,7 +305,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             </div>
 
             {isLoading ? (
-                <div className="flex justify-center py-12 flex-col items-center gap-4 text-muted-foreground border border-zinc-800 rounded-lg bg-card">
+                <div className="flex justify-center py-12 flex-col items-center gap-4 text-muted-foreground border border-border rounded-lg bg-card">
                     <Loader2 className="w-8 h-8 animate-spin" />
                     <p>Loading documents...</p>
                 </div>
@@ -327,8 +327,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     />}
                     {/* Bulk action bar */}
                     {selectedIds.size > 0 && (
-                        <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm">
-                            <span className="text-zinc-300">Selected: <strong>{selectedIds.size}</strong> {selectedIds.size === 1 ? 'file' : 'files'}</span>
+                        <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-secondary border border-border text-sm">
+                            <span className="text-foreground/80">Selected: <strong>{selectedIds.size}</strong> {selectedIds.size === 1 ? 'file' : 'files'}</span>
                             <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={bulkDelete} disabled={bulkDeleting}>
                                 {bulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                                 Delete Selected
@@ -337,10 +337,10 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     )}
                     <div className="flex gap-4 items-start">
                     {/* Main table */}
-                    <div className="flex-1 border border-zinc-800 rounded-lg bg-card overflow-hidden min-w-0">
+                    <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
                         <Table>
                             <TableHeader className="bg-muted/50">
-                                <TableRow className="border-zinc-800 hover:bg-transparent">
+                                <TableRow className="border-border hover:bg-transparent">
                                     <TableHead className="w-10">
                                         <Checkbox checked={allPageSelected} onCheckedChange={toggleSelectAll} />
                                     </TableHead>
@@ -364,13 +364,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         <TableRow
                                             key={`folder-${folderName}`}
                                             onClick={() => onPrefixChange(folderPrefix)}
-                                            className="cursor-pointer border-zinc-800/50 hover:bg-zinc-900/40 transition-colors"
+                                            className="cursor-pointer border-border/50 hover:bg-secondary/60 transition-colors"
                                         >
                                             <TableCell className="py-3" onClick={e => e.stopPropagation()} />
                                             <TableCell className="py-3" colSpan={7}>
                                                 <div className="flex items-center gap-2">
                                                     <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
-                                                    <span className="font-medium text-zinc-200">{folderName}/</span>
+                                                    <span className="font-medium text-foreground">{folderName}/</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
@@ -378,7 +378,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="h-7 text-xs text-zinc-400 hover:text-green-400 gap-1"
+                                                        className="h-7 text-xs text-muted-foreground hover:text-green-400 gap-1"
                                                         onClick={() => ingestFolder(folderName)}
                                                         disabled={allDone || isIngesting}
                                                     >
@@ -391,7 +391,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
-                                                            className="h-7 w-7 text-zinc-400 hover:text-red-500"
+                                                            className="h-7 w-7 text-muted-foreground hover:text-red-500"
                                                             onClick={() => setDeletingFolderName(folderName)}
                                                         >
                                                             <Trash2 className="w-3.5 h-3.5" />
@@ -405,7 +405,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 {pagedFiles.map(file => (
                                     <TableRow
                                         key={file.id}
-                                        className={`border-zinc-800/50 hover:bg-zinc-900/40 transition-colors cursor-pointer ${selectedFile?.id === file.id ? 'bg-zinc-900/40 border-l-2 border-l-blue-500' : ''}`}
+                                        className={`border-border/50 hover:bg-secondary/60 transition-colors cursor-pointer ${selectedFile?.id === file.id ? 'bg-secondary/60 border-l-2 border-l-blue-500' : ''}`}
                                         onClick={() => setSelectedFile(selectedFile?.id === file.id ? null : file)}
                                     >
                                         <TableCell className="w-10 py-3 align-middle" onClick={e => e.stopPropagation()}>
@@ -415,11 +415,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         <TableCell className="max-w-[180px] py-3">
                                             <div className="flex items-center gap-2">
                                                 {getFileIcon(file.contentType)}
-                                                <span className="text-zinc-300 truncate text-sm font-medium" title={file.filename}>{file.filename}</span>
+                                                <span className="text-foreground/80 truncate text-sm font-medium" title={file.filename}>{file.filename}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <span className="text-xs font-mono text-zinc-400">
+                                            <span className="text-xs font-mono text-muted-foreground">
                                                 {file.formatDetected ?? '—'}
                                             </span>
                                         </TableCell>
@@ -429,7 +429,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                     {file.officeCode}
                                                 </span>
                                             ) : (
-                                                <span className="text-xs text-zinc-600">—</span>
+                                                <span className="text-xs text-muted-foreground/50">—</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="py-3">
@@ -437,25 +437,25 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                 {file.classification}
                                             </span>
                                         </TableCell>
-                                        <TableCell className="text-zinc-400 text-sm">
+                                        <TableCell className="text-muted-foreground text-sm">
                                             {file.chunkCount > 0 ? file.chunkCount : '—'}
                                         </TableCell>
                                         <TableCell>
                                             <ProcessingStepsIndicator status={file.ingestionStatus} />
                                         </TableCell>
-                                        <TableCell className="text-zinc-400 text-sm">
+                                        <TableCell className="text-muted-foreground text-sm">
                                             {formatDistanceToNow(new Date(file.createdAt), { addSuffix: true })}
                                         </TableCell>
                                         <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                                             <div className="flex items-center justify-end gap-1">
-                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-400 hover:text-zinc-200" onClick={() => downloadFile(file.id)}>
+                                                <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => downloadFile(file.id)}>
                                                     <Download className="w-3.5 h-3.5" />
                                                 </Button>
                                                 {(file.ingestionStatus === 'pending' || file.ingestionStatus === 'failed') && (
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        className="h-7 w-7 text-zinc-400 hover:text-green-400"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-green-400"
                                                         title="Ingest"
                                                         onClick={() => ingestFile(file.id)}
                                                         disabled={ingestingFiles.has(file.id)}
@@ -466,7 +466,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                     </Button>
                                                 )}
                                                 {canDelete && (
-                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-zinc-400 hover:text-red-500" onClick={() => setDeletingFileId(file.id)}>
+                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-500" onClick={() => setDeletingFileId(file.id)}>
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </Button>
                                                 )}
@@ -503,7 +503,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                     <ChevronRight className="w-4 h-4" />
                                 </Button>
                             </div>
-                            <span className="text-xs text-zinc-500">Total {filteredFiles.length} files</span>
+                            <span className="text-xs text-muted-foreground/70">Total {filteredFiles.length} files</span>
                         </div>
                     )}
                 </div>

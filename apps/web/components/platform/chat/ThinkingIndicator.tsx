@@ -58,9 +58,9 @@ const WARMUP_STEP_INTERVAL_MS = 8_000;
 function PulsingDots() {
     return (
         <span className="flex gap-[3px] items-center">
-            <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce [animation-delay:-0.3s]" />
-            <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce [animation-delay:-0.15s]" />
-            <span className="h-[4px] w-[4px] rounded-full bg-[#c4b5fd] animate-bounce" />
+            <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce" />
         </span>
     );
 }
@@ -193,7 +193,7 @@ export function ThinkingIndicator({
                         {WARMUP_STEPS.map((step) => (
                             <div key={step} className="flex items-center gap-2 h-6">
                                 <PulsingDots />
-                                <span className="text-sm text-[#c4b5fd] font-mono">
+                                <span className="text-sm text-primary/80 font-mono">
                                     {step}
                                 </span>
                             </div>
@@ -212,7 +212,7 @@ export function ThinkingIndicator({
                 <AgentOrb size={40} state="searching" isLoading />
                 <div className="flex-1 pt-1">
                     {liveElapsed >= 2 && (
-                        <div className="text-sm text-[#c4b5fd] font-mono mb-1.5">
+                        <div className="text-sm text-primary/80 font-mono mb-1.5">
                             Working for {liveElapsed}s
                         </div>
                     )}
@@ -247,7 +247,7 @@ export function ThinkingIndicator({
                 <div className="flex-1 pt-1.5">
                     <div className="flex items-center gap-2">
                         <PulsingDots />
-                        <span className="text-sm text-[#c4b5fd] font-mono animate-in fade-in duration-500" key={messageIndex}>
+                        <span className="text-sm text-primary/80 font-mono animate-in fade-in duration-500" key={messageIndex}>
                             {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
                         </span>
                     </div>

@@ -1,4 +1,4 @@
-import { SendHorizontal, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Bot, Zap, Check, Sparkles } from "lucide-react";
+import { ArrowUp, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Bot, Zap, Check, Sparkles } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -21,6 +21,7 @@ import { RecordingBar } from "./RecordingBar";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SlashPalette, PaletteHandle } from "./SlashPalette";
 import { MentionPalette } from "./MentionPalette";
+import { ProviderIcon } from "./ProviderIcon";
 import { Agent } from "../agents/types";
 
 interface LLMProvider {
@@ -397,10 +398,11 @@ export function ChatInput({
                                                                 onClick={() => onModelChange?.(provider.id)}
                                                                 className="flex items-center gap-2.5 cursor-pointer py-2"
                                                             >
-                                                                <span
+                                                                <ProviderIcon
+                                                                    provider={provider.provider}
                                                                     className={cn(
-                                                                        "h-1.5 w-1.5 shrink-0 rounded-full",
-                                                                        provider.status === 'live' ? "bg-primary" : "bg-muted-foreground/30",
+                                                                        "h-3.5 w-3.5 shrink-0",
+                                                                        provider.status === 'live' ? "text-foreground/70" : "text-muted-foreground/30",
                                                                     )}
                                                                 />
                                                                 <span className="flex-1 truncate">{provider.displayName}</span>
@@ -455,7 +457,7 @@ export function ChatInput({
                                             {isLoading || uploader.isUploading ? (
                                                 <Loader2 className="h-4 w-4 animate-spin" />
                                             ) : (
-                                                <SendHorizontal className="h-4 w-4" strokeWidth={2.25} />
+                                                <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
                                             )}
                                         </button>
                                     )}

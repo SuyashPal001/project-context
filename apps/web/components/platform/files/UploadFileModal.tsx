@@ -197,7 +197,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md bg-zinc-950 border-zinc-800">
+      <DialogContent className="sm:max-w-md bg-popover border-border">
         <DialogHeader>
           <DialogTitle>{isInsideFolder ? 'Add Files' : 'Upload Documents'}</DialogTitle>
           <DialogDescription>
@@ -210,22 +210,22 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
         <div className="py-4 space-y-4">
           {!isInsideFolder && (
             <div className="space-y-2">
-              <label className="text-xs text-zinc-400 font-medium">Folder Name</label>
+              <label className="text-xs text-muted-foreground font-medium">Folder Name</label>
               <Input
                 placeholder="e.g. 3434-5766-8090"
                 value={newFolderName}
                 onChange={e => setNewFolderName(e.target.value)}
                 disabled={isUploading || allSettled}
-                className="bg-zinc-900 border-zinc-800 text-sm font-mono"
+                className="bg-secondary border-border text-sm font-mono"
                 autoFocus
               />
             </div>
           )}
 
           {folderName && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-xs text-zinc-400">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-muted-foreground">
               <FolderOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-              <span className="font-mono text-zinc-300">{folderName}/</span>
+              <span className="font-mono text-foreground/80">{folderName}/</span>
             </div>
           )}
 
@@ -238,7 +238,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
               } ${
                 isDragActive
                   ? 'border-primary bg-primary/10'
-                  : 'border-zinc-800 hover:border-zinc-600 hover:bg-zinc-900/50'
+                  : 'border-border hover:border-input hover:bg-secondary'
               }`}
               onDragEnter={folderReady ? handleDrag : undefined}
               onDragLeave={folderReady ? handleDrag : undefined}
@@ -246,11 +246,11 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
               onDrop={folderReady ? handleDrop : undefined}
               onClick={() => folderReady && fileInputRef.current?.click()}
             >
-              <UploadCloud className="h-8 w-8 text-zinc-500 mb-3" />
-              <p className="text-sm font-medium text-zinc-200 mb-1">
+              <UploadCloud className="h-8 w-8 text-muted-foreground/70 mb-3" />
+              <p className="text-sm font-medium text-foreground mb-1">
                 {folderReady ? 'Drop files here or click to browse' : 'Enter a folder name first'}
               </p>
-              <p className="text-xs text-zinc-500">Multiple files · Scanned images, PDFs, DOCX</p>
+              <p className="text-xs text-muted-foreground/70">Multiple files · Scanned images, PDFs, DOCX</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -259,12 +259,12 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
                   const s = fileStatuses[file.name]
                   const isDuplicate = duplicateNames.has(file.name)
                   return (
-                    <div key={file.name} className={`border rounded-lg p-3 bg-zinc-900/50 ${isDuplicate ? 'border-amber-500/40' : 'border-zinc-800'}`}>
+                    <div key={file.name} className={`border rounded-lg p-3 bg-secondary ${isDuplicate ? 'border-amber-500/40' : 'border-border'}`}>
                       <div className="flex items-center gap-3">
-                        <File className="h-4 w-4 text-zinc-500 shrink-0" />
+                        <File className="h-4 w-4 text-muted-foreground/70 shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-zinc-200 truncate">{file.name}</p>
-                          <p className="text-xs text-zinc-500">
+                          <p className="text-sm text-foreground truncate">{file.name}</p>
+                          <p className="text-xs text-muted-foreground/70">
                             {formatFileSize(file.size)}
                             {isDuplicate && <span className="ml-2 text-amber-400">· will overwrite</span>}
                           </p>
@@ -280,14 +280,14 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
                         {!isUploading && !allSettled && (
                           <button
                             onClick={() => removeFile(file.name)}
-                            className="text-zinc-600 hover:text-red-400 transition-colors ml-1"
+                            className="text-muted-foreground/50 hover:text-red-400 transition-colors ml-1"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </div>
                       {s?.status === 'uploading' && (
-                        <div className="h-1 w-full bg-zinc-800 rounded-full mt-2">
+                        <div className="h-1 w-full bg-muted rounded-full mt-2">
                           <div
                             className="h-full bg-primary rounded-full transition-all duration-150"
                             style={{ width: `${s.progress}%` }}
@@ -302,7 +302,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
               {!isUploading && !allSettled && (
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="text-xs text-muted-foreground/70 hover:text-foreground/80 transition-colors"
                 >
                   + Add more files
                 </button>
@@ -318,7 +318,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
           </div>
         )}
 
-        <DialogFooter className="pt-4 border-t border-zinc-800/50">
+        <DialogFooter className="pt-4 border-t border-border/50">
           {allSettled ? (
             <Button onClick={handleClose} className="w-full">Done</Button>
           ) : (

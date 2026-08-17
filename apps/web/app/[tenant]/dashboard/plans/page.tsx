@@ -181,10 +181,10 @@ function PlanCard({ plan, tenantId, tenantSlug }: { plan: Plan; tenantId: string
         <>
             <div
                 onClick={() => router.push(`/${tenantSlug}/dashboard/plans/${plan.id}`)}
-                className="border-x border-b border-border rounded-xl p-5 cursor-pointer hover:border-foreground/20 transition-colors flex flex-col gap-3"
+                className="border-y border-r border-border rounded-xl p-5 cursor-pointer hover:border-foreground/20 transition-colors flex flex-col gap-3"
                 style={{
-                    borderTop: `2px solid ${STATUS_CONFIG[plan.status].hex}`,
-                    backgroundColor: `color-mix(in oklch, ${STATUS_CONFIG[plan.status].hex} 5%, var(--card))`,
+                    borderLeft: `2px solid ${STATUS_CONFIG[plan.status].hex}`,
+                    backgroundColor: `color-mix(in oklch, ${STATUS_CONFIG[plan.status].hex} 6%, var(--card))`,
                 }}
             >
                 {/* Header */}

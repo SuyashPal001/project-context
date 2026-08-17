@@ -19,10 +19,10 @@ export function FilesFilter({ officeCodes, filterOffice, filterClassification, o
     return (
         <div className="flex gap-2">
             <Select value={filterOffice} onValueChange={onOfficeChange}>
-                <SelectTrigger className="w-36 h-8 text-xs bg-zinc-900 border-zinc-800">
+                <SelectTrigger className="w-36 h-8 text-xs bg-secondary border-border">
                     <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800">
+                <SelectContent className="bg-secondary border-border">
                     <SelectItem value="all" className="text-xs">All Offices</SelectItem>
                     {officeCodes.map(c => (
                         <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
@@ -30,10 +30,10 @@ export function FilesFilter({ officeCodes, filterOffice, filterClassification, o
                 </SelectContent>
             </Select>
             <Select value={filterClassification} onValueChange={onClassificationChange}>
-                <SelectTrigger className="w-44 h-8 text-xs bg-zinc-900 border-zinc-800">
+                <SelectTrigger className="w-44 h-8 text-xs bg-secondary border-border">
                     <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800">
+                <SelectContent className="bg-secondary border-border">
                     {(["all", "Confidential", "Internal"] as const).map(v => (
                         <SelectItem key={v} value={v} className="text-xs">
                             {v === "all" ? "All Classifications" : v}
@@ -42,10 +42,10 @@ export function FilesFilter({ officeCodes, filterOffice, filterClassification, o
                 </SelectContent>
             </Select>
             <Select value={filterFormat} onValueChange={onFormatChange}>
-                <SelectTrigger className="w-36 h-8 text-xs bg-zinc-900 border-zinc-800">
+                <SelectTrigger className="w-36 h-8 text-xs bg-secondary border-border">
                     <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-zinc-800">
+                <SelectContent className="bg-secondary border-border">
                     <SelectItem value="all" className="text-xs">All Formats</SelectItem>
                     {formatTypes.map(f => (
                         <SelectItem key={f} value={f} className="text-xs">{f}</SelectItem>

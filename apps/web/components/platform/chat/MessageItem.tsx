@@ -82,7 +82,7 @@ export function MessageItem({
                 isUser ? "items-end max-w-[75%]" : "items-start w-full"
             )}>
                 {isAssistant && isFirstInSequence && (
-                    <span className="text-[10px] font-mono tracking-[0.08em] text-[#444] uppercase select-none mb-1 block">
+                    <span className="text-[10px] font-mono tracking-[0.08em] text-muted-foreground/50 uppercase select-none mb-1 block">
                         Assistant
                     </span>
                 )}
@@ -248,7 +248,7 @@ export function MessageItem({
                 )}
 
                 {isAssistant && (
-                    <span className="text-[11px] text-[#333] px-1 mt-1">
+                    <span className="text-[11px] text-muted-foreground/60 px-1 mt-1">
                         {format(new Date(message.createdAt), 'h:mm a')}
                     </span>
                 )}
