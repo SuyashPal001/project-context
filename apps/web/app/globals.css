@@ -99,12 +99,10 @@
 
 .dark {
   /* Ops-portal palette, promoted to the global dark theme: zinc neutrals + a violet brand accent. */
-  /* Tuned to roughly match the composited tone of bg-muted/40 (the search
-     bar's fill) against the previous background — that's the "right" tone
-     per feedback, not a value picked in isolation. Search bar itself was
-     bumped to bg-secondary so it still reads as a distinct pill now that
-     the page background sits closer to it. */
-  --background: oklch(16% 0.005 286);
+  /* Progressive lightening per feedback: 6% -> 9% -> 13% -> 16% -> 19%.
+     Still visibly darker than --card (21%, chrome) so the two layers
+     stay distinguishable, but closer in tone than a stark near-black. */
+  --background: oklch(19% 0.005 286);
   --foreground: oklch(96.7% 0.001 286.375); /* zinc-100 */
   --card: oklch(21% 0.006 285.885); /* zinc-900 */
   --card-foreground: oklch(98.5% 0 0); /* zinc-50 */
