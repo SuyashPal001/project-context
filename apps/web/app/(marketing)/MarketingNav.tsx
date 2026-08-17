@@ -1,12 +1,15 @@
 import Link from "next/link";
+import { Brain } from "lucide-react";
 
 export function MarketingNav() {
   return (
     <header className="fixed top-0 z-50 w-full border-b border-[var(--mk-line)] bg-[var(--mk-bg)]/80 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="inline-block h-2 w-2 rounded-full bg-[var(--mk-accent)]" />
-          <span className="font-display text-lg leading-none">{/* TODO brand */}project context</span>
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--mk-accent)]">
+            <Brain className="h-3.5 w-3.5 text-black" strokeWidth={2} />
+          </span>
+          <span className="font-display text-lg leading-none">project context</span>
         </Link>
         <div className="hidden items-center gap-8 sm:flex">
           <Link href="#agents" className="font-mono-mk text-[11px] uppercase tracking-[0.22em] text-[var(--mk-muted)] transition-colors hover:text-[var(--mk-fg)]">agents</Link>

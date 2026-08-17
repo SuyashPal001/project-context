@@ -9,6 +9,7 @@ import { signIn } from "@/lib/auth";
 import { initiateGoogleSignIn } from "@/lib/auth-google";
 import { useHyperspace } from "@/components/hyperspace-provider";
 import { StarfieldCanvas } from "@/components/starfield-canvas";
+import { ProjectContextLogo } from "@/components/platform/SaarthiLogo";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -117,8 +118,8 @@ function LoginPageContent() {
         <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
             <StarfieldCanvas speedMode="idle" />
             <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
-                <div className="text-center space-y-2">
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Project Context</h1>
+                <div className="flex flex-col items-center space-y-3">
+                    <ProjectContextLogo variant="full" iconSize={36} />
                     <p className="text-sm text-muted-foreground">
                         {step === 'email' ? 'Sign in to your account' : step === 'google' ? 'Continue with Google' : 'Enter your password'}
                     </p>
