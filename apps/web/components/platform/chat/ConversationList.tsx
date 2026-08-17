@@ -260,7 +260,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
                         placeholder="Search chats..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="w-full bg-muted/40 border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                        className="w-full bg-secondary border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-primary/20 outline-none transition-all"
                     />
                 </div>
             </div>

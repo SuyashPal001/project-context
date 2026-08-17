@@ -63,7 +63,7 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
+  --background: oklch(0.985 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -99,10 +99,12 @@
 
 .dark {
   /* Ops-portal palette, promoted to the global dark theme: zinc neutrals + a violet brand accent. */
-  /* Close in tone to --card (chrome) rather than high-contrast against it —
-     just enough separation to read as a distinct layer, not a void. Went
-     6% -> 9% -> 13% as the gap kept reading as too much contrast. */
-  --background: oklch(13% 0.005 286);
+  /* Tuned to roughly match the composited tone of bg-muted/40 (the search
+     bar's fill) against the previous background — that's the "right" tone
+     per feedback, not a value picked in isolation. Search bar itself was
+     bumped to bg-secondary so it still reads as a distinct pill now that
+     the page background sits closer to it. */
+  --background: oklch(16% 0.005 286);
   --foreground: oklch(96.7% 0.001 286.375); /* zinc-100 */
   --card: oklch(21% 0.006 285.885); /* zinc-900 */
   --card-foreground: oklch(98.5% 0 0); /* zinc-50 */
