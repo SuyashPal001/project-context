@@ -66,7 +66,7 @@
   /* Much softer than the dark-theme value below — a black shadow at that strength reads as a
      heavy gray smudge against this theme's near-white background instead of subtle elevation. */
   --shadow-elevated-value: 0 4px 16px -4px rgb(0 0 0 / 0.1), 0 1px 4px -1px rgb(0 0 0 / 0.06);
-  --messages-panel: var(--background); /* light theme: sidebar already equals background, no split needed */
+  --messages-panel: var(--card); /* sidebar itself renders bg-card, not bg-background — match that, not background */
   --background: oklch(0.985 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -108,9 +108,9 @@
      Still visibly darker than --card (21%, chrome) so the two layers
      stay distinguishable, but closer in tone than a stark near-black. */
   --background: oklch(19% 0.005 286);
-  /* --sidebar below is ~16% L (see its own hex comment); this panel sits right next to it
-     and should read as part of the same chrome, not the lighter --background content area. */
-  --messages-panel: oklch(17% 0.005 286);
+  /* Sidebar.tsx renders bg-card, not --sidebar/--background — match that exactly so the
+     two chrome panels read as one continuous surface instead of two different tones. */
+  --messages-panel: var(--card);
   --foreground: oklch(96.7% 0.001 286.375); /* zinc-100 */
   --card: oklch(21% 0.006 285.885); /* zinc-900 */
   --card-foreground: oklch(98.5% 0 0); /* zinc-50 */
