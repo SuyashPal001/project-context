@@ -66,7 +66,7 @@ export function AuditLogView() {
             <AuditDetailDrawer entry={selectedEntry} open={!!selectedEntry} onClose={() => setSelectedEntry(null)}/>
 
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center gap-4 bg-muted/20 p-4 rounded-lg">
+            <div className="flex flex-wrap items-center gap-4 bg-card p-3 rounded-lg">
                 <div className="w-[180px]">
                     <Select value={actorTypeFilter} onValueChange={v => { setActorTypeFilter(v); setPage(1); }}>
                         <SelectTrigger><SelectValue placeholder="Actor Type"/></SelectTrigger>
@@ -78,7 +78,7 @@ export function AuditLogView() {
                         </SelectContent>
                     </Select>
                 </div>
-                <div className="relative flex-1 min-w-[200px]">
+                <div className="relative flex-1 max-w-xs">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground"/>
                     <Input placeholder="Filter by action..." className="pl-9" value={actionFilter} onChange={e => setActionFilter(e.target.value)}/>
                 </div>
