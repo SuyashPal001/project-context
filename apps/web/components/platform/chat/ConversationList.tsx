@@ -110,37 +110,41 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
         <div className="mb-1.5">
             <button
                 onClick={onToggle}
+                title={isExpanded ? "Collapse" : `${conversations.length} conversation${conversations.length === 1 ? '' : 's'}`}
                 className={cn(
                     "w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left transition-colors group",
                     hasSelectedConversation ? "bg-accent/60" : "hover:bg-accent/60"
                 )}
             >
-                <span className="relative h-9 w-9 shrink-0">
-                    <PersonaAvatar
-                        persona={agent.persona}
-                        state={agent.id === activeAgentId ? activeState : undefined}
-                        size={36}
-                        className="rounded-full absolute inset-0 transition-opacity group-hover:opacity-0"
-                        iconClassName="text-muted-foreground/60"
-                        icon={getAgentTypeIcon(agent.type)}
-                    />
-                    <ChevronRight
-                        className={cn(
-                            "h-4 w-4 absolute inset-0 m-auto text-muted-foreground opacity-0 group-hover:opacity-100 transition-transform",
-                            isExpanded && "opacity-100 rotate-90"
-                        )}
-                    />
-                </span>
+                <PersonaAvatar
+                    persona={agent.persona}
+                    state={agent.id === activeAgentId ? activeState : undefined}
+                    size={36}
+                    className="rounded-full h-9 w-9 shrink-0"
+                    iconClassName="text-foreground/50"
+                    icon={getAgentTypeIcon(agent.type)}
+                />
                 <span className={cn(
-                    "text-[15px] truncate",
+                    "text-[15px] truncate flex-1",
                     hasSelectedConversation ? "font-semibold text-foreground" : "font-medium text-foreground/80"
                 )}>
                     {agent.name}
                 </span>
+                {conversations.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground/50 tabular-nums shrink-0">
+                        {conversations.length}
+                    </span>
+                )}
+                <ChevronRight
+                    className={cn(
+                        "h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform",
+                        isExpanded && "rotate-90"
+                    )}
+                />
             </button>
 
             {isExpanded && (
-                <div className="pl-[58px] pt-1">
+                <div className="relative ml-[22px] pl-[35px] pt-1 border-l border-border/60">
                     {conversations.length === 0 ? (
                         <button
                             onClick={() => onNewChat(agent.id)}
