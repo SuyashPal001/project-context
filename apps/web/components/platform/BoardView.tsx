@@ -125,7 +125,7 @@ export function BoardView({
         return (
             <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between mb-4">
-                    <h1 className="text-lg font-semibold text-foreground">Board</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Board</h1>
                     <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="mr-1.5 h-4 w-4" />New Task</Button>
                 </div>
                 <Alert variant="destructive">
@@ -141,13 +141,13 @@ export function BoardView({
         return (
             <div className="flex flex-col h-[calc(100vh-180px)]">
                 <div className="flex items-center justify-between mb-4">
-                    <h1 className="text-lg font-semibold text-foreground">Board</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Board</h1>
                     <Button size="sm" disabled><Plus className="mr-1.5 h-4 w-4" />New Task</Button>
                 </div>
                 <div className="flex items-center gap-2 mb-4"><Skeleton className="h-8 w-52" /><Skeleton className="h-8 w-40" /><Skeleton className="h-8 w-44" /></div>
                 <div className="flex flex-row gap-3 overflow-x-auto pb-6">
                     {COLUMNS.map(status => (
-                        <div key={status} className="w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] bg-[#111111] border border-[#222222]">
+                        <div key={status} className="w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] bg-card border border-border">
                             <div className="flex items-center gap-2 px-2 py-3 mb-2">
                                 <Skeleton className="w-4 h-4 rounded-full" /><Skeleton className="h-5 w-24" />
                             </div>
@@ -163,7 +163,7 @@ export function BoardView({
         <TooltipProvider>
             <div className="flex flex-col">
                 <div className="flex items-center justify-between mb-4">
-                    <h1 className="text-lg font-semibold text-foreground">Board</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Board</h1>
                     <Button size="sm" onClick={() => setCreateOpen(true)}><Plus className="mr-1.5 h-4 w-4" />New Task</Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 bg-card p-3 rounded-lg mb-4">

@@ -343,7 +343,7 @@ export default function PlansPage() {
         <div className="flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
-                <h1 className="text-lg font-semibold text-foreground">Plans</h1>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground">Plans</h1>
                 <Button size="sm" onClick={() => setCreateOpen(true)}>
                     <Plus className="w-4 h-4 mr-1.5" />
                     New Plan
