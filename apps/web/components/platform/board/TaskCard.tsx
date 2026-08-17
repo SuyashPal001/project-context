@@ -76,10 +76,10 @@ export function TaskCard({
         >
             <Link href={`/${tenantSlug}/dashboard/board/${task.id}`} className="block" draggable={false}>
                 <div
-                    className="group border-y border-r rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-foreground/20 transition-colors relative"
+                    className="group border-x border-b rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-foreground/20 transition-colors relative"
                     style={{
-                        borderLeft: `2px solid ${statusColor}`,
-                        borderTopColor: 'var(--border)',
+                        borderTop: `2px solid ${statusColor}`,
+                        borderLeftColor: 'var(--border)',
                         borderRightColor: 'var(--border)',
                         borderBottomColor: 'var(--border)',
                         backgroundColor: `color-mix(in oklch, ${statusColor} 6%, var(--card))`,
