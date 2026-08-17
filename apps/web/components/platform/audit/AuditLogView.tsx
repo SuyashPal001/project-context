@@ -66,7 +66,7 @@ export function AuditLogView() {
             <AuditDetailDrawer entry={selectedEntry} open={!!selectedEntry} onClose={() => setSelectedEntry(null)}/>
 
             {/* Filter Bar */}
-            <div className="flex flex-wrap items-center gap-4 bg-muted/20 p-4 rounded-lg border border-border">
+            <div className="flex flex-wrap items-center gap-4 bg-muted/20 p-4 rounded-lg">
                 <div className="w-[180px]">
                     <Select value={actorTypeFilter} onValueChange={v => { setActorTypeFilter(v); setPage(1); }}>
                         <SelectTrigger><SelectValue placeholder="Actor Type"/></SelectTrigger>
