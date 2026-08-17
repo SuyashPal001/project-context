@@ -99,10 +99,10 @@
 
 .dark {
   /* Ops-portal palette, promoted to the global dark theme: zinc neutrals + a violet brand accent. */
-  /* Deliberately darker than zinc-950 — content canvas needs to read as
-     near-true-black against --card so chrome (sidebar/header) visibly
-     reads as a lighter panel sitting on top of it, not the same surface. */
-  --background: oklch(6% 0.004 286);
+  /* Darker than zinc-950 so chrome (sidebar/header) visibly reads as a
+     lighter panel against it, but not so dark it looks like a void on
+     content-heavy pages (tables, forms) — dialed back from oklch(6%). */
+  --background: oklch(9% 0.004 286);
   --foreground: oklch(96.7% 0.001 286.375); /* zinc-100 */
   --card: oklch(21% 0.006 285.885); /* zinc-900 */
   --card-foreground: oklch(98.5% 0 0); /* zinc-50 */
