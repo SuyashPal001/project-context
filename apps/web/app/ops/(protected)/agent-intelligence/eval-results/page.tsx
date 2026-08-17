@@ -31,7 +31,7 @@ const MAX_SCORES = [
 ];
 
 function ScoreBadge({ score }: { score: number | null }) {
-    if (score == null) return <span className="text-zinc-600 text-xs">—</span>;
+    if (score == null) return <span className="text-muted-foreground/80 text-xs">—</span>;
     const pct = score * 100;
     const colorClass =
         pct >= 70 ? "border-green-500/30 text-green-400" :
@@ -92,23 +92,23 @@ export default function EvalResultsPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Eval Results</h1>
-                <p className="text-zinc-500 text-sm mt-1">Individual AI-graded evaluation scores per message, across all tenants.</p>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Eval Results</h1>
+                <p className="text-muted-foreground text-sm mt-1">Individual AI-graded evaluation scores per message, across all tenants.</p>
             </div>
 
             {/* Filters */}
-            <div className="flex flex-wrap items-center gap-3 p-4 border border-zinc-800 rounded-xl bg-zinc-900">
-                <div className="flex items-center gap-2 text-zinc-600">
+            <div className="flex flex-wrap items-center gap-3 p-4 border border-border rounded-xl bg-card">
+                <div className="flex items-center gap-2 text-muted-foreground/80">
                     <Filter className="h-4 w-4" />
                 </div>
                 <Input
                     placeholder="Filter by tenant ID…"
                     value={tenantId}
                     onChange={(e) => setTenantId(e.target.value)}
-                    className="w-64 bg-zinc-950 border-zinc-700 text-sm font-mono"
+                    className="w-64 bg-background border-input text-sm font-mono"
                 />
                 <Select value={dimension} onValueChange={(v) => { setDimension(v); setPage(1); }}>
-                    <SelectTrigger className="w-44 bg-zinc-950 border-zinc-700">
+                    <SelectTrigger className="w-44 bg-background border-input">
                         <SelectValue placeholder="Dimension" />
                     </SelectTrigger>
                     <SelectContent>
@@ -118,7 +118,7 @@ export default function EvalResultsPage() {
                     </SelectContent>
                 </Select>
                 <Select value={maxScore} onValueChange={(v) => { setMaxScore(v); setPage(1); }}>
-                    <SelectTrigger className="w-36 bg-zinc-950 border-zinc-700">
+                    <SelectTrigger className="w-36 bg-background border-input">
                         <SelectValue placeholder="Max score" />
                     </SelectTrigger>
                     <SelectContent>
@@ -128,7 +128,7 @@ export default function EvalResultsPage() {
                     </SelectContent>
                 </Select>
                 {hasFilters && (
-                    <Button variant="ghost" size="sm" className="text-zinc-500 hover:text-zinc-200" onClick={clearFilters}>
+                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground/90" onClick={clearFilters}>
                         Clear
                     </Button>
                 )}
@@ -142,50 +142,50 @@ export default function EvalResultsPage() {
             )}
 
             {!isLoading && !isError && results.length === 0 && (
-                <div className="flex flex-col items-center gap-3 py-24 text-zinc-600 border border-zinc-800 rounded-xl bg-zinc-900">
+                <div className="flex flex-col items-center gap-3 py-24 text-muted-foreground/80 border border-border rounded-xl bg-card">
                     <Star className="h-10 w-10 opacity-40" />
                     <p className="text-sm">No eval results match your filters.</p>
                 </div>
             )}
 
             {(isLoading || results.length > 0) && (
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-zinc-800 hover:bg-transparent">
-                                <TableHead className="text-zinc-500 text-xs">Tenant</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Message Preview</TableHead>
-                                <TableHead className="text-zinc-500 text-xs w-32">Dimension</TableHead>
-                                <TableHead className="text-zinc-500 text-xs w-24">Score</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Reasoning</TableHead>
-                                <TableHead className="text-zinc-500 text-xs w-28">Model</TableHead>
-                                <TableHead className="text-zinc-500 text-xs w-36">Timestamp</TableHead>
+                            <TableRow className="border-border hover:bg-transparent">
+                                <TableHead className="text-muted-foreground text-xs">Tenant</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Message Preview</TableHead>
+                                <TableHead className="text-muted-foreground text-xs w-32">Dimension</TableHead>
+                                <TableHead className="text-muted-foreground text-xs w-24">Score</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Reasoning</TableHead>
+                                <TableHead className="text-muted-foreground text-xs w-28">Model</TableHead>
+                                <TableHead className="text-muted-foreground text-xs w-36">Timestamp</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading
                                 ? Array.from({ length: 10 }).map((_, i) => (
-                                    <TableRow key={i} className="border-zinc-800">
+                                    <TableRow key={i} className="border-border">
                                         {Array.from({ length: 7 }).map((_, j) => (
                                             <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                                         ))}
                                     </TableRow>
                                 ))
                                 : results.map((r: OpsEvalResult) => (
-                                    <TableRow key={r.id} className="border-zinc-800 hover:bg-zinc-800/30">
+                                    <TableRow key={r.id} className="border-border hover:bg-secondary/30">
                                         <TableCell>
                                             <div>
-                                                <p className="text-zinc-300 font-medium text-sm">{r.tenantName ?? "—"}</p>
-                                                <p className="text-zinc-600 font-mono text-[10px]">{r.tenantId.substring(0, 8)}</p>
+                                                <p className="text-foreground/75 font-medium text-sm">{r.tenantName ?? "—"}</p>
+                                                <p className="text-muted-foreground/80 font-mono text-[10px]">{r.tenantId.substring(0, 8)}</p>
                                             </div>
                                         </TableCell>
                                         <TableCell className="max-w-[220px]">
                                             {r.messagePreview
-                                                ? <p className="text-zinc-400 text-xs line-clamp-2">{r.messagePreview}</p>
-                                                : <span className="text-zinc-700 text-xs">—</span>}
+                                                ? <p className="text-foreground/60 text-xs line-clamp-2">{r.messagePreview}</p>
+                                                : <span className="text-muted-foreground/60 text-xs">—</span>}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wider border-zinc-700 text-zinc-400">
+                                            <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wider border-input text-foreground/60">
                                                 {r.dimension}
                                             </Badge>
                                         </TableCell>
@@ -194,15 +194,15 @@ export default function EvalResultsPage() {
                                         </TableCell>
                                         <TableCell className="max-w-[240px]">
                                             {r.reasoning
-                                                ? <p className="text-zinc-500 text-xs line-clamp-2">{r.reasoning}</p>
-                                                : <span className="text-zinc-700 text-xs">—</span>}
+                                                ? <p className="text-muted-foreground text-xs line-clamp-2">{r.reasoning}</p>
+                                                : <span className="text-muted-foreground/60 text-xs">—</span>}
                                         </TableCell>
                                         <TableCell>
                                             {r.model
-                                                ? <span className="font-mono text-[10px] text-zinc-500">{r.model}</span>
-                                                : <span className="text-zinc-700 text-xs">—</span>}
+                                                ? <span className="font-mono text-[10px] text-muted-foreground">{r.model}</span>
+                                                : <span className="text-muted-foreground/60 text-xs">—</span>}
                                         </TableCell>
-                                        <TableCell className="font-mono text-[11px] text-zinc-500 whitespace-nowrap">
+                                        <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
                                             {fmtTs(r.createdAt)}
                                         </TableCell>
                                     </TableRow>
@@ -214,15 +214,15 @@ export default function EvalResultsPage() {
 
             {!isLoading && !isError && results.length > 0 && (
                 <div className="flex items-center justify-between px-1">
-                    <p className="text-sm text-zinc-500">
-                        Page <span className="text-zinc-300 font-medium">{page}</span> of <span className="text-zinc-300 font-medium">{totalPages}</span>
+                    <p className="text-sm text-muted-foreground">
+                        Page <span className="text-foreground/75 font-medium">{page}</span> of <span className="text-foreground/75 font-medium">{totalPages}</span>
                         {data?.total ? <span className="ml-2">({data.total.toLocaleString()} total)</span> : null}
                     </p>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="border-zinc-700">
+                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="border-input">
                             <ChevronLeft className="mr-1 h-4 w-4" />Previous
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="border-zinc-700">
+                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="border-input">
                             Next<ChevronRight className="ml-1 h-4 w-4" />
                         </Button>
                     </div>

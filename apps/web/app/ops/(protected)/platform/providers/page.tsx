@@ -24,7 +24,7 @@ const PROVIDER_COLORS: Record<OpsProvider["provider"], string> = {
     openai:      "border-green-500/30 text-green-400",
     anthropic:   "border-orange-500/30 text-orange-400",
     mistral:     "border-blue-500/30 text-blue-400",
-    openrouter:  "border-violet-500/30 text-violet-400",
+    openrouter:  "border-primary/30 text-primary",
     kimi:        "border-cyan-500/30 text-cyan-400",
     vertex:      "border-yellow-500/30 text-yellow-400",
 };
@@ -73,26 +73,26 @@ export default function ProvidersPage() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-zinc-50">LLM Providers</h1>
-                    <p className="text-zinc-500 text-sm mt-1">Platform-level model providers available to all agents.</p>
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground">LLM Providers</h1>
+                    <p className="text-muted-foreground text-sm mt-1">Platform-level model providers available to all agents.</p>
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                         <Button size="sm"><Plus className="mr-2 h-4 w-4" />Add Provider</Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[440px] bg-zinc-900 border-zinc-800">
+                    <DialogContent className="sm:max-w-[440px] bg-card border-border">
                         <DialogHeader>
                             <DialogTitle>Add LLM Provider</DialogTitle>
-                            <DialogDescription className="text-zinc-500">Register a new platform-level model provider.</DialogDescription>
+                            <DialogDescription className="text-muted-foreground">Register a new platform-level model provider.</DialogDescription>
                         </DialogHeader>
                         <Form {...form}>
                             <form onSubmit={form.handleSubmit((v) => createMutation.mutate(v))} className="space-y-4 pt-2">
                                 <FormField control={form.control} name="provider" render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel className="text-zinc-300">Provider</FormLabel>
+                                        <FormLabel className="text-foreground/75">Provider</FormLabel>
                                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                                             <FormControl>
-                                                <SelectTrigger className="bg-zinc-950 border-zinc-700">
+                                                <SelectTrigger className="bg-background border-input">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                             </FormControl>
@@ -107,27 +107,27 @@ export default function ProvidersPage() {
                                 )} />
                                 <FormField control={form.control} name="model" render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel className="text-zinc-300">Model ID</FormLabel>
-                                        <FormControl><Input placeholder="gpt-4o, claude-sonnet-4-6…" {...field} className="bg-zinc-950 border-zinc-700 font-mono text-sm" /></FormControl>
+                                        <FormLabel className="text-foreground/75">Model ID</FormLabel>
+                                        <FormControl><Input placeholder="gpt-4o, claude-sonnet-4-6…" {...field} className="bg-background border-input font-mono text-sm" /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )} />
                                 <FormField control={form.control} name="displayName" render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel className="text-zinc-300">Display Name <span className="text-zinc-600">(optional)</span></FormLabel>
-                                        <FormControl><Input placeholder="GPT-4o, Claude Sonnet…" {...field} className="bg-zinc-950 border-zinc-700" /></FormControl>
+                                        <FormLabel className="text-foreground/75">Display Name <span className="text-muted-foreground/80">(optional)</span></FormLabel>
+                                        <FormControl><Input placeholder="GPT-4o, Claude Sonnet…" {...field} className="bg-background border-input" /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )} />
                                 <FormField control={form.control} name="apiKey" render={({ field }) => (
                                     <FormItem>
-                                        <FormLabel className="text-zinc-300">API Key</FormLabel>
-                                        <FormControl><Input type="password" placeholder="sk-…" {...field} className="bg-zinc-950 border-zinc-700 font-mono text-sm" /></FormControl>
+                                        <FormLabel className="text-foreground/75">API Key</FormLabel>
+                                        <FormControl><Input type="password" placeholder="sk-…" {...field} className="bg-background border-input font-mono text-sm" /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )} />
                                 <div className="flex justify-end gap-3 pt-2">
-                                    <Button type="button" variant="outline" size="sm" onClick={() => setIsDialogOpen(false)} className="border-zinc-700">Cancel</Button>
+                                    <Button type="button" variant="outline" size="sm" onClick={() => setIsDialogOpen(false)} className="border-input">Cancel</Button>
                                     <Button type="submit" size="sm" disabled={createMutation.isPending}>
                                         {createMutation.isPending ? "Adding…" : "Add Provider"}
                                     </Button>
@@ -146,38 +146,38 @@ export default function ProvidersPage() {
             )}
 
             {!isLoading && !isError && providers.length === 0 && (
-                <div className="flex flex-col items-center gap-3 py-24 text-zinc-600 border border-zinc-800 rounded-xl bg-zinc-900">
+                <div className="flex flex-col items-center gap-3 py-24 text-muted-foreground/80 border border-border rounded-xl bg-card">
                     <Cpu className="h-10 w-10 opacity-40" />
                     <p className="text-sm">No platform providers registered yet.</p>
                 </div>
             )}
 
             {(isLoading || providers.length > 0) && (
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-zinc-800 hover:bg-transparent">
-                                <TableHead className="text-zinc-500 text-xs">Name</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Provider</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Model ID</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Tenants Using</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Status</TableHead>
+                            <TableRow className="border-border hover:bg-transparent">
+                                <TableHead className="text-muted-foreground text-xs">Name</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Provider</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Model ID</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Tenants Using</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Status</TableHead>
                                 <TableHead className="w-20" />
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading
                                 ? Array.from({ length: 4 }).map((_, i) => (
-                                    <TableRow key={i} className="border-zinc-800">
+                                    <TableRow key={i} className="border-border">
                                         {Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
                                     </TableRow>
                                 ))
                                 : providers.map((p) => (
-                                    <TableRow key={p.id} className="border-zinc-800 hover:bg-zinc-800/30">
+                                    <TableRow key={p.id} className="border-border hover:bg-secondary/30">
                                         <TableCell>
                                             <div className="flex items-center gap-2">
-                                                <p className="text-zinc-200 font-medium text-sm">{p.displayName}</p>
-                                                {p.isDefault && <Badge variant="outline" className="text-[9px] border-zinc-700 text-zinc-500 uppercase tracking-wider">default</Badge>}
+                                                <p className="text-foreground/90 font-medium text-sm">{p.displayName}</p>
+                                                {p.isDefault && <Badge variant="outline" className="text-[9px] border-input text-muted-foreground uppercase tracking-wider">default</Badge>}
                                             </div>
                                         </TableCell>
                                         <TableCell>
@@ -185,22 +185,22 @@ export default function ProvidersPage() {
                                                 {p.provider}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="font-mono text-xs text-zinc-400">{p.model}</TableCell>
+                                        <TableCell className="font-mono text-xs text-foreground/60">{p.model}</TableCell>
                                         <TableCell>
-                                            <span className="text-zinc-300 font-medium text-sm">{p.tenantsUsing}</span>
-                                            <span className="text-zinc-600 text-xs ml-1">tenants</span>
+                                            <span className="text-foreground/75 font-medium text-sm">{p.tenantsUsing}</span>
+                                            <span className="text-muted-foreground/80 text-xs ml-1">tenants</span>
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className={p.status === "live"
                                                 ? "text-[10px] border-green-500/30 text-green-400"
-                                                : "text-[10px] border-zinc-700 text-zinc-500"}>
+                                                : "text-[10px] border-input text-muted-foreground"}>
                                                 {p.status === "live" ? "live" : "disabled"}
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
                                             <AlertDialog>
                                                 <AlertDialogTrigger asChild>
-                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-zinc-600 hover:text-zinc-200">
+                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground/80 hover:text-foreground/90">
                                                         {p.status === "live"
                                                             ? <ToggleRight className="h-4 w-4 text-green-500" />
                                                             : <ToggleLeft className="h-4 w-4" />}

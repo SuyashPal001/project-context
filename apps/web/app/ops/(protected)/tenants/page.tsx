@@ -64,17 +64,17 @@ export default function TenantsListPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Tenants</h1>
-                <p className="text-zinc-500 text-sm mt-1">All workspaces across the platform.</p>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Tenants</h1>
+                <p className="text-muted-foreground text-sm mt-1">All workspaces across the platform.</p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 p-4 border border-zinc-800 rounded-xl bg-zinc-900">
+            <div className="flex flex-wrap items-center gap-3 p-4 border border-border rounded-xl bg-card">
                 <div className="relative flex-1 min-w-[260px]">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-                    <Input placeholder="Search by name or slug…" className="pl-9 bg-zinc-950 border-zinc-700" value={search} onChange={(e) => setSearch(e.target.value)} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input placeholder="Search by name or slug…" className="pl-9 bg-background border-input" value={search} onChange={(e) => setSearch(e.target.value)} />
                 </div>
                 <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-                    <SelectTrigger className="w-44 bg-zinc-950 border-zinc-700">
+                    <SelectTrigger className="w-44 bg-background border-input">
                         <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -95,30 +95,30 @@ export default function TenantsListPage() {
             )}
 
             {!isLoading && !isError && tenants.length === 0 && (
-                <div className="flex flex-col items-center justify-center gap-3 py-24 text-zinc-600 border border-zinc-800 rounded-xl bg-zinc-900">
+                <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground/80 border border-border rounded-xl bg-card">
                     <Users className="h-10 w-10 opacity-40" />
                     <p className="text-sm font-medium">No tenants found.</p>
                 </div>
             )}
 
             {(isLoading || tenants.length > 0) && (
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-zinc-800 hover:bg-transparent">
-                                <TableHead className="text-zinc-400">Name</TableHead>
-                                <TableHead className="text-zinc-400">Slug</TableHead>
-                                <TableHead className="text-zinc-400">Type</TableHead>
-                                <TableHead className="text-zinc-400">Status</TableHead>
-                                <TableHead className="text-zinc-400">Plan</TableHead>
-                                <TableHead className="text-zinc-400">Created</TableHead>
+                            <TableRow className="border-border hover:bg-transparent">
+                                <TableHead className="text-foreground/60">Name</TableHead>
+                                <TableHead className="text-foreground/60">Slug</TableHead>
+                                <TableHead className="text-foreground/60">Type</TableHead>
+                                <TableHead className="text-foreground/60">Status</TableHead>
+                                <TableHead className="text-foreground/60">Plan</TableHead>
+                                <TableHead className="text-foreground/60">Created</TableHead>
                                 <TableHead className="w-10" />
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading
                                 ? Array.from({ length: 8 }).map((_, i) => (
-                                    <TableRow key={i} className="border-zinc-800">
+                                    <TableRow key={i} className="border-border">
                                         {Array.from({ length: 7 }).map((_, j) => (
                                             <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                                         ))}
@@ -127,20 +127,20 @@ export default function TenantsListPage() {
                                 : tenants.map((tenant) => (
                                     <TableRow
                                         key={tenant.id}
-                                        className="border-zinc-800 cursor-pointer hover:bg-zinc-800/40"
+                                        className="border-border cursor-pointer hover:bg-secondary/40"
                                         onClick={() => router.push(`/ops/tenants/${tenant.id}`)}
                                     >
-                                        <TableCell className="font-medium text-zinc-200">{tenant.name}</TableCell>
-                                        <TableCell className="font-mono text-xs text-zinc-500">{tenant.slug}</TableCell>
+                                        <TableCell className="font-medium text-foreground/90">{tenant.name}</TableCell>
+                                        <TableCell className="font-mono text-xs text-muted-foreground">{tenant.slug}</TableCell>
                                         <TableCell><StatusBadge status={tenant.type} /></TableCell>
                                         <TableCell><StatusBadge status={tenant.status} /></TableCell>
-                                        <TableCell className="text-zinc-400 text-sm">{tenant.plan}</TableCell>
-                                        <TableCell className="text-zinc-500 text-sm">{fmt(tenant.createdAt)}</TableCell>
+                                        <TableCell className="text-foreground/60 text-sm">{tenant.plan}</TableCell>
+                                        <TableCell className="text-muted-foreground text-sm">{fmt(tenant.createdAt)}</TableCell>
                                         <TableCell onClick={(e) => e.stopPropagation()}>
                                             {tenant.status !== "deleted" && (
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-200">
+                                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground/90">
                                                             <MoreHorizontal className="h-4 w-4" />
                                                         </Button>
                                                     </DropdownMenuTrigger>
@@ -195,14 +195,14 @@ export default function TenantsListPage() {
 
             {!isLoading && !isError && tenants.length > 0 && (
                 <div className="flex items-center justify-between px-1">
-                    <p className="text-sm text-zinc-500">
-                        Page <span className="text-zinc-300 font-medium">{page}</span> of <span className="text-zinc-300 font-medium">{totalPages}</span>
+                    <p className="text-sm text-muted-foreground">
+                        Page <span className="text-foreground/75 font-medium">{page}</span> of <span className="text-foreground/75 font-medium">{totalPages}</span>
                     </p>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="border-zinc-700">
+                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="border-input">
                             <ChevronLeft className="mr-1 h-4 w-4" /> Previous
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="border-zinc-700">
+                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="border-input">
                             Next <ChevronRight className="ml-1 h-4 w-4" />
                         </Button>
                     </div>

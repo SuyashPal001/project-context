@@ -54,15 +54,15 @@ function StatCard({
     loading?: boolean;
 }) {
     return (
-        <div className="flex flex-col gap-3 p-5 rounded-xl border border-zinc-800 bg-zinc-900">
+        <div className="flex flex-col gap-3 p-5 rounded-xl border border-border bg-card">
             <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</p>
-                <Icon className="h-4 w-4 text-zinc-600" />
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+                <Icon className="h-4 w-4 text-muted-foreground/80" />
             </div>
             {loading
                 ? <Skeleton className="h-8 w-24" />
-                : <p className="text-3xl font-bold tracking-tight text-zinc-50">{value ?? "—"}</p>}
-            {sub && <p className="text-xs text-zinc-600">{sub}</p>}
+                : <p className="text-3xl font-bold tracking-tight text-foreground">{value ?? "—"}</p>}
+            {sub && <p className="text-xs text-muted-foreground/80">{sub}</p>}
         </div>
     );
 }
@@ -83,10 +83,10 @@ export default function FinOpsPage() {
             {/* Header + period selector */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-zinc-50">FinOps</h1>
-                    <p className="text-zinc-500 text-sm mt-1">Platform-wide LLM cost and token usage.</p>
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground">FinOps</h1>
+                    <p className="text-muted-foreground text-sm mt-1">Platform-wide LLM cost and token usage.</p>
                 </div>
-                <div className="flex items-center gap-1 p-1 rounded-lg border border-zinc-800 bg-zinc-900 w-fit">
+                <div className="flex items-center gap-1 p-1 rounded-lg border border-border bg-card w-fit">
                     {PERIODS.map(({ value, label }) => (
                         <button
                             key={value}
@@ -94,8 +94,8 @@ export default function FinOpsPage() {
                             className={[
                                 "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
                                 period === value
-                                    ? "bg-zinc-700 text-zinc-50"
-                                    : "text-zinc-500 hover:text-zinc-200",
+                                    ? "bg-input text-foreground"
+                                    : "text-muted-foreground hover:text-foreground/90",
                             ].join(" ")}
                         >
                             {label}
@@ -143,55 +143,55 @@ export default function FinOpsPage() {
 
             {/* Per-tenant spend */}
             <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Spend by Tenant</h2>
+                <h2 className="text-sm font-semibold text-foreground/60 uppercase tracking-wider">Spend by Tenant</h2>
 
                 {!isLoading && !isError && byTenant.length === 0 && (
-                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-zinc-600 border border-zinc-800 rounded-xl bg-zinc-900">
+                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground/80 border border-border rounded-xl bg-card">
                         <DollarSign className="h-10 w-10 opacity-40" />
                         <p className="text-sm">No cost data for this period.</p>
                     </div>
                 )}
 
                 {(isLoading || byTenant.length > 0) && (
-                    <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                    <div className="border border-border rounded-xl bg-card overflow-hidden">
                         <Table>
                             <TableHeader>
-                                <TableRow className="border-zinc-800 hover:bg-transparent">
-                                    <TableHead className="text-zinc-500 text-xs">Tenant</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs text-right w-28">Conversations</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs text-right w-32">Input Tokens</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs text-right w-32">Output Tokens</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs text-right w-32">Total Cost</TableHead>
+                                <TableRow className="border-border hover:bg-transparent">
+                                    <TableHead className="text-muted-foreground text-xs">Tenant</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs text-right w-28">Conversations</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs text-right w-32">Input Tokens</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs text-right w-32">Output Tokens</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs text-right w-32">Total Cost</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading
                                     ? Array.from({ length: 6 }).map((_, i) => (
-                                        <TableRow key={i} className="border-zinc-800">
+                                        <TableRow key={i} className="border-border">
                                             {Array.from({ length: 5 }).map((_, j) => (
                                                 <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                                             ))}
                                         </TableRow>
                                     ))
                                     : byTenant.map((row) => (
-                                        <TableRow key={row.tenantId} className="border-zinc-800 hover:bg-zinc-800/30">
+                                        <TableRow key={row.tenantId} className="border-border hover:bg-secondary/30">
                                             <TableCell>
                                                 <div>
-                                                    <p className="text-zinc-200 font-medium text-sm">{row.tenantName ?? "—"}</p>
-                                                    <p className="text-zinc-600 font-mono text-[10px]">{row.tenantId.substring(0, 8)}</p>
+                                                    <p className="text-foreground/90 font-medium text-sm">{row.tenantName ?? "—"}</p>
+                                                    <p className="text-muted-foreground/80 font-mono text-[10px]">{row.tenantId.substring(0, 8)}</p>
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-right text-zinc-300 text-sm font-medium">
+                                            <TableCell className="text-right text-foreground/75 text-sm font-medium">
                                                 {row.conversationCount.toLocaleString()}
                                             </TableCell>
-                                            <TableCell className="text-right font-mono text-xs text-zinc-400">
+                                            <TableCell className="text-right font-mono text-xs text-foreground/60">
                                                 {fmtTokens(row.inputTokens)}
                                             </TableCell>
-                                            <TableCell className="text-right font-mono text-xs text-zinc-400">
+                                            <TableCell className="text-right font-mono text-xs text-foreground/60">
                                                 {fmtTokens(row.outputTokens)}
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <span className="font-mono text-sm font-semibold text-zinc-50">
+                                                <span className="font-mono text-sm font-semibold text-foreground">
                                                     {fmtCost(row.cost)}
                                                 </span>
                                             </TableCell>
@@ -205,61 +205,61 @@ export default function FinOpsPage() {
 
             {/* Most expensive conversations */}
             <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Most Expensive Conversations</h2>
+                <h2 className="text-sm font-semibold text-foreground/60 uppercase tracking-wider">Most Expensive Conversations</h2>
 
                 {!isLoading && !isError && topConversations.length === 0 && (
-                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-zinc-600 border border-zinc-800 rounded-xl bg-zinc-900">
+                    <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground/80 border border-border rounded-xl bg-card">
                         <BarChart3 className="h-10 w-10 opacity-40" />
                         <p className="text-sm">No conversation data for this period.</p>
                     </div>
                 )}
 
                 {(isLoading || topConversations.length > 0) && (
-                    <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                    <div className="border border-border rounded-xl bg-card overflow-hidden">
                         <Table>
                             <TableHeader>
-                                <TableRow className="border-zinc-800 hover:bg-transparent">
-                                    <TableHead className="text-zinc-500 text-xs">Conversation</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs">Tenant</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs w-40">Timestamp</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs text-right w-28">Input</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs text-right w-28">Output</TableHead>
-                                    <TableHead className="text-zinc-500 text-xs text-right w-28">Cost</TableHead>
+                                <TableRow className="border-border hover:bg-transparent">
+                                    <TableHead className="text-muted-foreground text-xs">Conversation</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs">Tenant</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs w-40">Timestamp</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs text-right w-28">Input</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs text-right w-28">Output</TableHead>
+                                    <TableHead className="text-muted-foreground text-xs text-right w-28">Cost</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {isLoading
                                     ? Array.from({ length: 8 }).map((_, i) => (
-                                        <TableRow key={i} className="border-zinc-800">
+                                        <TableRow key={i} className="border-border">
                                             {Array.from({ length: 6 }).map((_, j) => (
                                                 <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                                             ))}
                                         </TableRow>
                                     ))
                                     : topConversations.map((row, idx) => (
-                                        <TableRow key={`${row.conversationId}-${idx}`} className="border-zinc-800 hover:bg-zinc-800/30">
+                                        <TableRow key={`${row.conversationId}-${idx}`} className="border-border hover:bg-secondary/30">
                                             <TableCell>
-                                                <Badge variant="outline" className="font-mono text-[10px] border-zinc-700 text-zinc-500">
+                                                <Badge variant="outline" className="font-mono text-[10px] border-input text-muted-foreground">
                                                     {row.conversationId.substring(0, 8)}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
                                                 <div>
-                                                    <p className="text-zinc-300 text-sm">{row.tenantName ?? "—"}</p>
-                                                    <p className="text-zinc-600 font-mono text-[10px]">{row.tenantId.substring(0, 8)}</p>
+                                                    <p className="text-foreground/75 text-sm">{row.tenantName ?? "—"}</p>
+                                                    <p className="text-muted-foreground/80 font-mono text-[10px]">{row.tenantId.substring(0, 8)}</p>
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="font-mono text-[11px] text-zinc-500 whitespace-nowrap">
+                                            <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
                                                 {fmtTs(row.createdAt)}
                                             </TableCell>
-                                            <TableCell className="text-right font-mono text-xs text-zinc-400">
+                                            <TableCell className="text-right font-mono text-xs text-foreground/60">
                                                 {fmtTokens(row.inputTokens)}
                                             </TableCell>
-                                            <TableCell className="text-right font-mono text-xs text-zinc-400">
+                                            <TableCell className="text-right font-mono text-xs text-foreground/60">
                                                 {fmtTokens(row.outputTokens)}
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <span className="font-mono text-sm font-semibold text-zinc-50">
+                                                <span className="font-mono text-sm font-semibold text-foreground">
                                                     {fmtCost(row.cost)}
                                                 </span>
                                             </TableCell>

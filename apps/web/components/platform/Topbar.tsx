@@ -28,6 +28,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 function WorkspaceSwitcher({ currentPlanColor, plan, tenantSlug, workspaces, isLoading }: { currentPlanColor: string, plan: string, tenantSlug: string | undefined, workspaces: any[], isLoading: boolean }) {
     const router = useRouter()
@@ -264,6 +265,8 @@ export function Topbar() {
             <WorkspaceSwitcher currentPlanColor={currentPlanColor} plan={plan} tenantSlug={tenantSlug} workspaces={workspaces} isLoading={isLoadingWorkspaces} />
 
             <div className="flex items-center gap-2">
+                <ThemeToggle variant="icon" />
+
                 <Link
                     href={`/${tenantSlug}/dashboard/notifications`}
                     aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications"}

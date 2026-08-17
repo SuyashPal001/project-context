@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { ThemeProvider } from "next-themes";
 import { useAuthRefresh } from "@/hooks/useAuthRefresh";
 import { HyperspaceProvider } from "./hyperspace-provider";
 import { PostHogProvider } from "./posthog-provider";
@@ -17,12 +18,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     }));
 
     return (
-        <PostHogProvider>
-            <QueryClientProvider client={queryClient}>
-                <HyperspaceProvider>
-                    {children}
-                </HyperspaceProvider>
-            </QueryClientProvider>
-        </PostHogProvider>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+            <PostHogProvider>
+                <QueryClientProvider client={queryClient}>
+                    <HyperspaceProvider>
+                        {children}
+                    </HyperspaceProvider>
+                </QueryClientProvider>
+            </PostHogProvider>
+        </ThemeProvider>
     );
 }

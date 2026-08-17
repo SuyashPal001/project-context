@@ -62,10 +62,10 @@ export default function OpsObservabilityPage() {
             placeholder="Filter by tenant ID…"
             value={tenantId}
             onChange={e => setTenantId(e.target.value)}
-            className="h-8 w-72 rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+            className="h-8 w-72 rounded-md border border-input bg-card px-3 text-sm text-foreground/90 placeholder:text-muted-foreground/80 focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {tenantId && (
-            <button onClick={() => setTenantId('')} className="text-xs text-zinc-500 hover:text-zinc-300">
+            <button onClick={() => setTenantId('')} className="text-xs text-muted-foreground hover:text-foreground/75">
               Clear
             </button>
           )}

@@ -17,8 +17,8 @@ const PAGE_SIZE = 50;
 
 const ACTOR_TYPE_COLORS: Record<OpsAuditEntry["actorType"], string> = {
     human:  "border-blue-500/30 text-blue-400",
-    agent:  "border-violet-500/30 text-violet-400",
-    system: "border-zinc-700 text-zinc-500",
+    agent:  "border-primary/30 text-primary",
+    system: "border-input text-muted-foreground",
 };
 
 export default function AuditLogPage() {
@@ -61,29 +61,29 @@ export default function AuditLogPage() {
             return "text-red-400";
         if (action.includes("updated") || action.includes("changed"))
             return "text-amber-400";
-        return "text-zinc-400";
+        return "text-foreground/60";
     };
 
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Audit Log</h1>
-                <p className="text-zinc-500 text-sm mt-1">All actions across every tenant, newest first.</p>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Audit Log</h1>
+                <p className="text-muted-foreground text-sm mt-1">All actions across every tenant, newest first.</p>
             </div>
 
             {/* Filters */}
-            <div className="flex flex-wrap items-center gap-3 p-4 border border-zinc-800 rounded-xl bg-zinc-900">
-                <div className="flex items-center gap-2 text-zinc-600">
+            <div className="flex flex-wrap items-center gap-3 p-4 border border-border rounded-xl bg-card">
+                <div className="flex items-center gap-2 text-muted-foreground/80">
                     <Filter className="h-4 w-4" />
                 </div>
                 <Input
                     placeholder="Filter by tenant ID…"
                     value={tenantId}
                     onChange={(e) => setTenantId(e.target.value)}
-                    className="w-64 bg-zinc-950 border-zinc-700 text-sm font-mono"
+                    className="w-64 bg-background border-input text-sm font-mono"
                 />
                 <Select value={actorType} onValueChange={(v) => { setActorType(v); setPage(1); }}>
-                    <SelectTrigger className="w-36 bg-zinc-950 border-zinc-700">
+                    <SelectTrigger className="w-36 bg-background border-input">
                         <SelectValue placeholder="Actor type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -98,18 +98,18 @@ export default function AuditLogPage() {
                         type="datetime-local"
                         value={from}
                         onChange={(e) => { setFrom(e.target.value); setPage(1); }}
-                        className="w-48 bg-zinc-950 border-zinc-700 text-sm text-zinc-400"
+                        className="w-48 bg-background border-input text-sm text-foreground/60"
                     />
-                    <span className="text-zinc-600 text-sm">to</span>
+                    <span className="text-muted-foreground/80 text-sm">to</span>
                     <Input
                         type="datetime-local"
                         value={to}
                         onChange={(e) => { setTo(e.target.value); setPage(1); }}
-                        className="w-48 bg-zinc-950 border-zinc-700 text-sm text-zinc-400"
+                        className="w-48 bg-background border-input text-sm text-foreground/60"
                     />
                 </div>
                 {(debouncedTenantId || actorType !== "all" || from || to) && (
-                    <Button variant="ghost" size="sm" className="text-zinc-500 hover:text-zinc-200"
+                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground/90"
                         onClick={() => { setTenantId(""); setDebouncedTenantId(""); setActorType("all"); setFrom(""); setTo(""); setPage(1); }}>
                         Clear
                     </Button>
@@ -124,38 +124,38 @@ export default function AuditLogPage() {
             )}
 
             {!isLoading && !isError && entries.length === 0 && (
-                <div className="flex flex-col items-center gap-3 py-24 text-zinc-600 border border-zinc-800 rounded-xl bg-zinc-900">
+                <div className="flex flex-col items-center gap-3 py-24 text-muted-foreground/80 border border-border rounded-xl bg-card">
                     <FileText className="h-10 w-10 opacity-40" />
                     <p className="text-sm">No audit entries match your filters.</p>
                 </div>
             )}
 
             {(isLoading || entries.length > 0) && (
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-zinc-800 hover:bg-transparent">
-                                <TableHead className="text-zinc-500 text-xs w-40">Timestamp</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Tenant</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Actor</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Action</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Resource</TableHead>
+                            <TableRow className="border-border hover:bg-transparent">
+                                <TableHead className="text-muted-foreground text-xs w-40">Timestamp</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Tenant</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Actor</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Action</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Resource</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading
                                 ? Array.from({ length: 10 }).map((_, i) => (
-                                    <TableRow key={i} className="border-zinc-800">
+                                    <TableRow key={i} className="border-border">
                                         {Array.from({ length: 5 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
                                     </TableRow>
                                 ))
                                 : entries.map((e) => (
-                                    <TableRow key={e.id} className="border-zinc-800 hover:bg-zinc-800/30">
-                                        <TableCell className="font-mono text-[11px] text-zinc-500 whitespace-nowrap">{fmtTs(e.createdAt)}</TableCell>
+                                    <TableRow key={e.id} className="border-border hover:bg-secondary/30">
+                                        <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">{fmtTs(e.createdAt)}</TableCell>
                                         <TableCell>
                                             <div>
-                                                <p className="text-zinc-300 text-sm font-medium">{e.tenantName ?? "—"}</p>
-                                                <p className="text-zinc-600 font-mono text-[10px]">{e.tenantId.substring(0, 8)}</p>
+                                                <p className="text-foreground/75 text-sm font-medium">{e.tenantName ?? "—"}</p>
+                                                <p className="text-muted-foreground/80 font-mono text-[10px]">{e.tenantId.substring(0, 8)}</p>
                                             </div>
                                         </TableCell>
                                         <TableCell>
@@ -163,7 +163,7 @@ export default function AuditLogPage() {
                                                 <Badge variant="outline" className={`w-fit text-[10px] font-medium ${ACTOR_TYPE_COLORS[e.actorType]}`}>
                                                     {e.actorType}
                                                 </Badge>
-                                                <p className="font-mono text-[10px] text-zinc-600">{e.actorId.substring(0, 8)}</p>
+                                                <p className="font-mono text-[10px] text-muted-foreground/80">{e.actorId.substring(0, 8)}</p>
                                             </div>
                                         </TableCell>
                                         <TableCell>
@@ -173,9 +173,9 @@ export default function AuditLogPage() {
                                         </TableCell>
                                         <TableCell>
                                             <div>
-                                                <p className="text-zinc-400 text-sm">{e.resource}</p>
+                                                <p className="text-foreground/60 text-sm">{e.resource}</p>
                                                 {e.resourceId && (
-                                                    <p className="font-mono text-[10px] text-zinc-600">{e.resourceId.substring(0, 8)}</p>
+                                                    <p className="font-mono text-[10px] text-muted-foreground/80">{e.resourceId.substring(0, 8)}</p>
                                                 )}
                                             </div>
                                         </TableCell>
@@ -188,15 +188,15 @@ export default function AuditLogPage() {
 
             {!isLoading && !isError && entries.length > 0 && (
                 <div className="flex items-center justify-between px-1">
-                    <p className="text-sm text-zinc-500">
-                        Page <span className="text-zinc-300 font-medium">{page}</span> of <span className="text-zinc-300 font-medium">{totalPages}</span>
+                    <p className="text-sm text-muted-foreground">
+                        Page <span className="text-foreground/75 font-medium">{page}</span> of <span className="text-foreground/75 font-medium">{totalPages}</span>
                         {data?.total ? <span className="ml-2">({data.total.toLocaleString()} total)</span> : null}
                     </p>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="border-zinc-700">
+                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="border-input">
                             <ChevronLeft className="mr-1 h-4 w-4" />Previous
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="border-zinc-700">
+                        <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="border-input">
                             Next<ChevronRight className="ml-1 h-4 w-4" />
                         </Button>
                     </div>

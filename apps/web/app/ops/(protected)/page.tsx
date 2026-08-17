@@ -17,8 +17,8 @@ import type {
 
 const ACTOR_COLORS: Record<OpsAuditEntry["actorType"], string> = {
     human:  "border-blue-500/30 text-blue-400",
-    agent:  "border-violet-500/30 text-violet-400",
-    system: "border-zinc-700 text-zinc-500",
+    agent:  "border-primary/30 text-primary",
+    system: "border-input text-muted-foreground",
 };
 
 function StatCard({
@@ -31,15 +31,15 @@ function StatCard({
     loading?: boolean;
 }) {
     return (
-        <div className="flex flex-col gap-3 p-5 rounded-xl border border-zinc-800 bg-zinc-900">
+        <div className="flex flex-col gap-3 p-5 rounded-xl border border-border bg-card">
             <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">{label}</p>
-                <Icon className="h-4 w-4 text-zinc-600" />
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+                <Icon className="h-4 w-4 text-muted-foreground/80" />
             </div>
             {loading
                 ? <Skeleton className="h-8 w-24" />
-                : <p className="text-3xl font-bold tracking-tight text-zinc-50">{value ?? "—"}</p>}
-            {sub && <p className="text-xs text-zinc-600">{sub}</p>}
+                : <p className="text-3xl font-bold tracking-tight text-foreground">{value ?? "—"}</p>}
+            {sub && <p className="text-xs text-muted-foreground/80">{sub}</p>}
         </div>
     );
 }
@@ -51,7 +51,7 @@ function actionColor(action: string) {
         return "text-red-400";
     if (action.includes("updated") || action.includes("changed"))
         return "text-amber-400";
-    return "text-zinc-400";
+    return "text-foreground/60";
 }
 
 function fmtTs(iso: string | null | undefined) {
@@ -86,8 +86,8 @@ export default function OpsOverviewPage() {
     return (
         <div className="space-y-8">
             <div>
-                <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Mission Control</h1>
-                <p className="text-zinc-500 text-sm mt-1">Platform overview across all tenants.</p>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Mission Control</h1>
+                <p className="text-muted-foreground text-sm mt-1">Platform overview across all tenants.</p>
             </div>
 
             {statsError && (
@@ -129,13 +129,13 @@ export default function OpsOverviewPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Recent audit entries */}
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
-                    <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
-                        <FileText className="h-4 w-4 text-zinc-600" />
-                        <p className="text-sm font-semibold text-zinc-200">Recent Activity</p>
-                        <span className="text-xs text-zinc-600 ml-auto">last 10 events</span>
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+                        <FileText className="h-4 w-4 text-muted-foreground/80" />
+                        <p className="text-sm font-semibold text-foreground/90">Recent Activity</p>
+                        <span className="text-xs text-muted-foreground/80 ml-auto">last 10 events</span>
                     </div>
-                    <div className="divide-y divide-zinc-800/60">
+                    <div className="divide-y divide-border/60">
                         {auditLoading
                             ? Array.from({ length: 6 }).map((_, i) => (
                                 <div key={i} className="flex items-center gap-3 px-4 py-3">
@@ -145,32 +145,32 @@ export default function OpsOverviewPage() {
                             : auditError
                                 ? <p className="px-4 py-8 text-sm text-red-400/80 text-center">{apiErrMsg(auditErr) ?? "Failed to load recent activity."}</p>
                             : entries.length === 0
-                                ? <p className="px-4 py-8 text-sm text-zinc-600 text-center">No recent activity.</p>
+                                ? <p className="px-4 py-8 text-sm text-muted-foreground/80 text-center">No recent activity.</p>
                                 : entries.map((e) => (
-                                    <div key={e.id} className="flex items-start gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors">
+                                    <div key={e.id} className="flex items-start gap-3 px-4 py-3 hover:bg-secondary/30 transition-colors">
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className={`text-xs font-mono font-medium ${actionColor(e.action)}`}>{e.action}</span>
                                                 <Badge variant="outline" className={`text-[9px] ${ACTOR_COLORS[e.actorType]}`}>{e.actorType}</Badge>
                                             </div>
-                                            <p className="text-[11px] text-zinc-600 mt-0.5 truncate">
+                                            <p className="text-[11px] text-muted-foreground/80 mt-0.5 truncate">
                                                 {e.tenantName ?? e.tenantId.substring(0, 8)} · {e.resource}
                                             </p>
                                         </div>
-                                        <span className="text-[10px] text-zinc-700 whitespace-nowrap flex-shrink-0 mt-0.5">{fmtTs(e.createdAt)}</span>
+                                        <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap flex-shrink-0 mt-0.5">{fmtTs(e.createdAt)}</span>
                                     </div>
                                 ))}
                     </div>
                 </div>
 
                 {/* Top knowledge gaps */}
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
-                    <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
-                        <MessageCircleQuestion className="h-4 w-4 text-zinc-600" />
-                        <p className="text-sm font-semibold text-zinc-200">Top Knowledge Gaps</p>
-                        <span className="text-xs text-zinc-600 ml-auto">this week</span>
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+                        <MessageCircleQuestion className="h-4 w-4 text-muted-foreground/80" />
+                        <p className="text-sm font-semibold text-foreground/90">Top Knowledge Gaps</p>
+                        <span className="text-xs text-muted-foreground/80 ml-auto">this week</span>
                     </div>
-                    <div className="divide-y divide-zinc-800/60">
+                    <div className="divide-y divide-border/60">
                         {gapsLoading
                             ? Array.from({ length: 5 }).map((_, i) => (
                                 <div key={i} className="flex items-center gap-3 px-4 py-3">
@@ -180,15 +180,15 @@ export default function OpsOverviewPage() {
                             : gapsError
                                 ? <p className="px-4 py-8 text-sm text-red-400/80 text-center">{apiErrMsg(gapsErr) ?? "Failed to load knowledge gaps."}</p>
                             : gaps.length === 0
-                                ? <p className="px-4 py-8 text-sm text-zinc-600 text-center">No knowledge gaps detected.</p>
+                                ? <p className="px-4 py-8 text-sm text-muted-foreground/80 text-center">No knowledge gaps detected.</p>
                                 : gaps.map((g) => (
-                                    <div key={`${g.tenantId}-${g.question}`} className="flex items-start gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors">
+                                    <div key={`${g.tenantId}-${g.question}`} className="flex items-start gap-3 px-4 py-3 hover:bg-secondary/30 transition-colors">
                                         <AlertCircle className="h-3.5 w-3.5 text-amber-500/60 flex-shrink-0 mt-0.5" />
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm text-zinc-300 line-clamp-1">{g.question}</p>
-                                            <p className="text-[11px] text-zinc-600 mt-0.5">{g.tenantName ?? g.tenantId.substring(0, 8)}</p>
+                                            <p className="text-sm text-foreground/75 line-clamp-1">{g.question}</p>
+                                            <p className="text-[11px] text-muted-foreground/80 mt-0.5">{g.tenantName ?? g.tenantId.substring(0, 8)}</p>
                                         </div>
-                                        <span className="text-xs text-zinc-600 flex-shrink-0">×{g.timesAsked}</span>
+                                        <span className="text-xs text-muted-foreground/80 flex-shrink-0">×{g.timesAsked}</span>
                                     </div>
                                 ))}
                     </div>

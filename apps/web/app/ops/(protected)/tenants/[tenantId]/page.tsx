@@ -52,7 +52,7 @@ export default function TenantDetailPage() {
 
     return (
         <div className="space-y-8">
-            <Button variant="ghost" size="sm" className="text-zinc-500 hover:text-zinc-100 -ml-2" onClick={() => router.push("/ops/tenants")}>
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground -ml-2" onClick={() => router.push("/ops/tenants")}>
                 <ArrowLeft className="mr-1.5 h-4 w-4" /> All Tenants
             </Button>
 
@@ -70,14 +70,14 @@ export default function TenantDetailPage() {
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="space-y-2">
                         <div className="flex items-center gap-3 flex-wrap">
-                            <h1 className="text-2xl font-bold tracking-tight text-zinc-50">{tenant.name}</h1>
+                            <h1 className="text-2xl font-bold tracking-tight text-foreground">{tenant.name}</h1>
                             <StatusBadge status={tenant.status} />
                             <StatusBadge status={tenant.type} />
                         </div>
-                        <div className="flex items-center gap-3 text-sm text-zinc-500 flex-wrap">
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                             <span className="font-mono">{tenant.slug}</span>
                             <span>·</span>
-                            <span>Plan: <span className="text-zinc-300 font-medium">{tenant.plan}</span></span>
+                            <span>Plan: <span className="text-foreground/75 font-medium">{tenant.plan}</span></span>
                             <span>·</span>
                             <span>Created {fmt(tenant.createdAt)}</span>
                         </div>
@@ -104,7 +104,7 @@ export default function TenantDetailPage() {
                         ) : (
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                    <Button variant="outline" size="sm" className="border-zinc-700">
+                                    <Button variant="outline" size="sm" className="border-input">
                                         <RotateCcw className="mr-1.5 h-4 w-4" /> Reactivate
                                     </Button>
                                 </AlertDialogTrigger>
@@ -132,14 +132,14 @@ export default function TenantDetailPage() {
                     { icon: MessageSquare,  label: "Conversations",   value: stats?.totalConversations ?? 0 },
                     { icon: Zap,            label: "Active Overrides",value: overrides.filter(o => o.status === "active").length },
                 ].map(({ icon: Icon, label, value }) => (
-                    <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
+                    <div key={label} className="rounded-xl border border-border bg-card p-5 space-y-3">
                         <div className="flex items-center justify-between">
-                            <p className="text-xs text-zinc-500 font-medium">{label}</p>
-                            <Icon className="h-4 w-4 text-zinc-700" />
+                            <p className="text-xs text-muted-foreground font-medium">{label}</p>
+                            <Icon className="h-4 w-4 text-muted-foreground/60" />
                         </div>
                         {isLoading
                             ? <Skeleton className="h-7 w-14" />
-                            : <p className="text-2xl font-bold tracking-tight text-zinc-50">{value.toLocaleString()}</p>
+                            : <p className="text-2xl font-bold tracking-tight text-foreground">{value.toLocaleString()}</p>
                         }
                     </div>
                 ))}
@@ -147,41 +147,41 @@ export default function TenantDetailPage() {
 
             {/* Members table */}
             <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Members</h2>
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                <h2 className="text-sm font-semibold text-foreground/60 uppercase tracking-wider">Members</h2>
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-zinc-800 hover:bg-transparent">
+                            <TableRow className="border-border hover:bg-transparent">
                                 {["Name", "Email", "Role", "Type", "Status", "Joined"].map(h => (
-                                    <TableHead key={h} className="text-zinc-500 text-xs">{h}</TableHead>
+                                    <TableHead key={h} className="text-muted-foreground text-xs">{h}</TableHead>
                                 ))}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading
                                 ? Array.from({ length: 4 }).map((_, i) => (
-                                    <TableRow key={i} className="border-zinc-800">
+                                    <TableRow key={i} className="border-border">
                                         {Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
                                     </TableRow>
                                 ))
                                 : members.length === 0
-                                    ? <TableRow className="border-zinc-800"><TableCell colSpan={6} className="py-10 text-center text-zinc-600 text-sm">No members</TableCell></TableRow>
+                                    ? <TableRow className="border-border"><TableCell colSpan={6} className="py-10 text-center text-muted-foreground/80 text-sm">No members</TableCell></TableRow>
                                     : members.map((m) => (
-                                        <TableRow key={m.membershipId} className="border-zinc-800 hover:bg-zinc-800/40">
-                                            <TableCell className="font-medium text-zinc-200 text-sm">{m.userName ?? <span className="text-zinc-600 italic">—</span>}</TableCell>
-                                            <TableCell className="text-zinc-500 text-sm">{m.userEmail ?? <span className="text-zinc-600 italic">agent</span>}</TableCell>
+                                        <TableRow key={m.membershipId} className="border-border hover:bg-secondary/40">
+                                            <TableCell className="font-medium text-foreground/90 text-sm">{m.userName ?? <span className="text-muted-foreground/80 italic">—</span>}</TableCell>
+                                            <TableCell className="text-muted-foreground text-sm">{m.userEmail ?? <span className="text-muted-foreground/80 italic">agent</span>}</TableCell>
                                             <TableCell>
                                                 {m.roleName
-                                                    ? <Badge variant="outline" className="text-[10px] font-mono uppercase tracking-wider border-zinc-700 text-zinc-400">{m.roleName}</Badge>
-                                                    : <span className="text-zinc-600">—</span>}
+                                                    ? <Badge variant="outline" className="text-[10px] font-mono uppercase tracking-wider border-input text-foreground/60">{m.roleName}</Badge>
+                                                    : <span className="text-muted-foreground/80">—</span>}
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant="outline" className={m.memberType === "agent" ? "text-[10px] border-violet-500/30 text-violet-400" : "text-[10px] border-zinc-700 text-zinc-500"}>
+                                                <Badge variant="outline" className={m.memberType === "agent" ? "text-[10px] border-primary/30 text-primary" : "text-[10px] border-input text-muted-foreground"}>
                                                     {m.memberType}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell><StatusBadge status={m.status} /></TableCell>
-                                            <TableCell className="text-zinc-500 text-sm">{fmt(m.joinedAt)}</TableCell>
+                                            <TableCell className="text-muted-foreground text-sm">{fmt(m.joinedAt)}</TableCell>
                                         </TableRow>
                                     ))}
                         </TableBody>
@@ -191,36 +191,36 @@ export default function TenantDetailPage() {
 
             {/* Overrides table */}
             <section className="space-y-3">
-                <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Feature Overrides</h2>
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                <h2 className="text-sm font-semibold text-foreground/60 uppercase tracking-wider">Feature Overrides</h2>
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-zinc-800 hover:bg-transparent">
+                            <TableRow className="border-border hover:bg-transparent">
                                 {["Feature", "Value", "Reason", "Expires", "Status", "Granted"].map(h => (
-                                    <TableHead key={h} className="text-zinc-500 text-xs">{h}</TableHead>
+                                    <TableHead key={h} className="text-muted-foreground text-xs">{h}</TableHead>
                                 ))}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading
                                 ? Array.from({ length: 3 }).map((_, i) => (
-                                    <TableRow key={i} className="border-zinc-800">
+                                    <TableRow key={i} className="border-border">
                                         {Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>)}
                                     </TableRow>
                                 ))
                                 : overrides.length === 0
-                                    ? <TableRow className="border-zinc-800"><TableCell colSpan={6} className="py-10 text-center text-zinc-600 text-sm">No overrides</TableCell></TableRow>
+                                    ? <TableRow className="border-border"><TableCell colSpan={6} className="py-10 text-center text-muted-foreground/80 text-sm">No overrides</TableCell></TableRow>
                                     : overrides.map((o) => (
-                                        <TableRow key={o.id} className="border-zinc-800 hover:bg-zinc-800/40">
+                                        <TableRow key={o.id} className="border-border hover:bg-secondary/40">
                                             <TableCell>
-                                                <p className="text-zinc-200 text-sm font-medium">{o.featureName}</p>
-                                                <p className="text-zinc-600 text-[10px] font-mono uppercase">{o.featureKey}</p>
+                                                <p className="text-foreground/90 text-sm font-medium">{o.featureName}</p>
+                                                <p className="text-muted-foreground/80 text-[10px] font-mono uppercase">{o.featureKey}</p>
                                             </TableCell>
-                                            <TableCell className="font-mono text-xs text-zinc-400">{renderOverrideValue(o)}</TableCell>
-                                            <TableCell className="text-zinc-400 text-sm max-w-[180px] truncate">{o.reason ?? "—"}</TableCell>
-                                            <TableCell className="text-zinc-500 text-sm">{fmt(o.expiresAt)}</TableCell>
+                                            <TableCell className="font-mono text-xs text-foreground/60">{renderOverrideValue(o)}</TableCell>
+                                            <TableCell className="text-foreground/60 text-sm max-w-[180px] truncate">{o.reason ?? "—"}</TableCell>
+                                            <TableCell className="text-muted-foreground text-sm">{fmt(o.expiresAt)}</TableCell>
                                             <TableCell><StatusBadge status={o.status} /></TableCell>
-                                            <TableCell className="text-zinc-500 text-sm">{fmt(o.createdAt)}</TableCell>
+                                            <TableCell className="text-muted-foreground text-sm">{fmt(o.createdAt)}</TableCell>
                                         </TableRow>
                                     ))}
                         </TableBody>

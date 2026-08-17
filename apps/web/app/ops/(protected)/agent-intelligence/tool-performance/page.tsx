@@ -11,12 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { OpsToolPerfResponse } from "@/components/platform/ops/types";
 
 function SuccessBar({ value }: { value: number | null }) {
-    if (value == null) return <span className="text-zinc-600 text-xs">—</span>;
+    if (value == null) return <span className="text-muted-foreground/80 text-xs">—</span>;
     const pct = Math.round(value);
     const color = pct >= 90 ? "bg-green-500" : pct >= 70 ? "bg-amber-500" : "bg-red-500";
     return (
         <div className="flex items-center gap-2">
-            <div className="w-16 h-1.5 rounded-full bg-zinc-800 overflow-hidden flex-shrink-0">
+            <div className="w-16 h-1.5 rounded-full bg-secondary overflow-hidden flex-shrink-0">
                 <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
             </div>
             <span className={`text-sm font-medium ${pct >= 90 ? "text-green-400" : pct >= 70 ? "text-amber-400" : "text-red-400"}`}>
@@ -37,8 +37,8 @@ export default function ToolPerformancePage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Tool Performance</h1>
-                <p className="text-zinc-500 text-sm mt-1">Call counts, success rates, and latency for every tool across all agents.</p>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Tool Performance</h1>
+                <p className="text-muted-foreground text-sm mt-1">Call counts, success rates, and latency for every tool across all agents.</p>
             </div>
 
             {isError && (
@@ -49,65 +49,65 @@ export default function ToolPerformancePage() {
             )}
 
             {!isLoading && !isError && tools.length === 0 && (
-                <div className="flex flex-col items-center gap-3 py-24 text-zinc-600 border border-zinc-800 rounded-xl bg-zinc-900">
+                <div className="flex flex-col items-center gap-3 py-24 text-muted-foreground/80 border border-border rounded-xl bg-card">
                     <Wrench className="h-10 w-10 opacity-40" />
                     <p className="text-sm">No tool call data yet. Appears once agents use tools.</p>
                 </div>
             )}
 
             {(isLoading || tools.length > 0) && (
-                <div className="border border-zinc-800 rounded-xl bg-zinc-900 overflow-hidden">
+                <div className="border border-border rounded-xl bg-card overflow-hidden">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-zinc-800 hover:bg-transparent">
-                                <TableHead className="text-zinc-500 text-xs">Tool</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Tenant</TableHead>
-                                <TableHead className="text-zinc-500 text-xs text-right w-28">Calls</TableHead>
-                                <TableHead className="text-zinc-500 text-xs w-40">Success Rate</TableHead>
-                                <TableHead className="text-zinc-500 text-xs w-32">Avg Latency</TableHead>
-                                <TableHead className="text-zinc-500 text-xs">Last Error</TableHead>
-                                <TableHead className="text-zinc-500 text-xs w-36">Last Seen</TableHead>
+                            <TableRow className="border-border hover:bg-transparent">
+                                <TableHead className="text-muted-foreground text-xs">Tool</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Tenant</TableHead>
+                                <TableHead className="text-muted-foreground text-xs text-right w-28">Calls</TableHead>
+                                <TableHead className="text-muted-foreground text-xs w-40">Success Rate</TableHead>
+                                <TableHead className="text-muted-foreground text-xs w-32">Avg Latency</TableHead>
+                                <TableHead className="text-muted-foreground text-xs">Last Error</TableHead>
+                                <TableHead className="text-muted-foreground text-xs w-36">Last Seen</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading
                                 ? Array.from({ length: 8 }).map((_, i) => (
-                                    <TableRow key={i} className="border-zinc-800">
+                                    <TableRow key={i} className="border-border">
                                         {Array.from({ length: 7 }).map((_, j) => (
                                             <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                                         ))}
                                     </TableRow>
                                 ))
                                 : tools.map((t, i) => (
-                                    <TableRow key={`${t.toolName}-${t.tenantId}-${i}`} className="border-zinc-800 hover:bg-zinc-800/30">
+                                    <TableRow key={`${t.toolName}-${t.tenantId}-${i}`} className="border-border hover:bg-secondary/30">
                                         <TableCell>
-                                            <Badge variant="outline" className="font-mono text-[10px] border-zinc-700 text-zinc-400">
+                                            <Badge variant="outline" className="font-mono text-[10px] border-input text-foreground/60">
                                                 {t.toolName}
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
                                             <div>
-                                                <p className="text-zinc-300 font-medium text-sm">{t.tenantName ?? "—"}</p>
-                                                <p className="text-zinc-600 font-mono text-[10px]">{t.tenantId.substring(0, 8)}</p>
+                                                <p className="text-foreground/75 font-medium text-sm">{t.tenantName ?? "—"}</p>
+                                                <p className="text-muted-foreground/80 font-mono text-[10px]">{t.tenantId.substring(0, 8)}</p>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <span className="text-zinc-200 font-medium text-sm">{t.callCount.toLocaleString()}</span>
+                                            <span className="text-foreground/90 font-medium text-sm">{t.callCount.toLocaleString()}</span>
                                         </TableCell>
                                         <TableCell>
                                             <SuccessBar value={t.successRate} />
                                         </TableCell>
                                         <TableCell>
                                             {t.avgLatencyMs != null
-                                                ? <span className="text-zinc-400 text-sm font-mono">{Math.round(t.avgLatencyMs)}ms</span>
-                                                : <span className="text-zinc-600 text-xs">—</span>}
+                                                ? <span className="text-foreground/60 text-sm font-mono">{Math.round(t.avgLatencyMs)}ms</span>
+                                                : <span className="text-muted-foreground/80 text-xs">—</span>}
                                         </TableCell>
                                         <TableCell>
                                             {t.lastError
                                                 ? <p className="text-red-400/80 text-xs font-mono line-clamp-1 max-w-xs">{t.lastError}</p>
-                                                : <span className="text-zinc-700 text-xs">none</span>}
+                                                : <span className="text-muted-foreground/60 text-xs">none</span>}
                                         </TableCell>
-                                        <TableCell className="font-mono text-[11px] text-zinc-500 whitespace-nowrap">
+                                        <TableCell className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
                                             {(() => {
                                                 if (!t.lastSeen) return "—";
                                                 const d = new Date(t.lastSeen);

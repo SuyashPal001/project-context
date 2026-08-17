@@ -18,9 +18,9 @@ const SECTIONS = [
         icon: Star,
         title: "Eval Scores",
         description: "Quality scores, RAG hit rates, and user feedback thumbs per tenant. Spot underperforming tenants.",
-        accentColor: "text-violet-400",
-        borderColor: "border-violet-500/20",
-        bgColor: "bg-violet-500/5",
+        accentColor: "text-primary",
+        borderColor: "border-primary/20",
+        bgColor: "bg-primary/5",
     },
     {
         href: "/ops/agent-intelligence/tool-performance",
@@ -37,8 +37,8 @@ export default function AgentIntelligencePage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold tracking-tight text-zinc-50">Agent Intelligence</h1>
-                <p className="text-zinc-500 text-sm mt-1">Platform-wide visibility into agent quality, knowledge gaps, and tool behavior.</p>
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">Agent Intelligence</h1>
+                <p className="text-muted-foreground text-sm mt-1">Platform-wide visibility into agent quality, knowledge gaps, and tool behavior.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-4">
@@ -46,16 +46,16 @@ export default function AgentIntelligencePage() {
                     <Link
                         key={href}
                         href={href}
-                        className={`flex items-start gap-4 p-5 rounded-xl border ${borderColor} ${bgColor} hover:bg-zinc-800/40 transition-colors group`}
+                        className={`flex items-start gap-4 p-5 rounded-xl border ${borderColor} ${bgColor} hover:bg-secondary/40 transition-colors group`}
                     >
                         <div className={`h-10 w-10 rounded-lg border ${borderColor} flex items-center justify-center flex-shrink-0`}>
                             <Icon className={`h-5 w-5 ${accentColor}`} />
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className={`text-base font-semibold ${accentColor}`}>{title}</p>
-                            <p className="text-sm text-zinc-500 mt-1">{description}</p>
+                            <p className="text-sm text-muted-foreground mt-1">{description}</p>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-zinc-600 group-hover:text-zinc-400 transition-colors flex-shrink-0 mt-1" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/80 group-hover:text-foreground/60 transition-colors flex-shrink-0 mt-1" />
                     </Link>
                 ))}
             </div>
