@@ -55,11 +55,11 @@ type PlanSummary = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<PlanStatus, { label: string; color: string; bg: string }> = {
-    draft:     { label: 'Draft',     color: 'text-gray-400',   bg: 'bg-gray-500/10' },
-    active:    { label: 'Active',    color: 'text-blue-400',   bg: 'bg-blue-500/10' },
-    completed: { label: 'Completed', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    archived:  { label: 'Archived',  color: 'text-gray-500',   bg: 'bg-gray-500/10' },
+const STATUS_CONFIG: Record<PlanStatus, { label: string; color: string; bg: string; hex: string }> = {
+    draft:     { label: 'Draft',     color: 'text-gray-400',   bg: 'bg-gray-500/10',    hex: '#6B7280' },
+    active:    { label: 'Active',    color: 'text-blue-400',   bg: 'bg-blue-500/10',    hex: '#3B82F6' },
+    completed: { label: 'Completed', color: 'text-emerald-400', bg: 'bg-emerald-500/10', hex: '#10B981' },
+    archived:  { label: 'Archived',  color: 'text-gray-500',   bg: 'bg-gray-500/10',    hex: '#6B7280' },
 }
 
 const VALID_PLAN_TRANSITIONS: Record<PlanStatus, PlanStatus[]> = {
@@ -87,7 +87,7 @@ function PlanSummaryBar({ planId }: { planId: string }) {
         queryFn: () => api.get(`/api/v1/plans/${planId}/summary`),
     })
 
-    if (!data) return <div className="h-1.5 w-full rounded-full bg-[#1e1e1e]" />
+    if (!data) return <div className="h-1.5 w-full rounded-full bg-secondary" />
 
     const { totalMilestones, completedMilestones } = data.data
     const pct = totalMilestones > 0 ? Math.round((completedMilestones / totalMilestones) * 100) : 0
@@ -143,7 +143,7 @@ function StatusDropdown({ plan, tenantId }: { plan: Plan; tenantId: string }) {
                     <ChevronDown className="w-3 h-3" />
                 </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-[#1a1a1a] border-[#2a2a2a]" align="start" onClick={e => e.stopPropagation()}>
+            <DropdownMenuContent className="bg-secondary border-input" align="start" onClick={e => e.stopPropagation()}>
                 {nextStatuses.map(s => (
                     <DropdownMenuItem
                         key={s}
@@ -181,7 +181,11 @@ function PlanCard({ plan, tenantId, tenantSlug }: { plan: Plan; tenantId: string
         <>
             <div
                 onClick={() => router.push(`/${tenantSlug}/dashboard/plans/${plan.id}`)}
-                className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5 cursor-pointer hover:border-[#2a2a2a] transition-colors flex flex-col gap-3"
+                className="border-x border-b border-border rounded-xl p-5 cursor-pointer hover:border-foreground/20 transition-colors flex flex-col gap-3"
+                style={{
+                    borderTop: `2px solid ${STATUS_CONFIG[plan.status].hex}`,
+                    backgroundColor: `color-mix(in oklch, ${STATUS_CONFIG[plan.status].hex} 5%, var(--card))`,
+                }}
             >
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3">
@@ -223,7 +227,7 @@ function PlanCard({ plan, tenantId, tenantSlug }: { plan: Plan; tenantId: string
             </div>
 
             <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-                <AlertDialogContent className="bg-[#0f0f0f] border-[#1e1e1e]">
+                <AlertDialogContent className="bg-popover border-border">
                     <AlertDialogHeader>
                         <AlertDialogTitle>Delete plan?</AlertDialogTitle>
                         <AlertDialogDescription>
@@ -278,7 +282,7 @@ function CreatePlanDialog({ open, onOpenChange, tenantId }: { open: boolean; onO
 
     return (
         <Dialog open={open} onOpenChange={v => { if (!v) reset(); onOpenChange(v) }}>
-            <DialogContent className="bg-[#0f0f0f] border-[#1e1e1e]">
+            <DialogContent className="bg-popover border-border">
                 <DialogHeader>
                     <DialogTitle>New Plan</DialogTitle>
                 </DialogHeader>
@@ -288,7 +292,7 @@ function CreatePlanDialog({ open, onOpenChange, tenantId }: { open: boolean; onO
                         <Input
                             {...register('title')}
                             placeholder="Plan title"
-                            className="bg-[#1a1a1a] border-[#2a2a2a]"
+                            className="bg-secondary border-input"
                             autoFocus
                         />
                         {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
@@ -299,7 +303,7 @@ function CreatePlanDialog({ open, onOpenChange, tenantId }: { open: boolean; onO
                             {...register('description')}
                             placeholder="What is this plan about?"
                             rows={3}
-                            className="bg-[#1a1a1a] border-[#2a2a2a] resize-none"
+                            className="bg-secondary border-input resize-none"
                         />
                     </div>
                     <div className="space-y-1.5">
@@ -307,7 +311,7 @@ function CreatePlanDialog({ open, onOpenChange, tenantId }: { open: boolean; onO
                         <Input
                             {...register('targetDate')}
                             type="date"
-                            className="bg-[#1a1a1a] border-[#2a2a2a]"
+                            className="bg-secondary border-input"
                         />
                     </div>
                     <DialogFooter>
@@ -354,7 +358,7 @@ export default function PlansPage() {
             {isLoading && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {[1, 2, 3].map(i => (
-                        <div key={i} className="bg-[#111111] border border-[#1e1e1e] rounded-xl p-5 space-y-3">
+                        <div key={i} className="bg-card border border-border rounded-xl p-5 space-y-3">
                             <Skeleton className="h-4 w-24" />
                             <Skeleton className="h-5 w-48" />
                             <Skeleton className="h-1.5 w-full rounded-full" />

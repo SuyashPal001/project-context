@@ -56,9 +56,13 @@ export function KanbanColumn({
     return (
         <div
             className={cn(
-                "w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] bg-[#111111] border transition-colors",
-                isOver ? "border-primary/50 bg-[#161616]" : "border-[#222222]"
+                "w-[300px] min-w-[300px] flex-shrink-0 flex flex-col rounded-xl p-3 min-h-[500px] border-x border-b transition-colors",
+                isOver ? "border-primary/50" : "border-border"
             )}
+            style={{
+                borderTop: `2px solid ${cfg.color}`,
+                backgroundColor: `color-mix(in oklch, ${cfg.color} ${isOver ? 10 : 5}%, var(--card))`,
+            }}
             onDragOver={(e) => handleDragOver(e)}
             onDragLeave={() => { setIsOver(false); setDropIndicator(null) }}
             onDrop={handleDrop}
@@ -72,7 +76,7 @@ export function KanbanColumn({
             <div className="flex-1 overflow-y-auto bg-transparent">
                 <div className="flex flex-col gap-2">
                     {tasks.length === 0 && (
-                        <div className="h-24 border-2 border-dashed border-[#222] rounded-lg flex items-center justify-center text-xs text-muted-foreground/30">Empty</div>
+                        <div className="h-24 border-2 border-dashed border-border rounded-lg flex items-center justify-center text-xs text-muted-foreground/30">Empty</div>
                     )}
                     {tasks.map(task => (
                         <div key={task.id} onDragOver={(e) => handleDragOver(e, task.id)} className="relative">

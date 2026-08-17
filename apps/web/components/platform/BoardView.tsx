@@ -190,7 +190,7 @@ export function BoardView({
                             )}
                             {agents.filter(a => a.status === 'active').length > 0 && (
                                 <SelectGroup>
-                                    <SelectLabel>Agents</SelectLabel>
+                                    <SelectLabel>Employees</SelectLabel>
                                     {agents.filter(a => a.status === 'active').map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                                 </SelectGroup>
                             )}
