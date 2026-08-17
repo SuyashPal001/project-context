@@ -7,6 +7,7 @@ import { agents } from '@serverless-saas/agent-schema/agents';
 
 // API routes
 import { agentsRoutes } from './routes/agents';
+import { teamsRoutes } from './routes/teams';
 import { agentSkillsRoutes } from './routes/agent-skills';
 import { agentPoliciesRoutes } from './routes/agent-policies';
 import { agentRunsRoutes } from './routes/agent-runs';
@@ -63,6 +64,7 @@ export function mountApiRoutes(api: Hono<AppEnv>): void {
     registerCounters();
     api.route('/agents', agentsRoutes);
     api.route('/agents', agentSkillsRoutes);
+    api.route('/teams', teamsRoutes);
     api.route('/agents', agentPoliciesRoutes);
     api.route('/agent-runs', agentRunsRoutes);
     api.route('/conversations', evalsFeedbackRoutes);

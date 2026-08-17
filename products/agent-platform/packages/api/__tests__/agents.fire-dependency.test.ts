@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentWorkflows } from '@serverless-saas/agent-schema/agents';
+import { teamMembers } from '@serverless-saas/agent-schema/teams';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 
 const dbMock = vi.hoisted(() => ({
@@ -22,6 +23,9 @@ function setupDb(opts: { workflowCount: number }) {
             }
             if (table === agentWorkflows) {
                 return { where: async () => [{ value: opts.workflowCount }] };
+            }
+            if (table === teamMembers) {
+                return { where: async () => [{ value: 0 }] };
             }
             throw new Error('unexpected db.select().from(...) target in test');
         },

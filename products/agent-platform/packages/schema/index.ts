@@ -1,5 +1,6 @@
 export * from './agents';
 export * from './personas';
+export * from './teams';
 export * from './clients';
 export * from './task-revisions';
 export * from './handover';

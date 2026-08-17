@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { agents, agentWorkflows } from '@serverless-saas/agent-schema/agents';
 import { personas } from '@serverless-saas/agent-schema/personas';
+import { teamMembers } from '@serverless-saas/agent-schema/teams';
 import { users } from '@serverless-saas/database/schema/auth';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { memberships } from '@serverless-saas/database/schema/tenancy';
@@ -17,6 +18,16 @@ import type { AppEnv } from '@serverless-saas/types';
 
 const generateApiKey = (prefix: 'sk' | 'ak'): string => `${prefix}_${randomBytes(32).toString('hex')}`;
 const hashKey = (rawKey: string): string => createHash('sha256').update(rawKey).digest('hex');
+
+// Shared by DELETE and PATCH status:retired — both are "Fire" and must
+// carry the same dependency check.
+async function checkFireDependencies(agentId: string): Promise<{ shiftsCount: number; teamsCount: number }> {
+    const [[{ value: shiftsCount }], [{ value: teamsCount }]] = await Promise.all([
+        db.select({ value: count() }).from(agentWorkflows).where(and(eq(agentWorkflows.agentId, agentId), eq(agentWorkflows.status, 'active'))),
+        db.select({ value: count() }).from(teamMembers).where(eq(teamMembers.agentId, agentId)),
+    ]);
+    return { shiftsCount: Number(shiftsCount), teamsCount: Number(teamsCount) };
+}
 
 // GET /agents
 export async function handleListAgents(c: Context<AppEnv>) {
@@ -154,10 +165,9 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
     // Retiring via PATCH is the same "Fire" action as DELETE — must carry the
     // same dependency check, or PATCH status:retired trivially bypasses it.
     if (result.data.status === 'retired' && existing.status !== 'retired' && body.force !== true) {
-        const [{ value: shiftsCount }] = await db.select({ value: count() }).from(agentWorkflows).where(and(eq(agentWorkflows.agentId, agentId), eq(agentWorkflows.status, 'active')));
-        const teamsCount = 0; // Teams entity ships in a later sub-project
-        if (Number(shiftsCount) > 0 || teamsCount > 0) {
-            return c.json({ error: 'Employee has active dependencies', code: 'FIRE_BLOCKED', shiftsCount: Number(shiftsCount), teamsCount }, 409);
+        const { shiftsCount, teamsCount } = await checkFireDependencies(agentId);
+        if (shiftsCount > 0 || teamsCount > 0) {
+            return c.json({ error: 'Employee has active dependencies', code: 'FIRE_BLOCKED', shiftsCount, teamsCount }, 409);
         }
     }
 
@@ -198,10 +208,9 @@ export async function handleDeleteAgent(c: Context<AppEnv>) {
 
     const force = (await c.req.json().catch(() => ({}))).force === true;
     if (!force) {
-        const [{ value: shiftsCount }] = await db.select({ value: count() }).from(agentWorkflows).where(and(eq(agentWorkflows.agentId, agentId), eq(agentWorkflows.status, 'active')));
-        const teamsCount = 0; // Teams entity ships in a later sub-project
-        if (Number(shiftsCount) > 0 || teamsCount > 0) {
-            return c.json({ error: 'Employee has active dependencies', code: 'FIRE_BLOCKED', shiftsCount: Number(shiftsCount), teamsCount }, 409);
+        const { shiftsCount, teamsCount } = await checkFireDependencies(agentId);
+        if (shiftsCount > 0 || teamsCount > 0) {
+            return c.json({ error: 'Employee has active dependencies', code: 'FIRE_BLOCKED', shiftsCount, teamsCount }, 409);
         }
     }
 
