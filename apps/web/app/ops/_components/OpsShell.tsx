@@ -64,7 +64,7 @@ export function OpsShell({ children }: { children: React.ReactNode }) {
             <div className="flex min-h-screen bg-background text-foreground">
                 {/* Sidebar */}
                 <aside className={cn(
-                    "fixed left-3 top-3 bottom-3 flex flex-col bg-sidebar border border-sidebar-border rounded-2xl shadow-elevated transition-all duration-300 ease-in-out z-50",
+                    "fixed inset-y-0 left-0 flex flex-col bg-sidebar border-r border-sidebar-border transition-all duration-300 ease-in-out z-50",
                     collapsed ? "w-14" : "w-56"
                 )}>
                     {/* Header */}
@@ -173,7 +173,7 @@ export function OpsShell({ children }: { children: React.ReactNode }) {
                 </aside>
 
                 {/* Main */}
-                <div className={cn("flex-1 min-w-0 transition-all duration-300 ease-in-out", collapsed ? "ml-[5rem]" : "ml-[15.5rem]")}>
+                <div className={cn("flex-1 min-w-0 transition-all duration-300 ease-in-out", collapsed ? "ml-14" : "ml-56")}>
                     <main className="min-h-screen p-8">
                         <div className="max-w-7xl mx-auto">
                             {children}

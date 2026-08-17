@@ -259,8 +259,8 @@ export function Topbar() {
 
     return (
         <header className={cn(
-            "fixed top-3 right-3 h-16 flex items-center justify-between px-8 bg-card border border-border rounded-2xl shadow-elevated z-40 transition-all duration-300",
-            isSidebarCollapsed ? "left-[5.5rem]" : "left-[16.5rem]"
+            "fixed top-0 right-0 h-16 flex items-center justify-between px-8 bg-card border-b border-border z-40 transition-all duration-300",
+            isSidebarCollapsed ? "left-16" : "left-60"
         )}>
             <WorkspaceSwitcher currentPlanColor={currentPlanColor} plan={plan} tenantSlug={tenantSlug} workspaces={workspaces} isLoading={isLoadingWorkspaces} />
 

@@ -190,7 +190,7 @@ export function Sidebar() {
     return (
         <TooltipProvider>
             <aside className={cn(
-                "fixed left-3 top-3 bottom-3 flex flex-col bg-card border border-border rounded-2xl shadow-elevated py-6 z-50 transition-all duration-300 ease-in-out",
+                "fixed left-0 top-0 bottom-0 flex flex-col bg-card border-r border-border py-6 z-50 transition-all duration-300 ease-in-out",
                 isSidebarCollapsed ? "w-16 px-2" : "w-60 px-4"
             )}>
                 {/* Logo Section */}
