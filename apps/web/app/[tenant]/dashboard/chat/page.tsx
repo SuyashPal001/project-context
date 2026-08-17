@@ -207,7 +207,7 @@ function ChatPage() {
                 {/* Conversations Sidebar */}
                 <div className={cn(
                     "flex flex-col border-r border-border transition-all duration-300 ease-in-out bg-[var(--messages-panel)] z-20 overflow-hidden relative",
-                    isChatSidebarCollapsed ? "w-0 opacity-0 pointer-events-none -translate-x-full" : "w-1/4 min-w-[280px] opacity-100 translate-x-0"
+                    isChatSidebarCollapsed ? "w-0 opacity-0 pointer-events-none -translate-x-full" : "w-60 opacity-100 translate-x-0"
                 )}>
                     <ConversationList
                         selectedId={conversationId || undefined}
