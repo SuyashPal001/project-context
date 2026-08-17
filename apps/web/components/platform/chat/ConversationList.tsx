@@ -46,8 +46,8 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
                 className={cn(
                     "w-full flex items-center h-9 px-2.5 rounded-md transition-colors text-left",
                     isSelected
-                        ? "bg-accent/80 text-foreground font-medium"
-                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground font-normal"
+                        ? "bg-accent/80 text-foreground font-semibold"
+                        : "text-muted-foreground hover:bg-accent/50 hover:text-foreground font-medium"
                 )}
             >
                 <span className="truncate text-[13px] w-[calc(100%-1.25rem)]">
@@ -144,7 +144,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
             </button>
 
             {isExpanded && (
-                <div className="relative ml-[22px] pl-[35px] pt-1 border-l border-border/60">
+                <div className="relative ml-[22px] pl-[26px] pt-1 border-l border-border/60">
                     {conversations.length === 0 ? (
                         <button
                             onClick={() => onNewChat(agent.id)}
