@@ -100,7 +100,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
                 className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-            <Card className="relative overflow-hidden transition-colors hover:border-primary/40 hover:bg-muted/20">
+            <Card className="relative overflow-hidden transition-colors hover:border-border hover:bg-muted/20">
                 <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                     <div className="space-y-1">
                         <CardTitle className="text-xl font-bold">{agent.name}</CardTitle>

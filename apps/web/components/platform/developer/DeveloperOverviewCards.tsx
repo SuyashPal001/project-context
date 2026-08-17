@@ -41,7 +41,7 @@ function OverviewCard({
 }) {
     return (
         <Link href={href}>
-            <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
+            <Card className="hover:border-border transition-colors cursor-pointer h-full">
                 <CardHeader>
                     <div className="flex items-center gap-2 text-muted-foreground">
                         <Icon className="w-4 h-4" />
