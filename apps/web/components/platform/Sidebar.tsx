@@ -11,7 +11,6 @@ import {
     Key,
     Bot,
     MessageSquare,
-    Bell,
     FileText,
     Building2,
     Sliders,
@@ -27,6 +26,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
+import { useNotifications } from "@/lib/notifications-context"
 import { useSidebar } from "./SidebarContext"
 import {
     Tooltip,
@@ -34,21 +34,22 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { getSidebarItems, getDeveloperPanelItems, getSettingsPanelItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
 import { UsageBar } from "./UsageBar"
-import { SaarthiLogo } from "./SaarthiLogo"
+import { WorkspaceSwitcherPill } from "./WorkspaceSwitcherPill"
+import { AccountMenu } from "./AccountMenu"
 
 
 interface SidebarNavLinkProps {
     item: SidebarItemType
     isCollapsed?: boolean
     onLockedClick?: () => void
+    badgeCount?: number
 }
 
-function SidebarNavLink({ item, isCollapsed, onLockedClick }: SidebarNavLinkProps) {
+function SidebarNavLink({ item, isCollapsed, onLockedClick, badgeCount }: SidebarNavLinkProps) {
     const pathname = usePathname()
     const isActive = pathname === item.href
     const Icon = item.icon
@@ -70,8 +71,15 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick }: SidebarNavLinkProp
                 }
             }}
         >
-            <Icon className="w-4 h-4 shrink-0" />
-            
+            <span className="relative shrink-0">
+                <Icon className="w-4 h-4" />
+                {!!badgeCount && isCollapsed && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground rounded-full text-[9px] h-3.5 min-w-3.5 px-0.5 flex items-center justify-center font-bold">
+                        {badgeCount > 9 ? "9+" : badgeCount}
+                    </span>
+                )}
+            </span>
+
             {!isCollapsed && (
                 <div className="flex items-center justify-between flex-1 min-w-0">
                     <span className="truncate">{item.label}</span>
@@ -79,6 +87,11 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick }: SidebarNavLinkProp
                         {item.showBusinessBadge && (
                             <Badge variant="outline" className="h-4 px-1 text-[8px] font-bold uppercase tracking-tighter bg-primary/10 text-primary border-primary/20">
                                 business
+                            </Badge>
+                        )}
+                        {!!badgeCount && (
+                            <Badge className="h-4 min-w-4 px-1 text-[9px] font-bold bg-primary text-primary-foreground border-transparent">
+                                {badgeCount > 9 ? "9+" : badgeCount}
                             </Badge>
                         )}
                         {item.locked && <Lock className="w-3 h-3 text-muted-foreground" />}
@@ -120,8 +133,9 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick }: SidebarNavLinkProp
 }
 
 export function Sidebar() {
-    const { tenantSlug, role, plan, name, email, entitlementFeatures = {} } = useTenant()
+    const { tenantSlug, role, plan, entitlementFeatures = {} } = useTenant()
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
+    const { unreadCount } = useNotifications()
     const pathname = usePathname()
 
     const entitlements = Object.fromEntries(
@@ -175,33 +189,33 @@ export function Sidebar() {
         }))
     }
 
-    const getInitials = () => {
-        if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-        if (email) return email[0].toUpperCase()
-        return "US"
-    }
-
-    const getAvatarBg = () => {
-        if (role === 'platform_admin') return "bg-[#ff7f50]" // Coral
-        if (role === 'member') return "bg-blue-500"
-        return "bg-zinc-500" // Admin/Owner default
-    }
-
     return (
         <TooltipProvider>
             <aside className={cn(
                 "fixed left-0 top-0 bottom-0 flex flex-col bg-card border-r border-border py-6 z-50 transition-all duration-300 ease-in-out",
                 isSidebarCollapsed ? "w-16 px-2" : "w-60 px-4"
             )}>
-                {/* Logo Section */}
+                {/* Workspace switcher + collapse toggle */}
                 <div className={cn(
-                    "flex items-center mb-8 px-2 transition-all duration-300",
-                    isSidebarCollapsed ? "justify-center" : ""
+                    "flex items-center mb-6 transition-all duration-300",
+                    isSidebarCollapsed ? "flex-col gap-1" : "gap-1"
                 )}>
-                    <SaarthiLogo
-                        variant={isSidebarCollapsed ? "icon" : "full"}
-                        iconSize={isSidebarCollapsed ? 30 : 28}
-                    />
+                    <div className="flex-1 min-w-0">
+                        <WorkspaceSwitcherPill collapsed={isSidebarCollapsed} />
+                    </div>
+                    <Tooltip delayDuration={0}>
+                        <TooltipTrigger asChild>
+                            <button
+                                onClick={toggleSidebar}
+                                className="shrink-0 h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                            >
+                                {isSidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                            </button>
+                        </TooltipTrigger>
+                        <TooltipContent side={isSidebarCollapsed ? "right" : "bottom"} className="ml-1">
+                            {isSidebarCollapsed ? "Expand" : "Collapse"}
+                        </TooltipContent>
+                    </Tooltip>
                 </div>
 
                 {/* Navigation Items */}
@@ -264,6 +278,7 @@ export function Sidebar() {
                                         item={item}
                                         isCollapsed={isSidebarCollapsed}
                                         onLockedClick={() => handleLockedClick(item)}
+                                        badgeCount={item.label === "Notifications" ? unreadCount : undefined}
                                     />
                                 </React.Fragment>
                             )
@@ -275,22 +290,8 @@ export function Sidebar() {
                 {!isSidebarCollapsed && <UsageBar />}
 
                 {/* Footer Section */}
-                <div className="mt-auto pt-4">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={toggleSidebar}
-                        className="w-full h-10 rounded-md hover:bg-accent hover:text-accent-foreground transition-all group"
-                    >
-                        {isSidebarCollapsed ? (
-                            <PanelLeftOpen className="h-5 w-5 text-muted-foreground group-hover:text-foreground" />
-                        ) : (
-                            <div className="flex items-center gap-3 w-full px-3">
-                                <PanelLeftClose className="h-4 w-4 text-muted-foreground group-hover:text-foreground" />
-                                <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">Collapse</span>
-                            </div>
-                        )}
-                    </Button>
+                <div className="mt-auto pt-4 border-t border-border">
+                    <AccountMenu collapsed={isSidebarCollapsed} />
                 </div>
             </aside>
 

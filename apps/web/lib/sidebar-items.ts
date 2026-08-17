@@ -17,6 +17,7 @@ import {
     LayoutList,
     Code2,
     Settings,
+    Bell,
 
 } from "lucide-react";
 import React from 'react';
@@ -56,12 +57,10 @@ export function getSidebarItems(
     if (FEATURE_FLAGS.board) items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
     if (FEATURE_FLAGS.plans) items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
     items.push({ label: "Knowledge Base", href: `${base}/files`, icon: FolderOpen });
+    items.push({ label: "Notifications", href: `${base}/notifications`, icon: Bell });
 
 
     items.push({ isDivider: true, href: '', icon: () => null, label: '' });
-
-    // Notifications deliberately omitted: it lives in the Topbar, left of the
-    // avatar menu, so the unread badge is visible from every page.
 
     // Audit log — admin/owner only (platform management)
     if (isAdminOrOwner) {
