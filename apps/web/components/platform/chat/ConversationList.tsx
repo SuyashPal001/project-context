@@ -249,7 +249,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
     return (
         <div className="flex flex-col h-full bg-background border-r border-border">
             <div className="p-4 flex items-center justify-between">
-                <h2 className="text-lg font-bold tracking-tight">Messages</h2>
+                <h2 className="text-sm font-semibold text-foreground">Messages</h2>
                 <Button onClick={() => onNewChat()} size="icon" variant="ghost"
                     className="h-8 w-8 rounded-full hover:bg-accent/50 transition-colors"
                     title="New conversation"
