@@ -38,7 +38,7 @@ function ResearchStep2({ fields, setField }: StepProps) {
 }
 
 export const researchWizard: WizardSpec = {
-    title: "🔍 Research a topic",
+    title: "Research a topic",
     step1Label: "What would you like to research?",
     Step1: ResearchStep1,
     Step2: ResearchStep2,

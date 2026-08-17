@@ -38,7 +38,7 @@ function RoadmapStep2({ fields, setField }: StepProps) {
 }
 
 export const roadmapWizard: WizardSpec = {
-    title: "🗺️ Build a roadmap",
+    title: "Build a roadmap",
     step1Label: "What are we planning a roadmap for?",
     Step1: RoadmapStep1,
     Step2: RoadmapStep2,

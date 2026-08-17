@@ -50,7 +50,7 @@ function PrdStep2({ fields, setField }: StepProps) {
 }
 
 export const prdWizard: WizardSpec = {
-    title: "📄 Write a PRD",
+    title: "Write a PRD",
     step1Label: "What are we building a PRD for?",
     Step1: PrdStep1,
     Step2: PrdStep2,

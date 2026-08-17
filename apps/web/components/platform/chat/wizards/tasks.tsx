@@ -38,7 +38,7 @@ function TasksStep2({ fields, setField }: StepProps) {
 }
 
 export const tasksWizard: WizardSpec = {
-    title: "✅ Break into tasks",
+    title: "Break into tasks",
     step1Label: "What needs to be broken down into tasks?",
     Step1: TasksStep1,
     Step2: TasksStep2,
