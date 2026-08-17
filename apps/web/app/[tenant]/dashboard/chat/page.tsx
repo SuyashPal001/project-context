@@ -215,6 +215,8 @@ function ChatPage() {
                         onNewChat={handleNewChat}
                         activeAgentId={selectedConversation?.agent?.id ?? selectedConversation?.agentId}
                         activeState={displayState}
+                        isCollapsed={isChatSidebarCollapsed}
+                        onToggleCollapse={toggleChatSidebar}
                     />
                 </div>
 
