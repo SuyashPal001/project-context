@@ -201,10 +201,13 @@ export function Sidebar() {
                     isSidebarCollapsed ? "flex-col gap-1" : "justify-between px-0.5"
                 )}>
                     {!isSidebarCollapsed && (
-                        <div className="flex items-center gap-2 min-w-0">
+                        <Link
+                            href={`/${tenantSlug || ''}/dashboard/chat`}
+                            className="flex items-center gap-2 min-w-0 rounded-md hover:bg-accent/50 transition-colors -mx-1 px-1 py-0.5"
+                        >
                             <span className="shrink-0 rounded-full bg-primary shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)] w-2.5 h-2.5" />
                             <span className="text-base font-semibold text-foreground tracking-tight truncate">Project Context</span>
-                        </div>
+                        </Link>
                     )}
                     <Tooltip delayDuration={0}>
                         <TooltipTrigger asChild>
