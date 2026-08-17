@@ -53,7 +53,7 @@ export function getSidebarItems(
 
     // 1. MAIN SECTION — all users
     items.push({ label: "Chat", href: `${base}/chat`, icon: MessageSquare });
-    items.push({ label: "Agents", href: `${base}/agents`, icon: Bot });
+    items.push({ label: "Employees", href: `${base}/agents`, icon: Bot });
     if (FEATURE_FLAGS.board) items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
     if (FEATURE_FLAGS.plans) items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
     items.push({ label: "Knowledge Base", href: `${base}/files`, icon: FolderOpen });

@@ -79,6 +79,15 @@ export function AgentCard({ agent }: AgentCardProps) {
         }
     };
 
+    const getStatusLabel = (status: Agent["status"]) => {
+        switch (status) {
+            case "active": return "Hired";
+            case "paused": return "Paused";
+            case "retired": return "Retired";
+            default: return status;
+        }
+    };
+
     const getTypeBadgeVariant = () => "bg-secondary text-muted-foreground border-border";
 
     const getTypeLabel = (type: Agent["type"]) => {
@@ -126,22 +135,22 @@ export function AgentCard({ agent }: AgentCardProps) {
                             {agent.status === "active" && (
                                 <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "paused" })}>
                                     <Pause className="mr-2 h-4 w-4" />
-                                    Pause agent
+                                    Pause employee
                                 </DropdownMenuItem>
                             )}
                             {agent.status === "paused" && (
                                 <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "active" })}>
                                     <Play className="mr-2 h-4 w-4" />
-                                    Reactivate agent
+                                    Reactivate employee
                                 </DropdownMenuItem>
                             )}
                             {(agent.status === "active" || agent.status === "paused") && (
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                     className="text-muted-foreground focus:text-foreground cursor-pointer"
                                     onClick={() => setIsRetireDialogOpen(true)}
                                 >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Retire agent
+                                    Retire employee
                                 </DropdownMenuItem>
                             )}
                         </DropdownMenuContent>
@@ -153,8 +162,8 @@ export function AgentCard({ agent }: AgentCardProps) {
                         <Badge variant="outline" className={cn("capitalize", getTypeBadgeVariant())}>
                             {getTypeLabel(agent.type)}
                         </Badge>
-                        <Badge variant="outline" className={cn("capitalize", getStatusBadgeVariant(agent.status))}>
-                            {agent.status}
+                        <Badge variant="outline" className={cn(getStatusBadgeVariant(agent.status))}>
+                            {getStatusLabel(agent.status)}
                         </Badge>
                     </div>
                     <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground border-t pt-4">
@@ -168,9 +177,9 @@ export function AgentCard({ agent }: AgentCardProps) {
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Retire this agent?</AlertDialogTitle>
+                        <AlertDialogTitle>Retire this employee?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            This will permanently deactivate the agent and revoke its API 
+                            This will permanently deactivate the employee and revoke its API
                             key. This cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -183,7 +192,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                                 setIsRetireDialogOpen(false);
                             }}
                         >
-                            Retire agent
+                            Retire employee
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

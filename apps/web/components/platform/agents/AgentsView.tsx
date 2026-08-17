@@ -25,8 +25,8 @@ export function AgentsView() {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight text-foreground">Agents</h1>
-                        <p className="text-muted-foreground mt-2">Configure and manage your AI agents</p>
+                        <h1 className="text-3xl font-bold tracking-tight text-foreground">Employees</h1>
+                        <p className="text-muted-foreground mt-2">Your AI team</p>
                     </div>
                 </div>
                 <Alert variant="destructive">
@@ -44,14 +44,14 @@ export function AgentsView() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Agents</h1>
-                    <p className="text-muted-foreground mt-2">Configure and manage your AI agents</p>
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">Employees</h1>
+                    <p className="text-muted-foreground mt-2">Your AI team</p>
                 </div>
                 {isPlatformAdmin && (
                     <CreateAgentDialog>
                         <Button>
                             <Plus className="mr-2 h-4 w-4" />
-                            New Agent
+                            Add Employee
                         </Button>
                     </CreateAgentDialog>
                 )}
@@ -77,15 +77,15 @@ export function AgentsView() {
                         <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-4">
                             <AlertCircle className="h-5 w-5 text-muted-foreground" />
                         </div>
-                        <h3 className="text-lg font-semibold text-foreground">No agents found</h3>
+                        <h3 className="text-lg font-semibold text-foreground">No employees found</h3>
                         <p className="mb-6 mt-2 text-sm text-muted-foreground">
-                            {isPlatformAdmin ? "No agents yet. Create your first agent." : "No active agents available at the moment."}
+                            {isPlatformAdmin ? "No employees yet. Add your first one." : "No active employees available at the moment."}
                         </p>
                         {isPlatformAdmin && (
                             <CreateAgentDialog>
                                 <Button>
                                     <Plus className="mr-2 h-4 w-4" />
-                                    Create Agent
+                                    Add Employee
                                 </Button>
                             </CreateAgentDialog>
                         )}

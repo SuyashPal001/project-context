@@ -61,9 +61,9 @@ export function CreateAgentDialog({ children }: CreateAgentDialogProps) {
                 {step === 1 ? (
                     <>
                         <DialogHeader>
-                            <DialogTitle>Create New Agent</DialogTitle>
+                            <DialogTitle>Add New Employee</DialogTitle>
                             <DialogDescription>
-                                Add a new autonomous agent to your workspace.
+                                Add a new autonomous employee to your workspace.
                             </DialogDescription>
                         </DialogHeader>
                         <CreateAgentForm onSuccess={handleSuccess} />
@@ -71,9 +71,9 @@ export function CreateAgentDialog({ children }: CreateAgentDialogProps) {
                 ) : (
                     <>
                         <DialogHeader>
-                            <DialogTitle>Agent Created Successfully</DialogTitle>
+                            <DialogTitle>Employee Added Successfully</DialogTitle>
                             <DialogDescription>
-                                Your new agent has been created. Please copy the API key below.
+                                Your new employee has been added. Please copy the API key below.
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4 py-4">
