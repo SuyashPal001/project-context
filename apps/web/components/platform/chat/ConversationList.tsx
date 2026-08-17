@@ -247,7 +247,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
     }, [selectedId, allConvs]);
 
     return (
-        <div className="flex flex-col h-full bg-background border-r border-border">
+        <div className="flex flex-col h-full bg-[var(--messages-panel)] border-r border-border">
             <div className="p-4 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-foreground">Messages</h2>
                 <Button onClick={() => onNewChat()} size="icon" variant="ghost"
