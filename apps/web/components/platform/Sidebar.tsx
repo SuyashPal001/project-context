@@ -195,14 +195,17 @@ export function Sidebar() {
                 "fixed left-0 top-0 bottom-0 flex flex-col bg-card border-r border-border py-6 z-50 transition-all duration-300 ease-in-out",
                 isSidebarCollapsed ? "w-16 px-2" : "w-60 px-4"
             )}>
-                {/* Workspace switcher + collapse toggle */}
+                {/* Brand row */}
                 <div className={cn(
-                    "flex items-center mb-6 transition-all duration-300",
-                    isSidebarCollapsed ? "flex-col gap-1" : "gap-1"
+                    "flex items-center mb-3",
+                    isSidebarCollapsed ? "flex-col gap-1" : "justify-between px-0.5"
                 )}>
-                    <div className="flex-1 min-w-0">
-                        <WorkspaceSwitcherPill collapsed={isSidebarCollapsed} />
-                    </div>
+                    {!isSidebarCollapsed && (
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="shrink-0 rounded-full bg-primary shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)] w-2.5 h-2.5" />
+                            <span className="text-base font-semibold text-foreground tracking-tight truncate">Project Context</span>
+                        </div>
+                    )}
                     <Tooltip delayDuration={0}>
                         <TooltipTrigger asChild>
                             <button
@@ -216,6 +219,11 @@ export function Sidebar() {
                             {isSidebarCollapsed ? "Expand" : "Collapse"}
                         </TooltipContent>
                     </Tooltip>
+                </div>
+
+                {/* Workspace switcher */}
+                <div className="mb-6">
+                    <WorkspaceSwitcherPill collapsed={isSidebarCollapsed} />
                 </div>
 
                 {/* Navigation Items */}

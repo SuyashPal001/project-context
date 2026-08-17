@@ -48,6 +48,8 @@ export function WorkspaceSwitcherPill({ collapsed }: { collapsed?: boolean }) {
 
     const currentWorkspace = workspaces.find(w => w.slug === currentSlugFromUrl) || workspaces.find(w => w.slug === tenantSlug) || workspaces.find(w => w.isCurrent)
     const displaySlug = tenantSlug?.toUpperCase() || 'PLATFORM'
+    const workspaceName = isLoadingWorkspaces ? displaySlug : (currentWorkspace?.name || displaySlug)
+    const workspaceInitial = workspaceName?.[0]?.toUpperCase() || 'W'
 
     const handleSwitch = async (workspace: any) => {
         if (workspace.slug === currentSlugFromUrl) {
@@ -116,19 +118,16 @@ export function WorkspaceSwitcherPill({ collapsed }: { collapsed?: boolean }) {
         <>
             <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
                 <DropdownMenuTrigger className={cn(
-                    "flex items-center gap-2.5 rounded-lg hover:bg-accent/50 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring w-full",
-                    collapsed ? "justify-center p-2" : "px-2.5 py-1.5"
+                    "flex items-center gap-2 rounded-lg border border-border hover:bg-accent/50 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring w-full",
+                    collapsed ? "justify-center p-1.5" : "px-2 py-1.5"
                 )}>
-                    <span className="shrink-0 rounded-full bg-primary shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)] w-2.5 h-2.5" />
+                    <span className="shrink-0 h-6 w-6 rounded-md bg-secondary text-foreground text-xs font-semibold flex items-center justify-center">
+                        {workspaceInitial}
+                    </span>
                     {!collapsed && (
                         <>
-                            <span className="flex flex-col min-w-0 flex-1 text-left leading-tight">
-                                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
-                                    Project Context
-                                </span>
-                                <span className="text-[14px] font-semibold text-foreground tracking-tight truncate">
-                                    {isLoadingWorkspaces ? displaySlug : (currentWorkspace?.name || displaySlug)}
-                                </span>
+                            <span className="flex-1 min-w-0 text-left text-[13px] font-medium text-foreground truncate">
+                                {workspaceName}
                             </span>
                             <ChevronsUpDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         </>
