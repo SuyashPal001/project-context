@@ -110,15 +110,15 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
             <button
                 onClick={onToggle}
                 className={cn(
-                    "w-full flex items-center gap-3 px-2.5 py-2.5 rounded-full text-left transition-colors group",
+                    "w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left transition-colors group",
                     hasSelectedConversation ? "bg-accent/60" : "hover:bg-accent/60"
                 )}
             >
-                <span className="relative h-10 w-10 shrink-0">
+                <span className="relative h-9 w-9 shrink-0">
                     <PersonaAvatar
                         persona={agent.persona}
                         state={agent.id === activeAgentId ? activeState : undefined}
-                        size={40}
+                        size={36}
                         className="rounded-full absolute inset-0 transition-opacity group-hover:opacity-0"
                         iconClassName="text-muted-foreground/60"
                     />
@@ -138,7 +138,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
             </button>
 
             {isExpanded && (
-                <div className="pl-[62px] pt-1">
+                <div className="pl-[58px] pt-1">
                     {conversations.length === 0 ? (
                         <button
                             onClick={() => onNewChat(agent.id)}
