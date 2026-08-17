@@ -248,7 +248,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
 
     return (
         <div className="flex flex-col h-full bg-[var(--messages-panel)] border-r border-border">
-            <div className="p-4 flex items-center justify-between">
+            <div className="pt-6 px-4 pb-3 flex items-center justify-between">
                 <h2 className="text-base font-semibold text-foreground">Messages</h2>
                 <Button onClick={() => onNewChat()} size="icon" variant="ghost"
                     className="h-8 w-8 rounded-full hover:bg-accent/50 transition-colors"
@@ -266,7 +266,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
                         placeholder="Search chats..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="w-full bg-secondary border-none rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-primary/20 outline-none transition-all"
+                        className="w-full h-9 bg-secondary border border-border rounded-lg pl-9 pr-4 text-sm focus:ring-1 focus:ring-primary/20 outline-none transition-all"
                     />
                 </div>
             </div>
