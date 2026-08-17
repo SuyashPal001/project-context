@@ -226,7 +226,7 @@ export function ChatInput({
     const showRecordingBar = recorder.isRecording || recorder.audioPreview;
 
     return (
-        <div className="pb-6 pt-2 px-4 bg-transparent w-full border-t border-[#1a1a1a]">
+        <div className="pb-6 pt-2 px-4 bg-transparent w-full">
             <input
                 type="file"
                 ref={fileInputRef}
@@ -280,7 +280,7 @@ export function ChatInput({
                     />
                 )}
 
-                <div className="flex flex-col rounded-[28px] border border-border/60 bg-muted/30 focus-within:border-primary/30 transition-colors shadow-elevated overflow-hidden">
+                <div className="flex flex-col rounded-[28px] border border-border/60 bg-card focus-within:border-primary/30 transition-colors shadow-elevated overflow-hidden">
 
                     <AttachmentStrip
                         attachments={uploader.attachments}
