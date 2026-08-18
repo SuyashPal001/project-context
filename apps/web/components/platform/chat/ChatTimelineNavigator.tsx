@@ -9,13 +9,16 @@ interface ChatTimelineNavigatorProps {
 
 const IDLE_TICK_COUNT = 5;
 const HOVER_CLOSE_DELAY_MS = 150;
+const TICK_GAP_PX = 6;
+// Opacity falls off with each row of distance from the hovered row: the
+// hovered row itself is fully opaque, its neighbors dim progressively,
+// clamped to a readable floor so far-away rows are still legible.
+const FADE_PER_ROW = 0.22;
+const MIN_ROW_OPACITY = 0.28;
 
-// A slim vertical navigator anchored to the chat panel's right edge,
-// vertically centered. Idle: a few decorative tick marks hinting a timeline
-// exists. Hover: expands into a floating, right-aligned list of every user
-// message in chronological order; clicking one scrolls the thread to it.
 export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) {
     const [expanded, setExpanded] = useState(false);
+    const [hoveredRow, setHoveredRow] = useState<number | null>(null);
     const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const userMessages = messages.filter(m => m.role === 'user');
 
@@ -34,7 +37,7 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
 
     const scheduleClose = () => {
         cancelClose();
-        closeTimer.current = setTimeout(() => setExpanded(false), HOVER_CLOSE_DELAY_MS);
+        closeTimer.current = setTimeout(() => { setExpanded(false); setHoveredRow(null); }, HOVER_CLOSE_DELAY_MS);
     };
 
     return (
@@ -44,23 +47,29 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
             onMouseLeave={scheduleClose}
         >
             {expanded && (
-                <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 max-h-[60vh] overflow-y-auto custom-scrollbar space-y-1 rounded-lg border border-border/40 bg-popover/95 backdrop-blur p-2 shadow-lg">
-                    {userMessages.map(m => (
-                        <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => jumpTo(m.id)}
-                            className="w-full text-right px-3 py-1.5 rounded-md hover:bg-muted/70 text-xs text-muted-foreground hover:text-foreground truncate transition-colors"
-                        >
-                            {m.content}
-                        </button>
-                    ))}
+                <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 max-h-[60vh] overflow-y-auto custom-scrollbar" onMouseLeave={() => setHoveredRow(null)}>
+                    {userMessages.map((m, i) => {
+                        const distance = hoveredRow === null ? 0 : Math.abs(i - hoveredRow);
+                        const opacity = hoveredRow === null ? 1 : Math.max(MIN_ROW_OPACITY, 1 - distance * FADE_PER_ROW);
+                        return (
+                            <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => jumpTo(m.id)}
+                                onMouseEnter={() => setHoveredRow(i)}
+                                style={{ opacity }}
+                                className="block w-full text-right px-1 py-1 text-xs text-foreground truncate transition-opacity duration-150"
+                            >
+                                {m.content}
+                            </button>
+                        );
+                    })}
                 </div>
             )}
 
-            <div className="flex flex-col items-end gap-1.5 py-1">
+            <div className="flex flex-col items-end py-1" style={{ gap: TICK_GAP_PX }}>
                 {Array.from({ length: IDLE_TICK_COUNT }).map((_, i) => (
-                    <span key={i} className="h-[1.5px] w-4 rounded-full bg-muted-foreground/30" />
+                    <span key={i} className="h-[2px] w-4 rounded-sm bg-muted-foreground/30" />
                 ))}
             </div>
         </div>
