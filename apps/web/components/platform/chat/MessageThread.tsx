@@ -108,7 +108,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 
     if (isLoading && messages.length === 0) {
         return (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 min-h-0 flex items-center justify-center">
                 <div className="flex flex-col items-center gap-2">
                     <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
                     <p className="text-sm text-muted-foreground">Loading messages...</p>
@@ -118,7 +118,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     }
 
     return (
-        <div className="relative flex-1 overflow-hidden">
+        <div className="relative flex-1 min-h-0 overflow-hidden">
         <div ref={scrollRef} className="h-full px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
             <div className="max-w-4xl mx-auto space-y-2 pb-4">
                 {messages.length === 0 && !isTyping && (
@@ -185,7 +185,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             <button
                 type="button"
                 onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2 h-8 w-8 rounded-full bg-muted border border-border shadow-sm flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 h-8 w-8 rounded-full bg-secondary shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
             >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                     <path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
