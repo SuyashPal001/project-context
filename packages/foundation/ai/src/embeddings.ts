@@ -14,10 +14,63 @@ export interface EmbeddingResult {
   embedding: number[];
 }
 
+async function embedTextsViaGateway(
+  texts: string[],
+  taskType: TaskType,
+  gatewayUrl: string,
+  serviceKey: string,
+): Promise<EmbeddingResult[]> {
+  const url = `${gatewayUrl}/v1/embeddings`;
+  const results: EmbeddingResult[] = [];
+
+  for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+    const batch = texts.slice(i, i + BATCH_SIZE);
+    const response = await fetchWithRetry(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service-key': serviceKey,
+        'x-task-type': taskType,
+      },
+      body: JSON.stringify({
+        model: EMBEDDING_MODEL,
+        input: batch,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Inference gateway embedding failed: ${err}`);
+    }
+
+    const data = await response.json() as {
+      data: Array<{ embedding: number[]; index: number }>;
+    };
+
+    const sorted = [...data.data].sort((a, b) => a.index - b.index);
+    for (let j = 0; j < batch.length; j++) {
+      results.push({
+        contentHash: crypto.createHash('sha256').update(batch[j]).digest('hex'),
+        embedding: sorted[j].embedding,
+      });
+    }
+  }
+
+  return results;
+}
+
 export async function embedTexts(
   texts: string[],
   taskType: TaskType
 ): Promise<EmbeddingResult[]> {
+  // Prefer routing through the inference gateway — it has ADC access to Vertex AI
+  // and uses the same text-embedding-004 (768d) model as the stored document chunks.
+  const gatewayUrl = process.env.INFERENCE_GATEWAY_URL;
+  const serviceKey = process.env.INTERNAL_SERVICE_KEY;
+  if (gatewayUrl && serviceKey) {
+    return embedTextsViaGateway(texts, taskType, gatewayUrl, serviceKey);
+  }
+
   const credentials = await getGcpCredentials();
   const project = credentials.project_id;
   const location = process.env.GCP_LOCATION ?? 'us-central1';

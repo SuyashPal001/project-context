@@ -27,7 +27,7 @@ Returns the most relevant chunks from uploaded documents with source and score.
 If this returns no results, say you cannot find the information — never guess.`,
 
   inputSchema: z.object({
-    query:    z.string().describe('What to search for'),
+    query:    z.string().optional().default('document summary').describe('What to search for — use the user\'s question or topic. Defaults to a broad summary search if omitted.'),
     folderId: z.string().optional().describe('The folder ID to scope retrieval to, if the conversation is scoped to a specific folder'),
   }),
 

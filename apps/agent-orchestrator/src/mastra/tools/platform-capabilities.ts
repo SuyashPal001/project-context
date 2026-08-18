@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { db } from '@serverless-saas/database'
 import { getMcpRegistry } from '@serverless-saas/mcp'
 import { registerAgentPlatformMcpTools } from '@serverless-saas/agent-capabilities'
-import { resolveUserPermissions } from '@serverless-saas/permissions'
+import permissionsPkg from '@serverless-saas/permissions'
+const { resolveUserPermissions } = permissionsPkg as any
 
 // Registers start_task/get_task_thread on the shared McpToolRegistry (idempotent —
 // registerAgentPlatformMcpTools() guards against double-registration internally).
