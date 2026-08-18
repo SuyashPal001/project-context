@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
-import { ChatTimeline } from "@/components/platform/chat/ChatTimeline";
+import { ChatTimelineNavigator } from "@/components/platform/chat/ChatTimelineNavigator";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
 import { WelcomeView } from "@/components/platform/chat/WelcomeView";
 import { WizardView } from "@/components/platform/chat/WizardView";
@@ -235,7 +235,7 @@ function ChatPage() {
                 <div className="flex-1 flex flex-row min-w-0 bg-background relative overflow-hidden">
                     {/* Chat Panel */}
                     <div className={cn(
-                        "flex flex-col overflow-hidden transition-all h-full",
+                        "relative flex flex-col overflow-hidden transition-all h-full",
                         isCanvasExpanded ? "w-0 opacity-0 pointer-events-none" : "flex-1",
                         isCanvasOpen ? "border-r border-border" : ""
                     )}>
@@ -264,8 +264,8 @@ function ChatPage() {
                                 ) : (
                                     <>
                                         <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onClarificationAnswer={handleClarificationAnswer} />
+                                        <ChatTimelineNavigator messages={messages} />
                                         <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                            <ChatTimeline messages={messages} />
                                             <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                         </div>
                                     </>
