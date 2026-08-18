@@ -59,6 +59,7 @@ export function useChatPage() {
         queryFn: () => api.get('/api/v1/agents'),
     });
     const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? [];
+    const defaultAgent = activeAgents.find(a => a.isDefault) ?? activeAgents[0];
 
     const { data: conversationsData, isLoading: isLoadingConversations, isError: isErrorConversations } = useQuery<ConversationsResponse>({
         queryKey: ['conversations'],
@@ -144,7 +145,7 @@ export function useChatPage() {
         if (!isLoadingConversations && !isErrorConversations && conversations.length === 0 &&
             !conversationId && activeAgents.length > 0 && !autoCreatingRef.current) {
             autoCreatingRef.current = true;
-            silentCreateConversation.mutate(activeAgents[0].id);
+            silentCreateConversation.mutate(defaultAgent.id);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isLoadingConversations, isErrorConversations, conversations.length, conversationId, activeAgents.length]);
@@ -173,10 +174,8 @@ export function useChatPage() {
         }
         if (activeAgents.length === 0) {
             toast.error('No active agents available. Please create one first.');
-        } else if (activeAgents.length === 1) {
-            createConversation.mutate(activeAgents[0].id);
         } else {
-            setAgentSelectorOpen(true);
+            createConversation.mutate(defaultAgent.id);
         }
     };
 

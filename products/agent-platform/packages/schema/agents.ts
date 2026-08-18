@@ -32,6 +32,7 @@ export const agents = pgTable('agents', {
   personaId: uuid('persona_id').references(() => personas.id),
   description: text('description'),
   isInternal: boolean('is_internal').notNull().default(false),
+  isDefault: boolean('is_default').notNull().default(false),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

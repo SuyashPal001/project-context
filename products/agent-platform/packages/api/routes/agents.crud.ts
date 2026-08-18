@@ -41,7 +41,7 @@ export async function handleListAgents(c: Context<AppEnv>) {
         .select({
             id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
             model: agents.model, status: agents.status, llmProviderId: agents.llmProviderId,
-            isInternal: agents.isInternal, description: agents.description, avatarUrl: agents.avatarUrl,
+            isInternal: agents.isInternal, isDefault: agents.isDefault, description: agents.description, avatarUrl: agents.avatarUrl,
             createdAt: agents.createdAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,

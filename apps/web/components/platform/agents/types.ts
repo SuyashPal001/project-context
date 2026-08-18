@@ -23,6 +23,7 @@ export interface Agent {
     model: string | null;
     llmProviderId: string | null;
     isInternal: boolean;
+    isDefault: boolean;
     description: string | null;
     persona: PersonaSummary | null;
     createdAt: string;
