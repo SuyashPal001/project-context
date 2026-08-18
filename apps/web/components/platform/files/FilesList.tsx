@@ -168,10 +168,14 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const ingestFile = async (fileId: string) => {
         setIngestingFiles(prev => new Set([...prev, fileId]));
         try {
-            await fetch(`/api/proxy/api/v1/files/${fileId}/ingest`, { method: 'POST' });
+            const res = await fetch(`/api/proxy/api/v1/files/${fileId}/ingest`, { method: 'POST' });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(body.error || body.message || `Ingestion failed (HTTP ${res.status})`);
+            }
             queryClient.invalidateQueries({ queryKey: ['files'] });
-        } catch {
-            toast.error("Failed to start ingestion");
+        } catch (err: any) {
+            toast.error(err.message || "Failed to start ingestion");
         } finally {
             setIngestingFiles(prev => { const n = new Set(prev); n.delete(fileId); return n; });
         }
@@ -188,14 +192,39 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         // Navigate into folder first so user sees per-file progress
         onPrefixChange(folderPrefix);
         setIngestingFolders(prev => new Set([...prev, folderName]));
+        let failCount = 0;
         for (const file of pending) {
             try {
-                await fetch(`/api/proxy/api/v1/files/${file.id}/ingest`, { method: 'POST' });
-            } catch { /* continue */ }
+                const res = await fetch(`/api/proxy/api/v1/files/${file.id}/ingest`, { method: 'POST' });
+                if (!res.ok) failCount++;
+            } catch { failCount++; }
         }
         setIngestingFolders(prev => { const n = new Set(prev); n.delete(folderName); return n; });
         queryClient.invalidateQueries({ queryKey: ['files'] });
-        toast.success(`Ingestion queued for folder "${folderName}"`);
+        if (failCount > 0) toast.error(`Failed to start ingestion for ${failCount} of ${pending.length} file${pending.length !== 1 ? 's' : ''}`);
+        else toast.success(`Ingestion queued for folder "${folderName}"`);
+    };
+
+    const [isIngestingAllInFolder, setIsIngestingAllInFolder] = useState(false);
+
+    // Parse/ingest every pending or failed document directly in the current folder —
+    // unlike ingestFolder (triggered from the parent listing row), this runs from
+    // inside the folder view where the user is actually looking at the documents.
+    const ingestAllInFolder = async () => {
+        const pending = files.filter(f => f.ingestionStatus === 'pending' || f.ingestionStatus === 'failed');
+        if (pending.length === 0) return;
+        setIsIngestingAllInFolder(true);
+        let failCount = 0;
+        for (const file of pending) {
+            try {
+                const res = await fetch(`/api/proxy/api/v1/files/${file.id}/ingest`, { method: 'POST' });
+                if (!res.ok) failCount++;
+            } catch { failCount++; }
+        }
+        setIsIngestingAllInFolder(false);
+        queryClient.invalidateQueries({ queryKey: ['files'] });
+        if (failCount > 0) toast.error(`Failed to start ingestion for ${failCount} of ${pending.length} file${pending.length !== 1 ? 's' : ''}`);
+        else toast.success(`Parsing started for ${pending.length} file${pending.length !== 1 ? 's' : ''}`);
     };
 
     const deleteFolder = async (folderName: string) => {
@@ -351,6 +380,22 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }}
                         formatTypes={formatTypes} filterFormat={filterFormat} onFormatChange={v => { setFilterFormat(v); setCurrentPage(1); }}
                     />}
+                    {prefix && files.some(f => f.ingestionStatus === 'pending' || f.ingestionStatus === 'failed') && (
+                        <div className="flex justify-end">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs gap-1.5"
+                                onClick={ingestAllInFolder}
+                                disabled={isIngestingAllInFolder}
+                            >
+                                {isIngestingAllInFolder
+                                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                                    : <Play className="w-3 h-3" />}
+                                {isIngestingAllInFolder ? 'Parsing…' : 'Parse All'}
+                            </Button>
+                        </div>
+                    )}
                     {/* Bulk action bar */}
                     {selectedIds.size > 0 && (
                         <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-secondary border border-border text-sm">
