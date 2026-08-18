@@ -67,7 +67,7 @@ export function Hero() {
               <span className="h-2.5 w-2.5 rounded-full bg-[oklch(63.7%_.237_25.331)/60%]" />
               <span className="h-2.5 w-2.5 rounded-full bg-[oklch(76.9%_.188_70.08)/60%]" />
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--mk-accent)] opacity-60" />
-              <span className="ml-3 font-mono-mk text-[11px] text-[var(--mk-muted)]">project context — team run</span>
+              <span className="ml-3 font-mono-mk text-[11px] text-[var(--mk-muted)]">Saarthi Workflow — team run</span>
             </div>
 
             <div className="bg-[var(--mk-bg)] p-5">

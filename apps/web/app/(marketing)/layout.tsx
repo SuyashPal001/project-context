@@ -4,9 +4,9 @@ import { MarketingFooter } from "./MarketingFooter";
 import "./marketing.css";
 
 const BASE_URL = "https://projectcontext.co";
-const TITLE = "project context — your AI engineering team";
+const TITLE = "Saarthi Workflow — your AI engineering team";
 const DESCRIPTION =
-  "project context is an AI-powered engineering workspace with a built-in team of AI specialists — Product Manager, Analyst, Project Manager, Tech Lead, and Architect — that turns ideas into PRDs, roadmaps, and task boards. Free to start.";
+  "Saarthi Workflow is an AI-powered engineering workspace with a built-in team of AI specialists — Product Manager, Analyst, Project Manager, Tech Lead, and Architect — that turns ideas into PRDs, roadmaps, and task boards. Free to start.";
 const OG_IMAGE = `${BASE_URL}/og?title=project+context&subtitle=your+AI+engineering+team`;
 
 export const metadata: Metadata = {
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: BASE_URL,
-    siteName: "project context",
+    siteName: "Saarthi Workflow",
     title: TITLE,
     description: DESCRIPTION,
     images: [
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
         url: OG_IMAGE,
         width: 1200,
         height: 630,
-        alt: "project context — your AI engineering team",
+        alt: "Saarthi Workflow — your AI engineering team",
       },
     ],
   },
@@ -60,7 +60,7 @@ export const metadata: Metadata = {
     "MCP tool integrations",
     "AI team for developers",
   ],
-  authors: [{ name: "project context", url: BASE_URL }],
+  authors: [{ name: "Saarthi Workflow", url: BASE_URL }],
   robots: {
     index: true,
     follow: true,

@@ -209,7 +209,7 @@ export function Sidebar() {
                             <span className="shrink-0 h-7 w-7 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)]">
                                 <Brain className="h-4 w-4 text-primary-foreground" strokeWidth={2} />
                             </span>
-                            <span className="text-base font-semibold text-foreground tracking-tight truncate">Project Context</span>
+                            <span className="text-base font-semibold text-foreground tracking-tight truncate">Saarthi Workflow</span>
                         </Link>
                     )}
                     <Tooltip delayDuration={0}>

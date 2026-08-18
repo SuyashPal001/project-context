@@ -5,7 +5,7 @@ export const runtime = 'edge'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const title = searchParams.get('title') ?? 'project context'
+  const title = searchParams.get('title') ?? 'Saarthi Workflow'
   const subtitle = searchParams.get('subtitle') ?? 'your AI engineering team'
 
   return new ImageResponse(
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
             }}
           />
           <span style={{ color: '#ffffff', fontSize: '20px', fontWeight: 600, letterSpacing: '-0.02em' }}>
-            project context
+            Saarthi Workflow
           </span>
         </div>
 

@@ -8,7 +8,7 @@ export function MarketingFooter() {
           <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--mk-accent)]">
             <Brain className="h-3.5 w-3.5 text-black" strokeWidth={2} />
           </span>
-          <span className="font-display text-lg">project context</span>
+          <span className="font-display text-lg">Saarthi Workflow</span>
         </div>
         <div className="flex flex-wrap gap-6 font-mono-mk text-[11px] uppercase tracking-[0.22em] text-[var(--mk-muted)]">
           <span>© {new Date().getFullYear()}</span>

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — project context",
-  description: "Terms and conditions for using project context.",
+  title: "Terms of Service — Saarthi Workflow",
+  description: "Terms and conditions for using Saarthi Workflow.",
   alternates: { canonical: "/terms" },
 };
 
@@ -18,7 +18,7 @@ export default function TermsPage() {
         <section>
           <h2 className="text-[var(--mk-fg)] text-lg font-semibold mb-3">1. Acceptance</h2>
           <p>
-            By accessing or using project context ("the Service"), you agree to be bound by these
+            By accessing or using Saarthi Workflow ("the Service"), you agree to be bound by these
             Terms. If you do not agree, do not use the Service.
           </p>
         </section>
@@ -26,7 +26,7 @@ export default function TermsPage() {
         <section>
           <h2 className="text-[var(--mk-fg)] text-lg font-semibold mb-3">2. Use of the service</h2>
           <p>
-            You may use project context for lawful purposes only. You are responsible for all
+            You may use Saarthi Workflow for lawful purposes only. You are responsible for all
             activity that occurs under your account. Do not use the Service to generate harmful,
             illegal, or deceptive content.
           </p>
@@ -52,7 +52,7 @@ export default function TermsPage() {
         <section>
           <h2 className="text-[var(--mk-fg)] text-lg font-semibold mb-3">5. Limitation of liability</h2>
           <p>
-            To the maximum extent permitted by law, project context is provided "as is" without
+            To the maximum extent permitted by law, Saarthi Workflow is provided "as is" without
             warranties of any kind. We are not liable for indirect, incidental, or consequential
             damages arising from your use of the Service.
           </p>
