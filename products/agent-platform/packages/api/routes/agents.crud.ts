@@ -1,4 +1,4 @@
-import { and, eq, count } from 'drizzle-orm';
+import { and, eq, count, asc } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '../db';
@@ -50,7 +50,8 @@ export async function handleListAgents(c: Context<AppEnv>) {
         })
         .from(agents)
         .leftJoin(personas, eq(agents.personaId, personas.id))
-        .where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)));
+        .where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)))
+        .orderBy(asc(agents.createdAt));
 
     return c.json({ data });
 }
