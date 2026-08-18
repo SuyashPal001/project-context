@@ -188,6 +188,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     let fullText = ''
     let planResult: unknown
     let toolCallCount = 0
+    let reasoningText = ''
 
     await runWithGuardrailContext({ tenantId, conversationId }, async () => {
       const agentStream = await (activeAgent as any).stream(mastraMessage, {
@@ -215,7 +216,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         // above and includeThoughts in the inference-gateway Vertex/Gemini adapters.
         case 'reasoning-delta': {
           const text = (part.payload?.text ?? part.delta ?? part.textDelta ?? '') as string
-          if (text) sendEvent('reasoning', { text, conversationId })
+          if (text) {
+            reasoningText += text
+            sendEvent('reasoning', { text, conversationId })
+          }
           break
         }
         // Text streamed from a delegated sub-agent
@@ -307,8 +311,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // turn that's too fast/toolless to show a summary live doesn't get one
           // materialize after a reload either.
           const elapsedSec = Math.max(0, Math.floor(responseTimeMs / 1000))
-          const completedTrace = (toolCallCount > 0 || elapsedSec >= 2)
-            ? { elapsedSec, toolCallCount }
+          const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
+            ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}) }
             : null
           saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef, completedTrace)
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)

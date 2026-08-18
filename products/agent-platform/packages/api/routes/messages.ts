@@ -153,6 +153,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
         completedTrace: z.object({
             elapsedSec: z.number(),
             toolCallCount: z.number(),
+            reasoningText: z.string().optional(),
         }).nullish(),
         createdAt: z.string().datetime().optional(),
     });

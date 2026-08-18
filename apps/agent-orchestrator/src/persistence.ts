@@ -75,6 +75,7 @@ export interface ArtifactRefPayload {
 export interface CompletedTracePayload {
   elapsedSec: number
   toolCallCount: number
+  reasoningText?: string
 }
 
 export function saveAssistantMessage(
