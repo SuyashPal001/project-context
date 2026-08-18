@@ -7,6 +7,7 @@
 
 import type { ServerResponse } from 'http';
 import { VertexAI } from '@google-cloud/vertexai';
+import { GoogleAuth } from 'google-auth-library';
 import type {
   Content,
   FunctionDeclaration,
@@ -16,6 +17,8 @@ import type {
   ToolConfig,
 } from '@google-cloud/vertexai';
 import { FunctionCallingMode } from '@google-cloud/vertexai';
+
+const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
 
 import type { ProviderAdapter } from './base';
 import { latency } from '../metrics.js';
@@ -404,15 +407,31 @@ export class VertexAdapter implements ProviderAdapter {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async handleStream(model: any, request: GenerateContentRequest, modelName: string, res: ServerResponse): Promise<void> {
-    // Call Vertex AI BEFORE writing headers so that init errors (400, 403, etc.)
-    // can propagate to the fallback chain — once headers are sent we cannot fall back.
-    let streamResult: Awaited<ReturnType<typeof model.generateContentStream>>;
+  private async handleStream(_model: any, request: GenerateContentRequest, modelName: string, res: ServerResponse): Promise<void> {
+    // Bypass the @google-cloud/vertexai SDK for streaming — the SDK (v1.12) does not
+    // support thinkingConfig or thought parts. Direct REST gives us full control.
+    const client = await _auth.getClient();
+    const tokenResp = await client.getAccessToken();
+    const token = tokenResp.token;
+
+    const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${modelName}:streamGenerateContent?alt=sse`;
+
+    let vertexRes: Response;
     try {
-      streamResult = await model.generateContentStream(request);
+      vertexRes = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
+        body: JSON.stringify(request),
+      });
     } catch (initErr) {
-      console.error(`[vertex-adapter] generateContentStream init error: ${initErr instanceof Error ? initErr.message : JSON.stringify(initErr)}`);
+      console.error(`[vertex-adapter] streamGenerateContent fetch error: ${initErr instanceof Error ? initErr.message : JSON.stringify(initErr)}`);
       throw initErr;
+    }
+
+    if (!vertexRes.ok) {
+      const errText = await vertexRes.text();
+      console.error(`[vertex-adapter] streamGenerateContent error ${vertexRes.status}: ${errText}`);
+      throw new Error(`Vertex AI streaming failed: ${vertexRes.status} ${errText}`);
     }
 
     res.writeHead(200, {
@@ -435,64 +454,60 @@ export class VertexAdapter implements ProviderAdapter {
     let toolCallIndex = 0;
     let hasToolCalls = false;
     let lastFinishReason: string | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let lastUsageMetadata: any = null;
+
+    const decoder = new TextDecoder();
+    let buf = '';
+    const reader = (vertexRes.body as unknown as ReadableStream<Uint8Array>).getReader();
 
     try {
-    for await (const chunk of streamResult.stream) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const candidate = (chunk as any).candidates?.[0];
-      if (candidate?.finishReason) lastFinishReason = candidate.finishReason;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() ?? '';
 
-      const parts: Part[] = candidate?.content?.parts ?? [];
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const json = line.slice(6).trim();
+        if (!json || json === '[DONE]') continue;
 
-      for (const part of parts) {
-        const p = part as { text?: string; thought?: boolean; functionCall?: { name: string; args: unknown } };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let chunk: any;
+        try { chunk = JSON.parse(json); } catch { continue; }
 
-        if (p.text && p.thought) {
-          // Thought-summary part — Gemini's extended-thinking trace, never the final
-          // answer. Kept out of `content` so it can't leak into the persisted message;
-          // carried as reasoning_content for @ai-sdk/openai-compatible to pick up.
-          if (!ttftFired) {
-            latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0);
-            ttftFired = true;
+        if (chunk.usageMetadata) lastUsageMetadata = chunk.usageMetadata;
+        const candidate = chunk.candidates?.[0];
+        if (candidate?.finishReason) lastFinishReason = candidate.finishReason;
+
+        const parts: Array<{ text?: string; thought?: boolean; functionCall?: { name: string; args: unknown } }> = candidate?.content?.parts ?? [];
+
+        for (const p of parts) {
+          if (p.text && p.thought) {
+            // Thought-summary part — Gemini extended-thinking trace.
+            if (!ttftFired) { latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0); ttftFired = true; }
+            res.write(`data: ${JSON.stringify(makeStreamChunk(id, modelName, { reasoning_content: p.text }))}\n\n`);
+          } else if (p.text) {
+            if (!ttftFired) { latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0); ttftFired = true; }
+            totalChars += p.text.length;
+            res.write(`data: ${JSON.stringify(makeStreamChunk(id, modelName, { content: p.text }))}\n\n`);
+          } else if (p.functionCall) {
+            if (!ttftFired) { latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0); ttftFired = true; }
+            hasToolCalls = true;
+            const callId = `call_${id}_${toolCallIndex}`;
+            res.write(
+              `data: ${JSON.stringify(makeStreamChunk(id, modelName, {
+                tool_calls: [{
+                  index: toolCallIndex, id: callId, type: 'function',
+                  function: { name: p.functionCall.name, arguments: JSON.stringify(p.functionCall.args ?? {}) },
+                }],
+              }))}\n\n`,
+            );
+            toolCallIndex++;
           }
-          res.write(
-            `data: ${JSON.stringify(makeStreamChunk(id, modelName, { reasoning_content: p.text }))}\n\n`,
-          );
-        } else if (p.text) {
-          if (!ttftFired) {
-            latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0);
-            ttftFired = true;
-          }
-          totalChars += p.text.length;
-          res.write(
-            `data: ${JSON.stringify(makeStreamChunk(id, modelName, { content: p.text }))}\n\n`,
-          );
-        } else if (p.functionCall) {
-          if (!ttftFired) {
-            latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0);
-            ttftFired = true;
-          }
-          // Gemini functionCall → OpenAI tool_calls streaming delta
-          hasToolCalls = true;
-          const callId = `call_${id}_${toolCallIndex}`;
-          res.write(
-            `data: ${JSON.stringify(
-              makeStreamChunk(id, modelName, {
-                tool_calls: [
-                  {
-                    index: toolCallIndex,
-                    id: callId,
-                    type: 'function',
-                    function: {
-                      name: p.functionCall.name,
-                      arguments: JSON.stringify(p.functionCall.args ?? {}),
-                    },
-                  },
-                ],
-              }),
-            )}\n\n`,
-          );
-          toolCallIndex++;
         }
       }
     }
@@ -508,8 +523,7 @@ export class VertexAdapter implements ProviderAdapter {
     );
 
     // Usage chunk (empty choices[], usage populated — OpenAI streaming convention)
-    const aggregated = await streamResult.response;
-    const usage = makeUsage(aggregated?.usageMetadata);
+    const usage = makeUsage(lastUsageMetadata);
     res.write(
       `data: ${JSON.stringify({
         id,
