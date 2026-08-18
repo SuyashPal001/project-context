@@ -13,34 +13,29 @@ function ReasoningRow({ text }: { text: string }) {
     if (!text) return null;
 
     return (
-        <div
-            className="my-1 overflow-hidden text-foreground"
-            style={{
-                background: 'var(--muted)',
-                border: '0.5px solid var(--color-border-tertiary)',
-                borderRadius: 'var(--border-radius-md, 8px)',
-                padding: '8px 12px',
-            }}
-        >
+        <div className="my-1.5 text-foreground">
             <button
                 type="button"
                 onClick={() => setExpanded(e => !e)}
                 className="flex items-center gap-2 w-full text-left"
             >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-current">
                     <path d="M2 3.5h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5.5L3 12v-2.5H2a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
                 </svg>
-                <span className="shimmer-text text-xs text-muted-foreground flex-1 truncate">Thinking it through</span>
+                <span className="shimmer-text text-sm font-semibold flex-1 truncate">Thinking it through</span>
                 <svg
                     width="10" height="10" viewBox="0 0 10 10" fill="none"
-                    className={`shrink-0 transition-transform text-muted-foreground ${expanded ? "rotate-90" : ""}`}
+                    className={`shrink-0 transition-transform text-foreground ${expanded ? "rotate-90" : ""}`}
                 >
-                    <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
             </button>
             {expanded && (
-                <div className="mt-2 pt-2 text-xs text-muted-foreground whitespace-pre-wrap" style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}>
-                    {text}
+                <div className="flex gap-2.5 mt-1.5 pl-0.5">
+                    <div className="w-3 shrink-0 border-l border-b border-border rounded-bl-md" style={{ marginTop: '-4px', height: '0.85em' }} />
+                    <div className="text-sm text-muted-foreground whitespace-pre-wrap flex-1 min-w-0">
+                        {text}
+                    </div>
                 </div>
             )}
         </div>
@@ -212,8 +207,8 @@ export function ThinkingIndicator({
                 <AgentOrb size={40} state="searching" isLoading />
                 <div className="flex-1 pt-1">
                     {liveElapsed >= 2 && (
-                        <div className="shimmer-text text-sm text-primary/80 font-mono mb-1.5">
-                            Working for {liveElapsed}s
+                        <div className="shimmer-text text-sm text-primary/80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
+                            Working for {liveElapsed}s{loadingTools.length > 0 ? ` · ${thinkingMessages[messageIndex]}` : ''}
                         </div>
                     )}
                     <ReasoningRow text={reasoningText} />

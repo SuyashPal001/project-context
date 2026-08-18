@@ -130,15 +130,7 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
   const { prefix, highlight } = toolLabel(toolName, query, status);
 
   return (
-    <div
-      className="my-1 overflow-hidden text-foreground"
-      style={{
-        background: 'var(--muted)',
-        border: '0.5px solid var(--color-border-tertiary)',
-        borderRadius: 'var(--border-radius-md, 8px)',
-        padding: hasResults ? '8px 12px 0 12px' : '8px 12px',
-      }}
-    >
+    <div className="my-1.5 text-foreground">
       <div
         className="flex items-center gap-2"
         style={{ cursor: hasResults ? 'pointer' : 'default' }}
@@ -146,7 +138,7 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
       >
         <ToolIcon toolName={toolName} />
 
-        <span className={`text-xs text-muted-foreground flex-1 truncate ${status === 'loading' ? 'shimmer-text' : ''}`}>
+        <span className={`text-sm font-semibold flex-1 truncate ${status === 'loading' ? 'shimmer-text' : ''}`}>
           {prefix}
           {highlight && (
             <span className="font-medium" style={{ color: 'var(--color-text-primary, inherit)' }}>
@@ -162,37 +154,45 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
             <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-30 animate-bounce" />
           </span>
         ) : (
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-green-500">
-            <path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-green-500">
+              <path d="M2.5 7L5.5 10L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {hasResults && (
+              <svg
+                width="10" height="10" viewBox="0 0 10 10" fill="none"
+                className={`shrink-0 transition-transform text-foreground ${expanded ? "rotate-90" : ""}`}
+              >
+                <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </>
         )}
       </div>
 
       {hasResults && expanded && (
-        <div
-          className="mt-2 pt-2 pb-2 space-y-[5px]"
-          style={{ borderTop: '0.5px solid var(--color-border-tertiary)' }}
-        >
-          {results!.slice(0, 3).map((r, i) => (
-            <div key={i} className="flex items-center gap-2 min-w-0">
-              <div
-                className="shrink-0 flex items-center justify-center select-none"
-                style={{
-                  width: 14, height: 14, borderRadius: 2,
-                  background: domainColor(r.domain),
-                  color: '#fff', fontSize: 8, fontWeight: 700, lineHeight: 1,
-                }}
-              >
-                {(r.favicon ?? r.domain.charAt(0)).toUpperCase()}
+        <div className="flex gap-2.5 mt-1.5 pl-0.5">
+          <div className="w-3 shrink-0 border-l border-b border-border rounded-bl-md" style={{ marginTop: '-4px', height: '0.85em' }} />
+          <div className="space-y-[5px] flex-1 min-w-0">
+            {results!.slice(0, 3).map((r, i) => (
+              <div key={i} className="flex items-center gap-2 min-w-0">
+                <div
+                  className="shrink-0 flex items-center justify-center select-none"
+                  style={{
+                    width: 14, height: 14, borderRadius: 2,
+                    background: domainColor(r.domain),
+                    color: '#fff', fontSize: 8, fontWeight: 700, lineHeight: 1,
+                  }}
+                >
+                  {(r.favicon ?? r.domain.charAt(0)).toUpperCase()}
+                </div>
+                <span className="text-xs text-foreground truncate flex-1">{r.title}</span>
+                <span className="text-xs text-muted-foreground shrink-0">{r.domain}</span>
               </div>
-              <span className="text-xs text-foreground truncate flex-1">{r.title}</span>
-              <span className="text-xs text-muted-foreground shrink-0">{r.domain}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
-
-      {hasResults && !expanded && <div className="pb-2" />}
     </div>
   );
 }
