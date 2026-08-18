@@ -27,6 +27,7 @@ export interface ChatStreamOpts {
   sendEvent: (event: string, data: object) => void
   closeStream: () => void
   isStreamClosed: () => boolean
+  folderId?: string
 }
 
 type ContentPart =
@@ -103,6 +104,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     message, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, closeStream, isStreamClosed,
+    folderId,
   } = opts
 
   let ragFired = false
@@ -131,8 +133,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const memPreamble = workingMemory
       ? `[AGENT MEMORY]\nYou have remembered the following about this tenant from previous sessions:\n${workingMemory}\n\n`
       : ''
-    console.log('[session] tenantId:', tenantId)
-    const sessionCtx = `<session_context>\ntenant_id: ${tenantId}\n</session_context>\n\n`
+    console.log('[session] tenantId:', tenantId, 'folderId:', folderId ?? '(none)')
+    const sessionCtx = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}\n</session_context>\n\n`
     const mastraMessage = await buildMastraMessage(attachments, memPreamble, sessionCtx, message, sessionId)
 
     if (isStreamClosed()) return
@@ -145,6 +147,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('userId', internalUserId)
     requestContext.set('sendEvent', sendEvent)
     requestContext.set('sessionId', sessionId)
+    if (folderId) requestContext.set('folderId', folderId)
 
     const mcpClient = getMCPClientForTenant(tenantId, agentId)
     requestContext.set('__mcpClient', mcpClient as any)

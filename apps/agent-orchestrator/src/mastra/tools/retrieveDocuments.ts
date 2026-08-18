@@ -27,7 +27,8 @@ Returns the most relevant chunks from uploaded documents with source and score.
 If this returns no results, say you cannot find the information — never guess.`,
 
   inputSchema: z.object({
-    query: z.string().describe('What to search for'),
+    query:    z.string().describe('What to search for'),
+    folderId: z.string().optional().describe('The folder ID to scope retrieval to, if the conversation is scoped to a specific folder'),
   }),
 
   requestContextSchema,
@@ -37,10 +38,11 @@ If this returns no results, say you cannot find the information — never guess.
     context: z.string(),
   }),
 
-  execute: async ({ query }, execContext) => {
+  execute: async ({ query, folderId }, execContext) => {
     const tenantId = (execContext as any)?.requestContext?.get('tenantId') as string | undefined
       ?? (execContext as any)?.context?.tenantId as string | undefined
       ?? ''
+    const contextFolderId = (execContext as any)?.requestContext?.get('folderId') as string | undefined
 
     if (!tenantId) {
       console.error('[retrieveDocuments] tenantId missing from requestContext')
@@ -49,7 +51,7 @@ If this returns no results, say you cannot find the information — never guess.
 
     let chunks: RetrievedChunk[]
     try {
-      chunks = await retrieveChunks(query, tenantId, RETRIEVE_LIMIT, 0)
+      chunks = await retrieveChunks(query, tenantId, RETRIEVE_LIMIT, 0, folderId ?? contextFolderId)
     } catch (err) {
       console.error('[retrieveDocuments] retrieveChunks threw:', (err as Error).message)
       return { found: false, context: 'Document retrieval failed. Please try again.' }
