@@ -137,25 +137,41 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             });
             setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); setReasoningText(''); }, 1500);
             setTimeout(() => {
-                // The backend persists completedTrace too (messages.completed_trace),
-                // but only the {elapsedSec, toolCallCount} summary — not the detailed
-                // per-call cards this `trace` object carries. Re-merge the full client
-                // trace back onto the same messageId once the refetch settles, so the
-                // expandable tool-call detail survives this invalidation rather than
-                // being narrowed down to the DB's summary-only version.
-                queryClient.invalidateQueries({ queryKey: ['messages', conversationIdRef.current] }).then(() => {
-                    if (!hadTrace) return;
-                    queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
-                        if (!old) return old;
-                        const idx = old.data.findIndex(m => m.id === messageId);
-                        if (idx < 0) return old;
-                        const data = [...old.data];
-                        data[idx] = { ...data[idx], ...trace };
-                        return { data };
+                const conversationId = conversationIdRef.current;
+                if (!conversationId) return;
+
+                // The backend persists this turn's messages asynchronously (fire-and-forget,
+                // right after the 'done' SSE event) — on a cold Lambda that save can take
+                // longer than this delay. A blind invalidateQueries() would then overwrite
+                // the correct optimistic message list with an incomplete server response,
+                // making the conversation appear empty. Instead: fetch fresh data without
+                // committing it, only replace the cache once the assistant message we're
+                // waiting on actually shows up, and retry a few times if it hasn't yet —
+                // never regress the UI to a state with fewer messages than it already has.
+                const reconcile = (attempt: number): void => {
+                    queryClient.fetchQuery<MessagesResponse>({
+                        queryKey: ['messages', conversationId],
+                        queryFn: () => api.get<MessagesResponse>(`/api/v1/conversations/${conversationId}/messages`),
+                    }).then(fresh => {
+                        const idx = fresh.data.findIndex(m => m.id === messageId);
+                        if (idx < 0) {
+                            if (attempt < 4) setTimeout(() => reconcile(attempt + 1), 2000);
+                            return;
+                        }
+                        // The DB only stores the {elapsedSec, toolCallCount} summary of
+                        // completedTrace, not the detailed per-call cards this `trace`
+                        // object carries — re-merge the full client trace back on.
+                        const data = [...fresh.data];
+                        if (hadTrace) data[idx] = { ...data[idx], ...trace };
+                        queryClient.setQueryData<MessagesResponse>(['messages', conversationId], { data });
+                    }).catch(() => {
+                        if (attempt < 4) setTimeout(() => reconcile(attempt + 1), 2000);
                     });
-                });
+                };
+                reconcile(0);
+
                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
-                queryClient.invalidateQueries({ queryKey: ['conversation', conversationIdRef.current] });
+                queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
             }, 2000);
         }, [queryClient, handleCanvasUpdate, completedToolCalls]),
 
