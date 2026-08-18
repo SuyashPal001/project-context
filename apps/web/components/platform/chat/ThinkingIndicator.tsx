@@ -30,7 +30,7 @@ function ReasoningRow({ text }: { text: string }) {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
                     <path d="M2 3.5h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5.5L3 12v-2.5H2a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
                 </svg>
-                <span className="text-xs text-muted-foreground flex-1 truncate">Thinking it through</span>
+                <span className="shimmer-text text-xs text-muted-foreground flex-1 truncate">Thinking it through</span>
                 <svg
                     width="10" height="10" viewBox="0 0 10 10" fill="none"
                     className={`shrink-0 transition-transform text-muted-foreground ${expanded ? "rotate-90" : ""}`}
@@ -212,7 +212,7 @@ export function ThinkingIndicator({
                 <AgentOrb size={40} state="searching" isLoading />
                 <div className="flex-1 pt-1">
                     {liveElapsed >= 2 && (
-                        <div className="text-sm text-primary/80 font-mono mb-1.5">
+                        <div className="shimmer-text text-sm text-primary/80 font-mono mb-1.5">
                             Working for {liveElapsed}s
                         </div>
                     )}
@@ -247,7 +247,7 @@ export function ThinkingIndicator({
                 <div className="flex-1 pt-1.5">
                     <div className="flex items-center gap-2">
                         <PulsingDots />
-                        <span className="text-sm text-primary/80 font-mono animate-in fade-in duration-500" key={messageIndex}>
+                        <span className="shimmer-text text-sm text-primary/80 font-mono animate-in fade-in duration-500" key={messageIndex}>
                             {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
                         </span>
                     </div>

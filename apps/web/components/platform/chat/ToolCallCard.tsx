@@ -146,7 +146,7 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
       >
         <ToolIcon toolName={toolName} />
 
-        <span className="text-xs text-muted-foreground flex-1 truncate">
+        <span className={`text-xs text-muted-foreground flex-1 truncate ${status === 'loading' ? 'shimmer-text' : ''}`}>
           {prefix}
           {highlight && (
             <span className="font-medium" style={{ color: 'var(--color-text-primary, inherit)' }}>
