@@ -54,6 +54,7 @@ function ChatPage() {
         conversationId,
         conversationIdRef,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
+        folderId,
         selectedConversation,
         messages,
         handleCanvasUpdate,

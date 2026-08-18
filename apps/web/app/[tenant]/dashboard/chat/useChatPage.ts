@@ -27,6 +27,7 @@ export function useChatPage() {
     const rawConvId = searchParams.get('id');
     const incomingConvId = searchParams.get('conversationId');
     const incomingAgentId = searchParams.get('agentId');
+    const incomingFolderId = searchParams.get('folderId');
 
     const conversationId = rawConvId ?? incomingConvId;
     const conversationIdRef = useRef(conversationId);
@@ -148,18 +149,19 @@ export function useChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isLoadingConversations, isErrorConversations, conversations.length, conversationId, activeAgents.length]);
 
-    // Auto-create a conversation when ?agentId= is in the URL
+    // Auto-create a conversation when ?agentId= is in the URL (e.g. from Files page "Chat with Agent" button)
     useEffect(() => {
         if (!incomingAgentId || conversationId || autoCreatingRef.current || isLoadingConversations) return;
         autoCreatingRef.current = true;
         api.post<{ data: Conversation }>('/api/v1/conversations', { agentId: incomingAgentId })
             .then((res) => {
                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
-                router.replace(`/${tenantSlug}/dashboard/chat?id=${res.data.id}`);
+                const folderParam = incomingFolderId ? `&folderId=${incomingFolderId}` : '';
+                router.replace(`/${tenantSlug}/dashboard/chat?id=${res.data.id}${folderParam}`);
             })
             .catch(() => { autoCreatingRef.current = false; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [incomingAgentId, conversationId, isLoadingConversations]);
+    }, [incomingAgentId, incomingFolderId, conversationId, isLoadingConversations]);
 
     const handleSelectConversation = (conv: Conversation) =>
         router.push(`/${tenantSlug}/dashboard/chat?id=${conv.id}`);
