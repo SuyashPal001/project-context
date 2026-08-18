@@ -240,6 +240,7 @@ export function MessageItem({
                     <TraceSummary
                         elapsedSec={message.completedTrace.elapsedSec}
                         toolCalls={message.completedTrace.toolCalls ?? []}
+                        reasoningText={message.completedTrace.reasoningText}
                     />
                 )}
 

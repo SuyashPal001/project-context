@@ -101,6 +101,8 @@ export interface CompletedTrace {
     // per-call cards were never persisted, so toolCalls is absent there.
     toolCalls?: CompletedToolCall[];
     toolCallCount?: number;
+    // Same not-persisted-server-side caveat as toolCalls above.
+    reasoningText?: string;
 }
 
 export interface Message {

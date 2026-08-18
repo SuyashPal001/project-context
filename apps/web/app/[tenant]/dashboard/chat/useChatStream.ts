@@ -47,6 +47,9 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // Extended-thinking trace for the live "thinking it through" row — never part of
     // the persisted message, reset per turn in sendMessage/onDone below.
     const [reasoningText, setReasoningText] = useState('');
+    // Mirrors reasoningText for onDone (registered once via useChat) to read
+    // without going stale — same reason streamStartRef/artifactRefRef exist.
+    const reasoningTextRef = useRef('');
     const artifactToolActiveRef = useRef<string | null>(null);
     const artifactRefRef = useRef<ArtifactRef | null>(null);
     // When the current turn's streaming began — used to compute the elapsed
@@ -69,7 +72,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
         onReasoning: useCallback((delta: string) => {
             emitStreamEvent('reasoning');
-            setReasoningText(prev => prev + delta);
+            setReasoningText(prev => {
+                const next = prev + delta;
+                reasoningTextRef.current = next;
+                return next;
+            });
         }, [emitStreamEvent]),
 
         onDelta: useCallback((delta: string, messageId: string) => {
@@ -115,8 +122,9 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 ? Math.max(0, Math.floor((Date.now() - streamStartRef.current) / 1000))
                 : 0;
             streamStartRef.current = null;
-            const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2;
-            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: completedToolCalls } } : {};
+            const reasoningTextAtDone = reasoningTextRef.current;
+            const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2 || !!reasoningTextAtDone;
+            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: completedToolCalls, reasoningText: reasoningTextAtDone || undefined } } : {};
 
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
@@ -135,7 +143,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 }
                 return { data: [...data].sort(sortByDate) };
             });
-            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); setReasoningText(''); }, 1500);
+            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); setReasoningText(''); reasoningTextRef.current = ''; }, 1500);
             setTimeout(() => {
                 const conversationId = conversationIdRef.current;
                 if (!conversationId) return;

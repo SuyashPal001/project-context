@@ -4,10 +4,12 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CompletedToolCall } from "./types";
 import { ToolCallCard } from "./ToolCallCard";
+import { ReasoningRow } from "./ThinkingIndicator";
 
 export interface TraceSummaryProps {
     elapsedSec: number;
     toolCalls: CompletedToolCall[];
+    reasoningText?: string;
     defaultCollapsed?: boolean;
 }
 
@@ -18,7 +20,7 @@ export interface TraceSummaryProps {
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls, defaultCollapsed = true }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls, reasoningText, defaultCollapsed = true }: TraceSummaryProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
     return (
@@ -36,11 +38,12 @@ export function TraceSummary({ elapsedSec, toolCalls, defaultCollapsed = true }:
                 </svg>
                 <span>Worked for {elapsedSec}s</span>
             </button>
-            {!collapsed && toolCalls.length > 0 && (
+            {!collapsed && (toolCalls.length > 0 || reasoningText) && (
                 <div className="ml-4 flex flex-col gap-1 normal-case">
                     {toolCalls.map(tc => (
                         <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} />
                     ))}
+                    {reasoningText && <ReasoningRow text={reasoningText} />}
                 </div>
             )}
         </div>

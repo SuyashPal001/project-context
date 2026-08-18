@@ -8,7 +8,7 @@ import { ToolCallCard } from "./ToolCallCard";
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
 // useChatStream's onReasoning). Collapsed by default — same disclosure pattern
 // as TraceSummary's post-completion "Worked for Ns" row.
-function ReasoningRow({ text }: { text: string }) {
+export function ReasoningRow({ text }: { text: string }) {
     const [expanded, setExpanded] = useState(false);
     if (!text) return null;
 
