@@ -34,11 +34,20 @@ export interface ClarificationQuestion {
     allowSkip?: boolean;
 }
 
+export interface ClarificationAnswer {
+    selectedIndex?: number;
+    freeText?: string;
+    skipped?: boolean;
+}
+
 export interface ClarificationRequest {
     id: string;
     questions: ClarificationQuestion[];
     status: 'pending' | 'answered' | 'skipped';
     answeredAt?: string;
+    // Per-question answer actually given, keyed by question index — populated
+    // once the request resolves, powers the resolved "N answer(s)" summary card.
+    answers?: Record<number, ClarificationAnswer>;
 }
 
 export interface MessageAttachment {

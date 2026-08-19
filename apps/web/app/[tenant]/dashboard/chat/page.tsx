@@ -157,6 +157,10 @@ function ChatPage() {
     // skip — used to label the completed card "Skipped" only when the WHOLE
     // set was skipped, not just the final question answered.
     const clarificationAllSkippedRef = useRef<Map<string, boolean>>(new Map());
+    // Accumulates each question's answer as it's submitted, keyed by
+    // clarificationId then questionIndex — attached to the resolved request so
+    // the "N answer(s)" summary card has real question/answer text to show.
+    const clarificationAnswersRef = useRef<Map<string, Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }>>>(new Map());
 
     const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => {
         const ok = await sendClarificationAnswer(clarificationId, questionIndex, answer);
@@ -168,15 +172,21 @@ function ChatPage() {
         const wasAllSkippedSoFar = tracker.get(clarificationId) ?? true;
         tracker.set(clarificationId, wasAllSkippedSoFar && !!answer.skipped);
 
+        const answersMap = clarificationAnswersRef.current.get(clarificationId) ?? {};
+        answersMap[questionIndex] = answer;
+        clarificationAnswersRef.current.set(clarificationId, answersMap);
+
         // Mirror handleApprove/handleDismiss: flip the request's status in the
         // local cache once EVERY question has been answered — `allAnswered`
         // reflects the full answered-index set, not just "this was the last
         // page", since chevron nav lets the user submit out of order.
         if (allAnswered) {
             const finalStatus = (tracker.get(clarificationId) ?? false) ? 'skipped' as const : 'answered' as const;
+            const answers = clarificationAnswersRef.current.get(clarificationId);
             tracker.delete(clarificationId);
+            clarificationAnswersRef.current.delete(clarificationId);
             queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
-                old ? { data: old.data.map(m => m.id === messageId ? { ...m, clarificationRequest: m.clarificationRequest ? { ...m.clarificationRequest, status: finalStatus, answeredAt: new Date().toISOString() } : undefined } : m) } : old
+                old ? { data: old.data.map(m => m.id === messageId ? { ...m, clarificationRequest: m.clarificationRequest ? { ...m.clarificationRequest, status: finalStatus, answeredAt: new Date().toISOString(), answers } : undefined } : m) } : old
             );
         }
     }, [conversationId, queryClient, sendClarificationAnswer]);

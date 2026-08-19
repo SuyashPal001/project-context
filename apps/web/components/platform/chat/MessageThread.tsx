@@ -9,6 +9,7 @@ import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { MessageItem } from "./MessageItem";
+import { ClarificationCard } from "./ClarificationCard";
 
 interface MessageThreadProps {
     messages: Message[];
@@ -44,7 +45,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // state (last message's clarificationRequest still 'pending') rather than from
     // isStreaming, so the status line reflects who's actually supposed to act next.
     const lastMessage = messages[messages.length - 1];
-    const awaitingReply = lastMessage?.clarificationRequest?.status === 'pending';
+    // The pending clarification takes over the panel (see the overlay render below)
+    // instead of rendering inline — MessageItem deliberately skips it while pending.
+    const pendingClarificationMessage = lastMessage?.clarificationRequest?.status === 'pending' ? lastMessage : undefined;
+    const awaitingReply = pendingClarificationMessage !== undefined;
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -192,6 +196,20 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 )}
             </div>
         </div>
+        {pendingClarificationMessage && (
+            <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/90 backdrop-blur-sm px-4">
+                <ClarificationCard
+                    request={pendingClarificationMessage.clarificationRequest!}
+                    onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
+                        pendingClarificationMessage.id,
+                        pendingClarificationMessage.clarificationRequest!.id,
+                        answer.questionIndex,
+                        { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
+                        allAnswered,
+                    )}
+                />
+            </div>
+        )}
         {showScrollToBottom && (
             <button
                 type="button"

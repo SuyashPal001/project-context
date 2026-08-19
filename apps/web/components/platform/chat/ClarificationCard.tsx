@@ -28,9 +28,37 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     const [answeredIndices, setAnsweredIndices] = useState<Set<number>>(new Set());
 
     if (request.status !== 'pending') {
+        const total = request.questions.length;
+        const answers = request.answers ?? {};
         return (
-            <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-1 px-2 bg-muted/30 rounded-lg border border-border/20 w-fit">
-                <span>{request.status === 'answered' ? 'Answered' : 'Skipped'}</span>
+            <div className="flex w-full justify-center my-5">
+                <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/40 bg-card p-[14px]">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                            <path d="M9.5 9a2.5 2.5 0 0 1 4.83-.92c-.28.7-.77 1.1-1.33 1.5-.62.44-1 .8-1 1.67" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            <circle cx="12" cy="16.25" r="0.75" fill="currentColor" />
+                        </svg>
+                        <span>{total} answer{total === 1 ? '' : 's'}</span>
+                    </div>
+                    <div className="border-t border-border/40" />
+                    <div className="flex flex-col gap-3">
+                        {request.questions.map((q, i) => {
+                            const a = answers[i];
+                            const answerText = a?.skipped || !a
+                                ? 'Skipped'
+                                : a.selectedIndex !== undefined
+                                    ? q.options[a.selectedIndex]?.label ?? 'Skipped'
+                                    : a.freeText || 'Skipped';
+                            return (
+                                <div key={i}>
+                                    <div className="text-sm font-medium">{q.prompt}</div>
+                                    <div className="text-sm text-muted-foreground mt-0.5">{answerText}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
         );
     }
@@ -78,25 +106,27 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
             <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/40 bg-card p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center justify-between">
                     <h4 className="text-sm font-medium">{question.prompt}</h4>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 ml-3">
-                        <button
-                            type="button"
-                            disabled={pageIndex === 0}
-                            onClick={() => setPageIndex(p => Math.max(0, p - 1))}
-                            className="disabled:opacity-30"
-                        >
-                            <ChevronLeft className="h-3.5 w-3.5" />
-                        </button>
-                        <span>{pageIndex + 1}/{total}</span>
-                        <button
-                            type="button"
-                            disabled={pageIndex === total - 1}
-                            onClick={() => setPageIndex(p => Math.min(total - 1, p + 1))}
-                            className="disabled:opacity-30"
-                        >
-                            <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
+                    {total > 1 && (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 ml-3">
+                            <button
+                                type="button"
+                                disabled={pageIndex === 0}
+                                onClick={() => setPageIndex(p => Math.max(0, p - 1))}
+                                className="disabled:opacity-30"
+                            >
+                                <ChevronLeft className="h-3.5 w-3.5" />
+                            </button>
+                            <span>{pageIndex + 1}/{total}</span>
+                            <button
+                                type="button"
+                                disabled={pageIndex === total - 1}
+                                onClick={() => setPageIndex(p => Math.min(total - 1, p + 1))}
+                                className="disabled:opacity-30"
+                            >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -109,7 +139,9 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                 "w-full text-left rounded-xl px-3 py-2.5 border transition-colors",
                                 selectedIndex === i
                                     ? "border-primary/40 bg-primary/5"
-                                    : "border-transparent bg-muted/40 hover:bg-muted/60"
+                                    : i === 0 && selectedIndex === undefined
+                                        ? "border-transparent bg-muted/40 hover:bg-muted/60"
+                                        : "border-transparent hover:bg-muted/60"
                             )}
                         >
                             <div className="text-sm font-medium">{i + 1}. {opt.label}</div>

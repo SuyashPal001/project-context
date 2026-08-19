@@ -210,7 +210,10 @@ export function MessageItem({
                     />
                 )}
 
-                {message.clarificationRequest && (
+                {/* Pending clarification requests render as a panel-wide takeover overlay
+                    (see MessageThread) instead of inline here — only the resolved
+                    "N answer(s)" summary stays in the normal message flow. */}
+                {message.clarificationRequest && message.clarificationRequest.status !== 'pending' && (
                     <ClarificationCard
                         request={message.clarificationRequest}
                         onAnswer={(answer, allAnswered) => onClarificationAnswer?.(

@@ -22,7 +22,11 @@ export function ReasoningRow({ text }: { text: string }) {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-current">
                     <path d="M2 3.5h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5.5L3 12v-2.5H2a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
                 </svg>
-                <span className="shimmer-text text-sm font-semibold flex-1 truncate">Thinking it through</span>
+                {/* Lighter tone of the same primary shade "Working for Ns" uses (text-primary/80),
+                    not the inherited near-white text-foreground — the shimmer gradient sweeps
+                    currentColor -> #fff -> currentColor, so a base color already close to white
+                    leaves almost no visible contrast to sweep. */}
+                <span className="shimmer-text text-sm font-semibold flex-1 truncate text-primary/60">Thinking it through</span>
                 <svg
                     width="10" height="10" viewBox="0 0 10 10" fill="none"
                     className={`shrink-0 transition-transform text-foreground ${expanded ? "rotate-90" : ""}`}
