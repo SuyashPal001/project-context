@@ -9,6 +9,9 @@ import { hasPermission } from '@serverless-saas/permissions';
 import { isAuthorized } from './internal/tasks.auth';
 import type { AppEnv } from '@serverless-saas/types';
 
+const AGENT_ORCHESTRATOR_URL = process.env.AGENT_ORCHESTRATOR_URL ?? '';
+const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY ?? '';
+
 export const messagesRoutes = new Hono<AppEnv>();
 
 // Verify conversation belongs strictly to this tenant+user (no cross-member bleed)
@@ -281,6 +284,57 @@ messagesRoutes.patch('/:conversationId/messages/:messageId/clarification', async
         .returning();
 
     return c.json({ data: updated }, 200);
+});
+
+// DELETE /conversations/:conversationId/messages/truncate
+// Deletes all messages in this conversation at or after fromTimestamp from both the
+// app DB and Mastra memory. Used by Regenerate and Edit & Resubmit on the frontend.
+messagesRoutes.delete('/:conversationId/messages/truncate', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const userId = c.get('userId') as string | undefined;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'conversations', 'create')) {
+        return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+    if (!userId) return c.json({ error: 'User not resolved', code: 'NO_USER' }, 400);
+
+    const conversationId = c.req.param('conversationId');
+
+    const schema = z.object({ fromTimestamp: z.string().datetime() });
+    const body = await c.req.json().catch(() => null);
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        return c.json({ error: 'fromTimestamp (ISO datetime) is required', code: 'VALIDATION_ERROR' }, 400);
+    }
+
+    if (!await resolveConversation(conversationId, tenantId, userId)) {
+        return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    const fromDate = new Date(result.data.fromTimestamp);
+
+    // Delete from app DB
+    await db
+        .delete(messages)
+        .where(and(
+            eq(messages.conversationId, conversationId),
+            eq(messages.tenantId, tenantId),
+            gte(messages.createdAt, fromDate),
+        ));
+
+    // Delete from Mastra memory (fire-and-forget — app DB is source of truth for UI)
+    if (AGENT_ORCHESTRATOR_URL) {
+        fetch(`${AGENT_ORCHESTRATOR_URL}/thread/truncate`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json', 'X-Service-Key': INTERNAL_SERVICE_KEY },
+            body: JSON.stringify({ conversationId, fromTimestamp: result.data.fromTimestamp }),
+        }).catch(err => console.warn('[truncate] Mastra call failed:', err.message));
+    }
+
+    return c.json({ ok: true });
 });
 
 // PATCH /conversations/:conversationId/messages/:messageId/approval — update approval status

@@ -102,7 +102,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             });
         }, [queryClient, activeToolCalls, handleToolDone]),
 
-        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown) => {
+        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown, citationsRaw?: unknown, suggestedFollowUpsRaw?: unknown) => {
             emitStreamEvent('done');
             if (artifactToolActiveRef.current) {
                 const aref = artifactRefRef.current;
@@ -144,14 +144,20 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 const idx = data.findIndex(m => m.id === messageId);
                 const plan = planResult ? { planResult: planResult as Message['planResult'] } : {};
                 const aref = artifactRef ? { artifactRef: artifactRef as ArtifactRef } : {};
+                const cites = citationsRaw && Array.isArray(citationsRaw) && citationsRaw.length > 0
+                    ? { citations: citationsRaw as Message['citations'] }
+                    : {};
+                const followUps = suggestedFollowUpsRaw && Array.isArray(suggestedFollowUpsRaw) && suggestedFollowUpsRaw.length > 0
+                    ? { suggestedFollowUps: suggestedFollowUpsRaw as string[] }
+                    : {};
                 if (idx >= 0) {
-                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace };
+                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps };
                 } else {
                     const zIdx = data.findIndex(m => m.isStreaming === true);
                     if (zIdx >= 0) {
-                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref, ...trace };
+                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref, ...trace, ...cites, ...followUps };
                     } else if (fullText) {
-                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref, ...trace });
+                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps });
                     }
                 }
                 return { data: [...data].sort(sortByDate) };
@@ -336,10 +342,50 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         await sendChatMessage(content, enriched);
     };
 
+    // Truncate app DB + Mastra memory from fromTimestamp onward, then optimistically
+    // remove those messages from the React Query cache.
+    const truncateFrom = async (fromTimestamp: string) => {
+        const cid = conversationIdRef.current;
+        if (!cid) return;
+        // Optimistic cache update
+        queryClient.setQueryData<MessagesResponse>(['messages', cid], old => {
+            if (!old) return old;
+            return { data: old.data.filter(m => m.createdAt < fromTimestamp) };
+        });
+        // Server-side delete
+        await api.del(`/api/v1/conversations/${cid}/messages/truncate`, { fromTimestamp });
+    };
+
+    const regenerate = async (assistantMessage: Message) => {
+        if (isStreaming) return;
+        // Find the user message immediately before this assistant message
+        const currentMessages = queryClient.getQueryData<MessagesResponse>(['messages', conversationIdRef.current]);
+        const msgList = currentMessages?.data ?? [];
+        const idx = msgList.findIndex(m => m.id === assistantMessage.id);
+        const userMsg = idx > 0 ? msgList[idx - 1] : null;
+        if (!userMsg || userMsg.role !== 'user') return;
+
+        await truncateFrom(assistantMessage.createdAt);
+        // Re-send the user's original message
+        await sendMessage(userMsg.content, userMsg.attachments?.map(a => ({
+            fileId: a.fileId ?? a.id,
+            name: a.name,
+            type: a.type,
+            size: a.size,
+            previewUrl: a.previewUrl,
+        })));
+    };
+
+    const editAndResubmit = async (userMessage: Message, newContent: string) => {
+        if (isStreaming) return;
+        await truncateFrom(userMessage.createdAt);
+        await sendMessage(newContent);
+    };
+
     return {
         sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying,
         activeToolCalls, completedToolCalls, reasoningText,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
-        lastStreamEvent,
+        lastStreamEvent, regenerate, editAndResubmit,
     };
 }

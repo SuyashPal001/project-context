@@ -36,6 +36,7 @@ If this returns no results, say you cannot find the information — never guess.
   outputSchema: z.object({
     found:   z.boolean(),
     context: z.string(),
+    sources: z.array(z.object({ name: z.string(), score: z.number() })).optional(),
   }),
 
   execute: async ({ query, folderId }, execContext) => {
@@ -87,6 +88,15 @@ If this returns no results, say you cannot find the information — never guess.
       .map((r, i) => `[${i + 1}] ${r.document_name} (relevance: ${r.relevanceScore ?? r.score.toFixed(3)})\n${r.content}`)
       .join('\n\n---\n\n')
 
-    return { found: true, context }
+    // Deduplicate sources by document name, keep highest score per doc
+    const sourceMap = new Map<string, number>()
+    for (const r of top) {
+      const prev = sourceMap.get(r.document_name) ?? 0
+      const score = typeof r.relevanceScore === 'number' ? r.relevanceScore : r.score
+      if (score > prev) sourceMap.set(r.document_name, score)
+    }
+    const sources = Array.from(sourceMap.entries()).map(([name, score]) => ({ name, score }))
+
+    return { found: true, context, sources }
   },
 })
