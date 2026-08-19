@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Terminal, Info, Image as ImageIcon, RotateCcw, Pencil, Check, X } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
+import { WavebarMark } from "./WavebarMark";
 import { Message, PlanResult, ToolCall, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -112,10 +113,17 @@ export function MessageItem({
             {isAssistant && (
                 isFirstAssistantMessage
                     ? <AgentOrb size={40} state="idle" />
-                    // Same-width empty spacer for every other assistant message, so the
-                    // text column still lines up under the very first message's avatar
-                    // instead of every later reply re-rendering its own icon.
-                    : <div className="w-10 shrink-0" />
+                    // Same-width slot for every other assistant message, so the text
+                    // column still lines up under the very first message's orb. Holds a
+                    // small wavebar mark instead of dead space — animated only while
+                    // this specific reply is the one actively streaming, static (at
+                    // rest) for already-finished ones so old scrollback doesn't turn
+                    // into a wall of pulsing icons.
+                    : (
+                        <div className="w-10 shrink-0 flex items-center justify-center">
+                            <WavebarMark animate={!!message.isStreaming} />
+                        </div>
+                    )
             )}
 
             <div className={cn(

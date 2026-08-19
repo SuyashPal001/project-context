@@ -202,6 +202,27 @@
   }
 }
 
+/* Wavebar mark — small equalizer-style badge used as the assistant's
+   recurring chat-row mark for every reply after the first (which gets the
+   full orb instead). Each bar shares one scaleY keyframe, staggered by a
+   per-element --wavebar-delay custom property. */
+@keyframes wavebar-scale {
+  0%, 100% { transform: scaleY(0.55); }
+  50%      { transform: scaleY(1); }
+}
+
+.animate-wavebar {
+  animation: wavebar-scale 1.1s ease-in-out infinite;
+  animation-delay: var(--wavebar-delay, 0s);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-wavebar {
+    animation: none;
+    transform: scaleY(0.8);
+  }
+}
+
 /* Tiptap editor — code block dark theme */
 .tiptap pre {
   background: #1a1a1a;
