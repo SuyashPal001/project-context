@@ -4,6 +4,6 @@ export const FEATURE_FLAGS = {
     plans:        true,   // Projects / Plans section
     board:        true,   // Board (Kanban) section
     chatUpload:   true,   // + attach button in chat input
-    chatCanvas:   false,  // Canvas panel and toggle button in chat
+    chatCanvas:   true,   // Canvas panel and toggle button in chat
     chatVoice:    false,  // Voice orb / mic button in chat
 } as const;

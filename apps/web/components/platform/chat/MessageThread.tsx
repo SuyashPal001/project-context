@@ -211,6 +211,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             // step in the conversation instead of a modal dropped in empty space.
             <div className="absolute inset-0 z-40 flex items-end justify-center pb-6 bg-background/90 backdrop-blur-sm px-4">
                 <ClarificationCard
+                    key={pendingClarificationMessage.clarificationRequest!.id}
                     request={pendingClarificationMessage.clarificationRequest!}
                     onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
                         pendingClarificationMessage.id,
