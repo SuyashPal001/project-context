@@ -155,6 +155,13 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             toolCallCount: z.number(),
             reasoningText: z.string().optional(),
         }).nullish(),
+        clarificationRequest: z.object({
+            id: z.string(),
+            questions: z.array(z.any()),
+            status: z.enum(['pending', 'answered', 'skipped']),
+            answers: z.record(z.string(), z.any()).optional(),
+            answeredAt: z.string().optional(),
+        }).nullish(),
         createdAt: z.string().datetime().optional(),
     });
 
@@ -211,9 +218,57 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             attachments: result.data.attachments ?? null,
             artifactRef: result.data.artifactRef ?? null,
             completedTrace: result.data.completedTrace ?? null,
+            clarificationRequest: result.data.clarificationRequest ?? null,
             createdAt: result.data.createdAt ? new Date(result.data.createdAt) : undefined,
         })
         .returning();
 
     return c.json({ data: message }, 201);
+});
+
+// PATCH /conversations/:conversationId/messages/:messageId/clarification — update clarification status
+// Internal only: called by the orchestrator when the user finishes answering.
+messagesRoutes.patch('/:conversationId/messages/:messageId/clarification', async (c) => {
+    if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) {
+        return c.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
+    }
+
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+
+    const conversationId = c.req.param('conversationId');
+    const messageId = c.req.param('messageId');
+
+    const schema = z.object({
+        clarificationRequest: z.object({
+            status: z.enum(['pending', 'answered', 'skipped']),
+            answers: z.record(z.string(), z.any()).optional(),
+            answeredAt: z.string().optional(),
+        }),
+    });
+
+    const body = await c.req.json().catch(() => null);
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    const [existing] = await db
+        .select({ clarificationRequest: messages.clarificationRequest })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
+        .limit(1);
+
+    if (!existing) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404);
+
+    const merged = { ...(existing.clarificationRequest as object ?? {}), ...result.data.clarificationRequest };
+
+    const [updated] = await db
+        .update(messages)
+        .set({ clarificationRequest: merged })
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
+        .returning();
+
+    return c.json({ data: updated }, 200);
 });

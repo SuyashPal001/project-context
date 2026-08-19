@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { pendingClarifications } from '../../types.js'
+import { saveClarificationRequest } from '../../persistence.js'
 
 const CLARIFICATION_TIMEOUT_MS = 120_000
 
@@ -31,13 +32,24 @@ export const askClarifyingQuestionsTool = createTool({
     const sessionId = execContext?.requestContext?.get('sessionId') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined
     const userId = execContext?.requestContext?.get('userId') as string | undefined
+    const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
+    const idToken = execContext?.requestContext?.get('idToken') as string | undefined
 
     if (!sendEvent || !sessionId || !tenantId || !userId) {
       return { answers: [], error: 'no_active_session' }
     }
 
     const clarificationId = crypto.randomUUID()
+    const clarificationMessageId = crypto.randomUUID()
     sendEvent('clarification_request', { clarificationId, questions: inputData.questions })
+
+    if (conversationId && idToken) {
+      saveClarificationRequest(idToken, conversationId, clarificationMessageId, {
+        id: clarificationId,
+        questions: inputData.questions,
+        status: 'pending',
+      })
+    }
 
     const answers = await new Promise<Array<{ questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }>>((resolve) => {
       const timer = setTimeout(() => {
@@ -54,6 +66,9 @@ export const askClarifyingQuestionsTool = createTool({
         collected: [],
         tenantId,
         userId,
+        messageId: clarificationMessageId,
+        conversationId,
+        idToken,
       })
     })
 

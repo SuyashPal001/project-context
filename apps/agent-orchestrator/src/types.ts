@@ -99,6 +99,9 @@ export const pendingClarifications = new Map<string, {
   collected: ClarificationAnswer[]
   tenantId: string
   userId: string
+  messageId?: string
+  conversationId?: string
+  idToken?: string
 }>()
 
 // ─── Rate limiter ─────────────────────────────────────────────────────────────

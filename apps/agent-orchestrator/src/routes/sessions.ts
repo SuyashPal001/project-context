@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
 import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, type ClarificationAnswer } from '../types.js'
 import { validateToken } from '../auth.js'
+import { updateClarificationRequest } from '../persistence.js'
 
 export const sessionsRouter = new Hono()
 
@@ -192,6 +193,19 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
     clearTimeout(pending.timer)
     pendingClarifications.delete(clarificationId)
     pending.resolve(pending.collected)
+
+    if (pending.messageId && pending.conversationId && pending.idToken) {
+      const allSkipped = pending.collected.every((a) => a.skipped === true)
+      const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
+      for (const a of pending.collected) {
+        answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
+      }
+      updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
+        status: allSkipped ? 'skipped' : 'answered',
+        answers: answersMap,
+        answeredAt: new Date().toISOString(),
+      })
+    }
   }
 
   return c.json({ ok: true, remaining: Math.max(0, pending.expectedCount - pending.collected.length) }, 200, corsHeaders)

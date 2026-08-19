@@ -78,6 +78,72 @@ export interface CompletedTracePayload {
   reasoningText?: string
 }
 
+export interface ClarificationQuestion {
+  prompt: string
+  options: Array<{ label: string; rationale?: string }>
+  allowFreeText?: boolean
+  allowSkip?: boolean
+}
+
+export interface ClarificationRequestPayload {
+  id: string
+  questions: ClarificationQuestion[]
+  status: 'pending' | 'answered' | 'skipped'
+  answers?: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }>
+  answeredAt?: string
+}
+
+export function saveClarificationRequest(
+  idToken: string,
+  conversationId: string,
+  messageId: string,
+  clarificationRequest: ClarificationRequestPayload,
+): void {
+  const payload = {
+    id: messageId,
+    role: 'assistant',
+    content: '',
+    clarificationRequest,
+    createdAt: new Date().toISOString(),
+  }
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
+    method: 'POST',
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+    body: JSON.stringify(payload),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] saveClarificationRequest status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] saveClarificationRequest status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] saveClarificationRequest error:', err.message)
+  })
+}
+
+export function updateClarificationRequest(
+  idToken: string,
+  conversationId: string,
+  messageId: string,
+  update: Pick<ClarificationRequestPayload, 'status' | 'answers' | 'answeredAt'>,
+): void {
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/${messageId}/clarification`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+    body: JSON.stringify({ clarificationRequest: update }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] updateClarificationRequest status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] updateClarificationRequest status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] updateClarificationRequest error:', err.message)
+  })
+}
+
 export function saveAssistantMessage(
   idToken: string,
   conversationId: string,

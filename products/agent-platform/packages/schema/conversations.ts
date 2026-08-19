@@ -54,6 +54,9 @@ export const messages = pgTable('messages', {
   // summary. Detailed per-tool-call cards (name/query/results) stay client-only
   // for the live turn; only the summary line survives a reload or later refetch.
   completedTrace: jsonb('completed_trace'),
+  // { id, questions, status, answers, answeredAt } — persisted ClarificationCard
+  // state so the question, options, and resolution survive a page reload.
+  clarificationRequest: jsonb('clarification_request'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
