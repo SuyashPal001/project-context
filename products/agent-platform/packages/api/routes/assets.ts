@@ -37,6 +37,7 @@ function messageToAssets(message: typeof messages.$inferSelect): AssetDTO[] {
     if (attachments) {
         for (const att of attachments) {
             if (!att.fileId) continue; // no downloadable reference — nothing for the gallery to open
+            if (typeof att.type !== 'string' || !att.type) continue; // malformed attachment — missing or non-string type
             assets.push({
                 id: att.fileId,
                 type: classifyMimeType(att.type, att.name),
