@@ -75,9 +75,17 @@ sessionsRouter.post('/mcp/approval-request', async (c) => {
 
   const approved = await new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => {
+      const pending = pendingMcpApprovals.get(approvalId)
       pendingMcpApprovals.delete(approvalId)
       console.log(`[mcp-approval] timeout approvalId=${approvalId} tool=${toolName} — auto-deny`)
       resolve(false)
+
+      if (pending?.messageId && pending?.conversationId && pending?.idToken) {
+        updateApprovalRequest(pending.idToken, pending.conversationId, pending.messageId, {
+          status: 'dismissed',
+          decisionAt: new Date().toISOString(),
+        })
+      }
     }, 30_000)
     pendingMcpApprovals.set(approvalId, {
       resolve, timer, tenantId,
