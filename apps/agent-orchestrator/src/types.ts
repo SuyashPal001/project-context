@@ -77,10 +77,21 @@ export const sessions = new Map<string, RelaySessionCtx>()
 export const lastRagResult = new Map<string, { chunks: string[]; count: number; ts: number; topScore: number }>()
 
 // MCP write-tool approval state
-export const pendingMcpApprovals = new Map<string, { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout>; tenantId: string }>()
+export const pendingMcpApprovals = new Map<string, {
+  resolve: (approved: boolean) => void
+  timer: ReturnType<typeof setTimeout>
+  tenantId: string
+  messageId?: string
+  conversationId?: string
+  idToken?: string
+}>()
 
-// sseApprovalChannels: orchestrator sessionId → function that sends an SSE event on the open stream
-export const sseApprovalChannels = new Map<string, (payload: Record<string, unknown>) => void>()
+// sseApprovalChannels: orchestrator sessionId → send fn + conversation context for persistence
+export const sseApprovalChannels = new Map<string, {
+  send: (payload: Record<string, unknown>) => void
+  conversationId: string
+  idToken: string
+}>()
 
 // Mid-conversation clarification-question state. Generalizes the MCP write-tool
 // approval gate above (single boolean) to an ordered array of per-question answers

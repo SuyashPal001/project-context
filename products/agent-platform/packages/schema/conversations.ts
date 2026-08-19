@@ -57,6 +57,9 @@ export const messages = pgTable('messages', {
   // { id, questions, status, answers, answeredAt } — persisted ClarificationCard
   // state so the question, options, and resolution survive a page reload.
   clarificationRequest: jsonb('clarification_request'),
+  // { id, toolName, arguments, description, status, decisionAt } — persisted MCP
+  // write-tool approval card so the pending/approved/dismissed state survives a reload.
+  approvalRequest: jsonb('approval_request'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

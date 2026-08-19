@@ -162,6 +162,14 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             answers: z.record(z.string(), z.any()).optional(),
             answeredAt: z.string().optional(),
         }).nullish(),
+        approvalRequest: z.object({
+            id: z.string(),
+            toolName: z.string(),
+            arguments: z.record(z.string(), z.any()),
+            description: z.string(),
+            status: z.enum(['pending', 'approved', 'dismissed']),
+            decisionAt: z.string().optional(),
+        }).nullish(),
         createdAt: z.string().datetime().optional(),
     });
 
@@ -219,6 +227,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             artifactRef: result.data.artifactRef ?? null,
             completedTrace: result.data.completedTrace ?? null,
             clarificationRequest: result.data.clarificationRequest ?? null,
+            approvalRequest: result.data.approvalRequest ?? null,
             createdAt: result.data.createdAt ? new Date(result.data.createdAt) : undefined,
         })
         .returning();
@@ -267,6 +276,52 @@ messagesRoutes.patch('/:conversationId/messages/:messageId/clarification', async
     const [updated] = await db
         .update(messages)
         .set({ clarificationRequest: merged })
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
+        .returning();
+
+    return c.json({ data: updated }, 200);
+});
+
+// PATCH /conversations/:conversationId/messages/:messageId/approval — update approval status
+// Internal only: called by the orchestrator when the user approves or dismisses.
+messagesRoutes.patch('/:conversationId/messages/:messageId/approval', async (c) => {
+    if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) {
+        return c.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
+    }
+
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+
+    const conversationId = c.req.param('conversationId');
+    const messageId = c.req.param('messageId');
+
+    const schema = z.object({
+        approvalRequest: z.object({
+            status: z.enum(['pending', 'approved', 'dismissed']),
+            decisionAt: z.string().optional(),
+        }),
+    });
+
+    const body = await c.req.json().catch(() => null);
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    const [existing] = await db
+        .select({ approvalRequest: messages.approvalRequest })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
+        .limit(1);
+
+    if (!existing) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404);
+
+    const merged = { ...(existing.approvalRequest as object ?? {}), ...result.data.approvalRequest };
+
+    const [updated] = await db
+        .update(messages)
+        .set({ approvalRequest: merged })
         .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
         .returning();
 

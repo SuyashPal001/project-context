@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
 import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, type ClarificationAnswer } from '../types.js'
 import { validateToken } from '../auth.js'
-import { updateClarificationRequest } from '../persistence.js'
+import { updateClarificationRequest, saveApprovalRequest, updateApprovalRequest } from '../persistence.js'
 
 export const sessionsRouter = new Hono()
 
@@ -54,14 +54,24 @@ sessionsRouter.post('/mcp/approval-request', async (c) => {
 
   if (!approvalId) return c.json({ approved: false, reason: 'approvalId_required' }, 400)
 
-  const send = sseApprovalChannels.get(sessionId)
-  if (!send) {
+  const session = sseApprovalChannels.get(sessionId)
+  if (!session) {
     console.log(`[mcp-approval] no active session sessionId=${sessionId} tool=${toolName} — auto-deny`)
     return c.json({ approved: false, reason: 'no_active_session' })
   }
 
+  const description = `Agent wants to ${toolName.replace(/_/g, ' ')}`
+  const approvalMessageId = crypto.randomUUID()
   console.log(`[mcp-approval] approval_request sessionId=${sessionId} approvalId=${approvalId} tool=${toolName}`)
-  send({ type: 'approval_request', approvalId, toolName, description: `Agent wants to ${toolName.replace(/_/g, ' ')}`, arguments: args })
+  session.send({ type: 'approval_request', approvalId, toolName, description, arguments: args })
+
+  saveApprovalRequest(session.idToken, session.conversationId, approvalMessageId, {
+    id: approvalId,
+    toolName,
+    arguments: args,
+    description,
+    status: 'pending',
+  })
 
   const approved = await new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => {
@@ -69,7 +79,12 @@ sessionsRouter.post('/mcp/approval-request', async (c) => {
       console.log(`[mcp-approval] timeout approvalId=${approvalId} tool=${toolName} — auto-deny`)
       resolve(false)
     }, 30_000)
-    pendingMcpApprovals.set(approvalId, { resolve, timer, tenantId })
+    pendingMcpApprovals.set(approvalId, {
+      resolve, timer, tenantId,
+      messageId: approvalMessageId,
+      conversationId: session.conversationId,
+      idToken: session.idToken,
+    })
   })
 
   console.log(`[mcp-approval] resolved approvalId=${approvalId} tool=${toolName} approved=${approved}`)
@@ -112,7 +127,15 @@ sessionsRouter.post('/api/chat/approval', async (c) => {
 
   clearTimeout(pending.timer)
   pendingMcpApprovals.delete(approvalId)
-  pending.resolve(decision === 'allow' || decision === 'approved')
+  const wasApproved = decision === 'allow' || decision === 'approved'
+  pending.resolve(wasApproved)
+
+  if (pending.messageId && pending.conversationId && pending.idToken) {
+    updateApprovalRequest(pending.idToken, pending.conversationId, pending.messageId, {
+      status: wasApproved ? 'approved' : 'dismissed',
+      decisionAt: new Date().toISOString(),
+    })
+  }
 
   return c.json({ ok: true }, 200, corsHeaders)
 })

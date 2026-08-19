@@ -164,7 +164,11 @@ chatRouter.post('/api/chat', async (c) => {
     try { streamController.close() } catch {}
   }
 
-  sseApprovalChannels.set(sessionId, (payload) => sendEvent('approval_request', payload))
+  sseApprovalChannels.set(sessionId, {
+    send: (payload) => sendEvent('approval_request', payload),
+    conversationId,
+    idToken,
+  })
 
   const readable = new ReadableStream<Uint8Array>({
     start(controller) {

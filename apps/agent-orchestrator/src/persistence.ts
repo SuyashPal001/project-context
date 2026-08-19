@@ -144,6 +144,66 @@ export function updateClarificationRequest(
   })
 }
 
+export interface ApprovalRequestPayload {
+  id: string
+  toolName: string
+  arguments: Record<string, unknown>
+  description: string
+  status: 'pending' | 'approved' | 'dismissed'
+  decisionAt?: string
+}
+
+export function saveApprovalRequest(
+  idToken: string,
+  conversationId: string,
+  messageId: string,
+  approvalRequest: ApprovalRequestPayload,
+): void {
+  const payload = {
+    id: messageId,
+    role: 'assistant',
+    content: '',
+    approvalRequest,
+    createdAt: new Date().toISOString(),
+  }
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
+    method: 'POST',
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+    body: JSON.stringify(payload),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] saveApprovalRequest status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] saveApprovalRequest status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] saveApprovalRequest error:', err.message)
+  })
+}
+
+export function updateApprovalRequest(
+  idToken: string,
+  conversationId: string,
+  messageId: string,
+  update: Pick<ApprovalRequestPayload, 'status' | 'decisionAt'>,
+): void {
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/${messageId}/approval`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+    body: JSON.stringify({ approvalRequest: update }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] updateApprovalRequest status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] updateApprovalRequest status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] updateApprovalRequest error:', err.message)
+  })
+}
+
 export function saveAssistantMessage(
   idToken: string,
   conversationId: string,
