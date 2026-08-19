@@ -17,6 +17,7 @@ import type { AgentDetail } from "@/components/platform/agents/types";
 import { AgentIdentityCard } from "./AgentIdentityCard";
 import { AgentInfoCard } from "./AgentInfoCard";
 import { AgentSkillSection } from "./AgentSkillSection";
+import { AgentCoreFilesSection } from "./AgentCoreFilesSection";
 
 interface LLMProvider {
     id: string;
@@ -174,6 +175,8 @@ export default function AgentDetailPage() {
                     agent={agent}
                     isLoading={isLoadingAgent}
                 />
+
+                <AgentCoreFilesSection agentId={agentId} />
             </div>
         </PermissionGate>
     );
