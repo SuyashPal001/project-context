@@ -202,34 +202,36 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                 </div>
 
                 <div className="border-t border-border/40 pt-4 flex items-end gap-2">
-                    {question.allowFreeText && (
-                        <Textarea
-                            ref={freeTextRef}
-                            value={freeText}
-                            onChange={(e) => setFreeTextByQuestion(prev => ({ ...prev, [pageIndex]: e.target.value }))}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    if (selectedIndex !== undefined || freeText.trim()) commitCurrent();
-                                    return;
-                                }
-                                // Escape-to-skip only applies while the field reads as the
-                                // "Skip [ESC]" affordance shown below — once the user has
-                                // typed something, Escape shouldn't discard it silently.
-                                if (e.key === 'Escape' && question.allowSkip && !freeText.trim()) {
-                                    e.preventDefault();
-                                    handleSkip();
-                                }
-                            }}
-                            placeholder="No, and tell what to do differently"
-                            rows={1}
-                            // dark:bg-input/30 on the base Textarea isn't a plain `bg-*` utility —
-                            // it's scoped to the dark: variant, so an unscoped bg-transparent here
-                            // doesn't get merged/deduped against it and the grey pill still shows
-                            // through in dark mode. Overriding the same scoped utility clears it.
-                            className="flex-1 min-h-0 max-h-[160px] py-1.5 px-0 resize-none border-0 bg-transparent dark:bg-transparent rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/60"
-                        />
-                    )}
+                    {/* Always rendered regardless of question.allowFreeText — the agent's tool
+                        call can restrict this per-question, but a fixed option set can never
+                        fully anticipate intent. A user should never be stuck picking the closest
+                        wrong option or Skip with no way to say what they actually meant. */}
+                    <Textarea
+                        ref={freeTextRef}
+                        value={freeText}
+                        onChange={(e) => setFreeTextByQuestion(prev => ({ ...prev, [pageIndex]: e.target.value }))}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                if (selectedIndex !== undefined || freeText.trim()) commitCurrent();
+                                return;
+                            }
+                            // Escape-to-skip only applies while the field reads as the
+                            // "Skip [ESC]" affordance shown below — once the user has
+                            // typed something, Escape shouldn't discard it silently.
+                            if (e.key === 'Escape' && question.allowSkip && !freeText.trim()) {
+                                e.preventDefault();
+                                handleSkip();
+                            }
+                        }}
+                        placeholder="No, and tell what to do differently"
+                        rows={1}
+                        // dark:bg-input/30 on the base Textarea isn't a plain `bg-*` utility —
+                        // it's scoped to the dark: variant, so an unscoped bg-transparent here
+                        // doesn't get merged/deduped against it and the grey pill still shows
+                        // through in dark mode. Overriding the same scoped utility clears it.
+                        className="flex-1 min-h-0 max-h-[160px] py-1.5 px-0 resize-none border-0 bg-transparent dark:bg-transparent rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/60"
+                    />
                     <div className="flex items-center gap-2 shrink-0 pb-1.5">
                         {question.allowSkip && !freeText.trim() && (
                             <button type="button" onClick={handleSkip} disabled={isSubmitting} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40">

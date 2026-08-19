@@ -193,7 +193,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         completedToolCalls={completedToolCalls ?? []}
                         reasoningText={reasoningText ?? ''}
                     />
-                ) : isTyping ? (
+                ) : isTyping && !hasStreamingMessage ? (
                     <ThinkingDots label="Thinking..." />
                 ) : null}
 
