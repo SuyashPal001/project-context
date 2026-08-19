@@ -81,6 +81,12 @@ function ChatPage() {
         onStreamEvent(lastStreamEvent.type);
     }, [lastStreamEvent, onStreamEvent]);
 
+    // While a clarifying question is pending, ClarificationCard's own free-text field
+    // is the only input surface (see MessageThread's takeover overlay) — the normal
+    // composer stays hidden so it doesn't sit directly underneath as a second,
+    // redundant input, and so the overlay can expand into the freed space.
+    const awaitingClarificationReply = messages[messages.length - 1]?.clarificationRequest?.status === 'pending';
+
     useEffect(() => {
         if (isLoadingMessages) return; // wait for messages to actually reflect `conversationId` before seeding or dispatching
         const latest = messages[messages.length - 1];
@@ -275,9 +281,11 @@ function ChatPage() {
                                     <>
                                         <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onClarificationAnswer={handleClarificationAnswer} />
                                         <ChatTimelineNavigator messages={messages} />
-                                        <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
-                                        </div>
+                                        {!awaitingClarificationReply && (
+                                            <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                                                <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
+                                            </div>
+                                        )}
                                     </>
                                 )}
                             </>

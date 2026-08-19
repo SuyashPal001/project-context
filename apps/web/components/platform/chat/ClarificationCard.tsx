@@ -149,11 +149,15 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                             onClick={() => setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
                             className={cn(
                                 "w-full text-left rounded-xl px-3 py-2.5 border transition-colors",
+                                // bg-muted and bg-card are the same literal color in dark mode
+                                // (see globals.css) — bg-muted/* over bg-card is invisible at any
+                                // opacity. bg-accent is this codebase's actual "neutral hover/active"
+                                // token and is a genuinely different lightness value.
                                 selectedIndex === i
                                     ? "border-primary/40 bg-primary/5"
                                     : i === 0 && selectedIndex === undefined
-                                        ? "border-transparent bg-muted/40 hover:bg-muted/60"
-                                        : "border-transparent hover:bg-muted/60"
+                                        ? "border-transparent bg-accent/60 hover:bg-accent"
+                                        : "border-transparent hover:bg-accent"
                             )}
                         >
                             <div className="text-sm font-medium">{i + 1}. {opt.label}</div>
@@ -202,7 +206,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         {question.allowSkip && !freeText.trim() && (
                             <button type="button" onClick={handleSkip} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
                                 <span>Skip</span>
-                                <kbd className="text-[10px] leading-none px-1.5 py-1 rounded bg-muted text-muted-foreground/70 font-mono">ESC</kbd>
+                                <kbd className="text-[10px] leading-none px-1.5 py-1 rounded bg-accent text-muted-foreground/70 font-mono">ESC</kbd>
                             </button>
                         )}
                         <button
