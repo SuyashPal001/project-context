@@ -106,7 +106,7 @@ export function getMastraMemory(): Memory {
     vector: getMastraVector(),
     embedder,
     options: {
-      lastMessages: 10,
+      lastMessages: 20,
       semanticRecall: {
         enabled: true,
         topK: 3,

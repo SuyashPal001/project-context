@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { ingestDocument, isIngestibleDocument } from "@/lib/ingestDocument";
@@ -27,16 +27,12 @@ async function uploadToS3(file: Blob, filename: string, contentType: string, siz
         { filename, contentType }
     );
     const { fileId, uploadUrl } = uploadRes.data;
-    console.log('[upload] uploadUrl:', uploadUrl);
-    console.log('[upload] fileId:', fileId);
 
-    console.log('[upload] starting S3 PUT');
     const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: file,
         headers: { 'Content-Type': contentType }
     });
-    console.log('[upload] S3 PUT status:', uploadResponse.status);
 
     if (!uploadResponse.ok) throw new Error("Failed to upload to S3");
 
@@ -48,11 +44,13 @@ export function useFileUpload() {
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const attachmentsRef = useRef(attachments);
+    useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
 
     useEffect(() => {
         return () => {
-            attachments.forEach(attachment => {
-                if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+            attachmentsRef.current.forEach(att => {
+                if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
             });
         };
     }, []);

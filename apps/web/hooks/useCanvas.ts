@@ -36,8 +36,6 @@ export function useCanvas() {
 
   // Handle canvas update (called from useAgentEvents)
   const handleCanvasUpdate = useCallback((action: CanvasAction, data: CanvasEventData) => {
-    console.log('[canvas] handleCanvasUpdate:', action, data);
-    console.log('[canvas] window.__canvasUpdate exists:', !!(window as any).__canvasUpdate);
     // Auto-open canvas when browser automation or artifact streaming starts/loads
     if (!isCanvasOpen && (action === 'screenshot' || action === 'artifact_start' || action === 'artifact_load')) {
       setIsCanvasOpen(true);
@@ -45,22 +43,25 @@ export function useCanvas() {
 
     // Show activity indicator
     setHasActivity(true);
-    
+
     // Clear previous timeout
     if (activityTimeoutRef.current) {
       clearTimeout(activityTimeoutRef.current);
     }
-    
+
     // Reset activity indicator after 3 seconds of no activity
     activityTimeoutRef.current = setTimeout(() => {
       setHasActivity(false);
     }, 3000);
 
-    // Forward to canvas component; queue if not mounted yet
+    // Forward to canvas component; queue non-ephemeral events if not mounted yet.
+    // artifact_chunk is intentionally not queued — replaying a partial stream out
+    // of order makes no sense and these are the high-volume events that would
+    // otherwise fill the queue unboundedly when the canvas panel is disabled.
     if (typeof window !== 'undefined') {
       if ((window as any).__canvasUpdate) {
         (window as any).__canvasUpdate(action, data);
-      } else {
+      } else if (action !== 'artifact_chunk') {
         pendingActionsRef.current.push({ action, data });
       }
     }

@@ -30,6 +30,8 @@ interface MessageThreadProps {
 export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
+    const failedUrlsRef = useRef<Set<string>>(new Set());
+    const isRefreshingUrlsRef = useRef(false);
     const [showScrollToBottom, setShowScrollToBottom] = useState(false);
     const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
     const [planErrors, setPlanErrors] = useState<Record<string, string>>({});
@@ -69,33 +71,40 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 
     useEffect(() => {
         const refreshUrls = async () => {
+            if (isRefreshingUrlsRef.current) return;
             const toRefresh = messages.flatMap(m => m.attachments || [])
                 .filter(att => att.fileId && (!att.previewUrl || att.previewUrl.startsWith('blob:')))
-                .filter(att => !freshUrls[att.fileId!]);
+                .filter(att => !freshUrls[att.fileId!] && !failedUrlsRef.current.has(att.fileId!));
 
             if (toRefresh.length === 0) return;
 
-            const results = await Promise.all(
-                toRefresh.map(async (att) => {
-                    try {
-                        const { presignedUrl } = await api.get<{ presignedUrl: string }>(
-                            `/api/v1/files/${encodeURIComponent(att.fileId!)}/presigned-url`
-                        );
-                        return { fileId: att.fileId!, url: presignedUrl };
-                    } catch (err) {
-                        console.error('Failed to refresh URL for', att.fileId, err);
-                        return null;
-                    }
-                })
-            );
+            isRefreshingUrlsRef.current = true;
+            try {
+                const results = await Promise.all(
+                    toRefresh.map(async (att) => {
+                        try {
+                            const { presignedUrl } = await api.get<{ presignedUrl: string }>(
+                                `/api/v1/files/${encodeURIComponent(att.fileId!)}/presigned-url`
+                            );
+                            return { fileId: att.fileId!, url: presignedUrl };
+                        } catch (err) {
+                            console.error('Failed to refresh URL for', att.fileId, err);
+                            failedUrlsRef.current.add(att.fileId!);
+                            return null;
+                        }
+                    })
+                );
 
-            const newUrls = results.reduce((acc, curr) => {
-                if (curr) acc[curr.fileId] = curr.url;
-                return acc;
-            }, {} as Record<string, string>);
+                const newUrls = results.reduce((acc, curr) => {
+                    if (curr) acc[curr.fileId] = curr.url;
+                    return acc;
+                }, {} as Record<string, string>);
 
-            if (Object.keys(newUrls).length > 0) {
-                setFreshUrls(prev => ({ ...prev, ...newUrls }));
+                if (Object.keys(newUrls).length > 0) {
+                    setFreshUrls(prev => ({ ...prev, ...newUrls }));
+                }
+            } finally {
+                isRefreshingUrlsRef.current = false;
             }
         };
 
@@ -209,7 +218,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         answer.questionIndex,
                         { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
                         allAnswered,
-                    )}
+                    ) ?? Promise.resolve(true)}
                 />
             </div>
         )}

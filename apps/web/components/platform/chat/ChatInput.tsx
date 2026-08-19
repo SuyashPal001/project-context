@@ -148,6 +148,7 @@ export function ChatInput({
     };
 
     const handleMediaClick = (type: 'image' | 'video' | 'audio' | 'document') => {
+        if (uploader.isUploading) return;
         uploadTypeRef.current = type;
         fileInputRef.current?.click();
         onMediaClick?.(type);

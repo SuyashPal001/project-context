@@ -182,7 +182,7 @@ export function MessageItem({
                             answer.questionIndex,
                             { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
                             allAnswered,
-                        )}
+                        ) ?? Promise.resolve(true)}
                     />
                 )}
 

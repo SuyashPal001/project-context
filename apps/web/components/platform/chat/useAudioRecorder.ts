@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
 export interface AudioPreview {
@@ -24,10 +24,18 @@ export function useAudioRecorder() {
     const audioChunksRef = useRef<BlobPart[]>([]);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    // Mirrors the latest audioPreview so the unmount cleanup sees the real URL
+    // rather than the stale null captured at mount time.
+    const audioPreviewRef = useRef<AudioPreview | null>(null);
+
+    const setPreview = useCallback((next: AudioPreview | null) => {
+        audioPreviewRef.current = next;
+        setAudioPreview(next);
+    }, []);
 
     useEffect(() => {
         return () => {
-            if (audioPreview) URL.revokeObjectURL(audioPreview.url);
+            if (audioPreviewRef.current) URL.revokeObjectURL(audioPreviewRef.current.url);
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach(track => track.stop());
             }
@@ -54,9 +62,12 @@ export function useAudioRecorder() {
                         ? 'audio/mp4'
                         : 'audio/mpeg';
 
+                // Revoke the previous take before creating a new URL so
+                // record → re-record cycles don't leak one URL per take.
+                if (audioPreviewRef.current) URL.revokeObjectURL(audioPreviewRef.current.url);
                 const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
                 const url = URL.createObjectURL(audioBlob);
-                setAudioPreview({ url, blob: audioBlob });
+                setPreview({ url, blob: audioBlob });
                 if (streamRef.current) {
                     streamRef.current.getTracks().forEach(track => track.stop());
                 }
@@ -89,7 +100,8 @@ export function useAudioRecorder() {
             }
         }
         setIsRecording(false);
-        setAudioPreview(null);
+        if (audioPreviewRef.current) URL.revokeObjectURL(audioPreviewRef.current.url);
+        setPreview(null);
         if (timerRef.current) clearInterval(timerRef.current);
     };
 
@@ -103,7 +115,10 @@ export function useAudioRecorder() {
         setIsPlaying(!isPlaying);
     };
 
-    const clearPreview = () => setAudioPreview(null);
+    const clearPreview = () => {
+        if (audioPreviewRef.current) URL.revokeObjectURL(audioPreviewRef.current.url);
+        setPreview(null);
+    };
 
     return {
         isRecording,
