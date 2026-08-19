@@ -175,14 +175,17 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
                             {/* Each tick owns its own preview box — only the hovered tick's
                                 box is visible (opacity-100), every other tick's stays fully
                                 hidden (opacity-0, pointer-events-none) so previews never stack
-                                on top of the chat content. */}
-                            <div
-                                className={`absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 max-h-[60vh] overflow-y-auto custom-scrollbar rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-foreground shadow-md transition-[opacity,transform] duration-150 ease-out ${
+                                on top of the chat content. Clickable itself (not just the thin
+                                tick bar) so it's a much easier target to jump from. */}
+                            <button
+                                type="button"
+                                onClick={() => jumpTo(m.id)}
+                                className={`absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 max-h-[60vh] overflow-y-auto custom-scrollbar rounded-md border border-border bg-popover px-2.5 py-1.5 text-left text-xs text-foreground shadow-md cursor-pointer transition-[opacity,transform] duration-150 ease-out hover:bg-accent ${
                                     isHovered ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-1.5 pointer-events-none'
                                 }`}
                             >
                                 {summarize(m.content)}
-                            </div>
+                            </button>
                             <button
                                 ref={registerBarEl(m.id)}
                                 type="button"
