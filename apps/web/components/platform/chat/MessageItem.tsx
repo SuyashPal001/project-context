@@ -26,6 +26,12 @@ interface MessageItemProps {
     message: Message;
     freshUrls: Record<string, string>;
     isFirstInSequence?: boolean;
+    // True only for the single first assistant message in the whole
+    // conversation — this is what actually gates the orb avatar. Distinct
+    // from isFirstInSequence (which still gates the "Assistant" label and
+    // exchange spacing), since the orb should show once per conversation,
+    // not once per reply-turn.
+    isFirstAssistantMessage?: boolean;
     isNewExchange?: boolean;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
@@ -51,6 +57,7 @@ export function MessageItem({
     message,
     freshUrls,
     isFirstInSequence,
+    isFirstAssistantMessage,
     isNewExchange,
     onApprove,
     onDismiss,
@@ -103,11 +110,11 @@ export function MessageItem({
             isNewExchange && "mt-6"
         )}>
             {isAssistant && (
-                isFirstInSequence
+                isFirstAssistantMessage
                     ? <AgentOrb size={40} state="idle" />
-                    // Same-width empty spacer for a consecutive assistant reply, so
-                    // the text column still lines up under the first message's avatar
-                    // instead of every reply in the run re-rendering its own icon.
+                    // Same-width empty spacer for every other assistant message, so the
+                    // text column still lines up under the very first message's avatar
+                    // instead of every later reply re-rendering its own icon.
                     : <div className="w-10 shrink-0" />
             )}
 
