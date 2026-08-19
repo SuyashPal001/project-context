@@ -227,7 +227,7 @@ export function MessageItem({
                 )}
 
                 {isAssistant && !message.isStreaming && (
-                    <MessageFeedback messageId={message.id} conversationId={message.conversationId} />
+                    <MessageFeedback messageId={message.id} conversationId={message.conversationId} content={message.content} />
                 )}
 
                 {isAssistant && (

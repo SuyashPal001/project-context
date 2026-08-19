@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from "react";
-import { ThumbsUp, ThumbsDown } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -14,12 +14,24 @@ const FEEDBACK_ISSUE_OPTIONS = [
     'Other',
 ] as const;
 
-export function MessageFeedback({ messageId, conversationId }: { messageId: string; conversationId: string }) {
+export function MessageFeedback({ messageId, conversationId, content }: { messageId: string; conversationId: string; content?: string }) {
     const [rating, setRating] = useState<'up' | 'down' | null>(null);
     const [modalOpen, setModalOpen] = useState(false);
     const [issueType, setIssueType] = useState('');
     const [detail, setDetail] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        if (!content) return;
+        try {
+            await navigator.clipboard.writeText(content);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            // clipboard permission denied or unavailable — no destructive fallback needed
+        }
+    };
 
     const submit = async (r: 'up' | 'down', comment?: string) => {
         setSubmitting(true);
@@ -67,6 +79,15 @@ export function MessageFeedback({ messageId, conversationId }: { messageId: stri
     return (
         <div className="mt-1">
             <div className="flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150">
+                {content && (
+                    <button
+                        onClick={handleCopy}
+                        className="p-1 rounded hover:bg-muted/50 transition-colors text-muted-foreground/50 hover:text-muted-foreground"
+                        aria-label={copied ? "Copied" : "Copy message"}
+                    >
+                        {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                )}
                 <button
                     onClick={handleUp}
                     disabled={isRated || modalOpen || submitting}

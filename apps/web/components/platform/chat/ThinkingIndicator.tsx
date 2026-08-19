@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall } from "./types";
 import { ToolCallCard } from "./ToolCallCard";
@@ -49,8 +51,18 @@ export function ReasoningRow({ text, completed = false, elapsedSec }: { text: st
             {expanded && (
                 <div className="flex gap-2.5 mt-1.5 pl-0.5">
                     <div className="w-3 shrink-0 border-l border-b border-border rounded-bl-md" style={{ marginTop: '-4px', height: '0.85em' }} />
-                    <div className="text-sm text-muted-foreground whitespace-pre-wrap flex-1 min-w-0">
-                        {text}
+                    <div className="text-sm text-muted-foreground flex-1 min-w-0 [&>*]:mb-2 [&>*:last-child]:mb-0">
+                        <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                                p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
+                                strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                                ul: ({ children }) => <ul className="list-disc list-outside ml-4 space-y-1">{children}</ul>,
+                                ol: ({ children }) => <ol className="list-decimal list-outside ml-4 space-y-1">{children}</ol>,
+                            }}
+                        >
+                            {text}
+                        </ReactMarkdown>
                     </div>
                 </div>
             )}
