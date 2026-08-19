@@ -320,14 +320,6 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             }));
         }
 
-        // Pre-save user message with fileIds so they survive page refresh
-        if (attachments?.some(a => a.fileId)) {
-            api.post(`/api/v1/conversations/${conversationId}/messages/save`, {
-                role: 'user', content,
-                attachments: attachments.map(a => ({ fileId: a.fileId, name: a.name, type: a.type, size: a.size })),
-            }).catch(err => console.warn('[pre-save]', err));
-        }
-
         // Optimistic user message
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old => {
             const msg: Message = {

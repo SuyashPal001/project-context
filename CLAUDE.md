@@ -102,16 +102,26 @@ Port 3003 is unused — there is no `apps/agent-server`. The agent runtime lives
 `apps/agent-orchestrator`.
 
 **`./deploy.sh` does NOT deploy every VM service.** It rebuilds Next.js and restarts
-exactly two PM2 processes: `web-frontend` and `api`. The orchestrator, `mcp-server`,
-`ai-service` and `inference-gateway` must be restarted by hand (`pm2 restart <name>
---update-env`) — including after any env change.
+exactly two PM2 processes: `web-frontend` and `api`. The orchestrator and `mcp-server-pc`
+must be restarted by hand (`pm2 restart <name>`) — including after any env change.
 
-**`mcp-server` and `inference-gateway` require `INTERNAL_SERVICE_KEY` to start.** Both
-call `process.exit(1)` when it is unset, so a PM2 env missing it takes the service down
-rather than running it unauthenticated. The value must match
-`project-context/{env}/internal-service-key` in Secrets Manager, which is what the
-Lambdas and the orchestrator send. Both also bind `127.0.0.1` by default
-(`MCP_BIND_HOST` / `INFERENCE_BIND_HOST`) — they are not meant to be reachable off-host.
+**`mcp-server` requires `INTERNAL_SERVICE_KEY` to start.** It calls `process.exit(1)`
+when it is unset, so a PM2 env missing it takes the service down rather than running it
+unauthenticated. The value must match `project-context/{env}/internal-service-key` in
+Secrets Manager, which is what the Lambdas and the orchestrator send. It binds
+`127.0.0.1` by default — not meant to be reachable off-host.
+
+**`mcp-server` uses the Streamable HTTP transport, not SSE.** The agent orchestrator
+connects to `http://localhost:3002/mcp` (POST). The env vars `MCP_SERVER_URL`,
+`MCP_SERVER_SSE_URL`, and `MCP_SERVER_HTTP_URL` in `apps/agent-orchestrator/.env` must
+all point to `/mcp`, not `/sse`. `@mastra/mcp` MCPClient picks Streamable HTTP when the
+URL does not end in `/sse`.
+
+**`mcp-server` PM2 env is loaded via `start.sh`.** Because PM2'''s `env_file` and
+`node_args --env-file` don'''t survive restarts reliably, `mcp-server/start.sh` sources
+`mcp-server/.env` before exec-ing node. The PM2 name is `mcp-server-pc`. To re-register
+after a config change: `pm2 delete mcp-server-pc && pm2 start ecosystem.config.js` from
+`mcp-server/`. The `inference-gateway` PM2 process (`apps/inference-gateway`, PM2 name `inference-gateway`) runs on port 4001. It is required — the orchestrator calls it for every LLM request. It also requires `INTERNAL_SERVICE_KEY` and uses a `start.sh` wrapper (same pattern as `mcp-server-pc`).
 
 ---
 

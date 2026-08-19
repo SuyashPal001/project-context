@@ -395,6 +395,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   } catch (err) {
     console.error(`[sse:${sessionId}] fatal error:`, (err as Error).message)
     sendEvent('error', { message: 'Internal server error', conversationId })
+    // Save the user message even on error so attachments aren't lost.
+    // The finish path is never reached when the turn throws, so this is the only
+    // opportunity to durably persist the user turn.
+    const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
+    saveUserMessage(idToken, conversationId, message, atts)
     closeStream()
   }
 }
