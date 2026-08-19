@@ -37,6 +37,15 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     const params = useParams();
     const tenantSlug = params.tenant as string;
 
+    // The relay doesn't close the SSE stream while a clarifying question is
+    // outstanding — it just idles until the user answers via sendClarificationAnswer
+    // — so isStreaming stays true and ThinkingIndicator's elapsed-time timer would
+    // otherwise run forever. Derive "blocked on the user" straight from message
+    // state (last message's clarificationRequest still 'pending') rather than from
+    // isStreaming, so the status line reflects who's actually supposed to act next.
+    const lastMessage = messages[messages.length - 1];
+    const awaitingReply = lastMessage?.clarificationRequest?.status === 'pending';
+
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -152,7 +161,9 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     );
                 })}
 
-                {(isStreaming || isRetrying) ? (
+                {awaitingReply ? (
+                    <WaitingForReplyIndicator />
+                ) : (isStreaming || isRetrying) ? (
                     <ThinkingIndicator
                         isRetrying={isRetrying ?? false}
                         isStreaming={isStreaming ?? false}
@@ -207,6 +218,25 @@ function ThinkingDots({ label = 'Thinking...' }: { label?: string }) {
                     <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce" />
                 </span>
                 <span className="shimmer-text text-sm text-primary/80 font-mono">{label}</span>
+            </div>
+        </div>
+    );
+}
+
+// Static, un-animated counterpart to ThinkingIndicator/ThinkingDots — rendered instead of
+// either whenever the last message is blocking on a pending clarificationRequest. No timer,
+// no shimmer: the agent isn't doing anything, so nothing here should look like it's working.
+function WaitingForReplyIndicator() {
+    return (
+        <div className="flex items-start gap-4 animate-in fade-in duration-300">
+            <AgentOrb size={40} state="idle" />
+            <div className="flex items-center gap-2 pt-1.5 text-muted-foreground">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M9.5 9a2.5 2.5 0 0 1 4.83-.92c-.28.7-.77 1.1-1.33 1.5-.62.44-1 .8-1 1.67" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <circle cx="12" cy="16.25" r="0.75" fill="currentColor" />
+                </svg>
+                <span className="text-sm font-mono">Waiting for your reply</span>
             </div>
         </div>
     );

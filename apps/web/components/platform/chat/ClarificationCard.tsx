@@ -74,79 +74,81 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     };
 
     return (
-        <div className="rounded-2xl border border-border bg-card overflow-hidden my-3 max-w-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="px-4 py-3 flex items-center justify-between">
-                <h4 className="text-sm font-medium">{question.prompt}</h4>
-                <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 ml-3">
-                    <button
-                        type="button"
-                        disabled={pageIndex === 0}
-                        onClick={() => setPageIndex(p => Math.max(0, p - 1))}
-                        className="disabled:opacity-30"
-                    >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                    </button>
-                    <span>{pageIndex + 1}/{total}</span>
-                    <button
-                        type="button"
-                        disabled={pageIndex === total - 1}
-                        onClick={() => setPageIndex(p => Math.min(total - 1, p + 1))}
-                        className="disabled:opacity-30"
-                    >
-                        <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
-                </div>
-            </div>
-
-            <div className="px-4 pb-3 space-y-1.5">
-                {question.options.map((opt, i) => (
-                    <button
-                        key={opt.label}
-                        type="button"
-                        onClick={() => setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
-                        className={cn(
-                            "w-full text-left rounded-xl px-3 py-2.5 border transition-colors",
-                            selectedIndex === i
-                                ? "border-primary/40 bg-primary/5"
-                                : "border-transparent bg-muted/40 hover:bg-muted/60"
-                        )}
-                    >
-                        <div className="text-sm font-medium">{i + 1}. {opt.label}</div>
-                        {opt.rationale && (
-                            <div className="text-xs text-muted-foreground mt-0.5">{opt.rationale}</div>
-                        )}
-                    </button>
-                ))}
-                {question.allowSkip && (
-                    <div className="text-sm text-muted-foreground px-3 py-1">
-                        {question.options.length + 1}. Something else
-                    </div>
-                )}
-            </div>
-
-            <div className="border-t border-border px-4 py-3 flex items-center gap-2">
-                {question.allowFreeText && (
-                    <input
-                        value={freeText}
-                        onChange={(e) => setFreeTextByQuestion(prev => ({ ...prev, [pageIndex]: e.target.value }))}
-                        placeholder="No, and tell what to do differently"
-                        className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
-                    />
-                )}
-                <div className="flex items-center gap-2 shrink-0">
-                    {question.allowSkip && (
-                        <button type="button" onClick={handleSkip} className="text-xs font-medium text-muted-foreground hover:text-foreground">
-                            Skip
+        <div className="flex w-full justify-center my-5">
+            <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/40 bg-card p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium">{question.prompt}</h4>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 ml-3">
+                        <button
+                            type="button"
+                            disabled={pageIndex === 0}
+                            onClick={() => setPageIndex(p => Math.max(0, p - 1))}
+                            className="disabled:opacity-30"
+                        >
+                            <ChevronLeft className="h-3.5 w-3.5" />
                         </button>
+                        <span>{pageIndex + 1}/{total}</span>
+                        <button
+                            type="button"
+                            disabled={pageIndex === total - 1}
+                            onClick={() => setPageIndex(p => Math.min(total - 1, p + 1))}
+                            className="disabled:opacity-30"
+                        >
+                            <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                    {question.options.map((opt, i) => (
+                        <button
+                            key={opt.label}
+                            type="button"
+                            onClick={() => setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
+                            className={cn(
+                                "w-full text-left rounded-xl px-3 py-2.5 border transition-colors",
+                                selectedIndex === i
+                                    ? "border-primary/40 bg-primary/5"
+                                    : "border-transparent bg-muted/40 hover:bg-muted/60"
+                            )}
+                        >
+                            <div className="text-sm font-medium">{i + 1}. {opt.label}</div>
+                            {opt.rationale && (
+                                <div className="text-xs text-muted-foreground mt-0.5">{opt.rationale}</div>
+                            )}
+                        </button>
+                    ))}
+                    {question.allowSkip && (
+                        <div className="text-sm text-muted-foreground px-3 py-1">
+                            {question.options.length + 1}. Something else
+                        </div>
                     )}
-                    <button
-                        type="button"
-                        onClick={commitCurrent}
-                        disabled={selectedIndex === undefined && !freeText.trim()}
-                        className="h-8 px-4 rounded-full bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
-                    >
-                        {isLast ? 'Submit' : 'Continue'}
-                    </button>
+                </div>
+
+                <div className="border-t border-border/40 pt-4 flex items-center gap-2">
+                    {question.allowFreeText && (
+                        <input
+                            value={freeText}
+                            onChange={(e) => setFreeTextByQuestion(prev => ({ ...prev, [pageIndex]: e.target.value }))}
+                            placeholder="No, and tell what to do differently"
+                            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+                        />
+                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {question.allowSkip && (
+                            <button type="button" onClick={handleSkip} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+                                Skip
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={commitCurrent}
+                            disabled={selectedIndex === undefined && !freeText.trim()}
+                            className="h-8 px-4 rounded-full bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+                        >
+                            {isLast ? 'Submit' : 'Continue'}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
