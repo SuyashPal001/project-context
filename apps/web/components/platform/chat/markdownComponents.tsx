@@ -22,15 +22,20 @@ function getFencedCodeInfo(node: HastPreNode | undefined) {
     return { language, text };
 }
 
-// A model that intends a full Markdown document to render as formatted content
-// sometimes wraps it in a ```markdown fenced block. Rendering that through
-// PreBlock's default (syntax-highlighted, monospace) path would leave the
-// literal #/** characters visible, just colored. Detect that case here and
-// render the fenced content as Markdown instead of as a code block.
+// A model that intends a full Markdown document (headings, bold, tables) to
+// render as formatted content sometimes wraps it in a fenced block — tagged
+// ```markdown, tagged with something hljs doesn't recognize as real code, or
+// with no language tag at all. Rendering any of those through PreBlock's
+// default (syntax-highlighted, monospace) path would leave the literal
+// #/**/| characters visible, just colored. Only genuinely recognized
+// programming languages should get the code/hljs treatment; everything else
+// is far more likely to be prose that happened to land in a fence, so render
+// it as Markdown instead.
 function PreBlock({ node, children, ...props }: React.HTMLAttributes<HTMLPreElement> & { node?: HastPreNode }) {
     const { language, text } = getFencedCodeInfo(node);
+    const isRecognizedCodeLanguage = !!language && language !== 'markdown' && language !== 'md' && !!hljs.getLanguage(language);
 
-    if (language === 'markdown' || language === 'md') {
+    if (!isRecognizedCodeLanguage && text.trim() !== '') {
         return (
             <div className="mb-3">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={chatMarkdownComponents}>

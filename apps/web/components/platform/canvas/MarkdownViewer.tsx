@@ -1,5 +1,6 @@
 'use client';
 
+import hljs from 'highlight.js';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
@@ -22,14 +23,18 @@ function getFencedCodeInfo(node: HastPreNode | undefined) {
   return { language, text };
 }
 
-// An artifact body sometimes wraps a full Markdown document in a ```markdown
-// fenced block. Rendering that through the default pre/code path would leave
-// the literal #/** characters visible as plain text. Detect that case and
-// render the fenced content as Markdown instead of as a code block.
+// An artifact body sometimes wraps a full Markdown document in a fenced block
+// — tagged ```markdown, tagged with something that isn't a real recognized
+// programming language, or with no language tag at all. Rendering any of
+// those through the default pre/code path would leave the literal #/**/|
+// characters visible as plain text. Only genuinely recognized programming
+// languages get the code treatment; everything else is far more likely to be
+// prose that landed in a fence, so render it as Markdown instead.
 function PreBlock({ node, children, ...props }: React.HTMLAttributes<HTMLPreElement> & { node?: HastPreNode }) {
   const { language, text } = getFencedCodeInfo(node);
+  const isRecognizedCodeLanguage = !!language && language !== 'markdown' && language !== 'md' && !!hljs.getLanguage(language);
 
-  if (language === 'markdown' || language === 'md') {
+  if (!isRecognizedCodeLanguage && text.trim() !== '') {
     return (
       <div className="mb-3">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownViewerComponents}>
