@@ -76,6 +76,7 @@ export interface CompletedTracePayload {
   elapsedSec: number
   toolCallCount: number
   reasoningText?: string
+  reasoningElapsedSec?: number
 }
 
 export interface ClarificationQuestion {

@@ -154,6 +154,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             elapsedSec: z.number(),
             toolCallCount: z.number(),
             reasoningText: z.string().optional(),
+            reasoningElapsedSec: z.number().optional(),
         }).nullish(),
         clarificationRequest: z.object({
             id: z.string(),

@@ -51,6 +51,12 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // instead of rendering inline — MessageItem deliberately skips it while pending.
     const pendingClarificationMessage = lastMessage?.clarificationRequest?.status === 'pending' ? lastMessage : undefined;
     const awaitingReply = pendingClarificationMessage !== undefined;
+    // Whether onDelta has already created a row for the turn currently in
+    // progress. Before that (tool calls/reasoning firing with no text yet),
+    // the trailing ThinkingIndicator below owns the live status display —
+    // once the row exists, MessageItem renders the same content itself,
+    // inside that row, so the two must never both render at once.
+    const hasStreamingMessage = messages.some(m => m.isStreaming);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -170,13 +176,16 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             creatingPlanId={creatingPlanId}
                             planErrors={planErrors}
                             onCreateInSystem={handleCreateInSystem}
+                            activeToolCalls={message.isStreaming ? activeToolCalls : undefined}
+                            completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
+                            liveReasoningText={message.isStreaming ? reasoningText : undefined}
                         />
                     );
                 })}
 
                 {awaitingReply ? (
                     <WaitingForReplyIndicator />
-                ) : (isStreaming || isRetrying) ? (
+                ) : (isStreaming || isRetrying) && !hasStreamingMessage ? (
                     <ThinkingIndicator
                         isRetrying={isRetrying ?? false}
                         isStreaming={isStreaming ?? false}

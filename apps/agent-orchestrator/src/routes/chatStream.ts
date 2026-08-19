@@ -191,6 +191,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     let planResult: unknown
     let toolCallCount = 0
     let reasoningText = ''
+    // First/last reasoning-delta timestamps — separate from the whole turn's
+    // elapsedSec, powers the persisted "Thought for Ns" label (see reasoningElapsedSec
+    // in completedTrace below).
+    let reasoningStartMs: number | null = null
+    let reasoningLastMs: number | null = null
 
     await runWithGuardrailContext({ tenantId, conversationId }, async () => {
       const agentStream = await (activeAgent as any).stream(mastraMessage, {
@@ -220,6 +225,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const text = (part.payload?.text ?? part.delta ?? part.textDelta ?? '') as string
           if (text) {
             reasoningText += text
+            if (reasoningStartMs === null) reasoningStartMs = Date.now()
+            reasoningLastMs = Date.now()
             sendEvent('reasoning', { text, conversationId })
           }
           break
@@ -319,8 +326,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // turn that's too fast/toolless to show a summary live doesn't get one
           // materialize after a reload either.
           const elapsedSec = Math.max(0, Math.floor(responseTimeMs / 1000))
+          const reasoningElapsedSec = reasoningStartMs !== null && reasoningLastMs !== null
+            ? Math.max(1, Math.round((reasoningLastMs - reasoningStartMs) / 1000))
+            : undefined
           const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
-            ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}) }
+            ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
             : null
           saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef, completedTrace)
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)

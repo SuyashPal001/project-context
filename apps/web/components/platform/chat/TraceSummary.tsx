@@ -10,6 +10,7 @@ export interface TraceSummaryProps {
     elapsedSec: number;
     toolCalls: CompletedToolCall[];
     reasoningText?: string;
+    reasoningElapsedSec?: number;
     defaultCollapsed?: boolean;
 }
 
@@ -20,7 +21,7 @@ export interface TraceSummaryProps {
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls, reasoningText, defaultCollapsed = true }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true }: TraceSummaryProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
     return (
@@ -43,7 +44,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, defaultColl
                     {toolCalls.map(tc => (
                         <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} />
                     ))}
-                    {reasoningText && <ReasoningRow text={reasoningText} />}
+                    {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
                 </div>
             )}
         </div>

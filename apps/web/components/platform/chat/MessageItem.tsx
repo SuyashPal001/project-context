@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { Terminal, Info, Image as ImageIcon } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
-import { Message, PlanResult } from "./types";
+import { Message, PlanResult, ToolCall, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ToolCallCard } from "./ToolCallCard";
 import { TraceSummary } from "./TraceSummary";
+import { LiveTrace } from "./ThinkingIndicator";
 import { ApprovalCard } from "./ApprovalCard";
 import { ClarificationCard } from "./ClarificationCard";
 import { StreamingMessage } from "./StreamingMessage";
@@ -29,6 +30,13 @@ interface MessageItemProps {
     creatingPlanId: string | null;
     planErrors: Record<string, string>;
     onCreateInSystem: (messageId: string, planResult: PlanResult) => Promise<void>;
+    // Only ever set for the one message currently being streamed into (see
+    // MessageThread) — powers the live "Working for Ns / tool calls /
+    // reasoning" display inside this row, above the text, instead of as a
+    // trailing element after the whole message list.
+    activeToolCalls?: ToolCall[];
+    completedToolCalls?: CompletedToolCall[];
+    liveReasoningText?: string;
 }
 
 export function MessageItem({
@@ -42,6 +50,9 @@ export function MessageItem({
     creatingPlanId,
     planErrors,
     onCreateInSystem,
+    activeToolCalls,
+    completedToolCalls,
+    liveReasoningText,
 }: MessageItemProps) {
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
@@ -100,11 +111,19 @@ export function MessageItem({
                     />
                 )}
 
-                {isAssistant && !message.isStreaming && message.completedTrace && (
+                {isAssistant && message.isStreaming && (activeToolCalls?.length || completedToolCalls?.length || liveReasoningText) ? (
+                    <LiveTrace
+                        isStreaming
+                        activeToolCalls={activeToolCalls ?? []}
+                        completedToolCalls={completedToolCalls ?? []}
+                        reasoningText={liveReasoningText}
+                    />
+                ) : isAssistant && !message.isStreaming && message.completedTrace && (
                     <TraceSummary
                         elapsedSec={message.completedTrace.elapsedSec}
                         toolCalls={message.completedTrace.toolCalls ?? []}
                         reasoningText={message.completedTrace.reasoningText}
+                        reasoningElapsedSec={message.completedTrace.reasoningElapsedSec}
                     />
                 )}
 

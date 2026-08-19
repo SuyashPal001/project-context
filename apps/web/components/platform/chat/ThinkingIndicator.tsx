@@ -8,7 +8,13 @@ import { ToolCallCard } from "./ToolCallCard";
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
 // useChatStream's onReasoning). Collapsed by default — same disclosure pattern
 // as TraceSummary's post-completion "Worked for Ns" row.
-export function ReasoningRow({ text }: { text: string }) {
+//
+// `completed` distinguishes the historical (TraceSummary) usage from the live
+// (ThinkingIndicator) usage: live still reads "Thinking it through" with the
+// violet/shimmer treatment (an active, in-progress state); completed reads
+// "Thought for Ns" in plain text-foreground, matching ToolCallCard's finished
+// rows — shimmer/color on a state that already ended reads as still-active.
+export function ReasoningRow({ text, completed = false, elapsedSec }: { text: string; completed?: boolean; elapsedSec?: number }) {
     const [expanded, setExpanded] = useState(false);
     if (!text) return null;
 
@@ -22,11 +28,17 @@ export function ReasoningRow({ text }: { text: string }) {
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-current">
                     <path d="M2 3.5h10a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5.5L3 12v-2.5H2a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
                 </svg>
-                {/* Lighter tone of the same primary shade "Working for Ns" uses (text-primary/80),
-                    not the inherited near-white text-foreground — the shimmer gradient sweeps
-                    currentColor -> #fff -> currentColor, so a base color already close to white
-                    leaves almost no visible contrast to sweep. */}
-                <span className="shimmer-text text-sm font-semibold flex-1 truncate text-primary/60">Thinking it through</span>
+                {completed ? (
+                    <span className="text-sm font-semibold flex-1 truncate text-foreground">
+                        {elapsedSec !== undefined ? `Thought for ${elapsedSec}s` : 'Thought it through'}
+                    </span>
+                ) : (
+                    // Lighter tone of the same primary shade "Working for Ns" uses (text-primary/80),
+                    // not the inherited near-white text-foreground — the shimmer gradient sweeps
+                    // currentColor -> #fff -> currentColor, so a base color already close to white
+                    // leaves almost no visible contrast to sweep.
+                    <span className="shimmer-text text-sm font-semibold flex-1 truncate text-primary/60">Thinking it through</span>
+                )}
                 <svg
                     width="10" height="10" viewBox="0 0 10 10" fill="none"
                     className={`shrink-0 transition-transform text-foreground ${expanded ? "rotate-90" : ""}`}
@@ -64,28 +76,26 @@ function PulsingDots() {
     );
 }
 
-// This component only handles the LIVE in-progress states — the single
-// "Working for Ns · <message>" line and the active tool-call cards. The
-// collapsed post-completion "Worked for Ns" summary is a MessageItem/
-// TraceSummary concern now: it reads `message.completedTrace`, which is
-// stashed once by useChatStream's onDone, so it survives this component
-// being unmounted the instant isStreaming flips false.
-export interface ThinkingIndicatorProps {
-    isRetrying: boolean;
+// The content-only half of the live indicator — "Working for Ns · <message>",
+// active/completed tool-call cards, and the live reasoning row. No AgentOrb,
+// no outer row wrapper: this renders inside whichever surface already
+// provides those (MessageItem's own row for the actively-streaming message,
+// or ThinkingIndicator's own wrapper for the window before that message row
+// exists yet — see both call sites below). Returns null once nothing is
+// streaming, mirroring the old inline Phase 2 fallthrough.
+export interface LiveTraceProps {
     isStreaming: boolean;
     activeToolCalls: ToolCall[];
     completedToolCalls: CompletedToolCall[];
     reasoningText?: string;
 }
 
-export function ThinkingIndicator({
-    isRetrying,
+export function LiveTrace({
     isStreaming,
     activeToolCalls,
     completedToolCalls,
     reasoningText = '',
-}: ThinkingIndicatorProps) {
-    const [stepIndex, setStepIndex] = useState(0);
+}: LiveTraceProps) {
     const [messageIndex, setMessageIndex] = useState(0);
     const [startedAt, setStartedAt] = useState<number | null>(null);
     // Ticks the live "Working for Ns" counter once a second. This is separate
@@ -146,18 +156,6 @@ export function ThinkingIndicator({
         : THINKING_MESSAGES;
 
     useEffect(() => {
-        if (!isRetrying) {
-            setStepIndex(0);
-            return;
-        }
-        setStepIndex(0);
-        const id = setInterval(() => {
-            setStepIndex(prev => (prev + 1) % WARMUP_STEPS.length);
-        }, WARMUP_STEP_INTERVAL_MS / 2); // Cycle faster
-        return () => clearInterval(id);
-    }, [isRetrying]);
-
-    useEffect(() => {
         if (!isStreaming) return;
         const id = setInterval(() => {
             setMessageIndex(prev => (prev + 1) % thinkingMessages.length);
@@ -179,7 +177,91 @@ export function ThinkingIndicator({
         return () => clearInterval(id);
     }, [isStreaming, startedAt]);
 
-    // Phase 1 — container warmup
+    // Tool calls (active + completed)
+    const loadingTools = activeToolCalls.filter(t => t.isLoading);
+    if (loadingTools.length > 0 || completedToolCalls.length > 0) {
+        return (
+            <div className="animate-in fade-in duration-300">
+                {liveElapsed >= 2 && (
+                    <div className="shimmer-text text-sm text-primary/80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
+                        Working for {liveElapsed}s{loadingTools.length > 0 ? ` · ${thinkingMessages[messageIndex]}` : ''}
+                    </div>
+                )}
+                <ReasoningRow text={reasoningText} />
+                {completedToolCalls.map(tc => (
+                    <ToolCallCard
+                        key={tc.id}
+                        toolName={tc.toolName}
+                        query={tc.query}
+                        status="done"
+                        results={tc.results}
+                    />
+                ))}
+                {loadingTools.map(tool => (
+                    <ToolCallCard
+                        key={tool.id}
+                        toolName={tool.toolName}
+                        query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
+                        status="loading"
+                    />
+                ))}
+            </div>
+        );
+    }
+
+    // Plain thinking, no tool calls yet
+    if (isStreaming) {
+        return (
+            <div className="animate-in fade-in duration-300">
+                <div className="flex items-center gap-2">
+                    <PulsingDots />
+                    <span className="shimmer-text text-sm text-primary/80 font-mono animate-in fade-in duration-500" key={messageIndex}>
+                        {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
+                    </span>
+                </div>
+                <ReasoningRow text={reasoningText} />
+            </div>
+        );
+    }
+
+    return null;
+}
+
+// Wraps LiveTrace with its own AgentOrb + row, and owns the retry-warmup
+// phase — used only as MessageThread's trailing element, for the window
+// before a streaming message row exists yet in the messages array (no tool
+// call/reasoning delta has arrived, so onDelta hasn't created that row).
+// Once a row exists, MessageItem renders LiveTrace itself, inside that row,
+// above its text — see MessageThread's hasStreamingMessage gate.
+export interface ThinkingIndicatorProps {
+    isRetrying: boolean;
+    isStreaming: boolean;
+    activeToolCalls: ToolCall[];
+    completedToolCalls: CompletedToolCall[];
+    reasoningText?: string;
+}
+
+export function ThinkingIndicator({
+    isRetrying,
+    isStreaming,
+    activeToolCalls,
+    completedToolCalls,
+    reasoningText = '',
+}: ThinkingIndicatorProps) {
+    const [stepIndex, setStepIndex] = useState(0);
+
+    useEffect(() => {
+        if (!isRetrying) {
+            setStepIndex(0);
+            return;
+        }
+        setStepIndex(0);
+        const id = setInterval(() => {
+            setStepIndex(prev => (prev + 1) % WARMUP_STEPS.length);
+        }, WARMUP_STEP_INTERVAL_MS / 2); // Cycle faster
+        return () => clearInterval(id);
+    }, [isRetrying]);
+
     if (isRetrying) {
         return (
             <div className="flex items-center gap-4 animate-in fade-in duration-300 pt-1">
@@ -203,58 +285,21 @@ export function ThinkingIndicator({
         );
     }
 
-    // Phase 2b — tool calls (active + completed)
-    const loadingTools = activeToolCalls.filter(t => t.isLoading);
-    if (loadingTools.length > 0 || completedToolCalls.length > 0) {
-        return (
-            <div className="flex items-start gap-4 animate-in fade-in duration-300">
-                <AgentOrb size={40} state="searching" isLoading />
-                <div className="flex-1 pt-1">
-                    {liveElapsed >= 2 && (
-                        <div className="shimmer-text text-sm text-primary/80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
-                            Working for {liveElapsed}s{loadingTools.length > 0 ? ` · ${thinkingMessages[messageIndex]}` : ''}
-                        </div>
-                    )}
-                    <ReasoningRow text={reasoningText} />
-                    {completedToolCalls.map(tc => (
-                        <ToolCallCard
-                            key={tc.id}
-                            toolName={tc.toolName}
-                            query={tc.query}
-                            status="done"
-                            results={tc.results}
-                        />
-                    ))}
-                    {loadingTools.map(tool => (
-                        <ToolCallCard
-                            key={tool.id}
-                            toolName={tool.toolName}
-                            query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
-                            status="loading"
-                        />
-                    ))}
-                </div>
-            </div>
-        );
-    }
+    if (!isStreaming) return null;
 
-    // Phase 2a — plain thinking
-    if (isStreaming) {
-        return (
-            <div className="flex items-start gap-4 animate-in fade-in duration-300">
-                <AgentOrb size={40} state="thinking" />
-                <div className="flex-1 pt-1.5">
-                    <div className="flex items-center gap-2">
-                        <PulsingDots />
-                        <span className="shimmer-text text-sm text-primary/80 font-mono animate-in fade-in duration-500" key={messageIndex}>
-                            {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
-                        </span>
-                    </div>
-                    <ReasoningRow text={reasoningText} />
-                </div>
-            </div>
-        );
-    }
+    const hasToolActivity = activeToolCalls.some(t => t.isLoading) || completedToolCalls.length > 0;
 
-    return null;
+    return (
+        <div className="flex items-start gap-4">
+            <AgentOrb size={40} state={hasToolActivity ? "searching" : "thinking"} isLoading={hasToolActivity} />
+            <div className={hasToolActivity ? "flex-1 pt-1" : "flex-1 pt-1.5"}>
+                <LiveTrace
+                    isStreaming={isStreaming}
+                    activeToolCalls={activeToolCalls}
+                    completedToolCalls={completedToolCalls}
+                    reasoningText={reasoningText}
+                />
+            </div>
+        </div>
+    );
 }

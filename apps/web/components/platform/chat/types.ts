@@ -112,6 +112,10 @@ export interface CompletedTrace {
     toolCallCount?: number;
     // Same not-persisted-server-side caveat as toolCalls above.
     reasoningText?: string;
+    // How long the reasoning phase itself took (first reasoning-delta to last),
+    // distinct from elapsedSec (the whole turn). Powers the completed
+    // "Thought for Ns" label. Persisted server-side, unlike toolCalls/reasoningText.
+    reasoningElapsedSec?: number;
 }
 
 export interface Message {

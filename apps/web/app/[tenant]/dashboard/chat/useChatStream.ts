@@ -50,6 +50,12 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // Mirrors reasoningText for onDone (registered once via useChat) to read
     // without going stale — same reason streamStartRef/artifactRefRef exist.
     const reasoningTextRef = useRef('');
+    // Tracks how long the reasoning phase itself took — first reasoning-delta
+    // timestamp to the last one received — separate from streamStartRef (the
+    // whole turn's elapsed time). Powers the completed "Thought for Ns" label,
+    // reset per turn alongside reasoningTextRef.
+    const reasoningStartRef = useRef<number | null>(null);
+    const reasoningLastRef = useRef<number | null>(null);
     const artifactToolActiveRef = useRef<string | null>(null);
     const artifactRefRef = useRef<ArtifactRef | null>(null);
     // When the current turn's streaming began — used to compute the elapsed
@@ -72,6 +78,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
         onReasoning: useCallback((delta: string) => {
             emitStreamEvent('reasoning');
+            if (reasoningStartRef.current === null) reasoningStartRef.current = Date.now();
+            reasoningLastRef.current = Date.now();
             setReasoningText(prev => {
                 const next = prev + delta;
                 reasoningTextRef.current = next;
@@ -123,8 +131,13 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 : 0;
             streamStartRef.current = null;
             const reasoningTextAtDone = reasoningTextRef.current;
+            const reasoningElapsedSec = reasoningStartRef.current !== null && reasoningLastRef.current !== null
+                ? Math.max(1, Math.round((reasoningLastRef.current - reasoningStartRef.current) / 1000))
+                : undefined;
+            reasoningStartRef.current = null;
+            reasoningLastRef.current = null;
             const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2 || !!reasoningTextAtDone;
-            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: completedToolCalls, reasoningText: reasoningTextAtDone || undefined } } : {};
+            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: completedToolCalls, reasoningText: reasoningTextAtDone || undefined, reasoningElapsedSec } } : {};
 
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
