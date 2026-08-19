@@ -188,9 +188,9 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     }
 
     return (
-        <div className="relative flex-1 min-h-0 overflow-hidden">
+        <div className="relative flex-1 min-h-0 overflow-hidden" style={{ containerType: 'size' }}>
         <div ref={scrollRef} className="h-full px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-2 pb-4 min-h-full flex flex-col">
+            <div className="max-w-4xl mx-auto space-y-2 pb-4">
                 {messages.length === 0 && !isTyping && (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -261,15 +261,20 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     </div>
                 )}
 
-                {/* flex-1 filler: with the content column forced to min-h-full, this
-                    grows to soak up whatever room is left below the last message —
-                    computed natively by the browser's layout engine, not measured in
-                    JS, so it can never race a resize/mount timing issue. That reserved
-                    room is what lets a just-sent message actually be scrolled near the
-                    top of the pane (see the scroll-anchor effect above) instead of the
-                    scroll position clamping short, and what keeps a generous, consistent
-                    gap above the input once a reply finishes. */}
-                {messages.length > 0 && <div aria-hidden className="flex-1" />}
+                {/* Unconditionally reserves ~one pane's worth of room below the last
+                    message, regardless of how much prior history already exists above
+                    it. A flex-1/min-h-full filler isn't enough here: it only tops the
+                    column up to one viewport total, so once existing history already
+                    exceeds the pane's height (any real, ongoing conversation) it
+                    collapses to zero and the anchor-to-top scroll below has nothing to
+                    scroll into again. cqh reads the *pane's own* height (via
+                    containerType: 'size' on the non-scrolling wrapper two levels up,
+                    right below), independent of how tall the scrollable content is —
+                    pure CSS, computed by the browser's layout engine on every reflow,
+                    no JS measurement to race. */}
+                {messages.length > 0 && (
+                    <div aria-hidden style={{ height: 'calc(100cqh - 160px)' }} />
+                )}
             </div>
         </div>
         {pendingClarificationMessage && (
