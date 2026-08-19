@@ -126,9 +126,17 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             const distanceFromBottom = contentEnd - el.scrollTop - el.clientHeight;
             setShowScrollToBottom(distanceFromBottom > 200);
         };
+        // Runs once immediately, not just on the next native 'scroll' event.
+        // The anchor-to-last-user-message effect above scrolls synchronously
+        // (behavior: 'auto') on mount/conversation-switch, before this effect
+        // has even attached its listener — that scroll event fires into the
+        // void. Recomputing here on every `messages` change (not just via the
+        // listener) catches that initial position instead of leaving the
+        // button permanently hidden until the user scrolls by hand.
+        onScroll();
         el.addEventListener('scroll', onScroll);
         return () => el.removeEventListener('scroll', onScroll);
-    }, []);
+    }, [messages]);
 
     useEffect(() => {
         const refreshUrls = async () => {

@@ -102,7 +102,14 @@ export function MessageItem({
             isUser ? "flex-row-reverse" : "flex-row",
             isNewExchange && "mt-6"
         )}>
-            {isAssistant && <AgentOrb size={40} state="idle" />}
+            {isAssistant && (
+                isFirstInSequence
+                    ? <AgentOrb size={40} state="idle" />
+                    // Same-width empty spacer for a consecutive assistant reply, so
+                    // the text column still lines up under the first message's avatar
+                    // instead of every reply in the run re-rendering its own icon.
+                    : <div className="w-10 shrink-0" />
+            )}
 
             <div className={cn(
                 "flex flex-col gap-1 flex-1 min-w-0",
@@ -292,7 +299,7 @@ export function MessageItem({
                 )}
 
                 {isAssistant && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 opacity-0 group-hover/msg:opacity-100 transition-opacity">
                         <span className="text-[11px] text-muted-foreground/60 px-1 mt-1">
                             {format(new Date(message.createdAt), 'h:mm a')}
                         </span>
@@ -300,7 +307,7 @@ export function MessageItem({
                             <button
                                 type="button"
                                 onClick={() => onRegenerate(message)}
-                                className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
+                                className="flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
                                 title="Regenerate response"
                             >
                                 <RotateCcw className="h-3 w-3" />
