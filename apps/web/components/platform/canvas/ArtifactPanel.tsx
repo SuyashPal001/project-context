@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
+import { MarkdownViewer } from './MarkdownViewer';
 import type { ArtifactState, ArtifactType } from './types';
 
 interface ArtifactPanelProps {
@@ -36,25 +37,6 @@ function metaLabel(artifact: ArtifactState): string {
     case 'roadmap': return `${m.milestoneCount ?? 0} milestone${m.milestoneCount === 1 ? '' : 's'}`;
     case 'tasks':   return `${m.tasksCreated ?? 0} task${m.tasksCreated === 1 ? '' : 's'}`;
   }
-}
-
-function MarkdownLine({ line }: { line: string }) {
-  if (line.startsWith('# ')) {
-    return <p className="font-bold text-base text-foreground mt-3 mb-0.5">{line.slice(2)}</p>;
-  }
-  if (line.startsWith('## ')) {
-    return <p className="font-semibold text-sm text-foreground mt-2 mb-0.5">{line.slice(3)}</p>;
-  }
-  if (line.startsWith('- ') || line.startsWith('* ')) {
-    return (
-      <div className="flex gap-2 pl-3">
-        <span className="text-muted-foreground shrink-0">•</span>
-        <span>{line.slice(2)}</span>
-      </div>
-    );
-  }
-  if (line === '') return <div className="h-1.5" />;
-  return <p>{line}</p>;
 }
 
 export function ArtifactPanel({ artifact, onApprove, onRevise, onContentLoaded, tenantSlug }: ArtifactPanelProps) {
@@ -124,9 +106,7 @@ export function ArtifactPanel({ artifact, onApprove, onRevise, onContentLoaded, 
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-4 py-3 text-sm text-foreground/90 leading-relaxed"
       >
-        {artifact.content.split('\n').map((line, i) => (
-          <MarkdownLine key={i} line={line} />
-        ))}
+        <MarkdownViewer content={artifact.content} />
         {artifact.isStreaming && (
           <span className="inline-block w-0.5 h-4 bg-primary animate-pulse ml-0.5 align-middle" />
         )}

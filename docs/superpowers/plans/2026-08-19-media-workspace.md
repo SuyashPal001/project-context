@@ -83,6 +83,7 @@ git commit -m "feat(media-workspace): add shared Asset type"
 ```ts
 // products/agent-platform/packages/api/__tests__/assets.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Hono } from 'hono';
 
 const dbMock = vi.hoisted(() => ({
     select: vi.fn(),
@@ -91,11 +92,18 @@ const dbMock = vi.hoisted(() => ({
 vi.mock('../db', () => ({ db: dbMock }));
 vi.mock('@serverless-saas/permissions', () => ({ hasPermission: () => true }));
 
-function mockRequestContext(overrides: Partial<{ tenantId: string; userId: string }> = {}) {
-    return {
-        tenant: { id: overrides.tenantId ?? 'tenant-1' },
-        permissions: ['conversations:read'],
-    };
+// Hono context vars (`c.get('requestContext')`, `c.get('userId')`) are not
+// settable via the third argument to `.request()` — the codebase's
+// established pattern (see __tests__/conversations.persona.test.ts) wraps
+// the router under test in an app that sets them via middleware first.
+function appWithContext() {
+    const app = new Hono<any>();
+    app.use('*', async (c, next) => {
+        c.set('requestContext', { tenant: { id: 'tenant-1' }, permissions: ['conversations:read'] });
+        c.set('userId', 'user-1');
+        await next();
+    });
+    return app;
 }
 
 describe('GET /conversations/:id/assets', () => {
@@ -139,10 +147,8 @@ describe('GET /conversations/:id/assets', () => {
         }));
 
         const { assetsRoutes } = await import('../routes/assets');
-        const res = await assetsRoutes.request('/conv-1/assets', {}, {
-            requestContext: mockRequestContext(),
-            userId: 'user-1',
-        } as any);
+        const app = appWithContext().route('/conversations', assetsRoutes);
+        const res = await app.request('/conversations/conv-1/assets');
         const body = await res.json() as { data: Array<{ id: string; type: string; filename: string }> };
 
         expect(res.status).toBe(200);
@@ -158,10 +164,8 @@ describe('GET /conversations/:id/assets', () => {
         }));
 
         const { assetsRoutes } = await import('../routes/assets');
-        const res = await assetsRoutes.request('/conv-missing/assets', {}, {
-            requestContext: mockRequestContext(),
-            userId: 'user-1',
-        } as any);
+        const app = appWithContext().route('/conversations', assetsRoutes);
+        const res = await app.request('/conversations/conv-missing/assets');
 
         expect(res.status).toBe(404);
     });
@@ -1188,21 +1192,19 @@ function useMarkdownContent(asset: Asset, fileUrl: string | null): string {
   const [content, setContent] = useState('');
   useEffect(() => {
     setContent('');
+    let cancelled = false;
     if (asset.type === 'markdown' && fileUrl) {
-      fetch(fileUrl).then(r => r.text()).then(setContent).catch(() => {});
-      return;
-    }
-    if (asset.type === 'prd' && asset.entityId) {
+      fetch(fileUrl).then(r => r.text()).then(text => { if (!cancelled) setContent(text); }).catch(() => {});
+    } else if (asset.type === 'prd' && asset.entityId) {
       api.get<{ data: { content: string } }>(`/api/v1/prds/${asset.entityId}`)
-        .then(res => setContent(res.data?.content ?? ''))
+        .then(res => { if (!cancelled) setContent(res.data?.content ?? ''); })
         .catch(() => {});
-      return;
-    }
-    if (asset.type === 'roadmap' && asset.entityId) {
+    } else if (asset.type === 'roadmap' && asset.entityId) {
       Promise.all([
         api.get<{ data: { title: string; description?: string | null } }>(`/api/v1/plans/${asset.entityId}`),
         api.get<{ data: Array<{ title: string; description?: string | null; priority: string }> }>(`/api/v1/plans/${asset.entityId}/milestones`),
       ]).then(([planRes, msRes]) => {
+        if (cancelled) return;
         const plan = planRes.data;
         const milestones = msRes.data ?? [];
         const lines: string[] = [`# ${plan.title}`];
@@ -1215,10 +1217,13 @@ function useMarkdownContent(asset: Asset, fileUrl: string | null): string {
         setContent(lines.join('\n'));
       }).catch(() => {});
     }
+    return () => { cancelled = true; };
   }, [asset.id, asset.type, asset.entityId, fileUrl]);
   return content;
 }
 ```
+
+`useMarkdownContent` guards against the same out-of-order-response race as `useAssetUrl` (Task 7) — a `cancelled` flag set in the effect's cleanup, checked before every `setContent` call, so navigating to a new asset before an in-flight fetch resolves can't overwrite the newer asset's content with stale data.
 
 and inside `AssetLightbox`, right after `const url = useAssetUrl(asset);`:
 

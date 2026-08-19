@@ -224,6 +224,11 @@ export function ChatInput({
         }
     }, [prefill]);
 
+    useEffect(() => {
+        (window as any).__addComposeAttachment = uploader.addAttachment;
+        return () => { delete (window as any).__addComposeAttachment; };
+    }, [uploader.addAttachment]);
+
     const showRecordingBar = recorder.isRecording || recorder.audioPreview;
 
     return (

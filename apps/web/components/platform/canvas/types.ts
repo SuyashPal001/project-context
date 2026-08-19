@@ -28,6 +28,7 @@ export type CanvasAction =
   | 'artifact_chunk'
   | 'artifact_done'
   | 'artifact_load'
+  | 'asset_open'
 
 export interface CanvasEvent {
   id: string;
@@ -52,6 +53,8 @@ export interface CanvasEventData {
   chunk?: string;
   entityId?: string;
   entityMeta?: Record<string, unknown>;
+  // Asset open bridge
+  asset?: import('@/types/assets').Asset;
   [key: string]: unknown;
 }
 
@@ -70,4 +73,17 @@ export interface CanvasOverlay {
   y?: number;
   text?: string;
   expiresAt: number;
+}
+
+export type CanvasTabKind = 'artifact' | 'knowledge' | 'file' | 'gallery';
+
+export interface CanvasTab {
+  id: string;
+  kind: CanvasTabKind;
+  title: string;
+  closeable: boolean;
+  /** Present only for kind: 'artifact' */
+  artifact?: ArtifactState;
+  /** Present only for kind: 'file' */
+  asset?: import('@/types/assets').Asset;
 }
