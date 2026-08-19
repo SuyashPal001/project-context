@@ -92,6 +92,11 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
 // (inside a pill hover background) on hover/expanded state, rather than
 // showing both at once — matches the reference's collapsed-list treatment.
 
+// How many conversation rows show per agent before a "See more" click is
+// needed — an agent with dozens of chats (real scenario at scale) shouldn't
+// dump every single one into the sidebar at once.
+const CONVERSATIONS_PAGE_SIZE = 5;
+
 function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, onSelect, onNewChat, onArchive, onDelete, activeAgentId, activeState, hasSelectedConversation }: {
     agent: Agent;
     conversations: Conversation[];
@@ -106,6 +111,24 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
     activeState?: PersonaAnimationState;
     hasSelectedConversation?: boolean;
 }) {
+    // Plain component state — no persistence (localStorage/URL), so a page
+    // refresh naturally lands back on the collapsed first-5 view rather than
+    // needing explicit reset logic.
+    const [visibleCount, setVisibleCount] = useState(CONVERSATIONS_PAGE_SIZE);
+
+    // If the selected conversation falls outside the currently visible window
+    // (e.g. jumped to via search, or an older chat opened directly), pull the
+    // cutoff out far enough to include it instead of silently hiding the chat
+    // you're actually in.
+    useEffect(() => {
+        if (!selectedId) return;
+        const idx = conversations.findIndex(c => c.id === selectedId);
+        if (idx >= visibleCount) setVisibleCount(idx + 1);
+    }, [selectedId, conversations, visibleCount]);
+
+    const visibleConversations = conversations.slice(0, visibleCount);
+    const remainingCount = conversations.length - visibleConversations.length;
+
     return (
         <div className="mb-1.5">
             <button
@@ -153,16 +176,26 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                             Start a conversation…
                         </button>
                     ) : (
-                        conversations.map(conv => (
-                            <ConversationRow
-                                key={conv.id}
-                                conversation={conv}
-                                isSelected={selectedId === conv.id}
-                                onSelect={() => onSelect(conv)}
-                                onArchive={() => onArchive(conv.id)}
-                                onDelete={() => onDelete(conv.id)}
-                            />
-                        ))
+                        <>
+                            {visibleConversations.map(conv => (
+                                <ConversationRow
+                                    key={conv.id}
+                                    conversation={conv}
+                                    isSelected={selectedId === conv.id}
+                                    onSelect={() => onSelect(conv)}
+                                    onArchive={() => onArchive(conv.id)}
+                                    onDelete={() => onDelete(conv.id)}
+                                />
+                            ))}
+                            {remainingCount > 0 && (
+                                <button
+                                    onClick={() => setVisibleCount(c => c + CONVERSATIONS_PAGE_SIZE)}
+                                    className="w-full text-left px-2.5 py-1.5 text-[12px] text-muted-foreground/60 hover:text-foreground transition-colors rounded-md hover:bg-accent/30"
+                                >
+                                    See {Math.min(remainingCount, CONVERSATIONS_PAGE_SIZE)} more
+                                </button>
+                            )}
+                        </>
                     )}
                     <button
                         onClick={() => onNewChat(agent.id)}
