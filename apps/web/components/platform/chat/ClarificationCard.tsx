@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { ClarificationRequest } from './types';
@@ -44,7 +44,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
         const answers = request.answers ?? {};
         return (
             <div className="flex w-full justify-center my-5">
-                <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/40 bg-card p-[14px]">
+                <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-card shadow-elevated p-[14px]">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
                             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
@@ -115,7 +115,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
 
     return (
         <div className="flex w-full justify-center my-5">
-            <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/40 bg-card p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-card shadow-elevated p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center justify-between">
                     <h4 className="text-sm font-medium">{question.prompt}</h4>
                     {total > 1 && (
@@ -179,26 +179,44 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
                                     if (selectedIndex !== undefined || freeText.trim()) commitCurrent();
+                                    return;
+                                }
+                                // Escape-to-skip only applies while the field reads as the
+                                // "Skip [ESC]" affordance shown below — once the user has
+                                // typed something, Escape shouldn't discard it silently.
+                                if (e.key === 'Escape' && question.allowSkip && !freeText.trim()) {
+                                    e.preventDefault();
+                                    handleSkip();
                                 }
                             }}
                             placeholder="No, and tell what to do differently"
                             rows={1}
-                            className="flex-1 min-h-0 max-h-[160px] py-1.5 px-0 resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/60"
+                            // dark:bg-input/30 on the base Textarea isn't a plain `bg-*` utility —
+                            // it's scoped to the dark: variant, so an unscoped bg-transparent here
+                            // doesn't get merged/deduped against it and the grey pill still shows
+                            // through in dark mode. Overriding the same scoped utility clears it.
+                            className="flex-1 min-h-0 max-h-[160px] py-1.5 px-0 resize-none border-0 bg-transparent dark:bg-transparent rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/60"
                         />
                     )}
                     <div className="flex items-center gap-2 shrink-0 pb-1.5">
-                        {question.allowSkip && (
-                            <button type="button" onClick={handleSkip} className="text-xs font-medium text-muted-foreground hover:text-foreground">
-                                Skip
+                        {question.allowSkip && !freeText.trim() && (
+                            <button type="button" onClick={handleSkip} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+                                <span>Skip</span>
+                                <kbd className="text-[10px] leading-none px-1.5 py-1 rounded bg-muted text-muted-foreground/70 font-mono">ESC</kbd>
                             </button>
                         )}
                         <button
                             type="button"
                             onClick={commitCurrent}
                             disabled={selectedIndex === undefined && !freeText.trim()}
-                            className="h-8 px-4 rounded-full bg-primary text-primary-foreground text-xs font-medium disabled:opacity-40"
+                            className={cn(
+                                "bg-primary text-primary-foreground disabled:opacity-40 flex items-center justify-center",
+                                freeText.trim()
+                                    ? "h-8 w-8 rounded-full shrink-0"
+                                    : "h-8 px-4 rounded-full text-xs font-medium"
+                            )}
                         >
-                            {isLast ? 'Submit' : 'Continue'}
+                            {freeText.trim() ? <ArrowUp className="h-4 w-4" /> : (isLast ? 'Submit' : 'Continue')}
                         </button>
                     </div>
                 </div>
