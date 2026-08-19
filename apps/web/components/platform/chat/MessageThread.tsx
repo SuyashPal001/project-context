@@ -282,19 +282,26 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     </div>
                 )}
 
-                {/* Unconditionally reserves ~one pane's worth of room below the last
-                    message, regardless of how much prior history already exists above
-                    it. A flex-1/min-h-full filler isn't enough here: it only tops the
-                    column up to one viewport total, so once existing history already
-                    exceeds the pane's height (any real, ongoing conversation) it
-                    collapses to zero and the anchor-to-top scroll below has nothing to
-                    scroll into again. cqh reads the *pane's own* height (via
+                {/* Reserves ~one pane's worth of room below the last message ONLY
+                    while it's still streaming — that's what the anchor-to-top effect
+                    above needs room to scroll a growing reply into (a flex-1/min-h-full
+                    filler isn't enough: once existing history already exceeds the
+                    pane's height, which any real ongoing conversation does, it
+                    collapses to zero and the anchor-to-top scroll has nothing left to
+                    scroll into). Once streaming ends, a full pane of dead space below a
+                    short finished reply just reads as a broken empty gap before the
+                    input bar, so this collapses to ordinary bottom padding instead of
+                    staying reserved forever. cqh reads the *pane's own* height (via
                     containerType: 'size' on the non-scrolling wrapper two levels up,
                     right below), independent of how tall the scrollable content is —
                     pure CSS, computed by the browser's layout engine on every reflow,
                     no JS measurement to race. */}
                 {messages.length > 0 && (
-                    <div ref={contentEndRef} aria-hidden style={{ height: 'calc(100cqh - 160px)' }} />
+                    <div
+                        ref={contentEndRef}
+                        aria-hidden
+                        style={{ height: hasStreamingMessage ? 'calc(100cqh - 160px)' : '24px' }}
+                    />
                 )}
             </div>
         </div>
