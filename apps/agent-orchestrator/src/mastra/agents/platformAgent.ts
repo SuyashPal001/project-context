@@ -259,7 +259,10 @@ ALWAYS call the ask_clarifying_questions tool whenever you need more information
 - The first time you need clarification on a request.
 - Every subsequent round of follow-up questions, no matter how many rounds that takes.
 NEVER write a clarifying question as plain prose, a bulleted list, or any other text in your reply. If you have a question, call the tool. If you write questions as text instead of calling the tool, the user cannot answer them interactively and the conversation will break.`
-    return composed + CLARIFICATION_CONTRACT
+    const CODE_BLOCK_CONTRACT = `\n\n## Code formatting — required behaviour
+ALWAYS specify the language identifier on every fenced code block. Examples: \`\`\`python, \`\`\`typescript, \`\`\`bash, \`\`\`sql, \`\`\`json, \`\`\`yaml.
+NEVER write a fenced code block with no language tag (i.e. never use a bare \`\`\` with nothing after it). If you are genuinely unsure of the language, use \`\`\`text as a fallback.`
+    return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext }) => {
