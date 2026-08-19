@@ -35,25 +35,35 @@ const TYPE_BADGES: Record<AssetType, string> = {
 function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
   const Icon = TYPE_ICONS[asset.type];
   return (
-    <button
-      onClick={onClick}
-      className="group relative flex flex-col rounded-xl border border-border/60 bg-muted/20 overflow-hidden text-left hover:border-primary/40 transition-colors"
-    >
-      <div className="relative aspect-video bg-muted flex items-center justify-center">
-        {asset.thumbnailUrl ? (
-          <img src={asset.thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
-        ) : (
-          <Icon className="h-8 w-8 text-muted-foreground/60" />
-        )}
-        <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
-          {TYPE_BADGES[asset.type]}
-        </span>
-      </div>
-      <div className="px-2.5 py-2">
-        <p className="text-xs font-medium truncate">{asset.filename}</p>
-        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{asset.type}</p>
-      </div>
-    </button>
+    <div className="group relative flex flex-col rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
+      <button onClick={onClick} className="text-left hover:border-primary/40 transition-colors">
+        <div className="relative aspect-video bg-muted flex items-center justify-center">
+          {asset.thumbnailUrl ? (
+            <img src={asset.thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
+          ) : (
+            <Icon className="h-8 w-8 text-muted-foreground/60" />
+          )}
+          <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
+            {TYPE_BADGES[asset.type]}
+          </span>
+          <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                (window as any).__addComposeAttachment?.(asset);
+              }}
+              className="opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-full bg-background text-foreground text-xs font-medium shadow-sm hover:bg-muted"
+            >
+              + Add to task
+            </button>
+          </div>
+        </div>
+        <div className="px-2.5 py-2">
+          <p className="text-xs font-medium truncate">{asset.filename}</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{asset.type}</p>
+        </div>
+      </button>
+    </div>
   );
 }
 

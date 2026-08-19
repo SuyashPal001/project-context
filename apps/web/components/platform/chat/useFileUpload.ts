@@ -3,11 +3,22 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { ingestDocument, isIngestibleDocument } from "@/lib/ingestDocument";
 import { Attachment } from "@/types/agent-events";
+import type { Asset } from "@/types/assets";
 
 export interface PendingUpload {
     previewUrl?: string;
     name: string;
     type: string;
+}
+
+export function assetToAttachment(asset: Asset): Attachment {
+    return {
+        fileId: asset.fileId ?? asset.id,
+        name: asset.filename,
+        type: asset.mimeType ?? 'application/octet-stream',
+        size: asset.size,
+        previewUrl: asset.thumbnailUrl,
+    };
 }
 
 async function uploadToS3(file: Blob, filename: string, contentType: string, size: number) {
@@ -145,11 +156,18 @@ export function useFileUpload() {
         setPendingUpload(null);
     };
 
+    const addAttachment = (asset: Asset) => {
+        setAttachments(prev => prev.some(a => a.fileId === asset.fileId || a.fileId === asset.id)
+            ? prev
+            : [...prev, assetToAttachment(asset)]);
+    };
+
     return {
         attachments,
         pendingUpload,
         isUploading,
         removeAttachment,
+        addAttachment,
         handleFileChange,
         uploadAudio,
         clearAttachments,
