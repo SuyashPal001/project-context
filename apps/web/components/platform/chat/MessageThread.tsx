@@ -32,6 +32,13 @@ interface MessageThreadProps {
 
 export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
+    // Marks where real content ends and the reserved bottom spacer begins.
+    // scrollHeight now always includes that spacer (~one pane's worth of
+    // empty space, unconditionally, so the top-anchor scroll always has room
+    // to scroll into — see the spacer render below), so anything that used to
+    // treat scrollHeight as "the bottom" needs to use this instead, or it'll
+    // scroll into/measure against blank space rather than the last message.
+    const contentEndRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
     const failedUrlsRef = useRef<Set<string>>(new Set());
     const isRefreshingUrlsRef = useRef(false);
@@ -115,7 +122,8 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         const el = scrollRef.current;
         if (!el) return;
         const onScroll = () => {
-            const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            const contentEnd = contentEndRef.current?.offsetTop ?? el.scrollHeight;
+            const distanceFromBottom = contentEnd - el.scrollTop - el.clientHeight;
             setShowScrollToBottom(distanceFromBottom > 200);
         };
         el.addEventListener('scroll', onScroll);
@@ -278,7 +286,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     pure CSS, computed by the browser's layout engine on every reflow,
                     no JS measurement to race. */}
                 {messages.length > 0 && (
-                    <div aria-hidden style={{ height: 'calc(100cqh - 160px)' }} />
+                    <div ref={contentEndRef} aria-hidden style={{ height: 'calc(100cqh - 160px)' }} />
                 )}
             </div>
         </div>
@@ -303,7 +311,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         {showScrollToBottom && (
             <button
                 type="button"
-                onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })}
+                onClick={() => scrollRef.current?.scrollTo({ top: contentEndRef.current?.offsetTop ?? scrollRef.current.scrollHeight, behavior: 'smooth' })}
                 className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 h-8 w-8 rounded-full bg-secondary shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
             >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">

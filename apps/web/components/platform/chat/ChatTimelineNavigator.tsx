@@ -7,13 +7,7 @@ interface ChatTimelineNavigatorProps {
     messages: Message[];
 }
 
-const HOVER_CLOSE_DELAY_MS = 150;
 const TICK_GAP_PX = 6;
-// Opacity falls off with each row of distance from the hovered row: the
-// hovered row itself is fully opaque, its neighbors dim progressively,
-// clamped to a readable floor so far-away rows are still legible.
-const FADE_PER_ROW = 0.22;
-const MIN_ROW_OPACITY = 0.28;
 
 const ARIA_LABEL_MAX_CHARS = 100;
 
@@ -40,10 +34,12 @@ function summarize(content: string): string {
 }
 
 export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) {
-    const [expanded, setExpanded] = useState(false);
-    const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+    // Index of the single tick currently hovered, or null. Each tick owns its
+    // own preview box keyed off this — previously a single shared `expanded`
+    // boolean gated one combined panel listing every message, so hovering any
+    // one tick opened all of them at once, stacked on top of the chat content.
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const [activeId, setActiveId] = useState<string | null>(null);
-    const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const userMessages = messages.filter(m => m.role === 'user');
     const userMessageIds = userMessages.map(m => m.id).join(',');
 
@@ -154,46 +150,10 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
         document.getElementById(`message-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
-    const cancelClose = () => {
-        if (closeTimer.current) {
-            clearTimeout(closeTimer.current);
-            closeTimer.current = null;
-        }
-    };
-
-    const scheduleClose = () => {
-        cancelClose();
-        closeTimer.current = setTimeout(() => { setExpanded(false); setHoveredRow(null); }, HOVER_CLOSE_DELAY_MS);
-    };
+    const anyHovered = hoveredIndex !== null;
 
     return (
-        <div
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-30"
-            onMouseEnter={() => { cancelClose(); setExpanded(true); }}
-            onMouseLeave={scheduleClose}
-        >
-            <div
-                className={`absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 max-h-[60vh] overflow-y-auto custom-scrollbar transition-[opacity,transform] duration-200 ease-out ${expanded ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-1.5 pointer-events-none'}`}
-                onMouseLeave={() => setHoveredRow(null)}
-            >
-                {userMessages.map((m, i) => {
-                    const distance = hoveredRow === null ? 0 : Math.abs(i - hoveredRow);
-                    const opacity = hoveredRow === null ? 1 : Math.max(MIN_ROW_OPACITY, 1 - distance * FADE_PER_ROW);
-                    return (
-                        <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => jumpTo(m.id)}
-                            onMouseEnter={() => setHoveredRow(i)}
-                            style={{ opacity }}
-                            className="block w-full text-right px-1 py-1 text-xs text-foreground truncate transition-opacity duration-150"
-                        >
-                            {m.content}
-                        </button>
-                    );
-                })}
-            </div>
-
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 z-30">
             <div
                 ref={tickContainerRef}
                 className="flex flex-col items-end py-1"
@@ -204,33 +164,50 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
             >
                 {userMessages.map((m, i) => {
                     const isActive = m.id === activeId;
+                    const isHovered = hoveredIndex === i;
                     return (
-                        <button
+                        <div
                             key={m.id}
-                            ref={registerBarEl(m.id)}
-                            type="button"
-                            onClick={() => jumpTo(m.id)}
-                            onMouseEnter={() => setHoveredRow(i)}
-                            aria-label={summarize(m.content)}
-                            title={summarize(m.content)}
-                            style={{
-                                width: BASE_BAR_WIDTH_PX,
-                                height: BAR_HEIGHT_PX,
-                                transformOrigin: 'right',
-                                willChange: 'transform',
-                                transitionDuration: '0s',
-                                // Initial paint only — the magnify rAF loop (stepMagnify) takes
-                                // over with direct el.style writes from the next hover frame on,
-                                // so this never reads from the animation refs during render.
-                                transform: `translateZ(0) scaleX(${REST_SCALE})`,
-                                opacity: REST_OPACITY,
-                            }}
-                            className={`rounded-sm cursor-pointer ${
-                                isActive
-                                    ? 'bg-foreground/80'
-                                    : expanded ? 'bg-muted-foreground/60' : 'bg-muted-foreground/30'
-                            }`}
-                        />
+                            className="relative"
+                            onMouseEnter={() => setHoveredIndex(i)}
+                            onMouseLeave={() => setHoveredIndex(null)}
+                        >
+                            {/* Each tick owns its own preview box — only the hovered tick's
+                                box is visible (opacity-100), every other tick's stays fully
+                                hidden (opacity-0, pointer-events-none) so previews never stack
+                                on top of the chat content. */}
+                            <div
+                                className={`absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 max-h-[60vh] overflow-y-auto custom-scrollbar rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-foreground shadow-md transition-[opacity,transform] duration-150 ease-out ${
+                                    isHovered ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-1.5 pointer-events-none'
+                                }`}
+                            >
+                                {summarize(m.content)}
+                            </div>
+                            <button
+                                ref={registerBarEl(m.id)}
+                                type="button"
+                                onClick={() => jumpTo(m.id)}
+                                aria-label={summarize(m.content)}
+                                title={summarize(m.content)}
+                                style={{
+                                    width: BASE_BAR_WIDTH_PX,
+                                    height: BAR_HEIGHT_PX,
+                                    transformOrigin: 'right',
+                                    willChange: 'transform',
+                                    transitionDuration: '0s',
+                                    // Initial paint only — the magnify rAF loop (stepMagnify) takes
+                                    // over with direct el.style writes from the next hover frame on,
+                                    // so this never reads from the animation refs during render.
+                                    transform: `translateZ(0) scaleX(${REST_SCALE})`,
+                                    opacity: REST_OPACITY,
+                                }}
+                                className={`rounded-sm cursor-pointer ${
+                                    isActive
+                                        ? 'bg-foreground/80'
+                                        : anyHovered ? 'bg-muted-foreground/60' : 'bg-muted-foreground/30'
+                                }`}
+                            />
+                        </div>
                     );
                 })}
             </div>
