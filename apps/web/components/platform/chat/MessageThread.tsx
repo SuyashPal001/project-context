@@ -67,6 +67,23 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // once the row exists, MessageItem renders the same content itself,
     // inside that row, so the two must never both render at once.
     const hasStreamingMessage = messages.some(m => m.isStreaming);
+    // The bottom spacer (rendered below) needs full-pane room not just while
+    // a reply is streaming, but also in the brief window right after you hit
+    // send — the anchor-to-top-of-your-message effect in MessageThread fires
+    // the instant your message is added, before the assistant's streaming
+    // placeholder row exists yet, so hasStreamingMessage alone is still false
+    // at that exact moment. Without this, the spacer stayed collapsed right
+    // when the anchor scroll needed room, reproducing the original clamping bug.
+    //
+    // lastMessage.role === 'user' alone isn't enough, though: if the send
+    // errors out, no assistant message ever gets appended, so the last
+    // message stays 'user' forever and this would stay stuck reserving a
+    // full pane of dead space permanently — the exact "broken empty gap"
+    // regression this conditional exists to avoid. Requiring an active
+    // loading flag alongside it means a failed/cancelled send (where these
+    // all go back to false) correctly falls back to the settled 24px state.
+    const awaitingAssistantReply = (isStreaming || isTyping || isRetrying) && lastMessage?.role === 'user';
+    const needsAnchorRoom = hasStreamingMessage || awaitingAssistantReply;
 
     // Tracks which conversation/message we last scrolled for, so this effect can
     // tell "a fresh conversation just loaded" from "a new user message was just
@@ -282,17 +299,19 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     </div>
                 )}
 
-                {/* Reserves ~one pane's worth of room below the last message ONLY
-                    while it's still streaming — that's what the anchor-to-top effect
-                    above needs room to scroll a growing reply into (a flex-1/min-h-full
-                    filler isn't enough: once existing history already exceeds the
-                    pane's height, which any real ongoing conversation does, it
-                    collapses to zero and the anchor-to-top scroll has nothing left to
-                    scroll into). Once streaming ends, a full pane of dead space below a
-                    short finished reply just reads as a broken empty gap before the
-                    input bar, so this collapses to ordinary bottom padding instead of
-                    staying reserved forever. cqh reads the *pane's own* height (via
-                    containerType: 'size' on the non-scrolling wrapper two levels up,
+                {/* Reserves ~one pane's worth of room below the last message while
+                    needsAnchorRoom is true — that's what the anchor-to-top effect above
+                    needs room to scroll into, both while a reply is streaming AND in the
+                    brief window right after you hit send, before the streaming placeholder
+                    row exists (a flex-1/min-h-full filler isn't enough: once existing
+                    history already exceeds the pane's height, which any real ongoing
+                    conversation does, it collapses to zero and the anchor-to-top scroll
+                    has nothing left to scroll into). Once truly settled (an assistant
+                    reply is the last message and nothing's streaming), a full pane of
+                    dead space below a short finished reply just reads as a broken empty
+                    gap before the input bar, so this collapses to ordinary bottom padding
+                    instead of staying reserved forever. cqh reads the *pane's own* height
+                    (via containerType: 'size' on the non-scrolling wrapper two levels up,
                     right below), independent of how tall the scrollable content is —
                     pure CSS, computed by the browser's layout engine on every reflow,
                     no JS measurement to race. */}
@@ -300,7 +319,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     <div
                         ref={contentEndRef}
                         aria-hidden
-                        style={{ height: hasStreamingMessage ? 'calc(100cqh - 160px)' : '24px' }}
+                        style={{ height: needsAnchorRoom ? 'calc(100cqh - 160px)' : '24px' }}
                     />
                 )}
             </div>
