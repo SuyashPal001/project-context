@@ -63,13 +63,7 @@ export function useFileUpload() {
         });
     };
 
-    const handleFileChange = async (
-        e: React.ChangeEvent<HTMLInputElement>,
-        fileInputRef: React.RefObject<HTMLInputElement | null>,
-    ) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
+    const uploadFile = async (file: File) => {
         setIsUploading(true);
         const fileName = file.name;
         const fileType = file.type;
@@ -81,7 +75,6 @@ export function useFileUpload() {
 
         if (fileSize > maxSize) {
             toast.error(`File too large. Maximum size is ${fileType.startsWith('video/') ? '200MB' : '35MB'}.`);
-            if (fileInputRef.current) fileInputRef.current.value = "";
             setIsUploading(false);
             return;
         }
@@ -128,8 +121,17 @@ export function useFileUpload() {
         } finally {
             setIsUploading(false);
             setPendingUpload(null);
-            if (fileInputRef.current) fileInputRef.current.value = "";
         }
+    };
+
+    const handleFileChange = async (
+        e: React.ChangeEvent<HTMLInputElement>,
+        fileInputRef: React.RefObject<HTMLInputElement | null>,
+    ) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        await uploadFile(file);
+        if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
     const uploadAudio = async (blob: Blob, previewUrl: string): Promise<Attachment> => {
@@ -167,6 +169,7 @@ export function useFileUpload() {
         removeAttachment,
         addAttachment,
         handleFileChange,
+        uploadFile,
         uploadAudio,
         clearAttachments,
     };

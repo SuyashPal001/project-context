@@ -65,6 +65,21 @@ const DOCUMENT_ACCEPT = [
     "application/zip", "application/x-zip-compressed", ".zip",
 ].join(",");
 
+const DOCUMENT_MIME_TYPES = new Set([
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "application/zip",
+    "application/x-zip-compressed",
+]);
+
+function isDroppableFile(file: File): boolean {
+    return file.type.startsWith("image/")
+        || file.type.startsWith("video/")
+        || file.type.startsWith("audio/")
+        || DOCUMENT_MIME_TYPES.has(file.type);
+}
+
 interface ChatInputProps {
     onSend: (content: string, attachments?: Attachment[]) => void;
     onStop?: () => void;
@@ -102,6 +117,7 @@ export function ChatInput({
     // still the last thing in the string, which breaks for multi-line drafts or
     // trailing text.
     const [paletteRange, setPaletteRange] = useState<{ start: number; end: number } | null>(null);
+    const [isDraggingFile, setIsDraggingFile] = useState(false);
 
     const recorder = useAudioRecorder();
     const uploader = useFileUpload();
@@ -110,6 +126,11 @@ export function ChatInput({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const uploadTypeRef = useRef<'image' | 'video' | 'audio' | 'document' | null>(null);
     const paletteRef = useRef<PaletteHandle>(null);
+    // dragenter/dragleave fire on every child element as the pointer crosses them,
+    // so a plain boolean flickers the overlay off while dragging over nested
+    // elements — a depth counter only reaches zero when the pointer truly leaves
+    // the drop zone.
+    const dragDepthRef = useRef(0);
 
     const handleSend = async () => {
         if (isStreaming) {
@@ -168,6 +189,50 @@ export function ChatInput({
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         await uploader.handleFileChange(e, fileInputRef);
         uploadTypeRef.current = null;
+    };
+
+    const handleDragEnter = (e: React.DragEvent) => {
+        if (!FEATURE_FLAGS.chatUpload || uploader.isUploading) return;
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        dragDepthRef.current += 1;
+        setIsDraggingFile(true);
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        if (!FEATURE_FLAGS.chatUpload || uploader.isUploading) return;
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        if (!FEATURE_FLAGS.chatUpload) return;
+        e.preventDefault();
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setIsDraggingFile(false);
+    };
+
+    const handleDrop = async (e: React.DragEvent) => {
+        if (!FEATURE_FLAGS.chatUpload) return;
+        e.preventDefault();
+        dragDepthRef.current = 0;
+        setIsDraggingFile(false);
+        if (uploader.isUploading) return;
+
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length === 0) return;
+        if (files.length > 1) {
+            toast.error("Drop one file at a time");
+            return;
+        }
+
+        const [file] = files;
+        if (!isDroppableFile(file)) {
+            toast.error(`Unsupported file type: ${file.type || file.name}`);
+            return;
+        }
+
+        await uploader.uploadFile(file);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -287,7 +352,21 @@ export function ChatInput({
                     />
                 )}
 
-                <div className="flex flex-col rounded-[28px] border border-border/60 bg-card focus-within:border-primary/30 transition-colors shadow-elevated overflow-hidden">
+                <div
+                    className={cn(
+                        "relative flex flex-col rounded-[28px] border bg-card transition-colors shadow-elevated overflow-hidden",
+                        isDraggingFile ? "border-primary/60" : "border-border/60 focus-within:border-primary/30",
+                    )}
+                    onDragEnter={handleDragEnter}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                >
+                    {isDraggingFile && (
+                        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[28px] bg-primary/5 backdrop-blur-[1px] pointer-events-none">
+                            <span className="text-sm font-medium text-primary">Drop to attach</span>
+                        </div>
+                    )}
 
                     <AttachmentStrip
                         attachments={uploader.attachments}
