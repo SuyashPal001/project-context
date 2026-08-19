@@ -8,8 +8,9 @@ import { FileCreatedCard } from './FileCreatedCard';
 import { api } from '@/lib/api';
 import type {
   CanvasState, CanvasEvent, CanvasOverlay, CanvasEventData,
-  CanvasAction, ArtifactState, ArtifactType,
+  CanvasAction, ArtifactState, ArtifactType, CanvasTab,
 } from './types';
+import type { Asset } from '@/types/assets';
 
 interface CanvasProps {
   isOpen: boolean;
@@ -34,8 +35,53 @@ const OVERLAY_DURATION = 2000;
 export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending, agentId }: CanvasProps) {
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
-  const [artifact, setArtifact] = useState<ArtifactState | null>(null);
-  const [activeTab, setActiveTab] = useState<'artifact' | 'knowledge'>('artifact');
+  const KNOWLEDGE_TAB: CanvasTab = { id: 'knowledge', kind: 'knowledge', title: 'Knowledge Base', closeable: false };
+  const ARTIFACT_TAB_ID = 'artifact';
+
+  const [tabs, setTabs] = useState<CanvasTab[]>([KNOWLEDGE_TAB]);
+  const [activeTabId, setActiveTabId] = useState<string>('knowledge');
+
+  const upsertArtifactTab = useCallback((updater: (prev: ArtifactState | null) => ArtifactState | null, focus: boolean) => {
+    setTabs(prev => {
+      const existing = prev.find(t => t.id === ARTIFACT_TAB_ID);
+      const nextArtifact = updater(existing?.artifact ?? null);
+      if (!nextArtifact) return prev;
+      if (existing) {
+        return prev.map(t => t.id === ARTIFACT_TAB_ID ? { ...t, title: nextArtifact.title, artifact: nextArtifact } : t);
+      }
+      return [...prev, { id: ARTIFACT_TAB_ID, kind: 'artifact', title: nextArtifact.title, closeable: true, artifact: nextArtifact }];
+    });
+    if (focus) setActiveTabId(ARTIFACT_TAB_ID);
+  }, []);
+
+  const openAssetTab = useCallback((asset: Asset) => {
+    const tabId = `file-${asset.id}`;
+    setTabs(prev => prev.some(t => t.id === tabId)
+      ? prev
+      : [...prev, { id: tabId, kind: 'file', title: asset.filename, closeable: true, asset }]);
+    setActiveTabId(tabId);
+  }, []);
+
+  const openGalleryTab = useCallback(() => {
+    const tabId = 'gallery';
+    setTabs(prev => prev.some(t => t.id === tabId)
+      ? prev
+      : [...prev, { id: tabId, kind: 'gallery', title: 'Chat History', closeable: true }]);
+    setActiveTabId(tabId);
+  }, []);
+
+  const closeTab = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const next = prev.filter(t => t.id !== tabId);
+      setActiveTabId(current => {
+        if (current !== tabId) return current;
+        return next[next.length - 1]?.id ?? 'knowledge';
+      });
+      return next;
+    });
+  }, []);
+
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? KNOWLEDGE_TAB;
 
   // Restore latest PRD from DB when agentId changes (e.g. page refresh or conversation switch)
   useEffect(() => {
@@ -45,7 +91,10 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     ).then(res => {
       const prd = res.data?.[0];
       if (!prd) return;
-      setArtifact({
+      // Only steal focus if the tab list is still at its initial state — a user who has
+      // already opened other tabs should not be yanked back to the restored artifact.
+      const isInitial = activeTabId === 'knowledge' && tabs.length === 1;
+      upsertArtifactTab(() => ({
         type: 'prd',
         title: prd.title,
         content: prd.content,
@@ -53,8 +102,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         entityId: prd.id,
         entityMeta: { version: prd.version },
         approveStatus: prd.status === 'approved' ? 'done' : 'idle',
-      });
-      setActiveTab('artifact');
+      }), isInitial);
       // Do NOT auto-open — user opens canvas explicitly via the button.
       // Auto-opening on agentId change fires on every conversation switch,
       // including fresh conversations, which is jarring.
@@ -80,7 +128,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     // Handle artifact streaming actions first
     if (action === 'artifact_start') {
       console.log('[canvas] artifact_start received:', data);
-      setArtifact({
+      upsertArtifactTab(() => ({
         type: data.artifactType!,
         title: data.artifactTitle!,
         content: '',
@@ -88,28 +136,27 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         entityId: null,
         entityMeta: null,
         approveStatus: 'idle',
-      });
-      setActiveTab('artifact');
+      }), true);
       onActivity?.();
       return;
     }
 
     if (action === 'artifact_chunk') {
-      setArtifact(prev => prev ? { ...prev, content: prev.content + (data.chunk ?? '') } : prev);
+      upsertArtifactTab(prev => prev ? { ...prev, content: prev.content + (data.chunk ?? '') } : prev, false);
       onActivity?.();
       return;
     }
 
     if (action === 'artifact_done') {
       const meta = data.entityMeta ?? null;
-      setArtifact(prev => prev ? {
+      upsertArtifactTab(prev => prev ? {
         ...prev,
         isStreaming: false,
         entityId: data.entityId ?? prev.entityId,
         entityMeta: meta,
         pmRunId: (meta as any)?.pmRunId ?? prev.pmRunId,
         pmStepId: (meta as any)?.pmStepId ?? prev.pmStepId,
-      } : prev);
+      } : prev, false);
       onActivity?.();
       return;
     }
@@ -122,15 +169,20 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
       const pmStepId = (entityMeta as any)?.pmStepId as string | undefined;
       const base = { type, title, isStreaming: false, entityId: entityId ?? null, entityMeta: entityMeta ?? null, approveStatus: 'idle' as const, pmRunId, pmStepId };
       if (content) {
-        setArtifact({ ...base, content: String(content) });
+        upsertArtifactTab(() => ({ ...base, content: String(content) }), true);
       } else if (type === 'prd' && entityId) {
         api.get<{ data: { content: string } }>(`/api/v1/prds/${entityId}`)
-          .then(res => { const c = res.data?.content; if (c) setArtifact({ ...base, content: c }); })
+          .then(res => { const c = res.data?.content; if (c) upsertArtifactTab(() => ({ ...base, content: c }), true); })
           .catch(() => {});
       } else {
-        setArtifact({ ...base, content: '' });
+        upsertArtifactTab(() => ({ ...base, content: '' }), true);
       }
-      setActiveTab('artifact');
+      onActivity?.();
+      return;
+    }
+
+    if (action === 'asset_open') {
+      if (data.asset) openAssetTab(data.asset);
       onActivity?.();
       return;
     }
@@ -186,8 +238,8 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
   const handleReset = useCallback(() => {
     setState(initialState);
     setRecentFiles([]);
-    setArtifact(null);
-    setActiveTab('knowledge');
+    setTabs([KNOWLEDGE_TAB]);
+    setActiveTabId('knowledge');
   }, []);
 
   useEffect(() => {
@@ -201,8 +253,9 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
   }, [handleCanvasUpdate, handleReset, flushPending]);
 
   const handleRevise = useCallback(async (instructions: string) => {
+    const artifact = activeTab.artifact;
     if (!artifact?.pmRunId || !artifact?.pmStepId) return;
-    setArtifact(prev => prev ? { ...prev, approveStatus: 'loading' } : prev);
+    upsertArtifactTab(prev => prev ? { ...prev, approveStatus: 'loading' } : prev, false);
     try {
       const relayBase = (process.env.NEXT_PUBLIC_AGENT_WS_URL ?? 'wss://agent-orchestrator.projectcontext.co')
         .replace(/^wss?:\/\//, 'https://');
@@ -219,23 +272,24 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         // Fetch the revised content and update the canvas
         const prdRes = await api.get<{ data: { content: string } }>(`/api/v1/prds/${data.prdId}`);
         const content = prdRes.data?.content ?? '';
-        setArtifact(prev => prev ? {
+        upsertArtifactTab(prev => prev ? {
           ...prev,
           title: data.title ?? prev.title,
           content,
           approveStatus: 'idle',
           pmRunId: data.runId,
           pmStepId: data.stepId,
-        } : prev);
+        } : prev, false);
       }
     } catch {
-      setArtifact(prev => prev ? { ...prev, approveStatus: 'error' } : prev);
+      upsertArtifactTab(prev => prev ? { ...prev, approveStatus: 'error' } : prev, false);
     }
-  }, [artifact]);
+  }, [activeTab, upsertArtifactTab]);
 
   const handleApprove = useCallback(async () => {
+    const artifact = activeTab.artifact;
     if (!artifact) return;
-    setArtifact(prev => prev ? { ...prev, approveStatus: 'loading' } : prev);
+    upsertArtifactTab(prev => prev ? { ...prev, approveStatus: 'loading' } : prev, false);
     try {
       // Mastra HITL path: resume the pm-workflow suspension
       if (artifact.pmRunId && artifact.pmStepId) {
@@ -260,14 +314,14 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
           planId?: string; title?: string; taskCount?: number;
         };
         if (data.phase === 'done') {
-          setArtifact(prev => prev ? { ...prev, approveStatus: 'done', pmRunId: undefined, pmStepId: undefined } : prev);
+          upsertArtifactTab(prev => prev ? { ...prev, approveStatus: 'done', pmRunId: undefined, pmStepId: undefined } : prev, false);
           return;
         }
         // Move to next artifact (roadmap or tasks)
         const nextType = data.phase === 'roadmap' ? 'roadmap' : 'tasks';
         const nextTitle = data.title ?? nextType.toUpperCase();
         const nextEntityId = data.planId ?? null;
-        setArtifact({
+        upsertArtifactTab(() => ({
           type: nextType as ArtifactType,
           title: nextTitle,
           content: '',
@@ -277,8 +331,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
           approveStatus: 'idle',
           pmRunId: data.runId,
           pmStepId: data.stepId,
-        });
-        setActiveTab('artifact');
+        }), true);
         // Open canvas so new artifact is visible
         (window as any).__openCanvas?.();
         return;
@@ -289,11 +342,11 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
       } else if (artifact.type === 'roadmap' && artifact.entityId) {
         await api.patch(`/api/v1/plans/${artifact.entityId}/approve`, {});
       }
-      setArtifact(prev => prev ? { ...prev, approveStatus: 'done' } : prev);
+      upsertArtifactTab(prev => prev ? { ...prev, approveStatus: 'done' } : prev, false);
     } catch {
-      setArtifact(prev => prev ? { ...prev, approveStatus: 'error' } : prev);
+      upsertArtifactTab(prev => prev ? { ...prev, approveStatus: 'error' } : prev, false);
     }
-  }, [artifact]);
+  }, [activeTab, upsertArtifactTab]);
 
   if (!isOpen) return null;
 
@@ -311,30 +364,23 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
       </div>
 
       {/* Tab bar — always visible */}
-      <div className="flex-none flex border-b border-border">
-        <button
-          className={`flex-1 px-4 py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1.5 ${
-            activeTab === 'artifact'
-              ? 'text-foreground border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('artifact')}
-        >
-          Artifact
-          {artifact?.isStreaming && (
-            <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-          )}
-        </button>
-        <button
-          className={`flex-1 px-4 py-2 text-xs font-medium transition-colors ${
-            activeTab === 'knowledge'
-              ? 'text-foreground border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('knowledge')}
-        >
-          Knowledge Base
-        </button>
+      <div className="flex-none flex border-b border-border overflow-x-auto">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            className={`flex-none px-4 py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap ${
+              tab.id === activeTabId
+                ? 'text-foreground border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTabId(tab.id)}
+          >
+            {tab.title}
+            {tab.kind === 'artifact' && tab.artifact?.isStreaming && (
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Scrollable body */}
@@ -352,7 +398,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         </div>
 
         {/* Recent Files */}
-        {recentFiles.length > 0 && (activeTab === 'knowledge' || !artifact) && (
+        {recentFiles.length > 0 && activeTab.kind === 'knowledge' && (
           <div className="flex-none px-4 pb-3 space-y-2">
             <div className="flex items-center gap-2 mb-2">
               <div className="h-px flex-1 bg-border/50" />
@@ -365,27 +411,19 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
           </div>
         )}
 
-        {/* Tab content */}
-        {activeTab === 'artifact' ? (
-          artifact ? (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <ArtifactPanel
-                artifact={artifact}
-                onApprove={handleApprove}
-                onRevise={handleRevise}
-                onContentLoaded={(content) => setArtifact(prev => prev ? { ...prev, content } : prev)}
-                tenantSlug={tenantSlug}
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-2 p-8 text-center">
-              <p className="text-sm text-muted-foreground">No artifact yet.</p>
-              <p className="text-xs text-muted-foreground/60">Ask the agent to create a PRD, roadmap, or task list.</p>
-            </div>
-          )
-        ) : (
-          <KnowledgeBaseSection />
+        {activeTab.kind === 'artifact' && activeTab.artifact && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <ArtifactPanel
+              artifact={activeTab.artifact}
+              onApprove={handleApprove}
+              onRevise={handleRevise}
+              onContentLoaded={(content) => upsertArtifactTab(prev => prev ? { ...prev, content } : prev, false)}
+              tenantSlug={tenantSlug}
+            />
+          </div>
         )}
+
+        {activeTab.kind === 'knowledge' && <KnowledgeBaseSection />}
       </div>
     </div>
   );
