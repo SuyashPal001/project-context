@@ -7,7 +7,16 @@ interface ChatTimelineNavigatorProps {
     messages: Message[];
 }
 
-const TICK_GAP_PX = 6;
+const TICK_GAP_PX = 2;
+// How many neighboring rows on each side of the hovered tick show up in the
+// preview cluster — a window, not the whole message list (that was the bug:
+// every tick's text stacked into one tall panel regardless of which tick you
+// were actually over).
+const PREVIEW_WINDOW_RADIUS = 2;
+// Opacity falls off with each row of distance from the hovered row: the
+// hovered row itself is fully opaque and bold, its neighbors dim progressively.
+const FADE_PER_ROW = 0.28;
+const MIN_ROW_OPACITY = 0.35;
 
 const ARIA_LABEL_MAX_CHARS = 100;
 
@@ -151,9 +160,45 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
     };
 
     const anyHovered = hoveredIndex !== null;
+    const windowStart = hoveredIndex === null ? 0 : Math.max(0, hoveredIndex - PREVIEW_WINDOW_RADIUS);
+    const windowEnd = hoveredIndex === null ? -1 : Math.min(userMessages.length - 1, hoveredIndex + PREVIEW_WINDOW_RADIUS);
 
     return (
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 z-30">
+        <div
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-30"
+            onMouseLeave={() => setHoveredIndex(null)}
+        >
+            {/* One shared cluster, not one box per tick and not the whole message
+                list — only a small window of rows around whichever tick is hovered,
+                the hovered row itself full-strength and its neighbors fading out by
+                distance. Visible only while some tick is hovered. */}
+            <div
+                className={`absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 rounded-md border border-border bg-popover py-1 shadow-md transition-[opacity,transform] duration-150 ease-out ${
+                    anyHovered ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-1.5 pointer-events-none'
+                }`}
+            >
+                {hoveredIndex !== null && userMessages.slice(windowStart, windowEnd + 1).map((m, offset) => {
+                    const i = windowStart + offset;
+                    const distance = Math.abs(i - hoveredIndex);
+                    const opacity = Math.max(MIN_ROW_OPACITY, 1 - distance * FADE_PER_ROW);
+                    const isRowHovered = i === hoveredIndex;
+                    return (
+                        <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => jumpTo(m.id)}
+                            onMouseEnter={() => setHoveredIndex(i)}
+                            style={{ opacity }}
+                            className={`block w-full truncate px-2.5 py-1 text-left text-xs transition-opacity duration-150 hover:bg-accent ${
+                                isRowHovered ? 'text-foreground font-medium' : 'text-muted-foreground'
+                            }`}
+                        >
+                            {summarize(m.content)}
+                        </button>
+                    );
+                })}
+            </div>
+
             <div
                 ref={tickContainerRef}
                 className="flex flex-col items-end py-1"
@@ -166,51 +211,37 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
                     const isActive = m.id === activeId;
                     const isHovered = hoveredIndex === i;
                     return (
-                        <div
+                        <button
                             key={m.id}
-                            className="relative"
+                            ref={registerBarEl(m.id)}
+                            type="button"
+                            onClick={() => jumpTo(m.id)}
                             onMouseEnter={() => setHoveredIndex(i)}
-                            onMouseLeave={() => setHoveredIndex(null)}
-                        >
-                            {/* Each tick owns its own preview box — only the hovered tick's
-                                box is visible (opacity-100), every other tick's stays fully
-                                hidden (opacity-0, pointer-events-none) so previews never stack
-                                on top of the chat content. Clickable itself (not just the thin
-                                tick bar) so it's a much easier target to jump from. */}
-                            <button
-                                type="button"
-                                onClick={() => jumpTo(m.id)}
-                                className={`absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 max-h-[60vh] overflow-y-auto custom-scrollbar rounded-md border border-border bg-popover px-2.5 py-1.5 text-left text-xs text-foreground shadow-md cursor-pointer transition-[opacity,transform] duration-150 ease-out hover:bg-accent ${
-                                    isHovered ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-1.5 pointer-events-none'
-                                }`}
-                            >
-                                {summarize(m.content)}
-                            </button>
-                            <button
-                                ref={registerBarEl(m.id)}
-                                type="button"
-                                onClick={() => jumpTo(m.id)}
-                                aria-label={summarize(m.content)}
-                                title={summarize(m.content)}
-                                style={{
-                                    width: BASE_BAR_WIDTH_PX,
-                                    height: BAR_HEIGHT_PX,
-                                    transformOrigin: 'right',
-                                    willChange: 'transform',
-                                    transitionDuration: '0s',
-                                    // Initial paint only — the magnify rAF loop (stepMagnify) takes
-                                    // over with direct el.style writes from the next hover frame on,
-                                    // so this never reads from the animation refs during render.
-                                    transform: `translateZ(0) scaleX(${REST_SCALE})`,
-                                    opacity: REST_OPACITY,
-                                }}
-                                className={`rounded-sm cursor-pointer ${
-                                    isActive
-                                        ? 'bg-foreground/80'
-                                        : anyHovered ? 'bg-muted-foreground/60' : 'bg-muted-foreground/30'
-                                }`}
-                            />
-                        </div>
+                            aria-label={summarize(m.content)}
+                            title={summarize(m.content)}
+                            style={{
+                                width: BASE_BAR_WIDTH_PX,
+                                // Only height is CSS-transitioned — it's a discrete on/off for
+                                // the exact hovered tick, not something the magnify rAF loop
+                                // touches. transform/opacity stay untransitioned (0s) since that
+                                // loop already applies its own per-frame easing to those; letting
+                                // CSS transition them too would double up and lag behind the cursor.
+                                height: isHovered ? 4 : BAR_HEIGHT_PX,
+                                transformOrigin: 'right',
+                                willChange: 'transform',
+                                transition: 'height 150ms ease-out',
+                                // Initial paint only — the magnify rAF loop (stepMagnify) takes
+                                // over with direct el.style writes from the next hover frame on,
+                                // so this never reads from the animation refs during render.
+                                transform: `translateZ(0) scaleX(${REST_SCALE})`,
+                                opacity: REST_OPACITY,
+                            }}
+                            className={`rounded-sm cursor-pointer ${
+                                isActive
+                                    ? 'bg-foreground/80'
+                                    : anyHovered ? 'bg-muted-foreground/60' : 'bg-muted-foreground/30'
+                            }`}
+                        />
                     );
                 })}
             </div>
