@@ -100,6 +100,14 @@ export function MessageItem({
                     />
                 )}
 
+                {isAssistant && !message.isStreaming && message.completedTrace && (
+                    <TraceSummary
+                        elapsedSec={message.completedTrace.elapsedSec}
+                        toolCalls={message.completedTrace.toolCalls ?? []}
+                        reasoningText={message.completedTrace.reasoningText}
+                    />
+                )}
+
                 {(markdownContent.trim() || (isAssistant && message.isStreaming)) && (
                     <div
                         className={cn(
@@ -197,14 +205,6 @@ export function MessageItem({
                             />
                         ))}
                     </div>
-                )}
-
-                {isAssistant && !message.isStreaming && message.completedTrace && (
-                    <TraceSummary
-                        elapsedSec={message.completedTrace.elapsedSec}
-                        toolCalls={message.completedTrace.toolCalls ?? []}
-                        reasoningText={message.completedTrace.reasoningText}
-                    />
                 )}
 
                 {isAssistant && !message.isStreaming && (
