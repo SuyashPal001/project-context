@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { Input } from "@/components/ui/input";
@@ -15,8 +15,16 @@ import { PersonaDetailModal } from "@/components/platform/personas/PersonaDetail
 import { hirePersona, firePersonaAgent, findAgentForPersona } from "@/components/platform/personas/actions";
 import type { PersonaSummary, PersonasResponse } from "@/components/platform/personas/types";
 import type { AgentsResponse } from "@/components/platform/agents/types";
+import { TeamCard } from "@/components/platform/teams/TeamCard";
+import { TeamDetailModal } from "@/components/platform/teams/TeamDetailModal";
+import { CreateTeamDialog } from "@/components/platform/teams/CreateTeamDialog";
+import {
+    createTeam, getTeam, renameTeam, deleteTeam, addTeamMember, removeTeamMember,
+} from "@/components/platform/teams/actions";
+import type { TeamDetail, TeamsResponse } from "@/components/platform/teams/types";
 
 type MarketplaceTab = "explore" | "mine";
+type MineSubTab = "employees" | "teams";
 
 export default function MarketplacePage() {
     const router = useRouter();
@@ -25,9 +33,12 @@ export default function MarketplacePage() {
     const queryClient = useQueryClient();
 
     const [tab, setTab] = useState<MarketplaceTab>("explore");
+    const [mineSubTab, setMineSubTab] = useState<MineSubTab>("employees");
     const [category, setCategory] = useState<string | null>(null);
     const [search, setSearch] = useState("");
     const [selectedPersona, setSelectedPersona] = useState<PersonaSummary | null>(null);
+    const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+    const [createTeamOpen, setCreateTeamOpen] = useState(false);
 
     const { data: personasData, isLoading: personasLoading } = useQuery<PersonasResponse>({
         queryKey: ["personas"],
@@ -37,9 +48,25 @@ export default function MarketplacePage() {
         queryKey: ["agents"],
         queryFn: () => api.get<AgentsResponse>("/api/v1/agents"),
     });
+    const { data: teamsData, isLoading: teamsLoading } = useQuery<TeamsResponse>({
+        queryKey: ["teams"],
+        queryFn: () => api.get<TeamsResponse>("/api/v1/teams"),
+        enabled: tab === "mine",
+    });
 
     const personas = personasData?.personas ?? [];
     const agents = agentsData?.data ?? [];
+    const teams = teamsData?.data ?? [];
+
+    const teamDetailQueries = useQueries({
+        queries: teams.map((team) => ({
+            queryKey: ["teams", team.id],
+            queryFn: () => getTeam(team.id),
+            enabled: tab === "mine" && mineSubTab === "teams",
+        })),
+    });
+    const teamDetails = teamDetailQueries.map((q) => q.data).filter((d): d is TeamDetail => Boolean(d));
+    const selectedTeam = selectedTeamId ? teamDetails.find((t) => t.id === selectedTeamId) ?? null : null;
 
     const categories = useMemo(() => {
         const tags = new Set<string>();
@@ -104,6 +131,56 @@ export default function MarketplacePage() {
         if (agent) router.push(`/${tenantSlug}/dashboard/agents/${agent.id}`);
     };
 
+    const handleCreateTeam = async (name: string) => {
+        try {
+            await createTeam(name);
+            queryClient.invalidateQueries({ queryKey: ["teams"] });
+            toast.success(`${name} created.`);
+            setCreateTeamOpen(false);
+        } catch {
+            toast.error("Failed to create team.");
+        }
+    };
+
+    const handleRenameTeam = async (teamId: string, name: string) => {
+        try {
+            await renameTeam(teamId, name);
+            queryClient.invalidateQueries({ queryKey: ["teams"] });
+        } catch {
+            toast.error("Failed to rename team.");
+        }
+    };
+
+    const handleDeleteTeam = async (teamId: string) => {
+        if (!window.confirm("Delete this team? This cannot be undone.")) return;
+        try {
+            await deleteTeam(teamId);
+            queryClient.invalidateQueries({ queryKey: ["teams"] });
+            setSelectedTeamId(null);
+            toast.success("Team deleted.");
+        } catch {
+            toast.error("Failed to delete team.");
+        }
+    };
+
+    const handleAddMember = async (teamId: string, agentId: string) => {
+        try {
+            await addTeamMember(teamId, agentId);
+            queryClient.invalidateQueries({ queryKey: ["teams", teamId] });
+        } catch {
+            toast.error("Failed to add member.");
+        }
+    };
+
+    const handleRemoveMember = async (teamId: string, agentId: string) => {
+        try {
+            await removeTeamMember(teamId, agentId);
+            queryClient.invalidateQueries({ queryKey: ["teams", teamId] });
+        } catch {
+            toast.error("Failed to remove member.");
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div>
@@ -126,16 +203,35 @@ export default function MarketplacePage() {
                         </button>
                     ))}
                 </div>
-                <div className="relative w-full max-w-xs">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        placeholder="Search employees..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        className="pl-9"
-                    />
-                </div>
+                {!(tab === "mine" && mineSubTab === "teams") && (
+                    <div className="relative w-full max-w-xs">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            placeholder="Search employees..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="pl-9"
+                        />
+                    </div>
+                )}
             </div>
+
+            {tab === "mine" && (
+                <div className="flex gap-1 rounded-full border border-border p-1 w-fit">
+                    {(["employees", "teams"] as const).map((t) => (
+                        <button
+                            key={t}
+                            onClick={() => setMineSubTab(t)}
+                            className={cn(
+                                "rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors",
+                                mineSubTab === t ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            {t}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {tab === "explore" && categories.length > 0 && (
                 <div className="flex flex-wrap gap-2">
@@ -161,7 +257,34 @@ export default function MarketplacePage() {
                 </div>
             )}
 
-            {personasLoading ? (
+            {tab === "mine" && mineSubTab === "teams" ? (
+                teamsLoading ? (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <Skeleton key={i} className="h-[180px] w-full rounded-xl" />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        {teams.map((team) => (
+                            <TeamCard
+                                key={team.id}
+                                team={team}
+                                members={agents.filter((a) =>
+                                    (teamDetails.find((d) => d.id === team.id)?.memberAgentIds ?? []).includes(a.id)
+                                )}
+                                onClick={() => setSelectedTeamId(team.id)}
+                            />
+                        ))}
+                        <button
+                            onClick={() => setCreateTeamOpen(true)}
+                            className="flex h-full min-h-[140px] items-center justify-center rounded-xl border border-dashed border-border text-sm font-medium text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+                        >
+                            + Create team
+                        </button>
+                    </div>
+                )
+            ) : personasLoading ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {Array.from({ length: 4 }).map((_, i) => (
                         <Skeleton key={i} className="h-[280px] w-full rounded-xl" />
@@ -194,6 +317,23 @@ export default function MarketplacePage() {
                 onHire={handleHire}
                 onFire={handleFire}
                 onAssign={handleAssign}
+            />
+
+            <TeamDetailModal
+                team={selectedTeam}
+                agents={agents}
+                open={selectedTeamId !== null}
+                onOpenChange={(open) => !open && setSelectedTeamId(null)}
+                onRename={handleRenameTeam}
+                onDelete={handleDeleteTeam}
+                onAddMember={handleAddMember}
+                onRemoveMember={handleRemoveMember}
+            />
+
+            <CreateTeamDialog
+                open={createTeamOpen}
+                onOpenChange={setCreateTeamOpen}
+                onCreate={handleCreateTeam}
             />
         </div>
     );
