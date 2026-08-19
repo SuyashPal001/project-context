@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
 import { ClarificationRequest } from './types';
 
 interface ClarificationCardProps {
@@ -26,6 +27,17 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     // navigation means "on the last page" doesn't imply "every question has
     // been answered".
     const [answeredIndices, setAnsweredIndices] = useState<Set<number>>(new Set());
+
+    // Auto-grow the free-text field to fit its content (up to a cap) instead of
+    // staying a fixed single line that scrolls its text off-screen horizontally.
+    const freeTextRef = useRef<HTMLTextAreaElement>(null);
+    const currentFreeText = freeTextByQuestion[pageIndex] ?? '';
+    useEffect(() => {
+        if (freeTextRef.current) {
+            freeTextRef.current.style.height = 'inherit';
+            freeTextRef.current.style.height = `${Math.min(freeTextRef.current.scrollHeight, 160)}px`;
+        }
+    }, [currentFreeText]);
 
     if (request.status !== 'pending') {
         const total = request.questions.length;
@@ -66,7 +78,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     const total = request.questions.length;
     const question = request.questions[pageIndex];
     const selectedIndex = selectedByQuestion[pageIndex];
-    const freeText = freeTextByQuestion[pageIndex] ?? '';
+    const freeText = currentFreeText;
     const isLast = pageIndex === total - 1;
 
     // Mark `pageIndex` as answered and report whether that completes the full
@@ -157,16 +169,24 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                     )}
                 </div>
 
-                <div className="border-t border-border/40 pt-4 flex items-center gap-2">
+                <div className="border-t border-border/40 pt-4 flex items-end gap-2">
                     {question.allowFreeText && (
-                        <input
+                        <Textarea
+                            ref={freeTextRef}
                             value={freeText}
                             onChange={(e) => setFreeTextByQuestion(prev => ({ ...prev, [pageIndex]: e.target.value }))}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    if (selectedIndex !== undefined || freeText.trim()) commitCurrent();
+                                }
+                            }}
                             placeholder="No, and tell what to do differently"
-                            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+                            rows={1}
+                            className="flex-1 min-h-0 max-h-[160px] py-1.5 px-0 resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/60"
                         />
                     )}
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 pb-1.5">
                         {question.allowSkip && (
                             <button type="button" onClick={handleSkip} className="text-xs font-medium text-muted-foreground hover:text-foreground">
                                 Skip
