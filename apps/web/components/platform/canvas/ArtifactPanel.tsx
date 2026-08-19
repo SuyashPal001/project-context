@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { FileText, Map, CheckSquare, Loader2, Check, AlertCircle, Pencil, ArrowRight } from 'lucide-react';
+import { FileText, Map, CheckSquare, ScrollText, Loader2, Check, AlertCircle, Pencil, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,15 +18,17 @@ interface ArtifactPanelProps {
 }
 
 const TYPE_ICONS: Record<ArtifactType, React.ReactNode> = {
-  prd:     <FileText className="h-4 w-4" />,
-  roadmap: <Map className="h-4 w-4" />,
-  tasks:   <CheckSquare className="h-4 w-4" />,
+  prd:      <FileText className="h-4 w-4" />,
+  roadmap:  <Map className="h-4 w-4" />,
+  tasks:    <CheckSquare className="h-4 w-4" />,
+  document: <ScrollText className="h-4 w-4" />,
 };
 
 const APPROVE_LABELS: Record<ArtifactType, string> = {
-  prd:     'Approve PRD',
-  roadmap: 'Approve Roadmap',
-  tasks:   'Confirm Tasks',
+  prd:      'Approve PRD',
+  roadmap:  'Approve Roadmap',
+  tasks:    'Confirm Tasks',
+  document: 'Acknowledge',
 };
 
 function metaLabel(artifact: ArtifactState): string {
@@ -36,6 +38,7 @@ function metaLabel(artifact: ArtifactState): string {
     case 'prd':     return `Draft v${m.version ?? 1}`;
     case 'roadmap': return `${m.milestoneCount ?? 0} milestone${m.milestoneCount === 1 ? '' : 's'}`;
     case 'tasks':   return `${m.tasksCreated ?? 0} task${m.tasksCreated === 1 ? '' : 's'}`;
+    case 'document': return '';
   }
 }
 

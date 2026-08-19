@@ -2,7 +2,7 @@
  * Canvas Types
  */
 
-export type ArtifactType = 'prd' | 'roadmap' | 'tasks'
+export type ArtifactType = 'prd' | 'roadmap' | 'tasks' | 'document'
 
 export interface ArtifactState {
   type: ArtifactType

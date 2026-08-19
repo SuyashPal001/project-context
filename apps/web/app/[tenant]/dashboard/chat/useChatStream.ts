@@ -13,7 +13,7 @@ import type { ChatStreamEventType } from '@/components/platform/personas/usePers
 
 // Relay emits tool names using the JS variable name as key (e.g. savePRD, not save-prd)
 // normTool lowercases and replaces _ with - so savePRD → saveprd, save-prd → save-prd
-const SAVE_TOOL_NAMES = new Set(['save-prd', 'save-plan', 'save-tasks', 'saveprd', 'saveplan', 'savetasks']);
+const SAVE_TOOL_NAMES = new Set(['save-prd', 'save-plan', 'save-tasks', 'saveprd', 'saveplan', 'savetasks', 'render-canvas', 'rendercanvas', 'render_canvas']);
 const sortByDate = (a: Message, b: Message) =>
     new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 
@@ -219,10 +219,14 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             // that a PRD/roadmap/tasks artifact is being persisted. Never open on agent delegation
             // events (agent-prdagent etc.) because those also fire during clarifying questions.
             if (SAVE_TOOL_NAMES.has(normTool)) {
-                const type = normTool === 'saveprd' ? 'prd' : normTool === 'saveplan' ? 'roadmap' : 'tasks';
+                const type: ArtifactType =
+                    normTool === 'saveprd' ? 'prd' :
+                    normTool === 'saveplan' ? 'roadmap' :
+                    (normTool === 'savetasks' || normTool === 'save-tasks') ? 'tasks' :
+                    (String(args.type ?? 'document') as ArtifactType);
                 artifactToolActiveRef.current = normTool;
                 openCanvas();
-                handleCanvasUpdate('artifact_start', { artifactType: type as ArtifactType, artifactTitle: String(args.title ?? type.toUpperCase()) });
+                handleCanvasUpdate('artifact_start', { artifactType: type, artifactTitle: String(args.title ?? type.toUpperCase()) });
             }
         }, [handleCanvasUpdate, openCanvas]),
 

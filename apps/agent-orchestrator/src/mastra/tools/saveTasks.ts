@@ -41,6 +41,26 @@ const requestContextSchema = z.object({
   userId: z.string().optional(),
 })
 
+function buildTasksMarkdown(milestones: z.infer<typeof milestoneTaskDataSchema>[]): string {
+  const lines: string[] = []
+  lines.push('# Task Board')
+
+  for (const milestone of milestones) {
+    lines.push(`\n## ${milestone.milestoneName}`)
+    for (const task of milestone.tasks) {
+      lines.push(`\n### ${task.title}`)
+      lines.push(`**Priority:** ${task.priority}${task.estimatedHours ? ` · **Est:** ${task.estimatedHours}h` : ''}`)
+      if (task.description) lines.push(`\n${task.description}`)
+      if (task.acceptanceCriteria.length > 0) {
+        lines.push('\n**Acceptance Criteria**')
+        for (const ac of task.acceptanceCriteria) lines.push(`- [ ] ${ac}`)
+      }
+    }
+  }
+
+  return lines.join('\n')
+}
+
 export const saveTasks = createTool({
   id: 'save-tasks',
   description: 'Inserts agent_tasks rows for all milestones in the task generation output. Wraps all inserts in a single transaction.',
@@ -51,6 +71,9 @@ export const saveTasks = createTool({
   outputSchema: z.object({
     tasksCreated: z.number(),
     milestoneCount: z.number(),
+    planId: z.string(),
+    title: z.string(),
+    content: z.string(),
   }),
   execute: async (inputData, execContext) => {
     const taskData = (inputData as any)?.taskData
@@ -112,7 +135,13 @@ export const saveTasks = createTool({
       await client.query('COMMIT')
       console.log(`[saveTasks] created tasks=${tasksCreated} milestones=${milestones.length} planId=${planId} tenant=${tenantId}`)
 
-      return { tasksCreated, milestoneCount: milestones.length }
+      return {
+        tasksCreated,
+        milestoneCount: milestones.length,
+        planId,
+        title: 'Task Board',
+        content: buildTasksMarkdown(milestones),
+      }
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {})
       throw err

@@ -145,7 +145,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const toolCallNames = new Map<string, string>()
   const assistantMessageId = crypto.randomUUID()
   let pendingArtifactRef: ArtifactRefPayload | null = null
-  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks'])
+  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas'])
 
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
@@ -299,9 +299,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             sendEvent('delta', { text: result.summary, conversationId })
           }
 
-          // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes
+          // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes.
+          // render-canvas has no entityId (ephemeral display only) — skip pendingArtifactRef for it.
           const normName = resolvedToolName.toLowerCase().replace(/_/g, '-')
-          if (SAVE_TOOL_NAMES.has(normName)) {
+          if (SAVE_TOOL_NAMES.has(normName) && normName !== 'render-canvas') {
             const entityId = (result.prdId ?? result.planId ?? result.taskBoardId) as string | undefined
             if (entityId) {
               const artifactType = normName.includes('prd') ? 'prd' : normName.includes('plan') ? 'roadmap' : 'tasks'

@@ -17,6 +17,7 @@ import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
 import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
+import { renderCanvas } from '../tools/renderCanvas.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -157,6 +158,7 @@ export const SERVER_TOOLS = {
     },
   }),
   ask_clarifying_questions: askClarifyingQuestionsTool,
+  render_canvas: renderCanvas,
 }
 
 // Server tool names used to filter out duplicate MCP tool registrations.

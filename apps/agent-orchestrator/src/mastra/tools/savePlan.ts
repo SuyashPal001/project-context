@@ -29,6 +29,33 @@ const requestContextSchema = z.object({
   userId: z.string().optional(),
 })
 
+function buildPlanMarkdown(prdData: z.infer<typeof prdDataSchema>): string {
+  const lines: string[] = []
+  lines.push(`# ${prdData.plan.title}`)
+  if (prdData.plan.description) lines.push(`\n${prdData.plan.description}`)
+  if (prdData.plan.targetDate) lines.push(`\n**Target date:** ${prdData.plan.targetDate}`)
+
+  if (prdData.milestones.length > 0) {
+    lines.push('\n## Milestones')
+    for (const m of prdData.milestones) {
+      lines.push(`\n### ${m.title}`)
+      lines.push(`**Priority:** ${m.priority}${m.targetDate ? ` · **Due:** ${m.targetDate}` : ''}`)
+      if (m.description) lines.push(`\n${m.description}`)
+    }
+  }
+
+  if (prdData.risks.length > 0) {
+    lines.push('\n## Risks')
+    for (const r of prdData.risks) lines.push(`- ${r}`)
+  }
+
+  if (prdData.totalEstimatedHours) {
+    lines.push(`\n**Total estimated hours:** ${prdData.totalEstimatedHours}`)
+  }
+
+  return lines.join('\n')
+}
+
 export const savePlan = createTool({
   id: 'save-plan',
   description: 'Creates a project_plans record and project_milestones records from a PrdData object. Handles sequence_id via planService — do not reimplement.',
@@ -40,6 +67,8 @@ export const savePlan = createTool({
     planId: z.string(),
     sequenceId: z.number(),
     milestoneCount: z.number(),
+    title: z.string(),
+    content: z.string(),
   }),
   execute: async (inputData, execContext) => {
     const prdData = (inputData as any)?.prdData
@@ -52,6 +81,8 @@ export const savePlan = createTool({
       planId: result.planId,
       sequenceId,
       milestoneCount: result.milestoneCount,
+      title: prdData.plan.title,
+      content: buildPlanMarkdown(prdData),
     }
   },
 })
