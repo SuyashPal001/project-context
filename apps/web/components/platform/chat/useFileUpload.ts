@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { ingestDocument, isIngestibleDocument } from "@/lib/ingestDocument";
@@ -156,11 +156,11 @@ export function useFileUpload() {
         setPendingUpload(null);
     };
 
-    const addAttachment = (asset: Asset) => {
+    const addAttachment = useCallback((asset: Asset) => {
         setAttachments(prev => prev.some(a => a.fileId === asset.fileId || a.fileId === asset.id)
             ? prev
             : [...prev, assetToAttachment(asset)]);
-    };
+    }, []);
 
     return {
         attachments,

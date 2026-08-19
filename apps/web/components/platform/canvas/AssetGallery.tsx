@@ -36,7 +36,18 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
   const Icon = TYPE_ICONS[asset.type];
   return (
     <div className="group relative flex flex-col rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
-      <button onClick={onClick} className="text-left hover:border-primary/40 transition-colors">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick();
+          }
+        }}
+        className="text-left hover:border-primary/40 transition-colors"
+      >
         <div className="relative aspect-video bg-muted flex items-center justify-center">
           {asset.thumbnailUrl ? (
             <img src={asset.thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
@@ -62,7 +73,7 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
           <p className="text-xs font-medium truncate">{asset.filename}</p>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{asset.type}</p>
         </div>
-      </button>
+      </div>
     </div>
   );
 }
