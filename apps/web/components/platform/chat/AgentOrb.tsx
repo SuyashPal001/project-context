@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 
 export type OrbState = 'idle' | 'thinking' | 'searching';
@@ -36,6 +37,13 @@ function randomBlink() { return 3000 + Math.random() * 5000; }
 export function AgentOrb({ state = 'idle', size = 32, isLoading = false }: AgentOrbProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isJumping, setIsJumping] = useState(false);
+    const { resolvedTheme } = useTheme();
+    const isLight = resolvedTheme === 'light';
+    // Read via ref inside frame(), same as stateRef below — a theme toggle
+    // should recolor the next drawn frame in place, not tear down and restart
+    // the whole canvas setup (resize, context reset, rAF loop) the way having
+    // isLight in the effect's dependency array would.
+    const isLightRef = useRef(isLight);
     const stateRef = useRef<OrbState>(state);
     const vars = useRef<Vars>({
         rot: 0, pulsePhase: 0, bouncePhase: 0, bounceY: 0,
@@ -47,6 +55,7 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false }: Agent
     const rafId = useRef(0);
 
     useEffect(() => { stateRef.current = state; }, [state]);
+    useEffect(() => { isLightRef.current = isLight; }, [isLight]);
 
     useEffect(() => {
         if (!isLoading) return;
@@ -75,6 +84,7 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false }: Agent
         function frame(ts: number) {
             const v = vars.current;
             const s = stateRef.current;
+            const light = isLightRef.current;
             const dt = v.lastTs ? Math.min(ts - v.lastTs, 50) : 16;
             v.lastTs = ts;
             const t = dt / 16;
@@ -151,22 +161,32 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false }: Agent
             ctx.globalAlpha = 0.42;
             ctx.beginPath();
             ctx.ellipse(cx, oCY, bodyW * 0.62, bodyH * 0.62, 0, 0, Math.PI * 2);
-            ctx.fillStyle = '#0e7490';
+            ctx.fillStyle = light ? '#ea580c' : '#0e7490';
             ctx.shadowBlur = size * 1.0;
-            ctx.shadowColor = 'rgba(6, 182, 212, 0.9)';
+            ctx.shadowColor = light ? 'rgba(251, 191, 36, 0.9)' : 'rgba(6, 182, 212, 0.9)';
             ctx.fill();
             ctx.restore();
 
-            // 2b. orb body — warm cyan → deep ocean, highlight origin above eye zone
+            // 2b. orb body — warm cyan → deep ocean (dark theme) or amber → burnt
+            // orange (light theme, "orange and yellow mix"), highlight origin
+            // above eye zone
             const grad = ctx.createRadialGradient(
                 cx - orbR * 0.28, oCY - orbR * 0.32, 0,
                 cx, oCY, Math.max(bodyW, bodyH),
             );
-            grad.addColorStop(0,    '#a5f3fc'); // cyan-200 — pearlescent top-left
-            grad.addColorStop(0.28, '#22d3ee'); // cyan-400 — vibrant mid
-            grad.addColorStop(0.62, '#0e7490'); // cyan-700 — rich deep teal
-            grad.addColorStop(0.85, '#083344'); // cyan-950 — ocean dark
-            grad.addColorStop(1,    '#020d11'); // near-black edge
+            if (light) {
+                grad.addColorStop(0,    '#fef3c7'); // amber-100 — pearlescent top-left
+                grad.addColorStop(0.28, '#fbbf24'); // amber-400 — vibrant yellow
+                grad.addColorStop(0.62, '#ea580c'); // orange-600 — rich deep orange
+                grad.addColorStop(0.85, '#7c2d12'); // orange-900 — burnt dark
+                grad.addColorStop(1,    '#1c0a00'); // near-black warm edge
+            } else {
+                grad.addColorStop(0,    '#a5f3fc'); // cyan-200 — pearlescent top-left
+                grad.addColorStop(0.28, '#22d3ee'); // cyan-400 — vibrant mid
+                grad.addColorStop(0.62, '#0e7490'); // cyan-700 — rich deep teal
+                grad.addColorStop(0.85, '#083344'); // cyan-950 — ocean dark
+                grad.addColorStop(1,    '#020d11'); // near-black edge
+            }
             ctx.save();
             ctx.beginPath();
             ctx.ellipse(cx, oCY, bodyW, bodyH, 0, 0, Math.PI * 2);
