@@ -48,7 +48,14 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
     // boolean gated one combined panel listing every message, so hovering any
     // one tick opened all of them at once, stacked on top of the chat content.
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+    // Clicking a tick keeps its preview cluster visible even after the mouse
+    // leaves (instead of only ever showing transiently on hover) — pinned
+    // until you click the same tick again or click anywhere outside the
+    // navigator. Independent of hoveredIndex so a hover elsewhere can still
+    // preview a different tick without disturbing the pin.
+    const [pinnedIndex, setPinnedIndex] = useState<number | null>(null);
     const [activeId, setActiveId] = useState<string | null>(null);
+    const rootRef = useRef<HTMLDivElement>(null);
     const userMessages = messages.filter(m => m.role === 'user');
     const userMessageIds = userMessages.map(m => m.id).join(',');
 
@@ -126,6 +133,20 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
 
     useEffect(() => () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); }, []);
 
+    // Clicking a tick pins its preview open — clear the pin on any click
+    // outside the navigator's own root (the panel + tick strip), so it
+    // doesn't stay stuck open once you've moved on to something else.
+    useEffect(() => {
+        if (pinnedIndex === null) return;
+        const handleOutsideClick = (e: MouseEvent) => {
+            if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+                setPinnedIndex(null);
+            }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [pinnedIndex]);
+
     // Scroll-spy: highlight whichever user message is currently near the
     // vertical center of the (nested, scrollable) message list. Default root
     // (the layout viewport) is fine here — intersection is computed against
@@ -159,38 +180,50 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
         document.getElementById(`message-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
 
-    const anyHovered = hoveredIndex !== null;
-    const windowStart = hoveredIndex === null ? 0 : Math.max(0, hoveredIndex - PREVIEW_WINDOW_RADIUS);
-    const windowEnd = hoveredIndex === null ? -1 : Math.min(userMessages.length - 1, hoveredIndex + PREVIEW_WINDOW_RADIUS);
+    // Clicking a tick (or a row in the preview cluster) jumps to that message
+    // and pins its cluster open — clicking the already-pinned tick again
+    // unpins it. Independent of hover, so the pin survives the mouse leaving.
+    const selectTick = (i: number, id: string) => {
+        jumpTo(id);
+        setPinnedIndex(prev => (prev === i ? null : i));
+    };
+
+    // Hover always wins over the pin while it's active, so previewing a
+    // different tick doesn't require clicking away from the pinned one first.
+    const effectiveIndex = hoveredIndex ?? pinnedIndex;
+    const anyActive = effectiveIndex !== null;
+    const windowStart = effectiveIndex === null ? 0 : Math.max(0, effectiveIndex - PREVIEW_WINDOW_RADIUS);
+    const windowEnd = effectiveIndex === null ? -1 : Math.min(userMessages.length - 1, effectiveIndex + PREVIEW_WINDOW_RADIUS);
 
     return (
         <div
+            ref={rootRef}
             className="absolute right-3 top-1/2 -translate-y-1/2 z-30"
             onMouseLeave={() => setHoveredIndex(null)}
         >
             {/* One shared cluster, not one box per tick and not the whole message
-                list — only a small window of rows around whichever tick is hovered,
-                the hovered row itself full-strength and its neighbors fading out by
-                distance. Visible only while some tick is hovered. */}
+                list — only a small window of rows around whichever tick is active
+                (hovered, or pinned via click), the active row itself full-strength
+                and its neighbors fading out by distance. */}
             <div
                 className={`absolute right-full top-1/2 -translate-y-1/2 mr-2 w-64 rounded-md border border-border bg-popover py-1 shadow-md transition-[opacity,transform] duration-150 ease-out ${
-                    anyHovered ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-1.5 pointer-events-none'
+                    anyActive ? 'opacity-100 translate-x-0 pointer-events-auto' : 'opacity-0 translate-x-1.5 pointer-events-none'
                 }`}
             >
-                {hoveredIndex !== null && userMessages.slice(windowStart, windowEnd + 1).map((m, offset) => {
+                {effectiveIndex !== null && userMessages.slice(windowStart, windowEnd + 1).map((m, offset) => {
                     const i = windowStart + offset;
-                    const distance = Math.abs(i - hoveredIndex);
+                    const distance = Math.abs(i - effectiveIndex);
                     const opacity = Math.max(MIN_ROW_OPACITY, 1 - distance * FADE_PER_ROW);
-                    const isRowHovered = i === hoveredIndex;
+                    const isRowActive = i === effectiveIndex;
                     return (
                         <button
                             key={m.id}
                             type="button"
-                            onClick={() => jumpTo(m.id)}
+                            onClick={() => selectTick(i, m.id)}
                             onMouseEnter={() => setHoveredIndex(i)}
                             style={{ opacity }}
                             className={`block w-full truncate px-2.5 py-1 text-left text-xs transition-opacity duration-150 hover:bg-accent ${
-                                isRowHovered ? 'text-foreground font-medium' : 'text-muted-foreground'
+                                isRowActive ? 'text-foreground font-medium' : 'text-muted-foreground'
                             }`}
                         >
                             {summarize(m.content)}
@@ -209,13 +242,13 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
             >
                 {userMessages.map((m, i) => {
                     const isActive = m.id === activeId;
-                    const isHovered = hoveredIndex === i;
+                    const isHovered = effectiveIndex === i;
                     return (
                         <button
                             key={m.id}
                             ref={registerBarEl(m.id)}
                             type="button"
-                            onClick={() => jumpTo(m.id)}
+                            onClick={() => selectTick(i, m.id)}
                             onMouseEnter={() => setHoveredIndex(i)}
                             aria-label={summarize(m.content)}
                             title={summarize(m.content)}
@@ -239,7 +272,7 @@ export function ChatTimelineNavigator({ messages }: ChatTimelineNavigatorProps) 
                             className={`rounded-sm cursor-pointer ${
                                 isActive
                                     ? 'bg-foreground/80'
-                                    : anyHovered ? 'bg-muted-foreground/60' : 'bg-muted-foreground/30'
+                                    : anyActive ? 'bg-muted-foreground/60' : 'bg-muted-foreground/30'
                             }`}
                         />
                     );
