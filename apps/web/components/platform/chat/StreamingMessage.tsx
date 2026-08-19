@@ -15,10 +15,14 @@ interface StreamingMessageProps {
 export function StreamingMessage({ isStreaming, content, isThinking }: StreamingMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll as content streams
+  // Auto-scroll as content streams — 'nearest' only moves the scroll position
+  // when the growing content has actually run past the visible area, instead
+  // of 'end' which snaps the message flush against the bottom edge (the input
+  // box) on every token even when the reply is short enough to need no
+  // scrolling at all. This keeps the natural gap below short replies intact.
   useEffect(() => {
     if (contentRef.current && isStreaming) {
-      contentRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      contentRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [content, isStreaming]);
 

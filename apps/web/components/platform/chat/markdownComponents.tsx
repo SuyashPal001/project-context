@@ -1,6 +1,51 @@
 import hljs from 'highlight.js';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 import { cn } from '@/lib/utils';
+
+// hast node types as passed by react-markdown to custom components via `node`.
+interface HastCodeNode {
+    tagName?: string;
+    properties?: { className?: string[] };
+    children?: Array<{ value?: string }>;
+}
+interface HastPreNode {
+    children?: HastCodeNode[];
+}
+
+function getFencedCodeInfo(node: HastPreNode | undefined) {
+    const codeNode = node?.children?.find((child) => child.tagName === 'code');
+    const className = codeNode?.properties?.className?.join(' ') ?? '';
+    const language = /language-(\w+)/.exec(className)?.[1];
+    const text = codeNode?.children?.map((child) => child.value ?? '').join('') ?? '';
+    return { language, text };
+}
+
+// A model that intends a full Markdown document to render as formatted content
+// sometimes wraps it in a ```markdown fenced block. Rendering that through
+// PreBlock's default (syntax-highlighted, monospace) path would leave the
+// literal #/** characters visible, just colored. Detect that case here and
+// render the fenced content as Markdown instead of as a code block.
+function PreBlock({ node, children, ...props }: React.HTMLAttributes<HTMLPreElement> & { node?: HastPreNode }) {
+    const { language, text } = getFencedCodeInfo(node);
+
+    if (language === 'markdown' || language === 'md') {
+        return (
+            <div className="mb-3">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={chatMarkdownComponents}>
+                    {text}
+                </ReactMarkdown>
+            </div>
+        );
+    }
+
+    return (
+        <pre className="bg-muted p-4 rounded-lg overflow-x-auto mb-3 text-sm font-mono" {...props}>
+            {children}
+        </pre>
+    );
+}
 
 function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) {
     const codeString = String(children).replace(/\n$/, '');
@@ -28,12 +73,12 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
 }
 
 export const chatMarkdownComponents: Components = {
-    p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-    ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1">{children}</ul>,
-    ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1">{children}</ol>,
+    p: ({ children }) => <p className="mb-3 last:mb-0 break-words">{children}</p>,
+    ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1 break-words">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1 break-words">{children}</ol>,
     li: ({ children }) => <li className="leading-relaxed">{children}</li>,
     strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-    pre: ({ children }) => <pre className="bg-muted p-4 rounded-lg overflow-x-auto mb-3 text-sm font-mono">{children}</pre>,
+    pre: PreBlock as Components['pre'],
     code: CodeBlock as Components['code'],
     h1: ({ children }) => <h1 className="font-semibold mb-2 mt-4 text-lg">{children}</h1>,
     h2: ({ children }) => <h2 className="font-semibold mb-2 mt-4 text-base">{children}</h2>,

@@ -98,14 +98,14 @@ export function MessageItem({
 
     return (
         <div id={`message-${message.id}`} className={cn(
-            "flex items-start gap-4 group/msg",
+            "flex items-start gap-4 group/msg min-w-0",
             isUser ? "flex-row-reverse" : "flex-row",
             isNewExchange && "mt-6"
         )}>
             {isAssistant && <AgentOrb size={40} state="idle" />}
 
             <div className={cn(
-                "flex flex-col gap-1 flex-1",
+                "flex flex-col gap-1 flex-1 min-w-0",
                 isUser ? "items-end max-w-[75%]" : "items-start w-full"
             )}>
                 {isAssistant && isFirstInSequence && (
@@ -188,7 +188,7 @@ export function MessageItem({
                 ) : (markdownContent.trim() || (isAssistant && message.isStreaming)) && (
                     <div
                         className={cn(
-                            "text-sm relative",
+                            "text-sm relative min-w-0 break-words",
                             isUser
                                 ? "px-5 py-4 bg-muted border border-border/50 text-foreground leading-[1.55]"
                                 : "text-foreground/90 leading-[1.75] w-full"

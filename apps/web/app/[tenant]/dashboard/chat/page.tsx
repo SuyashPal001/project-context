@@ -258,7 +258,7 @@ function ChatPage() {
                 <div className="flex-1 flex flex-row min-w-0 bg-background relative overflow-hidden">
                     {/* Chat Panel */}
                     <div className={cn(
-                        "relative flex flex-col overflow-hidden transition-all h-full",
+                        "relative flex flex-col overflow-hidden transition-all h-full min-w-0",
                         isCanvasExpanded ? "w-0 opacity-0 pointer-events-none" : "flex-1",
                         isCanvasOpen ? "border-r border-border" : ""
                     )}>
