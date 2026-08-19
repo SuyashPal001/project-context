@@ -6,6 +6,7 @@ import { KnowledgeBaseSection } from './KnowledgeBaseSection';
 import { ArtifactPanel } from './ArtifactPanel';
 import { FileCreatedCard } from './FileCreatedCard';
 import { AssetGallery } from './AssetGallery';
+import { AssetLightbox } from './AssetLightbox';
 import { api } from '@/lib/api';
 import type {
   CanvasState, CanvasEvent, CanvasOverlay, CanvasEventData,
@@ -42,6 +43,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
 
   const [tabs, setTabs] = useState<CanvasTab[]>([KNOWLEDGE_TAB]);
   const [activeTabId, setActiveTabId] = useState<string>('knowledge');
+  const [lightboxAsset, setLightboxAsset] = useState<{ asset: Asset; allAssets: Asset[] } | null>(null);
 
   const upsertArtifactTab = useCallback((updater: (prev: ArtifactState | null) => ArtifactState | null, focus: boolean) => {
     setTabs(prev => {
@@ -428,13 +430,21 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         {activeTab.kind === 'knowledge' && <KnowledgeBaseSection />}
 
         {activeTab.kind === 'gallery' && (
-          <AssetGallery conversationId={conversationId ?? ''} onCardClick={() => { /* wired to the lightbox in Task 7 */ }} />
+          <AssetGallery conversationId={conversationId ?? ''} onCardClick={(asset, allAssets) => setLightboxAsset({ asset, allAssets })} />
         )}
 
         {activeTab.kind === 'file' && activeTab.asset && (
-          <AssetGallery conversationId={conversationId ?? ''} filterAssetId={activeTab.asset.id} onCardClick={() => { /* wired to the lightbox in Task 7 */ }} />
+          <AssetGallery conversationId={conversationId ?? ''} filterAssetId={activeTab.asset.id} onCardClick={(asset, allAssets) => setLightboxAsset({ asset, allAssets })} />
         )}
       </div>
+      {lightboxAsset && (
+        <AssetLightbox
+          asset={lightboxAsset.asset}
+          allAssets={lightboxAsset.allAssets}
+          onClose={() => setLightboxAsset(null)}
+          onNavigate={(asset) => setLightboxAsset(prev => prev ? { asset, allAssets: prev.allAssets } : prev)}
+        />
+      )}
     </div>
   );
 }
