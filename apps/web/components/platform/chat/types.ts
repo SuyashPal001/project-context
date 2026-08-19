@@ -137,6 +137,8 @@ export interface Message {
     // "Worked for Ns" summary survives ThinkingIndicator unmounting the moment
     // isStreaming flips false, and stays visible on scroll-back/re-render.
     completedTrace?: CompletedTrace;
+    citations?: Array<{ name: string; score: number }>;
+    suggestedFollowUps?: string[];
 }
 
 export interface Conversation {

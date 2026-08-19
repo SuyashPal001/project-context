@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from "react";
-import { Terminal, Info, Image as ImageIcon } from "lucide-react";
+import { useState, useRef } from "react";
+import { Terminal, Info, Image as ImageIcon, RotateCcw, Pencil, Check, X } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
 import { Message, PlanResult, ToolCall, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,8 @@ import { MessageFeedback } from "./MessageFeedback";
 import { PlanCard } from "./PlanCard";
 import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
 import { InlineAttachmentCard } from "./InlineAttachmentCard";
+import { CitationStrip } from "./CitationStrip";
+import { FollowUpChips } from "./FollowUpChips";
 
 interface MessageItemProps {
     message: Message;
@@ -38,6 +40,11 @@ interface MessageItemProps {
     activeToolCalls?: ToolCall[];
     completedToolCalls?: CompletedToolCall[];
     liveReasoningText?: string;
+    onFollowUpSelect?: (text: string) => void;
+    onRegenerate?: (message: Message) => void;
+    onEditAndResubmit?: (message: Message, newContent: string) => void;
+    isLastMessage?: boolean;
+    isStreaming?: boolean;
 }
 
 export function MessageItem({
@@ -54,12 +61,20 @@ export function MessageItem({
     activeToolCalls,
     completedToolCalls,
     liveReasoningText,
+    onFollowUpSelect,
+    onRegenerate,
+    onEditAndResubmit,
+    isLastMessage,
+    isStreaming,
 }: MessageItemProps) {
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system' || message.role === 'tool';
 
     const [userExpanded, setUserExpanded] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editContent, setEditContent] = useState('');
+    const editTextareaRef = useRef<HTMLTextAreaElement>(null);
     const USER_TRUNCATE_LEN = 280;
     const isLongUserMessage = isUser && message.content.length > USER_TRUNCATE_LEN;
     const displayedUserContent = isLongUserMessage && !userExpanded
@@ -128,10 +143,52 @@ export function MessageItem({
                     />
                 )}
 
-                {(markdownContent.trim() || (isAssistant && message.isStreaming)) && (
+                {isUser && isEditing ? (
+                    <div className="w-full flex flex-col gap-2" style={{ maxWidth: '75%' }}>
+                        <textarea
+                            ref={editTextareaRef}
+                            value={editContent}
+                            onChange={e => setEditContent(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    if (editContent.trim()) {
+                                        onEditAndResubmit?.(message, editContent.trim());
+                                        setIsEditing(false);
+                                    }
+                                }
+                                if (e.key === 'Escape') setIsEditing(false);
+                            }}
+                            className="w-full px-4 py-3 text-sm rounded-xl border border-border bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+                            rows={3}
+                            autoFocus
+                        />
+                        <div className="flex gap-2 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setIsEditing(false)}
+                                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors"
+                            >
+                                <X className="h-3 w-3" /> Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (editContent.trim()) {
+                                        onEditAndResubmit?.(message, editContent.trim());
+                                        setIsEditing(false);
+                                    }
+                                }}
+                                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                            >
+                                <Check className="h-3 w-3" /> Send
+                            </button>
+                        </div>
+                    </div>
+                ) : (markdownContent.trim() || (isAssistant && message.isStreaming)) && (
                     <div
                         className={cn(
-                            "text-sm",
+                            "text-sm relative",
                             isUser
                                 ? "px-5 py-4 bg-muted border border-border/50 text-foreground leading-[1.55]"
                                 : "text-foreground/90 leading-[1.75] w-full"
@@ -151,6 +208,16 @@ export function MessageItem({
                                 {markdownContent}
                             </ReactMarkdown>
                         )}
+                        {isUser && !isStreaming && onEditAndResubmit && (
+                            <button
+                                type="button"
+                                onClick={() => { setEditContent(message.content); setIsEditing(true); }}
+                                className="absolute -top-2 -left-8 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-muted text-muted-foreground/60 hover:text-foreground"
+                                title="Edit message"
+                            >
+                                <Pencil className="h-3 w-3" />
+                            </button>
+                        )}
                         {isLongUserMessage && (
                             <button
                                 type="button"
@@ -161,6 +228,14 @@ export function MessageItem({
                             </button>
                         )}
                     </div>
+                )}
+
+                {isAssistant && !message.isStreaming && message.citations && message.citations.length > 0 && (
+                    <CitationStrip citations={message.citations} />
+                )}
+
+                {isAssistant && !message.isStreaming && isLastMessage && message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && onFollowUpSelect && (
+                    <FollowUpChips suggestions={message.suggestedFollowUps} onSelect={onFollowUpSelect} />
                 )}
 
                 {message.attachments && message.attachments.length > 0 && (
@@ -217,9 +292,22 @@ export function MessageItem({
                 )}
 
                 {isAssistant && (
-                    <span className="text-[11px] text-muted-foreground/60 px-1 mt-1">
-                        {format(new Date(message.createdAt), 'h:mm a')}
-                    </span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground/60 px-1 mt-1">
+                            {format(new Date(message.createdAt), 'h:mm a')}
+                        </span>
+                        {isLastMessage && !message.isStreaming && !isStreaming && onRegenerate && (
+                            <button
+                                type="button"
+                                onClick={() => onRegenerate(message)}
+                                className="opacity-0 group-hover/msg:opacity-100 transition-opacity flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
+                                title="Regenerate response"
+                            >
+                                <RotateCcw className="h-3 w-3" />
+                                <span>Regenerate</span>
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
         </div>

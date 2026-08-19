@@ -17,7 +17,7 @@ export interface UseChatOptions {
     folderId?: string;
     onDelta?: (delta: string, messageId: string, conversationId?: string) => void;
     onReasoning?: (delta: string) => void;
-    onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown) => void;
+    onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown, citations?: unknown, suggestedFollowUps?: unknown) => void;
     onError?: (code: string, message: string) => void;
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
@@ -264,6 +264,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                             const msgId = currentMessageId ?? (payload.messageId as string) ?? crypto.randomUUID();
                             const planResult = payload.planResult;
                             const artifactRef = payload.artifactRef;
+                            const citations = payload.citations;
+                            const suggestedFollowUps = payload.suggestedFollowUps;
                             clearRetry();
                             onDoneRef.current?.(
                                 finalText,
@@ -271,6 +273,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 (payload.conversationId as string) ?? conversationIdRef.current,
                                 planResult,
                                 artifactRef,
+                                citations,
+                                suggestedFollowUps,
                             );
                             currentMessageId = null;
                             accumulatedText = '';

@@ -95,6 +95,27 @@ const google = createGoogleGenerativeAI({
 })
 export const embedder = google.embedding('gemini-embedding-001')
 
+// Query pool for direct mastra schema access (truncation, etc.)
+let _mastraQueryPool: pg.Pool | null = null
+function getMastraQueryPool(): pg.Pool {
+  if (!_mastraQueryPool) _mastraQueryPool = makePool(2)
+  return _mastraQueryPool
+}
+
+// Delete all Mastra messages for a thread that were created at or after fromTimestamp.
+// Uses memory.deleteMessages() so vector embeddings are also cleaned up.
+export async function truncateMastraThread(conversationId: string, fromTimestamp: Date): Promise<number> {
+  const res = await getMastraQueryPool().query<{ id: string }>(
+    `SELECT id FROM mastra.mastra_messages
+     WHERE thread_id = $1 AND "createdAt" >= $2`,
+    [conversationId, fromTimestamp]
+  )
+  if (res.rows.length === 0) return 0
+  const ids = res.rows.map(r => r.id)
+  await getMastraMemory().deleteMessages(ids)
+  return ids.length
+}
+
 // Singleton Memory instance — shared across all tenants.
 // Isolation is enforced per-request via resourceId (MASTRA_RESOURCE_ID_KEY)
 // set on the RequestContext before each generate() call.

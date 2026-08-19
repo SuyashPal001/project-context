@@ -7,6 +7,7 @@ import { gateChunks, fastGateChunks, ScoredChunk } from '../rag/relevanceGate.js
 import { filterPII } from '../pii-filter.js'
 import { saveUserMessage, saveAssistantMessage } from '../persistence.js'
 import { isInternalServiceKey } from '../service-key.js'
+import { truncateMastraThread } from '../mastra/memory.js'
 import {
   sessions, lastRagResult,
 } from '../types.js'
@@ -137,6 +138,38 @@ internalRouter.post('/rag/retrieve', async (c) => {
   } catch (err) {
     console.error('[rag/retrieve] pipeline error:', (err as Error).message)
     return c.json({ chunks: [], context: null })
+  }
+})
+
+// ─── Thread truncation — used by Regenerate / Edit & Resubmit ─────────────────
+
+internalRouter.delete('/thread/truncate', async (c) => {
+  const serviceKey = c.req.header('X-Service-Key')
+  if (!isInternalServiceKey(serviceKey)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  let body: { conversationId?: unknown; fromTimestamp?: unknown }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON' }, 400)
+  }
+
+  const conversationId = typeof body.conversationId === 'string' ? body.conversationId : null
+  const fromTimestamp = typeof body.fromTimestamp === 'string' ? new Date(body.fromTimestamp) : null
+
+  if (!conversationId || !fromTimestamp || isNaN(fromTimestamp.getTime())) {
+    return c.json({ error: 'conversationId and fromTimestamp are required' }, 400)
+  }
+
+  try {
+    const deleted = await truncateMastraThread(conversationId, fromTimestamp)
+    console.log(`[truncate] conversationId=${conversationId} deleted ${deleted} Mastra messages from ${fromTimestamp.toISOString()}`)
+    return c.json({ ok: true, deleted })
+  } catch (err) {
+    console.error('[truncate] error:', (err as Error).message)
+    return c.json({ error: 'Truncation failed' }, 500)
   }
 })
 

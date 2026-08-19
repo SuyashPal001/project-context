@@ -25,9 +25,12 @@ interface MessageThreadProps {
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
+    onFollowUpSelect?: (text: string) => void;
+    onRegenerate?: (message: Message) => void;
+    onEditAndResubmit?: (message: Message, newContent: string) => void;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
     const failedUrlsRef = useRef<Set<string>>(new Set());
@@ -194,16 +197,22 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 
                 {messages.map((message, i) => {
                     const prevRole = i > 0 ? messages[i - 1].role : null;
+                    const isLastMessage = i === messages.length - 1;
                     return (
                         <MessageItem
                             key={message.id}
                             message={message}
                             isFirstInSequence={prevRole === null || prevRole !== message.role}
                             isNewExchange={prevRole !== null && prevRole !== message.role}
+                            isLastMessage={isLastMessage}
                             freshUrls={freshUrls}
                             onApprove={onApprove}
                             onDismiss={onDismiss}
                             onClarificationAnswer={onClarificationAnswer}
+                            onFollowUpSelect={onFollowUpSelect}
+                            onRegenerate={onRegenerate}
+                            onEditAndResubmit={onEditAndResubmit}
+                            isStreaming={isStreaming}
                             creatingPlanId={creatingPlanId}
                             planErrors={planErrors}
                             onCreateInSystem={handleCreateInSystem}

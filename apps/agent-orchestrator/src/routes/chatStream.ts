@@ -10,8 +10,32 @@ import { getThinkingBudget } from '../mastra/thinking.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
 import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection } from '../usage.js'
 import { buildGatewayModelString } from '../mastra/model.js'
+import { quickGeminiCall } from '../llm/quickCall.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
+
+async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
+  const prompt = `Based on this conversation turn, generate exactly 3 short, natural follow-up questions the user might want to ask next.
+
+User asked: ${userMessage.slice(0, 400)}
+
+Assistant replied: ${assistantReply.slice(0, 600)}
+
+Rules:
+- Output ONLY a JSON array of 3 strings, no other text
+- Each question must be under 60 characters
+- Questions should be genuinely useful next steps, not restatements
+- Example format: ["How do I deploy this?", "What are the trade-offs?", "Can you show an example?"]
+
+JSON array:`
+
+  const raw = await quickGeminiCall(prompt)
+  const match = raw.match(/\[[\s\S]*?\]/)
+  if (!match) return []
+  const parsed = JSON.parse(match[0])
+  if (!Array.isArray(parsed)) return []
+  return parsed.filter((s: unknown) => typeof s === 'string').slice(0, 3)
+}
 
 export interface ChatStreamOpts {
   message: string
@@ -110,6 +134,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   let ragFired = false
   let ragChunksRetrieved = 0
   let ragChunks: string[] = []
+  let ragSources: Array<{ name: string; score: number }> = []
+  let suggestedFollowUps: string[] = []
   let totalTokens = 0
   let inputTokens = 0
   let outputTokens = 0
@@ -262,6 +288,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
           sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
 
+          // Capture citations from RAG tool
+          if (resolvedToolName === 'retrieve_documents' && Array.isArray(result.sources)) {
+            ragSources = result.sources as Array<{ name: string; score: number }>
+          }
+
           // Inject summary as synthetic text when route_to_officer returns one
           if (resolvedToolName === 'route_to_officer' && typeof result.summary === 'string' && result.summary) {
             fullText += result.summary
@@ -312,7 +343,19 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             console.log(`[sse:${sessionId}] plan JSON extracted from agent response`)
           }
 
-          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined })
+          // Generate follow-up suggestions in parallel with a 4s timeout
+          if (fullText.length > 50) {
+            try {
+              suggestedFollowUps = await Promise.race([
+                generateFollowUps(message, fullText),
+                new Promise<string[]>(resolve => setTimeout(() => resolve([]), 4000)),
+              ])
+            } catch {
+              suggestedFollowUps = []
+            }
+          }
+
+          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, suggestedFollowUps: suggestedFollowUps.length > 0 ? suggestedFollowUps : undefined })
 
           // Guard against ghost messages: if the client disconnected (Stop button
           // or navigation) before the agent finished, isStreamClosed() is already
