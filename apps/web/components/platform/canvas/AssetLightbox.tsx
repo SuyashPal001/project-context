@@ -34,7 +34,12 @@ function useMarkdownContent(asset: Asset, fileUrl: string | null): string {
   useEffect(() => {
     setContent('');
     let cancelled = false;
-    if (asset.type === 'markdown' && fileUrl) {
+    if (asset.type === 'tasks') {
+      // Task-list artifacts only ever arrive via the live streaming payload
+      // (artifact_load's inline content/chunk). There is no REST endpoint to
+      // fetch them on demand, so leave content empty and let the render
+      // branch below show an explanatory message instead of a blank pane.
+    } else if (asset.type === 'markdown' && fileUrl) {
       fetch(fileUrl).then(r => r.text()).then(text => { if (!cancelled) setContent(text); }).catch(() => {});
     } else if (asset.type === 'prd' && asset.entityId) {
       api.get<{ data: { content: string } }>(`/api/v1/prds/${asset.entityId}`)
@@ -100,10 +105,15 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
             )}
 
             {url && asset.type === 'video' && <VideoPreview url={url} />}
-            {(asset.type === 'markdown' || asset.type === 'prd' || asset.type === 'roadmap' || asset.type === 'tasks') && (
+            {(asset.type === 'markdown' || asset.type === 'prd' || asset.type === 'roadmap' || asset.type === 'tasks') && markdownContent && (
               <div className="w-full h-full overflow-y-auto text-sm px-2">
                 <MarkdownViewer content={markdownContent} />
               </div>
+            )}
+            {asset.type === 'tasks' && !markdownContent && (
+              <p className="text-sm text-muted-foreground max-w-sm text-center">
+                Task list content is only available while it&apos;s actively being generated in the chat — it can&apos;t be reloaded here yet.
+              </p>
             )}
             {!url && asset.type === 'video' && <p className="text-sm text-muted-foreground">Loading preview…</p>}
             {/* audio branch lands in Task 9 */}
