@@ -3,7 +3,7 @@
 import { useState, useRef } from "react";
 import { Terminal, Info, Image as ImageIcon, RotateCcw, Pencil, Check, X } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
-import { WavebarMark } from "./WavebarMark";
+import { ComputerAgentMark } from "./ComputerAgentMark";
 import { Message, PlanResult, ToolCall, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -115,13 +115,13 @@ export function MessageItem({
                     ? <AgentOrb size={40} state="idle" />
                     // Same-width slot for every other assistant message, so the text
                     // column still lines up under the very first message's orb. Holds a
-                    // small wavebar mark instead of dead space — animated only while
-                    // this specific reply is the one actively streaming, static (at
-                    // rest) for already-finished ones so old scrollback doesn't turn
-                    // into a wall of pulsing icons.
+                    // small computer-mark instead of dead space — "the agent inside the
+                    // computer" — its screen blinks on the same cadence feel as the
+                    // orb's own eyes (CSS-only, not a live orb instance per row; see
+                    // ComputerAgentMark for why).
                     : (
                         <div className="w-10 shrink-0 flex items-center justify-center">
-                            <WavebarMark animate={!!message.isStreaming} />
+                            <ComputerAgentMark />
                         </div>
                     )
             )}

@@ -202,24 +202,26 @@
   }
 }
 
-/* Wavebar mark — small equalizer-style badge used as the assistant's
+/* Computer agent mark — small monitor-icon badge used as the assistant's
    recurring chat-row mark for every reply after the first (which gets the
-   full orb instead). Each bar shares one scaleY keyframe, staggered by a
-   per-element --wavebar-delay custom property. */
-@keyframes wavebar-scale {
-  0%, 100% { transform: scaleY(0.55); }
-  50%      { transform: scaleY(1); }
+   full AgentOrb instead). The dot "inside the screen" blinks on the same
+   cadence feel as the orb's own eye-blink, done in pure CSS rather than
+   mounting a live AgentOrb canvas per row (that runs a continuous rAF loop
+   plus a global mousemove listener — fine for the one orb on screen, not
+   for potentially dozens of these in a long conversation). */
+@keyframes computer-screen-blink {
+  0%, 92%, 100% { opacity: 1; transform: scaleY(1); }
+  96%           { opacity: 0.25; transform: scaleY(0.15); }
 }
 
-.animate-wavebar {
-  animation: wavebar-scale 1.1s ease-in-out infinite;
-  animation-delay: var(--wavebar-delay, 0s);
+.animate-computer-blink {
+  transform-origin: center;
+  animation: computer-screen-blink 4.5s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-wavebar {
+  .animate-computer-blink {
     animation: none;
-    transform: scaleY(0.8);
   }
 }
 
