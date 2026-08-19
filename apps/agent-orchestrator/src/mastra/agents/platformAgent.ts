@@ -264,7 +264,13 @@ NEVER write a clarifying question as plain prose, a bulleted list, or any other 
     const CODE_BLOCK_CONTRACT = `\n\n## Code formatting — required behaviour
 ALWAYS specify the language identifier on every fenced code block. Examples: \`\`\`python, \`\`\`typescript, \`\`\`bash, \`\`\`sql, \`\`\`json, \`\`\`yaml.
 NEVER write a fenced code block with no language tag (i.e. never use a bare \`\`\` with nothing after it). If you are genuinely unsure of the language, use \`\`\`text as a fallback.`
-    return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT
+    const CANVAS_CONTRACT = `\n\n## Canvas output — required behaviour
+Whenever your response contains structured or long-form content — analyses, comparisons, plans, summaries, reports, code explanations, tables, step-by-step guides, or anything exceeding roughly 200 words — you MUST call the render_canvas tool with the full markdown content BEFORE writing your reply in chat.
+- Set title to a short, descriptive label (e.g. "Q3 Competitive Analysis", "Onboarding Plan").
+- Set type to "document" unless the content is specifically a PRD ("prd"), roadmap ("roadmap"), or task list ("tasks").
+- Your chat reply should then be a brief 1–3 sentence summary pointing the user to the canvas, NOT a repeat of the full content.
+For short conversational answers or simple one-liners, do NOT call render_canvas.`
+    return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext }) => {
