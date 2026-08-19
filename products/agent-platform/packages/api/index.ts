@@ -13,6 +13,7 @@ import { agentPoliciesRoutes } from './routes/agent-policies';
 import { agentRunsRoutes } from './routes/agent-runs';
 import { conversationsRoutes } from './routes/conversations';
 import { messagesRoutes } from './routes/messages';
+import { assetsRoutes } from './routes/assets';
 import documentsRoutes from './routes/documents';
 import { evalsFeedbackRoutes, evalsRoutes } from './routes/evals';
 import { tasksRoutes } from './routes/tasks';
@@ -70,6 +71,7 @@ export function mountApiRoutes(api: Hono<AppEnv>): void {
     api.route('/conversations', evalsFeedbackRoutes);
     api.route('/conversations', conversationsRoutes);
     api.route('/conversations', messagesRoutes);
+    api.route('/conversations', assetsRoutes);
     api.route('/evals', evalsRoutes);
     api.route('/llm-providers', llmProvidersRoutes);
     api.route('/documents', documentsRoutes);
