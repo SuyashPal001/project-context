@@ -86,14 +86,15 @@ chatRouter.post('/api/chat', async (c) => {
     ? (body as Record<string, unknown>).folderId as string
     : undefined
 
-  if (!conversationId || !rawMessage) {
-    return c.json({ error: 'conversationId and message are required' }, 400)
+  if (!conversationId || (!rawMessage && attachments.length === 0)) {
+    return c.json({ error: 'conversationId and message or attachments are required' }, 400)
   }
 
-  const { sanitized: message, detections: chatPiiDetections } = filterPII(rawMessage)
+  const { sanitized: filteredMessage, detections: chatPiiDetections } = filterPII(rawMessage)
   if (chatPiiDetections.length > 0) {
     console.log(`[pii-filter] chat userId=${payload.sub} masked: ${chatPiiDetections.map(d => `${d.type}×${d.count}`).join(' ')}`)
   }
+  const message = filteredMessage || '[attachment]'
 
   const userId = payload.sub
   let internalUserId: string = userId
