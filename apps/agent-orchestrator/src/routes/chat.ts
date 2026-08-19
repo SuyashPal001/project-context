@@ -9,8 +9,10 @@ import {
   Attachment,
   getAllowedOrigin, INTERNAL_SERVICE_KEY, API_BASE_URL,
   sseApprovalChannels,
+  sessionActiveClarification, pendingClarifications,
   checkRateLimit,
 } from '../types.js'
+import { updateClarificationRequest } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -178,6 +180,31 @@ chatRouter.post('/api/chat', async (c) => {
       console.log(`[sse:${sessionId}] client disconnected`)
       streamClosed = true
       sseApprovalChannels.delete(sessionId)
+      // Resolve any pending clarification immediately so the server-side agent
+      // doesn't stay blocked for up to 120s after the client has gone away.
+      const clarId = sessionActiveClarification.get(sessionId)
+      if (clarId) {
+        const pending = pendingClarifications.get(clarId)
+        if (pending) {
+          clearTimeout(pending.timer)
+          pendingClarifications.delete(clarId)
+          sessionActiveClarification.delete(sessionId)
+          const collected = pending.collected
+          pending.resolve(collected)
+          if (pending.messageId && pending.conversationId && pending.idToken) {
+            const allSkipped = collected.length === 0 || collected.every((a) => a.skipped === true)
+            const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
+            for (const a of collected) {
+              answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
+            }
+            updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
+              status: allSkipped ? 'skipped' : 'answered',
+              answers: Object.keys(answersMap).length > 0 ? answersMap : undefined,
+              answeredAt: new Date().toISOString(),
+            })
+          }
+        }
+      }
     },
   })
 

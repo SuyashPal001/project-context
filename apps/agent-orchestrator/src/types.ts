@@ -103,6 +103,10 @@ export interface ClarificationAnswer {
   skipped?: boolean
 }
 
+// Lets the stream cancel() handler find and resolve the live pending clarification
+// for a given SSE session without scanning the entire pendingClarifications map.
+export const sessionActiveClarification = new Map<string, string>()
+
 export const pendingClarifications = new Map<string, {
   resolve: (answers: ClarificationAnswer[]) => void
   timer: ReturnType<typeof setTimeout>

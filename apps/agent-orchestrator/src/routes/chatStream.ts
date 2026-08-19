@@ -307,6 +307,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined })
 
+          // Guard against ghost messages: if the client disconnected (Stop button
+          // or navigation) before the agent finished, isStreamClosed() is already
+          // true here. Skip persistence so a cancelled turn can't write an
+          // out-of-order message into the conversation after the user has moved on.
+          if (isStreamClosed()) break
+
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
           saveUserMessage(idToken, conversationId, message, atts)
           // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a

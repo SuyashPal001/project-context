@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { pendingClarifications } from '../../types.js'
+import { pendingClarifications, sessionActiveClarification } from '../../types.js'
 import { saveClarificationRequest, updateClarificationRequest } from '../../persistence.js'
 
 const CLARIFICATION_TIMEOUT_MS = 120_000
@@ -51,6 +51,8 @@ export const askClarifyingQuestionsTool = createTool({
       })
     }
 
+    if (sessionId) sessionActiveClarification.set(sessionId, clarificationId)
+
     const answers = await new Promise<Array<{ questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }>>((resolve) => {
       const timer = setTimeout(() => {
         // Timeout still returns whatever the user had already answered before
@@ -87,6 +89,8 @@ export const askClarifyingQuestionsTool = createTool({
         idToken,
       })
     })
+
+    if (sessionId) sessionActiveClarification.delete(sessionId)
 
     return {
       answers: answers.map((a, i) => ({
