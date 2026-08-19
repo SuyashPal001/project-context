@@ -102,7 +102,12 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         if (!isNewLastMessage) return;
 
         if (last.role === 'user') {
-            anchorToLastUserMessage('smooth');
+            // Instant, not smooth: a smooth scroll leaves an animation window
+            // during which the assistant's placeholder row mounts and its own
+            // StreamingMessage effect can issue a competing scrollIntoView,
+            // interrupting this one before it finishes (see StreamingMessage.tsx).
+            // An instant jump has no window for that race to land in.
+            anchorToLastUserMessage('auto');
         }
     }, [messages]);
 
