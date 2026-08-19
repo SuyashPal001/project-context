@@ -220,6 +220,19 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
     pending.collected.push(answer)
   }
 
+  // Persist partial progress after every answer so a page reload can restore
+  // mid-flow state. Fire-and-forget — don't block the response on this.
+  if (pending.messageId && pending.conversationId && pending.idToken && pending.collected.length < pending.expectedCount) {
+    const partialAnswers: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
+    for (const a of pending.collected) {
+      partialAnswers[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
+    }
+    updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
+      status: 'pending',
+      answers: partialAnswers,
+    })
+  }
+
   if (pending.collected.length >= pending.expectedCount) {
     clearTimeout(pending.timer)
     pendingClarifications.delete(clarificationId)

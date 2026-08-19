@@ -168,11 +168,11 @@ function ChatPage() {
     // the "N answer(s)" summary card has real question/answer text to show.
     const clarificationAnswersRef = useRef<Map<string, Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }>>>(new Map());
 
-    const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => {
+    const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean): Promise<boolean> => {
         const ok = await sendClarificationAnswer(clarificationId, questionIndex, answer);
         if (!ok) {
             toast.error('Could not submit your answer. Please try again.');
-            return;
+            return false;
         }
         const tracker = clarificationAllSkippedRef.current;
         const wasAllSkippedSoFar = tracker.get(clarificationId) ?? true;
@@ -194,7 +194,14 @@ function ChatPage() {
             queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
                 old ? { data: old.data.map(m => m.id === messageId ? { ...m, clarificationRequest: m.clarificationRequest ? { ...m.clarificationRequest, status: finalStatus, answeredAt: new Date().toISOString(), answers } : undefined } : m) } : old
             );
+        } else {
+            // Persist partial progress in the local cache so the card can restore
+            // from it if a reload happens before all questions are answered.
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+                old ? { data: old.data.map(m => m.id === messageId ? { ...m, clarificationRequest: m.clarificationRequest ? { ...m.clarificationRequest, answers: { ...m.clarificationRequest.answers, [questionIndex]: answer } } : undefined } : m) } : old
+            );
         }
+        return true;
     }, [conversationId, queryClient, sendClarificationAnswer]);
 
     const sidebarToggleButton = (

@@ -8,14 +8,13 @@ import { ClarificationRequest } from './types';
 
 interface ClarificationCardProps {
     request: ClarificationRequest;
-    // Second argument is `allAnswered` — true only once EVERY question index
-    // has been answered/skipped at least once, not merely "this was the last
-    // page". Chevron nav lets the user jump straight to the last page and
-    // submit out of order, so "last page" alone is not a safe signal that the
-    // backend's full answer set is complete. `answer` itself is forwarded to
-    // the backend as the wire payload, so this stays a separate argument
-    // rather than a field on it.
-    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered: boolean) => void;
+    // Returns true on network success, false on failure. Second argument is
+    // `allAnswered` — true only once EVERY question index has been
+    // answered/skipped at least once, not merely "this was the last page".
+    // Chevron nav lets the user jump straight to the last page and submit out
+    // of order, so "last page" alone is not a safe signal that the backend's
+    // full answer set is complete.
+    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered: boolean) => Promise<boolean>;
 }
 
 export function ClarificationCard({ request, onAnswer }: ClarificationCardProps) {
@@ -27,6 +26,29 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     // navigation means "on the last page" doesn't imply "every question has
     // been answered".
     const [answeredIndices, setAnsweredIndices] = useState<Set<number>>(new Set());
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Restore partial progress from server-persisted answers after a page reload.
+    // Runs once on mount only — not on every answer update — so it only applies
+    // to the reload case, not the live submission case.
+    useEffect(() => {
+        const entries = Object.entries(request.answers ?? {});
+        if (entries.length === 0) return;
+        const newSelected: Record<number, number> = {};
+        const newFreeText: Record<number, string> = {};
+        const newAnswered = new Set<number>();
+        for (const [qiStr, a] of entries) {
+            const qi = Number(qiStr);
+            newAnswered.add(qi);
+            if (a.selectedIndex !== undefined) newSelected[qi] = a.selectedIndex;
+            if (a.freeText) newFreeText[qi] = a.freeText;
+        }
+        setSelectedByQuestion(newSelected);
+        setFreeTextByQuestion(newFreeText);
+        setAnsweredIndices(newAnswered);
+        const firstUnanswered = request.questions.findIndex((_, i) => !newAnswered.has(i));
+        if (firstUnanswered >= 0) setPageIndex(firstUnanswered);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Auto-grow the free-text field to fit its content (up to a cap) instead of
     // staying a fixed single line that scrolls its text off-screen horizontally.
@@ -92,7 +114,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
         return next.size >= total;
     };
 
-    const commitCurrent = () => {
+    const commitCurrent = async () => {
         const trimmedFreeText = freeText.trim();
         // Send whichever of selectedIndex/freeText are actually present — a user
         // can click an option AND add free text, and both should reach the
@@ -103,14 +125,20 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
             ...(trimmedFreeText ? { freeText: trimmedFreeText } : {}),
         };
         const allAnswered = markAnsweredAndCheckComplete();
-        onAnswer(answer, allAnswered);
-        if (!isLast) setPageIndex(p => p + 1);
+        setIsSubmitting(true);
+        const ok = await onAnswer(answer, allAnswered);
+        setIsSubmitting(false);
+        // Only advance on network success — if the POST failed, the toast is
+        // already shown by the caller and the user stays on this question to retry.
+        if (ok && !isLast) setPageIndex(p => p + 1);
     };
 
-    const handleSkip = () => {
+    const handleSkip = async () => {
         const allAnswered = markAnsweredAndCheckComplete();
-        onAnswer({ questionIndex: pageIndex, skipped: true }, allAnswered);
-        if (!isLast) setPageIndex(p => p + 1);
+        setIsSubmitting(true);
+        const ok = await onAnswer({ questionIndex: pageIndex, skipped: true }, allAnswered);
+        setIsSubmitting(false);
+        if (ok && !isLast) setPageIndex(p => p + 1);
     };
 
     return (
@@ -204,7 +232,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                     )}
                     <div className="flex items-center gap-2 shrink-0 pb-1.5">
                         {question.allowSkip && !freeText.trim() && (
-                            <button type="button" onClick={handleSkip} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+                            <button type="button" onClick={handleSkip} disabled={isSubmitting} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40">
                                 <span>Skip</span>
                                 <kbd className="text-[10px] leading-none px-1.5 py-1 rounded bg-accent text-muted-foreground/70 font-mono">ESC</kbd>
                             </button>
@@ -212,7 +240,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         <button
                             type="button"
                             onClick={commitCurrent}
-                            disabled={selectedIndex === undefined && !freeText.trim()}
+                            disabled={(selectedIndex === undefined && !freeText.trim()) || isSubmitting}
                             className={cn(
                                 "bg-primary text-primary-foreground disabled:opacity-40 flex items-center justify-center",
                                 freeText.trim()
