@@ -25,6 +25,8 @@ export default function HandoverBuilderPage() {
     const [sendError, setSendError] = useState<string | null>(null);
     const [itemError, setItemError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [syncing, setSyncing] = useState(false);
+    const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
     const mountedRef = useRef(true);
 
@@ -98,6 +100,21 @@ export default function HandoverBuilderPage() {
         }
     }
 
+    async function syncFromProject() {
+        if (!pack || syncing) return;
+        setSyncMessage(null);
+        setSyncing(true);
+        try {
+            const res = await api.post<{ data: { added: number } }>(`/api/v1/handover/packs/${pack.id}/sync`, {});
+            await loadPack(pack.id);
+            setSyncMessage(res.data.added > 0 ? `${res.data.added} new delivered item${res.data.added === 1 ? '' : 's'} added.` : 'Nothing new since last sync.');
+        } catch (err: any) {
+            setSyncMessage(err?.data?.error ?? 'Could not sync from the project');
+        } finally {
+            setSyncing(false);
+        }
+    }
+
     async function send() {
         if (!pack) return;
         setSendError(null);
@@ -135,9 +152,17 @@ export default function HandoverBuilderPage() {
                     <p className="text-sm text-muted-foreground">Status: {pack.status}</p>
                 </div>
                 <div className="text-right">
-                    <Button onClick={send} disabled={readOnly || !readiness || readiness.complete < readiness.total}>
-                        Send to client
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                        {readOnly ? null : (
+                            <Button variant="outline" onClick={syncFromProject} disabled={syncing}>
+                                {syncing ? 'Syncing…' : 'Sync from project'}
+                            </Button>
+                        )}
+                        <Button onClick={send} disabled={readOnly || !readiness || readiness.complete < readiness.total}>
+                            Send to client
+                        </Button>
+                    </div>
+                    {syncMessage ? <p className="mt-2 text-sm text-muted-foreground">{syncMessage}</p> : null}
                     {sendError ? <p className="mt-2 text-sm text-destructive">{sendError}</p> : null}
                 </div>
             </div>

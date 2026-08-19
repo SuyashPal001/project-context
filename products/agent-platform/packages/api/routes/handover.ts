@@ -8,6 +8,7 @@ import { files } from '@serverless-saas/database/schema/storage';
 import { hasPermission } from '@serverless-saas/permissions';
 import { seedSections } from '../lib/handover-template';
 import { computeReadiness } from '../lib/handover-readiness';
+import { generateDeliveredItems } from '../lib/handover-generate';
 import { isSafeHttpUrl, SAFE_URL_MESSAGE } from '../lib/safe-url';
 import { assertEditable } from '../lib/pack-status';
 import { handoverLifecycleRoutes } from './handover.lifecycle';
@@ -77,11 +78,41 @@ handoverRoutes.post('/packs', async (c) => {
         status: 'draft',
     }).returning();
 
-    await db.insert(packSections).values(
+    const insertedSections = await db.insert(packSections).values(
         seedSections().map((section) => ({ ...section, tenantId, packId: pack.id })),
-    );
+    ).returning();
+
+    const deliveredSection = insertedSections.find((section) => section.kind === 'delivered');
+    if (deliveredSection) {
+        await generateDeliveredItems(tenantId, planId, pack.id, deliveredSection.id);
+    }
 
     return c.json({ data: pack }, 201);
+});
+
+// POST /handover/packs/:packId/sync — re-run generation against this plan's
+// current state. Additive only (see generateDeliveredItems) so it is always
+// safe to call again after new tasks complete.
+handoverRoutes.post('/packs/:packId/sync', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+
+    if (!hasPermission(permissions, 'handover_packs', 'update')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+    const pack = await loadPack(c.req.param('packId'), tenantId);
+    if (!pack) return c.json({ error: 'Pack not found' }, 404);
+    const locked = assertEditable(pack);
+    if (locked) return c.json({ error: locked, code: 'PACK_LOCKED' }, 409);
+
+    const [deliveredSection] = await db.select({ id: packSections.id }).from(packSections)
+        .where(and(eq(packSections.packId, pack.id), eq(packSections.tenantId, tenantId), eq(packSections.kind, 'delivered')))
+        .limit(1);
+    if (!deliveredSection) return c.json({ data: { added: 0 } });
+
+    const added = await generateDeliveredItems(tenantId, pack.planId, pack.id, deliveredSection.id);
+
+    return c.json({ data: { added } });
 });
 
 // GET /handover/packs/:packId
