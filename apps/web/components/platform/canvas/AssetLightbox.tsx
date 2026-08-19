@@ -5,6 +5,7 @@ import { X, ChevronLeft, ChevronRight, Copy, Download } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { VideoPreview } from './lightbox/VideoPreview';
+import { AudioPreview } from './lightbox/AudioPreview';
 import { MarkdownViewer } from './MarkdownViewer';
 import type { Asset } from '@/types/assets';
 
@@ -105,6 +106,7 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
             )}
 
             {url && asset.type === 'video' && <VideoPreview url={url} />}
+            {url && asset.type === 'audio' && <AudioPreview url={url} />}
             {(asset.type === 'markdown' || asset.type === 'prd' || asset.type === 'roadmap' || asset.type === 'tasks') && markdownContent && (
               <div className="w-full h-full overflow-y-auto text-sm px-2">
                 <MarkdownViewer content={markdownContent} />
