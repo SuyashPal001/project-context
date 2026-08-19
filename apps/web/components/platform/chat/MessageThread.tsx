@@ -32,6 +32,15 @@ interface MessageThreadProps {
 
 export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
+    // Tracks the scroll pane's own visible height so the bottom spacer below
+    // can reserve that much room. Without it, anchoring a just-sent message
+    // near the top (the effect below) is mathematically impossible when the
+    // message is near the end of the content: the browser clamps scrollTop to
+    // scrollHeight - clientHeight, which is far short of the desired position
+    // when there's nothing below the message yet to scroll into — the anchor
+    // silently no-ops and the message ends up wherever that clamped position
+    // lands instead, with little to no gap above the input.
+    const [viewportHeight, setViewportHeight] = useState(0);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
     const failedUrlsRef = useRef<Set<string>>(new Set());
     const isRefreshingUrlsRef = useRef(false);
@@ -79,9 +88,21 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         state.conversationId = conversationId;
         state.lastMessageId = last.id;
 
+        // Anchor the most recent user message near the top instead of pinning to
+        // the bottom, so its reply has room to grow below it without everything
+        // feeling glued to the input — matches the reference product. Falls back
+        // to jumping to the very bottom only if the conversation somehow has no
+        // user message yet (e.g. an assistant-initiated thread).
+        const anchorToLastUserMessage = (behavior: ScrollBehavior) => {
+            const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+            const target = lastUserMessage ? document.getElementById(`message-${lastUserMessage.id}`) : null;
+            if (target) el.scrollTo({ top: Math.max(0, target.offsetTop - 16), behavior });
+            else el.scrollTo({ top: el.scrollHeight, behavior });
+        };
+
         if (isConversationSwitch) {
-            // Freshly loaded history — jump straight to the latest message, no animation.
-            el.scrollTop = el.scrollHeight;
+            // Freshly loaded history — jump straight there, no animation.
+            anchorToLastUserMessage('auto');
             return;
         }
 
@@ -90,11 +111,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         if (!isNewLastMessage) return;
 
         if (last.role === 'user') {
-            // Anchor the just-sent message near the top instead of pinning to the
-            // bottom, so the response has room to grow below it without everything
-            // feeling glued to the input — matches the reference product.
-            const target = document.getElementById(`message-${last.id}`);
-            if (target) el.scrollTo({ top: Math.max(0, target.offsetTop - 16), behavior: 'smooth' });
+            anchorToLastUserMessage('smooth');
         }
     }, [messages]);
 
@@ -107,6 +124,16 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         };
         el.addEventListener('scroll', onScroll);
         return () => el.removeEventListener('scroll', onScroll);
+    }, []);
+
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const update = () => setViewportHeight(el.clientHeight);
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(el);
+        return () => observer.disconnect();
     }, []);
 
     useEffect(() => {
@@ -251,6 +278,14 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             {warmupMessage}
                         </div>
                     </div>
+                )}
+
+                {/* Reserves room below the last message so it can actually be scrolled
+                    near the top of the pane (see the viewportHeight effect above) instead
+                    of the scroll position clamping short — this is also what keeps a
+                    generous, consistent gap above the input once a reply finishes. */}
+                {messages.length > 0 && (
+                    <div aria-hidden style={{ height: Math.max(0, viewportHeight - 160) }} />
                 )}
             </div>
         </div>
