@@ -7,6 +7,7 @@ import { ArtifactPanel } from './ArtifactPanel';
 import { FileCreatedCard } from './FileCreatedCard';
 import { AssetGallery } from './AssetGallery';
 import { AssetLightbox } from './AssetLightbox';
+import { CanvasTabStrip } from './CanvasTabStrip';
 import { api } from '@/lib/api';
 import type {
   CanvasState, CanvasEvent, CanvasOverlay, CanvasEventData,
@@ -368,24 +369,13 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
       </div>
 
       {/* Tab bar — always visible */}
-      <div className="flex-none flex border-b border-border overflow-x-auto">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            className={`flex-none px-4 py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap ${
-              tab.id === activeTabId
-                ? 'text-foreground border-b-2 border-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            onClick={() => setActiveTabId(tab.id)}
-          >
-            {tab.title}
-            {tab.kind === 'artifact' && tab.artifact?.isStreaming && (
-              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
-            )}
-          </button>
-        ))}
-      </div>
+      <CanvasTabStrip
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelect={setActiveTabId}
+        onClose={closeTab}
+        onOpenGallery={openGalleryTab}
+      />
 
       {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto flex flex-col">
