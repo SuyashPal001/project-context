@@ -5,6 +5,7 @@ import { CanvasViewer } from './CanvasViewer';
 import { KnowledgeBaseSection } from './KnowledgeBaseSection';
 import { ArtifactPanel } from './ArtifactPanel';
 import { FileCreatedCard } from './FileCreatedCard';
+import { AssetGallery } from './AssetGallery';
 import { api } from '@/lib/api';
 import type {
   CanvasState, CanvasEvent, CanvasOverlay, CanvasEventData,
@@ -20,6 +21,7 @@ interface CanvasProps {
   tenantSlug: string;
   flushPending: () => void;
   agentId?: string;
+  conversationId: string;
 }
 
 const initialState: CanvasState = {
@@ -32,7 +34,7 @@ const initialState: CanvasState = {
 
 const OVERLAY_DURATION = 2000;
 
-export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending, agentId }: CanvasProps) {
+export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending, agentId, conversationId }: CanvasProps) {
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
   const KNOWLEDGE_TAB: CanvasTab = { id: 'knowledge', kind: 'knowledge', title: 'Knowledge Base', closeable: false };
@@ -424,6 +426,14 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         )}
 
         {activeTab.kind === 'knowledge' && <KnowledgeBaseSection />}
+
+        {activeTab.kind === 'gallery' && (
+          <AssetGallery conversationId={conversationId ?? ''} onCardClick={() => { /* wired to the lightbox in Task 7 */ }} />
+        )}
+
+        {activeTab.kind === 'file' && activeTab.asset && (
+          <AssetGallery conversationId={conversationId ?? ''} filterAssetId={activeTab.asset.id} onCardClick={() => { /* wired to the lightbox in Task 7 */ }} />
+        )}
       </div>
     </div>
   );
