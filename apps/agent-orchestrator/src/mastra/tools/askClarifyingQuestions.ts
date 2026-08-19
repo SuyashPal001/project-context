@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { pendingClarifications } from '../../types.js'
-import { saveClarificationRequest } from '../../persistence.js'
+import { saveClarificationRequest, updateClarificationRequest } from '../../persistence.js'
 
 const CLARIFICATION_TIMEOUT_MS = 120_000
 
@@ -57,7 +57,23 @@ export const askClarifyingQuestionsTool = createTool({
         // going idle, rather than discarding partial progress as a full blank.
         const pending = pendingClarifications.get(clarificationId)
         pendingClarifications.delete(clarificationId)
-        resolve(pending?.collected ?? [])
+        const collected = pending?.collected ?? []
+        resolve(collected)
+
+        // Flip the DB row out of 'pending' so the message never becomes a
+        // permanently invisible orphan once the agent produces a later message.
+        if (pending?.messageId && pending?.conversationId && pending?.idToken) {
+          const allSkipped = collected.length === 0 || collected.every((a) => a.skipped === true)
+          const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
+          for (const a of collected) {
+            answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
+          }
+          updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
+            status: allSkipped ? 'skipped' : 'answered',
+            answers: Object.keys(answersMap).length > 0 ? answersMap : undefined,
+            answeredAt: new Date().toISOString(),
+          })
+        }
       }, CLARIFICATION_TIMEOUT_MS)
       pendingClarifications.set(clarificationId, {
         resolve,
