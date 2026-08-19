@@ -32,15 +32,6 @@ interface MessageThreadProps {
 
 export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
-    // Tracks the scroll pane's own visible height so the bottom spacer below
-    // can reserve that much room. Without it, anchoring a just-sent message
-    // near the top (the effect below) is mathematically impossible when the
-    // message is near the end of the content: the browser clamps scrollTop to
-    // scrollHeight - clientHeight, which is far short of the desired position
-    // when there's nothing below the message yet to scroll into — the anchor
-    // silently no-ops and the message ends up wherever that clamped position
-    // lands instead, with little to no gap above the input.
-    const [viewportHeight, setViewportHeight] = useState(0);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
     const failedUrlsRef = useRef<Set<string>>(new Set());
     const isRefreshingUrlsRef = useRef(false);
@@ -127,16 +118,6 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     }, []);
 
     useEffect(() => {
-        const el = scrollRef.current;
-        if (!el) return;
-        const update = () => setViewportHeight(el.clientHeight);
-        update();
-        const observer = new ResizeObserver(update);
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, []);
-
-    useEffect(() => {
         const refreshUrls = async () => {
             if (isRefreshingUrlsRef.current) return;
             const toRefresh = messages.flatMap(m => m.attachments || [])
@@ -209,7 +190,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     return (
         <div className="relative flex-1 min-h-0 overflow-hidden">
         <div ref={scrollRef} className="h-full px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
-            <div className="max-w-4xl mx-auto space-y-2 pb-4">
+            <div className="max-w-4xl mx-auto space-y-2 pb-4 min-h-full flex flex-col">
                 {messages.length === 0 && !isTyping && (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
@@ -280,13 +261,15 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     </div>
                 )}
 
-                {/* Reserves room below the last message so it can actually be scrolled
-                    near the top of the pane (see the viewportHeight effect above) instead
-                    of the scroll position clamping short — this is also what keeps a
-                    generous, consistent gap above the input once a reply finishes. */}
-                {messages.length > 0 && (
-                    <div aria-hidden style={{ height: Math.max(0, viewportHeight - 160) }} />
-                )}
+                {/* flex-1 filler: with the content column forced to min-h-full, this
+                    grows to soak up whatever room is left below the last message —
+                    computed natively by the browser's layout engine, not measured in
+                    JS, so it can never race a resize/mount timing issue. That reserved
+                    room is what lets a just-sent message actually be scrolled near the
+                    top of the pane (see the scroll-anchor effect above) instead of the
+                    scroll position clamping short, and what keeps a generous, consistent
+                    gap above the input once a reply finishes. */}
+                {messages.length > 0 && <div aria-hidden className="flex-1" />}
             </div>
         </div>
         {pendingClarificationMessage && (
