@@ -58,11 +58,42 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // inside that row, so the two must never both render at once.
     const hasStreamingMessage = messages.some(m => m.isStreaming);
 
+    // Tracks which conversation/message we last scrolled for, so this effect can
+    // tell "a fresh conversation just loaded" from "a new user message was just
+    // sent" from "the assistant's message is still growing in place" — those need
+    // three different scroll behaviors, not one blanket scrollTop = scrollHeight.
+    const scrollStateRef = useRef<{ conversationId: string | null; lastMessageId: string | null }>({ conversationId: null, lastMessageId: null });
+
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        const el = scrollRef.current;
+        if (!el || messages.length === 0) return;
+        const last = messages[messages.length - 1];
+        const conversationId = messages[0]?.conversationId ?? null;
+        const state = scrollStateRef.current;
+
+        const isConversationSwitch = conversationId !== state.conversationId;
+        const isNewLastMessage = last.id !== state.lastMessageId;
+        state.conversationId = conversationId;
+        state.lastMessageId = last.id;
+
+        if (isConversationSwitch) {
+            // Freshly loaded history — jump straight to the latest message, no animation.
+            el.scrollTop = el.scrollHeight;
+            return;
         }
-    }, [messages, isTyping]);
+
+        // Same message still streaming/updating in place — leave the scroll
+        // position alone instead of chasing the bottom on every token.
+        if (!isNewLastMessage) return;
+
+        if (last.role === 'user') {
+            // Anchor the just-sent message near the top instead of pinning to the
+            // bottom, so the response has room to grow below it without everything
+            // feeling glued to the input — matches the reference product.
+            const target = document.getElementById(`message-${last.id}`);
+            if (target) el.scrollTo({ top: Math.max(0, target.offsetTop - 16), behavior: 'smooth' });
+        }
+    }, [messages]);
 
     useEffect(() => {
         const el = scrollRef.current;
