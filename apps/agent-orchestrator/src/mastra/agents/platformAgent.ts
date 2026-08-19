@@ -251,7 +251,15 @@ export const platformAgent = new Agent({
     // capabilities, just with a personality prepended. Set by chatStream.ts from
     // agentPersonas.basePersonality.
     const persona = requestContext?.get('personaPersonality') as string | undefined
-    return persona ? `${persona}\n\n${base}` : base
+    const composed = persona ? `${persona}\n\n${base}` : base
+    // Hardcoded tool-usage contract — appended to every prompt path (DB template,
+    // per-agent override, persona) so no variant can silently drop this rule.
+    const CLARIFICATION_CONTRACT = `\n\n## Clarifying questions — required behaviour
+ALWAYS call the ask_clarifying_questions tool whenever you need more information before proceeding. This applies to:
+- The first time you need clarification on a request.
+- Every subsequent round of follow-up questions, no matter how many rounds that takes.
+NEVER write a clarifying question as plain prose, a bulleted list, or any other text in your reply. If you have a question, call the tool. If you write questions as text instead of calling the tool, the user cannot answer them interactively and the conversation will break.`
+    return composed + CLARIFICATION_CONTRACT
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext }) => {
