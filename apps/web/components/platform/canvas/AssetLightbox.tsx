@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { X, ChevronLeft, ChevronRight, Copy, Download } from 'lucide-react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { VideoPreview } from './lightbox/VideoPreview';
 import type { Asset } from '@/types/assets';
@@ -17,11 +17,13 @@ interface AssetLightboxProps {
 function useAssetUrl(asset: Asset): string | null {
   const [url, setUrl] = useState<string | null>(asset.thumbnailUrl ?? null);
   useEffect(() => {
+    let cancelled = false;
     setUrl(asset.thumbnailUrl ?? null);
     if (!asset.fileId) return;
     api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(asset.fileId)}/presigned-url`)
-      .then(res => setUrl(res.presignedUrl))
+      .then(res => { if (!cancelled) setUrl(res.presignedUrl); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [asset.fileId, asset.thumbnailUrl]);
   return url;
 }
@@ -37,7 +39,7 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
       <DialogContent showCloseButton={false} className="max-w-none w-screen h-screen p-0 rounded-none border-0 sm:max-w-none flex flex-col">
         <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
-            <p className="text-sm font-semibold">{asset.filename}</p>
+            <DialogTitle className="text-sm font-semibold">{asset.filename}</DialogTitle>
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{asset.type}</p>
           </div>
           <div className="flex items-center gap-2">
