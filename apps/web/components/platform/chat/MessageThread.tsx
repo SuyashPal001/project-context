@@ -197,7 +197,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             </div>
         </div>
         {pendingClarificationMessage && (
-            <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/90 backdrop-blur-sm px-4">
+            // Anchored toward the bottom of the panel (near where ChatInput sits just
+            // below this wrapper) rather than dead-center, so it reads as the next
+            // step in the conversation instead of a modal dropped in empty space.
+            <div className="absolute inset-0 z-40 flex items-end justify-center pb-6 bg-background/90 backdrop-blur-sm px-4">
                 <ClarificationCard
                     request={pendingClarificationMessage.clarificationRequest!}
                     onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
