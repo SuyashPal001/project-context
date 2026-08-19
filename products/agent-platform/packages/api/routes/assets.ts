@@ -52,7 +52,12 @@ function messageToAssets(message: typeof messages.$inferSelect): AssetDTO[] {
     }
 
     const artifactRef = message.artifactRef as { type: 'prd' | 'roadmap' | 'tasks'; entityId: string; title: string } | null;
-    if (artifactRef) {
+    if (
+        artifactRef &&
+        typeof artifactRef.entityId === 'string' &&
+        artifactRef.entityId.length > 0 &&
+        (artifactRef.type === 'prd' || artifactRef.type === 'roadmap' || artifactRef.type === 'tasks')
+    ) {
         assets.push({
             id: artifactRef.entityId,
             type: artifactRef.type,

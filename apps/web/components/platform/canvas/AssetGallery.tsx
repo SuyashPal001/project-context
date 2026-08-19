@@ -7,6 +7,7 @@ import type { Asset, AssetType } from '@/types/assets';
 interface AssetGalleryProps {
   conversationId: string;
   filterAssetId?: string;
+  fallbackAsset?: Asset;
   onCardClick: (asset: Asset, allAssets: Asset[]) => void;
 }
 
@@ -57,17 +58,19 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
           <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
             {TYPE_BADGES[asset.type]}
           </span>
-          <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                (window as any).__addComposeAttachment?.(asset);
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-full bg-background text-foreground text-xs font-medium shadow-sm hover:bg-muted"
-            >
-              + Add to task
-            </button>
-          </div>
+          {asset.fileId && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  (window as any).__addComposeAttachment?.(asset);
+                }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 rounded-full bg-background text-foreground text-xs font-medium shadow-sm hover:bg-muted"
+              >
+                + Add to task
+              </button>
+            </div>
+          )}
         </div>
         <div className="px-2.5 py-2">
           <p className="text-xs font-medium truncate">{asset.filename}</p>
@@ -78,9 +81,10 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
   );
 }
 
-export function AssetGallery({ conversationId, filterAssetId, onCardClick }: AssetGalleryProps) {
+export function AssetGallery({ conversationId, filterAssetId, fallbackAsset, onCardClick }: AssetGalleryProps) {
   const { assets, isLoading } = useConversationAssets(conversationId);
   const visible = filterAssetId ? assets.filter(a => a.id === filterAssetId) : assets;
+  const showFallback = filterAssetId && visible.length === 0 && !!fallbackAsset;
 
   return (
     <div className="flex flex-col h-full">
@@ -95,6 +99,10 @@ export function AssetGallery({ conversationId, filterAssetId, onCardClick }: Ass
       <div className="flex-1 overflow-y-auto p-4">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : showFallback ? (
+          <div className="grid grid-cols-2 gap-3">
+            <AssetCard asset={fallbackAsset} onClick={() => onCardClick(fallbackAsset, [fallbackAsset])} />
+          </div>
         ) : visible.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing generated in this conversation yet.</p>
         ) : (

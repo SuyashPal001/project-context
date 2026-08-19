@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { CanvasViewer } from './CanvasViewer';
 import { KnowledgeBaseSection } from './KnowledgeBaseSection';
 import { ArtifactPanel } from './ArtifactPanel';
@@ -37,6 +38,7 @@ const initialState: CanvasState = {
 const OVERLAY_DURATION = 2000;
 
 export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending, agentId, conversationId }: CanvasProps) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
   const KNOWLEDGE_TAB: CanvasTab = { id: 'knowledge', kind: 'knowledge', title: 'Knowledge Base', closeable: false };
@@ -162,6 +164,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         pmRunId: (meta as any)?.pmRunId ?? prev.pmRunId,
         pmStepId: (meta as any)?.pmStepId ?? prev.pmStepId,
       } : prev, false);
+      queryClient.invalidateQueries({ queryKey: ['conversation-assets', conversationId] });
       onActivity?.();
       return;
     }
@@ -197,6 +200,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
       if (data.filePath) {
         setRecentFiles(prev => [{ path: data.filePath!, type: data.fileType }, ...prev.slice(0, 4)]);
       }
+      queryClient.invalidateQueries({ queryKey: ['conversation-assets', conversationId] });
       onActivity?.();
       return;
     }
@@ -238,7 +242,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     });
 
     onActivity?.();
-  }, [onActivity]);
+  }, [onActivity, queryClient, conversationId]);
 
   const handleReset = useCallback(() => {
     setState(initialState);
@@ -424,7 +428,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         )}
 
         {activeTab.kind === 'file' && activeTab.asset && (
-          <AssetGallery conversationId={conversationId ?? ''} filterAssetId={activeTab.asset.id} onCardClick={(asset, allAssets) => setLightboxAsset({ asset, allAssets })} />
+          <AssetGallery conversationId={conversationId ?? ''} filterAssetId={activeTab.asset.id} fallbackAsset={activeTab.asset} onCardClick={(asset, allAssets) => setLightboxAsset({ asset, allAssets })} />
         )}
       </div>
       {lightboxAsset && (

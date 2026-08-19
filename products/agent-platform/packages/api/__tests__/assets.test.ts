@@ -74,6 +74,39 @@ describe('GET /conversations/:id/assets', () => {
         ]);
     });
 
+    it('skips a malformed artifactRef (missing entityId) and produces zero assets from that message', async () => {
+        const conversationRow = { id: 'conv-1', tenantId: 'tenant-1', userId: 'user-1' };
+        const messageRows = [
+            {
+                id: 'msg-1',
+                createdAt: new Date('2026-08-01T00:00:00Z'),
+                attachments: null,
+                artifactRef: { type: 'prd', title: 'Missing entityId PRD' },
+            },
+        ];
+
+        let call = 0;
+        dbMock.select.mockImplementation(() => ({
+            from: () => ({
+                where: (...args: unknown[]) => {
+                    call += 1;
+                    if (call === 1) {
+                        return { limit: async () => [conversationRow] };
+                    }
+                    return { orderBy: async () => messageRows };
+                },
+            }),
+        }));
+
+        const { assetsRoutes } = await import('../routes/assets');
+        const app = appWithContext().route('/conversations', assetsRoutes);
+        const res = await app.request('/conversations/conv-1/assets');
+        const body = await res.json() as { data: unknown[] };
+
+        expect(res.status).toBe(200);
+        expect(body.data).toEqual([]);
+    });
+
     it('returns 404 when the conversation does not belong to this tenant/user', async () => {
         dbMock.select.mockImplementation(() => ({
             from: () => ({ where: () => ({ limit: async () => [] }) }),
