@@ -202,29 +202,6 @@
   }
 }
 
-/* Computer agent mark — small monitor-icon badge used as the assistant's
-   recurring chat-row mark for every reply after the first (which gets the
-   full AgentOrb instead). The dot "inside the screen" blinks on the same
-   cadence feel as the orb's own eye-blink, done in pure CSS rather than
-   mounting a live AgentOrb canvas per row (that runs a continuous rAF loop
-   plus a global mousemove listener — fine for the one orb on screen, not
-   for potentially dozens of these in a long conversation). */
-@keyframes computer-screen-blink {
-  0%, 92%, 100% { opacity: 1; transform: scaleY(1); }
-  96%           { opacity: 0.25; transform: scaleY(0.15); }
-}
-
-.animate-computer-blink {
-  transform-origin: center;
-  animation: computer-screen-blink 4.5s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-computer-blink {
-    animation: none;
-  }
-}
-
 /* Tiptap editor — code block dark theme */
 .tiptap pre {
   background: #1a1a1a;

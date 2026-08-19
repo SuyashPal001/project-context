@@ -57,8 +57,6 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // state (last message's clarificationRequest still 'pending') rather than from
     // isStreaming, so the status line reflects who's actually supposed to act next.
     const lastMessage = messages[messages.length - 1];
-    // The orb avatar appears only on this one message — see isFirstAssistantMessage below.
-    const firstAssistantMessageId = messages.find(m => m.role === 'assistant')?.id;
     // The pending clarification takes over the panel (see the overlay render below)
     // instead of rendering inline — MessageItem deliberately skips it while pending.
     const pendingClarificationMessage = lastMessage?.clarificationRequest?.status === 'pending' ? lastMessage : undefined;
@@ -251,11 +249,6 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             key={message.id}
                             message={message}
                             isFirstInSequence={prevRole === null || prevRole !== message.role}
-                            // The orb avatar shows once for the whole conversation — its very
-                            // first assistant message — not once per reply-turn like
-                            // isFirstInSequence (which still governs the "Assistant" label and
-                            // exchange spacing below).
-                            isFirstAssistantMessage={message.role === 'assistant' && firstAssistantMessageId === message.id}
                             isNewExchange={prevRole !== null && prevRole !== message.role}
                             isLastMessage={isLastMessage}
                             freshUrls={freshUrls}

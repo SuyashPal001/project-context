@@ -3,7 +3,6 @@
 import { useState, useRef } from "react";
 import { Terminal, Info, Image as ImageIcon, RotateCcw, Pencil, Check, X } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
-import { ComputerAgentMark } from "./ComputerAgentMark";
 import { Message, PlanResult, ToolCall, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -27,12 +26,6 @@ interface MessageItemProps {
     message: Message;
     freshUrls: Record<string, string>;
     isFirstInSequence?: boolean;
-    // True only for the single first assistant message in the whole
-    // conversation — this is what actually gates the orb avatar. Distinct
-    // from isFirstInSequence (which still gates the "Assistant" label and
-    // exchange spacing), since the orb should show once per conversation,
-    // not once per reply-turn.
-    isFirstAssistantMessage?: boolean;
     isNewExchange?: boolean;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
@@ -58,7 +51,6 @@ export function MessageItem({
     message,
     freshUrls,
     isFirstInSequence,
-    isFirstAssistantMessage,
     isNewExchange,
     onApprove,
     onDismiss,
@@ -111,19 +103,12 @@ export function MessageItem({
             isNewExchange && "mt-6"
         )}>
             {isAssistant && (
-                isFirstAssistantMessage
+                isFirstInSequence
                     ? <AgentOrb size={40} state="idle" />
-                    // Same-width slot for every other assistant message, so the text
-                    // column still lines up under the very first message's orb. Holds a
-                    // small computer-mark instead of dead space — "the agent inside the
-                    // computer" — its screen blinks on the same cadence feel as the
-                    // orb's own eyes (CSS-only, not a live orb instance per row; see
-                    // ComputerAgentMark for why).
-                    : (
-                        <div className="w-10 shrink-0 flex items-center justify-center">
-                            <ComputerAgentMark />
-                        </div>
-                    )
+                    // Same-width empty spacer for a consecutive assistant reply, so
+                    // the text column still lines up under the first message's avatar
+                    // instead of every reply in the run re-rendering its own icon.
+                    : <div className="w-10 shrink-0" />
             )}
 
             <div className={cn(
