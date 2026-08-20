@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Brain, Globe, FileSearch, CalendarClock, Network } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { AttachSkillPicker } from "@/components/platform/skills/AttachSkillPicker";
 import type { AgentDetail } from "@/components/platform/agents/types";
 
 interface AgentSkillSectionProps {
@@ -58,7 +61,8 @@ interface CapabilityItem {
     description: string;
 }
 
-export function AgentSkillSection({ agent, isLoading }: AgentSkillSectionProps) {
+export function AgentSkillSection({ agent, agentId, isLoading }: AgentSkillSectionProps) {
+    const [attachOpen, setAttachOpen] = useState(false);
     const name = agent?.name ?? "";
     const description = agent?.description?.trim()
         ? agent.description
@@ -116,6 +120,29 @@ export function AgentSkillSection({ agent, isLoading }: AgentSkillSectionProps) 
                     </div>
                 </CardContent>
             </Card>
+
+            <Card>
+                <CardContent className="pt-6 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-sm font-semibold">Skills library</h3>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                Attach an installed skill package to this agent.
+                            </p>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => setAttachOpen(true)}>
+                            Attach from library
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <AttachSkillPicker
+                agentId={agentId}
+                open={attachOpen}
+                onOpenChange={setAttachOpen}
+                onAttached={() => { /* no agent-skills list is rendered on this page yet to invalidate */ }}
+            />
         </>
     );
 }

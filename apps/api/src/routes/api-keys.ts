@@ -85,8 +85,8 @@ apiKeysRoutes.get('/:id/usage', async (c) => {
             FROM usage_records
             WHERE api_key_id = ${keyId}
               AND tenant_id = ${tenantId}
-              AND recorded_at >= ${startDate}
-              AND recorded_at <= ${endDate}
+              AND recorded_at >= ${startDate.toISOString()}
+              AND recorded_at <= ${endDate.toISOString()}
             GROUP BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
             ORDER BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
         `);

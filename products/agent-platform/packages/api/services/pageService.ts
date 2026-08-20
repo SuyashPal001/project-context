@@ -62,12 +62,20 @@ export function getPool(): pg.Pool {
     // then throws SELF_SIGNED_CERT_IN_CHAIN on every query. Whether to skip
     // chain verification comes from configuration (sslmode=no-verify in the
     // URL, or DATABASE_SSL_NO_VERIFY), never from sniffing the hostname.
-    const connectionString = process.env.DATABASE_URL!
-    const { sslNoVerify } = resolveDbOptions(connectionString)
-    _pool = new pg.Pool({
-      connectionString,
-      ...(sslNoVerify ? { ssl: { rejectUnauthorized: false } } : {}),
-    })
+    //
+    // node-postgres merges `parse(connectionString)` over the explicit config
+    // object (see pg's connection-parameters.js), so a separate `ssl` option
+    // passed alongside `connectionString` is silently overwritten by whatever
+    // sslmode the URL itself encodes. The override has to live in the URL.
+    const rawConnectionString = process.env.DATABASE_URL!
+    const { sslNoVerify } = resolveDbOptions(rawConnectionString)
+    let connectionString = rawConnectionString
+    if (sslNoVerify) {
+      const url = new URL(rawConnectionString)
+      url.searchParams.set('sslmode', 'no-verify')
+      connectionString = url.toString()
+    }
+    _pool = new pg.Pool({ connectionString })
     _pool.on('error', (err: Error) => {
       console.error('[pageService] pool error:', err.message)
     })
