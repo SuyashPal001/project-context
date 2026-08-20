@@ -149,8 +149,13 @@ skillsRoutes.get('/:id/versions', async (c) => {
   const permissions = (c.get('requestContext') as any)?.permissions ?? [];
   if (!hasPermission(permissions, 'skills', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
+  const tenantId = (c.get('requestContext') as any)?.tenant?.id;
   const skillId = c.req.param('id');
-  if (!await resolveSkill(skillId)) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+  const skill = await resolveSkill(skillId);
+  if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+  if (skill.ownerTenantId !== tenantId && skill.visibility !== 'public' && !skill.isOfficial) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
 
   const data = await db.select().from(skillVersions).where(eq(skillVersions.skillId, skillId)).orderBy(desc(skillVersions.version));
   return c.json({ data });

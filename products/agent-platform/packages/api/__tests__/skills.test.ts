@@ -99,3 +99,59 @@ describe('POST /skills/:id — new version', () => {
     expect(body.data.version.version).toBe(4);
   });
 });
+
+describe('GET /skills/:id/versions', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns 403 for another tenant\'s private skill', async () => {
+    dbMock.select.mockImplementation(() => ({
+      from: (table: unknown) => {
+        if (table === skills) {
+          return {
+            where: () => ({
+              limit: async () => [{ id: 'skill-1', ownerTenantId: 'tenant-2', visibility: 'private', isOfficial: false }],
+            }),
+          };
+        }
+        throw new Error('unexpected select target');
+      },
+    }));
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills/skill-1/versions');
+
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 200 for a public skill not owned by the caller', async () => {
+    dbMock.select.mockImplementation(() => ({
+      from: (table: unknown) => {
+        if (table === skills) {
+          return {
+            where: () => ({
+              limit: async () => [{ id: 'skill-1', ownerTenantId: 'tenant-2', visibility: 'public', isOfficial: false }],
+            }),
+          };
+        }
+        if (table === skillVersions) {
+          return { where: () => ({ orderBy: async () => [{ id: 'version-1', skillId: 'skill-1', version: 1 }] }) };
+        }
+        throw new Error('unexpected select target');
+      },
+    }));
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills/skill-1/versions');
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toBe('version-1');
+  });
+});
