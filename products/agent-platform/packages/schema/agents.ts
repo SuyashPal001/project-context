@@ -19,6 +19,17 @@ export const workflowRunStatusEnum = pgEnum('workflow_run_status', ['running', '
 export const agentTypeEnum = pgEnum('agent_type', ['ops', 'support', 'billing', 'custom', 'product_manager', 'analyst', 'project_manager', 'tech_lead', 'architect']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'paused', 'retired']);
 
+export type AvatarParams = {
+  head: 'tall' | 'round' | 'oval';
+  eyes: 'dots' | 'shades' | 'visor' | 'eyepatch';
+  accessory: 'cybermohawk' | 'hightop' | 'animespikes' | 'pompadour' | 'curtainbangs'
+    | 'topknot' | 'bikerhelmet' | 'bandana' | 'hood' | 'none';
+  mouth: 'goatee' | 'beard' | 'stubble' | 'smile' | 'none';
+  skinColor: string;
+  hairColor: string;
+  bgTheme: 'terracotta' | 'light' | 'space' | 'matrix' | 'transparent';
+};
+
 export const agents = pgTable('agents', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
@@ -29,6 +40,7 @@ export const agents = pgTable('agents', {
   apiKeyId: uuid('api_key_id').notNull(),
   llmProviderId: uuid('llm_provider_id'),
   avatarUrl: text('avatar_url'),
+  avatarParams: jsonb('avatar_params').$type<AvatarParams | null>(),
   personaId: uuid('persona_id').references(() => personas.id),
   description: text('description'),
   isInternal: boolean('is_internal').notNull().default(false),
