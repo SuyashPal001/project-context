@@ -25,6 +25,7 @@ import { llmProvidersRoutes } from './routes/llm-providers';
 import { widgetRoutes } from './routes/widget';
 import { handoverRoutes } from './routes/handover';
 import { publicPackRoutes } from './routes/packs.public';
+import { skillsRoutes } from './routes/skills';
 
 // Internal routes
 import internalRetrieveRoute from './routes/internal/retrieve';
@@ -44,6 +45,7 @@ import { handleListProviders, handleCreateProvider, handlePatchProvider } from '
 import { handleKnowledgeGaps, handleEvalScores, handleToolPerformance, handleEvalsResults } from './routes/ops.intelligence';
 import { handleFinops, handleOverview } from './routes/ops.finops';
 import { handleListFairnessReviews, handleOpsRunFairness, handleListResponseAudits } from './routes/ops.fairness';
+import { handlePatchSkillOfficial } from './routes/ops.skills';
 
 let countersRegistered = false;
 function registerCounters(): void {
@@ -78,6 +80,7 @@ export function mountApiRoutes(api: Hono<AppEnv>): void {
     api.route('/tasks', tasksRoutes);
     api.route('/plans', plansRoutes);
     api.route('/handover', handoverRoutes);
+    api.route('/skills', skillsRoutes);
     api.route('/prds', prdsRoutes);
     api.route('/milestones', milestonesRoutes);
     api.route('/pages', pagesRoutes);
@@ -109,6 +112,7 @@ export function mountOpsRoutes(opsApp: Hono<AppEnv>): void {
     agentOps.get('/fairness', handleListFairnessReviews);
     agentOps.post('/fairness/:agentId/run', handleOpsRunFairness);
     agentOps.get('/fairness/response-audits', handleListResponseAudits);
+    agentOps.patch('/skills/:id', handlePatchSkillOfficial);
     opsApp.route('/ops', agentOps);
     opsApp.route('/ops/agent-templates', agentTemplatesRoutes);
     opsApp.route('/ops/personas', personasRoutes);
