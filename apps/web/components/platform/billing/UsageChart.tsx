@@ -1,6 +1,5 @@
 "use client";
 
-import { useTheme } from "next-themes";
 import {
     BarChart,
     Bar,
@@ -38,9 +37,6 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export function UsageChart({ data }: UsageChartProps) {
-    const { resolvedTheme } = useTheme();
-    const primaryColor = resolvedTheme === "dark" ? "hsl(210 40% 98%)" : "hsl(222.2 47.4% 11.2%)"; // Default fallback, but using current color. Wait, let's use a simpler approach.
-
     return (
         <div className="h-[300px] w-full mt-4">
             <ResponsiveContainer width="100%" height="100%">
@@ -52,7 +48,7 @@ export function UsageChart({ data }: UsageChartProps) {
                         dataKey="date"
                         tickLine={false}
                         axisLine={false}
-                        tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
                         tickFormatter={(value: string | number) =>
                             new Date(value).toLocaleDateString("en-US", {
                                 month: "short",
@@ -63,15 +59,15 @@ export function UsageChart({ data }: UsageChartProps) {
                     <YAxis
                         tickLine={false}
                         axisLine={false}
-                        tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
                         tickFormatter={(value: number) =>
                             value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value.toString()
                         }
                     />
-                    <Tooltip cursor={{ fill: "hsl(var(--muted)/0.5)" }} content={<CustomTooltip />} />
+                    <Tooltip cursor={{ fill: "color-mix(in oklab, var(--muted) 50%, transparent)" }} content={<CustomTooltip />} />
                     <Bar
                         dataKey="value"
-                        fill="hsl(var(--primary))"
+                        fill="var(--primary)"
                         radius={[4, 4, 0, 0]}
                         maxBarSize={40}
                     />

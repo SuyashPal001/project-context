@@ -20,7 +20,7 @@ export function StepCard({ step, index }: { step: Step; index: number }) {
     return (
         <div className={cn(
             'border rounded-xl p-4 mb-3 transition-all group',
-            isRunning ? 'bg-[#0d1117] border-primary/40 shadow-[0_0_0_1px_hsl(var(--primary)/0.15)]' : 'bg-[#111] border-[#1e1e1e]',
+            isRunning ? 'bg-[#0d1117] border-primary/40 shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_15%,transparent)]' : 'bg-[#111] border-[#1e1e1e]',
         )}>
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
