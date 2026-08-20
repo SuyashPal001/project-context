@@ -69,7 +69,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
         .select({
             id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
             model: agents.model, status: agents.status, apiKeyId: agents.apiKeyId,
-            llmProviderId: agents.llmProviderId, avatarUrl: agents.avatarUrl, description: agents.description,
+            llmProviderId: agents.llmProviderId, avatarUrl: agents.avatarUrl, avatarParams: agents.avatarParams, description: agents.description,
             isInternal: agents.isInternal, createdBy: agents.createdBy, personaId: agents.personaId,
             createdAt: agents.createdAt, updatedAt: agents.updatedAt,
             persona: {
@@ -160,7 +160,24 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
     if (!existing) return c.json({ error: 'Agent not found' }, 404);
 
     const body = await c.req.json();
-    const result = z.object({ name: z.string().min(1).max(100).optional(), description: z.string().max(500).nullable().optional(), avatarUrl: z.string().url().nullable().optional(), status: z.enum(['active', 'paused', 'retired']).optional(), model: z.string().optional(), llmProviderId: z.string().uuid().optional(), personaId: z.string().uuid().nullable().optional() }).safeParse(body);
+    const result = z.object({
+        name: z.string().min(1).max(100).optional(),
+        description: z.string().max(500).nullable().optional(),
+        avatarUrl: z.string().url().nullable().optional(),
+        avatarParams: z.object({
+            head: z.enum(['tall', 'round', 'oval']),
+            eyes: z.enum(['dots', 'shades', 'visor', 'eyepatch']),
+            accessory: z.enum(['cybermohawk', 'hightop', 'animespikes', 'pompadour', 'curtainbangs', 'topknot', 'bikerhelmet', 'bandana', 'hood', 'none']),
+            mouth: z.enum(['goatee', 'beard', 'stubble', 'smile', 'none']),
+            skinColor: z.string(),
+            hairColor: z.string(),
+            bgTheme: z.enum(['terracotta', 'light', 'space', 'matrix', 'transparent']),
+        }).nullable().optional(),
+        status: z.enum(['active', 'paused', 'retired']).optional(),
+        model: z.string().optional(),
+        llmProviderId: z.string().uuid().optional(),
+        personaId: z.string().uuid().nullable().optional(),
+    }).safeParse(body);
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 
     // Retiring via PATCH is the same "Fire" action as DELETE — must carry the
@@ -172,7 +189,7 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
         }
     }
 
-    const updateData = canFullUpdate ? result.data : { name: result.data.name, avatarUrl: result.data.avatarUrl, personaId: result.data.personaId };
+    const updateData = canFullUpdate ? result.data : { name: result.data.name, avatarUrl: result.data.avatarUrl, avatarParams: result.data.avatarParams, personaId: result.data.personaId };
     const [updated] = await db.update(agents).set({ ...updateData, updatedAt: new Date() }).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).returning();
 
     if (result.data.status && canFullUpdate) {
