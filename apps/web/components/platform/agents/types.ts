@@ -2,6 +2,7 @@
 
 import * as z from "zod";
 import type { PersonaSummary } from "@/components/platform/personas/types";
+import type { AvatarParams } from "@/components/platform/agents/avatar-builder/avatarParams";
 
 export const agentSchema = z.object({
     name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -38,6 +39,7 @@ export interface AgentDetail extends Agent {
     createdByName: string | null;
     description: string | null;
     avatarUrl: string | null;
+    avatarParams: AvatarParams | null;
 }
 
 export interface Workflow {

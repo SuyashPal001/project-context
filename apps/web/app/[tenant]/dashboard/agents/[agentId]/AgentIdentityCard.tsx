@@ -21,6 +21,8 @@ import {
 import { ImageUpload } from "@/components/platform/ImageUpload";
 import type { AgentDetail } from "@/components/platform/agents/types";
 import type { PersonaSummary } from "@/components/platform/personas/types";
+import { AvatarBuilderModal } from "@/components/platform/agents/avatar-builder/AvatarBuilderModal";
+import type { AvatarParams } from "@/components/platform/agents/avatar-builder/avatarParams";
 import { BrandingLockedOverlay } from "./BrandingLockedOverlay";
 
 const NO_PERSONA_VALUE = "__none__";
@@ -43,8 +45,9 @@ export function AgentIdentityCard({
     tenantSlug,
 }: AgentIdentityCardProps) {
     const queryClient = useQueryClient();
-    const [form, setForm] = React.useState<{ name: string; avatarUrl: string; personaId: string | null }>({ name: "", avatarUrl: "", personaId: null });
+    const [form, setForm] = React.useState<{ name: string; avatarUrl: string; avatarParams: AvatarParams | null; personaId: string | null }>({ name: "", avatarUrl: "", avatarParams: null, personaId: null });
     const [isDirty, setIsDirty] = React.useState(false);
+    const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
 
     const { data: personasData } = useQuery<{ personas: PersonaSummary[] }>({
         queryKey: ["personas"],
@@ -53,16 +56,17 @@ export function AgentIdentityCard({
 
     React.useEffect(() => {
         if (agent) {
-            setForm({ name: agent.name ?? "", avatarUrl: agent.avatarUrl ?? "", personaId: agent.persona?.id ?? null });
+            setForm({ name: agent.name ?? "", avatarUrl: agent.avatarUrl ?? "", avatarParams: agent.avatarParams ?? null, personaId: agent.persona?.id ?? null });
             setIsDirty(false);
         }
     }, [agent]);
 
     const updateMutation = useMutation({
-        mutationFn: (values: { name: string; avatarUrl: string; personaId: string | null }) =>
+        mutationFn: (values: { name: string; avatarUrl: string; avatarParams: AvatarParams | null; personaId: string | null }) =>
             api.patch(`/api/v1/agents/${agentId}`, {
                 name: values.name || undefined,
                 avatarUrl: values.avatarUrl || null,
+                avatarParams: values.avatarParams,
                 personaId: values.personaId,
             }),
         onSuccess: () => {
@@ -104,11 +108,20 @@ export function AgentIdentityCard({
                                     value={form.avatarUrl}
                                     fallbackText={initials}
                                     onChange={(url) => {
-                                        setForm(prev => ({ ...prev, avatarUrl: url }));
+                                        setForm(prev => ({ ...prev, avatarUrl: url, avatarParams: null }));
                                         setIsDirty(true);
                                     }}
                                     disabled={!isOwner}
                                 />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={!isOwner}
+                                    onClick={() => setIsBuilderOpen(true)}
+                                >
+                                    Build Avatar
+                                </Button>
                             </div>
 
                             <div className="space-y-1.5">
@@ -165,6 +178,16 @@ export function AgentIdentityCard({
                         </div>
 
                         {!brandingEnabled && <BrandingLockedOverlay tenantSlug={tenantSlug} />}
+                        <AvatarBuilderModal
+                            open={isBuilderOpen}
+                            onOpenChange={setIsBuilderOpen}
+                            initialParams={form.avatarParams}
+                            agentName={form.name || agent?.name || "agent"}
+                            onSave={({ url, params }) => {
+                                setForm(prev => ({ ...prev, avatarUrl: url, avatarParams: params }));
+                                setIsDirty(true);
+                            }}
+                        />
                     </div>
                 )}
             </CardContent>
