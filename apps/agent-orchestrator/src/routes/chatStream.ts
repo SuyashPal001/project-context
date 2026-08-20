@@ -65,15 +65,17 @@ async function buildMastraMessage(
   message: string,
   sessionId: string,
 ): Promise<string | { role: 'user'; content: ContentPart[] }> {
-  // audio/* intentionally excluded: agent-side audio understanding isn't built yet,
-  // and routing it through the synchronous transcribe-then-respond path here blocked
-  // the SSE connection open with no bytes flowing for the length of the transcription
-  // call, which Cloudflare's edge would kill as a QUIC protocol error. Audio still
-  // reaches chat history via saveUserMessage() below (finish and error paths).
+  // audio/* and video/* intentionally excluded: both require slow processing
+  // (Speech-to-Text, ffmpeg frame extraction) that has no business blocking a live
+  // chat turn. Routing them through this synchronous path held the SSE connection
+  // open with no bytes flowing for the length of the processing call, which
+  // Cloudflare's edge would kill as a QUIC protocol error. Both attachment types
+  // still reach chat history via saveUserMessage() below (finish and error paths).
+  // Real agent understanding of audio/video belongs in an async artifact pipeline
+  // (queue job -> worker -> result delivered as a follow-up), not this request path.
   const mediaAttachments = attachments.filter(
     (a) =>
       a.type?.startsWith('image/') ||
-      a.type?.startsWith('video/') ||
       a.type === 'application/pdf' ||
       a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   )
