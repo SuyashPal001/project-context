@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import * as mammoth from 'mammoth';
 import { toast } from 'sonner';
 import { FileText, Trash2, Plus, Download, Loader2 } from 'lucide-react';
 import { ingestDocument } from '@/lib/ingestDocument';
+import { convertDocxToHtml } from './convertDocxToHtml';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -82,14 +82,18 @@ export function KnowledgeBaseSection() {
     }
     if (type === 'pdf') newDoc.previewUrl = URL.createObjectURL(file);
     else if (type === 'txt') { try { newDoc.textContent = await file.text(); } catch { /* ignore */ } }
-    else if (type === 'docx') {
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        newDoc.htmlContent = result.value;
-      } catch { /* ignore */ }
-    }
     setDocuments(prev => [newDoc, ...prev]);
+
+    if (type === 'docx') {
+      // Off the main thread and after the card is already visible — see
+      // convertDocxToHtml.ts. Independent of ingestion below: a failed or
+      // slow preview conversion never blocks or delays the actual RAG
+      // upload/chunking.
+      file.arrayBuffer()
+        .then(arrayBuffer => convertDocxToHtml(arrayBuffer).promise)
+        .then(html => setDocuments(prev => prev.map(d => d.id === localId ? { ...d, htmlContent: html } : d)))
+        .catch(() => { /* preview stays unavailable */ });
+    }
 
     try {
       // Shared with the chat composer — see apps/web/lib/ingestDocument.ts.
