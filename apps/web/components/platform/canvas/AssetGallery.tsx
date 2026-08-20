@@ -39,6 +39,19 @@ const TYPE_BADGES: Record<AssetType, string> = {
   tasks: 'TASKS',
 };
 
+const TYPE_FILTER_LABELS: Record<AssetType, string> = {
+  video: 'Video',
+  audio: 'Audio',
+  image: 'Image',
+  markdown: 'Markdown',
+  pdf: 'PDF',
+  docx: 'DOCX',
+  file: 'File',
+  prd: 'PRD',
+  roadmap: 'Roadmap',
+  tasks: 'Tasks',
+};
+
 // The `/assets` list endpoint never returns a thumbnailUrl (it would mean
 // presigning every image on every gallery fetch) — resolve one lazily per
 // card instead, mirroring AssetLightbox's useAssetUrl. Without this, cards
@@ -192,17 +205,41 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
 
 export function AssetGallery({ conversationId, filterAssetId, fallbackAsset, onCardClick }: AssetGalleryProps) {
   const { assets, isLoading } = useConversationAssets(conversationId);
-  const visible = filterAssetId ? assets.filter(a => a.id === filterAssetId) : assets;
+  const [typeFilter, setTypeFilter] = useState<AssetType | 'all'>('all');
+  useEffect(() => { setTypeFilter('all'); }, [conversationId]);
+
+  const availableTypes = Array.from(new Set(assets.map(a => a.type)));
+  const typeFiltered = typeFilter === 'all' ? assets : assets.filter(a => a.type === typeFilter);
+  const visible = filterAssetId ? assets.filter(a => a.id === filterAssetId) : typeFiltered;
   const showFallback = filterAssetId && visible.length === 0 && !!fallbackAsset;
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-none flex items-center justify-between px-4 py-3 border-b border-border">
-        <h3 className="text-sm font-semibold">Generate in ⏱ Chat History</h3>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <button className="hover:text-foreground">Filter</button>
-          <button className="hover:text-foreground">View</button>
-        </div>
+      <div className="flex-none px-4 py-3 border-b border-border space-y-2">
+        <h3 className="text-sm font-semibold">Chat History</h3>
+        {!filterAssetId && availableTypes.length > 1 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            <button
+              onClick={() => setTypeFilter('all')}
+              className={`shrink-0 text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                typeFilter === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-border hover:text-foreground'
+              }`}
+            >
+              All
+            </button>
+            {availableTypes.map(type => (
+              <button
+                key={type}
+                onClick={() => setTypeFilter(type)}
+                className={`shrink-0 text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                  typeFilter === type ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground border-border hover:text-foreground'
+                }`}
+              >
+                {TYPE_FILTER_LABELS[type]}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
@@ -213,7 +250,11 @@ export function AssetGallery({ conversationId, filterAssetId, fallbackAsset, onC
             <AssetCard asset={fallbackAsset} onClick={() => onCardClick(fallbackAsset, [fallbackAsset])} />
           </div>
         ) : visible.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing generated in this conversation yet.</p>
+          <p className="text-sm text-muted-foreground">
+            {typeFilter === 'all'
+              ? 'Nothing generated in this conversation yet.'
+              : `No ${TYPE_FILTER_LABELS[typeFilter].toLowerCase()} files in this conversation.`}
+          </p>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {visible.map(asset => (
