@@ -219,9 +219,31 @@ describe('POST /skills/:id/install', () => {
     expect(body.data.installedVersion).toBe(5);
   });
 
-  it('refuses to install a private skill owned by a different tenant', async () => {
+  it('installs an official-but-private skill owned by a different tenant', async () => {
     dbMock.select.mockImplementation(() => ({
-      from: () => ({ where: () => ({ limit: async () => [{ id: 'skill-1', ownerTenantId: 'tenant-2', visibility: 'private', latestVersion: 1 }] }) }),
+      from: () => ({ where: () => ({ limit: async () => [{ id: 'skill-1', ownerTenantId: 'tenant-2', visibility: 'private', isOfficial: true, latestVersion: 3 }] }) }),
+    }));
+    dbMock.insert.mockImplementation(() => ({
+      values: (data: Record<string, unknown>) => ({
+        onConflictDoUpdate: () => ({ returning: async () => [{ id: 'install-1', ...data }] }),
+        catch: () => {},
+      }),
+    }));
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills/skill-1/install', { method: 'POST' });
+
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.data.installedVersion).toBe(3);
+  });
+
+  it('refuses to install a private, non-official skill owned by a different tenant', async () => {
+    dbMock.select.mockImplementation(() => ({
+      from: () => ({ where: () => ({ limit: async () => [{ id: 'skill-1', ownerTenantId: 'tenant-2', visibility: 'private', isOfficial: false, latestVersion: 1 }] }) }),
     }));
 
     const { skillsRoutes } = await import('../routes/skills');

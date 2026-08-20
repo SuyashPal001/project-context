@@ -193,7 +193,7 @@ skillsRoutes.post('/:id/install', async (c) => {
   const skillId = c.req.param('id');
   const skill = await resolveSkill(skillId);
   if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
-  if (skill.visibility !== 'public' && skill.ownerTenantId !== tenantId) {
+  if (skill.ownerTenantId !== tenantId && skill.visibility !== 'public' && !skill.isOfficial) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
   if (skill.latestVersion < 1) {
