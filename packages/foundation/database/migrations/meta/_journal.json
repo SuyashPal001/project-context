@@ -421,6 +421,13 @@
       "when": 1787249475994,
       "tag": "0059_light_namora",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1787259757772,
+      "tag": "0060_windy_the_hunter",
+      "breakpoints": true
     }
   ]
 }
