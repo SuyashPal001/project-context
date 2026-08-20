@@ -5,6 +5,7 @@ export * from './clients';
 export * from './task-revisions';
 export * from './handover';
 export * from './conversations';
+export * from './skills';
 export * from './documents';
 export * from './knowledge';
 export * from './intelligence';

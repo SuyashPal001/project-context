@@ -3,6 +3,7 @@ import { relations } from 'drizzle-orm';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { users } from '@serverless-saas/database/schema/auth';
 import { agents } from './agents';
+import { skillInstalls } from './skills';
 
 export const conversationStatusEnum = pgEnum('conversation_status', ['active', 'archived', 'escalated']);
 
@@ -84,6 +85,7 @@ export const agentSkills = pgTable('agent_skills', {
   systemPrompt: text('system_prompt').notNull(),
   tools: text('tools').array().notNull().default([]),
   config: jsonb('config'),
+  installId: uuid('install_id').references(() => skillInstalls.id),
   version: integer('version').notNull().default(1),
   status: agentSkillStatusEnum('status').notNull().default('active'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -100,6 +102,10 @@ export const agentSkillsRelations = relations(agentSkills, ({ one }) => ({
   tenant: one(tenants, {
     fields: [agentSkills.tenantId],
     references: [tenants.id],
+  }),
+  install: one(skillInstalls, {
+    fields: [agentSkills.installId],
+    references: [skillInstalls.id],
   }),
 }));
 
