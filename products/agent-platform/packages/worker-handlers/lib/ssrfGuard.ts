@@ -24,11 +24,28 @@ function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
+function isLinkLocalIPv6(ip: string): boolean {
+  // fe80::/10 spans fe80:: through febf:ffff:...:ffff — i.e. the first 16-bit
+  // hextet's high byte is 0xfe and its low byte is 0x80–0xbf. A literal
+  // string-prefix check against "fe80" (as the brief's original code did)
+  // misses real link-local addresses like fe90::1 or feb2::1, which are also
+  // in range but don't share that exact 4-character prefix. Parse the first
+  // hextet as a 16-bit number and check both bytes numerically, the same way
+  // isPrivateIPv4 checks 172.16.0.0/12 by range rather than string prefix.
+  const firstHextet = ip.split(':', 1)[0];
+  if (!firstHextet) return false;
+  const value = Number.parseInt(firstHextet, 16);
+  if (Number.isNaN(value)) return false;
+  const highByte = (value >> 8) & 0xff;
+  const lowByte = value & 0xff;
+  return highByte === 0xfe && lowByte >= 0x80 && lowByte <= 0xbf;
+}
+
 function isPrivateIPv6(ip: string): boolean {
   const lower = ip.toLowerCase();
   if (lower === '::1') return true;
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // fc00::/7 unique local
-  if (lower.startsWith('fe80')) return true;                         // fe80::/10 link-local
+  if (isLinkLocalIPv6(lower)) return true;                           // fe80::/10 link-local
   if (lower.startsWith('::ffff:')) return isPrivateIPv4(lower.slice('::ffff:'.length));
   return false;
 }

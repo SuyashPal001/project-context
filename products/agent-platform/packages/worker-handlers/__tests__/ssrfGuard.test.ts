@@ -61,11 +61,23 @@ describe('assertPublicHttpUrl', () => {
     ['::1', '::1 loopback'],
     ['fc00::1', 'fc00::/7 unique local (fc)'],
     ['fd12:3456::1', 'fc00::/7 unique local (fd)'],
-    ['fe80::1', 'fe80::/10 link-local'],
+    ['fe80::1', 'fe80::/10 link-local, lower bound'],
+    // fe80::/10 covers the whole fe80::–febf:ffff:...:ffff span, not just the
+    // literal "fe80" prefix. fe90::1 and febf::1 are real link-local addresses
+    // that a naive string-prefix check (matching only "fe80") would miss —
+    // this pins the numeric byte-range fix in isLinkLocalIPv6.
+    ['fe90::1', 'fe80::/10 link-local, mid-range (string-prefix gap)'],
+    ['feb2::1', 'fe80::/10 link-local, mid-range (string-prefix gap)'],
+    ['febf::1', 'fe80::/10 link-local, upper bound'],
     ['::ffff:169.254.169.254', 'IPv4-mapped metadata address'],
   ])('blocks IPv6 %s (%s)', async (address) => {
     lookupMock.mockResolvedValue([{ address, family: 6 }]);
     await expect(assertPublicHttpUrl('https://internal.example.com')).rejects.toThrow(SsrfBlockedError);
+  });
+
+  it('does not block an IPv6 address just outside fe80::/10 (fec0::1)', async () => {
+    lookupMock.mockResolvedValue([{ address: 'fec0::1', family: 6 }]);
+    await expect(assertPublicHttpUrl('https://example.com')).resolves.toBeUndefined();
   });
 
   it('allows a hostname that resolves to a public IPv6 address', async () => {
@@ -116,6 +128,27 @@ describe('fetchPublicUrl', () => {
     }) as unknown as typeof fetch;
 
     await expect(fetchPublicUrl('https://public.example.com/big.zip')).rejects.toThrow(/download limit/);
+  });
+
+  it('calls fetch with redirect: "manual" so the redirect loop — not fetch itself — controls following', async () => {
+    // The whole re-validation guarantee depends on fetch never auto-following
+    // a redirect internally (which would bypass assertPublicHttpUrl on the
+    // hop target entirely). Every other test's mock ignores its call args, so
+    // this asserts the actual options object fetch was invoked with.
+    lookupMock.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      body: { [Symbol.asyncIterator]: async function* () { yield new Uint8Array(3); } },
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchPublicUrl('https://public.example.com/file.zip');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [calledUrl, calledOptions] = fetchMock.mock.calls[0];
+    expect(calledUrl).toBe('https://public.example.com/file.zip');
+    expect(calledOptions).toMatchObject({ redirect: 'manual' });
   });
 
   it('ignores a lying Content-Length header and only counts actual streamed bytes', async () => {
