@@ -155,9 +155,9 @@ describe('GET /skills', () => {
     expect(body.data[0].latestVersionStatus).toBe('ready');
   });
 
-  it('surfaces a failed import as latestVersionStatus + failureReason', async () => {
+  it('surfaces a failed import as latestVersionStatus + failureReason for the owning tenant', async () => {
     mockList(
-      [{ id: SKILL_ID, name: 'Broken', installId: null, installedVersion: null, installStatus: null }],
+      [{ id: SKILL_ID, name: 'Broken', ownerTenantId: TENANT_1, installId: null, installedVersion: null, installStatus: null }],
       [{ skillId: SKILL_ID, status: 'failed', failureReason: 'SKILL.md not found at the archive root' }],
     );
 
@@ -170,6 +170,27 @@ describe('GET /skills', () => {
     expect(body.data[0].latestVersionStatus).toBe('failed');
     expect(body.data[0].failureReason).toBe('SKILL.md not found at the archive root');
     expect(body.data[0].installed).toBe(false);
+  });
+
+  it("hides another tenant's failureReason on the public/official tabs while still surfacing latestVersionStatus", async () => {
+    // A tenant browsing Public/Official can see skills owned by other
+    // tenants. failureReason sometimes carries raw rejection detail (a
+    // blocked hostname, manifest specifics) that must not leak cross-tenant,
+    // even though the status itself (so the card can render "failed" instead
+    // of a stuck spinner) is fine for anyone to see.
+    mockList(
+      [{ id: SKILL_ID, name: 'Broken', ownerTenantId: 'tenant-2', installId: null, installedVersion: null, installStatus: null }],
+      [{ skillId: SKILL_ID, status: 'failed', failureReason: 'Could not resolve host: internal-host.example' }],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills?tab=public');
+    const body = await res.json();
+    expect(body.data[0].latestVersionStatus).toBe('failed');
+    expect(body.data[0].failureReason).toBeNull();
   });
 
   it('falls back to null status when a skill has no version rows yet', async () => {

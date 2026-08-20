@@ -149,7 +149,12 @@ skillsRoutes.get('/', async (c) => {
           ...r,
           installed: r.installStatus === 'active',
           latestVersionStatus: latest?.status ?? null,
-          failureReason: latest?.failureReason ?? null,
+          // failureReason can carry raw, tenant-specific detail (a blocked
+          // hostname, manifest/zip contents) for several failure classes —
+          // see GET /:id/versions below, which strips it from non-owners the
+          // same way. latestVersionStatus stays visible to everyone; only the
+          // free-text reason is owner-gated.
+          failureReason: r.ownerTenantId === tenantId ? (latest?.failureReason ?? null) : null,
         };
       }),
     });
