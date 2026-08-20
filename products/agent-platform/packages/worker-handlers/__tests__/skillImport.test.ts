@@ -1,0 +1,96 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const dbMock = vi.hoisted(() => ({ execute: vi.fn(), insert: vi.fn() }));
+vi.mock('../db', () => ({ db: dbMock }));
+
+const s3SendMock = vi.hoisted(() => vi.fn());
+vi.mock('@aws-sdk/client-s3', () => ({
+  // Regular functions, not arrow functions, so `new S3Client(...)`,
+  // `new GetObjectCommand(...)`, and `new PutObjectCommand(...)` in the
+  // handler all work: arrow functions can't be invoked with `new` at all,
+  // and returning an object from a regular function called with `new`
+  // replaces the constructed instance with that object per normal JS
+  // semantics.
+  S3Client: vi.fn().mockImplementation(function S3ClientMock() { return { send: s3SendMock }; }),
+  GetObjectCommand: vi.fn().mockImplementation(function GetObjectCommandMock(input: unknown) { return { input }; }),
+  PutObjectCommand: vi.fn().mockImplementation(function PutObjectCommandMock(input: unknown) { return { input }; }),
+}));
+
+// drizzle-orm's `sql` tagged template returns an SQL object with no `.sql`
+// string property (that's a Drizzle Kit/Studio thing, not the query
+// builder) — its query text lives in `queryChunks`, an array alternating
+// string-chunk objects (`{ value: string[] }`) and bound parameters. This
+// reassembles the literal text so tests can assert on it the same way they
+// would on a plain string.
+function sqlText(executed: unknown): string {
+  if (typeof executed === 'string') return executed;
+  const chunks = (executed as { queryChunks?: unknown[] })?.queryChunks;
+  if (!Array.isArray(chunks)) return String(executed);
+  return chunks
+    .map((c) => {
+      const value = (c as { value?: unknown[] })?.value;
+      return Array.isArray(value) ? value.join('') : '';
+    })
+    .join('');
+}
+
+const safeExtractSkillZipMock = vi.hoisted(() => vi.fn());
+vi.mock('../lib/safeSkillZip', async () => {
+  const actual = await vi.importActual<typeof import('../lib/safeSkillZip')>('../lib/safeSkillZip');
+  return { ...actual, safeExtractSkillZip: safeExtractSkillZipMock };
+});
+
+describe('handleSkillImport', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dbMock.insert.mockReturnValue({ values: () => ({ catch: () => {} }) });
+  });
+
+  it('marks the version ready and bumps skills.latestVersion on a valid zip', async () => {
+    s3SendMock.mockResolvedValueOnce({
+      Body: (async function* () { yield Buffer.from('zip-bytes'); })(),
+    });
+    safeExtractSkillZipMock.mockResolvedValue({
+      accepted: [{ fileName: 'SKILL.md', buffer: Buffer.from('---\nname: demo\ndescription: d\n---\n') }],
+      skipped: [],
+      manifestSource: '---\nname: demo\ndescription: d\n---\n',
+    });
+
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'zip', fileKey: 'tenants/tenant-1/skill-uploads/x.zip' },
+    });
+
+    const executedSql = dbMock.execute.mock.calls.map((c) => sqlText(c[0]));
+    expect(executedSql.some((s) => s.includes("status = 'ready'"))).toBe(true);
+    expect(executedSql.some((s) => s.includes('latest_version'))).toBe(true);
+  });
+
+  it('marks the version failed with a safe message on a zip-bomb rejection', async () => {
+    s3SendMock.mockResolvedValueOnce({ Body: (async function* () { yield Buffer.from('x'); })() });
+    const { SkillPackageError } = await import('../lib/safeSkillZip');
+    safeExtractSkillZipMock.mockRejectedValue(new SkillPackageError('Entry "big.txt" has a compression ratio over 100:1 — rejected as a likely zip bomb'));
+
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'zip', fileKey: 'tenants/tenant-1/skill-uploads/x.zip' },
+    });
+
+    const failCall = dbMock.execute.mock.calls.find((c) => sqlText(c[0]).includes("status = 'failed'"));
+    expect(failCall).toBeDefined();
+  });
+
+  it('rejects a github source with an unsafe owner/repo/ref before fetching anything', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'github', owner: 'ok-owner', repo: 'ok-repo', ref: '"; rm -rf /' },
+    });
+
+    expect(s3SendMock).not.toHaveBeenCalled();
+    const failCall = dbMock.execute.mock.calls.find((c) => sqlText(c[0]).includes("status = 'failed'"));
+    expect(failCall).toBeDefined();
+  });
+});
