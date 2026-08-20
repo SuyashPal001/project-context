@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { FileVideo, FileAudio, FileImage, FileText, File as FileIcon } from 'lucide-react';
 import { useConversationAssets } from '@/hooks/useConversationAssets';
+import { api } from '@/lib/api';
 import type { Asset, AssetType } from '@/types/assets';
 
 interface AssetGalleryProps {
@@ -33,8 +35,28 @@ const TYPE_BADGES: Record<AssetType, string> = {
   tasks: 'TASKS',
 };
 
+// The `/assets` list endpoint never returns a thumbnailUrl (it would mean
+// presigning every image on every gallery fetch) — resolve one lazily per
+// card instead, mirroring AssetLightbox's useAssetUrl. Without this, cards
+// that arrive via the fallback asset (which does carry a live URL) lose
+// their thumbnail for good the moment the real query data replaces it.
+function useThumbnailUrl(asset: Asset): string | undefined {
+  const [url, setUrl] = useState<string | undefined>(asset.thumbnailUrl);
+  useEffect(() => {
+    setUrl(asset.thumbnailUrl);
+    if (asset.thumbnailUrl || asset.type !== 'image' || !asset.fileId) return;
+    let cancelled = false;
+    api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(asset.fileId)}/presigned-url`)
+      .then(res => { if (!cancelled) setUrl(res.presignedUrl); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [asset.thumbnailUrl, asset.type, asset.fileId]);
+  return url;
+}
+
 function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
   const Icon = TYPE_ICONS[asset.type];
+  const thumbnailUrl = useThumbnailUrl(asset);
   return (
     <div className="group relative flex flex-col rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
       <div
@@ -50,8 +72,8 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
         className="text-left hover:border-primary/40 transition-colors"
       >
         <div className="relative aspect-video bg-muted flex items-center justify-center">
-          {asset.thumbnailUrl ? (
-            <img src={asset.thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
+          {thumbnailUrl ? (
+            <img src={thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
           ) : (
             <Icon className="h-8 w-8 text-muted-foreground/60" />
           )}
