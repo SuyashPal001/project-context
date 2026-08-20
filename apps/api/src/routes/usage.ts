@@ -39,8 +39,8 @@ usageRoutes.get('/', async (c) => {
             FROM usage_records
             WHERE tenant_id = ${tenantId}
               AND metric = ${metric}
-              AND recorded_at >= ${startDate}
-              AND recorded_at <= ${endDate}
+              AND recorded_at >= ${startDate.toISOString()}
+              AND recorded_at <= ${endDate.toISOString()}
             GROUP BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
             ORDER BY DATE_TRUNC(${sql.raw(`'${truncFn}'`)}, recorded_at)
         `);
