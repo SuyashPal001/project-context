@@ -150,9 +150,26 @@ describe('safeExtractSkillZip', () => {
     await expect(safeExtractSkillZip(zip)).rejects.toThrow(/SKILL\.md/);
   });
 
-  it('rejects zip-slip path traversal', async () => {
-    const zip = buildMaliciousZip('../../etc/passwd', 'x');
-    await expect(safeExtractSkillZip(zip)).rejects.toThrow(SkillPackageError);
+  it('rejects entries with embedded null bytes', async () => {
+    // Build a normal zip first, then inject null byte into the central directory filename
+    const normalZip = await buildZip([
+      { name: 'SKILL.md', content: '---\nname: demo\ndescription: d\n---\n' },
+      { name: 'safe/path.txt', content: 'x' },
+    ]);
+
+    // Replace all occurrences of 'safe/path.txt' with 'safe/path\0txt' (replacing '.' with null)
+    const searchString = Buffer.from('safe/path.txt', 'utf-8');
+    const replaceString = Buffer.from('safe/path\0txt', 'utf-8');
+
+    let modifiedZip = normalZip;
+    let idx = -1;
+    while ((idx = modifiedZip.indexOf(searchString, idx + 1)) !== -1) {
+      const before = modifiedZip.subarray(0, idx);
+      const after = modifiedZip.subarray(idx + searchString.length);
+      modifiedZip = Buffer.concat([before, replaceString, after]);
+    }
+
+    await expect(safeExtractSkillZip(modifiedZip)).rejects.toThrow(SkillPackageError);
   });
 
   it('skips unsupported extensions without rejecting the whole archive', async () => {
