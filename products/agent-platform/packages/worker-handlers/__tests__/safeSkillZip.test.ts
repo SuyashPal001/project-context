@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import yazl from 'yazl';
-import { safeExtractSkillZip, SkillPackageError } from '../lib/safeSkillZip';
+import { pack } from 'tar-stream';
+import { gzipSync } from 'zlib';
+import { safeExtractSkillZip, safeExtractSkillTarball, SkillPackageError } from '../lib/safeSkillZip';
 
 function buildZip(entries: { name: string; content: Buffer | string }[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -71,5 +73,42 @@ describe('safeExtractSkillZip', () => {
     ]);
     const result = await safeExtractSkillZip(zip);
     expect(result.skipped).toEqual([{ fileName: 'photo.png', reason: 'unsupported file type ".png"' }]);
+  });
+});
+
+function buildTarball(entries: { name: string; content: string }[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const p = pack();
+    for (const entry of entries) p.entry({ name: entry.name }, entry.content);
+    p.finalize();
+    const chunks: Buffer[] = [];
+    p.on('data', (c: Buffer) => chunks.push(c));
+    p.on('end', () => resolve(gzipSync(Buffer.concat(chunks))));
+    p.on('error', reject);
+  });
+}
+
+describe('safeExtractSkillTarball', () => {
+  it('strips the GitHub codeload {repo}-{ref}/ wrapper and finds SKILL.md', async () => {
+    const tarball = await buildTarball([
+      { name: 'my-repo-main/SKILL.md', content: '---\nname: demo\ndescription: d\n---\n' },
+      { name: 'my-repo-main/scripts/run.sh', content: '#!/bin/sh\necho hi' },
+    ]);
+    const result = await safeExtractSkillTarball(tarball);
+    expect(result.accepted.map((e) => e.fileName).sort()).toEqual(['SKILL.md', 'scripts/run.sh']);
+  });
+
+  it('rejects a tarball with no SKILL.md', async () => {
+    const tarball = await buildTarball([{ name: 'repo-main/readme.txt', content: 'hi' }]);
+    await expect(safeExtractSkillTarball(tarball)).rejects.toThrow(/SKILL\.md/);
+  });
+
+  it('rejects path traversal in a tar entry name', async () => {
+    const tarball = await buildTarball([{ name: '../../etc/passwd', content: 'x' }]);
+    await expect(safeExtractSkillTarball(tarball)).rejects.toThrow(/unsafe entry path/);
+  });
+
+  it('rejects a buffer that is not valid gzip', async () => {
+    await expect(safeExtractSkillTarball(Buffer.from('not gzip'))).rejects.toThrow(/gzip/);
   });
 });
