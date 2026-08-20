@@ -81,8 +81,14 @@ export async function uploadToS3(file: Blob, filename: string, contentType: stri
 
     if (!uploadResponse.ok) throw new Error("Failed to upload to S3");
 
-    await api.post(`/api/v1/files/${fileId}/confirm`, { size });
-    return fileId;
+    // /confirm's response is the authoritative fileId, not the one /upload
+    // issued: two uploads sharing a name collide on the same S3 key (storage
+    // defaults the key to the raw filename), and the server dedups by
+    // marking the newer upload's fileId deleted and pointing callers at the
+    // pre-existing live file instead. Using the stale /upload fileId here
+    // attaches a file reference that 404s on every later lookup.
+    const confirmRes = await api.post<{ success: boolean; fileId: string }>(`/api/v1/files/${fileId}/confirm`, { size });
+    return confirmRes.fileId ?? fileId;
 }
 
 export function useFileUpload() {

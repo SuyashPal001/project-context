@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { assetToAttachment, uploadToS3, resolveFilesToUpload, MAX_FILES_PER_SELECTION } from './useFileUpload';
+import { api } from '@/lib/api';
 import type { Asset } from '@/types/assets';
 
 vi.mock('@/lib/api', () => ({
@@ -49,6 +50,20 @@ describe('assetToAttachment', () => {
 
 describe('uploadToS3', () => {
   afterEach(() => vi.restoreAllMocks());
+
+  it('uses the fileId from the /confirm response, not the original /upload fileId, since the server may dedup a same-key upload to a different live file', async () => {
+    vi.mocked(api.post)
+      .mockImplementationOnce(async () => ({
+        data: { fileId: 'file-new', uploadUrl: 'https://s3.example.com/signed', key: 'done.webp' },
+      }) as any) // /upload
+      .mockImplementationOnce(async () => ({ success: true, fileId: 'file-existing' }) as any); // /confirm — server deduped
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+
+    const fileId = await uploadToS3(new Blob(['x']), 'done.webp', 'image/webp', 1);
+
+    expect(fileId).toBe('file-existing');
+  });
 
   it('retries the S3 PUT on a transient network failure and succeeds', async () => {
     const fetchMock = vi.fn()
