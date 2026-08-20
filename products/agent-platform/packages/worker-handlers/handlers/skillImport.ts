@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { safeExtractSkillZip, safeExtractSkillTarball, SkillPackageError, type SafeSkillEntry } from '../lib/safeSkillZip';
-import { parseSkillManifest } from '../lib/skillManifest';
+import { parseSkillManifest, SkillManifestError } from '../lib/skillManifest';
 import { fetchPublicUrl, SsrfBlockedError } from '../lib/ssrfGuard';
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
@@ -91,11 +91,14 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
     }).catch(() => {});
     console.log(`[skillImport] ready: skillId=${skillId} version=${version} files=${entries.length} skipped=${skipped.length}`);
   } catch (err) {
-    // Safety rejections (zip bomb, path traversal, SSRF, missing manifest)
-    // already carry a tenant-safe message. Anything else might leak
-    // internals (S3 errors, stack traces) so it's logged in full but
-    // replaced with a generic message in the row the UI reads.
-    const isKnownSafetyRejection = err instanceof SkillPackageError || err instanceof SsrfBlockedError;
+    // Safety rejections (zip bomb, path traversal, SSRF, missing manifest,
+    // invalid/missing SKILL.md frontmatter) already carry a tenant-safe
+    // message describing a problem with the tenant's own package — no infra
+    // details leak either way. Anything else might leak internals (S3
+    // errors, stack traces) so it's logged in full but replaced with a
+    // generic message in the row the UI reads.
+    const isKnownSafetyRejection =
+      err instanceof SkillPackageError || err instanceof SsrfBlockedError || err instanceof SkillManifestError;
     const rawMessage = err instanceof Error ? err.message : String(err);
     const failureReason = isKnownSafetyRejection ? rawMessage : 'Import failed — see server logs for details';
 

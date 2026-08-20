@@ -34,6 +34,16 @@ function sqlText(executed: unknown): string {
     .join('');
 }
 
+// Bound params (e.g. failureReason, skillVersionId) are interleaved in
+// queryChunks as plain values, not folded into the literal text sqlText()
+// reassembles — this pulls them out so tests can assert on the actual value
+// passed to a placeholder, not just the surrounding SQL shape.
+function sqlParams(executed: unknown): unknown[] {
+  const chunks = (executed as { queryChunks?: unknown[] })?.queryChunks;
+  if (!Array.isArray(chunks)) return [];
+  return chunks.filter((c) => !(c && typeof c === 'object' && Array.isArray((c as { value?: unknown[] }).value)));
+}
+
 const safeExtractSkillZipMock = vi.hoisted(() => vi.fn());
 vi.mock('../lib/safeSkillZip', async () => {
   const actual = await vi.importActual<typeof import('../lib/safeSkillZip')>('../lib/safeSkillZip');
@@ -80,6 +90,32 @@ describe('handleSkillImport', () => {
 
     const failCall = dbMock.execute.mock.calls.find((c) => sqlText(c[0]).includes("status = 'failed'"));
     expect(failCall).toBeDefined();
+  });
+
+  it('marks the version failed with the actual manifest error, not the generic fallback, on invalid SKILL.md frontmatter', async () => {
+    s3SendMock.mockResolvedValueOnce({
+      Body: (async function* () { yield Buffer.from('zip-bytes'); })(),
+    });
+    // Extraction succeeds — SKILL.md is present — but its frontmatter is
+    // missing the required 'name' field, so parseSkillManifest (real,
+    // unmocked) throws SkillManifestError.
+    safeExtractSkillZipMock.mockResolvedValue({
+      accepted: [{ fileName: 'SKILL.md', buffer: Buffer.from('---\ndescription: d\n---\n') }],
+      skipped: [],
+      manifestSource: '---\ndescription: d\n---\n',
+    });
+
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'zip', fileKey: 'tenants/tenant-1/skill-uploads/x.zip' },
+    });
+
+    const failCall = dbMock.execute.mock.calls.find((c) => sqlText(c[0]).includes("status = 'failed'"));
+    expect(failCall).toBeDefined();
+    const params = sqlParams(failCall![0]);
+    expect(params.some((p) => typeof p === 'string' && p.includes("missing required field 'name'"))).toBe(true);
+    expect(params.some((p) => typeof p === 'string' && p.includes('Import failed'))).toBe(false);
   });
 
   it('rejects a github source with an unsafe owner/repo/ref before fetching anything', async () => {
