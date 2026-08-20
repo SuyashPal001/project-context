@@ -160,3 +160,92 @@ skillsRoutes.get('/:id/versions', async (c) => {
   const data = await db.select().from(skillVersions).where(eq(skillVersions.skillId, skillId)).orderBy(desc(skillVersions.version));
   return c.json({ data });
 });
+
+// POST /skills/:id/publish — owner flips visibility to public, self-serve
+skillsRoutes.post('/:id/publish', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  const userId = c.get('userId') as string;
+  if (!hasPermission(permissions, 'skills', 'update')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  const skill = await resolveSkill(skillId);
+  if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+  if (skill.ownerTenantId !== tenantId) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const [updated] = await db.update(skills).set({ visibility: 'public', updatedAt: new Date() }).where(eq(skills.id, skillId)).returning();
+
+  db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'skill_published', resource: 'skill', resourceId: skillId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch(() => {});
+  return c.json({ data: updated });
+});
+
+// POST /skills/:id/install — pinned to the current latestVersion; upserts so
+// a previously-uninstalled row reactivates instead of violating the
+// (tenantId, skillId) unique constraint
+skillsRoutes.post('/:id/install', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  const userId = c.get('userId') as string;
+  if (!hasPermission(permissions, 'skills', 'create')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  const skill = await resolveSkill(skillId);
+  if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+  if (skill.visibility !== 'public' && skill.ownerTenantId !== tenantId) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+  if (skill.latestVersion < 1) {
+    return c.json({ error: 'Skill has no ready version yet', code: 'NOT_READY' }, 409);
+  }
+
+  const [installed] = await db.insert(skillInstalls).values({
+    tenantId, skillId, installedVersion: skill.latestVersion, autoUpdate: false, status: 'active',
+  }).onConflictDoUpdate({
+    target: [skillInstalls.tenantId, skillInstalls.skillId],
+    set: { status: 'active', installedVersion: skill.latestVersion, updatedAt: new Date() },
+  }).returning();
+
+  db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'skill_installed', resource: 'skill_install', resourceId: installed.id, metadata: { skillId, version: skill.latestVersion }, traceId: c.get('traceId') ?? '' }).catch(() => {});
+  return c.json({ data: installed }, 201);
+});
+
+// POST /skills/:id/install/update — explicit pin bump to the current
+// latestVersion. autoUpdate is stored but not acted on by anything yet —
+// this is the only way an install's version moves in this pass.
+skillsRoutes.post('/:id/install/update', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'skills', 'update')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  const skill = await resolveSkill(skillId);
+  if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+
+  const [updated] = await db.update(skillInstalls)
+    .set({ installedVersion: skill.latestVersion, updatedAt: new Date() })
+    .where(and(eq(skillInstalls.tenantId, tenantId), eq(skillInstalls.skillId, skillId), eq(skillInstalls.status, 'active')))
+    .returning();
+
+  if (!updated) return c.json({ error: 'Skill is not installed', code: 'NOT_FOUND' }, 404);
+  return c.json({ data: updated });
+});
+
+// DELETE /skills/:id/install — soft uninstall
+skillsRoutes.delete('/:id/install', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'skills', 'delete')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  const [updated] = await db.update(skillInstalls)
+    .set({ status: 'uninstalled', updatedAt: new Date() })
+    .where(and(eq(skillInstalls.tenantId, tenantId), eq(skillInstalls.skillId, skillId)))
+    .returning();
+
+  if (!updated) return c.json({ error: 'Skill is not installed', code: 'NOT_FOUND' }, 404);
+  return c.json({ success: true });
+});
