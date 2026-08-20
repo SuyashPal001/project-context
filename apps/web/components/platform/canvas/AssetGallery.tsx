@@ -18,6 +18,8 @@ const TYPE_ICONS: Record<AssetType, React.ElementType> = {
   audio: FileAudio,
   image: FileImage,
   markdown: FileText,
+  pdf: FileText,
+  docx: FileText,
   file: FileIcon,
   prd: FileText,
   roadmap: FileText,
@@ -29,6 +31,8 @@ const TYPE_BADGES: Record<AssetType, string> = {
   audio: 'MP3',
   image: 'IMG',
   markdown: 'MD',
+  pdf: 'PDF',
+  docx: 'DOCX',
   file: 'FILE',
   prd: 'PRD',
   roadmap: 'ROADMAP',
@@ -115,11 +119,22 @@ function useVideoFrameThumbnail(asset: Asset): string | undefined {
   return frameUrl;
 }
 
+// Card styling for types with no real per-file thumbnail (audio, pdf, docx) —
+// a consistent tinted background + icon color instead of the plain flat
+// background used for a genuinely missing/unresolved thumbnail, so it reads
+// as an intentional design rather than a broken preview.
+const NO_PREVIEW_STYLES: Partial<Record<AssetType, { bg: string; icon: string }>> = {
+  audio: { bg: 'bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-muted', icon: 'text-violet-400' },
+  pdf: { bg: 'bg-gradient-to-br from-red-500/20 via-orange-500/10 to-muted', icon: 'text-red-400' },
+  docx: { bg: 'bg-gradient-to-br from-blue-500/20 via-sky-500/10 to-muted', icon: 'text-blue-400' },
+};
+
 function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
   const Icon = TYPE_ICONS[asset.type];
   const imageThumbnailUrl = useThumbnailUrl(asset);
   const videoFrameUrl = useVideoFrameThumbnail(asset);
   const thumbnailUrl = imageThumbnailUrl ?? videoFrameUrl;
+  const noPreviewStyle = NO_PREVIEW_STYLES[asset.type];
   return (
     <div className="group relative flex flex-col rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
       <div
@@ -134,7 +149,7 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
         }}
         className="text-left hover:border-primary/40 transition-colors"
       >
-        <div className={`relative aspect-video flex items-center justify-center ${asset.type === 'audio' ? 'bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-muted' : 'bg-muted'}`}>
+        <div className={`relative aspect-video flex items-center justify-center ${noPreviewStyle?.bg ?? 'bg-muted'}`}>
           {thumbnailUrl ? (
             <>
               <img src={thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
@@ -147,7 +162,7 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
               )}
             </>
           ) : (
-            <Icon className={asset.type === 'audio' ? 'h-8 w-8 text-violet-400' : 'h-8 w-8 text-muted-foreground/60'} />
+            <Icon className={`h-8 w-8 ${noPreviewStyle?.icon ?? 'text-muted-foreground/60'}`} />
           )}
           <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
             {TYPE_BADGES[asset.type]}

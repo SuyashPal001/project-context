@@ -9,6 +9,8 @@ function classifyMimeType(mimeType: string, filename: string): AssetType {
   if (mimeType.startsWith('video/')) return 'video';
   if (mimeType.startsWith('audio/')) return 'audio';
   if (mimeType === 'text/markdown' || filename.toLowerCase().endsWith('.md')) return 'markdown';
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
   return 'file';
 }
 
@@ -17,6 +19,8 @@ const TYPE_ICONS: Record<AssetType, React.ElementType> = {
   audio: FileAudio,
   image: FileImage,
   markdown: FileText,
+  pdf: FileText,
+  docx: FileText,
   file: FileText,
   prd: FileText,
   roadmap: FileText,

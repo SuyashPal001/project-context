@@ -74,6 +74,44 @@ describe('GET /conversations/:id/assets', () => {
         ]);
     });
 
+    it('classifies pdf and docx attachments as their own types, not the generic file fallback', async () => {
+        const conversationRow = { id: 'conv-1', tenantId: 'tenant-1', userId: 'user-1' };
+        const messageRows = [
+            {
+                id: 'msg-1',
+                createdAt: new Date('2026-08-01T00:00:00Z'),
+                attachments: [
+                    { fileId: 'file-1', name: 'report.pdf', type: 'application/pdf', size: 1024 },
+                    { fileId: 'file-2', name: 'notes.docx', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 2048 },
+                ],
+                artifactRef: null,
+            },
+        ];
+
+        let call = 0;
+        dbMock.select.mockImplementation(() => ({
+            from: () => ({
+                where: (...args: unknown[]) => {
+                    call += 1;
+                    if (call === 1) {
+                        return { limit: async () => [conversationRow] };
+                    }
+                    return { orderBy: async () => messageRows };
+                },
+            }),
+        }));
+
+        const { assetsRoutes } = await import('../routes/assets');
+        const app = appWithContext().route('/conversations', assetsRoutes);
+        const res = await app.request('/conversations/conv-1/assets');
+        const body = await res.json() as { data: Array<{ id: string; type: string }> };
+
+        expect(body.data).toEqual([
+            expect.objectContaining({ id: 'file-1', type: 'pdf' }),
+            expect.objectContaining({ id: 'file-2', type: 'docx' }),
+        ]);
+    });
+
     it('skips a malformed artifactRef (missing entityId) and produces zero assets from that message', async () => {
         const conversationRow = { id: 'conv-1', tenantId: 'tenant-1', userId: 'user-1' };
         const messageRows = [

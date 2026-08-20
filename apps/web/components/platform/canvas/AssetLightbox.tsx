@@ -7,6 +7,8 @@ import { api } from '@/lib/api';
 import { VideoPreview } from './lightbox/VideoPreview';
 import { AudioPreview } from './lightbox/AudioPreview';
 import { ImagePreview } from './lightbox/ImagePreview';
+import { PdfPreview } from './lightbox/PdfPreview';
+import { DocxPreview } from './lightbox/DocxPreview';
 import { MarkdownViewer } from './MarkdownViewer';
 import type { Asset } from '@/types/assets';
 
@@ -109,6 +111,8 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
             {url && asset.type === 'video' && <VideoPreview url={url} />}
             {url && asset.type === 'audio' && <AudioPreview url={url} />}
             {url && asset.type === 'image' && <ImagePreview url={url} alt={asset.filename} />}
+            {url && asset.type === 'pdf' && <PdfPreview url={url} />}
+            {url && asset.type === 'docx' && <DocxPreview url={url} />}
             {(asset.type === 'markdown' || asset.type === 'prd' || asset.type === 'roadmap' || asset.type === 'tasks') && markdownContent && (
               <div className="w-full h-full overflow-y-auto text-sm px-2">
                 <MarkdownViewer content={markdownContent} />
@@ -119,7 +123,7 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
                 Task list content is only available while it&apos;s actively being generated in the chat — it can&apos;t be reloaded here yet.
               </p>
             )}
-            {!url && (asset.type === 'video' || asset.type === 'audio' || asset.type === 'image') && (
+            {!url && (asset.type === 'video' || asset.type === 'audio' || asset.type === 'image' || asset.type === 'pdf' || asset.type === 'docx') && (
               <p className="text-sm text-muted-foreground">Loading preview…</p>
             )}
 
