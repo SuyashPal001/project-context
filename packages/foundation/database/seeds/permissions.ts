@@ -8,6 +8,7 @@ export const RESOURCES: Record<string, Action[]> = {
     members: ['create', 'read', 'update', 'delete'],
     invitations: ['create', 'read', 'delete'],
     roles: ['create', 'read', 'update', 'delete'],
+    skills: ['create', 'read', 'update', 'delete'],
     billing: ['read', 'update'],
     invoices: ['read'],
     subscriptions: ['create', 'read', 'update', 'delete'],
