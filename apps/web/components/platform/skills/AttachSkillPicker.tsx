@@ -20,25 +20,32 @@ interface AttachSkillPickerProps {
 export function AttachSkillPicker({ agentId, open, onOpenChange, onAttached }: AttachSkillPickerProps) {
     const [attachingId, setAttachingId] = useState<string | null>(null);
 
-    // "mine" already includes everything this tenant owns or has installed
-    // (GET /skills?tab=mine filters by ownerTenantId, and every installed
-    // row — owned or public — carries installed=true via the left join),
-    // so this alone covers "the tenant's installed skill library".
+    // "installed" — not "mine". `mine` filters on ownerTenantId, so a skill
+    // this tenant installed from the Public or Official tab (owned by someone
+    // else) never appears there. `installed` is the tenant's actual install
+    // library: every skill with an active skill_installs row, whoever owns it.
     const { data: skillsList, isLoading } = useQuery<Skill[]>({
-        queryKey: ["skills", "mine"],
-        queryFn: () => listSkills("mine"),
+        queryKey: ["skills", "installed"],
+        queryFn: () => listSkills("installed"),
         enabled: open,
     });
 
     const installed = (skillsList ?? []).filter((s) => s.installed);
 
     const handleAttach = async (skill: Skill) => {
+        // installId is skill_installs.id — the row agentSkills.installId is an
+        // FK to. skill.id is a different row entirely; sending it produces a
+        // foreign-key violation, not an attached skill.
+        if (!skill.installId) {
+            toast.error("This skill has no install record — reinstall it from the Skills page first.");
+            return;
+        }
         setAttachingId(skill.id);
         try {
             await api.post(`/api/v1/agents/${agentId}/skills`, {
                 name: skill.name,
                 systemPrompt: skill.description ?? skill.name,
-                installId: skill.id,
+                installId: skill.installId,
             });
             toast.success(`${skill.name} attached.`);
             onAttached();

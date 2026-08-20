@@ -21,12 +21,15 @@ export default function SkillsPage() {
     const { data: skillsList, isLoading } = useQuery<Skill[]>({
         queryKey: ["skills", tab],
         queryFn: () => listSkills(tab),
-        // Any skill still importing (latestVersion === 0) needs to resolve to
-        // ready/failed without a manual refresh — same shape as
-        // FilesList.tsx's refetchInterval, stopped once nothing is pending.
+        // Poll only while an import is genuinely still running. latestVersion
+        // stays at 0 for a *failed* import too, so keying off that alone
+        // polled forever on a skill that would never change. The null branch
+        // covers the sliver between the skill row and its version row landing.
         refetchInterval: (query) => {
             const rows = query.state.data as Skill[] | undefined;
-            const anyPending = rows?.some((s) => s.latestVersion < 1) ?? false;
+            const anyPending = rows?.some(
+                (s) => s.latestVersionStatus === "pending" || (s.latestVersionStatus === null && s.latestVersion < 1)
+            ) ?? false;
             return anyPending ? 5000 : false;
         },
     });
