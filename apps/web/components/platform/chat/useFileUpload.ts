@@ -66,9 +66,15 @@ async function putToS3WithRetry(uploadUrl: string, file: Blob, contentType: stri
 }
 
 export async function uploadToS3(file: Blob, filename: string, contentType: string, size: number, retryDelayMs = 500) {
+    // Storage defaults the S3 key to the raw filename when none is given, which
+    // is correct for the Files/folder library (same name = intentional replace)
+    // but wrong for chat attachments: two unrelated attachments sharing a name
+    // would otherwise collide and overwrite each other. Always give chat
+    // uploads a unique key so they never dedup against one another.
+    const key = `chat-attachments/${crypto.randomUUID()}-${filename}`;
     const uploadRes = await api.post<{ data: { fileId: string; uploadUrl: string; key: string } }>(
         "/api/v1/files/upload",
-        { filename, contentType }
+        { filename, contentType, key }
     );
     const { fileId, uploadUrl } = uploadRes.data;
 

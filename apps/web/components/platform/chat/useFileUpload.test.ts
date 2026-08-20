@@ -65,6 +65,21 @@ describe('uploadToS3', () => {
     expect(fileId).toBe('file-existing');
   });
 
+  it('sends a unique key per upload, so same-named chat attachments never collide on S3', async () => {
+    vi.mocked(api.post).mockClear();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+
+    await uploadToS3(new Blob(['x']), 'done.webp', 'image/webp', 1);
+    await uploadToS3(new Blob(['y']), 'done.webp', 'image/webp', 1);
+
+    const uploadCalls = vi.mocked(api.post).mock.calls.filter(([path]) => path === '/api/v1/files/upload');
+    expect(uploadCalls).toHaveLength(2);
+    const [firstKey, secondKey] = uploadCalls.map(([, body]) => body.key);
+    expect(firstKey).toContain('done.webp');
+    expect(secondKey).toContain('done.webp');
+    expect(firstKey).not.toBe(secondKey);
+  });
+
   it('retries the S3 PUT on a transient network failure and succeeds', async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
