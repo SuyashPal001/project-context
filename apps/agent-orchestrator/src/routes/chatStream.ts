@@ -39,6 +39,11 @@ JSON array:`
 
 export interface ChatStreamOpts {
   message: string
+  // The actual user-typed text (may be empty) — persisted as the message's
+  // display content. `message` itself carries the '[attachment]' fallback
+  // used to give the agent something to reason over; that placeholder must
+  // never reach the chat bubble as literal text.
+  displayMessage: string
   attachments: Attachment[]
   conversationId: string
   tenantId: string
@@ -131,7 +136,7 @@ function extractPlanJson(text: string): Record<string, unknown> | null {
 
 export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const {
-    message, attachments, conversationId, tenantId,
+    message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, closeStream, isStreamClosed,
     folderId,
@@ -371,7 +376,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (isStreamClosed()) break
 
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-          saveUserMessage(idToken, conversationId, message, atts)
+          saveUserMessage(idToken, conversationId, displayMessage, atts)
           // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
           // turn that's too fast/toolless to show a summary live doesn't get one
           // materialize after a reload either.

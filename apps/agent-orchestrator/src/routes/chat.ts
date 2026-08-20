@@ -211,7 +211,7 @@ chatRouter.post('/api/chat', async (c) => {
 
   // 4. Async handler — runs concurrently while response streams to client
   runChatStream({
-    message, attachments, conversationId, tenantId,
+    message, displayMessage: filteredMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, closeStream,
     isStreamClosed: () => streamClosed,
