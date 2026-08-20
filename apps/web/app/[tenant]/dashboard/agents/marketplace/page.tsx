@@ -14,6 +14,7 @@ import { PersonaCard } from "@/components/platform/personas/PersonaCard";
 import { PersonaDetailModal } from "@/components/platform/personas/PersonaDetailModal";
 import { hirePersona, firePersonaAgent, findAgentForPersona } from "@/components/platform/personas/actions";
 import type { PersonaSummary, PersonasResponse } from "@/components/platform/personas/types";
+import { AgentCard } from "@/components/platform/agents/AgentCard";
 import type { AgentsResponse } from "@/components/platform/agents/types";
 import { TeamCard } from "@/components/platform/teams/TeamCard";
 import { TeamDetailModal } from "@/components/platform/teams/TeamDetailModal";
@@ -44,7 +45,7 @@ export default function MarketplacePage() {
         queryKey: ["personas"],
         queryFn: () => api.get<PersonasResponse>("/api/v1/agents/personas"),
     });
-    const { data: agentsData } = useQuery<AgentsResponse>({
+    const { data: agentsData, isLoading: agentsLoading } = useQuery<AgentsResponse>({
         queryKey: ["agents"],
         queryFn: () => api.get<AgentsResponse>("/api/v1/agents"),
     });
@@ -85,9 +86,12 @@ export default function MarketplacePage() {
         return persona.name.toLowerCase().includes(q) || persona.tagline.toLowerCase().includes(q);
     });
 
-    const minePersonas = personas.filter((persona) => hiredAgentFor(persona.id));
+    const hiredAgents = agents.filter((a) => a.status === "active" && !a.isInternal).filter((a) => {
+        const q = search.trim().toLowerCase();
+        if (!q) return true;
+        return a.name.toLowerCase().includes(q);
+    });
 
-    const visiblePersonas = tab === "explore" ? explorePersonas : minePersonas;
     const selectedAgent = selectedPersona ? hiredAgentFor(selectedPersona.id) : undefined;
 
     const handleHire = async (personaId: string) => {
@@ -284,15 +288,33 @@ export default function MarketplacePage() {
                         </button>
                     </div>
                 )
+            ) : tab === "mine" ? (
+                agentsLoading ? (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                            <Skeleton key={i} className="h-[200px] w-full rounded-xl" />
+                        ))}
+                    </div>
+                ) : hiredAgents.length > 0 ? (
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {hiredAgents.map((agent) => (
+                            <AgentCard key={agent.id} agent={agent} />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="flex h-[300px] shrink-0 items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
+                        <p className="text-sm text-muted-foreground">You haven&apos;t hired anyone yet.</p>
+                    </div>
+                )
             ) : personasLoading ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     {Array.from({ length: 4 }).map((_, i) => (
                         <Skeleton key={i} className="h-[280px] w-full rounded-xl" />
                     ))}
                 </div>
-            ) : visiblePersonas.length > 0 ? (
+            ) : explorePersonas.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    {visiblePersonas.map((persona) => (
+                    {explorePersonas.map((persona) => (
                         <PersonaCard
                             key={persona.id}
                             persona={persona}
@@ -303,9 +325,7 @@ export default function MarketplacePage() {
                 </div>
             ) : (
                 <div className="flex h-[300px] shrink-0 items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
-                    <p className="text-sm text-muted-foreground">
-                        {tab === "mine" ? "You haven't hired anyone yet." : "No employees match your search."}
-                    </p>
+                    <p className="text-sm text-muted-foreground">No employees match your search.</p>
                 </div>
             )}
 
