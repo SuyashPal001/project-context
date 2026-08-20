@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { FileVideo, FileAudio, FileImage, FileText, File as FileIcon } from 'lucide-react';
+import { FileVideo, FileAudio, FileImage, FileText, File as FileIcon, Play } from 'lucide-react';
 import { useConversationAssets } from '@/hooks/useConversationAssets';
 import { api } from '@/lib/api';
 import type { Asset, AssetType } from '@/types/assets';
@@ -54,9 +54,72 @@ function useThumbnailUrl(asset: Asset): string | undefined {
   return url;
 }
 
+// Grabs one frame from a video URL via a hidden <video>+<canvas>, entirely
+// client-side — no backend/ffmpeg work needed. Seeks to 1s (or the video's
+// midpoint if shorter) rather than frame 0, since many videos open on a
+// black/blank frame. Resolves undefined on any failure (unsupported codec,
+// load timeout, or a canvas read blocked by the bucket's CORS policy) so
+// the card falls back to the existing icon placeholder rather than erroring.
+function captureVideoFrame(videoUrl: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+
+    let settled = false;
+    const finish = (result: string | undefined) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      video.remove();
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish(undefined), 8000);
+
+    video.addEventListener('loadedmetadata', () => {
+      video.currentTime = Number.isFinite(video.duration) ? Math.min(1, video.duration / 2) : 0;
+    });
+    video.addEventListener('seeked', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        if (canvas.width === 0 || canvas.height === 0) return finish(undefined);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return finish(undefined);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        finish(canvas.toDataURL('image/jpeg', 0.7));
+      } catch {
+        finish(undefined);
+      }
+    });
+    video.addEventListener('error', () => finish(undefined));
+
+    video.src = videoUrl;
+  });
+}
+
+function useVideoFrameThumbnail(asset: Asset): string | undefined {
+  const [frameUrl, setFrameUrl] = useState<string | undefined>();
+  useEffect(() => {
+    if (asset.type !== 'video' || !asset.fileId) return;
+    let cancelled = false;
+    api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(asset.fileId)}/presigned-url`)
+      .then(res => captureVideoFrame(res.presignedUrl))
+      .then(dataUrl => { if (!cancelled && dataUrl) setFrameUrl(dataUrl); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [asset.type, asset.fileId]);
+  return frameUrl;
+}
+
 function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
   const Icon = TYPE_ICONS[asset.type];
-  const thumbnailUrl = useThumbnailUrl(asset);
+  const imageThumbnailUrl = useThumbnailUrl(asset);
+  const videoFrameUrl = useVideoFrameThumbnail(asset);
+  const thumbnailUrl = imageThumbnailUrl ?? videoFrameUrl;
   return (
     <div className="group relative flex flex-col rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
       <div
@@ -71,11 +134,20 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
         }}
         className="text-left hover:border-primary/40 transition-colors"
       >
-        <div className="relative aspect-video bg-muted flex items-center justify-center">
+        <div className={`relative aspect-video flex items-center justify-center ${asset.type === 'audio' ? 'bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-muted' : 'bg-muted'}`}>
           {thumbnailUrl ? (
-            <img src={thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
+            <>
+              <img src={thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
+              {asset.type === 'video' && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="h-8 w-8 rounded-full bg-black/50 flex items-center justify-center">
+                    <Play className="h-4 w-4 text-white fill-white" />
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
-            <Icon className="h-8 w-8 text-muted-foreground/60" />
+            <Icon className={asset.type === 'audio' ? 'h-8 w-8 text-violet-400' : 'h-8 w-8 text-muted-foreground/60'} />
           )}
           <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
             {TYPE_BADGES[asset.type]}
