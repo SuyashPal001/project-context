@@ -1,0 +1,82 @@
+import { describe, it, expect } from 'vitest';
+import {
+    DEFAULT_AVATAR_PARAMS,
+    SKIN_COLORS,
+    HAIR_COLORS,
+    randomizeAvatarParams,
+    normalizeAvatarParams,
+} from './avatarParams';
+
+describe('DEFAULT_AVATAR_PARAMS', () => {
+    it('matches the prototype defaults', () => {
+        expect(DEFAULT_AVATAR_PARAMS).toEqual({
+            head: 'tall',
+            eyes: 'shades',
+            accessory: 'cybermohawk',
+            mouth: 'goatee',
+            skinColor: SKIN_COLORS[0],
+            hairColor: HAIR_COLORS[0],
+            bgTheme: 'terracotta',
+        });
+    });
+});
+
+describe('randomizeAvatarParams', () => {
+    it('never randomizes bgTheme (kept at terracotta, matching the prototype)', () => {
+        const result = randomizeAvatarParams(() => 0.999);
+        expect(result.bgTheme).toBe('terracotta');
+    });
+
+    it('picks values only from the closed enum sets, deterministically from a fixed rng', () => {
+        const result = randomizeAvatarParams(() => 0);
+        expect(result).toEqual({
+            head: 'tall',
+            eyes: 'dots',
+            accessory: 'cybermohawk',
+            mouth: 'goatee',
+            skinColor: SKIN_COLORS[0],
+            hairColor: HAIR_COLORS[0],
+            bgTheme: 'terracotta',
+        });
+    });
+
+    it('picks the last enum value when rng returns just under 1', () => {
+        const result = randomizeAvatarParams(() => 0.999);
+        expect(result).toEqual({
+            head: 'oval',
+            eyes: 'eyepatch',
+            accessory: 'none',
+            mouth: 'none',
+            skinColor: SKIN_COLORS[SKIN_COLORS.length - 1],
+            hairColor: HAIR_COLORS[HAIR_COLORS.length - 1],
+            bgTheme: 'terracotta',
+        });
+    });
+});
+
+describe('normalizeAvatarParams', () => {
+    it('returns the defaults when given null or undefined', () => {
+        expect(normalizeAvatarParams(null)).toEqual(DEFAULT_AVATAR_PARAMS);
+        expect(normalizeAvatarParams(undefined)).toEqual(DEFAULT_AVATAR_PARAMS);
+    });
+
+    it('passes through a fully valid AvatarParams unchanged', () => {
+        const valid = { ...DEFAULT_AVATAR_PARAMS, head: 'round' as const, bgTheme: 'matrix' as const };
+        expect(normalizeAvatarParams(valid)).toEqual(valid);
+    });
+
+    it('falls back to the default for any missing key', () => {
+        const partial = { head: 'round' as const };
+        expect(normalizeAvatarParams(partial)).toEqual({ ...DEFAULT_AVATAR_PARAMS, head: 'round' });
+    });
+
+    it('falls back to the default for any key holding an unrecognized enum value (e.g. stale/future data)', () => {
+        const stale = { ...DEFAULT_AVATAR_PARAMS, eyes: 'laser-beams' as any, accessory: 'top-hat' as any };
+        expect(normalizeAvatarParams(stale)).toEqual({ ...DEFAULT_AVATAR_PARAMS, eyes: DEFAULT_AVATAR_PARAMS.eyes, accessory: DEFAULT_AVATAR_PARAMS.accessory });
+    });
+
+    it('keeps a valid custom skinColor/hairColor even if not in the curated palette (no enum to fall back on for free hex strings)', () => {
+        const custom = { ...DEFAULT_AVATAR_PARAMS, skinColor: '#123456' };
+        expect(normalizeAvatarParams(custom).skinColor).toBe('#123456');
+    });
+});
