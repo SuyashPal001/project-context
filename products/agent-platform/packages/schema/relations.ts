@@ -3,7 +3,8 @@ import { users } from '@serverless-saas/database/schema/auth';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { agents, agentTasks, taskSteps, taskEvents, taskDependencies } from './agents';
 import { githubInstallations, githubRepos } from './github';
-import { conversations } from './conversations';
+import { conversations, agentSkills } from './conversations';
+import { skills, skillVersions, skillInstalls } from './skills';
 
 export const agentTasksRelations = relations(agentTasks, ({ one, many }) => ({
     tenant: one(tenants, {
@@ -90,4 +91,36 @@ export const githubReposRelations = relations(githubRepos, ({ one }) => ({
         fields: [githubRepos.installationId],
         references: [githubInstallations.installationId],
     }),
+}));
+
+export const skillsRelations = relations(skills, ({ one, many }) => ({
+    ownerTenant: one(tenants, {
+        fields: [skills.ownerTenantId],
+        references: [tenants.id],
+    }),
+    createdByUser: one(users, {
+        fields: [skills.createdBy],
+        references: [users.id],
+    }),
+    versions: many(skillVersions),
+    installs: many(skillInstalls),
+}));
+
+export const skillVersionsRelations = relations(skillVersions, ({ one }) => ({
+    skill: one(skills, {
+        fields: [skillVersions.skillId],
+        references: [skills.id],
+    }),
+}));
+
+export const skillInstallsRelations = relations(skillInstalls, ({ one, many }) => ({
+    tenant: one(tenants, {
+        fields: [skillInstalls.tenantId],
+        references: [tenants.id],
+    }),
+    skill: one(skills, {
+        fields: [skillInstalls.skillId],
+        references: [skills.id],
+    }),
+    agentAttachments: many(agentSkills),
 }));
