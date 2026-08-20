@@ -73,6 +73,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
         tools: z.array(z.string()).optional().default([]),
         config: z.record(z.unknown()).optional(),
         version: z.number().int().positive().optional(),
+        installId: z.string().uuid().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
@@ -90,6 +91,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
             config: result.data.config ?? null,
             version: result.data.version ?? 1,
             status: 'active',
+            installId: result.data.installId ?? null,
         }).returning();
 
         db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_created', resource: 'agent_skill', resourceId: created.id, metadata: { agentId, name: result.data.name }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
