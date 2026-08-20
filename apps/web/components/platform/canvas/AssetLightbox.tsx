@@ -114,7 +114,7 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
             {url && asset.type === 'pdf' && <PdfPreview url={url} />}
             {url && asset.type === 'docx' && <DocxPreview url={url} size={asset.size} />}
             {(asset.type === 'markdown' || asset.type === 'prd' || asset.type === 'roadmap' || asset.type === 'tasks') && markdownContent && (
-              <div className="w-full h-full overflow-y-auto text-sm px-2">
+              <div className="w-full h-full max-w-3xl overflow-y-auto text-sm px-2">
                 <MarkdownViewer content={markdownContent} />
               </div>
             )}
