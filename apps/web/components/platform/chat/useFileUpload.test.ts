@@ -1,6 +1,14 @@
-import { describe, it, expect } from 'vitest';
-import { assetToAttachment } from './useFileUpload';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { assetToAttachment, uploadToS3 } from './useFileUpload';
 import type { Asset } from '@/types/assets';
+
+vi.mock('@/lib/api', () => ({
+  api: {
+    post: vi.fn().mockResolvedValue({
+      data: { fileId: 'file-1', uploadUrl: 'https://s3.example.com/signed', key: 'k' },
+    }),
+  },
+}));
 
 describe('assetToAttachment', () => {
   it('maps a video Asset into the Attachment shape used by AttachmentStrip', () => {
@@ -36,5 +44,39 @@ describe('assetToAttachment', () => {
     };
 
     expect(assetToAttachment(asset).fileId).toBe('prd-1');
+  });
+});
+
+describe('uploadToS3', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('retries the S3 PUT on a transient network failure and succeeds', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const fileId = await uploadToS3(new Blob(['x']), 'done.webp', 'image/webp', 1);
+
+    expect(fileId).toBe('file-1');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up and throws after exhausting retries on repeated network failure', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(uploadToS3(new Blob(['x']), 'done.webp', 'image/webp', 1))
+      .rejects.toThrow('Failed to upload to S3');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not retry a definitive 4xx rejection from S3', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 403 });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(uploadToS3(new Blob(['x']), 'done.webp', 'image/webp', 1))
+      .rejects.toThrow('Failed to upload to S3');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

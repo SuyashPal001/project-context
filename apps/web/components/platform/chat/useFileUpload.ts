@@ -21,18 +21,48 @@ export function assetToAttachment(asset: Asset): Attachment {
     };
 }
 
-async function uploadToS3(file: Blob, filename: string, contentType: string, size: number) {
+const S3_PUT_MAX_ATTEMPTS = 3;
+
+// Raw binary PUTs to S3 occasionally hit a transient network blip (dropped
+// connection, momentary CORS/DNS hiccup) that a plain retry resolves — this
+// showed up as an unreliable "sometimes an attached image just never
+// appears" symptom, not a per-file-type bug. A definitive rejection (4xx —
+// e.g. an expired/malformed presigned URL) won't succeed on retry, so only
+// network-level failures and 5xx responses are retried.
+async function putToS3WithRetry(uploadUrl: string, file: Blob, contentType: string, retryDelayMs: number): Promise<Response> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= S3_PUT_MAX_ATTEMPTS; attempt++) {
+        try {
+            const response = await fetch(uploadUrl, {
+                method: 'PUT',
+                body: file,
+                headers: { 'Content-Type': contentType }
+            });
+            if (response.ok || (response.status >= 400 && response.status < 500)) return response;
+            lastError = new Error(`S3 responded ${response.status}`);
+        } catch (err) {
+            lastError = err;
+        }
+        if (attempt < S3_PUT_MAX_ATTEMPTS) {
+            await new Promise(resolve => setTimeout(resolve, retryDelayMs * attempt));
+        }
+    }
+    throw lastError;
+}
+
+export async function uploadToS3(file: Blob, filename: string, contentType: string, size: number, retryDelayMs = 500) {
     const uploadRes = await api.post<{ data: { fileId: string; uploadUrl: string; key: string } }>(
         "/api/v1/files/upload",
         { filename, contentType }
     );
     const { fileId, uploadUrl } = uploadRes.data;
 
-    const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': contentType }
-    });
+    let uploadResponse: Response;
+    try {
+        uploadResponse = await putToS3WithRetry(uploadUrl, file, contentType, retryDelayMs);
+    } catch {
+        throw new Error("Failed to upload to S3");
+    }
 
     if (!uploadResponse.ok) throw new Error("Failed to upload to S3");
 
