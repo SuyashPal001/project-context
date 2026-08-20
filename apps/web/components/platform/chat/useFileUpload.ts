@@ -11,6 +11,21 @@ export interface PendingUpload {
     type: string;
 }
 
+export const MAX_FILES_PER_SELECTION = 5;
+
+// Pure — no React, no upload side effects — so the cap logic is directly
+// testable without rendering the hook. `files: null` with no error means
+// "user selected nothing," distinct from `error` meaning "selection rejected."
+export function resolveFilesToUpload(
+    fileList: FileList | null,
+): { files: File[] | null; error: string | null } {
+    if (!fileList || fileList.length === 0) return { files: null, error: null };
+    if (fileList.length > MAX_FILES_PER_SELECTION) {
+        return { files: null, error: `You can attach up to ${MAX_FILES_PER_SELECTION} files at once.` };
+    }
+    return { files: Array.from(fileList), error: null };
+}
+
 export function assetToAttachment(asset: Asset): Attachment {
     return {
         fileId: asset.fileId ?? asset.id,
@@ -158,9 +173,19 @@ export function useFileUpload() {
         e: React.ChangeEvent<HTMLInputElement>,
         fileInputRef: React.RefObject<HTMLInputElement | null>,
     ) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        await uploadFile(file);
+        const { files, error } = resolveFilesToUpload(e.target.files);
+        if (error) {
+            toast.error(error);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            return;
+        }
+        if (!files) return;
+        // Sequential, not parallel: keeps upload state (isUploading/pendingUpload)
+        // as the simple single-item shape it already is, and a failure partway
+        // through still leaves the earlier files successfully attached.
+        for (const file of files) {
+            await uploadFile(file);
+        }
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 

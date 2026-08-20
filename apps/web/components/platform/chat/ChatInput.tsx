@@ -303,6 +303,7 @@ export function ChatInput({
                 type="file"
                 ref={fileInputRef}
                 className="hidden"
+                multiple
                 accept={
                     uploadTypeRef.current === 'video' ? "video/*" :
                     uploadTypeRef.current === 'audio' ? "audio/*" :

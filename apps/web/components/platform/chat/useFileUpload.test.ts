@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { assetToAttachment, uploadToS3 } from './useFileUpload';
+import { assetToAttachment, uploadToS3, resolveFilesToUpload, MAX_FILES_PER_SELECTION } from './useFileUpload';
 import type { Asset } from '@/types/assets';
 
 vi.mock('@/lib/api', () => ({
@@ -78,5 +78,42 @@ describe('uploadToS3', () => {
     await expect(uploadToS3(new Blob(['x']), 'done.webp', 'image/webp', 1))
       .rejects.toThrow('Failed to upload to S3');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+function makeFileList(names: string[]): FileList {
+  const files = names.map(name => new File(['x'], name, { type: 'image/png' }));
+  return {
+    length: files.length,
+    item: (i: number) => files[i] ?? null,
+    [Symbol.iterator]: function* () { yield* files; },
+  } as unknown as FileList;
+}
+
+describe('resolveFilesToUpload', () => {
+  it('returns null (nothing selected) when the FileList is empty or missing', () => {
+    expect(resolveFilesToUpload(null)).toEqual({ files: null, error: null });
+    expect(resolveFilesToUpload(makeFileList([]))).toEqual({ files: null, error: null });
+  });
+
+  it('returns the files as an array when within the cap', () => {
+    const list = makeFileList(['a.png', 'b.png']);
+    const result = resolveFilesToUpload(list);
+    expect(result.error).toBeNull();
+    expect(result.files?.map(f => f.name)).toEqual(['a.png', 'b.png']);
+  });
+
+  it(`allows exactly ${MAX_FILES_PER_SELECTION} files`, () => {
+    const list = makeFileList(Array.from({ length: MAX_FILES_PER_SELECTION }, (_, i) => `f${i}.png`));
+    const result = resolveFilesToUpload(list);
+    expect(result.error).toBeNull();
+    expect(result.files).toHaveLength(MAX_FILES_PER_SELECTION);
+  });
+
+  it(`rejects with an error, selecting nothing, when over ${MAX_FILES_PER_SELECTION} files are picked`, () => {
+    const list = makeFileList(Array.from({ length: MAX_FILES_PER_SELECTION + 1 }, (_, i) => `f${i}.png`));
+    const result = resolveFilesToUpload(list);
+    expect(result.files).toBeNull();
+    expect(result.error).toBe(`You can attach up to ${MAX_FILES_PER_SELECTION} files at once.`);
   });
 });
