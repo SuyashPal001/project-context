@@ -30,8 +30,19 @@ export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentNam
     // normalizeAvatarParams guards against a corrupted or stale-enum record
     // (see avatarParams.ts) — this is the boundary where persisted data
     // re-enters the builder, so it's where the fallback has to happen.
+    //
+    // Only reset on the closed->open transition, not on every initialParams
+    // reference change. initialParams is form.avatarParams from the parent's
+    // agent query, which gets a new object identity on every refetch (e.g.
+    // window focus). Resetting on every reference change would silently
+    // discard in-progress edits if the query refetches while the modal is
+    // open.
+    const wasOpen = React.useRef(false);
     React.useEffect(() => {
-        if (open) setParams(normalizeAvatarParams(initialParams));
+        if (open && !wasOpen.current) {
+            setParams(normalizeAvatarParams(initialParams));
+        }
+        wasOpen.current = open;
     }, [open, initialParams]);
 
     const handleSave = async () => {

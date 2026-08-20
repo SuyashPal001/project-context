@@ -4,17 +4,9 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
-    HEAD_SHAPES, EYE_STYLES, ACCESSORIES, MOUTH_STYLES, SKIN_COLORS, HAIR_COLORS,
+    HEAD_SHAPES, EYE_STYLES, ACCESSORIES, MOUTH_STYLES, SKIN_COLORS, HAIR_COLORS, BACKGROUND_THEMES,
 } from "./avatarParams";
-import type { AvatarParams, BackgroundTheme } from "./avatarParams";
-
-const BG_THEMES: { value: BackgroundTheme; label: string }[] = [
-    { value: "terracotta", label: "Warm Terracotta" },
-    { value: "light", label: "Studio Light" },
-    { value: "space", label: "Deep Cyber Dark" },
-    { value: "matrix", label: "Neon Matrix" },
-    { value: "transparent", label: "Transparent" },
-];
+import type { AvatarParams } from "./avatarParams";
 
 const LABELS: Record<string, string> = {
     tall: "Tall", round: "Round", oval: "Compact",
@@ -106,7 +98,7 @@ export function AvatarControls({ params, onChange }: AvatarControlsProps) {
             </div>
             <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Background</label>
-                <OptionGrid options={BG_THEMES.map((t) => t.value)} value={params.bgTheme} onChange={(v) => set("bgTheme", v)} />
+                <OptionGrid options={BACKGROUND_THEMES} value={params.bgTheme} onChange={(v) => set("bgTheme", v)} />
             </div>
         </div>
     );

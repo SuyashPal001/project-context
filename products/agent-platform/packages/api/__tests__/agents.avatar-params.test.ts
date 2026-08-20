@@ -96,4 +96,24 @@ describe('PATCH /agents/:id — avatarParams', () => {
         expect(response.status).toBe(200);
         expect(getUpdatedWith().avatarParams).toEqual(AVATAR_PARAMS);
     });
+
+    it('does not let an owner without agents:update smuggle full-permission-only fields (e.g. status) through the avatarParams allowlist', async () => {
+        const getUpdatedWith = setupDb();
+        const request = appWithContext([], 'owner');
+
+        const response = await request('/agent-1', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                avatarUrl: 'https://cdn.example/a.svg',
+                avatarParams: AVATAR_PARAMS,
+                status: 'paused',
+            }),
+        });
+
+        expect(response.status).toBe(200);
+        const updatedWith = getUpdatedWith();
+        expect(updatedWith.avatarParams).toEqual(AVATAR_PARAMS);
+        expect(updatedWith).not.toHaveProperty('status');
+    });
 });

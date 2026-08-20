@@ -79,4 +79,15 @@ describe('normalizeAvatarParams', () => {
         const custom = { ...DEFAULT_AVATAR_PARAMS, skinColor: '#123456' };
         expect(normalizeAvatarParams(custom).skinColor).toBe('#123456');
     });
+
+    it('rejects a non-hex skinColor/hairColor (e.g. an SVG attribute-breakout payload) and falls back to the default', () => {
+        const malicious = {
+            ...DEFAULT_AVATAR_PARAMS,
+            skinColor: '#000" /><image href=x onerror=alert(1) /><rect fill="#000',
+            hairColor: 'javascript:alert(1)',
+        };
+        const result = normalizeAvatarParams(malicious);
+        expect(result.skinColor).toBe(DEFAULT_AVATAR_PARAMS.skinColor);
+        expect(result.hairColor).toBe(DEFAULT_AVATAR_PARAMS.hairColor);
+    });
 });

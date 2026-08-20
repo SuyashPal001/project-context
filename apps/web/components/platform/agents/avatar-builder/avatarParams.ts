@@ -16,6 +16,8 @@ export interface AvatarParams {
     bgTheme: BackgroundTheme;
 }
 
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
 export const SKIN_COLORS = ['#ffd8a8', '#ffc0ad', '#d97757', '#8d5524', '#00ff66', '#c0c0c0'] as const;
 export const HAIR_COLORS = ['#3b233a', '#f08080', '#f7e368', '#ff5577', '#00e5ff', '#18181c', '#a0a0a0', '#8d5524'] as const;
 
@@ -57,7 +59,7 @@ export function randomizeAvatarParams(rng: () => number = Math.random): AvatarPa
     };
 }
 
-const BACKGROUND_THEMES: BackgroundTheme[] = ['terracotta', 'light', 'space', 'matrix', 'transparent'];
+export const BACKGROUND_THEMES: BackgroundTheme[] = ['terracotta', 'light', 'space', 'matrix', 'transparent'];
 
 function isOneOf<T>(value: unknown, allowed: readonly T[]): value is T {
     return (allowed as readonly unknown[]).includes(value);
@@ -67,9 +69,10 @@ function isOneOf<T>(value: unknown, allowed: readonly T[]): value is T {
 // (persisted API data, hand-edited rows, a future enum addition landing
 // after an agent was saved). Per-key fallback to the default rather than
 // throwing, so a stale or partially-missing record always renders something
-// openable in the builder instead of crashing it. skinColor/hairColor are
-// free hex strings (not enums), so any non-empty string passes through —
-// there's no "invalid" hex to detect here, only missing.
+// openable in the builder instead of crashing it. skinColor/hairColor must
+// match a strict 6-digit hex format — these values are interpolated raw
+// into SVG fill="..." attributes rendered via dangerouslySetInnerHTML, so
+// anything else (including attribute-breakout strings) is rejected here.
 export function normalizeAvatarParams(input: Partial<AvatarParams> | null | undefined): AvatarParams {
     if (!input) return DEFAULT_AVATAR_PARAMS;
     return {
@@ -77,8 +80,8 @@ export function normalizeAvatarParams(input: Partial<AvatarParams> | null | unde
         eyes: isOneOf(input.eyes, EYE_STYLES) ? input.eyes : DEFAULT_AVATAR_PARAMS.eyes,
         accessory: isOneOf(input.accessory, ACCESSORIES) ? input.accessory : DEFAULT_AVATAR_PARAMS.accessory,
         mouth: isOneOf(input.mouth, MOUTH_STYLES) ? input.mouth : DEFAULT_AVATAR_PARAMS.mouth,
-        skinColor: typeof input.skinColor === 'string' && input.skinColor.length > 0 ? input.skinColor : DEFAULT_AVATAR_PARAMS.skinColor,
-        hairColor: typeof input.hairColor === 'string' && input.hairColor.length > 0 ? input.hairColor : DEFAULT_AVATAR_PARAMS.hairColor,
+        skinColor: typeof input.skinColor === 'string' && HEX_COLOR.test(input.skinColor) ? input.skinColor : DEFAULT_AVATAR_PARAMS.skinColor,
+        hairColor: typeof input.hairColor === 'string' && HEX_COLOR.test(input.hairColor) ? input.hairColor : DEFAULT_AVATAR_PARAMS.hairColor,
         bgTheme: isOneOf(input.bgTheme, BACKGROUND_THEMES) ? input.bgTheme : DEFAULT_AVATAR_PARAMS.bgTheme,
     };
 }
