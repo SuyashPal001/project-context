@@ -43,8 +43,8 @@ export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentNam
             onSave({ url, params });
             onOpenChange(false);
             toast.success("Avatar saved");
-        } catch (error: any) {
-            toast.error(error.message || "Failed to save avatar");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Failed to save avatar");
         } finally {
             setIsSaving(false);
         }

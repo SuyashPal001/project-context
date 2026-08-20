@@ -2,7 +2,6 @@
 "use client";
 
 import * as React from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
     HEAD_SHAPES, EYE_STYLES, ACCESSORIES, MOUTH_STYLES, SKIN_COLORS, HAIR_COLORS,
@@ -24,6 +23,8 @@ const LABELS: Record<string, string> = {
     pompadour: "Pompadour", curtainbangs: "Curtain Bangs", topknot: "Topknot",
     bikerhelmet: "Biker Helmet", bandana: "Bandana", hood: "Hood", none: "None",
     goatee: "Goatee", beard: "Beard", stubble: "Stubble", smile: "Smile",
+    terracotta: "Warm Terracotta", light: "Studio Light", space: "Deep Cyber Dark",
+    matrix: "Neon Matrix", transparent: "Transparent",
 };
 
 interface OptionGridProps<T extends string> {
