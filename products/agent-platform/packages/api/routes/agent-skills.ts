@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
+import { skillInstalls } from '@serverless-saas/agent-schema/skills';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
@@ -18,6 +19,23 @@ async function resolveAgent(agentId: string, tenantId: string) {
         .where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId)))
         .limit(1);
     return agent ?? null;
+}
+
+// An installId names a skill_installs row, which is tenant-scoped. Nothing
+// downstream reads it yet, so writing a foreign tenant's install id is inert
+// today — but it would silently become a cross-tenant reference the moment the
+// runtime starts resolving it, so it's checked at write time.
+async function resolveInstall(installId: string, tenantId: string) {
+    const [install] = await db
+        .select({ id: skillInstalls.id })
+        .from(skillInstalls)
+        .where(and(
+            eq(skillInstalls.id, installId),
+            eq(skillInstalls.tenantId, tenantId),
+            eq(skillInstalls.status, 'active'),
+        ))
+        .limit(1);
+    return install ?? null;
 }
 
 // GET /agents/:agentId/skills — list all active skills for agent
@@ -82,6 +100,10 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
     }
 
     try {
+        if (result.data.installId && !await resolveInstall(result.data.installId, tenantId)) {
+            return c.json({ error: 'Skill install not found', code: 'NOT_FOUND' }, 404);
+        }
+
         const [created] = await db.insert(agentSkills).values({
             agentId,
             tenantId,

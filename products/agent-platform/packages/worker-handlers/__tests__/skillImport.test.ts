@@ -118,6 +118,32 @@ describe('handleSkillImport', () => {
     expect(params.some((p) => typeof p === 'string' && p.includes('Import failed'))).toBe(false);
   });
 
+  it('truncates the raw error before writing it to the tenant-readable audit log', async () => {
+    // auditLog is exposed to tenant admins through /audit-log (readable and
+    // CSV-exportable), so an unbounded raw error there is a side channel.
+    const longMessage = `S3 GetObject failed: ${'x'.repeat(500)}`;
+    s3SendMock.mockRejectedValueOnce(new Error(longMessage));
+
+    const auditValues = vi.fn().mockReturnValue({ catch: () => {} });
+    dbMock.insert.mockReturnValue({ values: auditValues });
+
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'zip', fileKey: 'tenants/tenant-1/skill-uploads/x.zip' },
+    });
+
+    const auditRow = auditValues.mock.calls.at(-1)?.[0] as { action: string; metadata: { error: string } };
+    expect(auditRow.action).toBe('skill_import_failed');
+    expect(auditRow.metadata.error.length).toBeLessThanOrEqual(201);
+    expect(auditRow.metadata.error.endsWith('…')).toBe(true);
+
+    // The tenant-facing failure_reason is still the generic message — an
+    // unexpected S3 error is not a tenant-safe rejection.
+    const failCall = dbMock.execute.mock.calls.find((c) => sqlText(c[0]).includes("status = 'failed'"));
+    expect(sqlParams(failCall![0]).some((p) => p === 'Import failed — see server logs for details')).toBe(true);
+  });
+
   it('rejects a github source with an unsafe owner/repo/ref before fetching anything', async () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
     await handleSkillImport({

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
+import { skillInstalls } from '@serverless-saas/agent-schema/skills';
 
 const dbMock = vi.hoisted(() => ({ select: vi.fn(), insert: vi.fn() }));
 vi.mock('../db', () => ({ db: dbMock }));
@@ -17,10 +18,14 @@ function appWithContext(permissionAction = 'create') {
     return app;
 }
 
-function mockResolveAgent() {
+// installRows is what the tenant-scoped skill_installs lookup resolves to —
+// [] models "no such install row for this tenant" (never installed, wrong
+// tenant, or uninstalled), which the route treats identically.
+function mockResolveAgent(installRows: Record<string, unknown>[] = []) {
     dbMock.select.mockImplementation(() => ({
         from: (table: unknown) => {
             if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
+            if (table === skillInstalls) return { where: () => ({ limit: async () => installRows }) };
             throw new Error('unexpected select target');
         },
     }));
@@ -55,7 +60,7 @@ describe('POST /agents/:agentId/skills', () => {
     });
 
     it('accepts installId and stores it on the created row when attaching an installed skill', async () => {
-        mockResolveAgent();
+        mockResolveAgent([{ id: '11111111-1111-4111-8111-111111111111' }]);
         dbMock.insert.mockImplementation((table: unknown) => ({
             values: (data: Record<string, unknown>) => ({
                 returning: async () => (table === agentSkills ? [{ id: 'skill-2', ...data }] : [{ id: 'audit-2' }]),
@@ -77,6 +82,31 @@ describe('POST /agents/:agentId/skills', () => {
         expect(res.status).toBe(201);
         const body = await res.json();
         expect(body.data.installId).toBe(installId);
+    });
+
+    it("returns 404 for an installId that isn't this tenant's active install row", async () => {
+        mockResolveAgent([]);
+        dbMock.insert.mockImplementation(() => ({
+            values: () => ({ returning: async () => [{ id: 'skill-3' }], catch: () => {} }),
+        }));
+
+        const { agentSkillsRoutes } = await import('../routes/agent-skills');
+        const app = appWithContext();
+        app.route('/agents', agentSkillsRoutes);
+
+        const res = await app.request('/agents/agent-1/skills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: 'PDF Tools',
+                systemPrompt: 'Use the PDF tool.',
+                installId: '99999999-9999-4999-8999-999999999999',
+            }),
+        });
+
+        expect(res.status).toBe(404);
+        expect((await res.json()).code).toBe('NOT_FOUND');
+        expect(dbMock.insert).not.toHaveBeenCalled();
     });
 
     it('rejects a non-uuid installId', async () => {

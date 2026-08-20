@@ -9,6 +9,15 @@ import { fetchPublicUrl, SsrfBlockedError } from '../lib/ssrfGuard';
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
 const DOCUMENTS_BUCKET = process.env.DOCUMENTS_BUCKET!;
 const GITHUB_SEGMENT_RE = /^[A-Za-z0-9._-]+$/;
+// auditLog is readable (and CSV-exportable) by any tenant admin holding
+// audit_log:read, so the raw error stored here is tenant-visible even though
+// failure_reason is sanitised. Full detail stays in the server log; the row
+// keeps only enough to correlate.
+const AUDIT_ERROR_MAX = 200;
+
+function truncateForAudit(message: string): string {
+  return message.length > AUDIT_ERROR_MAX ? `${message.slice(0, AUDIT_ERROR_MAX)}…` : message;
+}
 
 export type SkillImportSource =
   | { type: 'zip'; fileKey: string }
@@ -110,7 +119,7 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
     db.insert(auditLog).values({
       tenantId, actorId: 'system', actorType: 'system', action: 'skill_import_failed',
       resource: 'skill_version', resourceId: skillVersionId,
-      metadata: { skillId, version, error: rawMessage },
+      metadata: { skillId, version, error: truncateForAudit(rawMessage) },
       traceId: '',
     }).catch(() => {});
     console.error(`[skillImport] failed: skillId=${skillId} version=${version} error=${rawMessage}`);
