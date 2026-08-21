@@ -27,14 +27,14 @@ interface OptionGridProps<T extends string> {
 
 function OptionGrid<T extends string>({ options, value, onChange }: OptionGridProps<T>) {
     return (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-wrap gap-2">
             {options.map((option) => (
                 <button
                     key={option}
                     type="button"
                     onClick={() => onChange(option)}
                     className={cn(
-                        "rounded-lg border px-3 py-2 text-sm text-left",
+                        "rounded-full border px-4 py-2 text-sm",
                         option === value ? "border-primary bg-primary/10 font-medium" : "border-border"
                     )}
                 >
