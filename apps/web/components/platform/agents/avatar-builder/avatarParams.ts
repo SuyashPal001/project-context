@@ -36,17 +36,16 @@ export const DEFAULT_AVATAR_PARAMS: AvatarParams = {
     mouth: 'goatee',
     skinColor: SKIN_COLORS[0],
     hairColor: HAIR_COLORS[0],
-    bgTheme: 'terracotta',
+    bgTheme: 'transparent',
 };
 
 function pick<T>(arr: T[] | readonly T[], rng: () => number): T {
     return arr[Math.floor(rng() * arr.length)];
 }
 
-// bgTheme is deliberately never randomized here — the original prototype's
-// randomizeCapsule() left the background untouched, and re-rolling it on every
-// randomize made the preview feel less like "reroll this character" and more
-// like "reroll the whole scene."
+// bgTheme is always 'transparent' — a solid/gradient background clashes with
+// whatever surface the avatar renders on (chat bubbles, cards, dark/light
+// theme), so it's not user-choosable and never randomized.
 export function randomizeAvatarParams(rng: () => number = Math.random): AvatarParams {
     return {
         head: pick(HEAD_SHAPES, rng),
@@ -55,7 +54,7 @@ export function randomizeAvatarParams(rng: () => number = Math.random): AvatarPa
         mouth: pick(MOUTH_STYLES, rng),
         skinColor: pick(SKIN_COLORS, rng),
         hairColor: pick(HAIR_COLORS, rng),
-        bgTheme: 'terracotta',
+        bgTheme: 'transparent',
     };
 }
 
@@ -82,6 +81,8 @@ export function normalizeAvatarParams(input: Partial<AvatarParams> | null | unde
         mouth: isOneOf(input.mouth, MOUTH_STYLES) ? input.mouth : DEFAULT_AVATAR_PARAMS.mouth,
         skinColor: typeof input.skinColor === 'string' && HEX_COLOR.test(input.skinColor) ? input.skinColor : DEFAULT_AVATAR_PARAMS.skinColor,
         hairColor: typeof input.hairColor === 'string' && HEX_COLOR.test(input.hairColor) ? input.hairColor : DEFAULT_AVATAR_PARAMS.hairColor,
-        bgTheme: isOneOf(input.bgTheme, BACKGROUND_THEMES) ? input.bgTheme : DEFAULT_AVATAR_PARAMS.bgTheme,
+        // Always transparent, even for a pre-existing record saved with a themed
+        // background — there's no user-facing choice for this any more.
+        bgTheme: 'transparent',
     };
 }

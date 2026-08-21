@@ -4,7 +4,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import {
-    HEAD_SHAPES, EYE_STYLES, ACCESSORIES, MOUTH_STYLES, SKIN_COLORS, HAIR_COLORS, BACKGROUND_THEMES,
+    HEAD_SHAPES, EYE_STYLES, ACCESSORIES, MOUTH_STYLES, SKIN_COLORS, HAIR_COLORS,
 } from "./avatarParams";
 import type { AvatarParams } from "./avatarParams";
 
@@ -15,8 +15,6 @@ const LABELS: Record<string, string> = {
     pompadour: "Pompadour", curtainbangs: "Curtain Bangs", topknot: "Topknot",
     bikerhelmet: "Biker Helmet", bandana: "Bandana", hood: "Hood", none: "None",
     goatee: "Goatee", beard: "Beard", stubble: "Stubble", smile: "Smile",
-    terracotta: "Warm Terracotta", light: "Studio Light", space: "Deep Cyber Dark",
-    matrix: "Neon Matrix", transparent: "Transparent",
 };
 
 interface OptionGridProps<T extends string> {
@@ -95,10 +93,6 @@ export function AvatarControls({ params, onChange }: AvatarControlsProps) {
             <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground uppercase tracking-wider">Skin Tone</label>
                 <ColorRow colors={SKIN_COLORS} value={params.skinColor} onChange={(v) => set("skinColor", v)} />
-            </div>
-            <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground uppercase tracking-wider">Background</label>
-                <OptionGrid options={BACKGROUND_THEMES} value={params.bgTheme} onChange={(v) => set("bgTheme", v)} />
             </div>
         </div>
     );

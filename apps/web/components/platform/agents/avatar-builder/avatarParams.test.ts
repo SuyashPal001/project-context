@@ -16,15 +16,15 @@ describe('DEFAULT_AVATAR_PARAMS', () => {
             mouth: 'goatee',
             skinColor: SKIN_COLORS[0],
             hairColor: HAIR_COLORS[0],
-            bgTheme: 'terracotta',
+            bgTheme: 'transparent',
         });
     });
 });
 
 describe('randomizeAvatarParams', () => {
-    it('never randomizes bgTheme (kept at terracotta, matching the prototype)', () => {
+    it('never randomizes bgTheme (always transparent — not user-choosable)', () => {
         const result = randomizeAvatarParams(() => 0.999);
-        expect(result.bgTheme).toBe('terracotta');
+        expect(result.bgTheme).toBe('transparent');
     });
 
     it('picks values only from the closed enum sets, deterministically from a fixed rng', () => {
@@ -36,7 +36,7 @@ describe('randomizeAvatarParams', () => {
             mouth: 'goatee',
             skinColor: SKIN_COLORS[0],
             hairColor: HAIR_COLORS[0],
-            bgTheme: 'terracotta',
+            bgTheme: 'transparent',
         });
     });
 
@@ -49,7 +49,7 @@ describe('randomizeAvatarParams', () => {
             mouth: 'none',
             skinColor: SKIN_COLORS[SKIN_COLORS.length - 1],
             hairColor: HAIR_COLORS[HAIR_COLORS.length - 1],
-            bgTheme: 'terracotta',
+            bgTheme: 'transparent',
         });
     });
 });
@@ -60,9 +60,14 @@ describe('normalizeAvatarParams', () => {
         expect(normalizeAvatarParams(undefined)).toEqual(DEFAULT_AVATAR_PARAMS);
     });
 
-    it('passes through a fully valid AvatarParams unchanged', () => {
+    it('passes through a fully valid AvatarParams unchanged (aside from bgTheme)', () => {
         const valid = { ...DEFAULT_AVATAR_PARAMS, head: 'round' as const, bgTheme: 'matrix' as const };
-        expect(normalizeAvatarParams(valid)).toEqual(valid);
+        expect(normalizeAvatarParams(valid)).toEqual({ ...valid, bgTheme: 'transparent' });
+    });
+
+    it('forces bgTheme to transparent even for a pre-existing record saved with a themed background', () => {
+        const themed = { ...DEFAULT_AVATAR_PARAMS, bgTheme: 'space' as const };
+        expect(normalizeAvatarParams(themed).bgTheme).toBe('transparent');
     });
 
     it('falls back to the default for any missing key', () => {
