@@ -106,11 +106,11 @@ export function MessageItem({
         )}>
             {isAssistant && (
                 isFirstInSequence
-                    ? <AgentOrb size={40} state="idle" avatarUrl={agentAvatarUrl} />
+                    ? <AgentOrb size={60} state="idle" avatarUrl={agentAvatarUrl} />
                     // Same-width empty spacer for a consecutive assistant reply, so
                     // the text column still lines up under the first message's avatar
                     // instead of every reply in the run re-rendering its own icon.
-                    : <div className="w-10 shrink-0" />
+                    : <div className="w-[60px] shrink-0" />
             )}
 
             <div className={cn(

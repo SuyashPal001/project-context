@@ -363,7 +363,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 function ThinkingDots({ label = 'Thinking...', avatarUrl }: { label?: string; avatarUrl?: string | null }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={40} state="thinking" avatarUrl={avatarUrl} />
+            <AgentOrb size={60} state="thinking" avatarUrl={avatarUrl} />
             <div className="flex items-center gap-2 pt-1.5">
                 <span className="flex gap-[3px] items-center">
                     <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.3s]" />
@@ -382,7 +382,7 @@ function ThinkingDots({ label = 'Thinking...', avatarUrl }: { label?: string; av
 function WaitingForReplyIndicator({ avatarUrl }: { avatarUrl?: string | null }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={40} state="idle" avatarUrl={avatarUrl} />
+            <AgentOrb size={60} state="idle" avatarUrl={avatarUrl} />
             <div className="flex items-center gap-2 pt-1.5 text-muted-foreground">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0">
                     <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
