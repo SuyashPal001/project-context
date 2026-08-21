@@ -17,8 +17,11 @@ export function ProjectContextLogo({ variant = "full", className, iconSize = 32 
                 style={{ width: iconSize, height: iconSize }}
             >
                 <Brain
-                    className="text-primary-foreground"
-                    style={{ width: iconSize * 0.58, height: iconSize * 0.58 }}
+                    style={{
+                        width: iconSize * 0.58,
+                        height: iconSize * 0.58,
+                        color: "#5C2230", // logo keeps the tinted deep-rose mark regardless of --primary-foreground
+                    }}
                     strokeWidth={2}
                 />
             </span>
