@@ -20,7 +20,10 @@ interface AvatarBuilderModalProps {
     onOpenChange: (open: boolean) => void;
     initialParams: AvatarParams | null;
     agentName: string;
-    onSave: (result: { url: string; fileId: string; params: AvatarParams }) => void;
+    // May return a promise — the modal awaits it before closing, so "Use This
+    // Avatar" doesn't close/report success until the caller has actually
+    // persisted the avatar, not just uploaded the asset to storage.
+    onSave: (result: { url: string; fileId: string; params: AvatarParams }) => void | Promise<void>;
 }
 
 export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentName, onSave }: AvatarBuilderModalProps) {
@@ -47,15 +50,27 @@ export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentNam
 
     const handleSave = async () => {
         setIsSaving(true);
+        let uploaded: { url: string; fileId: string };
         try {
             const svg = buildAvatarSvg(params);
             const filename = `${agentName.toLowerCase().replace(/\s+/g, "_") || "agent"}_avatar.svg`;
-            const { url, fileId } = await saveAvatarAsset(svg, filename);
-            onSave({ url, fileId, params });
-            onOpenChange(false);
-            toast.success("Avatar saved");
+            uploaded = await saveAvatarAsset(svg, filename);
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to save avatar");
+            toast.error(error instanceof Error ? error.message : "Failed to upload avatar");
+            setIsSaving(false);
+            return;
+        }
+        try {
+            // Awaited: the caller (AgentIdentityCard) persists this to the agent
+            // record here — closing before this resolves would repeat the old bug
+            // where the modal reported success before anything was actually saved.
+            await onSave({ ...uploaded, params });
+            onOpenChange(false);
+        } catch {
+            // The caller's own mutation already reports this with the real API
+            // error message (see AgentIdentityCard's saveAvatarMutation) — don't
+            // double-toast a generic one. Leave the modal open so retrying
+            // "Use This Avatar" doesn't require re-customizing everything.
         } finally {
             setIsSaving(false);
         }

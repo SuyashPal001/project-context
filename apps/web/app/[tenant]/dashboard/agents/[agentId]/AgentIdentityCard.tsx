@@ -82,6 +82,28 @@ export function AgentIdentityCard({
         },
     });
 
+    // Fired directly from the avatar builder's "Use This Avatar" — that action reads
+    // as "save this now", not "stage it until you separately click Save". Previously
+    // it only updated local form state, so navigating away or reloading before the
+    // unrelated Save button was clicked silently discarded the new avatar.
+    const saveAvatarMutation = useMutation({
+        mutationFn: (values: { avatarFileId: string; avatarParams: AvatarParams }) =>
+            api.patch(`/api/v1/agents/${agentId}`, {
+                avatarFileId: values.avatarFileId,
+                avatarParams: values.avatarParams,
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
+            toast.success("Avatar saved");
+        },
+        onError: (err) => {
+            const msg = err instanceof ApiError
+                ? (err.data?.message || err.message)
+                : err instanceof Error ? err.message : "Failed to save avatar";
+            toast.error(msg);
+        },
+    });
+
     const initials = (form.name || agent?.name || "?")
         .split(" ")
         .map((w) => w[0])
@@ -186,9 +208,9 @@ export function AgentIdentityCard({
                             onOpenChange={setIsBuilderOpen}
                             initialParams={form.avatarParams}
                             agentName={form.name || agent?.name || "agent"}
-                            onSave={({ url, fileId, params }) => {
+                            onSave={async ({ url, fileId, params }) => {
                                 setForm(prev => ({ ...prev, avatarUrl: url, avatarFileId: fileId, avatarParams: params }));
-                                setIsDirty(true);
+                                await saveAvatarMutation.mutateAsync({ avatarFileId: fileId, avatarParams: params });
                             }}
                         />
                     </div>
