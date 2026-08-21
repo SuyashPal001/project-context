@@ -87,7 +87,7 @@ export default function EditRolePage() {
 
     return (
         <PermissionGate resource="roles" action="update">
-            <div className="space-y-6 max-w-2xl">
+            <div className="space-y-6">
                 <div className="flex items-center gap-3">
                     <Link href={`/${tenantId}/dashboard/settings/roles`}>
                         <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4"/></Button>
@@ -99,7 +99,7 @@ export default function EditRolePage() {
                     </div>
                 </div>
 
-                <div className="space-y-4 rounded-lg border border-border p-4">
+                <div className="space-y-4 rounded-lg border border-border p-4 max-w-2xl">
                     <div className="space-y-1.5">
                         <Label>Name</Label>
                         <Input value={name} onChange={e => setName(e.target.value)} disabled={isSystem}/>
@@ -116,7 +116,7 @@ export default function EditRolePage() {
                 </div>
 
                 {!isSystem && (
-                    <div className="flex justify-end gap-3">
+                    <div className="flex justify-end gap-3 max-w-2xl">
                         <Link href={`/${tenantId}/dashboard/settings/roles`}>
                             <Button variant="outline">Cancel</Button>
                         </Link>
