@@ -3,7 +3,6 @@
 import React, { useState, useRef } from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -116,15 +115,6 @@ export function ImageUpload({ value, onChange, onFileIdChange, fallbackText, dis
                         Square images recommended
                     </p>
                 </div>
-            </div>
-            <div className="space-y-1">
-                <Input
-                    placeholder="Or paste image URL"
-                    value={value || ""}
-                    onChange={(e) => onChange(e.target.value)}
-                    disabled={disabled || isUploading}
-                    className="h-9 text-sm"
-                />
             </div>
         </div>
     );
