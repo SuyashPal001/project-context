@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Agent } from "./types";
 import { Loader2 } from "lucide-react";
+import { generateDefaultAvatar } from "./avatar-builder/generateDefaultAvatar";
 
 const formSchema = z.object({
     name: z.string().min(2, {
@@ -53,6 +54,13 @@ export function CreateAgentForm({ onSuccess }: CreateAgentFormProps) {
             api.post<{ data: { agent: Agent; apiKey: string } }>("/api/v1/agents", values),
         onSuccess: (response) => {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
+            // Fire-and-forget: a new agent has no persona at creation time (this
+            // form doesn't offer one), so it always qualifies for a generated
+            // default. Don't block the "agent created" flow on this — re-invalidate
+            // once it lands so any mounted agent list picks up the new avatar.
+            generateDefaultAvatar(response.data.agent.id, response.data.agent.name)
+                .then(() => queryClient.invalidateQueries({ queryKey: ["agents"] }))
+                .catch((err) => console.error("Failed to generate default avatar:", err));
             onSuccess(response.data);
         },
         onError: (err: any) => {
