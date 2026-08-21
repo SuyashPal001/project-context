@@ -141,6 +141,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
             >
                 <PersonaAvatar
                     persona={agent.persona}
+                    avatarUrl={agent.avatarUrl}
                     state={agent.id === activeAgentId ? activeState : undefined}
                     size={36}
                     className="rounded-full h-9 w-9 shrink-0"
@@ -349,6 +350,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
                                         <div className="flex items-center gap-1.5">
                                             <PersonaAvatar
                                                 persona={agent.persona}
+                                                avatarUrl={agent.avatarUrl}
                                                 size={16}
                                                 className="rounded bg-transparent border-0"
                                                 iconClassName="text-muted-foreground/40"

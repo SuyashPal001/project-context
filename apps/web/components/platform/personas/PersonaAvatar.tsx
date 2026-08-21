@@ -7,6 +7,9 @@ import type { PersonaAnimationState } from "./usePersonaAnimationState";
 
 interface PersonaAvatarProps {
     persona?: PersonaSummary | null;
+    /** A custom agent avatar (agents.avatarUrl) — takes priority over the persona
+     * asset when both exist, since it's the more specific, user-chosen identity. */
+    avatarUrl?: string | null;
     state?: PersonaAnimationState;
     size?: number;
     className?: string;
@@ -16,8 +19,8 @@ interface PersonaAvatarProps {
     icon?: LucideIcon;
 }
 
-export function PersonaAvatar({ persona, state = "idle", size = 40, className, iconClassName, icon: Icon = Bot }: PersonaAvatarProps) {
-    const asset = persona?.animationStates?.[state] ?? persona?.animationStates?.idle;
+export function PersonaAvatar({ persona, avatarUrl, state = "idle", size = 40, className, iconClassName, icon: Icon = Bot }: PersonaAvatarProps) {
+    const asset = avatarUrl ?? persona?.animationStates?.[state] ?? persona?.animationStates?.idle;
 
     if (!asset) {
         return (
