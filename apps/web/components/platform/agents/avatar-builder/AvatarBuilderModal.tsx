@@ -63,7 +63,7 @@ export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentNam
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-3xl">
+            <DialogContent className="max-w-5xl">
                 <DialogHeader>
                     <DialogTitle>Build Avatar</DialogTitle>
                 </DialogHeader>
