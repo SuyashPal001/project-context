@@ -188,7 +188,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('idToken', idToken)
     if (folderId) requestContext.set('folderId', folderId)
 
-    const mcpClient = getMCPClientForTenant(tenantId, agentId)
+    const mcpClient = getMCPClientForTenant(tenantId, agentId, sessionId)
     requestContext.set('__mcpClient', mcpClient as any)
 
     const [agentSkill, agentName, personaPersonality, agentModelSelection] = await Promise.all([

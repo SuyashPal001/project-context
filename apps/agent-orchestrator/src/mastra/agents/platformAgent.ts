@@ -307,7 +307,11 @@ For short conversational answers or simple one-liners, do NOT call render_canvas
 
     // --- MCP path (backup / default when Composio is disabled or errored) ---
     const storedClient = requestContext.get('__mcpClient') as MCPClient | undefined
-    const mcpClient = storedClient ?? getMCPClientForTenant(tenantId, requestContext.get('agentId') as string | undefined)
+    const mcpClient = storedClient ?? getMCPClientForTenant(
+      tenantId,
+      requestContext.get('agentId') as string | undefined,
+      requestContext.get('sessionId') as string | undefined,
+    )
 
     const mcpTools = await getCachedMcpTools(mcpClient, tenantId)
 

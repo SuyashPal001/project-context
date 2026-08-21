@@ -16,6 +16,7 @@ export async function handleMcpRequest(
 ): Promise<void> {
   const tenantId = req.headers['x-tenant-id'] as string | undefined;
   const agentId = req.headers['x-agent-id'] as string | undefined;
+  const sessionId = req.headers['x-session-id'] as string | undefined;
 
   if (!tenantId) {
     res.status(400).json({ error: 'x-tenant-id header is required' });
@@ -27,8 +28,11 @@ export async function handleMcpRequest(
     version: '1.0.0',
   });
 
-  // Register tools with tenant/agent context captured in closure
-  registerGmailTools(server, { tenantId, agentId });
+  // Register tools with tenant/agent/session context captured in closure.
+  // sessionId is optional — absent for non-interactive callers (e.g. scheduled
+  // workflow runs with no live chat session); the policy guard fails closed
+  // for those rather than routing an approval request nobody can answer.
+  registerGmailTools(server, { tenantId, agentId, sessionId });
 
   // Stateless transport — no session persistence between requests
   const transport = new StreamableHTTPServerTransport({

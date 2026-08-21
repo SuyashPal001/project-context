@@ -5,6 +5,7 @@ import { checkMessageQuota, fetchAgentMemory } from '../usage.js'
 import { filterPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
 import { isInternalServiceKey } from '../service-key.js'
+import { releaseMCPClientForSession } from '../mastra/tools.js'
 import {
   Attachment,
   getAllowedOrigin, INTERNAL_SERVICE_KEY, API_BASE_URL,
@@ -164,6 +165,7 @@ chatRouter.post('/api/chat', async (c) => {
     if (streamClosed) return
     streamClosed = true
     sseApprovalChannels.delete(sessionId)
+    releaseMCPClientForSession(sessionId)
     try { streamController.close() } catch {}
   }
 
@@ -181,6 +183,7 @@ chatRouter.post('/api/chat', async (c) => {
       console.log(`[sse:${sessionId}] client disconnected`)
       streamClosed = true
       sseApprovalChannels.delete(sessionId)
+      releaseMCPClientForSession(sessionId)
       // Resolve any pending clarification immediately so the server-side agent
       // doesn't stay blocked for up to 120s after the client has gone away.
       const clarId = sessionActiveClarification.get(sessionId)

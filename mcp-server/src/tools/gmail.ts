@@ -5,10 +5,12 @@ import { google } from 'googleapis';
 import { checkPolicy } from '../db/credentials';
 import { getGmailAccessToken } from '../integrations/nangoGmail';
 import { assertActionAllowed } from './policy-guard';
+import { requestApprovalFromOrchestrator } from '../approval';
 
 interface ToolContext {
   tenantId: string;
   agentId?: string;
+  sessionId?: string;
 }
 
 export async function getGmailClient(tenantId: string) {
@@ -26,9 +28,9 @@ export async function getGmailClient(tenantId: string) {
  * the optional x-agent-id header skipped the block list and the human-approval
  * gate entirely. Translates the denial into the MCP error shape.
  */
-async function guardPolicy(ctx: ToolContext, action: string): Promise<void> {
+async function guardPolicy(ctx: ToolContext, action: string, args: Record<string, unknown> = {}): Promise<void> {
   try {
-    await assertActionAllowed(ctx, action, checkPolicy);
+    await assertActionAllowed(ctx, action, checkPolicy, args, requestApprovalFromOrchestrator);
   } catch (err) {
     throw new McpError(
       ErrorCode.InvalidRequest,
@@ -50,7 +52,7 @@ export function registerGmailTools(server: McpServer, ctx: ToolContext): void {
       cc: z.string().optional().describe('CC recipients comma separated'),
     },
     async ({ to, subject, body, cc }) => {
-      await guardPolicy(ctx, 'GMAIL_SEND_EMAIL');
+      await guardPolicy(ctx, 'GMAIL_SEND_EMAIL', { to, subject, body, cc });
       try {
         const gmail = await getGmailClient(ctx.tenantId);
         const lines = [
@@ -88,7 +90,7 @@ export function registerGmailTools(server: McpServer, ctx: ToolContext): void {
       messageId: z.string().describe('Gmail message ID to read'),
     },
     async ({ messageId }) => {
-      await guardPolicy(ctx, 'GMAIL_READ_EMAIL');
+      await guardPolicy(ctx, 'GMAIL_READ_EMAIL', { messageId });
       try {
         const gmail = await getGmailClient(ctx.tenantId);
         const result = await gmail.users.messages.get({
@@ -138,7 +140,7 @@ export function registerGmailTools(server: McpServer, ctx: ToolContext): void {
       maxResults: z.number().optional().default(10),
     },
     async ({ query, maxResults }) => {
-      await guardPolicy(ctx, 'GMAIL_SEARCH_EMAILS');
+      await guardPolicy(ctx, 'GMAIL_SEARCH_EMAILS', { query });
       try {
         const gmail = await getGmailClient(ctx.tenantId);
         const listResult = await gmail.users.messages.list({
@@ -188,7 +190,7 @@ export function registerGmailTools(server: McpServer, ctx: ToolContext): void {
       body: z.string().describe('Reply body text'),
     },
     async ({ messageId, body }) => {
-      await guardPolicy(ctx, 'GMAIL_REPLY_EMAIL');
+      await guardPolicy(ctx, 'GMAIL_REPLY_EMAIL', { messageId, body });
       try {
         const gmail = await getGmailClient(ctx.tenantId);
         const original = await gmail.users.messages.get({

@@ -19,6 +19,7 @@
 export interface ToolContext {
   tenantId: string;
   agentId?: string;
+  sessionId?: string;
 }
 
 export interface PolicyDecision {
@@ -32,6 +33,16 @@ export type PolicyChecker = (
   action: string,
 ) => Promise<PolicyDecision>;
 
+/**
+ * Asks a human to approve the action via the orchestrator's chat-session SSE
+ * channel. Resolves `true` if approved, `false` if denied/timed out/unreachable.
+ */
+export type ApprovalRequester = (
+  ctx: { tenantId: string; sessionId: string },
+  action: string,
+  args: Record<string, unknown>,
+) => Promise<boolean>;
+
 export class PolicyDeniedError extends Error {
   constructor(message: string) {
     super(message);
@@ -44,6 +55,8 @@ export async function assertActionAllowed(
   ctx: ToolContext,
   action: string,
   checkPolicy: PolicyChecker,
+  args: Record<string, unknown> = {},
+  requestApproval?: ApprovalRequester,
 ): Promise<void> {
   if (!ctx.agentId) {
     throw new PolicyDeniedError(
@@ -57,8 +70,16 @@ export async function assertActionAllowed(
     throw new PolicyDeniedError(`Action '${action}' is blocked by agent policy`);
   }
   if (decision.requiresApproval) {
-    throw new PolicyDeniedError(
-      `Action '${action}' requires human approval before execution`,
-    );
+    // No live chat session to ask, or no way to ask — same as before, fail closed.
+    if (!ctx.sessionId || !requestApproval) {
+      throw new PolicyDeniedError(
+        `Action '${action}' requires human approval before execution, but no active chat session is available to request it`,
+      );
+    }
+
+    const approved = await requestApproval({ tenantId: ctx.tenantId, sessionId: ctx.sessionId }, action, args);
+    if (!approved) {
+      throw new PolicyDeniedError(`Action '${action}' was not approved`);
+    }
   }
 }
