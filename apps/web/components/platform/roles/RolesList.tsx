@@ -83,7 +83,7 @@ export function RolesList() {
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <div className="flex items-center gap-2">
                             <Shield className="w-4 h-4 text-primary" />
-                            <CardTitle className="text-base font-bold">{role.name}</CardTitle>
+                            <CardTitle className="text-lg font-bold">{role.name}</CardTitle>
                             {role.isDefault && (
                                 <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0 h-4">
                                     System
@@ -104,7 +104,7 @@ export function RolesList() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <CardDescription className="text-sm text-muted-foreground mb-4 line-clamp-2 min-h-[40px]">
+                        <CardDescription className="text-sm font-medium text-foreground/80 mb-4 line-clamp-2 min-h-[40px]">
                             {role.description || "No description provided."}
                         </CardDescription>
                         <div className="flex items-center text-xs text-muted-foreground gap-1">

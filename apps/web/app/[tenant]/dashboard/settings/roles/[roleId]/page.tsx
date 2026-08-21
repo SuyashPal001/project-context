@@ -104,11 +104,11 @@ export default function EditRolePage() {
                         <>
                             <div className="space-y-1">
                                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</Label>
-                                <p className="text-base font-semibold capitalize">{name}</p>
+                                <p className="text-lg font-bold capitalize">{name}</p>
                             </div>
                             <div className="space-y-1">
                                 <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</Label>
-                                <p className="text-sm text-muted-foreground">{description || "—"}</p>
+                                <p className="text-base font-medium text-foreground/80">{description || "—"}</p>
                             </div>
                         </>
                     ) : (
