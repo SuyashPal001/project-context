@@ -234,3 +234,84 @@
   color: #e4e4e4;
   font-size: 0.875em;
 }
+
+/* Persona avatar motion — reacts to live chat-stream state (idle, thinking,
+   running, responding, waiting, review, done, failed) via CSS transforms on
+   the wrapper. Applies to whatever image PersonaAvatar renders (custom
+   agent avatar or a persona still) — motion is intentionally decoupled from
+   which picture is showing. */
+.persona-avatar-motion {
+  display: inline-block;
+  transform-origin: 50% 60%;
+}
+
+.persona-avatar-motion[data-persona-state="idle"] {
+  animation: persona-idle 3.2s ease-in-out infinite;
+}
+.persona-avatar-motion[data-persona-state="thinking"] {
+  animation: persona-thinking 2.6s ease-in-out infinite;
+}
+.persona-avatar-motion[data-persona-state="running"] {
+  animation: persona-running 0.5s ease-in-out infinite;
+}
+.persona-avatar-motion[data-persona-state="responding"] {
+  animation: persona-responding 1s ease-in-out infinite;
+}
+.persona-avatar-motion[data-persona-state="waiting"] {
+  animation: persona-waiting 1.6s ease-in-out infinite;
+}
+.persona-avatar-motion[data-persona-state="review"] {
+  animation: persona-review 1.8s ease-in-out infinite;
+}
+.persona-avatar-motion[data-persona-state="done"] {
+  animation: persona-done 0.9s cubic-bezier(0.36, 0, 0.66, -0.56) 1;
+}
+.persona-avatar-motion[data-persona-state="failed"] {
+  animation: persona-failed 0.4s ease-in-out 2;
+}
+/* waving has no dedicated art/motion yet — reuses idle's stillness */
+.persona-avatar-motion[data-persona-state="waving"] {
+  animation: persona-idle 3.2s ease-in-out infinite;
+}
+
+@keyframes persona-idle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes persona-thinking {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+@keyframes persona-running {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-2px) rotate(-2deg); }
+  75% { transform: translateY(-2px) rotate(2deg); }
+}
+@keyframes persona-responding {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@keyframes persona-waiting {
+  0%, 100% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(1px); opacity: 0.85; }
+}
+@keyframes persona-review {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-3deg); }
+}
+@keyframes persona-done {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-6px) scale(1.05); }
+  60% { transform: translateY(0) scale(0.97); }
+}
+@keyframes persona-failed {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .persona-avatar-motion {
+    animation: none !important;
+  }
+}
