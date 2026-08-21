@@ -251,6 +251,7 @@ export interface ThinkingIndicatorProps {
     activeToolCalls: ToolCall[];
     completedToolCalls: CompletedToolCall[];
     reasoningText?: string;
+    agentAvatarUrl?: string | null;
 }
 
 export function ThinkingIndicator({
@@ -259,6 +260,7 @@ export function ThinkingIndicator({
     activeToolCalls,
     completedToolCalls,
     reasoningText = '',
+    agentAvatarUrl,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
 
@@ -277,7 +279,7 @@ export function ThinkingIndicator({
     if (isRetrying) {
         return (
             <div className="flex items-center gap-4 animate-in fade-in duration-300 pt-1">
-                <AgentOrb size={40} state="thinking" isLoading />
+                <AgentOrb size={40} state="thinking" isLoading avatarUrl={agentAvatarUrl} />
                 <div className="h-6 overflow-hidden">
                     <div
                         className="transition-transform duration-500 ease-in-out"
@@ -303,7 +305,7 @@ export function ThinkingIndicator({
 
     return (
         <div className="flex items-start gap-4">
-            <AgentOrb size={40} state={hasToolActivity ? "searching" : "thinking"} isLoading={hasToolActivity} />
+            <AgentOrb size={40} state={hasToolActivity ? "searching" : "thinking"} isLoading={hasToolActivity} avatarUrl={agentAvatarUrl} />
             <div className={hasToolActivity ? "flex-1 pt-1" : "flex-1 pt-1.5"}>
                 <LiveTrace
                     isStreaming={isStreaming}

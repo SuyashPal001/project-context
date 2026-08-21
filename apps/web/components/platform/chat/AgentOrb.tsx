@@ -10,6 +10,7 @@ interface AgentOrbProps {
     state?: OrbState;
     size?: number;
     isLoading?: boolean;
+    avatarUrl?: string | null;
 }
 
 interface Vars {
@@ -34,7 +35,7 @@ interface Vars {
 
 function randomBlink() { return 3000 + Math.random() * 5000; }
 
-export function AgentOrb({ state = 'idle', size = 32, isLoading = false }: AgentOrbProps) {
+export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarUrl = null }: AgentOrbProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isJumping, setIsJumping] = useState(false);
     const { resolvedTheme } = useTheme();
@@ -360,6 +361,17 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false }: Agent
             setTimeout(() => setIsJumping(false), 500);
         }
     };
+
+    if (avatarUrl) {
+        return (
+            <img
+                src={avatarUrl}
+                alt=""
+                className="rounded-full object-cover shrink-0"
+                style={{ width: size, height: size }}
+            />
+        );
+    }
 
     return (
         <canvas

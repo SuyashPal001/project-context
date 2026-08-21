@@ -27,6 +27,7 @@ export interface Agent {
     isDefault: boolean;
     description: string | null;
     persona: PersonaSummary | null;
+    avatarUrl: string | null;
     createdAt: string;
 }
 
@@ -38,7 +39,6 @@ export interface AgentDetail extends Agent {
     createdBy: string;
     createdByName: string | null;
     description: string | null;
-    avatarUrl: string | null;
     avatarParams: AvatarParams | null;
 }
 

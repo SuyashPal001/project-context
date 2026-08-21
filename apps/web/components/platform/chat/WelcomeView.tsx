@@ -38,7 +38,7 @@ export function WelcomeView({ agent, firstName, onSelectPill, onSend, children }
         <div className="flex flex-col h-full">
             <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 text-center">
                 <div className="mb-6">
-                    <AgentOrb size={64} state="idle" />
+                    <AgentOrb size={64} state="idle" avatarUrl={agent?.avatarUrl} />
                 </div>
 
                 <h2 className="text-2xl font-bold tracking-tight mb-1">

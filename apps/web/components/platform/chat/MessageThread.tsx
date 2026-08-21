@@ -28,9 +28,10 @@ interface MessageThreadProps {
     onFollowUpSelect?: (text: string) => void;
     onRegenerate?: (message: Message) => void;
     onEditAndResubmit?: (message: Message, newContent: string) => void;
+    agentAvatarUrl?: string | null;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -265,12 +266,13 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             activeToolCalls={message.isStreaming ? activeToolCalls : undefined}
                             completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
                             liveReasoningText={message.isStreaming ? reasoningText : undefined}
+                            agentAvatarUrl={agentAvatarUrl}
                         />
                     );
                 })}
 
                 {awaitingReply ? (
-                    <WaitingForReplyIndicator />
+                    <WaitingForReplyIndicator avatarUrl={agentAvatarUrl} />
                 ) : (isStreaming || isRetrying) && !hasStreamingMessage ? (
                     <ThinkingIndicator
                         isRetrying={isRetrying ?? false}
@@ -278,9 +280,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         activeToolCalls={activeToolCalls ?? []}
                         completedToolCalls={completedToolCalls ?? []}
                         reasoningText={reasoningText ?? ''}
+                        agentAvatarUrl={agentAvatarUrl}
                     />
                 ) : isTyping && !hasStreamingMessage ? (
-                    <ThinkingDots label="Thinking..." />
+                    <ThinkingDots label="Thinking..." avatarUrl={agentAvatarUrl} />
                 ) : null}
 
                 {error && (
@@ -357,10 +360,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     );
 }
 
-function ThinkingDots({ label = 'Thinking...' }: { label?: string }) {
+function ThinkingDots({ label = 'Thinking...', avatarUrl }: { label?: string; avatarUrl?: string | null }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={40} state="thinking" />
+            <AgentOrb size={40} state="thinking" avatarUrl={avatarUrl} />
             <div className="flex items-center gap-2 pt-1.5">
                 <span className="flex gap-[3px] items-center">
                     <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.3s]" />
@@ -376,10 +379,10 @@ function ThinkingDots({ label = 'Thinking...' }: { label?: string }) {
 // Static, un-animated counterpart to ThinkingIndicator/ThinkingDots — rendered instead of
 // either whenever the last message is blocking on a pending clarificationRequest. No timer,
 // no shimmer: the agent isn't doing anything, so nothing here should look like it's working.
-function WaitingForReplyIndicator() {
+function WaitingForReplyIndicator({ avatarUrl }: { avatarUrl?: string | null }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={40} state="idle" />
+            <AgentOrb size={40} state="idle" avatarUrl={avatarUrl} />
             <div className="flex items-center gap-2 pt-1.5 text-muted-foreground">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0">
                     <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />

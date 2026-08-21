@@ -45,6 +45,7 @@ interface MessageItemProps {
     onEditAndResubmit?: (message: Message, newContent: string) => void;
     isLastMessage?: boolean;
     isStreaming?: boolean;
+    agentAvatarUrl?: string | null;
 }
 
 export function MessageItem({
@@ -66,6 +67,7 @@ export function MessageItem({
     onEditAndResubmit,
     isLastMessage,
     isStreaming,
+    agentAvatarUrl,
 }: MessageItemProps) {
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
@@ -104,7 +106,7 @@ export function MessageItem({
         )}>
             {isAssistant && (
                 isFirstInSequence
-                    ? <AgentOrb size={40} state="idle" />
+                    ? <AgentOrb size={40} state="idle" avatarUrl={agentAvatarUrl} />
                     // Same-width empty spacer for a consecutive assistant reply, so
                     // the text column still lines up under the first message's avatar
                     // instead of every reply in the run re-rendering its own icon.

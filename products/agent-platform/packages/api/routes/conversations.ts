@@ -40,6 +40,7 @@ const conversationSelect = {
     updatedAt: conversations.updatedAt,
     agent: {
         id: agents.id, name: agents.name, type: agents.type,
+        avatarUrl: agents.avatarUrl,
         // Cast to `any`: drizzle's SelectedFields type only supports one level of
         // nested-object selection, but this shape nests persona inside agent (two
         // levels) to match the API response contract. Runtime flattening handles
@@ -88,6 +89,7 @@ conversationsRoutes.get('/', async (c) => {
                 updatedAt: conversations.updatedAt,
                 agent: {
                     id: agents.id, name: agents.name, type: agents.type,
+                    avatarUrl: agents.avatarUrl,
                     // Cast to `any`: drizzle's SelectedFields type only supports one level
                     // of nested-object selection, but this shape nests persona inside
                     // agent (two levels) to match the API response contract. Runtime
