@@ -100,14 +100,29 @@ export default function EditRolePage() {
                 </div>
 
                 <div className="space-y-4 rounded-lg border border-border p-4 max-w-2xl">
-                    <div className="space-y-1.5">
-                        <Label>Name</Label>
-                        <Input value={name} onChange={e => setName(e.target.value)} disabled={isSystem}/>
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label>Description</Label>
-                        <Textarea value={description} onChange={e => setDescription(e.target.value)} disabled={isSystem} rows={2}/>
-                    </div>
+                    {isSystem ? (
+                        <>
+                            <div className="space-y-1">
+                                <Label className="text-muted-foreground">Name</Label>
+                                <p className="font-medium capitalize">{name}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-muted-foreground">Description</Label>
+                                <p className="text-sm">{description || "—"}</p>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="space-y-1.5">
+                                <Label>Name</Label>
+                                <Input value={name} onChange={e => setName(e.target.value)}/>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Description</Label>
+                                <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}/>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 <div className="space-y-2">

@@ -58,7 +58,7 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
     };
 
     return (
-        <div className="flex items-baseline justify-between gap-4 py-2.5">
+        <div className="flex items-center justify-between gap-4 py-2.5 border-b border-border/50 last:border-b-0">
             <span
                 className={cn(
                     "font-medium capitalize",
@@ -67,30 +67,34 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
             >
                 {resource.replace(/_/g, " ")}
             </span>
-            <span className="flex items-center gap-1 text-sm">
+            <span className="flex items-center gap-5 text-sm">
                 {hasAccess ? (
-                    ordered.map((action, i) => {
+                    ordered.map((action) => {
                         const perm = byAction.get(action);
                         if (!perm) return null;
                         const isSelected = selected.includes(perm.id);
                         return (
-                            <span key={perm.id} className="flex items-center gap-1">
-                                {i > 0 && <span className="text-muted-foreground/30">·</span>}
-                                <button
-                                    type="button"
-                                    disabled={disabled}
-                                    onClick={() => handleToggle(action)}
+                            <button
+                                key={perm.id}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => handleToggle(action)}
+                                className={cn(
+                                    "flex items-center gap-1.5 capitalize transition-colors",
+                                    isSelected ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground",
+                                    disabled && "pointer-events-none opacity-60"
+                                )}
+                            >
+                                <span
                                     className={cn(
-                                        "rounded-md px-1.5 py-0.5 capitalize transition-colors",
-                                        isSelected
-                                            ? "bg-muted text-foreground hover:bg-muted/70"
-                                            : "text-muted-foreground/40 hover:text-muted-foreground",
-                                        disabled && "pointer-events-none opacity-60"
+                                        "flex h-3.5 w-3.5 items-center justify-center rounded-full border",
+                                        isSelected ? "border-foreground" : "border-muted-foreground/30"
                                     )}
                                 >
-                                    {action}
-                                </button>
-                            </span>
+                                    {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-foreground" />}
+                                </span>
+                                {action}
+                            </button>
                         );
                     })
                 ) : (
