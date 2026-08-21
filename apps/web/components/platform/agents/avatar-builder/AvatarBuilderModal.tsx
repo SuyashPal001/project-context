@@ -20,7 +20,7 @@ interface AvatarBuilderModalProps {
     onOpenChange: (open: boolean) => void;
     initialParams: AvatarParams | null;
     agentName: string;
-    onSave: (result: { url: string; params: AvatarParams }) => void;
+    onSave: (result: { url: string; fileId: string; params: AvatarParams }) => void;
 }
 
 export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentName, onSave }: AvatarBuilderModalProps) {
@@ -50,8 +50,8 @@ export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentNam
         try {
             const svg = buildAvatarSvg(params);
             const filename = `${agentName.toLowerCase().replace(/\s+/g, "_") || "agent"}_avatar.svg`;
-            const { url } = await saveAvatarAsset(svg, filename);
-            onSave({ url, params });
+            const { url, fileId } = await saveAvatarAsset(svg, filename);
+            onSave({ url, fileId, params });
             onOpenChange(false);
             toast.success("Avatar saved");
         } catch (error) {

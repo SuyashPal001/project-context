@@ -45,7 +45,7 @@ export function AgentIdentityCard({
     tenantSlug,
 }: AgentIdentityCardProps) {
     const queryClient = useQueryClient();
-    const [form, setForm] = React.useState<{ name: string; avatarUrl: string; avatarParams: AvatarParams | null; personaId: string | null }>({ name: "", avatarUrl: "", avatarParams: null, personaId: null });
+    const [form, setForm] = React.useState<{ name: string; avatarUrl: string; avatarFileId: string | null; avatarParams: AvatarParams | null; personaId: string | null }>({ name: "", avatarUrl: "", avatarFileId: null, avatarParams: null, personaId: null });
     const [isDirty, setIsDirty] = React.useState(false);
     const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
 
@@ -56,16 +56,16 @@ export function AgentIdentityCard({
 
     React.useEffect(() => {
         if (agent) {
-            setForm({ name: agent.name ?? "", avatarUrl: agent.avatarUrl ?? "", avatarParams: agent.avatarParams ?? null, personaId: agent.persona?.id ?? null });
+            setForm({ name: agent.name ?? "", avatarUrl: agent.avatarUrl ?? "", avatarFileId: agent.avatarFileId ?? null, avatarParams: agent.avatarParams ?? null, personaId: agent.persona?.id ?? null });
             setIsDirty(false);
         }
     }, [agent]);
 
     const updateMutation = useMutation({
-        mutationFn: (values: { name: string; avatarUrl: string; avatarParams: AvatarParams | null; personaId: string | null }) =>
+        mutationFn: (values: { name: string; avatarFileId: string | null; avatarParams: AvatarParams | null; personaId: string | null }) =>
             api.patch(`/api/v1/agents/${agentId}`, {
                 name: values.name || undefined,
-                avatarUrl: values.avatarUrl || null,
+                avatarFileId: values.avatarFileId,
                 avatarParams: values.avatarParams,
                 personaId: values.personaId,
             }),
@@ -110,6 +110,9 @@ export function AgentIdentityCard({
                                     onChange={(url) => {
                                         setForm(prev => ({ ...prev, avatarUrl: url, avatarParams: null }));
                                         setIsDirty(true);
+                                    }}
+                                    onFileIdChange={(fileId) => {
+                                        setForm(prev => ({ ...prev, avatarFileId: fileId }));
                                     }}
                                     disabled={!isOwner}
                                 />
@@ -183,8 +186,8 @@ export function AgentIdentityCard({
                             onOpenChange={setIsBuilderOpen}
                             initialParams={form.avatarParams}
                             agentName={form.name || agent?.name || "agent"}
-                            onSave={({ url, params }) => {
-                                setForm(prev => ({ ...prev, avatarUrl: url, avatarParams: params }));
+                            onSave={({ url, fileId, params }) => {
+                                setForm(prev => ({ ...prev, avatarUrl: url, avatarFileId: fileId, avatarParams: params }));
                                 setIsDirty(true);
                             }}
                         />

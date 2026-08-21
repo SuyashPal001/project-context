@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { and, eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database/client';
+import { storageService } from '@serverless-saas/storage';
 import { conversations } from '@serverless-saas/agent-schema/conversations';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { personas } from '@serverless-saas/agent-schema/personas';
@@ -9,6 +10,20 @@ import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 
 export const conversationsRoutes = new Hono<AppEnv>();
+
+// Presigned GET URLs expire (1hr — see storageService.getDownloadUrl), so avatarUrl is
+// never persisted on agents; only the stable avatarFileId is. Resolve a fresh URL on
+// every read here too, mirroring agents.crud.ts's resolveAvatarUrl.
+async function resolveConversationAgentAvatar<T extends { tenantId: string; agent: { avatarFileId: string | null } }>(row: T) {
+    const { avatarFileId, ...agentRest } = row.agent;
+    let avatarUrl: string | null = null;
+    if (avatarFileId) {
+        try { avatarUrl = await storageService.getDownloadUrl(row.tenantId, avatarFileId); } catch { /* file missing/deleted */ }
+    }
+    // Cast: TS can't narrow the generic `agent` shape after the Omit/spread — same
+    // type-only escape hatch as the `as any` on conversationSelect.agent.persona above.
+    return { ...row, agent: { ...agentRest, avatarUrl } } as Omit<T, 'agent'> & { agent: Omit<T['agent'], 'avatarFileId'> & { avatarUrl: string | null } };
+}
 
 // Drizzle's left-join null-collapsing only nullifies a nested selected object
 // when its field path has length === 2 (e.g. `agent: { persona: { id } }` in
@@ -40,7 +55,7 @@ const conversationSelect = {
     updatedAt: conversations.updatedAt,
     agent: {
         id: agents.id, name: agents.name, type: agents.type,
-        avatarUrl: agents.avatarUrl,
+        avatarFileId: agents.avatarFileId,
         // Cast to `any`: drizzle's SelectedFields type only supports one level of
         // nested-object selection, but this shape nests persona inside agent (two
         // levels) to match the API response contract. Runtime flattening handles
@@ -89,7 +104,7 @@ conversationsRoutes.get('/', async (c) => {
                 updatedAt: conversations.updatedAt,
                 agent: {
                     id: agents.id, name: agents.name, type: agents.type,
-                    avatarUrl: agents.avatarUrl,
+                    avatarFileId: agents.avatarFileId,
                     // Cast to `any`: drizzle's SelectedFields type only supports one level
                     // of nested-object selection, but this shape nests persona inside
                     // agent (two levels) to match the API response contract. Runtime
@@ -108,7 +123,8 @@ conversationsRoutes.get('/', async (c) => {
             .where(and(...filters))
             .orderBy(desc(conversations.createdAt));
 
-        return c.json({ data: data.map(normalizeAgentPersona) });
+        const normalized = await Promise.all(data.map(normalizeAgentPersona).map(resolveConversationAgentAvatar));
+        return c.json({ data: normalized });
     } catch (error) {
         console.error('Fetch conversations failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
@@ -184,7 +200,7 @@ conversationsRoutes.get('/:id', async (c) => {
             .limit(1);
 
         if (!data) return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
-        return c.json({ data: normalizeAgentPersona(data) });
+        return c.json({ data: await resolveConversationAgentAvatar(normalizeAgentPersona(data)) });
     } catch (error) {
         console.error('Fetch conversation failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
@@ -234,7 +250,7 @@ conversationsRoutes.patch('/:id', async (c) => {
             .where(scope)
             .limit(1);
 
-        return c.json({ data: updated ? normalizeAgentPersona(updated) : updated });
+        return c.json({ data: updated ? await resolveConversationAgentAvatar(normalizeAgentPersona(updated)) : updated });
     } catch (error) {
         console.error('Update conversation failed:', error);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);

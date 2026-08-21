@@ -40,6 +40,11 @@ export interface AgentDetail extends Agent {
     createdByName: string | null;
     description: string | null;
     avatarParams: AvatarParams | null;
+    // Only present on the detail endpoint — avatarUrl is a freshly-resolved presigned
+    // URL (expires in ~1hr) recomputed on every fetch, not the source of truth. The
+    // identity form must round-trip this id unchanged on saves that don't touch the
+    // avatar, since avatarUrl alone can't reconstruct it.
+    avatarFileId: string | null;
 }
 
 export interface Workflow {

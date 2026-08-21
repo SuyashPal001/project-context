@@ -11,6 +11,7 @@ const vector = customType<{ data: number[] | null; driverData: string | null }>(
 });
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { users } from '@serverless-saas/database/schema/auth';
+import { files } from '@serverless-saas/database/schema/storage';
 
 export const workflowTriggerEnum = pgEnum('workflow_trigger', ['incident_created', 'scheduled', 'manual']);
 export const workflowStatusEnum = pgEnum('workflow_status', ['active', 'paused', 'archived']);
@@ -39,7 +40,11 @@ export const agents = pgTable('agents', {
   status: agentStatusEnum('status').notNull().default('active'),
   apiKeyId: uuid('api_key_id').notNull(),
   llmProviderId: uuid('llm_provider_id'),
-  avatarUrl: text('avatar_url'),
+  // Presigned S3 GET URLs expire (1hr, see storageService.getDownloadUrl) — storing
+  // one directly here (the old avatarUrl text column) meant every avatar silently
+  // broke an hour after being saved. Store the stable fileId instead and resolve a
+  // fresh presigned URL at read time, same pattern chat attachments already use.
+  avatarFileId: uuid('avatar_file_id').references(() => files.id),
   avatarParams: jsonb('avatar_params').$type<AvatarParams | null>(),
   personaId: uuid('persona_id').references(() => personas.id),
   description: text('description'),

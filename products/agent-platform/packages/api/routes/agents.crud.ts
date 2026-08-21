@@ -2,6 +2,7 @@ import { and, eq, count, asc } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { z } from 'zod';
 import { db } from '../db';
+import { storageService } from '@serverless-saas/storage';
 import { agents, agentWorkflows } from '@serverless-saas/agent-schema/agents';
 import { personas } from '@serverless-saas/agent-schema/personas';
 import { teamMembers } from '@serverless-saas/agent-schema/teams';
@@ -29,6 +30,19 @@ async function checkFireDependencies(agentId: string): Promise<{ shiftsCount: nu
     return { shiftsCount: Number(shiftsCount), teamsCount: Number(teamsCount) };
 }
 
+// Presigned GET URLs expire (1hr — see storageService.getDownloadUrl), so avatarUrl is
+// never persisted; only the stable avatarFileId is. Resolve a fresh URL on every read,
+// same as chat attachments already do. Swallows a missing/deleted file rather than
+// failing the whole agent list/detail response.
+async function resolveAvatarUrl(tenantId: string, avatarFileId: string | null): Promise<string | null> {
+    if (!avatarFileId) return null;
+    try {
+        return await storageService.getDownloadUrl(tenantId, avatarFileId);
+    } catch {
+        return null;
+    }
+}
+
 // GET /agents
 export async function handleListAgents(c: Context<AppEnv>) {
     const requestContext = c.get('requestContext') as any;
@@ -37,11 +51,11 @@ export async function handleListAgents(c: Context<AppEnv>) {
 
     if (!hasPermission(permissions, 'agents', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
-    const data = await db
+    const rows = await db
         .select({
             id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
             model: agents.model, status: agents.status, llmProviderId: agents.llmProviderId,
-            isInternal: agents.isInternal, isDefault: agents.isDefault, description: agents.description, avatarUrl: agents.avatarUrl,
+            isInternal: agents.isInternal, isDefault: agents.isDefault, description: agents.description, avatarFileId: agents.avatarFileId,
             createdAt: agents.createdAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
@@ -52,6 +66,10 @@ export async function handleListAgents(c: Context<AppEnv>) {
         .leftJoin(personas, eq(agents.personaId, personas.id))
         .where(and(eq(agents.tenantId, tenantId), eq(agents.isInternal, false)))
         .orderBy(asc(agents.createdAt));
+
+    const data = await Promise.all(rows.map(async ({ avatarFileId, ...row }) => ({
+        ...row, avatarUrl: await resolveAvatarUrl(tenantId, avatarFileId),
+    })));
 
     return c.json({ data });
 }
@@ -69,7 +87,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
         .select({
             id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
             model: agents.model, status: agents.status, apiKeyId: agents.apiKeyId,
-            llmProviderId: agents.llmProviderId, avatarUrl: agents.avatarUrl, avatarParams: agents.avatarParams, description: agents.description,
+            llmProviderId: agents.llmProviderId, avatarFileId: agents.avatarFileId, avatarParams: agents.avatarParams, description: agents.description,
             isInternal: agents.isInternal, createdBy: agents.createdBy, personaId: agents.personaId,
             createdAt: agents.createdAt, updatedAt: agents.updatedAt,
             persona: {
@@ -94,7 +112,11 @@ export async function handleGetAgent(c: Context<AppEnv>) {
         if (row) llmProvider = { ...row, displayName: row.displayName ?? row.model };
     }
 
-    return c.json({ ...agent, llmProvider, createdByName: creator?.name ?? null });
+    // avatarFileId stays in the response (unlike the list endpoint) so the identity
+    // form can round-trip it unchanged on saves that don't touch the avatar — the
+    // resolved avatarUrl alone isn't enough to reconstruct it.
+    const avatarUrl = await resolveAvatarUrl(tenantId, agent.avatarFileId);
+    return c.json({ ...agent, avatarUrl, llmProvider, createdByName: creator?.name ?? null });
 }
 
 // POST /agents
@@ -163,7 +185,7 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
     const result = z.object({
         name: z.string().min(1).max(100).optional(),
         description: z.string().max(500).nullable().optional(),
-        avatarUrl: z.string().url().nullable().optional(),
+        avatarFileId: z.string().uuid().nullable().optional(),
         avatarParams: z.object({
             head: z.enum(['tall', 'round', 'oval']),
             eyes: z.enum(['dots', 'shades', 'visor', 'eyepatch']),
@@ -189,7 +211,7 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
         }
     }
 
-    const updateData = canFullUpdate ? result.data : { name: result.data.name, avatarUrl: result.data.avatarUrl, avatarParams: result.data.avatarParams, personaId: result.data.personaId };
+    const updateData = canFullUpdate ? result.data : { name: result.data.name, avatarFileId: result.data.avatarFileId, avatarParams: result.data.avatarParams, personaId: result.data.personaId };
     const [updated] = await db.update(agents).set({ ...updateData, updatedAt: new Date() }).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).returning();
 
     if (result.data.status && canFullUpdate) {
@@ -208,7 +230,8 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
         }).catch((err) => console.error('[agents] update failed:', err));
     }
 
-    return c.json({ data: { agent: updated } });
+    const updatedAvatarUrl = await resolveAvatarUrl(tenantId, updated.avatarFileId);
+    return c.json({ data: { agent: { ...updated, avatarUrl: updatedAvatarUrl } } });
 }
 
 // DELETE /agents/:id
