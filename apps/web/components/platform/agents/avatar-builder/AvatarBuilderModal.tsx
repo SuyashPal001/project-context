@@ -63,12 +63,12 @@ export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentNam
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-5xl">
-                <DialogHeader>
+            <DialogContent className="sm:max-w-5xl max-h-[88vh] overflow-y-auto">
+                <DialogHeader className="sticky top-0 z-10 bg-background pb-4 border-b">
                     <DialogTitle>Build Avatar</DialogTitle>
                 </DialogHeader>
-                <div className="grid grid-cols-[auto_1fr] gap-6">
-                    <div className="flex flex-col items-center gap-3">
+                <div className="grid grid-cols-[auto_1fr] gap-6 items-start">
+                    <div className="sticky top-24 flex flex-col items-center gap-3">
                         <AvatarPreview params={params} />
                         <Button type="button" variant="outline" size="sm" onClick={() => setParams(randomizeAvatarParams())}>
                             Roll Random
@@ -76,7 +76,7 @@ export function AvatarBuilderModal({ open, onOpenChange, initialParams, agentNam
                     </div>
                     <AvatarControls params={params} onChange={setParams} />
                 </div>
-                <DialogFooter>
+                <DialogFooter className="sticky bottom-0 z-10 bg-background pt-4 border-t">
                     <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={isSaving}>
                         Cancel
                     </Button>
