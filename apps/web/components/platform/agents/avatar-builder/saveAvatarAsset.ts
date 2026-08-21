@@ -20,11 +20,19 @@ export async function saveAvatarAsset(svg: string, filename: string): Promise<{ 
     });
     if (!uploadRes.ok) throw new Error('Failed to upload to S3');
 
-    await api.post(`/api/v1/files/${data.fileId}/confirm`, { size: blob.size });
-
-    const { presignedUrl } = await api.get<{ presignedUrl: string }>(
-        `/api/v1/files/${data.fileId}/presigned-url`
+    // The confirm response's fileId is authoritative, not the upload response's: when
+    // the S3 key collides with an already-uploaded file (guaranteed here, since the
+    // filename is always `{agentName}_avatar.svg` — every re-save of the same agent's
+    // avatar collides), /confirm dedupes by discarding this pending record and
+    // returning the existing file's id instead. Using data.fileId past this point
+    // would fetch a presigned URL for a file that was just soft-deleted.
+    const { fileId: confirmedFileId } = await api.post<{ success: boolean; fileId: string }>(
+        `/api/v1/files/${data.fileId}/confirm`, { size: blob.size }
     );
 
-    return { url: presignedUrl, fileId: data.fileId };
+    const { presignedUrl } = await api.get<{ presignedUrl: string }>(
+        `/api/v1/files/${confirmedFileId}/presigned-url`
+    );
+
+    return { url: presignedUrl, fileId: confirmedFileId };
 }

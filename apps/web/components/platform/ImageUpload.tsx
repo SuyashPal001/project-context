@@ -49,18 +49,23 @@ export function ImageUpload({ value, onChange, onFileIdChange, fallbackText, dis
 
             if (!uploadRes.ok) throw new Error('Failed to upload to S3');
 
-            // 3. Confirm upload
-            await api.post(`/api/v1/files/${data.fileId}/confirm`, {
-                size: file.size,
-            });
+            // 3. Confirm upload — the response's fileId is authoritative, not the
+            // upload response's: if the S3 key collides with an already-uploaded
+            // file, /confirm dedupes by discarding this pending record and
+            // returning the existing file's id instead. Using data.fileId past
+            // this point would fetch a presigned URL for a file that was just
+            // soft-deleted.
+            const { fileId: confirmedFileId } = await api.post<{ success: boolean; fileId: string }>(
+                `/api/v1/files/${data.fileId}/confirm`, { size: file.size }
+            );
 
             // 4. Get signed display URL
             const { presignedUrl } = await api.get<{ presignedUrl: string }>(
-                `/api/v1/files/${data.fileId}/presigned-url`
+                `/api/v1/files/${confirmedFileId}/presigned-url`
             );
-            
+
             onChange(presignedUrl);
-            if (onFileIdChange) onFileIdChange(data.fileId);
+            if (onFileIdChange) onFileIdChange(confirmedFileId);
             
             toast.success("Image uploaded successfully");
         } catch (error: any) {

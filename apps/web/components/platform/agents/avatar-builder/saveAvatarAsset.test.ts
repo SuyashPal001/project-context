@@ -19,7 +19,7 @@ describe('saveAvatarAsset', () => {
             // 2. PUT to S3
             .mockResolvedValueOnce(res(200))
             // 3. POST /api/v1/files/file-1/confirm
-            .mockResolvedValueOnce(res(200, {}))
+            .mockResolvedValueOnce(res(200, { success: true, fileId: 'file-1' }))
             // 4. GET /api/v1/files/file-1/presigned-url
             .mockResolvedValueOnce(res(200, { presignedUrl: 'https://s3.example/display-url' }));
 
@@ -34,7 +34,7 @@ describe('saveAvatarAsset', () => {
         fetchMock
             .mockResolvedValueOnce(res(200, { data: { fileId: 'file-1', uploadUrl: 'https://s3.example/put-url' } }))
             .mockResolvedValueOnce(res(200))
-            .mockResolvedValueOnce(res(200, {}))
+            .mockResolvedValueOnce(res(200, { success: true, fileId: 'file-1' }))
             .mockResolvedValueOnce(res(200, { presignedUrl: 'https://s3.example/display-url' }));
 
         const { saveAvatarAsset } = await import('./saveAvatarAsset');
@@ -50,7 +50,7 @@ describe('saveAvatarAsset', () => {
         fetchMock
             .mockResolvedValueOnce(res(200, { data: { fileId: 'file-1', uploadUrl: 'https://s3.example/put-url' } }))
             .mockResolvedValueOnce(res(200))
-            .mockResolvedValueOnce(res(200, {}))
+            .mockResolvedValueOnce(res(200, { success: true, fileId: 'file-1' }))
             .mockResolvedValueOnce(res(200, { presignedUrl: 'https://s3.example/display-url' }));
 
         const { saveAvatarAsset } = await import('./saveAvatarAsset');
@@ -59,6 +59,26 @@ describe('saveAvatarAsset', () => {
         const [, uploadOptions] = fetchMock.mock.calls[0];
         const body = JSON.parse(uploadOptions.body);
         expect(body).toEqual({ filename: 'agent-avatar.svg', contentType: 'image/svg+xml' });
+    });
+
+    it('uses the confirm response fileId, not the upload response fileId, when the S3 key dedupes to an existing file', async () => {
+        // The filename is always `{agentName}_avatar.svg`, so re-saving an agent's
+        // avatar always collides with its prior upload's S3 key. /confirm detects
+        // this, soft-deletes the new pending record, and returns the pre-existing
+        // file's id instead — fetching a presigned URL for the original (now
+        // deleted) fileId would 404.
+        fetchMock
+            .mockResolvedValueOnce(res(200, { data: { fileId: 'file-new-pending', uploadUrl: 'https://s3.example/put-url' } }))
+            .mockResolvedValueOnce(res(200))
+            .mockResolvedValueOnce(res(200, { success: true, fileId: 'file-existing' }))
+            .mockResolvedValueOnce(res(200, { presignedUrl: 'https://s3.example/display-url' }));
+
+        const { saveAvatarAsset } = await import('./saveAvatarAsset');
+        const result = await saveAvatarAsset('<svg></svg>', 'agent-avatar.svg');
+
+        expect(result).toEqual({ url: 'https://s3.example/display-url', fileId: 'file-existing' });
+        const [presignedUrlPath] = fetchMock.mock.calls[3];
+        expect(presignedUrlPath).toContain('/files/file-existing/presigned-url');
     });
 
     it('throws if the S3 PUT fails', async () => {
