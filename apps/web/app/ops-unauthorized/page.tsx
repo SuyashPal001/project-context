@@ -6,7 +6,7 @@ export default function OpsUnauthorizedPage() {
     return (
         <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
             <StarfieldCanvas speedMode="idle" />
-            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm text-center">
+            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-card text-center">
                 <div className="flex justify-center">
                     <div className="h-12 w-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center">
                         <Shield className="h-6 w-6 text-red-400" />

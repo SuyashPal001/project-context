@@ -61,7 +61,7 @@ export function IntegrationsGrid() {
                     <div
                         key={integration.id}
                         onClick={() => setSelectedIntegration(integration)}
-                        className="group bg-card border border-border rounded-xl p-6 hover:border-input transition-all cursor-pointer flex flex-col items-start gap-5 relative overflow-hidden shadow-sm hover:shadow-md"
+                        className="group bg-card border border-border rounded-xl p-6 hover:border-input transition-all cursor-pointer flex flex-col items-start gap-5 relative overflow-hidden shadow-card hover:shadow-lg"
                     >
                         <div className="flex justify-between w-full items-start">
                             <div className="h-16 w-16 rounded-xl bg-background border border-border flex items-center justify-center shadow-inner">

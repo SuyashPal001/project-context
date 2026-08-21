@@ -28,7 +28,7 @@ export function VerifyEmailCard({ email, isSubmitting, error, resendSuccess, onS
 
     return (
         <div className="flex items-center justify-center min-h-screen bg-background">
-            <Card className="w-full max-w-md p-2 border border-border bg-card shadow-sm">
+            <Card className="w-full max-w-md p-2 border border-border bg-card shadow-card">
                 <CardHeader className="text-center space-y-1">
                     <CardTitle className="text-2xl font-bold">Verify your email</CardTitle>
                     <CardDescription>

@@ -64,7 +64,7 @@ export function WorkspacePicker({ workspaces, pendingTokens }: Props) {
     return (
         <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
             <StarfieldCanvas speedMode="idle" />
-            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-card">
                 <div className="text-center space-y-2">
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Choose a workspace</h1>
                     <p className="text-sm text-muted-foreground">You belong to multiple workspaces</p>

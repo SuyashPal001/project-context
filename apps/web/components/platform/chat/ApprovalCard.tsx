@@ -121,7 +121,7 @@ export function ApprovalCard({ request, onApprove, onDismiss }: ApprovalCardProp
   }
 
   return (
-    <div className="border border-border rounded-xl overflow-hidden bg-card shadow-lg my-4 max-w-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="border border-border rounded-xl overflow-hidden bg-card shadow-card my-4 max-w-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border bg-muted/30 flex items-center justify-between">
         <div className="flex items-center gap-2">

@@ -171,7 +171,7 @@ export function KnowledgeBaseSection() {
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {documents.map((doc) => (
-              <div key={doc.id} className="group relative flex flex-col p-3.5 rounded-xl border border-border/60 bg-card hover:bg-muted/40 transition-colors cursor-pointer text-sm shadow-sm min-h-[110px]" onClick={() => setPreviewDoc(doc)}>
+              <div key={doc.id} className="group relative flex flex-col p-3.5 rounded-xl border border-border/60 bg-card hover:bg-muted/40 transition-colors cursor-pointer text-sm shadow-card min-h-[110px]" onClick={() => setPreviewDoc(doc)}>
                 <div className="flex-1 mb-3 pr-4">
                   <h5 className="font-medium text-zinc-200 line-clamp-3 leading-snug break-words">{doc.name}</h5>
                   {doc.errorMessage && <p className="text-[10px] text-red-400 mt-1 leading-snug">{doc.errorMessage}</p>}

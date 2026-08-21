@@ -70,7 +70,7 @@ export function PlanCard({ data, onCreateInSystem, isCreating, errorMessage }: P
         ?? milestones.reduce((sum, m) => sum + milestoneHours(m), 0);
 
     return (
-        <div className="border border-border rounded-xl overflow-hidden bg-card shadow-lg my-4 max-w-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="border border-border rounded-xl overflow-hidden bg-card shadow-card my-4 max-w-lg animate-in fade-in slide-in-from-bottom-2 duration-300">
 
             {/* DoD warning banner */}
             {!dodPassed && (

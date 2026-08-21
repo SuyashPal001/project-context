@@ -117,7 +117,7 @@ function LoginPageContent() {
     return (
         <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
             <StarfieldCanvas speedMode="idle" />
-            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-card">
                 <div className="flex flex-col items-center space-y-3">
                     <ProjectContextLogo variant="full" iconSize={36} />
                     <p className="text-sm text-muted-foreground">
@@ -207,7 +207,7 @@ export default function LoginPage() {
     return (
         <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen bg-background">
-                <div className="relative z-10 w-full max-w-md p-8 rounded-xl border border-border bg-card shadow-sm">
+                <div className="relative z-10 w-full max-w-md p-8 rounded-xl border border-border bg-card shadow-card">
                     <p className="text-center text-sm text-muted-foreground">Loading...</p>
                 </div>
             </div>

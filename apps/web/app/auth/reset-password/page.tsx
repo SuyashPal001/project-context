@@ -50,7 +50,7 @@ function ResetPasswordContent() {
     return (
         <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
             <StarfieldCanvas speedMode="idle" />
-            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-sm">
+            <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-card">
                 <div className="text-center space-y-2">
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Set new password</h1>
                     <p className="text-sm text-muted-foreground">
@@ -118,7 +118,7 @@ export default function ResetPasswordPage() {
     return (
         <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen bg-background">
-                <div className="relative z-10 w-full max-w-md p-8 rounded-xl border border-border bg-card shadow-sm">
+                <div className="relative z-10 w-full max-w-md p-8 rounded-xl border border-border bg-card shadow-card">
                     <p className="text-center text-sm text-muted-foreground">Loading...</p>
                 </div>
             </div>
