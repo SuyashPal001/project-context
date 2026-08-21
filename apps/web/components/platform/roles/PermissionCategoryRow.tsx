@@ -58,7 +58,7 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
     };
 
     return (
-        <div className="flex items-baseline justify-between gap-4 py-1.5">
+        <div className="flex items-baseline justify-between gap-4 py-2.5">
             <span
                 className={cn(
                     "font-medium capitalize",
@@ -75,7 +75,7 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
                         const isSelected = selected.includes(perm.id);
                         return (
                             <span key={perm.id} className="flex items-center gap-1">
-                                {i > 0 && <span className="text-muted-foreground/40">·</span>}
+                                {i > 0 && <span className="text-muted-foreground/30">·</span>}
                                 <button
                                     type="button"
                                     disabled={disabled}
@@ -83,8 +83,8 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
                                     className={cn(
                                         "rounded-md px-1.5 py-0.5 capitalize transition-colors",
                                         isSelected
-                                            ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
-                                            : "text-muted-foreground/50 hover:text-muted-foreground",
+                                            ? "bg-muted text-foreground hover:bg-muted/70"
+                                            : "text-muted-foreground/40 hover:text-muted-foreground",
                                         disabled && "pointer-events-none opacity-60"
                                     )}
                                 >
@@ -99,7 +99,7 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
                         disabled={disabled}
                         onClick={() => handleToggle(ordered[0])}
                         className={cn(
-                            "text-muted-foreground/50 hover:text-muted-foreground",
+                            "text-muted-foreground/40 hover:text-muted-foreground",
                             disabled && "pointer-events-none opacity-60"
                         )}
                     >

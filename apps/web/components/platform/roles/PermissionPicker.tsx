@@ -52,7 +52,7 @@ export function PermissionPicker({ selected, onChange, disabled }: Props) {
             <p className="text-sm text-muted-foreground">
                 {categoriesWithAccess} of {resources.length} categories have access
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 divide-y divide-border sm:divide-y-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-12">
                 {resources.map(([resource, perms]) => (
                     <PermissionCategoryRow
                         key={resource}
