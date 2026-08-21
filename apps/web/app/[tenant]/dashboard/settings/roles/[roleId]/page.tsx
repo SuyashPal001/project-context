@@ -99,33 +99,33 @@ export default function EditRolePage() {
                     </div>
                 </div>
 
-                <div className="space-y-4 max-w-2xl">
+                <div className="space-y-5 max-w-2xl">
                     {isSystem ? (
                         <>
                             <div className="space-y-1">
-                                <Label className="text-muted-foreground">Name</Label>
-                                <p className="font-medium capitalize">{name}</p>
+                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</Label>
+                                <p className="text-base font-semibold capitalize">{name}</p>
                             </div>
                             <div className="space-y-1">
-                                <Label className="text-muted-foreground">Description</Label>
-                                <p className="text-sm">{description || "—"}</p>
+                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</Label>
+                                <p className="text-sm text-muted-foreground">{description || "—"}</p>
                             </div>
                         </>
                     ) : (
                         <>
                             <div className="space-y-1.5">
-                                <Label>Name</Label>
+                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</Label>
                                 <Input value={name} onChange={e => setName(e.target.value)}/>
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Description</Label>
+                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</Label>
                                 <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}/>
                             </div>
                         </>
                     )}
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3 pt-2">
                     <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Permissions</h2>
                     <PermissionPicker selected={selectedPerms} onChange={setSelectedPerms} disabled={isSystem}/>
                 </div>

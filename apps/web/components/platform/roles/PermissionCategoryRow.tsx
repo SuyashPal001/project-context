@@ -61,13 +61,13 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
         <div className="flex items-center justify-between gap-4 py-2.5 border-b border-border/50 last:border-b-0">
             <span
                 className={cn(
-                    "font-medium capitalize",
+                    "text-base font-medium capitalize",
                     hasAccess ? "text-foreground" : "text-muted-foreground/60"
                 )}
             >
                 {resource.replace(/_/g, " ")}
             </span>
-            <span className="flex items-center gap-5 text-sm">
+            <span className="flex items-center gap-6 text-base">
                 {hasAccess ? (
                     ordered.map((action) => {
                         const perm = byAction.get(action);
@@ -80,18 +80,18 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
                                 disabled={disabled}
                                 onClick={() => handleToggle(action)}
                                 className={cn(
-                                    "flex items-center gap-1.5 capitalize transition-colors",
+                                    "flex items-center gap-2 capitalize transition-colors",
                                     isSelected ? "text-foreground" : "text-muted-foreground/70 hover:text-muted-foreground",
                                     disabled && "pointer-events-none opacity-60"
                                 )}
                             >
                                 <span
                                     className={cn(
-                                        "flex h-3.5 w-3.5 items-center justify-center rounded-full border",
+                                        "flex h-4 w-4 items-center justify-center rounded-full border",
                                         isSelected ? "border-foreground" : "border-muted-foreground/30"
                                     )}
                                 >
-                                    {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-foreground" />}
+                                    {isSelected && <span className="h-2 w-2 rounded-full bg-foreground" />}
                                 </span>
                                 {action}
                             </button>
