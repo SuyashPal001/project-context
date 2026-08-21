@@ -87,7 +87,7 @@ export default function EditRolePage() {
 
     return (
         <PermissionGate resource="roles" action="update">
-            <div className="space-y-6">
+            <div className="space-y-6 pb-10">
                 <div className="flex items-center gap-3">
                     <Link href={`/${tenantId}/dashboard/settings/roles`}>
                         <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4"/></Button>
@@ -99,7 +99,7 @@ export default function EditRolePage() {
                     </div>
                 </div>
 
-                <div className="space-y-4 rounded-lg border border-border p-4 max-w-2xl">
+                <div className="space-y-4 max-w-2xl">
                     {isSystem ? (
                         <>
                             <div className="space-y-1">

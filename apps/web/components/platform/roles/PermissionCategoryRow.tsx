@@ -81,7 +81,7 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
                                 onClick={() => handleToggle(action)}
                                 className={cn(
                                     "flex items-center gap-1.5 capitalize transition-colors",
-                                    isSelected ? "text-foreground" : "text-muted-foreground/40 hover:text-muted-foreground",
+                                    isSelected ? "text-foreground" : "text-muted-foreground/70 hover:text-muted-foreground",
                                     disabled && "pointer-events-none opacity-60"
                                 )}
                             >
@@ -103,7 +103,7 @@ export function PermissionCategoryRow({ resource, permissions, selected, disable
                         disabled={disabled}
                         onClick={() => handleToggle(ordered[0])}
                         className={cn(
-                            "text-muted-foreground/40 hover:text-muted-foreground",
+                            "text-muted-foreground/70 hover:text-muted-foreground",
                             disabled && "pointer-events-none opacity-60"
                         )}
                     >
