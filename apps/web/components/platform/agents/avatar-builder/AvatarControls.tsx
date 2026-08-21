@@ -9,7 +9,7 @@ import {
 import type { AvatarParams } from "./avatarParams";
 
 const LABELS: Record<string, string> = {
-    tall: "Tall", round: "Round", oval: "Compact",
+    tall: "Tall", round: "Round",
     dots: "Dot Eyes", shades: "Sunglasses", visor: "Amber Visor", eyepatch: "Eyepatch",
     cybermohawk: "Cyber Mohawk", hightop: "High-Top Fade", animespikes: "Anime Spikes",
     pompadour: "Pompadour", curtainbangs: "Curtain Bangs", topknot: "Topknot",

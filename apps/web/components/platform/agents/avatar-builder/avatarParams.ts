@@ -1,4 +1,4 @@
-export type HeadShape = 'tall' | 'round' | 'oval';
+export type HeadShape = 'tall' | 'round';
 export type EyeStyle = 'dots' | 'shades' | 'visor' | 'eyepatch';
 export type Accessory =
     | 'cybermohawk' | 'hightop' | 'animespikes' | 'pompadour' | 'curtainbangs'
@@ -21,7 +21,7 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 export const SKIN_COLORS = ['#ffd8a8', '#ffc0ad', '#d97757', '#8d5524', '#00ff66', '#c0c0c0'] as const;
 export const HAIR_COLORS = ['#3b233a', '#f08080', '#f7e368', '#ff5577', '#00e5ff', '#18181c', '#a0a0a0', '#8d5524'] as const;
 
-export const HEAD_SHAPES: HeadShape[] = ['tall', 'round', 'oval'];
+export const HEAD_SHAPES: HeadShape[] = ['tall', 'round'];
 export const EYE_STYLES: EyeStyle[] = ['dots', 'shades', 'visor', 'eyepatch'];
 export const ACCESSORIES: Accessory[] = [
     'cybermohawk', 'hightop', 'animespikes', 'pompadour', 'curtainbangs',

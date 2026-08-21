@@ -9,7 +9,6 @@ function headGeometry(head: HeadShape): HeadGeometry {
     const byShape: Record<HeadShape, { headX: number; headY: number; headW: number; headH: number; headRx: number }> = {
         tall: { headX: 68, headY: 34, headW: 64, headH: 128, headRx: 32 },
         round: { headX: 59, headY: 48, headW: 82, headH: 98, headRx: 41 },
-        oval: { headX: 70, headY: 51, headW: 60, headH: 92, headRx: 30 },
     };
     const { headX, headY, headW, headH, headRx } = byShape[head];
     const centerX = headX + headW / 2;

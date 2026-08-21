@@ -43,7 +43,7 @@ describe('randomizeAvatarParams', () => {
     it('picks the last enum value when rng returns just under 1', () => {
         const result = randomizeAvatarParams(() => 0.999);
         expect(result).toEqual({
-            head: 'oval',
+            head: 'round',
             eyes: 'eyepatch',
             accessory: 'none',
             mouth: 'none',
