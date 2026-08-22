@@ -95,7 +95,7 @@ export function TokenUsageTab({ days }: { days: number }) {
       {/* By Model */}
       <div>
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          By Model
+          By Mind
         </h3>
         {byModel.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">No data for this period.</p>
@@ -104,7 +104,7 @@ export function TokenUsageTab({ days }: { days: number }) {
             <table className="w-full text-sm">
               <thead className="bg-muted/30">
                 <tr>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Model</th>
+                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mind</th>
                   <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-28">Messages</th>
                   <th className="text-right px-4 py-2.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-28">Tokens</th>
                 </tr>

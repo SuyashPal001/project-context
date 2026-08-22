@@ -468,11 +468,11 @@ export function ChatInput({
                                                     className="h-8 px-2 flex items-center gap-1.5 rounded-full text-xs font-medium text-foreground/90 hover:text-foreground transition-colors"
                                                 >
                                                     <Sparkles className="h-3.5 w-3.5 text-ring" />
-                                                    {providers.find(p => p.id === llmProviderId)?.displayName ?? 'Model'}
+                                                    {providers.find(p => p.id === llmProviderId)?.displayName ?? 'Mind'}
                                                 </button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent side="top" align="start" className="w-60 p-2">
-                                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Model</div>
+                                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Mind</div>
                                                 {(() => {
                                                     const badges = costTierBadges(providers);
                                                     return providers.map(provider => {

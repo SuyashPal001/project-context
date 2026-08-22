@@ -158,7 +158,7 @@ export default function EvalResultsPage() {
                                 <TableHead className="text-muted-foreground text-xs w-32">Dimension</TableHead>
                                 <TableHead className="text-muted-foreground text-xs w-24">Score</TableHead>
                                 <TableHead className="text-muted-foreground text-xs">Reasoning</TableHead>
-                                <TableHead className="text-muted-foreground text-xs w-28">Model</TableHead>
+                                <TableHead className="text-muted-foreground text-xs w-28">Mind</TableHead>
                                 <TableHead className="text-muted-foreground text-xs w-36">Timestamp</TableHead>
                             </TableRow>
                         </TableHeader>

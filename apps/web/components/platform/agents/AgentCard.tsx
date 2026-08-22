@@ -175,7 +175,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                         </Badge>
                     </div>
                     <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground border-t pt-4">
-                        <span>Model</span>
+                        <span>Mind</span>
                         <span className="font-medium text-foreground">{agent.model ?? `${agent.name} v1`}</span>
                     </div>
                 </CardContent>

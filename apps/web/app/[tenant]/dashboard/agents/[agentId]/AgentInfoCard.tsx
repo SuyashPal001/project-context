@@ -21,7 +21,11 @@ export function AgentInfoCard({ agent, providers, isLoading }: AgentInfoCardProp
         ? new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(new Date(agent.createdAt))
         : "";
 
-    const resolvedModel = "Gemini 2.5 Flash";
+    const resolvedModel =
+        providers.find((p) => p.id === agent?.model)?.displayName
+        ?? agent?.model
+        ?? providers.find((p) => p.isDefault)?.displayName
+        ?? "Unknown";
 
     return (
         <Card>
@@ -36,7 +40,7 @@ export function AgentInfoCard({ agent, providers, isLoading }: AgentInfoCardProp
                 ) : (
                     <dl className="space-y-2 text-sm">
                         <div className="flex gap-2">
-                            <dt className="text-muted-foreground w-24 shrink-0">AI Model</dt>
+                            <dt className="text-muted-foreground w-24 shrink-0">Mind</dt>
                             <dd className="text-foreground">{resolvedModel}</dd>
                         </div>
                         <div className="flex gap-2">
