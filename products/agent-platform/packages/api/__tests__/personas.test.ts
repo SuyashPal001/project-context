@@ -41,14 +41,73 @@ describe('personasRoutes auth', () => {
     });
 });
 
+describe('personasRoutes second outcome image', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('stores exampleAssetUrl2/exampleCaption2 on create', async () => {
+        dbMock.select.mockReturnValue({
+            from: () => ({ where: () => ({ limit: async () => [] }) }),
+        });
+        let insertedValues: Record<string, unknown> = {};
+        dbMock.insert.mockReturnValue({
+            values: (values: Record<string, unknown>) => {
+                insertedValues = values;
+                return { returning: async () => [{ id: 'p1', ...values }] };
+            },
+        });
+
+        const app = appWithJwt('platform_admin');
+        const res = await app.request('/ops/personas', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                slug: 'nova', name: 'Nova', tagline: 'Ships PRDs', basePersonality: 'Focused',
+                exampleAssetUrl2: 'https://example.com/roadmap.png',
+                exampleCaption2: 'Sprint Roadmap',
+            }),
+        });
+
+        expect(res.status).toBe(201);
+        expect(insertedValues.exampleAssetUrl2).toBe('https://example.com/roadmap.png');
+        expect(insertedValues.exampleCaption2).toBe('Sprint Roadmap');
+    });
+
+    it('updates exampleAssetUrl2/exampleCaption2 on a draft persona', async () => {
+        dbMock.select.mockReturnValue({
+            from: () => ({ where: () => ({ limit: async () => [{ id: 'p1', status: 'draft' }] }) }),
+        });
+        let setValues: Record<string, unknown> = {};
+        dbMock.update.mockReturnValue({
+            set: (values: Record<string, unknown>) => {
+                setValues = values;
+                return { where: () => ({ returning: async () => [{ id: 'p1', ...values }] }) };
+            },
+        });
+
+        const app = appWithJwt('platform_admin');
+        const res = await app.request('/ops/personas/p1', {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                exampleAssetUrl2: 'https://example.com/roadmap.png',
+                exampleCaption2: 'Sprint Roadmap',
+            }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(setValues.exampleAssetUrl2).toBe('https://example.com/roadmap.png');
+        expect(setValues.exampleCaption2).toBe('Sprint Roadmap');
+    });
+});
+
 describe('personasRoutes publish', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('rejects publishing a persona missing animation states', async () => {
+    it('rejects publishing a persona missing a preview image', async () => {
         dbMock.select.mockReturnValue({
             from: () => ({
                 where: () => ({
-                    limit: async () => [{ id: 'p1', animationStates: null }],
+                    limit: async () => [{ id: 'p1', exampleAssetUrl: null }],
                 }),
             }),
         });
@@ -60,53 +119,18 @@ describe('personasRoutes publish', () => {
         expect(body.code).toBe('INCOMPLETE_ASSETS');
     });
 
-    it('rejects publishing a persona with only the old 3-state set (idle/thinking/responding)', async () => {
+    it('allows publishing a persona with a preview image present', async () => {
         dbMock.select.mockReturnValue({
             from: () => ({
                 where: () => ({
-                    limit: async () => [{
-                        id: 'p1',
-                        animationStates: {
-                            idle: 'https://example.com/idle.png',
-                            thinking: 'https://example.com/thinking.png',
-                            responding: 'https://example.com/responding.png',
-                        },
-                    }],
-                }),
-            }),
-        });
-
-        const app = appWithJwt('platform_admin');
-        const res = await app.request('/ops/personas/p1/publish', { method: 'POST' });
-        expect(res.status).toBe(409);
-        const body = await res.json();
-        expect(body.code).toBe('INCOMPLETE_ASSETS');
-        expect(body.error).toContain('waving');
-    });
-
-    it('allows publishing a persona with all 9 animation states present', async () => {
-        const allStates = {
-            idle: 'https://example.com/idle.png',
-            waving: 'https://example.com/waving.png',
-            running: 'https://example.com/running.png',
-            thinking: 'https://example.com/thinking.png',
-            responding: 'https://example.com/responding.png',
-            waiting: 'https://example.com/waiting.png',
-            review: 'https://example.com/review.png',
-            done: 'https://example.com/done.png',
-            failed: 'https://example.com/failed.png',
-        };
-        dbMock.select.mockReturnValue({
-            from: () => ({
-                where: () => ({
-                    limit: async () => [{ id: 'p1', animationStates: allStates, status: 'draft' }],
+                    limit: async () => [{ id: 'p1', exampleAssetUrl: 'https://example.com/preview.png', status: 'draft' }],
                 }),
             }),
         });
         dbMock.update.mockReturnValue({
             set: () => ({
                 where: () => ({
-                    returning: async () => [{ id: 'p1', status: 'published', animationStates: allStates }],
+                    returning: async () => [{ id: 'p1', status: 'published', exampleAssetUrl: 'https://example.com/preview.png' }],
                 }),
             }),
         });

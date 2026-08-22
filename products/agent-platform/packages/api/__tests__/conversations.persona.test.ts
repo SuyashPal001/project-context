@@ -3,12 +3,12 @@ import { Hono } from 'hono';
 
 /**
  * Final whole-branch review, Finding 3 — GET /conversations/:id selects
- * `agent: { persona: { id, name, tagline, animationStates } }`, a THREE-level
+ * `agent: { persona: { id, name, tagline } }`, a THREE-level
  * nested path. Drizzle's left-join null-collapsing only nullifies a nested
  * selected object when its field path has length === 2, so a persona-less
  * agent (the common case — left join finds no matching persona row) came back
- * as `agent.persona = { id: null, name: null, tagline: null, animationStates:
- * null }` instead of `agent.persona = null`, contradicting the frontend's
+ * as `agent.persona = { id: null, name: null, tagline: null }` instead of
+ * `agent.persona = null`, contradicting the frontend's
  * `persona: PersonaSummary | null` contract.
  */
 
@@ -62,7 +62,7 @@ describe('GET /conversations/:id — persona null-collapsing', () => {
                 type: 'platform',
                 // What the raw left-join select returns for a persona-less agent —
                 // all fields present but null, since the nesting is 3 levels deep.
-                persona: { id: null, name: null, tagline: null, animationStates: null },
+                persona: { id: null, name: null, tagline: null },
             },
         }]);
 
@@ -93,7 +93,7 @@ describe('GET /conversations/:id — persona null-collapsing', () => {
                 id: 'agent-2',
                 name: 'Saarthi PM',
                 type: 'custom',
-                persona: { id: 'persona-1', name: 'Saarthi', tagline: 'Your PM copilot', animationStates: {} },
+                persona: { id: 'persona-1', name: 'Saarthi', tagline: 'Your PM copilot' },
             },
         }]);
 
@@ -104,6 +104,6 @@ describe('GET /conversations/:id — persona null-collapsing', () => {
         const res = await app.request('/conversations/conv-2');
         expect(res.status).toBe(200);
         const body = await res.json();
-        expect(body.data.agent.persona).toEqual({ id: 'persona-1', name: 'Saarthi', tagline: 'Your PM copilot', animationStates: {} });
+        expect(body.data.agent.persona).toEqual({ id: 'persona-1', name: 'Saarthi', tagline: 'Your PM copilot' });
     });
 });

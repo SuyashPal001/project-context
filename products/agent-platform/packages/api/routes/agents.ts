@@ -20,8 +20,9 @@ agentsRoutes.get('/personas', async (c) => {
     const data = await db
         .select({
             id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
-            animationStates: personas.animationStates, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+            skillTags: personas.skillTags, isOfficial: personas.isOfficial,
             exampleAssetUrl: personas.exampleAssetUrl, exampleCaption: personas.exampleCaption,
+            exampleAssetUrl2: personas.exampleAssetUrl2, exampleCaption2: personas.exampleCaption2,
         })
         .from(personas)
         .where(eq(personas.status, 'published'));

@@ -1,0 +1,1 @@
+ALTER TABLE "personas" DROP COLUMN IF EXISTS "animation_states";

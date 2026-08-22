@@ -59,7 +59,7 @@ export async function handleListAgents(c: Context<AppEnv>) {
             createdAt: agents.createdAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
-                animationStates: personas.animationStates, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+                skillTags: personas.skillTags, isOfficial: personas.isOfficial,
             },
         })
         .from(agents)
@@ -92,7 +92,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
             createdAt: agents.createdAt, updatedAt: agents.updatedAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
-                animationStates: personas.animationStates, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+                skillTags: personas.skillTags, isOfficial: personas.isOfficial,
             },
         })
         .from(agents)

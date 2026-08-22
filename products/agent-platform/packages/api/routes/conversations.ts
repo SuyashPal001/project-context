@@ -30,7 +30,7 @@ async function resolveConversationAgentAvatar<T extends { tenantId: string; agen
 // agents.crud.ts). The `agent.persona` shape here is nested three levels deep
 // (row -> agent -> persona), so a persona-less agent (left join returns no
 // matching persona row) comes back as `agent.persona = { id: null, name: null,
-// tagline: null, animationStates: null }` instead of `agent.persona = null`.
+// tagline: null }` instead of `agent.persona = null`.
 // Collapse that all-null sub-object back to null to match the `PersonaSummary
 // | null` contract the frontend (and any future `if (conversation.agent.persona)`
 // check) expects.
@@ -64,7 +64,6 @@ const conversationSelect = {
         // get type-checked.
         persona: {
             id: personas.id, name: personas.name, tagline: personas.tagline,
-            animationStates: personas.animationStates,
         } as any,
     },
 };
@@ -113,7 +112,6 @@ conversationsRoutes.get('/', async (c) => {
                     // (id, name, type, ...) still get type-checked.
                     persona: {
                         id: personas.id, name: personas.name, tagline: personas.tagline,
-                        animationStates: personas.animationStates,
                     } as any,
                 },
             })

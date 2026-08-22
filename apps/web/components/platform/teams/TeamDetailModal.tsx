@@ -100,7 +100,7 @@ export function TeamDetailModal({
                         <div className="space-y-1.5">
                             {members.map((agent) => (
                                 <div key={agent.id} className="flex items-center gap-2 rounded-md border border-border/50 px-2 py-1.5">
-                                    <PersonaAvatar persona={agent.persona} size={28} className="rounded-full" />
+                                    <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={28} className="rounded-full" />
                                     <span className="flex-1 text-sm font-medium text-foreground">{agent.name}</span>
                                     <button
                                         type="button"
@@ -135,7 +135,7 @@ export function TeamDetailModal({
                                                 checked={false}
                                                 onCheckedChange={() => onAddMember(team.id, agent.id)}
                                             />
-                                            <PersonaAvatar persona={agent.persona} size={24} className="rounded-full" />
+                                            <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={24} className="rounded-full" />
                                             <span className="text-sm text-foreground">{agent.name}</span>
                                         </label>
                                     ))

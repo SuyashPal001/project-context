@@ -100,7 +100,7 @@ export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(fun
                         onMouseEnter={() => setActiveIndex(i)}
                         className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-colors ${i === activeIndex ? 'bg-muted/60' : 'hover:bg-muted/60'}`}
                     >
-                        <PersonaAvatar persona={agent.persona} size={36} className="rounded-full" icon={getAgentTypeIcon(agent.type)} />
+                        <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={36} className="rounded-full" icon={getAgentTypeIcon(agent.type)} />
                         <span className="text-sm truncate">{agent.name}</span>
                     </button>
                 ))

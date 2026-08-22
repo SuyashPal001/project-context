@@ -36,7 +36,7 @@ export function TeamCard({ team, members, onClick }: TeamCardProps) {
             {members.length > 0 && (
                 <div className="mt-3 flex -space-x-2">
                     {visible.map((agent) => (
-                        <PersonaAvatar key={agent.id} persona={agent.persona} size={28} className="rounded-full ring-2 ring-background" />
+                        <PersonaAvatar key={agent.id} persona={agent.persona} avatarUrl={agent.avatarUrl} size={28} className="rounded-full ring-2 ring-background" />
                     ))}
                     {overflow > 0 && (
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground ring-2 ring-background">

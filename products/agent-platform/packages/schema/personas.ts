@@ -5,18 +5,6 @@ import { agents } from './agents';
 
 export const personaStatusEnum = pgEnum('persona_status', ['draft', 'published']);
 
-export type PersonaAnimationStates = {
-  idle: string;
-  waving: string;
-  running: string;
-  thinking: string;
-  responding: string;
-  waiting: string;
-  review: string;
-  done: string;
-  failed: string;
-};
-
 export const personas = pgTable('personas', {
   id: uuid('id').primaryKey().defaultRandom(),
   slug: text('slug').notNull().unique(),
@@ -24,9 +12,10 @@ export const personas = pgTable('personas', {
   tagline: text('tagline').notNull(),
   basePersonality: text('base_personality').notNull(),
   skillTags: jsonb('skill_tags').$type<string[]>().notNull().default([]),
-  animationStates: jsonb('animation_states').$type<PersonaAnimationStates | null>(),
   exampleAssetUrl: text('example_asset_url'),
   exampleCaption: text('example_caption'),
+  exampleAssetUrl2: text('example_asset_url_2'),
+  exampleCaption2: text('example_caption_2'),
   // Core Files — composed into the runtime system prompt in this order:
   // identityFile, soulFile, agentsFile, bootstrapFile, then userFile as
   // context. Tenant-facing UI never returns their content for official

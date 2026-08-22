@@ -20,7 +20,12 @@ interface PersonaAvatarProps {
 }
 
 export function PersonaAvatar({ persona, avatarUrl, state, size = 40, className, iconClassName, icon: Icon = Bot }: PersonaAvatarProps) {
-    const asset = avatarUrl ?? persona?.animationStates?.[state ?? "idle"] ?? persona?.animationStates?.idle;
+    // Motion (via `state` below) is fully decoupled from persona art — see
+    // globals.css's persona-avatar-motion rules — so there's no per-state image to
+    // look up. avatarUrl (the specific agent's own avatar) wins when present;
+    // exampleAssetUrl is only a fallback for persona-template browsing (Explore),
+    // where no agent exists yet.
+    const asset = avatarUrl ?? persona?.exampleAssetUrl ?? undefined;
 
     if (!asset) {
         return (

@@ -8,18 +8,6 @@ import type { AppEnv } from '@serverless-saas/types';
 
 export const personasRoutes = new Hono<AppEnv>();
 
-const animationStatesSchema = z.object({
-    idle: z.string().url(),
-    waving: z.string().url(),
-    running: z.string().url(),
-    thinking: z.string().url(),
-    responding: z.string().url(),
-    waiting: z.string().url(),
-    review: z.string().url(),
-    done: z.string().url(),
-    failed: z.string().url(),
-});
-
 // GET /ops/personas — list all personas, newest first
 personasRoutes.get('/', async (c) => {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
@@ -51,16 +39,17 @@ personasRoutes.post('/', async (c) => {
         tagline: z.string().min(1).max(200),
         basePersonality: z.string().min(1),
         skillTags: z.array(z.string()).optional(),
-        animationStates: animationStatesSchema.optional(),
         exampleAssetUrl: z.string().url().optional(),
         exampleCaption: z.string().max(200).optional(),
+        exampleAssetUrl2: z.string().url().optional(),
+        exampleCaption2: z.string().max(200).optional(),
         isOfficial: z.boolean().optional(),
     });
 
     const result = schema.safeParse(await c.req.json());
     if (!result.success) return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
 
-    const { slug, name, tagline, basePersonality, skillTags, animationStates, exampleAssetUrl, exampleCaption, isOfficial } = result.data;
+    const { slug, name, tagline, basePersonality, skillTags, exampleAssetUrl, exampleCaption, exampleAssetUrl2, exampleCaption2, isOfficial } = result.data;
 
     const [existing] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, slug)).limit(1);
     if (existing) return c.json({ error: 'Slug already in use', code: 'DUPLICATE_SLUG' }, 409);
@@ -70,9 +59,10 @@ personasRoutes.post('/', async (c) => {
         .values({
             slug, name, tagline, basePersonality,
             skillTags: skillTags ?? [],
-            animationStates: animationStates ?? null,
             exampleAssetUrl: exampleAssetUrl ?? null,
             exampleCaption: exampleCaption ?? null,
+            exampleAssetUrl2: exampleAssetUrl2 ?? null,
+            exampleCaption2: exampleCaption2 ?? null,
             isOfficial: isOfficial ?? true,
             status: 'draft',
             createdBy: userId,
@@ -96,9 +86,10 @@ personasRoutes.put('/:id', async (c) => {
         tagline: z.string().min(1).max(200).optional(),
         basePersonality: z.string().min(1).optional(),
         skillTags: z.array(z.string()).optional(),
-        animationStates: animationStatesSchema.optional(),
         exampleAssetUrl: z.string().url().optional(),
         exampleCaption: z.string().max(200).optional(),
+        exampleAssetUrl2: z.string().url().optional(),
+        exampleCaption2: z.string().max(200).optional(),
         isOfficial: z.boolean().optional(),
     });
 
@@ -110,8 +101,10 @@ personasRoutes.put('/:id', async (c) => {
     return c.json({ persona: updated });
 });
 
-// POST /ops/personas/:id/publish — a persona needs all nine animation states (idle, waving,
-// running, thinking, responding, waiting, review, done, failed) before it can publish
+// POST /ops/personas/:id/publish — a persona needs a preview image (exampleAssetUrl)
+// before it can go live in Explore. Avatar motion no longer depends on persona-specific
+// art (see PersonaAvatar.tsx / globals.css — motion is CSS applied to whichever image
+// is showing), so there's no per-state asset requirement anymore, just this one.
 personasRoutes.post('/:id/publish', async (c) => {
     if (!isPlatformAdmin(c)) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
@@ -119,11 +112,8 @@ personasRoutes.post('/:id/publish', async (c) => {
     const [existing] = await db.select().from(personas).where(eq(personas.id, id)).limit(1);
     if (!existing) return c.json({ error: 'Persona not found', code: 'NOT_FOUND' }, 404);
 
-    const states = existing.animationStates;
-    const requiredStates = ['idle', 'waving', 'running', 'thinking', 'responding', 'waiting', 'review', 'done', 'failed'] as const;
-    const missing = requiredStates.filter((key) => !states?.[key]);
-    if (missing.length > 0) {
-        return c.json({ error: `Persona is missing animation states: ${missing.join(', ')}`, code: 'INCOMPLETE_ASSETS' }, 409);
+    if (!existing.exampleAssetUrl) {
+        return c.json({ error: 'Persona needs a preview image (exampleAssetUrl) before publishing', code: 'INCOMPLETE_ASSETS' }, 409);
     }
 
     const [published] = await db.update(personas).set({ status: 'published', updatedAt: new Date() }).where(eq(personas.id, id)).returning();
