@@ -368,7 +368,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 function ThinkingDots({ label = 'Thinking...', avatarUrl }: { label?: string; avatarUrl?: string | null }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={60} state="thinking" avatarUrl={avatarUrl} />
+            <AgentOrb size={60} liveState="thinking" avatarUrl={avatarUrl} />
             <div className="flex items-center gap-2 pt-1.5">
                 <span className="flex gap-[3px] items-center">
                     <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.3s]" />

@@ -270,7 +270,6 @@ function ChatPage() {
                                     hasActivity={hasActivity}
                                     toggleCanvas={toggleCanvas}
                                     onArchive={() => setIsDeleteDialogOpen(true)}
-                                    state={displayState}
                                 />
                                 {!hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
                                     activePill !== null ? (

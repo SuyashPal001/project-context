@@ -11,7 +11,6 @@ import type { Conversation } from '@/components/platform/chat/types';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
 import { PersonaAvatar } from '@/components/platform/personas/PersonaAvatar';
 import { getAgentTypeIcon } from '@/components/platform/agents/agentTypeIcon';
-import type { PersonaAnimationState } from '@/components/platform/personas/usePersonaAnimationState';
 
 interface Props {
     selectedConversation: Conversation;
@@ -21,10 +20,12 @@ interface Props {
     hasActivity: boolean;
     toggleCanvas: () => void;
     onArchive: () => void;
-    state: PersonaAnimationState;
 }
 
-export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggleChatSidebar, isCanvasOpen, hasActivity, toggleCanvas, onArchive, state }: Props) {
+// Intentionally does not accept a persona-state/liveState prop — the header
+// avatar stays static by design, matching the roster/history/cards scoping
+// rule. Only the live-streaming message row animates.
+export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggleChatSidebar, isCanvasOpen, hasActivity, toggleCanvas, onArchive }: Props) {
     const title = selectedConversation.title
         || (selectedConversation.agent?.name ? `Chat with ${selectedConversation.agent.name}` : 'Chat with Agent');
 
