@@ -19,8 +19,8 @@ interface PersonaAvatarProps {
     icon?: LucideIcon;
 }
 
-export function PersonaAvatar({ persona, avatarUrl, state = "idle", size = 40, className, iconClassName, icon: Icon = Bot }: PersonaAvatarProps) {
-    const asset = avatarUrl ?? persona?.animationStates?.[state] ?? persona?.animationStates?.idle;
+export function PersonaAvatar({ persona, avatarUrl, state, size = 40, className, iconClassName, icon: Icon = Bot }: PersonaAvatarProps) {
+    const asset = avatarUrl ?? persona?.animationStates?.[state ?? "idle"] ?? persona?.animationStates?.idle;
 
     if (!asset) {
         return (
@@ -34,10 +34,12 @@ export function PersonaAvatar({ persona, avatarUrl, state = "idle", size = 40, c
     }
 
     return (
-        // Motion reacts to `state` regardless of which image is showing — a
-        // custom-uploaded avatar and a persona still both get the same
-        // wrapper-level CSS animation, so "does the avatar visibly react"
-        // doesn't depend on whether an agent has a persona assigned.
+        // Motion only fires where a caller passes a live `state` (an open chat
+        // stream) — `data-persona-state` is omitted entirely otherwise, so no
+        // CSS animation selector matches and the avatar stays static in the
+        // sidebar list, title, pickers, and cards. Where it does fire, it
+        // reacts to whatever image is showing — custom avatar or persona
+        // still — so it doesn't depend on whether a persona is assigned.
         <div
             data-persona-state={state}
             className="persona-avatar-motion shrink-0"

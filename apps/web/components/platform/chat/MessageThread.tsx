@@ -10,6 +10,7 @@ import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { MessageItem } from "./MessageItem";
 import { ClarificationCard } from "./ClarificationCard";
+import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
 
 interface MessageThreadProps {
     messages: Message[];
@@ -29,9 +30,12 @@ interface MessageThreadProps {
     onRegenerate?: (message: Message) => void;
     onEditAndResubmit?: (message: Message, newContent: string) => void;
     agentAvatarUrl?: string | null;
+    /** Live chat-stream state, applied only to the last assistant message's
+     * avatar — every other row stays static. See AgentOrb's `liveState` prop. */
+    avatarLiveState?: PersonaAnimationState;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, avatarLiveState }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -267,6 +271,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
                             liveReasoningText={message.isStreaming ? reasoningText : undefined}
                             agentAvatarUrl={agentAvatarUrl}
+                            avatarLiveState={message.role === 'assistant' && isLastMessage ? avatarLiveState : undefined}
                         />
                     );
                 })}

@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
 
+// NOTE: this canvas + its 3-state system (idle/thinking/searching, eye
+// tracking, lightbulb, detective glasses) only renders when `avatarUrl` is
+// falsy. Every real agent has an auto-generated avatarUrl from creation, so
+// in practice this canvas path never runs today — the `avatarUrl` branch
+// below (a static img, now with optional `liveState`-driven CSS motion) is
+// what actually renders. Left in place rather than removed; flagging so it
+// doesn't read as "the animation system" to the next person touching this file.
 export type OrbState = 'idle' | 'thinking' | 'searching';
 
 interface AgentOrbProps {
@@ -11,6 +19,12 @@ interface AgentOrbProps {
     size?: number;
     isLoading?: boolean;
     avatarUrl?: string | null;
+    /** Drives CSS motion on the static-image branch (avatarUrl set) — kept
+     * separate from `state` (the canvas's own 3-state system) so existing
+     * callers passing state="idle"/"thinking" don't unexpectedly start
+     * animating. Only set this where the avatar is genuinely reacting to a
+     * live chat stream — the currently-streaming message row, nowhere else. */
+    liveState?: PersonaAnimationState;
 }
 
 interface Vars {
@@ -35,7 +49,7 @@ interface Vars {
 
 function randomBlink() { return 3000 + Math.random() * 5000; }
 
-export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarUrl = null }: AgentOrbProps) {
+export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarUrl = null, liveState }: AgentOrbProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isJumping, setIsJumping] = useState(false);
     const { resolvedTheme } = useTheme();
@@ -364,12 +378,17 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
 
     if (avatarUrl) {
         return (
-            <img
-                src={avatarUrl}
-                alt=""
-                className="rounded-full object-cover shrink-0"
+            <div
+                data-persona-state={liveState}
+                className="persona-avatar-motion shrink-0"
                 style={{ width: size, height: size }}
-            />
+            >
+                <img
+                    src={avatarUrl}
+                    alt=""
+                    className="h-full w-full rounded-full object-cover"
+                />
+            </div>
         );
     }
 

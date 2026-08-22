@@ -21,6 +21,7 @@ import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
 import { InlineAttachmentCard } from "./InlineAttachmentCard";
 import { CitationStrip } from "./CitationStrip";
 import { FollowUpChips } from "./FollowUpChips";
+import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
 
 interface MessageItemProps {
     message: Message;
@@ -46,6 +47,9 @@ interface MessageItemProps {
     isLastMessage?: boolean;
     isStreaming?: boolean;
     agentAvatarUrl?: string | null;
+    /** Live chat-stream state for this row's avatar — only ever set on the
+     * last assistant message by MessageThread; undefined everywhere else. */
+    avatarLiveState?: PersonaAnimationState;
 }
 
 export function MessageItem({
@@ -68,6 +72,7 @@ export function MessageItem({
     isLastMessage,
     isStreaming,
     agentAvatarUrl,
+    avatarLiveState,
 }: MessageItemProps) {
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
@@ -106,7 +111,7 @@ export function MessageItem({
         )}>
             {isAssistant && (
                 isFirstInSequence
-                    ? <AgentOrb size={60} state="idle" avatarUrl={agentAvatarUrl} />
+                    ? <AgentOrb size={60} state="idle" avatarUrl={agentAvatarUrl} liveState={avatarLiveState} />
                     // Same-width empty spacer for a consecutive assistant reply, so
                     // the text column still lines up under the first message's avatar
                     // instead of every reply in the run re-rendering its own icon.
