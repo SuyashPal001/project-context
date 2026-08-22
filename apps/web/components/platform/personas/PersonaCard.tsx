@@ -44,12 +44,29 @@ export function PersonaCard({ persona, isHired, onClick }: PersonaCardProps) {
             <p className="mt-1 line-clamp-3 text-sm text-muted-foreground">{persona.tagline}</p>
 
             {persona.exampleAssetUrl && (
-                // eslint-disable-next-line @next/next/no-img-element -- persona-authored example asset, not a static build asset
-                <img
-                    src={persona.exampleAssetUrl}
-                    alt={persona.exampleCaption ?? persona.name}
-                    className="mt-3 aspect-video w-full rounded-lg border border-border object-cover"
-                />
+                persona.exampleAssetUrl2 ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- persona-authored example asset, not a static build asset */}
+                        <img
+                            src={persona.exampleAssetUrl}
+                            alt={persona.exampleCaption ?? persona.name}
+                            className="aspect-video w-full rounded-lg border border-border object-cover"
+                        />
+                        {/* eslint-disable-next-line @next/next/no-img-element -- persona-authored example asset, not a static build asset */}
+                        <img
+                            src={persona.exampleAssetUrl2}
+                            alt={persona.exampleCaption2 ?? persona.name}
+                            className="aspect-video w-full rounded-lg border border-border object-cover"
+                        />
+                    </div>
+                ) : (
+                    // eslint-disable-next-line @next/next/no-img-element -- persona-authored example asset, not a static build asset
+                    <img
+                        src={persona.exampleAssetUrl}
+                        alt={persona.exampleCaption ?? persona.name}
+                        className="mt-3 aspect-video w-full rounded-lg border border-border object-cover"
+                    />
+                )
             )}
         </Card>
     );

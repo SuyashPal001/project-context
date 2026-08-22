@@ -73,11 +73,22 @@ export function PersonaDetailModal({ persona, open, onOpenChange, onHire, onAssi
                 )}
 
                 {persona.exampleAssetUrl && (
-                    <div className="space-y-1.5">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={persona.exampleAssetUrl} alt={persona.exampleCaption ?? persona.name} className="w-full rounded-lg border border-border" />
-                        {persona.exampleCaption && (
-                            <p className="text-xs text-muted-foreground">{persona.exampleCaption}</p>
+                    <div className={persona.exampleAssetUrl2 ? "grid grid-cols-2 gap-3" : "space-y-1.5"}>
+                        <div className="space-y-1.5">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={persona.exampleAssetUrl} alt={persona.exampleCaption ?? persona.name} className="w-full rounded-lg border border-border" />
+                            {persona.exampleCaption && (
+                                <p className="text-xs text-muted-foreground">{persona.exampleCaption}</p>
+                            )}
+                        </div>
+                        {persona.exampleAssetUrl2 && (
+                            <div className="space-y-1.5">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={persona.exampleAssetUrl2} alt={persona.exampleCaption2 ?? persona.name} className="w-full rounded-lg border border-border" />
+                                {persona.exampleCaption2 && (
+                                    <p className="text-xs text-muted-foreground">{persona.exampleCaption2}</p>
+                                )}
+                            </div>
                         )}
                     </div>
                 )}
