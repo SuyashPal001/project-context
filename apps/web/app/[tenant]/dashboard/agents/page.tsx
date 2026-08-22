@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AgentsView } from "@/components/platform/agents/AgentsView";
 import { PermissionGate } from "@/components/platform/PermissionGate";
 
@@ -8,7 +9,9 @@ export const metadata = {
 export default function AgentsPage() {
     return (
         <PermissionGate resource="agents" action="read">
-            <AgentsView />
+            <Suspense fallback={null}>
+                <AgentsView />
+            </Suspense>
         </PermissionGate>
     );
 }
