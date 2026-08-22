@@ -103,6 +103,23 @@ export function MessageItem({
         ? message.planResult.summary
         : isUser ? displayedUserContent : message.content;
 
+    // Approval/clarification-required events push an empty-content placeholder
+    // message into history (see useChatStream's onApprovalRequired /
+    // onClarificationRequired) that never gets real text — ApprovalCard is
+    // disabled entirely and ClarificationCard only renders once resolved. That
+    // placeholder still shares its "ASSISTANT" label with the real reply
+    // stacked right below it (consecutive same-role messages don't get a
+    // second label), so without this guard its feedback+timestamp row reads
+    // as a duplicate of the real reply's own (correct) row further down.
+    const hasDisplayedContent = Boolean(
+        markdownContent.trim() ||
+        message.isStreaming ||
+        message.artifactRef ||
+        message.planResult ||
+        (message.toolCalls && message.toolCalls.length > 0) ||
+        (message.clarificationRequest && message.clarificationRequest.status !== 'pending')
+    );
+
     return (
         <div id={`message-${message.id}`} className={cn(
             "flex items-start gap-4 group/msg min-w-0",
@@ -301,11 +318,11 @@ export function MessageItem({
                     </div>
                 )}
 
-                {isAssistant && !message.isStreaming && (
+                {isAssistant && !message.isStreaming && hasDisplayedContent && (
                     <MessageFeedback messageId={message.id} conversationId={message.conversationId} content={message.content} />
                 )}
 
-                {isAssistant && (
+                {isAssistant && hasDisplayedContent && (
                     <div className="flex items-center gap-2 opacity-0 group-hover/msg:opacity-100 transition-opacity">
                         <span className="text-[11px] text-muted-foreground/60 px-1 mt-1">
                             {format(new Date(message.createdAt), 'h:mm a')}
