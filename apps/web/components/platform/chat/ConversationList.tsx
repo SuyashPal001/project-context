@@ -11,7 +11,6 @@ import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import { getAgentTypeIcon } from "../agents/agentTypeIcon";
-import type { PersonaAnimationState } from "@/components/platform/personas/usePersonaAnimationState";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -26,8 +25,6 @@ interface ConversationListProps {
     selectedId?: string;
     onSelect: (conversation: Conversation) => void;
     onNewChat: (agentId?: string) => void;
-    activeAgentId?: string;
-    activeState?: PersonaAnimationState;
 }
 
 // ─── ConversationRow ──────────────────────────────────────────────────────────
@@ -97,7 +94,7 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
 // dump every single one into the sidebar at once.
 const CONVERSATIONS_PAGE_SIZE = 5;
 
-function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, onSelect, onNewChat, onArchive, onDelete, activeAgentId, activeState, hasSelectedConversation }: {
+function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, onSelect, onNewChat, onArchive, onDelete, hasSelectedConversation }: {
     agent: Agent;
     conversations: Conversation[];
     selectedId?: string;
@@ -107,8 +104,6 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
     onNewChat: (agentId: string) => void;
     onArchive: (id: string) => void;
     onDelete: (id: string) => void;
-    activeAgentId?: string;
-    activeState?: PersonaAnimationState;
     hasSelectedConversation?: boolean;
 }) {
     // Plain component state — no persistence (localStorage/URL), so a page
@@ -142,7 +137,6 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                 <PersonaAvatar
                     persona={agent.persona}
                     avatarUrl={agent.avatarUrl}
-                    state={agent.id === activeAgentId ? activeState : undefined}
                     size={36}
                     className="rounded-full h-9 w-9 shrink-0"
                     iconClassName="text-foreground/50"
@@ -213,7 +207,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
 
 // ─── ConversationList ─────────────────────────────────────────────────────────
 
-export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentId, activeState }: ConversationListProps) {
+export function ConversationList({ selectedId, onSelect, onNewChat }: ConversationListProps) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [actionType, setActionType] = useState<'archive' | 'delete'>('archive');
     const [search, setSearch] = useState('');
@@ -335,8 +329,6 @@ export function ConversationList({ selectedId, onSelect, onNewChat, activeAgentI
                                 onNewChat={onNewChat}
                                 onArchive={(id) => { setActionType('archive'); setDeleteId(id); }}
                                 onDelete={(id) => { setActionType('delete'); setDeleteId(id); }}
-                                activeAgentId={activeAgentId}
-                                activeState={activeState}
                                 hasSelectedConversation={!!selectedId && (convsByAgent[agent.id] ?? []).some(c => c.id === selectedId)}
                             />
                         ))}

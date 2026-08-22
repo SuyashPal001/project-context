@@ -249,8 +249,6 @@ function ChatPage() {
                         selectedId={conversationId || undefined}
                         onSelect={handleSelectConversation}
                         onNewChat={handleNewChat}
-                        activeAgentId={selectedConversation?.agent?.id ?? selectedConversation?.agentId}
-                        activeState={displayState}
                     />
                 </div>
 
