@@ -5,6 +5,7 @@ import { AgentOrb } from "./AgentOrb";
 import { Button } from "@/components/ui/button";
 import type { PillType } from "./WizardView";
 import type { Agent } from "../agents/types";
+import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
 
 const PM_PROMPTS: { icon: LucideIcon; label: string; pill: PillType }[] = [
     { icon: FileText,   label: "Write a PRD",      pill: "prd"      },
@@ -26,9 +27,13 @@ interface WelcomeViewProps {
     onSelectPill: (pill: PillType) => void;
     onSend: (text: string) => void;
     children: React.ReactNode;
+    /** Live chat-stream state — 'waving' for this greet screen (page.tsx
+     * computes it that way for a new/empty conversation). Same opt-in
+     * mechanism as MessageItem's avatar: no motion unless explicitly passed. */
+    avatarLiveState?: PersonaAnimationState;
 }
 
-export function WelcomeView({ agent, firstName, onSelectPill, onSend, children }: WelcomeViewProps) {
+export function WelcomeView({ agent, firstName, onSelectPill, onSend, children, avatarLiveState }: WelcomeViewProps) {
     const agentName = agent?.name ?? 'your assistant';
     const isPm = (agent?.name ?? '').toLowerCase().includes('pm');
     const tagline = agent?.description
@@ -38,7 +43,7 @@ export function WelcomeView({ agent, firstName, onSelectPill, onSend, children }
         <div className="flex flex-col h-full">
             <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 text-center">
                 <div className="mb-6">
-                    <AgentOrb size={96} state="idle" avatarUrl={agent?.avatarUrl} />
+                    <AgentOrb size={96} state="idle" avatarUrl={agent?.avatarUrl} liveState={avatarLiveState} />
                 </div>
 
                 <h2 className="text-2xl font-bold tracking-tight mb-1">
