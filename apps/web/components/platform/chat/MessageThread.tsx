@@ -375,7 +375,7 @@ function ThinkingDots({ label = 'Thinking...', avatarUrl }: { label?: string; av
                     <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.15s]" />
                     <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce" />
                 </span>
-                <span className="shimmer-text text-sm text-primary/80 font-mono">{label}</span>
+                <span className="shimmer-text text-sm text-shimmer-accent-80 font-mono">{label}</span>
             </div>
         </div>
     );

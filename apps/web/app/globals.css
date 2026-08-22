@@ -86,6 +86,13 @@
   --popover-foreground: oklch(0.145 0 0);
   --primary: #E69DB8; /* dribbble-inspired rose accent */
   --primary-foreground: #000000;
+  /* Same rose hue family, darkened for text on this theme's near-white background.
+     --primary itself is only ~2:1 contrast on white (fails WCAG AA at any opacity),
+     and the shimmer-text spans using this need to stay readable down to their lowest
+     opacity tier (60%, ~4.6:1 here) — not just at full strength. Dark theme doesn't
+     need this override: the pale rose already reads fine against a near-black
+     background there, so it keeps using --primary directly (see .dark below). */
+  --shimmer-accent: #420920;
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -132,6 +139,9 @@
   --popover-foreground: oklch(98.5% 0 0); /* zinc-50 */
   --primary: #E69DB8; /* dribbble-inspired rose accent */
   --primary-foreground: #000000;
+  /* Unlike light theme, no override needed — the pale rose already has plenty of
+     contrast against this theme's near-black background. */
+  --shimmer-accent: var(--primary);
   --secondary: oklch(27.4% 0.006 286.033); /* zinc-800 */
   --secondary-foreground: oklch(96.7% 0.001 286.375); /* zinc-100 */
   --muted: oklch(21% 0.006 285.885); /* zinc-900 */
@@ -209,6 +219,20 @@
     background-image: none;
     -webkit-text-fill-color: currentColor;
   }
+}
+
+/* Opacity tiers for shimmer-text spans on --shimmer-accent (see definition above) —
+   color-mix against transparent, not a fixed background, so this still composites
+   correctly wherever it's used. Same two tiers text-primary/60 and /80 provided,
+   just against a theme-aware, readable base hue instead of the pale --primary rose. */
+.text-shimmer-accent {
+  color: var(--shimmer-accent);
+}
+.text-shimmer-accent-60 {
+  color: color-mix(in srgb, var(--shimmer-accent) 60%, transparent);
+}
+.text-shimmer-accent-80 {
+  color: color-mix(in srgb, var(--shimmer-accent) 80%, transparent);
 }
 
 /* Tiptap editor — code block dark theme */

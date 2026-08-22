@@ -35,11 +35,12 @@ export function ReasoningRow({ text, completed = false, elapsedSec }: { text: st
                         {elapsedSec !== undefined ? `Thought for ${elapsedSec}s` : 'Thought it through'}
                     </span>
                 ) : (
-                    // Lighter tone of the same primary shade "Working for Ns" uses (text-primary/80),
-                    // not the inherited near-white text-foreground — the shimmer gradient sweeps
-                    // currentColor -> #fff -> currentColor, so a base color already close to white
-                    // leaves almost no visible contrast to sweep.
-                    <span className="shimmer-text text-sm font-semibold flex-1 truncate text-primary/60">Thinking it through</span>
+                    // text-shimmer-accent-60, not text-primary/60: --primary itself is a pale
+                    // rose that reads as unreadably faint (and fails WCAG AA) on this theme's
+                    // near-white background — --shimmer-accent is the same hue family, darkened,
+                    // and only overridden in light theme (dark theme's pale rose already has
+                    // plenty of contrast, so it stays on --primary there). See globals.css.
+                    <span className="shimmer-text text-sm font-semibold flex-1 truncate text-shimmer-accent-60">Thinking it through</span>
                 )}
                 <svg
                     width="10" height="10" viewBox="0 0 10 10" fill="none"
@@ -195,7 +196,7 @@ export function LiveTrace({
         return (
             <div className="animate-in fade-in duration-300">
                 {liveElapsed >= 2 && (
-                    <div className="shimmer-text text-sm text-primary/80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
+                    <div className="shimmer-text text-sm text-shimmer-accent-80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
                         Working for {liveElapsed}s{loadingTools.length > 0 ? ` · ${thinkingMessages[messageIndex]}` : ''}
                     </div>
                 )}
@@ -227,7 +228,7 @@ export function LiveTrace({
             <div className="animate-in fade-in duration-300">
                 <div className="flex items-center gap-2">
                     <PulsingDots />
-                    <span className="shimmer-text text-sm text-primary/80 font-mono animate-in fade-in duration-500" key={messageIndex}>
+                    <span className="shimmer-text text-sm text-shimmer-accent-80 font-mono animate-in fade-in duration-500" key={messageIndex}>
                         {liveElapsed >= 2 ? `Working for ${liveElapsed}s · ` : ''}{thinkingMessages[messageIndex]}
                     </span>
                 </div>
