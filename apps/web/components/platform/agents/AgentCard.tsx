@@ -87,13 +87,11 @@ export function AgentCard({ agent }: AgentCardProps) {
                 avatar={<PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" />}
                 name={agent.name}
                 subtitle={
-                    <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1.5">
-                            <Brain className="h-3.5 w-3.5 text-muted-foreground" /> {agent.model ?? `${agent.name} v1`}
-                        </span>
-                        <p className="line-clamp-2">{agentDescription(agent.name, agent.description)}</p>
-                    </div>
+                    <span className="inline-flex items-center gap-1.5">
+                        <Brain className="h-3.5 w-3.5 text-muted-foreground" /> {agent.model ?? `${agent.name} v1`}
+                    </span>
                 }
+                description={<p className="line-clamp-2">{agentDescription(agent.name, agent.description)}</p>}
                 dimmed={isRetired}
                 action={
                     <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
