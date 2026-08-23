@@ -93,9 +93,11 @@ export function EmployeeCard({
                 </div>
             </div>
 
+            {skillTags.length > 0 && <hr className="border-border" />}
+
             {skillTags.length > 0 && (
                 <div>
-                    <SectionLabel>Skills</SectionLabel>
+                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Skills</span>
                     <div className="flex flex-wrap gap-1.5">
                         {skillTags.map((tag) => (
                             <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
