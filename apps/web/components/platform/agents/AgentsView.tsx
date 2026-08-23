@@ -320,13 +320,13 @@ export function AgentsView() {
                         </AlertDescription>
                     </Alert>
                 ) : agentsLoading ? (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        {Array.from({ length: 3 }).map((_, i) => (
-                            <Skeleton key={i} className="h-[200px] w-full rounded-xl" />
+                    <div className="grid gap-4 md:grid-cols-2">
+                        {Array.from({ length: 4 }).map((_, i) => (
+                            <Skeleton key={i} className="h-[220px] w-full rounded-xl" />
                         ))}
                     </div>
                 ) : hiredAgents.length > 0 ? (
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2">
                         {hiredAgents.map((agent) => (
                             <AgentCard key={agent.id} agent={agent} />
                         ))}
@@ -347,13 +347,13 @@ export function AgentsView() {
                     </div>
                 )
             ) : personasLoading ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2">
                     {Array.from({ length: 4 }).map((_, i) => (
-                        <Skeleton key={i} className="h-[280px] w-full rounded-xl" />
+                        <Skeleton key={i} className="h-[320px] w-full rounded-xl" />
                     ))}
                 </div>
             ) : explorePersonas.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2">
                     {explorePersonas.map((persona) => (
                         <PersonaCard
                             key={persona.id}
