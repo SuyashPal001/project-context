@@ -21,9 +21,8 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Play, Pause, Trash2, Settings2 } from "lucide-react";
+import { MoreHorizontal, Play, Pause, Trash2, Settings2, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { EmployeeCard } from "@/components/platform/shared/EmployeeCard";
@@ -39,20 +38,6 @@ export function AgentCard({ agent }: AgentCardProps) {
     const tenantSlug = params.tenant as string;
     const [isRetireDialogOpen, setIsRetireDialogOpen] = useState(false);
     const [fireDependencies, setFireDependencies] = useState<{ shiftsCount: number; teamsCount: number } | null>(null);
-
-    const formatRelativeTime = (date: string) => {
-        const now = new Date();
-        const diff = now.getTime() - new Date(date).getTime();
-        const seconds = Math.floor(diff / 1000);
-        const minutes = Math.floor(seconds / 60);
-        const hours = Math.floor(minutes / 60);
-        const days = Math.floor(hours / 24);
-
-        if (days > 0) return `${days}d ago`;
-        if (hours > 0) return `${hours}h ago`;
-        if (minutes > 0) return `${minutes}m ago`;
-        return "just now";
-    };
 
     const updateStatusMutation = useMutation({
         mutationFn: ({ status, force }: { status: Agent["status"]; force?: boolean }) =>
@@ -87,17 +72,6 @@ export function AgentCard({ agent }: AgentCardProps) {
         }
     };
 
-    const getTypeLabel = (type: Agent["type"]) => {
-        switch (type) {
-            case "product_manager": return "Product Manager";
-            case "project_manager": return "Project Manager";
-            case "tech_lead": return "Tech Lead";
-            case "analyst": return "Analyst";
-            case "architect": return "Architect";
-            default: return type;
-        }
-    };
-
     const isRetired = agent.status === "retired";
 
     const outcomes = [
@@ -111,12 +85,11 @@ export function AgentCard({ agent }: AgentCardProps) {
                 href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
                 avatar={<PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" />}
                 name={agent.name}
-                headerBadge={
-                    <Badge variant="outline" className="capitalize bg-secondary text-muted-foreground border-border">
-                        {getTypeLabel(agent.type)}
-                    </Badge>
+                subtitle={
+                    <span className="inline-flex items-center gap-1.5">
+                        <Brain className="h-3.5 w-3.5" /> {agent.model ?? `${agent.name} v1`}
+                    </span>
                 }
-                subtitle={`Created ${formatRelativeTime(agent.createdAt)}`}
                 dimmed={isRetired}
                 action={
                     <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
@@ -164,7 +137,6 @@ export function AgentCard({ agent }: AgentCardProps) {
                 }
                 skillTags={agent.persona?.skillTags ?? []}
                 outcomes={outcomes}
-                mind={agent.model ?? `${agent.name} v1`}
             />
 
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
