@@ -81,6 +81,7 @@ function ComposioCard({
                     </Button>
                 ) : (
                     <Button
+                        variant="outline"
                         size="sm"
                         className="h-7 text-xs"
                         onClick={() => onConnect(app)}
