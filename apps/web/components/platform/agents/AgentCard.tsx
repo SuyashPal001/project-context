@@ -5,7 +5,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { Agent } from "./types";
-import { Card } from "@/components/ui/card";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -24,9 +23,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Play, Pause, Trash2, Settings2, Brain } from "lucide-react";
+import { MoreHorizontal, Play, Pause, Trash2, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { EmployeeCard } from "@/components/platform/shared/EmployeeCard";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 
 interface AgentCardProps {
@@ -69,16 +69,12 @@ export function AgentCard({ agent }: AgentCardProps) {
         },
     });
 
-    const getStatusBadgeVariant = (status: Agent["status"]) => {
+    const getStatusDotVariant = (status: Agent["status"]) => {
         switch (status) {
-            case "active":
-                return "bg-green-500/10 text-green-500 border-green-500/20";
-            case "paused":
-                return "bg-yellow-500/10 text-yellow-500 border-yellow-500/20";
-            case "retired":
-                return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
-            default:
-                return "bg-zinc-500/10 text-zinc-500 border-zinc-500/20";
+            case "active": return "bg-green-500";
+            case "paused": return "bg-yellow-500";
+            case "retired": return "bg-zinc-500";
+            default: return "bg-zinc-500";
         }
     };
 
@@ -90,8 +86,6 @@ export function AgentCard({ agent }: AgentCardProps) {
             default: return status;
         }
     };
-
-    const getTypeBadgeVariant = () => "bg-secondary text-muted-foreground border-border";
 
     const getTypeLabel = (type: Agent["type"]) => {
         switch (type) {
@@ -106,82 +100,72 @@ export function AgentCard({ agent }: AgentCardProps) {
 
     const isRetired = agent.status === "retired";
 
+    const outcomes = [
+        agent.persona?.exampleAssetUrl && { url: agent.persona.exampleAssetUrl, caption: agent.persona.exampleCaption },
+        agent.persona?.exampleAssetUrl2 && { url: agent.persona.exampleAssetUrl2, caption: agent.persona.exampleCaption2 },
+    ].filter((o): o is { url: string; caption: string | null } => Boolean(o));
+
     return (
         <>
-            <Link
+            <EmployeeCard
                 href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
-                className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-            <Card className={cn("relative gap-4 overflow-hidden p-5 transition-colors hover:border-foreground/20", isRetired && "opacity-75")}>
-                <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-start gap-3">
-                        <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" />
-                        <div className="min-w-0">
-                            <h3 className="text-base font-bold text-foreground">{agent.name}</h3>
-                            <p className="mt-0.5 text-sm text-muted-foreground">Created {formatRelativeTime(agent.createdAt)}</p>
-                        </div>
-                    </div>
-
-                    <div onClick={(e) => e.preventDefault()} className="shrink-0">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild disabled={isRetired}>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
-                                <span className="sr-only">Open menu</span>
-                                <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                                <Link href={`/${tenantSlug}/dashboard/agents/${agent.id}`}>
-                                    <Settings2 className="mr-2 h-4 w-4" />
-                                    Configure
-                                </Link>
-                            </DropdownMenuItem>
-                            {agent.status === "active" && (
-                                <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "paused" })}>
-                                    <Pause className="mr-2 h-4 w-4" />
-                                    Put on leave
-                                </DropdownMenuItem>
-                            )}
-                            {agent.status === "paused" && (
-                                <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "active" })}>
-                                    <Play className="mr-2 h-4 w-4" />
-                                    Return from leave
-                                </DropdownMenuItem>
-                            )}
-                            {(agent.status === "active" || agent.status === "paused") && (
-                                <DropdownMenuItem
-                                    className="text-muted-foreground focus:text-foreground cursor-pointer"
-                                    onClick={() => setIsRetireDialogOpen(true)}
-                                >
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Fire employee
-                                </DropdownMenuItem>
-                            )}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                    </div>
-                </div>
-
-                <hr className="border-border" />
-
-                <div className="flex flex-wrap gap-1.5">
-                    <Badge variant="outline" className={cn("capitalize", getTypeBadgeVariant())}>
+                avatar={<PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" />}
+                name={agent.name}
+                headerBadge={
+                    <Badge variant="outline" className="capitalize bg-secondary text-muted-foreground border-border">
                         {getTypeLabel(agent.type)}
                     </Badge>
-                    <Badge variant="outline" className={cn(getStatusBadgeVariant(agent.status))}>
-                        {getStatusLabel(agent.status)}
-                    </Badge>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-border pt-4 text-sm text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                        <Brain className="h-3.5 w-3.5" /> Mind
-                    </span>
-                    <span className="font-medium text-foreground">{agent.model ?? `${agent.name} v1`}</span>
-                </div>
-            </Card>
-            </Link>
+                }
+                subtitle={`Created ${formatRelativeTime(agent.createdAt)}`}
+                dimmed={isRetired}
+                action={
+                    <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+                        <span className="inline-flex items-center gap-1.5 text-sm font-bold text-foreground">
+                            <span className={cn("h-2.5 w-2.5 rounded-full", getStatusDotVariant(agent.status))} /> {getStatusLabel(agent.status)}
+                        </span>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild disabled={isRetired}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
+                                    <span className="sr-only">Open menu</span>
+                                    <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem asChild>
+                                    <Link href={`/${tenantSlug}/dashboard/agents/${agent.id}`}>
+                                        <Settings2 className="mr-2 h-4 w-4" />
+                                        Configure
+                                    </Link>
+                                </DropdownMenuItem>
+                                {agent.status === "active" && (
+                                    <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "paused" })}>
+                                        <Pause className="mr-2 h-4 w-4" />
+                                        Put on leave
+                                    </DropdownMenuItem>
+                                )}
+                                {agent.status === "paused" && (
+                                    <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "active" })}>
+                                        <Play className="mr-2 h-4 w-4" />
+                                        Return from leave
+                                    </DropdownMenuItem>
+                                )}
+                                {(agent.status === "active" || agent.status === "paused") && (
+                                    <DropdownMenuItem
+                                        className="text-muted-foreground focus:text-foreground cursor-pointer"
+                                        onClick={() => setIsRetireDialogOpen(true)}
+                                    >
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Fire employee
+                                    </DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                }
+                skillTags={agent.persona?.skillTags ?? []}
+                outcomes={outcomes}
+                mind={agent.model ?? `${agent.name} v1`}
+            />
 
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
                 <AlertDialogContent>
