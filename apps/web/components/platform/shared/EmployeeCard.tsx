@@ -12,6 +12,15 @@ export interface EmployeeOutcome {
     caption: string | null;
 }
 
+/** Same centered rule-label-rule style as PersonaDetailModal's "Skills" divider. */
+function SectionLabel({ children }: { children: ReactNode }) {
+    return (
+        <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="h-px flex-1 bg-border" /> {children} <span className="h-px flex-1 bg-border" />
+        </div>
+    );
+}
+
 export interface EmployeeCardProps {
     /** Wrap the card in a Link (Mine — goes to the agent detail page). Mutually exclusive with onClick. */
     href?: string;
@@ -84,11 +93,9 @@ export function EmployeeCard({
                 </div>
             </div>
 
-            {(skillTags.length > 0 || outcomes.length > 0) && <hr className="border-border" />}
-
             {skillTags.length > 0 && (
                 <div>
-                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Skills</span>
+                    <SectionLabel>Skills</SectionLabel>
                     <div className="flex flex-wrap gap-1.5">
                         {skillTags.map((tag) => (
                             <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
@@ -99,7 +106,7 @@ export function EmployeeCard({
 
             {outcomes.length > 0 && (
                 <div>
-                    <span className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Outcomes</span>
+                    <SectionLabel>Outcomes</SectionLabel>
                     <div className={outcomes.length > 1 ? "grid grid-cols-2 gap-2" : "grid grid-cols-1"}>
                         {outcomes.map((outcome, i) => (
                             <figure key={i} className="relative overflow-hidden rounded-lg border border-border">
