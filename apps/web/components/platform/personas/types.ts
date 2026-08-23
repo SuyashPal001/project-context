@@ -9,6 +9,7 @@ export interface PersonaSummary {
     exampleCaption: string | null;
     exampleAssetUrl2: string | null;
     exampleCaption2: string | null;
+    defaultModel: string | null;
 }
 
 export interface PersonaDetail extends PersonaSummary {

@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { AppEnv } from '@serverless-saas/types';
 import { db } from '../db';
 import { personas } from '@serverless-saas/agent-schema/personas';
+import { llmProviders } from '@serverless-saas/database/schema/integrations';
 import { handleEnsureReady, handleAgentStatus } from './agents.health';
 import { handleListAgents, handleGetAgent, handleCreateAgent, handleUpdateAgent, handleDeleteAgent } from './agents.crud';
 import { agentFairnessRoutes } from './agents.fairness';
@@ -17,6 +18,15 @@ agentsRoutes.get('/:id/status', handleAgentStatus);
 
 // GET /agents/personas — published personas only, any authenticated tenant member
 agentsRoutes.get('/personas', async (c) => {
+    // Personas don't carry their own model — the model is chosen when an agent is
+    // hired from one. This is the platform default every new hire gets today, shown
+    // as "Mind" on the persona card so it isn't fabricated in the frontend.
+    const [defaultProvider] = await db
+        .select({ displayName: llmProviders.displayName })
+        .from(llmProviders)
+        .where(and(eq(llmProviders.isPlatform, true), eq(llmProviders.isDefault, true)))
+        .limit(1);
+
     const data = await db
         .select({
             id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
@@ -26,7 +36,9 @@ agentsRoutes.get('/personas', async (c) => {
         })
         .from(personas)
         .where(eq(personas.status, 'published'));
-    return c.json({ personas: data });
+
+    const defaultModel = defaultProvider?.displayName ?? null;
+    return c.json({ personas: data.map((p) => ({ ...p, defaultModel })) });
 });
 
 // CRUD
