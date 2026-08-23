@@ -45,6 +45,7 @@
     "lowlight": "^3.3.0",
     "lucide-react": "^0.575.0",
     "mammoth": "^1.12.0",
+    "motion": "^13.1.1",
     "next": "16.2.6",
     "next-themes": "^0.4.6",
     "posthog-js": "^1.383.3",

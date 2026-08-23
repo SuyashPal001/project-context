@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { SkillCard } from "@/components/platform/skills/SkillCard";
+import { SkillGrid } from "@/components/platform/skills/SkillGrid";
 import { ImportSkillDialog } from "@/components/platform/skills/ImportSkillDialog";
 import { listSkills, installSkill, uninstallSkill, publishSkill } from "@/components/platform/skills/actions";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
@@ -96,18 +96,13 @@ export default function SkillsPage() {
                     {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[160px] w-full rounded-xl" />)}
                 </div>
             ) : skills.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    {skills.map((skill) => (
-                        <SkillCard
-                            key={skill.id}
-                            skill={skill}
-                            isOwner={skill.ownerTenantId === tenantId}
-                            onInstall={() => handleInstall(skill.id)}
-                            onUninstall={() => handleUninstall(skill.id)}
-                            onPublish={() => handlePublish(skill.id)}
-                        />
-                    ))}
-                </div>
+                <SkillGrid
+                    skills={skills}
+                    tenantId={tenantId}
+                    onInstall={handleInstall}
+                    onUninstall={handleUninstall}
+                    onPublish={handlePublish}
+                />
             ) : (
                 <div className="flex h-[300px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
                     <p className="text-sm text-muted-foreground">
