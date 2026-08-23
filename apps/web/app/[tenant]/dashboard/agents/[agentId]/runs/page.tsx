@@ -69,7 +69,7 @@ export default function AgentRunsPage() {
                             Timesheet — {isLoadingAgent ? "..." : (agent?.name ?? "Agent")}
                         </h1>
                         <p className="text-muted-foreground mt-1">
-                            Execution history and actions performed by this agent.
+                            A log of everything this teammate has done, and when.
                         </p>
                     </div>
                 </div>

@@ -70,7 +70,7 @@ export default function ScheduledPage() {
                 Duties
               </h1>
               <p className="text-muted-foreground mt-1">
-                Recurring PM workflow duties triggered on a cron schedule.
+                Tasks this teammate runs automatically, on a schedule you set.
               </p>
             </div>
             <NewScheduleDialog agentId={agentId} onCreated={invalidate} />
@@ -111,7 +111,7 @@ export default function ScheduledPage() {
                 ) : schedules.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                      No duties assigned yet. Create one to automate PM workflow execution.
+                      No duties assigned yet. Give this teammate something to own — assign a duty and let them handle it on repeat.
                     </TableCell>
                   </TableRow>
                 ) : (
