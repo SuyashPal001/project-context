@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Upload, Github, Link2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { createSkillFromZip, createSkillFromGithub, createSkillFromUrl } from "./actions";
 
 const SOURCE_HINT: Record<"zip" | "github" | "url", string> = {
@@ -32,9 +33,56 @@ export function ImportSkillDialog({ open, onOpenChange, onImported }: ImportSkil
     const [url, setUrl] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isDraggingFile, setIsDraggingFile] = useState(false);
+    // dragenter/dragleave fire on every child element as the pointer crosses
+    // them, so a plain boolean flickers the overlay off while dragging over
+    // nested elements — a depth counter only reaches zero when the pointer
+    // truly leaves the drop zone.
+    const dragDepthRef = useRef(0);
 
     const reset = () => {
         setName(""); setDescription(""); setFile(null); setOwner(""); setRepo(""); setRef("main"); setUrl(""); setError(null);
+    };
+
+    const acceptFile = (candidate: File) => {
+        if (!candidate.name.toLowerCase().endsWith(".zip")) {
+            setError("Only .zip files are supported");
+            return;
+        }
+        setError(null);
+        setFile(candidate);
+    };
+
+    const handleDragEnter = (e: React.DragEvent) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        dragDepthRef.current += 1;
+        setIsDraggingFile(true);
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setIsDraggingFile(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        dragDepthRef.current = 0;
+        setIsDraggingFile(false);
+
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length === 0) return;
+        if (files.length > 1) {
+            setError("Drop one file at a time");
+            return;
+        }
+        acceptFile(files[0]);
     };
 
     const handleSubmit = async () => {
@@ -93,7 +141,34 @@ export function ImportSkillDialog({ open, onOpenChange, onImported }: ImportSkil
                     <Textarea placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
 
                     {source === "zip" && (
-                        <Input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                        <div
+                            className={cn(
+                                "relative rounded-lg border border-dashed p-4 transition-colors",
+                                isDraggingFile ? "border-primary/60 bg-primary/5" : "border-border"
+                            )}
+                            onDragEnter={handleDragEnter}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                        >
+                            {isDraggingFile && (
+                                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-primary/5 backdrop-blur-[1px] pointer-events-none">
+                                    <span className="text-sm font-medium text-primary">Drop to attach</span>
+                                </div>
+                            )}
+                            <Input
+                                type="file"
+                                accept=".zip,application/zip"
+                                onChange={(e) => {
+                                    const picked = e.target.files?.[0];
+                                    if (picked) acceptFile(picked);
+                                }}
+                            />
+                            {file && (
+                                <p className="text-xs text-muted-foreground mt-2">Selected: {file.name}</p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-2">or drag and drop a .zip file here</p>
+                        </div>
                     )}
                     {source === "github" && (
                         <div className="space-y-2">
