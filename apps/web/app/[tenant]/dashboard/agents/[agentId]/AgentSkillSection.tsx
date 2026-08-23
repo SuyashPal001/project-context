@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { AttachSkillPicker } from "@/components/platform/skills/AttachSkillPicker";
 import type { AgentDetail } from "@/components/platform/agents/types";
+import { agentDescription, isSupervisor } from "@/components/platform/agents/agentDescription";
 
 interface AgentSkillSectionProps {
     agentId: string;
@@ -15,31 +16,6 @@ interface AgentSkillSectionProps {
     tenantSlug: string;
     agent: AgentDetail | undefined;
     isLoading: boolean;
-}
-
-function isSupervisor(name: string): boolean {
-    const n = name.toLowerCase();
-    return n.includes("pm") || (n.includes("product") && !n.includes("prd"));
-}
-
-function fallbackDescription(name: string): string {
-    const n = name.toLowerCase();
-    if (isSupervisor(n)) {
-        return "Orchestrates the full PM lifecycle — writes PRDs, generates roadmaps, and breaks milestones into engineering tasks by delegating to specialist agents. Use this when you want to plan and ship a feature end-to-end.";
-    }
-    if (n.includes("prd")) {
-        return "Specialist agent for writing and refining Product Requirements Documents. Saves PRDs to your workspace so the roadmap agent can pick them up.";
-    }
-    if (n.includes("roadmap")) {
-        return "Generates structured roadmaps with milestones from an approved PRD. Use after your PRD is ready.";
-    }
-    if (n.includes("task")) {
-        return "Breaks approved milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates.";
-    }
-    if (n.includes("architect")) {
-        return "Technical architect with deep codebase knowledge. Reviews designs, proposes system architecture, and answers implementation questions.";
-    }
-    return "A general-purpose AI agent. Chat with it to search the web, analyse documents, and get work done.";
 }
 
 const BASE_CAPABILITIES = [
@@ -64,9 +40,7 @@ interface CapabilityItem {
 export function AgentSkillSection({ agent, agentId, isLoading }: AgentSkillSectionProps) {
     const [attachOpen, setAttachOpen] = useState(false);
     const name = agent?.name ?? "";
-    const description = agent?.description?.trim()
-        ? agent.description
-        : fallbackDescription(name);
+    const description = agentDescription(name, agent?.description);
 
     const capabilities: CapabilityItem[] = isSupervisor(name)
         ? [SUPERVISOR_CAPABILITY, ...BASE_CAPABILITIES]

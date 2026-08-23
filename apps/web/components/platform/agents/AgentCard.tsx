@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { EmployeeCard } from "@/components/platform/shared/EmployeeCard";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
+import { agentDescription } from "./agentDescription";
 
 interface AgentCardProps {
     agent: Agent;
@@ -86,9 +87,12 @@ export function AgentCard({ agent }: AgentCardProps) {
                 avatar={<PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" />}
                 name={agent.name}
                 subtitle={
-                    <span className="inline-flex items-center gap-1.5">
-                        <Brain className="h-3.5 w-3.5 text-muted-foreground" /> {agent.model ?? `${agent.name} v1`}
-                    </span>
+                    <div className="space-y-1">
+                        <span className="inline-flex items-center gap-1.5">
+                            <Brain className="h-3.5 w-3.5 text-muted-foreground" /> {agent.model ?? `${agent.name} v1`}
+                        </span>
+                        <p className="line-clamp-2">{agentDescription(agent.name, agent.description)}</p>
+                    </div>
                 }
                 dimmed={isRetired}
                 action={
