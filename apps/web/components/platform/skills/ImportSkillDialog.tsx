@@ -1,12 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { Upload, Github, Link2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { createSkillFromZip, createSkillFromGithub, createSkillFromUrl } from "./actions";
+
+const SOURCE_HINT: Record<"zip" | "github" | "url", string> = {
+    zip: "Have the skill's files on your computer? Upload them as a .zip.",
+    github: "Import straight from a public GitHub repository — no download needed.",
+    url: "Already have a direct download link to a .zip file? Paste it here.",
+};
 
 interface ImportSkillDialogProps {
     open: boolean;
@@ -63,28 +70,42 @@ export function ImportSkillDialog({ open, onOpenChange, onImported }: ImportSkil
                 </DialogHeader>
 
                 <div className="space-y-3">
+                    <Tabs value={source} onValueChange={(v) => setSource(v as typeof source)}>
+                        <TabsList className="w-full grid grid-cols-3">
+                            <TabsTrigger value="zip">
+                                <Upload className="h-3.5 w-3.5" />
+                                Upload zip
+                            </TabsTrigger>
+                            <TabsTrigger value="github">
+                                <Github className="h-3.5 w-3.5" />
+                                GitHub repo
+                            </TabsTrigger>
+                            <TabsTrigger value="url">
+                                <Link2 className="h-3.5 w-3.5" />
+                                Paste URL
+                            </TabsTrigger>
+                        </TabsList>
+
+                        <p className="text-xs text-muted-foreground mt-2">{SOURCE_HINT[source]}</p>
+                    </Tabs>
+
                     <Input placeholder="Skill name" value={name} onChange={(e) => setName(e.target.value)} />
                     <Textarea placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
 
-                    <Tabs value={source} onValueChange={(v) => setSource(v as typeof source)}>
-                        <TabsList>
-                            <TabsTrigger value="zip">Upload zip</TabsTrigger>
-                            <TabsTrigger value="github">GitHub repo</TabsTrigger>
-                            <TabsTrigger value="url">Paste URL</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="zip">
-                            <Input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-                        </TabsContent>
-                        <TabsContent value="github" className="space-y-2">
+                    {source === "zip" && (
+                        <Input type="file" accept=".zip,application/zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                    )}
+                    {source === "github" && (
+                        <div className="space-y-2">
                             <p className="text-xs text-muted-foreground">Public repositories only.</p>
                             <Input placeholder="Owner (e.g. anthropics)" value={owner} onChange={(e) => setOwner(e.target.value)} />
                             <Input placeholder="Repo (e.g. skills)" value={repo} onChange={(e) => setRepo(e.target.value)} />
                             <Input placeholder="Branch or tag (default: main)" value={ref} onChange={(e) => setRef(e.target.value)} />
-                        </TabsContent>
-                        <TabsContent value="url">
-                            <Input placeholder="https://example.com/my-skill.zip" value={url} onChange={(e) => setUrl(e.target.value)} />
-                        </TabsContent>
-                    </Tabs>
+                        </div>
+                    )}
+                    {source === "url" && (
+                        <Input placeholder="https://example.com/my-skill.zip" value={url} onChange={(e) => setUrl(e.target.value)} />
+                    )}
 
                     {error && <p className="text-xs text-destructive">{error}</p>}
 
