@@ -91,6 +91,7 @@ export function IntegrationCard({
                             </Button>
                         ) : (
                             <Button
+                                variant="outline"
                                 size="sm"
                                 onClick={() => onConnect(entry)}
                                 disabled={connecting !== null || !canConnect}
