@@ -87,7 +87,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 name={agent.name}
                 subtitle={
                     <span className="inline-flex items-center gap-1.5">
-                        <Brain className="h-3.5 w-3.5" /> {agent.model ?? `${agent.name} v1`}
+                        <Brain className="h-3.5 w-3.5 text-muted-foreground" /> {agent.model ?? `${agent.name} v1`}
                     </span>
                 }
                 dimmed={isRetired}

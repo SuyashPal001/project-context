@@ -128,7 +128,7 @@ export function EmployeeCard({
             {mind && (
                 <div className="flex items-center justify-between border-t border-border pt-4 text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
-                        <Brain className="h-3.5 w-3.5" /> Mind
+                        <Brain className="h-3.5 w-3.5 text-muted-foreground" /> Mind
                     </span>
                     <span className="font-medium text-foreground">{mind}</span>
                 </div>
