@@ -1,6 +1,6 @@
 "use client";
 
-import { Pin } from "lucide-react";
+import { Pin, Brain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmployeeCard } from "@/components/platform/shared/EmployeeCard";
 import { PersonaAvatar } from "./PersonaAvatar";
@@ -30,6 +30,13 @@ export function PersonaCard({ persona, isHired, onClick }: PersonaCardProps) {
                     </Badge>
                 ) : undefined
             }
+            subtitle={
+                persona.defaultModel && (
+                    <span className="inline-flex items-center gap-1.5">
+                        <Brain className="h-3.5 w-3.5 text-muted-foreground" /> {persona.defaultModel}
+                    </span>
+                )
+            }
             description={<p className="line-clamp-2">{persona.tagline}</p>}
             action={
                 isHired ? (
@@ -42,7 +49,6 @@ export function PersonaCard({ persona, isHired, onClick }: PersonaCardProps) {
             }
             skillTags={persona.skillTags}
             outcomes={outcomes}
-            mind={persona.defaultModel}
         />
     );
 }
