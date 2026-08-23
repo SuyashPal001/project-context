@@ -158,9 +158,25 @@ export async function handleCreateAgent(c: Context<AppEnv>) {
         .where(eq(rolePermissions.roleId, agentRole.id));
     const agentRolePermissionStrings = agentRolePermissionRows.map((p: { resource: string; action: string }) => `${p.resource}:${p.action}`);
 
+    // hirePersona (the Explore "Hire" flow) never sends model/llmProviderId — without this,
+    // a hired employee's "Mind" falls back to a fabricated `${name} v1` string instead of
+    // showing anything real. Stamp the platform default at creation time so it's a fact.
+    let { model, llmProviderId } = result.data;
+    if (!model && !llmProviderId) {
+        const [defaultProvider] = await db
+            .select({ id: llmProviders.id, displayName: llmProviders.displayName, model: llmProviders.model })
+            .from(llmProviders)
+            .where(and(eq(llmProviders.isPlatform, true), eq(llmProviders.isDefault, true)))
+            .limit(1);
+        if (defaultProvider) {
+            model = defaultProvider.displayName ?? defaultProvider.model;
+            llmProviderId = defaultProvider.id;
+        }
+    }
+
     const rawKey = generateApiKey('ak');
     const [newKey] = await db.insert(apiKeys).values({ tenantId, name: `${result.data.name} API Key`, type: 'agent', keyHash: hashKey(rawKey), permissions: agentRolePermissionStrings, status: 'active', createdBy: userId }).returning();
-    const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model: result.data.model, llmProviderId: result.data.llmProviderId, personaId: result.data.personaId, apiKeyId: newKey.id, createdBy: userId }).returning();
+    const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model, llmProviderId, personaId: result.data.personaId, apiKeyId: newKey.id, createdBy: userId }).returning();
     await db.insert(memberships).values({ agentId: newAgent.id, tenantId, roleId: agentRole.id, memberType: 'agent', status: 'active' });
 
     try {

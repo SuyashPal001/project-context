@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { roles, rolePermissions } from '@serverless-saas/database/schema/authorization';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { apiKeys } from '@serverless-saas/database/schema/access';
+import { llmProviders } from '@serverless-saas/database/schema/integrations';
 
 /**
  * Task 11 — POST /agents now accepts an optional personaId so
@@ -19,6 +20,7 @@ vi.mock('../db', () => ({ db: dbMock }));
 
 const AGENT_ROLE = { id: 'role-1', isAgentRole: true };
 const PERMISSION_ROWS = [{ resource: 'agents', action: 'read' }];
+const DEFAULT_PROVIDER = { id: 'provider-1', displayName: 'Gemini 2.5 Flash', model: 'gemini-2.5-flash' };
 
 function setupDb() {
     dbMock.select.mockImplementation(() => ({
@@ -28,6 +30,9 @@ function setupDb() {
             }
             if (table === rolePermissions) {
                 return { innerJoin: () => ({ where: async () => PERMISSION_ROWS }) };
+            }
+            if (table === llmProviders) {
+                return { where: () => ({ limit: async () => [DEFAULT_PROVIDER] }) };
             }
             throw new Error('unexpected db.select().from(...) target in test');
         },
@@ -113,6 +118,24 @@ describe('POST /agents personaId', () => {
         });
 
         expect(res.status).toBe(400);
+    });
+
+    it('stamps the platform default model/llmProviderId when neither is provided (hirePersona never sends one)', async () => {
+        setupDb();
+        const { handleCreateAgent } = await import('../routes/agents.crud');
+        const app = appWithContext();
+        app.post('/agents', handleCreateAgent);
+
+        const res = await app.request('/agents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'Ada', type: 'custom' }),
+        });
+
+        expect(res.status).toBe(201);
+        const body = await res.json();
+        expect(body.data.agent.model).toBe('Gemini 2.5 Flash');
+        expect(body.data.agent.llmProviderId).toBe('provider-1');
     });
 
     it('still accepts the "custom" type used by hirePersona', async () => {
