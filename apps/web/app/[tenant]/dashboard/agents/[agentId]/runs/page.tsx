@@ -66,7 +66,7 @@ export default function AgentRunsPage() {
 
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight">
-                            Runs — {isLoadingAgent ? "..." : (agent?.name ?? "Agent")}
+                            Timesheet — {isLoadingAgent ? "..." : (agent?.name ?? "Agent")}
                         </h1>
                         <p className="text-muted-foreground mt-1">
                             Execution history and actions performed by this agent.

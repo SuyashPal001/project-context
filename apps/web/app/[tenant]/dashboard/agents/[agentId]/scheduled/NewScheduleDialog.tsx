@@ -62,13 +62,13 @@ export function NewScheduleDialog({ agentId, onCreated }: Props) {
     <>
       <Button size="sm" onClick={() => setOpen(true)}>
         <Plus className="h-4 w-4 mr-2" />
-        New Schedule
+        New Duty
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Create Scheduled Run</DialogTitle>
+            <DialogTitle>Create Duty</DialogTitle>
           </DialogHeader>
 
           <Form {...form}>
@@ -140,7 +140,7 @@ export function NewScheduleDialog({ agentId, onCreated }: Props) {
                 </Button>
                 <Button type="submit" disabled={mutation.isPending}>
                   {mutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Create Schedule
+                  Create Duty
                 </Button>
               </DialogFooter>
             </form>

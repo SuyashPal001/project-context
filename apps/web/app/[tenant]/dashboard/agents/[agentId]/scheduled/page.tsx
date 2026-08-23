@@ -67,10 +67,10 @@ export default function ScheduledPage() {
             <div>
               <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
                 <CalendarClock className="h-7 w-7" />
-                Scheduled Runs
+                Duties
               </h1>
               <p className="text-muted-foreground mt-1">
-                Automated PM workflow runs triggered on a cron schedule.
+                Recurring PM workflow duties triggered on a cron schedule.
               </p>
             </div>
             <NewScheduleDialog agentId={agentId} onCreated={invalidate} />
@@ -92,10 +92,10 @@ export default function ScheduledPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead>Schedule ID</TableHead>
+                  <TableHead>Duty ID</TableHead>
                   <TableHead>Cron</TableHead>
                   <TableHead>Timezone</TableHead>
-                  <TableHead>Next Run</TableHead>
+                  <TableHead>Next Due</TableHead>
                   <TableHead className="w-[60px]" />
                 </TableRow>
               </TableHeader>
@@ -111,7 +111,7 @@ export default function ScheduledPage() {
                 ) : schedules.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                      No scheduled runs yet. Create one to automate PM workflow execution.
+                      No duties assigned yet. Create one to automate PM workflow execution.
                     </TableCell>
                   </TableRow>
                 ) : (

@@ -130,13 +130,13 @@ export default function AgentDetailPage() {
                         <Button variant="outline" size="sm" asChild>
                             <Link href={`/${tenantSlug}/dashboard/agents/${agentId}/runs`}>
                                 <History className="mr-2 h-4 w-4" />
-                                Runs
+                                Timesheet
                             </Link>
                         </Button>
                         <Button variant="outline" size="sm" asChild>
                             <Link href={`/${tenantSlug}/dashboard/agents/${agentId}/scheduled`}>
                                 <CalendarClock className="mr-2 h-4 w-4" />
-                                Scheduled
+                                Duties
                             </Link>
                         </Button>
                         <Button
