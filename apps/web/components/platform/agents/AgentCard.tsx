@@ -5,13 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { Agent } from "./types";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -30,9 +24,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MoreHorizontal, Play, Pause, Trash2, Settings2 } from "lucide-react";
+import { MoreHorizontal, Play, Pause, Trash2, Settings2, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 
 interface AgentCardProps {
     agent: Agent;
@@ -117,15 +112,17 @@ export function AgentCard({ agent }: AgentCardProps) {
                 href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
                 className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-            <Card className="relative overflow-hidden transition-colors hover:border-foreground/20">
-                <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                    <div className="space-y-1">
-                        <CardTitle className="text-xl font-bold">{agent.name}</CardTitle>
-                        <CardDescription>
-                            Created {formatRelativeTime(agent.createdAt)}
-                        </CardDescription>
+            <Card className={cn("relative overflow-hidden p-5 transition-colors hover:border-foreground/20", isRetired && "opacity-75")}>
+                <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                        <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" />
+                        <div className="min-w-0">
+                            <h3 className="text-base font-bold text-foreground">{agent.name}</h3>
+                            <p className="mt-0.5 text-sm text-muted-foreground">Created {formatRelativeTime(agent.createdAt)}</p>
+                        </div>
                     </div>
-                    <div onClick={(e) => e.preventDefault()}>
+
+                    <div onClick={(e) => e.preventDefault()} className="shrink-0">
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild disabled={isRetired}>
                             <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
@@ -164,21 +161,25 @@ export function AgentCard({ agent }: AgentCardProps) {
                         </DropdownMenuContent>
                     </DropdownMenu>
                     </div>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                        <Badge variant="outline" className={cn("capitalize", getTypeBadgeVariant())}>
-                            {getTypeLabel(agent.type)}
-                        </Badge>
-                        <Badge variant="outline" className={cn(getStatusBadgeVariant(agent.status))}>
-                            {getStatusLabel(agent.status)}
-                        </Badge>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground border-t pt-4">
-                        <span>Mind</span>
-                        <span className="font-medium text-foreground">{agent.model ?? `${agent.name} v1`}</span>
-                    </div>
-                </CardContent>
+                </div>
+
+                <hr className="my-4 border-border" />
+
+                <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className={cn("capitalize", getTypeBadgeVariant())}>
+                        {getTypeLabel(agent.type)}
+                    </Badge>
+                    <Badge variant="outline" className={cn(getStatusBadgeVariant(agent.status))}>
+                        {getStatusLabel(agent.status)}
+                    </Badge>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                        <Brain className="h-3.5 w-3.5" /> Mind
+                    </span>
+                    <span className="font-medium text-foreground">{agent.model ?? `${agent.name} v1`}</span>
+                </div>
             </Card>
             </Link>
 
