@@ -30,7 +30,7 @@ export function PersonaCard({ persona, isHired, onClick }: PersonaCardProps) {
                     </Badge>
                 ) : undefined
             }
-            subtitle={<p className="line-clamp-2">{persona.tagline}</p>}
+            description={<p className="line-clamp-2">{persona.tagline}</p>}
             action={
                 isHired ? (
                     <span className="flex items-center gap-1.5 pt-1 text-sm font-bold text-foreground">
