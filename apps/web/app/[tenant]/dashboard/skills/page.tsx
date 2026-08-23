@@ -1,20 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { SkillGrid } from "@/components/platform/skills/SkillGrid";
+import { SkillCard } from "@/components/platform/skills/SkillCard";
 import { ImportSkillDialog } from "@/components/platform/skills/ImportSkillDialog";
-import { listSkills, installSkill, uninstallSkill, publishSkill } from "@/components/platform/skills/actions";
+import { listSkills } from "@/components/platform/skills/actions";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
-import { useTenant } from "@/app/[tenant]/tenant-provider";
 
 export default function SkillsPage() {
     const queryClient = useQueryClient();
-    const { tenantId } = useTenant();
+    const tenantSlug = useParams().tenant as string;
     const [tab, setTab] = useState<SkillTab>("mine");
     const [importOpen, setImportOpen] = useState(false);
 
@@ -35,36 +34,6 @@ export default function SkillsPage() {
     });
 
     const skills = skillsList ?? [];
-
-    const handleInstall = async (skillId: string) => {
-        try {
-            await installSkill(skillId);
-            queryClient.invalidateQueries({ queryKey: ["skills"] });
-            toast.success("Skill installed.");
-        } catch {
-            toast.error("Failed to install skill.");
-        }
-    };
-
-    const handleUninstall = async (skillId: string) => {
-        try {
-            await uninstallSkill(skillId);
-            queryClient.invalidateQueries({ queryKey: ["skills"] });
-            toast.success("Skill uninstalled.");
-        } catch {
-            toast.error("Failed to uninstall skill.");
-        }
-    };
-
-    const handlePublish = async (skillId: string) => {
-        try {
-            await publishSkill(skillId);
-            queryClient.invalidateQueries({ queryKey: ["skills"] });
-            toast.success("Skill published.");
-        } catch {
-            toast.error("Failed to publish skill.");
-        }
-    };
 
     return (
         <div className="space-y-6">
@@ -92,17 +61,19 @@ export default function SkillsPage() {
             </div>
 
             {isLoading ? (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[160px] w-full rounded-xl" />)}
+                <div className="grid gap-4 md:grid-cols-2">
+                    {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[140px] w-full rounded-xl" />)}
                 </div>
             ) : skills.length > 0 ? (
-                <SkillGrid
-                    skills={skills}
-                    tenantId={tenantId}
-                    onInstall={handleInstall}
-                    onUninstall={handleUninstall}
-                    onPublish={handlePublish}
-                />
+                <div className="grid gap-4 md:grid-cols-2">
+                    {skills.map((skill) => (
+                        <SkillCard
+                            key={skill.id}
+                            skill={skill}
+                            href={`/${tenantSlug}/dashboard/skills/${skill.id}`}
+                        />
+                    ))}
+                </div>
             ) : (
                 <div className="flex h-[300px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
                     <p className="text-sm text-muted-foreground">

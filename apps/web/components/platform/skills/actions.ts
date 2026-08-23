@@ -6,6 +6,11 @@ export async function listSkills(tab: SkillTab): Promise<Skill[]> {
     return res.data;
 }
 
+export async function getSkill(skillId: string): Promise<Skill> {
+    const res = await api.get<{ data: Skill }>(`/api/v1/skills/${skillId}`);
+    return res.data;
+}
+
 async function getUploadUrl(fileName: string): Promise<{ uploadUrl: string; fileKey: string }> {
     return api.post<{ uploadUrl: string; fileKey: string }>("/api/v1/skills/upload-url", { fileName });
 }

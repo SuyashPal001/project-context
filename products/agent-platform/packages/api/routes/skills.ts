@@ -164,6 +164,55 @@ skillsRoutes.get('/', async (c) => {
   }
 });
 
+// GET /skills/:id — single skill, same row shape as GET /skills. Used by the
+// skill detail page, which a public/official skill's non-owner can also reach
+// directly (e.g. a bookmarked link), so this applies the same
+// owner/public/official visibility rule as the install and versions routes.
+skillsRoutes.get('/:id', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'skills', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  if (!uuidSchema.safeParse(skillId).success) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+
+  try {
+    const skill = await resolveSkill(skillId);
+    if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+    const isOwner = skill.ownerTenantId === tenantId;
+    if (!isOwner && skill.visibility !== 'public' && !skill.isOfficial) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const [install] = await db.select().from(skillInstalls)
+      .where(and(eq(skillInstalls.skillId, skillId), eq(skillInstalls.tenantId, tenantId)))
+      .limit(1);
+
+    const [latest] = await db.select({ status: skillVersions.status, failureReason: skillVersions.failureReason })
+      .from(skillVersions)
+      .where(eq(skillVersions.skillId, skillId))
+      .orderBy(desc(skillVersions.version))
+      .limit(1);
+
+    return c.json({
+      data: {
+        id: skill.id, name: skill.name, slug: skill.slug, description: skill.description,
+        visibility: skill.visibility, isOfficial: skill.isOfficial, latestVersion: skill.latestVersion,
+        ownerTenantId: skill.ownerTenantId, createdAt: skill.createdAt,
+        installId: install?.id ?? null,
+        installedVersion: install?.installedVersion ?? null,
+        installed: install?.status === 'active',
+        latestVersionStatus: latest?.status ?? null,
+        failureReason: isOwner ? (latest?.failureReason ?? null) : null,
+      },
+    });
+  } catch (err) {
+    console.error('Failed to get skill:', err);
+    return c.json(INTERNAL_ERROR, 500);
+  }
+});
+
 // POST /skills — create a new skill + version 1, enqueue import
 skillsRoutes.post('/', async (c) => {
   const requestContext = c.get('requestContext') as any;
