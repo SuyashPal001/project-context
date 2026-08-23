@@ -19,7 +19,7 @@ export function PersonaCard({ persona, isHired, onClick }: PersonaCardProps) {
             tabIndex={0}
             onClick={onClick}
             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onClick()}
-            className="cursor-pointer overflow-hidden p-5 transition-colors hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="cursor-pointer gap-4 overflow-hidden p-5 transition-colors hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
             <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
@@ -51,20 +51,21 @@ export function PersonaCard({ persona, isHired, onClick }: PersonaCardProps) {
                 )}
             </div>
 
+            {(persona.skillTags.length > 0 || persona.exampleAssetUrl) && <hr className="border-border" />}
+
             {persona.skillTags.length > 0 && (
-                <>
-                    <hr className="my-4 border-border" />
+                <div>
                     <span className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Skills</span>
                     <div className="flex flex-wrap gap-1.5">
                         {persona.skillTags.map((tag) => (
                             <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>
                         ))}
                     </div>
-                </>
+                </div>
             )}
 
             {persona.exampleAssetUrl && (
-                <div className="mt-4">
+                <div>
                     <span className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Outcomes</span>
                     <div className={persona.exampleAssetUrl2 ? "grid grid-cols-2 gap-2" : "grid grid-cols-1"}>
                         <figure className="relative overflow-hidden rounded-lg border border-border">

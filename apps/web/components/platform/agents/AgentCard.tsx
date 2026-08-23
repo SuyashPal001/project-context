@@ -112,7 +112,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
                 className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-            <Card className={cn("relative overflow-hidden p-5 transition-colors hover:border-foreground/20", isRetired && "opacity-75")}>
+            <Card className={cn("relative gap-4 overflow-hidden p-5 transition-colors hover:border-foreground/20", isRetired && "opacity-75")}>
                 <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-start gap-3">
                         <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" />
@@ -163,7 +163,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                     </div>
                 </div>
 
-                <hr className="my-4 border-border" />
+                <hr className="border-border" />
 
                 <div className="flex flex-wrap gap-1.5">
                     <Badge variant="outline" className={cn("capitalize", getTypeBadgeVariant())}>
@@ -174,7 +174,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                     </Badge>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-border pt-4 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between border-t border-border pt-4 text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                         <Brain className="h-3.5 w-3.5" /> Mind
                     </span>
