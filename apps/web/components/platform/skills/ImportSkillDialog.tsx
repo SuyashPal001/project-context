@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload, Github, Link2 } from "lucide-react";
+import { Upload, Github, Link2, CheckCircle2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ export function ImportSkillDialog({ open, onOpenChange, onImported }: ImportSkil
     // nested elements — a depth counter only reaches zero when the pointer
     // truly leaves the drop zone.
     const dragDepthRef = useRef(0);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const reset = () => {
         setName(""); setDescription(""); setFile(null); setOwner(""); setRepo(""); setRef("main"); setUrl(""); setError(null);
@@ -51,6 +52,12 @@ export function ImportSkillDialog({ open, onOpenChange, onImported }: ImportSkil
         }
         setError(null);
         setFile(candidate);
+    };
+
+    const formatFileSize = (bytes: number): string => {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     };
 
     const handleDragEnter = (e: React.DragEvent) => {
@@ -112,7 +119,7 @@ export function ImportSkillDialog({ open, onOpenChange, onImported }: ImportSkil
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>Import a skill</DialogTitle>
                 </DialogHeader>
@@ -140,47 +147,82 @@ export function ImportSkillDialog({ open, onOpenChange, onImported }: ImportSkil
                     <Input placeholder="Skill name" value={name} onChange={(e) => setName(e.target.value)} />
                     <Textarea placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
 
-                    {source === "zip" && (
-                        <div
-                            className={cn(
-                                "relative rounded-lg border border-dashed p-4 transition-colors",
-                                isDraggingFile ? "border-primary/60 bg-primary/5" : "border-border"
-                            )}
-                            onDragEnter={handleDragEnter}
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                        >
-                            {isDraggingFile && (
-                                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-primary/5 backdrop-blur-[1px] pointer-events-none">
-                                    <span className="text-sm font-medium text-primary">Drop to attach</span>
-                                </div>
-                            )}
-                            <Input
-                                type="file"
-                                accept=".zip,application/zip"
-                                onChange={(e) => {
-                                    const picked = e.target.files?.[0];
-                                    if (picked) acceptFile(picked);
-                                }}
-                            />
-                            {file && (
-                                <p className="text-xs text-muted-foreground mt-2">Selected: {file.name}</p>
-                            )}
-                            <p className="text-xs text-muted-foreground mt-2">or drag and drop a .zip file here</p>
-                        </div>
-                    )}
-                    {source === "github" && (
-                        <div className="space-y-2">
-                            <p className="text-xs text-muted-foreground">Public repositories only.</p>
-                            <Input placeholder="Owner (e.g. anthropics)" value={owner} onChange={(e) => setOwner(e.target.value)} />
-                            <Input placeholder="Repo (e.g. skills)" value={repo} onChange={(e) => setRepo(e.target.value)} />
-                            <Input placeholder="Branch or tag (default: main)" value={ref} onChange={(e) => setRef(e.target.value)} />
-                        </div>
-                    )}
-                    {source === "url" && (
-                        <Input placeholder="https://example.com/my-skill.zip" value={url} onChange={(e) => setUrl(e.target.value)} />
-                    )}
+                    <div className="min-h-[168px]">
+                        {source === "zip" && (
+                            <div
+                                className={cn(
+                                    "relative rounded-lg border border-dashed p-4 transition-colors",
+                                    isDraggingFile ? "border-primary/60 bg-primary/5" : file ? "border-emerald-500/40 bg-emerald-500/5" : "border-border"
+                                )}
+                                onDragEnter={handleDragEnter}
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                            >
+                                {isDraggingFile && (
+                                    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-primary/5 backdrop-blur-[1px] pointer-events-none">
+                                        <span className="text-sm font-medium text-primary">Drop to attach</span>
+                                    </div>
+                                )}
+
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".zip,application/zip"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        const picked = e.target.files?.[0];
+                                        if (picked) acceptFile(picked);
+                                    }}
+                                />
+
+                                {file ? (
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-medium truncate">{file.name}</p>
+                                                <p className="text-xs text-muted-foreground">{formatFileSize(file.size)} — ready to import</p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                            onClick={() => {
+                                                setFile(null);
+                                                if (fileInputRef.current) fileInputRef.current.value = "";
+                                            }}
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        className="flex w-full flex-col items-center gap-1 py-2 text-center"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        <Upload className="h-5 w-5 text-muted-foreground" />
+                                        <span className="text-sm font-medium">Click to upload a .zip file</span>
+                                        <span className="text-xs text-muted-foreground">or drag and drop it here</span>
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        {source === "github" && (
+                            <div className="space-y-2">
+                                <p className="text-xs text-muted-foreground">Public repositories only.</p>
+                                <Input placeholder="Owner (e.g. anthropics)" value={owner} onChange={(e) => setOwner(e.target.value)} />
+                                <Input placeholder="Repo (e.g. skills)" value={repo} onChange={(e) => setRepo(e.target.value)} />
+                                <Input placeholder="Branch or tag (default: main)" value={ref} onChange={(e) => setRef(e.target.value)} />
+                            </div>
+                        )}
+                        {source === "url" && (
+                            <Input placeholder="https://example.com/my-skill.zip" value={url} onChange={(e) => setUrl(e.target.value)} />
+                        )}
+                    </div>
 
                     {error && <p className="text-xs text-destructive">{error}</p>}
 
