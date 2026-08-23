@@ -30,10 +30,7 @@ export interface EmployeeCardProps {
     name: string;
     /** A single small badge next to the name — Official (persona) or role type (agent). */
     headerBadge?: ReactNode;
-    /** Short label directly under the name, still beside the avatar (e.g. Mind). */
-    subtitle?: ReactNode;
-    /** Longer blurb (tagline / "About this agent") — full card width, starts flush with the avatar's left edge, below the whole header row. */
-    description?: ReactNode;
+    subtitle: ReactNode;
     /** Top-right affordance — Hire pill, or a status pill + management menu. */
     action: ReactNode;
     skillTags?: string[];
@@ -56,7 +53,6 @@ export function EmployeeCard({
     name,
     headerBadge,
     subtitle,
-    description,
     action,
     skillTags = [],
     outcomes = [],
@@ -89,15 +85,13 @@ export function EmployeeCard({
                             <h3 className="text-base font-bold text-foreground">{name}</h3>
                             {headerBadge}
                         </div>
-                        {subtitle && <div className="mt-0.5 text-sm text-muted-foreground">{subtitle}</div>}
+                        <div className="mt-0.5 text-sm text-muted-foreground">{subtitle}</div>
                     </div>
                 </div>
                 <div className="shrink-0" onClick={(e: MouseEvent) => onClick && e.stopPropagation()}>
                     {action}
                 </div>
             </div>
-
-            {description && <div className="text-sm text-muted-foreground">{description}</div>}
 
             {skillTags.length > 0 && <hr className="border-border" />}
 
