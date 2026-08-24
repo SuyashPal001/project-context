@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Package } from "lucide-react";
+import { ArrowRight, ArrowUp, Download, Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { Skill } from "./types";
@@ -63,6 +63,19 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                                     : skill.installed ? " · installed" : ""}
                             </span>
                         )}
+                    </div>
+
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                            <ArrowUp className="h-3.5 w-3.5" />
+                            {/* Run counts aren't tracked yet. */}
+                            &mdash; runs
+                        </span>
+                        <span className="flex items-center gap-1">
+                            <Download className="h-3.5 w-3.5" />
+                            {/* Download counts aren't tracked yet. */}
+                            &mdash;
+                        </span>
                     </div>
                 </CardContent>
             </Card>
