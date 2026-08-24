@@ -1,7 +1,8 @@
 import { formatDistanceToNow } from "date-fns";
-import { CalendarClock, CalendarPlus, Package, Plus, User, Zap } from "lucide-react";
+import { CalendarClock, CalendarPlus, FileText, Package, Plus, Sparkles, User, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MarkdownViewer } from "@/components/platform/canvas/MarkdownViewer";
 import { skillImportState } from "./SkillCard";
 import type { Skill } from "./types";
 
@@ -68,35 +69,80 @@ export function SkillDetailContent({
                 </div>
             )}
 
-            <div className="space-y-3 rounded-lg border border-border p-4">
-                <div className="space-y-1.5">
-                    <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Description</h4>
-                    <p className="text-sm text-foreground">{skill.description ?? "No description"}</p>
-                </div>
-
-                <div className="divide-y divide-border border-t border-border pt-1 text-sm">
-                    <div className="flex items-center justify-between py-1.5">
-                        <span className="text-muted-foreground">Version</span>
-                        <span className="font-medium text-foreground">{skill.installedVersion ?? skill.latestVersion}</span>
-                    </div>
-                    <div className="flex items-center justify-between py-1.5">
-                        <span className="text-muted-foreground">Latest</span>
-                        <span className="font-medium text-foreground">{skill.latestVersion}</span>
-                    </div>
-                </div>
-            </div>
-
-            <dl className="divide-y divide-border rounded-lg border border-border">
-                <MetaRow icon={User} label="Author" value={skill.isOfficial ? "Official" : skill.visibility === "public" ? "Community" : "Private"} />
-                <MetaRow icon={Zap} label="Runs" value="—" />
-                <MetaRow icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
-                <MetaRow icon={CalendarPlus} label="Date created" value={relativeTime(skill.createdAt)} />
-            </dl>
+            <SkillOverview skill={skill} />
 
             <div className="flex gap-2">
                 {isOwner && skill.visibility === "private" && hasReadyVersion && (
                     <Button variant="ghost" onClick={onPublish}>Publish</Button>
                 )}
+            </div>
+        </div>
+    );
+}
+
+function SkillOverview({ skill }: { skill: Skill }) {
+    const meta = (
+        <dl className="divide-y divide-border rounded-lg border border-border">
+            <MetaRow icon={User} label="Author" value={skill.isOfficial ? "Official" : skill.visibility === "public" ? "Community" : "Private"} />
+            <MetaRow icon={Zap} label="Runs" value="—" />
+            <MetaRow icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
+            <MetaRow icon={CalendarPlus} label="Date created" value={relativeTime(skill.createdAt)} />
+        </dl>
+    );
+
+    // Older/still-importing skills have no stored SKILL.md body yet — fall back to
+    // just the short frontmatter description plus version/metadata.
+    if (!skill.body) {
+        return (
+            <div className="space-y-3">
+                <div className="space-y-3 rounded-lg border border-border p-4">
+                    <div className="space-y-1.5">
+                        <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Description</h4>
+                        <p className="text-sm text-foreground">{skill.description ?? "No description"}</p>
+                    </div>
+
+                    <div className="divide-y divide-border border-t border-border pt-1 text-sm">
+                        <div className="flex items-center justify-between py-1.5">
+                            <span className="text-muted-foreground">Version</span>
+                            <span className="font-medium text-foreground">{skill.installedVersion ?? skill.latestVersion}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-1.5">
+                            <span className="text-muted-foreground">Latest</span>
+                            <span className="font-medium text-foreground">{skill.latestVersion}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {meta}
+            </div>
+        );
+    }
+
+    return (
+        <div className="grid gap-4 md:grid-cols-[1fr_240px]">
+            <div className="min-w-0 space-y-2">
+                <h4 className="text-sm font-semibold text-foreground">Skill overview</h4>
+                <div className="max-h-[420px] overflow-y-auto rounded-lg border border-border p-4 text-sm">
+                    <MarkdownViewer content={skill.body} />
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                <div className="rounded-lg border border-border p-3">
+                    <div className="flex items-center gap-2 rounded-md bg-muted px-2.5 py-1.5 text-sm font-medium text-foreground">
+                        <Sparkles className="h-4 w-4" />
+                        Skill overview
+                    </div>
+                    <div className="mt-3 space-y-1.5">
+                        <h5 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Files</h5>
+                        <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm text-foreground">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            Skill.md
+                        </div>
+                    </div>
+                </div>
+
+                {meta}
             </div>
         </div>
     );

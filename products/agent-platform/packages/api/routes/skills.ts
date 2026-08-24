@@ -189,11 +189,18 @@ skillsRoutes.get('/:id', async (c) => {
       .where(and(eq(skillInstalls.skillId, skillId), eq(skillInstalls.tenantId, tenantId)))
       .limit(1);
 
-    const [latest] = await db.select({ status: skillVersions.status, failureReason: skillVersions.failureReason })
+    const [latest] = await db.select({ status: skillVersions.status, failureReason: skillVersions.failureReason, manifest: skillVersions.manifest })
       .from(skillVersions)
       .where(eq(skillVersions.skillId, skillId))
       .orderBy(desc(skillVersions.version))
       .limit(1);
+
+    // Only a 'ready' version's manifest was written by a completed import — a
+    // pending/failed row's manifest column is whatever the previous version left
+    // (or null), so gate on status rather than trusting the field's mere presence.
+    const body = latest?.status === 'ready' && latest.manifest && typeof latest.manifest === 'object'
+      ? (latest.manifest as Record<string, unknown>).body
+      : null;
 
     return c.json({
       data: {
@@ -205,6 +212,7 @@ skillsRoutes.get('/:id', async (c) => {
         installed: install?.status === 'active',
         latestVersionStatus: latest?.status ?? null,
         failureReason: isOwner ? (latest?.failureReason ?? null) : null,
+        body: typeof body === 'string' ? body : null,
       },
     });
   } catch (err) {

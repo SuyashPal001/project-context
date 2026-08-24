@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { safeExtractSkillZip, safeExtractSkillTarball, SkillPackageError, type SafeSkillEntry } from '../lib/safeSkillZip';
-import { parseSkillManifest, SkillManifestError } from '../lib/skillManifest';
+import { parseSkillManifest, stripSkillManifestFrontmatter, SkillManifestError } from '../lib/skillManifest';
 import { fetchPublicUrl, SsrfBlockedError } from '../lib/ssrfGuard';
 
 const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'ap-south-1' });
@@ -73,6 +73,9 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
   try {
     const { entries, manifestSource, skipped } = await extractForSource(source);
     const manifest = parseSkillManifest(manifestSource);
+    // Body is stored alongside the parsed frontmatter fields so the detail view can
+    // render the authored SKILL.md content without a separate S3 read on every view.
+    const manifestWithBody = { ...manifest, body: stripSkillManifestFrontmatter(manifestSource) };
 
     for (const entry of entries) {
       await s3.send(new PutObjectCommand({
@@ -84,7 +87,7 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
 
     await db.execute(sql`
       UPDATE skill_versions
-      SET manifest = ${JSON.stringify(manifest)}::jsonb, s3_prefix = ${s3Prefix}, status = 'ready'
+      SET manifest = ${JSON.stringify(manifestWithBody)}::jsonb, s3_prefix = ${s3Prefix}, status = 'ready'
       WHERE id = ${skillVersionId}
     `);
     await db.execute(sql`

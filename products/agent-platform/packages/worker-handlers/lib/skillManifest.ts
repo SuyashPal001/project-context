@@ -44,3 +44,9 @@ export function parseSkillManifest(skillMdContent: string): SkillManifest {
 
   return manifest as SkillManifest;
 }
+
+/** Everything after the frontmatter block — the actual authored SKILL.md body, for display. */
+export function stripSkillManifestFrontmatter(skillMdContent: string): string {
+  const match = FRONTMATTER_RE.exec(skillMdContent);
+  return match ? match[2].trim() : skillMdContent.trim();
+}

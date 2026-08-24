@@ -20,6 +20,8 @@ export interface Skill {
     /** Status of the newest skill_versions row, so a failed import is distinguishable from one still running. */
     latestVersionStatus: SkillVersionStatus | null;
     failureReason: string | null;
+    /** Full SKILL.md body (frontmatter stripped), stored at import time. Only returned by GET /skills/:id, and only once the latest version is 'ready' — absent (not just null) on list responses. */
+    body?: string | null;
 }
 
 export interface SkillsResponse {
