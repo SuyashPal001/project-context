@@ -49,7 +49,7 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
 
     // Only fetched once an import has produced a package to list — a pending or
     // failed version has no S3 prefix, so the request would always come back empty.
-    const { data: files } = useQuery<SkillFile[]>({
+    const { data: files, isLoading: filesLoading } = useQuery<SkillFile[]>({
         queryKey: ["skills", "files", skillId],
         queryFn: () => listSkillFiles(skillId as string),
         enabled: skillId !== null && skill?.latestVersionStatus === "ready",
@@ -144,6 +144,7 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
                             skill={skill}
                             isOwner={skill.ownerTenantId === tenantId}
                             files={files ?? []}
+                            filesLoading={filesLoading}
                             onInstall={handleInstall}
                             onUninstall={handleUninstall}
                             onPublish={handlePublish}

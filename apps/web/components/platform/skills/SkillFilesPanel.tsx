@@ -167,12 +167,28 @@ function FileContentViewer({ skillId, path, skillBody }: { skillId: string; path
 
     const handleDownload = async () => {
         try {
-            const downloadUrl = await queryClient.fetchQuery({
-                queryKey: urlQueryKey,
-                queryFn: () => getSkillFileUrl(skillId, path),
-                staleTime: FILE_URL_STALE_MS,
-            });
-            window.open(downloadUrl, "_blank");
+            // Several browsers ignore <a download> / navigation on a
+            // cross-origin S3 URL and render the file inline instead of
+            // saving it — fetch as a blob and download that instead, same
+            // pattern KnowledgeBaseSection.tsx uses for the same reason.
+            let text = body;
+            if (!text) {
+                const downloadUrl = await queryClient.fetchQuery({
+                    queryKey: urlQueryKey,
+                    queryFn: () => getSkillFileUrl(skillId, path),
+                    staleTime: FILE_URL_STALE_MS,
+                });
+                const res = await fetch(downloadUrl);
+                if (!res.ok) throw new Error(`Failed to fetch file: ${res.status}`);
+                text = await res.text();
+            }
+            const blob = new Blob([text], { type: "text/plain" });
+            const objectUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = objectUrl;
+            a.download = path.split("/").pop() ?? path;
+            a.click();
+            URL.revokeObjectURL(objectUrl);
         } catch {
             toast.error("Failed to download file.");
         }
@@ -222,7 +238,7 @@ function FileContentViewer({ skillId, path, skillBody }: { skillId: string; path
     );
 }
 
-export function SkillFilesPanel({ skill, files }: { skill: Skill; files: SkillFile[] }) {
+export function SkillFilesPanel({ skill, files, filesLoading = false }: { skill: Skill; files: SkillFile[]; filesLoading?: boolean }) {
     const tree = useMemo(() => buildFileTree(files), [files]);
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
     // Files can arrive after an import finishes polling, so the default is
@@ -240,7 +256,21 @@ export function SkillFilesPanel({ skill, files }: { skill: Skill; files: SkillFi
         });
     };
 
-    if (files.length === 0) return <p className="text-sm text-muted-foreground">No files</p>;
+    if (files.length === 0) {
+        // filesLoading only ever means "still loading" here — the query that
+        // feeds it isn't even enabled until the skill's version is ready, so
+        // an empty array during a real load reads as "no files" otherwise.
+        if (filesLoading) {
+            return (
+                <div className="space-y-2">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-8 w-2/3" />
+                </div>
+            );
+        }
+        return <p className="text-sm text-muted-foreground">No files</p>;
+    }
 
     return (
         <div className="grid overflow-hidden rounded-xl border border-border md:grid-cols-[220px_1fr]">

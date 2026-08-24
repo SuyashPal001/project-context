@@ -30,11 +30,12 @@ function relativeTime(value: string | undefined | null): string {
 }
 
 export function SkillDetailContent({
-    skill, isOwner, files, onInstall, onUninstall, onPublish, onTest, isTesting,
+    skill, isOwner, files, filesLoading = false, onInstall, onUninstall, onPublish, onTest, isTesting,
 }: {
     skill: Skill;
     isOwner: boolean;
     files: SkillFile[];
+    filesLoading?: boolean;
     onInstall: () => void;
     onUninstall: () => void;
     onPublish: () => void;
@@ -118,7 +119,7 @@ export function SkillDetailContent({
                     </TabsTrigger>
                 </TabsList>
                 <TabsContent value="skill-md" className="pt-4">
-                    <SkillOverview skill={skill} files={files} />
+                    <SkillOverview skill={skill} files={files} filesLoading={filesLoading} />
                 </TabsContent>
             </Tabs>
 
@@ -144,12 +145,13 @@ export function SkillDetailContent({
     );
 }
 
-function SkillOverview({ skill, files }: { skill: Skill; files: SkillFile[] }) {
-    // Older/still-importing skills have no stored SKILL.md body yet. Version info is
-    // already shown as a badge in the header, so there's nothing else to render here.
+function SkillOverview({ skill, files, filesLoading }: { skill: Skill; files: SkillFile[]; filesLoading: boolean }) {
+    // Older/still-importing skills have no stored SKILL.md body yet — the
+    // header's "Importing"/"Failed" badge already explains why, but leaving
+    // this area fully blank still reads as broken rather than pending.
     if (!skill.body) {
-        return null;
+        return <p className="text-sm text-muted-foreground">This skill&apos;s content isn&apos;t ready yet.</p>;
     }
 
-    return <SkillFilesPanel skill={skill} files={files} />;
+    return <SkillFilesPanel skill={skill} files={files} filesLoading={filesLoading} />;
 }
