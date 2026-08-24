@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkdownViewer } from "@/components/platform/canvas/MarkdownViewer";
 import { skillImportState } from "./SkillCard";
-import type { Skill } from "./types";
+import type { Skill, SkillFile } from "./types";
 
 // updatedAt may be absent from an older API deploy — never let a malformed/missing
 // timestamp crash the whole modal.
@@ -15,10 +15,11 @@ function relativeTime(value: string | undefined | null): string {
 }
 
 export function SkillDetailContent({
-    skill, isOwner, onInstall, onUninstall, onPublish,
+    skill, isOwner, files, onInstall, onUninstall, onPublish,
 }: {
     skill: Skill;
     isOwner: boolean;
+    files: SkillFile[];
     onInstall: () => void;
     onUninstall: () => void;
     onPublish: () => void;
@@ -76,7 +77,7 @@ export function SkillDetailContent({
                 <MetaRow icon={CalendarPlus} label="Date created" value={relativeTime(skill.createdAt)} />
             </dl>
 
-            <SkillOverview skill={skill} />
+            <SkillOverview skill={skill} files={files} />
 
             <div className="flex gap-2">
                 {isOwner && skill.visibility === "private" && hasReadyVersion && (
@@ -87,7 +88,7 @@ export function SkillDetailContent({
     );
 }
 
-function SkillOverview({ skill }: { skill: Skill }) {
+function SkillOverview({ skill, files }: { skill: Skill; files: SkillFile[] }) {
     // Older/still-importing skills have no stored SKILL.md body yet — fall back to
     // just the version/latest table.
     if (!skill.body) {
@@ -121,10 +122,16 @@ function SkillOverview({ skill }: { skill: Skill }) {
                 </div>
                 <div className="mt-3 space-y-1.5">
                     <h5 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Files</h5>
-                    <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm text-foreground">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        Skill.md
-                    </div>
+                    {files.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No files</p>
+                    ) : (
+                        files.map((file) => (
+                            <div key={file.fileName} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm text-foreground">
+                                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <span className="truncate" title={file.fileName}>{file.fileName}</span>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         </div>

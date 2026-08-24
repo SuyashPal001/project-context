@@ -44,6 +44,7 @@ describe("SkillDetailContent author row", () => {
             <SkillDetailContent
                 skill={makeSkill()}
                 isOwner={false}
+                files={[]}
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
@@ -57,6 +58,7 @@ describe("SkillDetailContent author row", () => {
             <SkillDetailContent
                 skill={makeSkill({ ownerName: null })}
                 isOwner
+                files={[]}
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
@@ -69,6 +71,7 @@ describe("SkillDetailContent author row", () => {
             <SkillDetailContent
                 skill={makeSkill({ ownerName: null, ownerEmail: null })}
                 isOwner={false}
+                files={[]}
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
@@ -84,11 +87,46 @@ describe("SkillDetailContent runs row", () => {
             <SkillDetailContent
                 skill={makeSkill({ runCount: 12 })}
                 isOwner
+                files={[]}
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
             />,
         );
         expect(screen.getByText("12")).toBeTruthy();
+    });
+});
+
+describe("SkillDetailContent files sidebar", () => {
+    it("lists every file in the package", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ body: "# PDF Tools" })}
+                isOwner
+                files={[
+                    { fileName: "SKILL.md", size: 900 },
+                    { fileName: "scripts/run.py", size: 120 },
+                ]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+            />,
+        );
+        expect(screen.getByText("SKILL.md")).toBeTruthy();
+        expect(screen.getByText("scripts/run.py")).toBeTruthy();
+    });
+
+    it("says so when the package has no listed files", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ body: "# PDF Tools" })}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+            />,
+        );
+        expect(screen.getByText("No files")).toBeTruthy();
     });
 });

@@ -1,5 +1,5 @@
 import { api, ApiError } from "@/lib/api";
-import type { Skill, SkillTab, SkillsResponse } from "./types";
+import type { Skill, SkillFile, SkillTab, SkillsResponse } from "./types";
 
 export async function listSkills(tab: SkillTab): Promise<Skill[]> {
     const res = await api.get<SkillsResponse>(`/api/v1/skills?tab=${tab}`);
@@ -44,6 +44,11 @@ export async function installSkill(skillId: string): Promise<void> {
 
 export async function uninstallSkill(skillId: string): Promise<void> {
     await api.del(`/api/v1/skills/${skillId}/install`);
+}
+
+export async function listSkillFiles(skillId: string): Promise<SkillFile[]> {
+    const res = await api.get<{ data: SkillFile[] }>(`/api/v1/skills/${skillId}/files`);
+    return res.data;
 }
 
 /**

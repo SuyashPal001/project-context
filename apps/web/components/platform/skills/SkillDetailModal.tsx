@@ -8,9 +8,9 @@ import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
-import { getSkill, installSkill, uninstallSkill, publishSkill } from "./actions";
+import { getSkill, installSkill, listSkillFiles, publishSkill, uninstallSkill } from "./actions";
 import { SkillDetailContent } from "./SkillDetailContent";
-import type { Skill } from "./types";
+import type { Skill, SkillFile } from "./types";
 
 interface SkillDetailModalProps {
     skillId: string | null;
@@ -32,6 +32,14 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
             const stillPending = s?.latestVersionStatus === "pending" || (s?.latestVersionStatus === null && (s?.latestVersion ?? 0) < 1);
             return stillPending ? 5000 : false;
         },
+    });
+
+    // Only fetched once an import has produced a package to list — a pending or
+    // failed version has no S3 prefix, so the request would always come back empty.
+    const { data: files } = useQuery<SkillFile[]>({
+        queryKey: ["skills", "files", skillId],
+        queryFn: () => listSkillFiles(skillId as string),
+        enabled: skillId !== null && skill?.latestVersionStatus === "ready",
     });
 
     const invalidate = () => {
@@ -115,6 +123,7 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
                         <SkillDetailContent
                             skill={skill}
                             isOwner={skill.ownerTenantId === tenantId}
+                            files={files ?? []}
                             onInstall={handleInstall}
                             onUninstall={handleUninstall}
                             onPublish={handlePublish}

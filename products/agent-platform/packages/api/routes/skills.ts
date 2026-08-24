@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '../db';
 import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
@@ -355,6 +355,62 @@ skillsRoutes.get('/:id/versions', async (c) => {
     return c.json({ data: rows });
   } catch (err) {
     console.error('Failed to list skill versions:', err);
+    return c.json(INTERNAL_ERROR, 500);
+  }
+});
+
+// GET /skills/:id/files — read-only listing of the package files the import
+// worker wrote to skill-packages/{skillId}/{version}/. No package-format change:
+// this just enumerates an S3 prefix that already exists. Version resolution
+// mirrors the rest of the UI — this tenant's pinned install if there is one,
+// otherwise the skill's latest.
+skillsRoutes.get('/:id/files', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'skills', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  if (!uuidSchema.safeParse(skillId).success) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+
+  try {
+    const skill = await resolveSkill(skillId);
+    if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+    const isOwner = skill.ownerTenantId === tenantId;
+    if (!isOwner && skill.visibility !== 'public' && !skill.isOfficial) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const [install] = await db
+      .select({ installedVersion: skillInstalls.installedVersion })
+      .from(skillInstalls)
+      .where(and(
+        eq(skillInstalls.skillId, skillId),
+        eq(skillInstalls.tenantId, tenantId),
+        eq(skillInstalls.status, 'active'),
+      ))
+      .limit(1);
+
+    const version = install?.installedVersion ?? skill.latestVersion;
+    // latestVersion only moves once an import reaches 'ready', so 0 means the
+    // prefix does not exist yet — skip the S3 round trip entirely.
+    if (version < 1) return c.json({ data: [] });
+
+    const prefix = `skill-packages/${skillId}/${version}/`;
+    const listed = await s3.send(new ListObjectsV2Command({
+      Bucket: process.env.DOCUMENTS_BUCKET!,
+      Prefix: prefix,
+      MaxKeys: 1000,
+    }));
+
+    const data = (listed.Contents ?? [])
+      .map((obj) => ({ fileName: (obj.Key ?? '').slice(prefix.length), size: obj.Size ?? 0 }))
+      .filter((f) => f.fileName.length > 0)
+      .sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
+
+    return c.json({ data });
+  } catch (err) {
+    console.error('Failed to list skill files:', err);
     return c.json(INTERNAL_ERROR, 500);
   }
 });

@@ -36,5 +36,11 @@ export interface SkillsResponse {
     data: Skill[];
 }
 
+/** One file inside a skill package, from GET /skills/:id/files. Read-only listing. */
+export interface SkillFile {
+    fileName: string;
+    size: number;
+}
+
 /** "installed" is not a visible dashboard tab — it's the attach picker's view of the tenant's install library, which spans skills owned by other tenants. */
 export type SkillTab = "mine" | "official" | "public" | "installed";
