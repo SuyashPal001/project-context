@@ -60,7 +60,11 @@ export async function attachSkillToAgent(agentId: string, skill: Skill): Promise
             installId: skill.installId,
         });
     } catch (err) {
-        if (err instanceof ApiError && err.status === 409) return;
+        if (err instanceof ApiError && err.status === 409) {
+            const code = (err.data as { code?: string } | undefined)?.code;
+            if (code === "CONFLICT") return; // already attached at this version — desired end state
+            throw err; // e.g. NOT_READY — nothing was attached, caller must surface this
+        }
         throw err;
     }
 }

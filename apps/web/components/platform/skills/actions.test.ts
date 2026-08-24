@@ -59,9 +59,14 @@ describe("attachSkillToAgent", () => {
         expect(api.post).not.toHaveBeenCalled();
     });
 
-    it("treats a 409 as success — the skill is already attached at that version", async () => {
+    it("treats a 409 CONFLICT as success — the skill is already attached at that version", async () => {
         vi.mocked(api.post).mockRejectedValueOnce(new ApiError(409, { code: "CONFLICT" }));
         await expect(attachSkillToAgent("agent-1", makeSkill())).resolves.toBeUndefined();
+    });
+
+    it("rethrows a 409 NOT_READY — nothing was attached, caller must surface this", async () => {
+        vi.mocked(api.post).mockRejectedValueOnce(new ApiError(409, { code: "NOT_READY" }));
+        await expect(attachSkillToAgent("agent-1", makeSkill())).rejects.toBeInstanceOf(ApiError);
     });
 
     it("rethrows any other API failure", async () => {

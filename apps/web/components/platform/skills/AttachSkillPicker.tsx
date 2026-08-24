@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ApiError } from "@/lib/api";
 import { attachSkillToAgent, listSkills } from "./actions";
 import type { Skill } from "./types";
 
@@ -45,6 +46,8 @@ export function AttachSkillPicker({ agentId, open, onOpenChange, onAttached }: A
         } catch (err) {
             if (err instanceof Error && err.message === "NO_INSTALL_ID") {
                 toast.error("This skill has no install record — reinstall it from the Skills page first.");
+            } else if (err instanceof ApiError && err.data?.code === "NOT_READY") {
+                toast.error("This skill's content isn't ready yet — try again in a moment.");
             } else {
                 toast.error("Failed to attach skill.");
             }

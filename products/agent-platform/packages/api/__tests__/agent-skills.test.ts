@@ -2,8 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
-import { skillInstalls } from '@serverless-saas/agent-schema/skills';
-import { skillVersions } from '@serverless-saas/agent-schema/skills';
+import { skillInstalls, skillVersions } from '@serverless-saas/agent-schema/skills';
 
 const dbMock = vi.hoisted(() => ({ select: vi.fn(), insert: vi.fn() }));
 vi.mock('../db', () => ({ db: dbMock }));
