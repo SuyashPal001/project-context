@@ -150,7 +150,16 @@ function SkillOverview({ skill, files }: { skill: Skill; files: SkillFile[] }) {
         <div className="grid gap-4 md:grid-cols-[1fr_240px]">
             <div className="min-w-0 space-y-2">
                 <h4 className="text-sm font-semibold text-foreground">Skill overview</h4>
-                <div className="max-h-[420px] overflow-y-auto rounded-lg border border-border p-4 text-sm">
+                <div
+                    className={cn(
+                        "max-h-[480px] overflow-y-auto rounded-xl border border-border bg-muted/30 p-6",
+                        "[&_h1]:text-2xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:mb-4 [&_h1]:mt-0",
+                        "[&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-6",
+                        "[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1.5 [&_h3]:mt-4",
+                        "[&_p]:text-sm [&_p]:leading-relaxed [&_p]:text-muted-foreground",
+                        "[&_li]:text-sm [&_li]:text-muted-foreground"
+                    )}
+                >
                     <MarkdownViewer content={skill.body} />
                 </div>
             </div>
