@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
+import { and, eq } from 'drizzle-orm';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
 import { skillInstalls, skillVersions } from '@serverless-saas/agent-schema/skills';
 
-const dbMock = vi.hoisted(() => ({ select: vi.fn(), insert: vi.fn() }));
+const dbMock = vi.hoisted(() => ({ select: vi.fn(), insert: vi.fn(), update: vi.fn() }));
 vi.mock('../db', () => ({ db: dbMock }));
 
 function appWithContext(permissionAction = 'create') {
@@ -222,5 +223,145 @@ describe('POST /agents/:agentId/skills — server-derived system prompt', () => 
 
         expect(res.status).toBe(400);
         expect((await res.json()).code).toBe('VALIDATION_ERROR');
+    });
+});
+
+describe('POST /agents/:agentId/skills — reconcile stale prompt on 23505 re-attach conflict', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    const INSTALL_ID = '11111111-1111-4111-8111-111111111111';
+    const NEW_BODY = '# PDF Tools v3\n\nUse pdftotext, now with OCR fallback.';
+
+    function conflictingInsert() {
+        dbMock.insert.mockImplementation((table: unknown) => ({
+            values: () => ({
+                returning: async () => {
+                    if (table === agentSkills) {
+                        const err: any = new Error('duplicate key value violates unique constraint');
+                        err.code = '23505';
+                        throw err;
+                    }
+                    return [{ id: 'audit-1' }];
+                },
+                catch: () => {},
+            }),
+        }));
+    }
+
+    it('updates the existing row and returns 200 when the conflicting attach carries an installId', async () => {
+        dbMock.select.mockImplementation(() => ({
+            from: (table: unknown) => {
+                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
+                if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 3 }] }) };
+                if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: NEW_BODY } }] }) };
+                throw new Error('unexpected select target');
+            },
+        }));
+        conflictingInsert();
+
+        const updatedRow = {
+            id: 'existing-skill-1',
+            agentId: 'agent-1',
+            tenantId: 'tenant-1',
+            name: 'PDF Tools',
+            version: 1,
+            systemPrompt: NEW_BODY,
+            tools: [],
+            config: null,
+            installId: INSTALL_ID,
+        };
+        const whereSpy = vi.fn(() => ({ returning: async () => [updatedRow] }));
+        const setSpy = vi.fn(() => ({ where: whereSpy }));
+        dbMock.update.mockImplementation((table: unknown) => {
+            if (table === agentSkills) return { set: setSpy };
+            throw new Error('unexpected update target');
+        });
+
+        const { agentSkillsRoutes } = await import('../routes/agent-skills');
+        const app = appWithContext();
+        app.route('/agents', agentSkillsRoutes);
+
+        const res = await app.request('/agents/agent-1/skills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'PDF Tools', installId: INSTALL_ID }),
+        });
+
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.data.systemPrompt).toBe(NEW_BODY);
+
+        // The UPDATE writes the freshly-resolved prompt/tools/config.
+        expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({
+            systemPrompt: NEW_BODY,
+            tools: [],
+            config: null,
+        }));
+
+        // The UPDATE is scoped to exactly the tuple the unique constraint covers:
+        // [agentId, tenantId, name, version] — never a different row.
+        const expectedWhere = and(
+            eq(agentSkills.agentId, 'agent-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+            eq(agentSkills.name, 'PDF Tools'),
+            eq(agentSkills.version, 1),
+        );
+        expect(whereSpy).toHaveBeenCalledWith(expectedWhere);
+    });
+
+    it('falls back to 409 CONFLICT unchanged when the conflicting attach has no installId (hand-authored skill)', async () => {
+        dbMock.select.mockImplementation(() => ({
+            from: (table: unknown) => {
+                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
+                throw new Error('unexpected select target');
+            },
+        }));
+        conflictingInsert();
+        dbMock.update.mockImplementation(() => {
+            throw new Error('update should not be called for a hand-authored skill conflict');
+        });
+
+        const { agentSkillsRoutes } = await import('../routes/agent-skills');
+        const app = appWithContext();
+        app.route('/agents', agentSkillsRoutes);
+
+        const res = await app.request('/agents/agent-1/skills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'Custom Skill', systemPrompt: 'You do X.' }),
+        });
+
+        expect(res.status).toBe(409);
+        expect((await res.json()).code).toBe('CONFLICT');
+        expect(dbMock.update).not.toHaveBeenCalled();
+    });
+
+    it('falls back to 409 CONFLICT if the reconciling UPDATE matches zero rows (race condition)', async () => {
+        dbMock.select.mockImplementation(() => ({
+            from: (table: unknown) => {
+                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
+                if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 3 }] }) };
+                if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: NEW_BODY } }] }) };
+                throw new Error('unexpected select target');
+            },
+        }));
+        conflictingInsert();
+        dbMock.update.mockImplementation((table: unknown) => {
+            if (table === agentSkills) return { set: () => ({ where: () => ({ returning: async () => [] }) }) };
+            throw new Error('unexpected update target');
+        });
+
+        const { agentSkillsRoutes } = await import('../routes/agent-skills');
+        const app = appWithContext();
+        app.route('/agents', agentSkillsRoutes);
+
+        const res = await app.request('/agents/agent-1/skills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'PDF Tools', installId: INSTALL_ID }),
+        });
+
+        expect(res.status).toBe(409);
+        expect((await res.json()).code).toBe('CONFLICT');
     });
 });

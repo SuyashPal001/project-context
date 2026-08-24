@@ -121,8 +121,12 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
         return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
     }
 
+    // Declared outside the try block so the catch block's 23505 reconciliation
+    // path can reuse the freshly-resolved value instead of re-deriving it.
+    // Stays undefined only if the try block throws before it's assigned —
+    // the reconciliation path below guards on that explicitly.
+    let systemPrompt: string | undefined;
     try {
-        let systemPrompt: string;
         if (result.data.installId) {
             const install = await resolveInstall(result.data.installId, tenantId);
             if (!install) {
@@ -157,6 +161,40 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
     } catch (err: any) {
         // Unique constraint on [agentId, tenantId, name, version]
         if (err?.code === '23505') {
+            // An installed skill can be re-attached after its pinned install
+            // version was upgraded server-side (v1 -> v3): the client still
+            // writes the same `version` (it's a display/order field, not a
+            // reflection of the install's version), so the insert collides
+            // with the prior attach's row. That row's systemPrompt is now
+            // stale — reconcile it to the freshly-resolved content computed
+            // above rather than reporting a conflict for something the
+            // caller can't actually resolve. Hand-authored skills (no
+            // installId) have no "current version" to reconcile to, so they
+            // keep the original 409 behavior.
+            if (result.data.installId && systemPrompt !== undefined) {
+                const version = result.data.version ?? 1;
+                const [updated] = await db.update(agentSkills)
+                    .set({
+                        systemPrompt,
+                        tools: result.data.tools,
+                        config: result.data.config ?? null,
+                        updatedAt: new Date(),
+                    })
+                    .where(and(
+                        eq(agentSkills.agentId, agentId),
+                        eq(agentSkills.tenantId, tenantId),
+                        eq(agentSkills.name, result.data.name),
+                        eq(agentSkills.version, version),
+                    ))
+                    .returning();
+
+                if (updated) {
+                    db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_updated', resource: 'agent_skill', resourceId: updated.id, metadata: { agentId, name: result.data.name, reason: 'reattach_after_upgrade' }, traceId: c.get('traceId') ?? '' }).catch((auditErr: unknown) => console.error('Audit log write failed:', auditErr));
+                    return c.json({ data: updated }, 200);
+                }
+                // Race: the conflicting row vanished between the insert
+                // failing and the update running. Fall through to 409.
+            }
             return c.json({ error: 'A skill with this name and version already exists', code: 'CONFLICT' }, 409);
         }
         console.error('Failed to create skill:', err);

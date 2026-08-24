@@ -126,6 +126,14 @@ describe('fetchAgentSkill', () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
     expect(await fetchAgentSkill('agent-2')).toBeNull()
   })
+
+  it('breaks ties on created_at so the most-recently-attached skill wins when versions are equal', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{ system_prompt: '# PDF Tools', tools: ['pdftotext'], config: null, install_id: 'install-1' }],
+    })
+    await fetchAgentSkill('agent-1')
+    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('created_at DESC'), ['agent-1'])
+  })
 })
 
 describe('recordSkillRun', () => {

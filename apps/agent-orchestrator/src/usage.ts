@@ -49,7 +49,7 @@ export async function fetchAgentSkill(agentId: string): Promise<AgentSkill | nul
   const res = await p.query<{ system_prompt: string | null; tools: unknown; config: unknown; install_id: string | null }>(
     `SELECT system_prompt, tools, config, install_id FROM agent_skills
      WHERE agent_id = $1 AND status = 'active'
-     ORDER BY version DESC LIMIT 1`,
+     ORDER BY version DESC, created_at DESC LIMIT 1`,
     [agentId],
   )
   const row = res.rows[0]
