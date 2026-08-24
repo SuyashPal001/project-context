@@ -324,7 +324,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     return (
         <div className="space-y-4">
             {/* Breadcrumb */}
-            <div className="flex items-center text-sm text-muted-foreground">
+            <div className="flex items-center text-base text-muted-foreground">
                 <button onClick={() => onPrefixChange("")} className={`hover:text-foreground transition-colors ${!prefix ? 'text-foreground font-medium' : ''}`}>
                     Drive
                 </button>
