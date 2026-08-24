@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { IngestionSidePanel } from "./IngestionSidePanel";
 import { FilesFilter } from "./FilesFilter";
+import { getFileCategory, isIngestibleCategory } from "./fileCategory";
 
 interface ExtractedField {
     key: string;
@@ -135,7 +136,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
     const [filterOffice, setFilterOffice] = useState("all");
     const [filterClassification, setFilterClassification] = useState("all");
-    const [filterFormat, setFilterFormat] = useState("all");
+    const [filterCategory, setFilterCategory] = useState("all");
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -187,6 +188,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         const folderPrefix = `${prefix}${folderName}/`;
         const pending = (response?.data ?? []).filter(
             f => f.key.startsWith(folderPrefix) && f.ingestionStatus !== 'done'
+                && isIngestibleCategory(getFileCategory(f.contentType, f.filename))
         );
         if (pending.length === 0) return;
         // Navigate into folder first so user sees per-file progress
@@ -211,7 +213,10 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // unlike ingestFolder (triggered from the parent listing row), this runs from
     // inside the folder view where the user is actually looking at the documents.
     const ingestAllInFolder = async () => {
-        const pending = files.filter(f => f.ingestionStatus === 'pending' || f.ingestionStatus === 'failed');
+        const pending = files.filter(f =>
+            (f.ingestionStatus === 'pending' || f.ingestionStatus === 'failed')
+            && isIngestibleCategory(getFileCategory(f.contentType, f.filename))
+        );
         if (pending.length === 0) return;
         setIsIngestingAllInFolder(true);
         let failCount = 0;
@@ -264,7 +269,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         }));
     }, [prefix]);
 
-    const { virtualFolders, files, officeCodes, formatTypes } = useMemo(() => {
+    const { virtualFolders, files, officeCodes } = useMemo(() => {
         const allFiles = response?.data || [];
         const folders = new Set<string>();
         const directFiles: FileRecord[] = [];
@@ -283,7 +288,6 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         return {
             virtualFolders: Array.from(folders).sort(),
             officeCodes: Array.from(new Set(allFiles.map(f => f.officeCode).filter(Boolean))).sort() as string[],
-            formatTypes: Array.from(new Set(allFiles.map(f => f.formatDetected).filter(Boolean))).sort() as string[],
             files: directFiles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         };
     }, [response?.data, prefix]);
@@ -291,7 +295,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const filteredFiles = files.filter(f =>
         (filterOffice === "all" || f.officeCode === filterOffice) &&
         (filterClassification === "all" || f.classification === filterClassification) &&
-        (filterFormat === "all" || f.formatDetected === filterFormat));
+        (filterCategory === "all" || getFileCategory(f.contentType, f.filename) === filterCategory));
 
     const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
     const pagedFiles = filteredFiles.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -354,9 +358,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         const folderPersonFolderId = (response?.data ?? [])
                             .filter(f => f.key.startsWith(prefix))
                             .find(f => f.personFolderId)?.personFolderId ?? null;
-                        const folderAllDone = (response?.data ?? [])
+                        const folderIngestibleFiles = (response?.data ?? [])
                             .filter(f => f.key.startsWith(prefix))
-                            .every(f => f.ingestionStatus === 'done');
+                            .filter(f => isIngestibleCategory(getFileCategory(f.contentType, f.filename)));
+                        const folderAllDone = folderIngestibleFiles.length > 0
+                            && folderIngestibleFiles.every(f => f.ingestionStatus === 'done');
                         return folderPersonFolderId && folderAllDone ? (
                             <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
                                 <div className="flex items-center gap-2 text-sm text-blue-300">
@@ -378,9 +384,12 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     {prefix && <FilesFilter
                         officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
                         filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }}
-                        formatTypes={formatTypes} filterFormat={filterFormat} onFormatChange={v => { setFilterFormat(v); setCurrentPage(1); }}
+                        filterCategory={filterCategory} onCategoryChange={v => { setFilterCategory(v); setCurrentPage(1); }}
                     />}
-                    {prefix && files.some(f => f.ingestionStatus === 'pending' || f.ingestionStatus === 'failed') && (
+                    {prefix && files.some(f =>
+                        (f.ingestionStatus === 'pending' || f.ingestionStatus === 'failed')
+                        && isIngestibleCategory(getFileCategory(f.contentType, f.filename))
+                    ) && (
                         <div className="flex justify-end">
                             <Button
                                 size="sm"
@@ -473,7 +482,9 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         </TableRow>
                                     );
                                 })}
-                                {pagedFiles.map(file => (
+                                {pagedFiles.map(file => {
+                                    const isIngestible = isIngestibleCategory(getFileCategory(file.contentType, file.filename));
+                                    return (
                                     <TableRow
                                         key={file.id}
                                         className={`border-border/50 hover:bg-secondary/60 transition-colors cursor-pointer ${selectedFile?.id === file.id ? 'bg-secondary/60 border-l-2 border-l-blue-500' : ''}`}
@@ -509,10 +520,12 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                             </span>
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">
-                                            {file.chunkCount > 0 ? file.chunkCount : '—'}
+                                            {isIngestible && file.chunkCount > 0 ? file.chunkCount : '—'}
                                         </TableCell>
                                         <TableCell>
-                                            <ProcessingStepsIndicator status={file.ingestionStatus} />
+                                            {isIngestible
+                                                ? <ProcessingStepsIndicator status={file.ingestionStatus} />
+                                                : <span className="text-xs text-muted-foreground/50">—</span>}
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">
                                             {formatDistanceToNow(new Date(file.createdAt), { addSuffix: true })}
@@ -522,7 +535,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                                 <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => downloadFile(file.id)}>
                                                     <Download className="w-3.5 h-3.5" />
                                                 </Button>
-                                                {(file.ingestionStatus === 'pending' || file.ingestionStatus === 'failed') && (
+                                                {isIngestible && (file.ingestionStatus === 'pending' || file.ingestionStatus === 'failed') && (
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -544,7 +557,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                             </div>
                                         </TableCell>
                                     </TableRow>
-                                ))}
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </div>

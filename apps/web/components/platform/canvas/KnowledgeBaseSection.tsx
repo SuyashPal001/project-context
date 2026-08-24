@@ -60,7 +60,14 @@ export function KnowledgeBaseSection() {
           chunks: d.chunkCount,
           isPolling: d.status === 'pending',
         }));
-        setDocuments(mapped);
+        // Merge rather than replace: a doc uploaded while this fetch was still in
+        // flight has already been added locally by uploadSingleFile and would
+        // otherwise be wiped out by this overwrite even though ingestion is
+        // proceeding server-side.
+        setDocuments(prev => {
+          const localOnly = prev.filter(d => !mapped.some(m => m.documentId && m.documentId === d.documentId));
+          return [...localOnly, ...mapped];
+        });
         mapped.filter(d => d.status === 'pending' && d.documentId).forEach(d => {
           pollDocumentStatus(d.id, d.documentId!);
         });
@@ -216,7 +223,7 @@ export function KnowledgeBaseSection() {
   // and must be re-resolved on every open.
   const openPreview = async (doc: KBDocument) => {
     setPreviewDocId(doc.id);
-    const hasContent = (doc.type !== 'pdf' && doc.previewUrl) || doc.textContent !== undefined || doc.htmlContent;
+    const hasContent = (doc.type !== 'pdf' && doc.previewUrl) || doc.textContent !== undefined || doc.htmlContent !== undefined;
     if (hasContent || doc.file || !doc.documentId || doc.status !== 'ready') return;
 
     setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, isResolvingPreview: true } : d));

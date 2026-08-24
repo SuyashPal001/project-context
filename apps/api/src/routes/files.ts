@@ -221,8 +221,16 @@ filesRoutes.get('/', async (c) => {
 
   const filesList = await storageService.listFiles(tenantId, limit, offset, prefix);
 
+  // Agent avatars go through this same upload endpoint (saveAvatarAsset.ts) but are
+  // UI plumbing, not user content — filename is always `{agentName}_avatar.svg`
+  // (see generateDefaultAvatar.ts). Excluded here so they never show in Drive and
+  // never sit stuck at "Pending" in the ingest pipeline, which doesn't apply to them.
+  const visibleFiles = filesList.filter(
+    (f) => !(f.mimeType === 'image/svg+xml' && f.name.endsWith('_avatar.svg'))
+  );
+
   // Map DB field names to the shape the frontend FileRecord interface expects
-  const data = filesList.map((f) => ({
+  const data = visibleFiles.map((f) => ({
     id: f.id,
     tenantId: f.tenantId,
     key: f.key,
