@@ -49,10 +49,9 @@ export default function SkillsPage() {
         refetchInterval: pendingRefetchInterval,
     });
 
-    const isLoading = tab === "mine" ? mineLoading : officialLoading || publicLoading;
-    const skills = tab === "mine"
-        ? mineList ?? []
-        : Array.from(new Map([...(officialList ?? []), ...(publicList ?? [])].map((s) => [s.id, s])).values());
+    const mineSkills = mineList ?? [];
+    const officialSkills = officialList ?? [];
+    const publicSkills = publicList ?? [];
 
     return (
         <div className="space-y-6">
@@ -79,25 +78,33 @@ export default function SkillsPage() {
                 ))}
             </div>
 
-            {isLoading ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                    {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[140px] w-full rounded-xl" />)}
-                </div>
-            ) : skills.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                    {skills.map((skill) => (
-                        <SkillCard
-                            key={skill.id}
-                            skill={skill}
-                            href={`/${tenantSlug}/dashboard/skills/${skill.id}`}
-                        />
-                    ))}
-                </div>
+            {tab === "mine" ? (
+                <SkillGrid
+                    skills={mineSkills}
+                    isLoading={mineLoading}
+                    tenantSlug={tenantSlug}
+                    emptyMessage="No skills yet — import one to get started."
+                />
             ) : (
-                <div className="flex h-[300px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
-                    <p className="text-sm text-muted-foreground">
-                        {tab === "mine" ? "No skills yet — import one to get started." : "No skills to explore yet."}
-                    </p>
+                <div className="space-y-8">
+                    <div className="space-y-3">
+                        <h2 className="text-sm font-semibold text-muted-foreground">Official</h2>
+                        <SkillGrid
+                            skills={officialSkills}
+                            isLoading={officialLoading}
+                            tenantSlug={tenantSlug}
+                            emptyMessage="No official skills yet."
+                        />
+                    </div>
+                    <div className="space-y-3">
+                        <h2 className="text-sm font-semibold text-muted-foreground">Community</h2>
+                        <SkillGrid
+                            skills={publicSkills}
+                            isLoading={publicLoading}
+                            tenantSlug={tenantSlug}
+                            emptyMessage="No community skills yet."
+                        />
+                    </div>
                 </div>
             )}
 
@@ -106,6 +113,46 @@ export default function SkillsPage() {
                 onOpenChange={setImportOpen}
                 onImported={() => queryClient.invalidateQueries({ queryKey: ["skills"] })}
             />
+        </div>
+    );
+}
+
+function SkillGrid({
+    skills,
+    isLoading,
+    tenantSlug,
+    emptyMessage,
+}: {
+    skills: Skill[];
+    isLoading: boolean;
+    tenantSlug: string;
+    emptyMessage: string;
+}) {
+    if (isLoading) {
+        return (
+            <div className="grid gap-4 md:grid-cols-2">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[140px] w-full rounded-xl" />)}
+            </div>
+        );
+    }
+
+    if (skills.length === 0) {
+        return (
+            <div className="flex h-[160px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
+                <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="grid gap-4 md:grid-cols-2">
+            {skills.map((skill) => (
+                <SkillCard
+                    key={skill.id}
+                    skill={skill}
+                    href={`/${tenantSlug}/dashboard/skills/${skill.id}`}
+                />
+            ))}
         </div>
     );
 }
