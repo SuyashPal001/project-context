@@ -82,7 +82,7 @@ export function SkillDetailContent({
 
             <SkillOverview skill={skill} files={files} />
 
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
                 {isOwner && skill.visibility === "private" && hasReadyVersion && (
                     <Button variant="ghost" onClick={onPublish}>Publish</Button>
                 )}

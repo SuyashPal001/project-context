@@ -1,4 +1,4 @@
-import { ArrowUp, Download, Package } from "lucide-react";
+import { Download, Package, Zap } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -105,7 +105,7 @@ export function SkillCard({ skill, onClick, onInstall }: SkillCardProps) {
                     <div className="flex items-center justify-between gap-2 pt-2 text-xs text-muted-foreground">
                         <div className="flex items-center gap-3">
                             <span className="flex items-center gap-1">
-                                <ArrowUp className="h-3.5 w-3.5" />
+                                <Zap className="h-3.5 w-3.5" />
                                 {skill.runCount} runs
                             </span>
                             <span className="flex items-center gap-1">
