@@ -69,30 +69,35 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
 
     return (
         <Dialog open={skillId !== null} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-                <DialogTitle className="sr-only">{skill?.name ?? "Skill details"}</DialogTitle>
-                {isLoading ? (
-                    <div className="space-y-4">
-                        <Skeleton className="h-9 w-64" />
-                        <Skeleton className="h-4 w-full" />
-                        <Skeleton className="h-4 w-3/4" />
-                    </div>
-                ) : isError || !skill ? (
-                    <Alert variant="destructive">
-                        <AlertTitle>Skill not found</AlertTitle>
-                        <AlertDescription>
-                            This skill doesn&apos;t exist, or you don&apos;t have access to it.
-                        </AlertDescription>
-                    </Alert>
-                ) : (
-                    <SkillDetailContent
-                        skill={skill}
-                        isOwner={skill.ownerTenantId === tenantId}
-                        onInstall={handleInstall}
-                        onUninstall={handleUninstall}
-                        onPublish={handlePublish}
-                    />
-                )}
+            <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
+                <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
+                    <DialogTitle className="text-sm font-semibold text-muted-foreground">Skill Details</DialogTitle>
+                </div>
+
+                <div className="overflow-y-auto p-6">
+                    {isLoading ? (
+                        <div className="space-y-4">
+                            <Skeleton className="h-9 w-64" />
+                            <Skeleton className="h-4 w-full" />
+                            <Skeleton className="h-4 w-3/4" />
+                        </div>
+                    ) : isError || !skill ? (
+                        <Alert variant="destructive">
+                            <AlertTitle>Skill not found</AlertTitle>
+                            <AlertDescription>
+                                This skill doesn&apos;t exist, or you don&apos;t have access to it.
+                            </AlertDescription>
+                        </Alert>
+                    ) : (
+                        <SkillDetailContent
+                            skill={skill}
+                            isOwner={skill.ownerTenantId === tenantId}
+                            onInstall={handleInstall}
+                            onUninstall={handleUninstall}
+                            onPublish={handlePublish}
+                        />
+                    )}
+                </div>
             </DialogContent>
         </Dialog>
     );
