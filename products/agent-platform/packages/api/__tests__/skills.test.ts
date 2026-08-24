@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
 import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
+import { users } from '@serverless-saas/database/schema/auth';
 
 const dbMock = vi.hoisted(() => ({ select: vi.fn(), selectDistinctOn: vi.fn(), insert: vi.fn(), update: vi.fn() }));
 vi.mock('../db', () => ({ db: dbMock }));
@@ -126,11 +127,16 @@ describe('POST /skills', () => {
 describe('GET /skills', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  function mockList(rows: Record<string, unknown>[], versionRows: Record<string, unknown>[]) {
+  function mockList(
+    rows: Record<string, unknown>[],
+    versionRows: Record<string, unknown>[],
+    ownerRows: Record<string, unknown>[] = [],
+  ) {
     dbMock.select.mockImplementation(() => ({
-      from: () => ({
-        leftJoin: () => ({ where: () => ({ orderBy: async () => rows }) }),
-      }),
+      from: (table: unknown) => {
+        if (table === users) return { where: async () => ownerRows };
+        return { leftJoin: () => ({ where: () => ({ orderBy: async () => rows }) }) };
+      },
     }));
     dbMock.selectDistinctOn.mockImplementation(() => ({
       from: () => ({ where: () => ({ orderBy: async () => versionRows }) }),
@@ -217,6 +223,41 @@ describe('GET /skills', () => {
     expect(res.status).toBe(200);
     expect((await res.json()).data).toEqual([]);
     expect(dbMock.selectDistinctOn).not.toHaveBeenCalled();
+  });
+
+  it('returns the creating user as ownerName, with ownerEmail for the owning tenant', async () => {
+    mockList(
+      [{ id: SKILL_ID, name: 'PDF Tools', ownerTenantId: TENANT_1, createdBy: 'user-9', installStatus: null }],
+      [{ skillId: SKILL_ID, status: 'ready', failureReason: null }],
+      [{ id: 'user-9', name: 'Ada Lovelace', email: 'ada@example.com' }],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills?tab=mine');
+    const body = await res.json();
+    expect(body.data[0].ownerName).toBe('Ada Lovelace');
+    expect(body.data[0].ownerEmail).toBe('ada@example.com');
+    expect(body.data[0].createdBy).toBeUndefined();
+  });
+
+  it("hides another tenant's owner email on the public tab but still names the author", async () => {
+    mockList(
+      [{ id: SKILL_ID, name: 'PDF Tools', ownerTenantId: 'tenant-2', createdBy: 'user-9', installStatus: null }],
+      [{ skillId: SKILL_ID, status: 'ready', failureReason: null }],
+      [{ id: 'user-9', name: 'Ada Lovelace', email: 'ada@example.com' }],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills?tab=public');
+    const body = await res.json();
+    expect(body.data[0].ownerName).toBe('Ada Lovelace');
+    expect(body.data[0].ownerEmail).toBeNull();
   });
 });
 
@@ -628,5 +669,31 @@ describe('DELETE /skills/:id/install', () => {
     const res = await app.request('/skills/not-a-uuid/install', { method: 'DELETE' });
     expect(res.status).toBe(404);
     expect(dbMock.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /skills/:id — owner info', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('resolves ownerName/ownerEmail from skills.createdBy', async () => {
+    dbMock.select.mockImplementation(() => ({
+      from: (table: unknown) => {
+        if (table === skills) return { where: () => ({ limit: async () => [{ id: SKILL_ID, ownerTenantId: TENANT_1, createdBy: 'user-9', latestVersion: 1, visibility: 'private', isOfficial: false }] }) };
+        if (table === users) return { where: async () => [{ id: 'user-9', name: 'Ada Lovelace', email: 'ada@example.com' }] };
+        if (table === skillInstalls) return { where: () => ({ limit: async () => [] }) };
+        if (table === skillVersions) return { where: () => ({ orderBy: () => ({ limit: async () => [{ status: 'ready', failureReason: null, manifest: { body: '# Hi' } }] }) }) };
+        throw new Error('unexpected select target');
+      },
+    }));
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request(`/skills/${SKILL_ID}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.ownerName).toBe('Ada Lovelace');
+    expect(body.data.ownerEmail).toBe('ada@example.com');
   });
 });

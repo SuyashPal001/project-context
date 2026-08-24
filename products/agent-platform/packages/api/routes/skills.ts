@@ -6,6 +6,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '../db';
 import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
 import { publishToQueue } from '@serverless-saas/queue';
 import type { AppEnv } from '@serverless-saas/types';
@@ -44,6 +45,20 @@ function isOwnUploadKey(fileKey: string, tenantId: string | undefined): boolean 
 async function resolveSkill(skillId: string) {
   const [skill] = await db.select().from(skills).where(eq(skills.id, skillId)).limit(1);
   return skill ?? null;
+}
+
+// The creator's display name is safe to show anyone who can already see the
+// skill; their email is not, so it follows the same owner-only rule the
+// versions/list routes apply to failureReason.
+async function resolveOwners(userIds: string[]): Promise<Map<string, { name: string; email: string }>> {
+  const byId = new Map<string, { name: string; email: string }>();
+  if (userIds.length === 0) return byId;
+  const rows = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(inArray(users.id, userIds));
+  for (const row of rows) byId.set(row.id, { name: row.name, email: row.email });
+  return byId;
 }
 
 async function createVersionAndEnqueue(params: {
@@ -114,7 +129,7 @@ skillsRoutes.get('/', async (c) => {
       .select({
         id: skills.id, name: skills.name, slug: skills.slug, description: skills.description,
         visibility: skills.visibility, isOfficial: skills.isOfficial, latestVersion: skills.latestVersion,
-        ownerTenantId: skills.ownerTenantId, createdAt: skills.createdAt, updatedAt: skills.updatedAt,
+        ownerTenantId: skills.ownerTenantId, createdBy: skills.createdBy, createdAt: skills.createdAt, updatedAt: skills.updatedAt,
         installId: skillInstalls.id,
         installedVersion: skillInstalls.installedVersion, installStatus: skillInstalls.status,
       })
@@ -142,13 +157,19 @@ skillsRoutes.get('/', async (c) => {
       for (const v of versionRows) latestBySkill.set(v.skillId, { status: v.status, failureReason: v.failureReason });
     }
 
+    const ownerById = await resolveOwners([...new Set(rows.map((r) => r.createdBy).filter(Boolean))]);
+
     return c.json({
       data: rows.map((r) => {
         const latest = latestBySkill.get(r.id);
+        const { createdBy, ...rest } = r;
+        const owner = ownerById.get(createdBy);
         return {
-          ...r,
+          ...rest,
           installed: r.installStatus === 'active',
           latestVersionStatus: latest?.status ?? null,
+          ownerName: owner?.name ?? null,
+          ownerEmail: r.ownerTenantId === tenantId ? (owner?.email ?? null) : null,
           // failureReason can carry raw, tenant-specific detail (a blocked
           // hostname, manifest/zip contents) for several failure classes —
           // see GET /:id/versions below, which strips it from non-owners the
@@ -195,6 +216,9 @@ skillsRoutes.get('/:id', async (c) => {
       .orderBy(desc(skillVersions.version))
       .limit(1);
 
+    const ownerById = await resolveOwners([skill.createdBy]);
+    const owner = ownerById.get(skill.createdBy);
+
     // Only a 'ready' version's manifest was written by a completed import — a
     // pending/failed row's manifest column is whatever the previous version left
     // (or null), so gate on status rather than trusting the field's mere presence.
@@ -206,7 +230,8 @@ skillsRoutes.get('/:id', async (c) => {
       data: {
         id: skill.id, name: skill.name, slug: skill.slug, description: skill.description,
         visibility: skill.visibility, isOfficial: skill.isOfficial, latestVersion: skill.latestVersion,
-        ownerTenantId: skill.ownerTenantId, createdAt: skill.createdAt, updatedAt: skill.updatedAt,
+        ownerTenantId: skill.ownerTenantId, ownerName: owner?.name ?? null, ownerEmail: isOwner ? (owner?.email ?? null) : null,
+        createdAt: skill.createdAt, updatedAt: skill.updatedAt,
         installId: install?.id ?? null,
         installedVersion: install?.installedVersion ?? null,
         installed: install?.status === 'active',
