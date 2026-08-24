@@ -81,30 +81,32 @@ export function SkillDetailContent({
                 </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-2">
-                <MetaPill icon={CalendarPlus} label="Created" value={relativeTime(skill.createdAt)} />
-                <MetaPill icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
-            </div>
-
             <SkillOverview skill={skill} files={files} />
 
-            <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
-                {isOwner && skill.visibility === "private" && hasReadyVersion && (
-                    <Button variant="ghost" onClick={onPublish}>Publish</Button>
-                )}
-                {skill.installed ? (
-                    <>
-                        <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
-                        <Button onClick={onTest} disabled={isTesting}>
-                            {isTesting ? "Opening chat…" : "Test in chat"}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
+                <div className="flex flex-wrap items-center gap-2">
+                    <MetaPill icon={CalendarPlus} label="Created" value={relativeTime(skill.createdAt)} />
+                    <MetaPill icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {isOwner && skill.visibility === "private" && hasReadyVersion && (
+                        <Button variant="ghost" onClick={onPublish}>Publish</Button>
+                    )}
+                    {skill.installed ? (
+                        <>
+                            <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
+                            <Button onClick={onTest} disabled={isTesting}>
+                                {isTesting ? "Opening chat…" : "Test in chat"}
+                            </Button>
+                        </>
+                    ) : dead ? null : (
+                        <Button onClick={onInstall} disabled={importing}>
+                            <Plus className="h-4 w-4" />
+                            {importing ? "Importing…" : "Install skill"}
                         </Button>
-                    </>
-                ) : dead ? null : (
-                    <Button onClick={onInstall} disabled={importing}>
-                        <Plus className="h-4 w-4" />
-                        {importing ? "Importing…" : "Install skill"}
-                    </Button>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );
