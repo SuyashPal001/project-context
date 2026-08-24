@@ -57,7 +57,7 @@ export function getSidebarItems(
     items.push({ label: "Employees", href: `${base}/agents`, icon: Bot });
     if (FEATURE_FLAGS.board) items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
     if (FEATURE_FLAGS.plans) items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
-    items.push({ label: "Knowledge Base", href: `${base}/files`, icon: FolderOpen });
+    items.push({ label: "Drive", href: `${base}/drive`, icon: FolderOpen });
     items.push({ label: "Skills", href: `${base}/skills`, icon: Puzzle });
     items.push({ label: "Notifications", href: `${base}/notifications`, icon: Bell });
 

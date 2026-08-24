@@ -23,7 +23,7 @@ export default function FilesPage() {
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                            Knowledge Base
+                            Drive
                         </h1>
                         <p className="text-muted-foreground mt-2">
                             Upload documents for your AI team. Multi-format detection · OCR extraction · RAG indexed.

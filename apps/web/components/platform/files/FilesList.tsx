@@ -322,7 +322,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             {/* Breadcrumb */}
             <div className="flex items-center text-sm text-muted-foreground bg-card p-3 rounded-lg border border-border">
                 <button onClick={() => onPrefixChange("")} className={`hover:text-foreground transition-colors ${!prefix ? 'text-foreground font-medium' : ''}`}>
-                    Documents
+                    Drive
                 </button>
                 {breadcrumbs.map((crumb, idx) => (
                     <div key={crumb.path} className="flex items-center">
