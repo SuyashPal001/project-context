@@ -67,4 +67,30 @@ describe("SkillCard install button", () => {
         expect(screen.queryByRole("button", { name: /install$/i })).toBeNull();
         expect(screen.getByText("installed")).toBeTruthy();
     });
+
+    it("activates Install via keyboard (Enter) without also opening the detail modal", async () => {
+        const onClick = vi.fn();
+        const onInstall = vi.fn();
+        render(<SkillCard skill={makeSkill()} onClick={onClick} onInstall={onInstall} />);
+
+        const installButton = screen.getByRole("button", { name: /install/i });
+        installButton.focus();
+        await userEvent.keyboard("{Enter}");
+
+        expect(onInstall).toHaveBeenCalledTimes(1);
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("still opens the detail modal on Enter when the wrapper itself is focused", async () => {
+        const onClick = vi.fn();
+        const onInstall = vi.fn();
+        render(<SkillCard skill={makeSkill()} onClick={onClick} onInstall={onInstall} />);
+
+        const wrapper = screen.getByRole("button", { name: /pdf tools/i });
+        wrapper.focus();
+        await userEvent.keyboard("{Enter}");
+
+        expect(onClick).toHaveBeenCalledTimes(1);
+        expect(onInstall).not.toHaveBeenCalled();
+    });
 });
