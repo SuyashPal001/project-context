@@ -1,17 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { SkillCard } from "@/components/platform/skills/SkillCard";
+import { SkillCard, skillImportState } from "@/components/platform/skills/SkillCard";
 import { SkillDetailModal } from "@/components/platform/skills/SkillDetailModal";
 import { ImportSkillDialog } from "@/components/platform/skills/ImportSkillDialog";
 import { installSkill, listSkills } from "@/components/platform/skills/actions";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
+
+// An import stuck "pending" past this is treated the same as a failure —
+// the background job either died or will never finish, and there's no
+// point leaving it spinning in the UI forever.
+const STUCK_IMPORT_MS = 5 * 60 * 1000;
+
+function isStuckImporting(skill: Skill): boolean {
+    const { importing } = skillImportState(skill);
+    if (!importing) return false;
+    const startedAt = new Date(skill.updatedAt ?? skill.createdAt).getTime();
+    if (Number.isNaN(startedAt)) return false;
+    return Date.now() - startedAt > STUCK_IMPORT_MS;
+}
+
+// Hide a skill entirely once its import is dead (failed with no prior
+// working version) or has been stuck pending too long — there's no
+// retry/delete action yet, so leaving these visible is pure clutter. A
+// failed *update* on a skill that still has an earlier ready version stays
+// visible, since that version still works.
+function isDeadOrStuck(skill: Skill): boolean {
+    return skillImportState(skill).dead || isStuckImporting(skill);
+}
 
 export default function SkillsPage() {
     const queryClient = useQueryClient();
@@ -19,6 +41,9 @@ export default function SkillsPage() {
     const [tab, setTab] = useState<"mine" | "explore">("mine");
     const [importOpen, setImportOpen] = useState(false);
     const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+    // Skills we've already toasted about, so a re-poll doesn't repeat the
+    // same "failed" / "stuck" notification every 5s.
+    const notifiedRef = useRef<Set<string>>(new Set());
 
     // Poll only while an import is genuinely still running. latestVersion
     // stays at 0 for a *failed* import too, so keying off that alone
@@ -38,6 +63,22 @@ export default function SkillsPage() {
         refetchInterval: pendingRefetchInterval,
     });
 
+    // Notify once per skill the moment its import becomes dead or stuck,
+    // since those cards are about to vanish from the grid below — without
+    // this the skill would just silently disappear.
+    useEffect(() => {
+        for (const skill of mineList ?? []) {
+            if (!isDeadOrStuck(skill) || notifiedRef.current.has(skill.id)) continue;
+            notifiedRef.current.add(skill.id);
+            const { importFailed } = skillImportState(skill);
+            toast.error(
+                importFailed
+                    ? `"${skill.name}" failed to import — try again in a bit.`
+                    : `"${skill.name}" is taking longer than expected to import — try again in a bit.`
+            );
+        }
+    }, [mineList]);
+
     const { data: officialList, isLoading: officialLoading } = useQuery<Skill[]>({
         queryKey: ["skills", "official"],
         queryFn: () => listSkills("official"),
@@ -52,9 +93,9 @@ export default function SkillsPage() {
         refetchInterval: pendingRefetchInterval,
     });
 
-    const mineSkills = mineList ?? [];
-    const officialSkills = officialList ?? [];
-    const publicSkills = publicList ?? [];
+    const mineSkills = (mineList ?? []).filter((s) => !isDeadOrStuck(s));
+    const officialSkills = (officialList ?? []).filter((s) => !isDeadOrStuck(s));
+    const publicSkills = (publicList ?? []).filter((s) => !isDeadOrStuck(s));
 
     const handleInstall = async (skillId: string) => {
         try {
