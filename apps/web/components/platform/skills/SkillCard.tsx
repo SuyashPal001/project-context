@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUp, Check, Download, Package } from "lucide-react";
+import { ArrowUp, Download, Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -55,7 +55,7 @@ export function SkillCard({ skill, href }: SkillCardProps) {
     return (
         <Link href={href} className="block">
             <Card className="h-full transition-colors hover:border-input">
-                <CardContent className="pt-4 space-y-2">
+                <CardContent className="pt-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
                             <SkillIcon seed={skill.id} className="h-8 w-8 rounded-lg border border-border shrink-0" />
@@ -73,7 +73,7 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                                 buttonVariants({ variant: "outline", size: "xs" }),
                                 "shrink-0 pointer-events-none border-green-600/30 text-green-600 dark:border-green-500/30 dark:text-green-500"
                             )}>
-                                <Check />
+                                <span className="h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-500" />
                                 Installed
                             </span>
                         ) : (
@@ -88,7 +88,7 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                         {skill.description ?? "No description"}
                     </p>
 
-                    <div className="flex items-center gap-3 pt-2 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                             <ArrowUp className="h-3.5 w-3.5" />
                             {/* Run counts aren't tracked yet. */}
@@ -100,7 +100,7 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                             &mdash;
                         </span>
                         {hasReadyVersion && (
-                            <span className="flex items-center gap-1">
+                            <span className="flex items-center gap-1 border-l border-border pl-3">
                                 <Package className="h-3.5 w-3.5" />
                                 v{skill.latestVersion}
                                 {skill.installed && skill.installedVersion !== skill.latestVersion ? (
