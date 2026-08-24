@@ -9,7 +9,12 @@ export default defineConfig({
   },
   test: {
     name: 'web',
+    // Default stays node so the existing lib/hooks tests are unaffected.
+    // Component tests opt in per-file with a `@vitest-environment jsdom`
+    // docblock. globals is on so React Testing Library's auto-cleanup runs
+    // between tests.
     environment: 'node',
-    include: ['{lib,components,hooks}/**/*.test.ts'],
+    globals: true,
+    include: ['{lib,components,hooks}/**/*.test.{ts,tsx}'],
   },
 })

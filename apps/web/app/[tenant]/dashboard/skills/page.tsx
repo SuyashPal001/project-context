@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SkillCard } from "@/components/platform/skills/SkillCard";
 import { SkillDetailModal } from "@/components/platform/skills/SkillDetailModal";
 import { ImportSkillDialog } from "@/components/platform/skills/ImportSkillDialog";
-import { listSkills } from "@/components/platform/skills/actions";
+import { installSkill, listSkills } from "@/components/platform/skills/actions";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 
@@ -55,6 +56,16 @@ export default function SkillsPage() {
     const officialSkills = officialList ?? [];
     const publicSkills = publicList ?? [];
 
+    const handleInstall = async (skillId: string) => {
+        try {
+            await installSkill(skillId);
+            queryClient.invalidateQueries({ queryKey: ["skills"] });
+            toast.success("Skill installed.");
+        } catch {
+            toast.error("Failed to install skill.");
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-start justify-between">
@@ -85,6 +96,7 @@ export default function SkillsPage() {
                     skills={mineSkills}
                     isLoading={mineLoading}
                     onSelect={setSelectedSkillId}
+                    onInstall={handleInstall}
                     emptyMessage="No skills yet — import one to get started."
                 />
             ) : (
@@ -95,6 +107,7 @@ export default function SkillsPage() {
                             skills={officialSkills}
                             isLoading={officialLoading}
                             onSelect={setSelectedSkillId}
+                            onInstall={handleInstall}
                             emptyMessage="No official skills yet."
                         />
                     </div>
@@ -104,6 +117,7 @@ export default function SkillsPage() {
                             skills={publicSkills}
                             isLoading={publicLoading}
                             onSelect={setSelectedSkillId}
+                            onInstall={handleInstall}
                             emptyMessage="No community skills yet."
                         />
                     </div>
@@ -129,11 +143,13 @@ function SkillGrid({
     skills,
     isLoading,
     onSelect,
+    onInstall,
     emptyMessage,
 }: {
     skills: Skill[];
     isLoading: boolean;
     onSelect: (skillId: string) => void;
+    onInstall: (skillId: string) => void;
     emptyMessage: string;
 }) {
     if (isLoading) {
@@ -159,6 +175,7 @@ function SkillGrid({
                     key={skill.id}
                     skill={skill}
                     onClick={() => onSelect(skill.id)}
+                    onInstall={() => onInstall(skill.id)}
                 />
             ))}
         </div>
