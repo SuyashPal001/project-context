@@ -109,8 +109,13 @@ export function SkillDetailContent({
             )}
 
             <Tabs defaultValue="skill-md">
-                <TabsList variant="line">
-                    <TabsTrigger value="skill-md">SKILL.md</TabsTrigger>
+                <TabsList className="w-fit gap-1 rounded-full bg-muted p-1">
+                    <TabsTrigger
+                        value="skill-md"
+                        className="rounded-full px-4 py-1.5 text-sm font-medium data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-none"
+                    >
+                        SKILL.md
+                    </TabsTrigger>
                 </TabsList>
                 <TabsContent value="skill-md" className="pt-4">
                     <SkillOverview skill={skill} files={files} />

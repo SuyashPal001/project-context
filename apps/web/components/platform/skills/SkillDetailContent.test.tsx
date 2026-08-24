@@ -122,7 +122,7 @@ describe("SkillDetailContent files sidebar", () => {
                 isTesting={false}
             />,
         );
-        expect(screen.getByText("SKILL.md")).toBeTruthy();
+        expect(screen.getByTitle("SKILL.md")).toBeTruthy();
         expect(screen.getByText("scripts/run.py")).toBeTruthy();
     });
 
