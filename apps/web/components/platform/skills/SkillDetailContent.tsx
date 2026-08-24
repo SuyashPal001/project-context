@@ -35,7 +35,16 @@ export function SkillDetailContent({
                 <div className="flex items-center gap-3">
                     <SkillIcon seed={skill.id} className="h-14 w-14 rounded-lg border border-border shrink-0" />
                     <div className="min-w-0 space-y-0.5">
-                        <h1 className="text-2xl font-bold tracking-tight text-foreground truncate">{skill.name}</h1>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-2xl font-bold tracking-tight text-foreground truncate">{skill.name}</h1>
+                            {skill.installed && (
+                                <span className="text-sm text-green-600 dark:text-green-500 shrink-0">
+                                    {skill.installedVersion !== skill.latestVersion
+                                        ? `installed v${skill.installedVersion}`
+                                        : "installed"}
+                                </span>
+                            )}
+                        </div>
                         <p className="text-sm text-muted-foreground truncate">
                             {skill.isOfficial ? "ProjectContext" : skill.ownerName ?? skill.ownerEmail ?? "Unknown"}
                         </p>
@@ -62,9 +71,6 @@ export function SkillDetailContent({
                         <Zap className="h-4 w-4" />
                         {skill.runCount}
                     </span>
-                    {skill.installed && (
-                        <Badge variant="outline">Installed v{skill.installedVersion}</Badge>
-                    )}
                 </div>
             </div>
 
