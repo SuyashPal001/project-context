@@ -15,7 +15,6 @@ const HALF = Math.ceil(GRID / 2);
 
 export function SkillIcon({ seed, className }: { seed: string; className?: string }) {
     const hash = hashSeed(seed);
-    const hue = 200 + (hash % 100); // blue-to-purple range, matching the reference style
 
     const cells: boolean[][] = [];
     let bits = hash;
@@ -35,12 +34,12 @@ export function SkillIcon({ seed, className }: { seed: string; className?: strin
         <svg
             viewBox={`0 0 ${GRID} ${GRID}`}
             className={className}
-            style={{ backgroundColor: `hsl(${hue} 70% 95%)` }}
+            style={{ backgroundColor: "color-mix(in oklab, var(--primary) 18%, var(--card))" }}
         >
             {cells.map((row, r) =>
                 row.map((filled, c) =>
                     filled ? (
-                        <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill={`hsl(${hue} 65% 55%)`} />
+                        <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="var(--primary)" />
                     ) : null
                 )
             )}
