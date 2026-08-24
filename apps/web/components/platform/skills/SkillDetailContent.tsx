@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
-import { CalendarClock, CalendarPlus, Download, FileText, Package, Plus, Sparkles, Zap } from "lucide-react";
+import { Download, FileText, Package, Plus, Sparkles, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkdownViewer } from "@/components/platform/canvas/MarkdownViewer";
@@ -84,10 +84,9 @@ export function SkillDetailContent({
             <SkillOverview skill={skill} files={files} />
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-                <div className="flex flex-wrap items-center gap-2">
-                    <MetaPill icon={CalendarPlus} label="Created" value={relativeTime(skill.createdAt)} />
-                    <MetaPill icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
-                </div>
+                <p className="text-xs text-muted-foreground">
+                    Created {relativeTime(skill.createdAt)} · Last update {relativeTime(skill.updatedAt)}
+                </p>
 
                 <div className="flex items-center gap-2">
                     {isOwner && skill.visibility === "private" && hasReadyVersion && (
@@ -148,17 +147,5 @@ function SkillOverview({ skill, files }: { skill: Skill; files: SkillFile[] }) {
                 </div>
             </div>
         </div>
-    );
-}
-
-function MetaPill({ icon: Icon, label, value }: { icon: typeof CalendarClock; label: string; value: string }) {
-    return (
-        <span
-            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-foreground"
-            title={label}
-        >
-            <Icon className="h-4 w-4 text-muted-foreground" />
-            {value}
-        </span>
     );
 }

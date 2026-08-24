@@ -121,7 +121,8 @@ export function SkillCard({ skill, onClick, onInstall }: SkillCardProps) {
                         </div>
 
                         {skill.installed ? (
-                            <span className="text-green-600 dark:text-green-500 shrink-0">
+                            <span className="flex items-center gap-1.5 text-green-600 dark:text-green-500 shrink-0">
+                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
                                 {skill.installedVersion !== skill.latestVersion
                                     ? `installed v${skill.installedVersion}`
                                     : "installed"}
