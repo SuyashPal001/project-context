@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUp, Download, Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { SkillIcon } from "./SkillIcon";
 import type { Skill } from "./types";
 
 interface SkillCardProps {
@@ -39,43 +41,57 @@ export function SkillCard({ skill, href }: SkillCardProps) {
             <Card className="h-full transition-colors hover:border-input">
                 <CardContent className="pt-6 space-y-2">
                     <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-semibold text-foreground truncate">{skill.name}</h3>
-                        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <SkillIcon seed={skill.id} className="h-8 w-8 rounded-lg border border-border shrink-0" />
+                            <h3 className="font-semibold text-foreground truncate">{skill.name}</h3>
+                        </div>
+                        {skill.installed ? (
+                            <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                        ) : (
+                            // A real <button> can't nest inside the card's <Link>; this is styled
+                            // as one since the whole card already navigates on click.
+                            <span className={cn(buttonVariants({ variant: "outline", size: "xs" }), "shrink-0 pointer-events-none")}>
+                                <Download />
+                                Install
+                            </span>
+                        )}
                     </div>
 
                     <p className="text-sm text-muted-foreground line-clamp-2">
                         {skill.description ?? "No description"}
                     </p>
 
-                    <div className="flex items-center justify-between pt-2">
+                    <div className="flex items-center justify-between gap-2 pt-2">
                         <span className={cn(
-                            "text-[11px] font-semibold uppercase tracking-wider",
+                            "text-[11px] font-semibold uppercase tracking-wider shrink-0",
                             importFailed ? "text-destructive" : "text-muted-foreground"
                         )}>
                             {statusLabel}
                         </span>
-                        {hasReadyVersion && (
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Package className="h-3.5 w-3.5" />
-                                v{skill.latestVersion}
-                                {skill.installed && skill.installedVersion !== skill.latestVersion
-                                    ? ` (installed v${skill.installedVersion})`
-                                    : skill.installed ? " · installed" : ""}
-                            </span>
-                        )}
-                    </div>
 
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                            <ArrowUp className="h-3.5 w-3.5" />
-                            {/* Run counts aren't tracked yet. */}
-                            &mdash; runs
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <Download className="h-3.5 w-3.5" />
-                            {/* Download counts aren't tracked yet. */}
-                            &mdash;
-                        </span>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                                <ArrowUp className="h-3.5 w-3.5" />
+                                {/* Run counts aren't tracked yet. */}
+                                &mdash; runs
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <Download className="h-3.5 w-3.5" />
+                                {/* Download counts aren't tracked yet. */}
+                                &mdash;
+                            </span>
+                            {hasReadyVersion && (
+                                <span className="flex items-center gap-1">
+                                    <Package className="h-3.5 w-3.5" />
+                                    v{skill.latestVersion}
+                                    {skill.installed && skill.installedVersion !== skill.latestVersion ? (
+                                        <> (<span className="text-green-600 dark:text-green-500">installed</span> v{skill.installedVersion})</>
+                                    ) : skill.installed ? (
+                                        <> &middot; <span className="text-green-600 dark:text-green-500">installed</span></>
+                                    ) : null}
+                                </span>
+                            )}
+                        </div>
                     </div>
                 </CardContent>
             </Card>
