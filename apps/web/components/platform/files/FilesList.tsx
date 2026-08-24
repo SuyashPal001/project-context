@@ -347,9 +347,9 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 <div className="py-8">
                     <EmptyState
                         icon={<FolderOpen className="w-12 h-12" />}
-                        title={prefix ? "This folder is empty" : "No documents ingested yet"}
-                        description="Upload documents to begin."
-                        action={canUpload ? { label: "Ingest Document", onClick: onUploadClick } : undefined}
+                        title={prefix ? "This folder is empty" : "No files yet"}
+                        description="Upload files to begin."
+                        action={canUpload ? { label: "Upload", onClick: onUploadClick } : undefined}
                     />
                 </div>
             ) : (

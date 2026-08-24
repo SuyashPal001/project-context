@@ -199,7 +199,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md bg-popover border-border">
         <DialogHeader>
-          <DialogTitle>{isInsideFolder ? 'Add Files' : 'Upload Documents'}</DialogTitle>
+          <DialogTitle>{isInsideFolder ? 'Add Files' : 'Upload Files'}</DialogTitle>
           <DialogDescription>
             {isInsideFolder
               ? `Upload files into the ${prefixFolderName} folder.`

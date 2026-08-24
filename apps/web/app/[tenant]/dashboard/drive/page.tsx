@@ -26,13 +26,13 @@ export default function FilesPage() {
                             Drive
                         </h1>
                         <p className="text-muted-foreground mt-2">
-                            Upload documents for your AI team. Multi-format detection · OCR extraction · RAG indexed.
+                            Store and index files for your AI team. Multi-format detection · OCR extraction · RAG indexed.
                         </p>
                     </div>
                     {canUpload && (
                         <Button onClick={() => setIsUploadOpen(true)}>
                             <Upload className="w-4 h-4 mr-2" />
-                            {currentPrefix ? 'Add Files' : 'Upload Document'}
+                            {currentPrefix ? 'Add Files' : 'Upload'}
                         </Button>
                     )}
                 </div>
