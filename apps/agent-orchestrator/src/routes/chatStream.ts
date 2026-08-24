@@ -8,7 +8,7 @@ import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection } from '../usage.js'
+import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRun } from '../usage.js'
 import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
@@ -202,6 +202,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     ])
     if (agentSkill?.systemPrompt) {
       requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
+    }
+    // One run per chat message sent while a skill is attached. Fire-and-forget:
+    // a counter write must never break or delay the stream.
+    if (agentSkill?.installId) {
+      recordSkillRun(agentSkill.installId, tenantId)
+        .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRun failed:`, (err as Error).message))
     }
     if (personaPersonality) {
       requestContext.set('personaPersonality', personaPersonality)

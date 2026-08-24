@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
-import { and, eq, desc, inArray } from 'drizzle-orm';
+import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '../db';
 import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
 import { publishToQueue } from '@serverless-saas/queue';
 import type { AppEnv } from '@serverless-saas/types';
@@ -44,6 +45,20 @@ function isOwnUploadKey(fileKey: string, tenantId: string | undefined): boolean 
 async function resolveSkill(skillId: string) {
   const [skill] = await db.select().from(skills).where(eq(skills.id, skillId)).limit(1);
   return skill ?? null;
+}
+
+// The creator's display name is safe to show anyone who can already see the
+// skill; their email is not, so it follows the same owner-only rule the
+// versions/list routes apply to failureReason.
+async function resolveOwners(userIds: string[]): Promise<Map<string, { name: string; email: string }>> {
+  const byId = new Map<string, { name: string; email: string }>();
+  if (userIds.length === 0) return byId;
+  const rows = await db
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(inArray(users.id, userIds));
+  for (const row of rows) byId.set(row.id, { name: row.name, email: row.email });
+  return byId;
 }
 
 async function createVersionAndEnqueue(params: {
@@ -114,9 +129,11 @@ skillsRoutes.get('/', async (c) => {
       .select({
         id: skills.id, name: skills.name, slug: skills.slug, description: skills.description,
         visibility: skills.visibility, isOfficial: skills.isOfficial, latestVersion: skills.latestVersion,
-        ownerTenantId: skills.ownerTenantId, createdAt: skills.createdAt, updatedAt: skills.updatedAt,
+        downloadCount: skills.downloadCount,
+        ownerTenantId: skills.ownerTenantId, createdBy: skills.createdBy, createdAt: skills.createdAt, updatedAt: skills.updatedAt,
         installId: skillInstalls.id,
         installedVersion: skillInstalls.installedVersion, installStatus: skillInstalls.status,
+        runCount: skillInstalls.runCount,
       })
       .from(skills)
       .leftJoin(skillInstalls, and(eq(skillInstalls.skillId, skills.id), eq(skillInstalls.tenantId, tenantId)))
@@ -142,13 +159,20 @@ skillsRoutes.get('/', async (c) => {
       for (const v of versionRows) latestBySkill.set(v.skillId, { status: v.status, failureReason: v.failureReason });
     }
 
+    const ownerById = await resolveOwners([...new Set(rows.map((r) => r.createdBy).filter(Boolean))]);
+
     return c.json({
       data: rows.map((r) => {
         const latest = latestBySkill.get(r.id);
+        const { createdBy, ...rest } = r;
+        const owner = ownerById.get(createdBy);
         return {
-          ...r,
+          ...rest,
           installed: r.installStatus === 'active',
           latestVersionStatus: latest?.status ?? null,
+          ownerName: owner?.name ?? null,
+          runCount: r.runCount ?? 0,
+          ownerEmail: r.ownerTenantId === tenantId ? (owner?.email ?? null) : null,
           // failureReason can carry raw, tenant-specific detail (a blocked
           // hostname, manifest/zip contents) for several failure classes —
           // see GET /:id/versions below, which strips it from non-owners the
@@ -195,6 +219,9 @@ skillsRoutes.get('/:id', async (c) => {
       .orderBy(desc(skillVersions.version))
       .limit(1);
 
+    const ownerById = await resolveOwners([skill.createdBy]);
+    const owner = ownerById.get(skill.createdBy);
+
     // Only a 'ready' version's manifest was written by a completed import — a
     // pending/failed row's manifest column is whatever the previous version left
     // (or null), so gate on status rather than trusting the field's mere presence.
@@ -206,10 +233,13 @@ skillsRoutes.get('/:id', async (c) => {
       data: {
         id: skill.id, name: skill.name, slug: skill.slug, description: skill.description,
         visibility: skill.visibility, isOfficial: skill.isOfficial, latestVersion: skill.latestVersion,
-        ownerTenantId: skill.ownerTenantId, createdAt: skill.createdAt, updatedAt: skill.updatedAt,
+        downloadCount: skill.downloadCount,
+        ownerTenantId: skill.ownerTenantId, ownerName: owner?.name ?? null, ownerEmail: isOwner ? (owner?.email ?? null) : null,
+        createdAt: skill.createdAt, updatedAt: skill.updatedAt,
         installId: install?.id ?? null,
         installedVersion: install?.installedVersion ?? null,
         installed: install?.status === 'active',
+        runCount: install?.runCount ?? 0,
         latestVersionStatus: latest?.status ?? null,
         failureReason: isOwner ? (latest?.failureReason ?? null) : null,
         body: typeof body === 'string' ? body : null,
@@ -329,6 +359,62 @@ skillsRoutes.get('/:id/versions', async (c) => {
   }
 });
 
+// GET /skills/:id/files — read-only listing of the package files the import
+// worker wrote to skill-packages/{skillId}/{version}/. No package-format change:
+// this just enumerates an S3 prefix that already exists. Version resolution
+// mirrors the rest of the UI — this tenant's pinned install if there is one,
+// otherwise the skill's latest.
+skillsRoutes.get('/:id/files', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'skills', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  if (!uuidSchema.safeParse(skillId).success) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+
+  try {
+    const skill = await resolveSkill(skillId);
+    if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+    const isOwner = skill.ownerTenantId === tenantId;
+    if (!isOwner && skill.visibility !== 'public' && !skill.isOfficial) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const [install] = await db
+      .select({ installedVersion: skillInstalls.installedVersion })
+      .from(skillInstalls)
+      .where(and(
+        eq(skillInstalls.skillId, skillId),
+        eq(skillInstalls.tenantId, tenantId),
+        eq(skillInstalls.status, 'active'),
+      ))
+      .limit(1);
+
+    const version = install?.installedVersion ?? skill.latestVersion;
+    // latestVersion only moves once an import reaches 'ready', so 0 means the
+    // prefix does not exist yet — skip the S3 round trip entirely.
+    if (version < 1) return c.json({ data: [] });
+
+    const prefix = `skill-packages/${skillId}/${version}/`;
+    const listed = await s3.send(new ListObjectsV2Command({
+      Bucket: process.env.DOCUMENTS_BUCKET!,
+      Prefix: prefix,
+      MaxKeys: 1000,
+    }));
+
+    const data = (listed.Contents ?? [])
+      .map((obj) => ({ fileName: (obj.Key ?? '').slice(prefix.length), size: obj.Size ?? 0 }))
+      .filter((f) => f.fileName.length > 0)
+      .sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
+
+    return c.json({ data });
+  } catch (err) {
+    console.error('Failed to list skill files:', err);
+    return c.json(INTERNAL_ERROR, 500);
+  }
+});
+
 // POST /skills/:id/publish — owner flips visibility to public, self-serve
 skillsRoutes.post('/:id/publish', async (c) => {
   const requestContext = c.get('requestContext') as any;
@@ -390,6 +476,13 @@ skillsRoutes.post('/:id/install', async (c) => {
       target: [skillInstalls.tenantId, skillInstalls.skillId],
       set: { status: 'active', installedVersion: skill.latestVersion, updatedAt: new Date() },
     }).returning();
+
+    // Raw SQL, not db.update(skills): the Drizzle column has $onUpdate on
+    // updatedAt, so an ORM update would bump the skill's "Last update"
+    // timestamp on every install. Fire-and-forget — a counter must never fail
+    // the install itself.
+    db.execute(sql`UPDATE skills SET download_count = download_count + 1 WHERE id = ${skillId}`)
+      .catch((err: unknown) => console.error('Failed to increment skill download_count:', err));
 
     db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'skill_installed', resource: 'skill_install', resourceId: installed.id, metadata: { skillId, version: skill.latestVersion }, traceId: c.get('traceId') ?? '' }).catch(() => {});
     return c.json({ data: installed }, 201);

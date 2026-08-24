@@ -1,5 +1,6 @@
-import { api } from "@/lib/api";
-import type { Skill, SkillTab, SkillsResponse } from "./types";
+import { api, ApiError } from "@/lib/api";
+import type { Skill, SkillFile, SkillTab, SkillsResponse } from "./types";
+import type { Agent } from "@/components/platform/agents/types";
 
 export async function listSkills(tab: SkillTab): Promise<Skill[]> {
     const res = await api.get<SkillsResponse>(`/api/v1/skills?tab=${tab}`);
@@ -44,4 +45,62 @@ export async function installSkill(skillId: string): Promise<void> {
 
 export async function uninstallSkill(skillId: string): Promise<void> {
     await api.del(`/api/v1/skills/${skillId}/install`);
+}
+
+export async function listSkillFiles(skillId: string): Promise<SkillFile[]> {
+    const res = await api.get<{ data: SkillFile[] }>(`/api/v1/skills/${skillId}/files`);
+    return res.data;
+}
+
+/**
+ * Attaches an installed skill to an agent. The system prompt is NOT sent — the
+ * server derives it from the pinned skill_versions manifest body, so it can't be
+ * spoofed or go stale. A 409 means the same skill+version is already attached,
+ * which is the desired end state, so it resolves rather than throwing.
+ */
+export async function attachSkillToAgent(agentId: string, skill: Skill): Promise<void> {
+    if (!skill.installId) throw new Error("NO_INSTALL_ID");
+    try {
+        await api.post(`/api/v1/agents/${agentId}/skills`, {
+            name: skill.name,
+            installId: skill.installId,
+        });
+    } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+            const code = (err.data as { code?: string } | undefined)?.code;
+            if (code === "CONFLICT") return; // already attached at this version — desired end state
+            throw err; // e.g. NOT_READY — nothing was attached, caller must surface this
+        }
+        throw err;
+    }
+}
+
+/**
+ * Deliberately identical to useChatPage.ts's New Chat fallback:
+ * `activeAgents.find(a => a.isDefault) ?? activeAgents[0]`. agents.isDefault is
+ * effectively a dead column (never written), so in practice this resolves to
+ * the earliest-created active agent. Reused rather than replaced so Test-in-chat
+ * lands the user on the same agent New Chat would.
+ */
+export function resolveDefaultAgent(agents: Agent[]): Agent | null {
+    const active = agents.filter((a) => a.status === "active");
+    return active.find((a) => a.isDefault) ?? active[0] ?? null;
+}
+
+/**
+ * Opens a fresh conversation on the tenant's default agent with this skill
+ * attached. The attach carries the real SKILL.md body (derived server-side), so
+ * the agent's behavior in that conversation genuinely reflects the skill.
+ * Throws Error("NO_ACTIVE_AGENTS") when the tenant has none.
+ */
+export async function startSkillTestChat(
+    skill: Skill,
+    agents: Agent[],
+): Promise<{ conversationId: string; agentId: string }> {
+    const agent = resolveDefaultAgent(agents);
+    if (!agent) throw new Error("NO_ACTIVE_AGENTS");
+
+    const conversation = await api.post<{ data: { id: string } }>("/api/v1/conversations", { agentId: agent.id });
+    await attachSkillToAgent(agent.id, skill);
+    return { conversationId: conversation.data.id, agentId: agent.id };
 }

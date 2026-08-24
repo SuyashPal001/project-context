@@ -1,0 +1,1 @@
+ALTER TABLE "skill_installs" ADD COLUMN "run_count" integer DEFAULT 0 NOT NULL;

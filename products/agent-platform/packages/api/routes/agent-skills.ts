@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
-import { skillInstalls } from '@serverless-saas/agent-schema/skills';
+import { skillInstalls, skillVersions } from '@serverless-saas/agent-schema/skills';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
@@ -21,13 +21,17 @@ async function resolveAgent(agentId: string, tenantId: string) {
     return agent ?? null;
 }
 
-// An installId names a skill_installs row, which is tenant-scoped. Nothing
-// downstream reads it yet, so writing a foreign tenant's install id is inert
-// today — but it would silently become a cross-tenant reference the moment the
-// runtime starts resolving it, so it's checked at write time.
+// An installId names a skill_installs row, which is tenant-scoped. Writing a
+// foreign tenant's install id would be a silent cross-tenant reference, so the
+// lookup is scoped to this tenant and to active installs only. The row also
+// carries the pinned version, which is what the system prompt is read from.
 async function resolveInstall(installId: string, tenantId: string) {
     const [install] = await db
-        .select({ id: skillInstalls.id })
+        .select({
+            id: skillInstalls.id,
+            skillId: skillInstalls.skillId,
+            installedVersion: skillInstalls.installedVersion,
+        })
         .from(skillInstalls)
         .where(and(
             eq(skillInstalls.id, installId),
@@ -36,6 +40,21 @@ async function resolveInstall(installId: string, tenantId: string) {
         ))
         .limit(1);
     return install ?? null;
+}
+
+// The body of the *pinned* version, not the latest — an install is npm-style
+// pinned, so the agent must receive the content the tenant actually installed.
+// Only a 'ready' row's manifest was written by a completed import; a
+// pending/failed row's manifest is whatever the previous version left behind.
+async function resolveInstalledSkillBody(skillId: string, version: number): Promise<string | null> {
+    const [row] = await db
+        .select({ manifest: skillVersions.manifest, status: skillVersions.status })
+        .from(skillVersions)
+        .where(and(eq(skillVersions.skillId, skillId), eq(skillVersions.version, version)))
+        .limit(1);
+    if (!row || row.status !== 'ready' || !row.manifest || typeof row.manifest !== 'object') return null;
+    const body = (row.manifest as Record<string, unknown>).body;
+    return typeof body === 'string' && body.length > 0 ? body : null;
 }
 
 // GET /agents/:agentId/skills — list all active skills for agent
@@ -87,7 +106,10 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
 
     const schema = z.object({
         name: z.string().min(1).max(100),
-        systemPrompt: z.string().min(1),
+        // Optional because an installed skill's prompt is derived server-side
+        // from its manifest body — the client must not be able to supply (or
+        // stale-cache) the content the agent runs on.
+        systemPrompt: z.string().min(1).optional(),
         tools: z.array(z.string()).optional().default([]),
         config: z.record(z.unknown()).optional(),
         version: z.number().int().positive().optional(),
@@ -99,16 +121,34 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
         return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
     }
 
+    // Declared outside the try block so the catch block's 23505 reconciliation
+    // path can reuse the freshly-resolved value instead of re-deriving it.
+    // Stays undefined only if the try block throws before it's assigned —
+    // the reconciliation path below guards on that explicitly.
+    let systemPrompt: string | undefined;
     try {
-        if (result.data.installId && !await resolveInstall(result.data.installId, tenantId)) {
-            return c.json({ error: 'Skill install not found', code: 'NOT_FOUND' }, 404);
+        if (result.data.installId) {
+            const install = await resolveInstall(result.data.installId, tenantId);
+            if (!install) {
+                return c.json({ error: 'Skill install not found', code: 'NOT_FOUND' }, 404);
+            }
+            const body = await resolveInstalledSkillBody(install.skillId, install.installedVersion);
+            if (!body) {
+                return c.json({ error: 'Skill version has no readable content yet', code: 'NOT_READY' }, 409);
+            }
+            systemPrompt = body;
+        } else {
+            if (!result.data.systemPrompt) {
+                return c.json({ error: 'systemPrompt is required when installId is omitted', code: 'VALIDATION_ERROR' }, 400);
+            }
+            systemPrompt = result.data.systemPrompt;
         }
 
         const [created] = await db.insert(agentSkills).values({
             agentId,
             tenantId,
             name: result.data.name,
-            systemPrompt: result.data.systemPrompt,
+            systemPrompt,
             tools: result.data.tools,
             config: result.data.config ?? null,
             version: result.data.version ?? 1,
@@ -121,6 +161,40 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
     } catch (err: any) {
         // Unique constraint on [agentId, tenantId, name, version]
         if (err?.code === '23505') {
+            // An installed skill can be re-attached after its pinned install
+            // version was upgraded server-side (v1 -> v3): the client still
+            // writes the same `version` (it's a display/order field, not a
+            // reflection of the install's version), so the insert collides
+            // with the prior attach's row. That row's systemPrompt is now
+            // stale — reconcile it to the freshly-resolved content computed
+            // above rather than reporting a conflict for something the
+            // caller can't actually resolve. Hand-authored skills (no
+            // installId) have no "current version" to reconcile to, so they
+            // keep the original 409 behavior.
+            if (result.data.installId && systemPrompt !== undefined) {
+                const version = result.data.version ?? 1;
+                const [updated] = await db.update(agentSkills)
+                    .set({
+                        systemPrompt,
+                        tools: result.data.tools,
+                        config: result.data.config ?? null,
+                        updatedAt: new Date(),
+                    })
+                    .where(and(
+                        eq(agentSkills.agentId, agentId),
+                        eq(agentSkills.tenantId, tenantId),
+                        eq(agentSkills.name, result.data.name),
+                        eq(agentSkills.version, version),
+                    ))
+                    .returning();
+
+                if (updated) {
+                    db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_updated', resource: 'agent_skill', resourceId: updated.id, metadata: { agentId, name: result.data.name, reason: 'reattach_after_upgrade' }, traceId: c.get('traceId') ?? '' }).catch((auditErr: unknown) => console.error('Audit log write failed:', auditErr));
+                    return c.json({ data: updated }, 200);
+                }
+                // Race: the conflicting row vanished between the insert
+                // failing and the update running. Fall through to 409.
+            }
             return c.json({ error: 'A skill with this name and version already exists', code: 'CONFLICT' }, 409);
         }
         console.error('Failed to create skill:', err);

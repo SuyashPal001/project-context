@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentSkill, recordSkillRun } from './usage.js'
 
 describe('fetchToolGovernance', () => {
   it('maps getAgentTools output into the ToolGovernance shape', async () => {
@@ -109,5 +109,41 @@ describe('fetchAgentMemory', () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
     const result = await fetchAgentMemory('agent-2')
     expect(result).toBeNull()
+  })
+})
+
+describe('fetchAgentSkill', () => {
+  it('returns the install id so the caller can attribute the run to a tenant install', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{ system_prompt: '# PDF Tools', tools: ['pdftotext'], config: null, install_id: 'install-1' }],
+    })
+    const result = await fetchAgentSkill('agent-1')
+    expect(result).toEqual({ systemPrompt: '# PDF Tools', tools: ['pdftotext'], config: null, installId: 'install-1' })
+    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('install_id'), ['agent-1'])
+  })
+
+  it('returns null when the agent has no active skill', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    expect(await fetchAgentSkill('agent-2')).toBeNull()
+  })
+
+  it('breaks ties on created_at so the most-recently-attached skill wins when versions are equal', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [{ system_prompt: '# PDF Tools', tools: ['pdftotext'], config: null, install_id: 'install-1' }],
+    })
+    await fetchAgentSkill('agent-1')
+    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('created_at DESC'), ['agent-1'])
+  })
+})
+
+describe('recordSkillRun', () => {
+  it('increments run_count on the tenant-scoped install row', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await recordSkillRun('install-1', 'tenant-1')
+    expect(mockPoolQuery).toHaveBeenCalledWith(
+      expect.stringContaining('run_count = run_count + 1'),
+      ['install-1', 'tenant-1'],
+    )
+    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('tenant_id = $2'), ['install-1', 'tenant-1'])
   })
 })

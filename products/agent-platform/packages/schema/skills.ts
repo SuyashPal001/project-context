@@ -19,6 +19,9 @@ export const skills = pgTable('skills', {
   visibility: skillVisibilityEnum('visibility').notNull().default('private'),
   isOfficial: boolean('is_official').notNull().default(false),
   latestVersion: integer('latest_version').notNull().default(0),
+  // Global across all tenants — "times installed", the product's only download
+  // event. Deliberately NOT per-tenant, unlike skill_installs.run_count.
+  downloadCount: integer('download_count').notNull().default(0),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
@@ -57,6 +60,10 @@ export const skillInstalls = pgTable('skill_installs', {
   status: skillInstallStatusEnum('status').notNull().default('active'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
+  // Per-tenant: incremented once per chat message sent while this install's
+  // skill is attached to the agent. Tenant-scoped by construction, unlike
+  // skills.download_count which is global.
+  runCount: integer('run_count').notNull().default(0),
 }, (t) => ({
   tenantSkillUniq: unique().on(t.tenantId, t.skillId),
   tenantStatusIdx: index('skill_installs_tenant_status_idx').on(t.tenantId, t.status),

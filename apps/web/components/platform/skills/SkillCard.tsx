@@ -1,7 +1,7 @@
 import { ArrowUp, Download, Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SkillIcon } from "./SkillIcon";
 import type { Skill } from "./types";
@@ -9,6 +9,7 @@ import type { Skill } from "./types";
 interface SkillCardProps {
     skill: Skill;
     onClick: () => void;
+    onInstall: () => void;
 }
 
 // A failed import leaves latestVersion at 0 forever, exactly like a still-running
@@ -23,7 +24,7 @@ export function skillImportState(skill: Skill) {
     return { importFailed, hasReadyVersion, dead, importing };
 }
 
-export function SkillCard({ skill, onClick }: SkillCardProps) {
+export function SkillCard({ skill, onClick, onInstall }: SkillCardProps) {
     const { importFailed, hasReadyVersion, dead, importing } = skillImportState(skill);
 
     // Importing/failed are transient — shown as a badge up top where the Install
@@ -56,7 +57,23 @@ export function SkillCard({ skill, onClick }: SkillCardProps) {
             };
 
     return (
-        <button type="button" onClick={onClick} className="block w-full text-left">
+        // Not a <button>: the Install control below is a real nested button, and
+        // HTML forbids nesting interactive elements. role/tabIndex/onKeyDown keep
+        // the whole card keyboard-operable exactly as the <button> was.
+        <div
+            role="button"
+            aria-label={skill.name}
+            tabIndex={0}
+            onClick={onClick}
+            onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onClick();
+                }
+            }}
+            className="block w-full cursor-pointer text-left"
+        >
             <Card className="h-full transition-colors hover:border-input">
                 <CardContent className="pt-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -84,13 +101,11 @@ export function SkillCard({ skill, onClick }: SkillCardProps) {
                         <div className="flex items-center gap-3">
                             <span className="flex items-center gap-1">
                                 <ArrowUp className="h-3.5 w-3.5" />
-                                {/* Run counts aren't tracked yet. */}
-                                &mdash; runs
+                                {skill.runCount} runs
                             </span>
                             <span className="flex items-center gap-1">
                                 <Download className="h-3.5 w-3.5" />
-                                {/* Download counts aren't tracked yet. */}
-                                &mdash;
+                                {skill.downloadCount}
                             </span>
                             {hasReadyVersion && (
                                 <span className="flex items-center gap-1">
@@ -107,16 +122,25 @@ export function SkillCard({ skill, onClick }: SkillCardProps) {
                                     : "installed"}
                             </span>
                         ) : !transientStatus ? (
-                            // A real <button> can't nest inside the card's own <button>; this is
-                            // styled as one since the whole card already opens the detail modal.
-                            <span className={cn(buttonVariants({ variant: "outline", size: "xs" }), "shrink-0 pointer-events-none")}>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="xs"
+                                className="shrink-0"
+                                onClick={(e) => {
+                                    // Without this the card's own onClick fires too and the
+                                    // detail modal opens on top of the install.
+                                    e.stopPropagation();
+                                    onInstall();
+                                }}
+                            >
                                 <Download />
                                 Install
-                            </span>
+                            </Button>
                         ) : null}
                     </div>
                 </CardContent>
             </Card>
-        </button>
+        </div>
     );
 }
