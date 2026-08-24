@@ -5,6 +5,14 @@ import { Button } from "@/components/ui/button";
 import { skillImportState } from "./SkillCard";
 import type { Skill } from "./types";
 
+// updatedAt may be absent from an older API deploy — never let a malformed/missing
+// timestamp crash the whole modal.
+function relativeTime(value: string | undefined | null): string {
+    if (!value) return "—";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "—" : formatDistanceToNow(date, { addSuffix: true });
+}
+
 export function SkillDetailContent({
     skill, isOwner, onInstall, onUninstall, onPublish,
 }: {
@@ -81,8 +89,8 @@ export function SkillDetailContent({
             <dl className="divide-y divide-border rounded-lg border border-border">
                 <MetaRow icon={User} label="Author" value={skill.isOfficial ? "Official" : skill.visibility === "public" ? "Community" : "Private"} />
                 <MetaRow icon={Zap} label="Runs" value="—" />
-                <MetaRow icon={CalendarClock} label="Last update" value={formatDistanceToNow(new Date(skill.updatedAt), { addSuffix: true })} />
-                <MetaRow icon={CalendarPlus} label="Date created" value={formatDistanceToNow(new Date(skill.createdAt), { addSuffix: true })} />
+                <MetaRow icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
+                <MetaRow icon={CalendarPlus} label="Date created" value={relativeTime(skill.createdAt)} />
             </dl>
 
             <div className="flex gap-2">
