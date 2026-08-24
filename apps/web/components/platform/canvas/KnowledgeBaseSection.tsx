@@ -19,6 +19,7 @@ interface KBDocument {
   status: DocStatus;
   chunks?: number;
   isPolling?: boolean;
+  isResolvingPreview?: boolean;
   file?: File;
   previewUrl?: string;
   textContent?: string;
@@ -28,13 +29,50 @@ interface KBDocument {
 
 export function KnowledgeBaseSection() {
   const [documents, setDocuments] = useState<KBDocument[]>([]);
-  const [previewDoc, setPreviewDoc] = useState<KBDocument | null>(null);
+  const [isLoadingList, setIsLoadingList] = useState(true);
+  const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<KBDocument | null>(null);
+  const previewDoc = documents.find(d => d.id === previewDocId) ?? null;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollingRefs = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
     return () => { pollingRefs.current.forEach(id => clearTimeout(id)); };
+  }, []);
+
+  // Hydrate the list from the server on mount — state above is otherwise
+  // purely local and empties on every reload/navigation even though the
+  // documents still exist and are still retrievable by agents.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/proxy/api/v1/documents');
+        if (!res.ok) throw new Error(`Failed to list documents (${res.status})`);
+        const { documents: serverDocs } = await res.json();
+        if (cancelled) return;
+        const mapped: KBDocument[] = (serverDocs ?? []).map((d: any) => ({
+          id: d.id,
+          documentId: d.id,
+          name: d.name,
+          type: d.name.split('.').pop()?.toLowerCase() || 'unknown',
+          status: d.status as DocStatus,
+          chunks: d.chunkCount,
+          isPolling: d.status === 'pending',
+        }));
+        setDocuments(mapped);
+        mapped.filter(d => d.status === 'pending' && d.documentId).forEach(d => {
+          pollDocumentStatus(d.id, d.documentId!);
+        });
+      } catch {
+        // Leave the list empty — the upload flow still works, and the user
+        // can reload to retry.
+      } finally {
+        if (!cancelled) setIsLoadingList(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pollDocumentStatus = useCallback((localId: string, documentId: string, attempt = 0) => {
@@ -131,20 +169,74 @@ export function KnowledgeBaseSection() {
       if (d?.previewUrl) URL.revokeObjectURL(d.previewUrl);
       return prev.filter(x => x.id !== id);
     });
-    if (previewDoc?.id === id) setPreviewDoc(null);
+    if (previewDocId === id) setPreviewDocId(null);
     toast.success('Document deleted successfully');
     if (doc?.documentId) {
       try { await fetch(`/api/proxy/api/v1/documents/${doc.documentId}`, { method: 'DELETE' }); } catch { /* ignore */ }
     }
   };
 
-  const downloadFile = (doc: KBDocument) => {
-    if (!doc.file) return;
-    const url = URL.createObjectURL(doc.file);
-    const a = document.createElement('a');
-    a.href = url; a.download = doc.name;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
+  const fetchDownloadUrl = async (documentId: string): Promise<string> => {
+    const res = await fetch(`/api/proxy/api/v1/documents/${documentId}/download`);
+    if (!res.ok) throw new Error(`Could not get a download URL (${res.status})`);
+    const { downloadUrl } = await res.json();
+    return downloadUrl;
+  };
+
+  const downloadFile = async (doc: KBDocument) => {
+    if (doc.file) {
+      const url = URL.createObjectURL(doc.file);
+      const a = document.createElement('a');
+      a.href = url; a.download = doc.name;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+      return;
+    }
+    if (!doc.documentId) return;
+    try {
+      // Fetched as a blob rather than linked directly: an <a download> on a
+      // cross-origin S3 URL is ignored by several browsers, which either
+      // renders the file inline or navigates away instead of saving it.
+      const downloadUrl = await fetchDownloadUrl(doc.documentId);
+      const blob = await (await fetch(downloadUrl)).blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl; a.download = doc.name;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(objectUrl);
+    } catch {
+      toast.error('Could not download this document');
+    }
+  };
+
+  // Resolves rich preview content for a document loaded from the server
+  // (it has no local File blob to read from). Fetched lazily, on open, and
+  // cached on the doc so reopening the dialog doesn't refetch — except the
+  // PDF iframe src, which is a presigned URL that expires after 5 minutes
+  // and must be re-resolved on every open.
+  const openPreview = async (doc: KBDocument) => {
+    setPreviewDocId(doc.id);
+    const hasContent = (doc.type !== 'pdf' && doc.previewUrl) || doc.textContent !== undefined || doc.htmlContent;
+    if (hasContent || doc.file || !doc.documentId || doc.status !== 'ready') return;
+
+    setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, isResolvingPreview: true } : d));
+    try {
+      const downloadUrl = await fetchDownloadUrl(doc.documentId);
+      if (doc.type === 'pdf') {
+        setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, previewUrl: downloadUrl, isResolvingPreview: false } : d));
+      } else if (doc.type === 'txt') {
+        const text = await (await fetch(downloadUrl)).text();
+        setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, textContent: text, isResolvingPreview: false } : d));
+      } else if (doc.type === 'docx') {
+        const arrayBuffer = await (await fetch(downloadUrl)).arrayBuffer();
+        const html = await convertDocxToHtml(arrayBuffer).promise;
+        setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, htmlContent: html, isResolvingPreview: false } : d));
+      } else {
+        setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, isResolvingPreview: false } : d));
+      }
+    } catch {
+      setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, isResolvingPreview: false } : d));
+    }
   };
 
   return (
@@ -158,7 +250,11 @@ export function KnowledgeBaseSection() {
       </div>
 
       <div className="px-4 pb-4 flex-1 flex flex-col">
-        {documents.length === 0 ? (
+        {isLoadingList ? (
+          <div className="flex-1 flex items-center justify-center min-h-[140px]">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : documents.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border/60 bg-muted/10 min-h-[140px] cursor-pointer hover:bg-muted/20 transition-colors" onClick={() => fileInputRef.current?.click()}>
             <div className="h-10 w-10 rounded-full bg-muted/40 flex items-center justify-center">
               <Plus className="h-5 w-5 text-muted-foreground" />
@@ -171,7 +267,7 @@ export function KnowledgeBaseSection() {
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {documents.map((doc) => (
-              <div key={doc.id} className="group relative flex flex-col p-3.5 rounded-xl border border-border/60 bg-card hover:bg-muted/40 transition-colors cursor-pointer text-sm shadow-card min-h-[110px]" onClick={() => setPreviewDoc(doc)}>
+              <div key={doc.id} className="group relative flex flex-col p-3.5 rounded-xl border border-border/60 bg-card hover:bg-muted/40 transition-colors cursor-pointer text-sm shadow-card min-h-[110px]" onClick={() => openPreview(doc)}>
                 <div className="flex-1 mb-3 pr-4">
                   <h5 className="font-medium text-zinc-200 line-clamp-3 leading-snug break-words">{doc.name}</h5>
                   {doc.errorMessage && <p className="text-[10px] text-red-400 mt-1 leading-snug">{doc.errorMessage}</p>}
@@ -207,16 +303,21 @@ export function KnowledgeBaseSection() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!previewDoc} onOpenChange={(open) => !open && setPreviewDoc(null)}>
+      <Dialog open={!!previewDoc} onOpenChange={(open) => !open && setPreviewDocId(null)}>
         <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0 bg-[#1C1C1C] border-[#2C2C2C] text-zinc-50 overflow-hidden sm:rounded-xl">
           <DialogHeader className="flex-none p-4 border-b border-[#2C2C2C] bg-[#181818]">
             <DialogTitle className="text-xl font-medium truncate pr-6 text-zinc-100">{previewDoc?.name}</DialogTitle>
             <DialogDescription className="sr-only">Document preview</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-auto relative flex flex-col items-center justify-center p-4 bg-[#1C1C1C]">
-            {previewDoc?.type === 'pdf' && previewDoc.previewUrl ? (
+            {previewDoc?.isResolvingPreview ? (
+              <div className="flex flex-col items-center gap-3 text-zinc-500">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <p>Loading preview...</p>
+              </div>
+            ) : previewDoc?.type === 'pdf' && previewDoc.previewUrl ? (
               <iframe src={`${previewDoc.previewUrl}#toolbar=0`} className="w-full h-full max-w-3xl border-0 rounded-md bg-white shadow-xl" title={previewDoc.name} />
-            ) : previewDoc?.type === 'txt' ? (
+            ) : previewDoc?.type === 'txt' && previewDoc.textContent !== undefined ? (
               <div className="w-full h-full max-w-3xl bg-[#252525] p-6 rounded-md overflow-auto border border-[#333] shadow-xl">
                 <pre className="whitespace-pre-wrap font-mono text-sm text-zinc-300">{previewDoc.textContent}</pre>
               </div>

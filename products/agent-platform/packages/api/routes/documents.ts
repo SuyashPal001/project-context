@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '../db';
 import { auditLog } from '@serverless-saas/database/schema';
@@ -205,6 +205,45 @@ documentsRoutes.get('/', async (c) => {
   });
 
   return c.json({ documents: data });
+});
+
+// GET /api/v1/documents/:id/download — must be before /:id to avoid route shadowing
+documentsRoutes.get('/:id/download', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const { id } = c.req.param();
+
+  if (!tenantId) {
+    return c.json({ error: 'Tenant resolution failed', code: 'TENANT_NOT_FOUND' }, 400);
+  }
+
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'files', 'read')) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+
+  const document = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.id, id),
+      eq(documents.tenantId, tenantId)
+    ),
+  });
+
+  if (!document || !document.fileKey) {
+    return c.json({ error: 'Document not found', code: 'NOT_FOUND' }, 404);
+  }
+
+  try {
+    const command = new GetObjectCommand({
+      Bucket: process.env.DOCUMENTS_BUCKET!,
+      Key: document.fileKey,
+    });
+    const downloadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+    return c.json({ downloadUrl });
+  } catch (error) {
+    console.error('Failed to generate download URL:', error);
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
 });
 
 // GET /api/v1/documents/:id
