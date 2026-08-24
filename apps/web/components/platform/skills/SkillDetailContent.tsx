@@ -31,27 +31,9 @@ export function SkillDetailContent({
     return (
         <div className="space-y-6">
             <div className="space-y-3">
-                <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 space-y-1.5">
-                        <h1 className="text-3xl font-bold tracking-tight text-foreground">{skill.name}</h1>
-                        <p className="text-muted-foreground line-clamp-2">{skill.description ?? "No description"}</p>
-                    </div>
-
-                    <div className="flex shrink-0 items-center gap-2">
-                        {skill.installed ? (
-                            <>
-                                <Button onClick={onTest} disabled={isTesting}>
-                                    {isTesting ? "Opening chat…" : "Test in chat"}
-                                </Button>
-                                <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
-                            </>
-                        ) : dead ? null : (
-                            <Button onClick={onInstall} disabled={importing}>
-                                <Plus className="h-4 w-4" />
-                                {importing ? "Importing…" : "Install skill"}
-                            </Button>
-                        )}
-                    </div>
+                <div className="min-w-0 space-y-1.5">
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground">{skill.name}</h1>
+                    <p className="text-muted-foreground line-clamp-2">{skill.description ?? "No description"}</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -77,18 +59,31 @@ export function SkillDetailContent({
                 </div>
             )}
 
-            <dl className="divide-y divide-border rounded-lg border border-border">
-                <MetaRow icon={User} label="Author" value={skill.ownerName ?? skill.ownerEmail ?? "Unknown"} />
-                <MetaRow icon={Zap} label="Runs" value={String(skill.runCount)} />
-                <MetaRow icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
-                <MetaRow icon={CalendarPlus} label="Date created" value={relativeTime(skill.createdAt)} />
-            </dl>
+            <div className="flex flex-wrap items-center gap-2">
+                <MetaPill icon={User} label="Author" value={skill.ownerName ?? skill.ownerEmail ?? "Unknown"} />
+                <MetaPill icon={Zap} label="Runs" value={String(skill.runCount)} />
+                <MetaPill icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
+                <MetaPill icon={CalendarPlus} label="Created" value={relativeTime(skill.createdAt)} />
+            </div>
 
             <SkillOverview skill={skill} files={files} />
 
-            <div className="flex gap-2">
+            <div className="flex items-center justify-end gap-2">
                 {isOwner && skill.visibility === "private" && hasReadyVersion && (
                     <Button variant="ghost" onClick={onPublish}>Publish</Button>
+                )}
+                {skill.installed ? (
+                    <>
+                        <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
+                        <Button onClick={onTest} disabled={isTesting}>
+                            {isTesting ? "Opening chat…" : "Test in chat"}
+                        </Button>
+                    </>
+                ) : dead ? null : (
+                    <Button onClick={onInstall} disabled={importing}>
+                        <Plus className="h-4 w-4" />
+                        {importing ? "Importing…" : "Install skill"}
+                    </Button>
                 )}
             </div>
         </div>
@@ -96,21 +91,10 @@ export function SkillDetailContent({
 }
 
 function SkillOverview({ skill, files }: { skill: Skill; files: SkillFile[] }) {
-    // Older/still-importing skills have no stored SKILL.md body yet — fall back to
-    // just the version/latest table.
+    // Older/still-importing skills have no stored SKILL.md body yet. Version info is
+    // already shown as a badge in the header, so there's nothing else to render here.
     if (!skill.body) {
-        return (
-            <div className="divide-y divide-border rounded-lg border border-border text-sm">
-                <div className="flex items-center justify-between px-4 py-2.5">
-                    <span className="text-muted-foreground">Version</span>
-                    <span className="font-medium text-foreground">{skill.installedVersion ?? skill.latestVersion}</span>
-                </div>
-                <div className="flex items-center justify-between px-4 py-2.5">
-                    <span className="text-muted-foreground">Latest</span>
-                    <span className="font-medium text-foreground">{skill.latestVersion}</span>
-                </div>
-            </div>
-        );
+        return null;
     }
 
     return (
@@ -145,14 +129,14 @@ function SkillOverview({ skill, files }: { skill: Skill; files: SkillFile[] }) {
     );
 }
 
-function MetaRow({ icon: Icon, label, value }: { icon: typeof User; label: string; value: string }) {
+function MetaPill({ icon: Icon, label, value }: { icon: typeof User; label: string; value: string }) {
     return (
-        <div className="flex items-center justify-between px-4 py-3 text-sm">
-            <span className="flex items-center gap-2 text-muted-foreground">
-                <Icon className="h-4 w-4" />
-                {label}
-            </span>
-            <span className="font-medium text-foreground">{value}</span>
-        </div>
+        <span
+            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-foreground"
+            title={label}
+        >
+            <Icon className="h-4 w-4 text-muted-foreground" />
+            {value}
+        </span>
     );
 }
