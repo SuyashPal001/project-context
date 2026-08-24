@@ -79,18 +79,23 @@ export function SkillCard({ skill, onClick, onInstall }: SkillCardProps) {
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
                             <SkillIcon seed={skill.id} className="h-12 w-12 rounded-lg border border-border shrink-0" />
-                            <div className="min-w-0 space-y-1">
+                            <div className="min-w-0 space-y-0.5">
                                 <h3 className="text-sm font-semibold text-foreground truncate">{skill.name}</h3>
-                                <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wider", visibilityStatus.className)}>
-                                    {visibilityStatus.label}
-                                </Badge>
+                                <p className="text-xs text-muted-foreground truncate">
+                                    {skill.isOfficial ? "ProjectContext" : skill.ownerName ?? skill.ownerEmail ?? "Unknown"}
+                                </p>
                             </div>
                         </div>
-                        {transientStatus && (
-                            <Badge variant="outline" className={cn("text-[11px] font-semibold uppercase tracking-wider shrink-0", transientStatus.className)}>
-                                {transientStatus.label}
+                        <div className="flex shrink-0 items-center gap-1.5">
+                            {transientStatus && (
+                                <Badge variant="outline" className={cn("text-[11px] font-semibold uppercase tracking-wider shrink-0", transientStatus.className)}>
+                                    {transientStatus.label}
+                                </Badge>
+                            )}
+                            <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wider shrink-0", visibilityStatus.className)}>
+                                {visibilityStatus.label}
                             </Badge>
-                        )}
+                        </div>
                     </div>
 
                     <p className="text-sm text-muted-foreground line-clamp-2">

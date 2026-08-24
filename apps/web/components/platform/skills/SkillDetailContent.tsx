@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
-import { CalendarClock, CalendarPlus, FileText, Package, Plus, Sparkles, User, Zap } from "lucide-react";
+import { CalendarClock, Download, FileText, Package, Plus, Sparkles, User, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkdownViewer } from "@/components/platform/canvas/MarkdownViewer";
@@ -46,6 +46,14 @@ export function SkillDetailContent({
                             v{skill.latestVersion}
                         </span>
                     )}
+                    <span className="flex items-center gap-1 text-sm text-muted-foreground" title="Total installs across all tenants">
+                        <Download className="h-4 w-4" />
+                        {skill.downloadCount}
+                    </span>
+                    <span className="flex items-center gap-1 text-sm text-muted-foreground" title="Runs for your tenant">
+                        <Zap className="h-4 w-4" />
+                        {skill.runCount}
+                    </span>
                     {skill.installed && (
                         <Badge variant="outline">Installed v{skill.installedVersion}</Badge>
                     )}
@@ -60,10 +68,12 @@ export function SkillDetailContent({
             )}
 
             <div className="flex flex-wrap items-center gap-2">
-                <MetaPill icon={User} label="Author" value={skill.ownerName ?? skill.ownerEmail ?? "Unknown"} />
-                <MetaPill icon={Zap} label="Runs" value={String(skill.runCount)} />
+                <MetaPill
+                    icon={User}
+                    label="Created by"
+                    value={`${skill.ownerName ?? skill.ownerEmail ?? "Unknown"} · ${relativeTime(skill.createdAt)}`}
+                />
                 <MetaPill icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
-                <MetaPill icon={CalendarPlus} label="Created" value={relativeTime(skill.createdAt)} />
             </div>
 
             <SkillOverview skill={skill} files={files} />
