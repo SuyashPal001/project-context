@@ -108,11 +108,11 @@ export function SkillDetailContent({
                 </div>
             )}
 
-            <Tabs defaultValue="about">
+            <Tabs defaultValue="skill-md">
                 <TabsList variant="line">
-                    <TabsTrigger value="about">About</TabsTrigger>
+                    <TabsTrigger value="skill-md">SKILL.md</TabsTrigger>
                 </TabsList>
-                <TabsContent value="about" className="pt-4">
+                <TabsContent value="skill-md" className="pt-4">
                     <SkillOverview skill={skill} files={files} />
                 </TabsContent>
             </Tabs>
