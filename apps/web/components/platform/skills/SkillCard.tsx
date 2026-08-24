@@ -62,7 +62,7 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                 <CardContent className="pt-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
-                            <SkillIcon seed={skill.id} className="h-8 w-8 rounded-lg border border-border shrink-0" />
+                            <SkillIcon seed={skill.id} className="h-14 w-14 rounded-xl border border-border shrink-0" />
                             <div className="min-w-0 space-y-1">
                                 <h3 className="font-semibold text-foreground truncate">{skill.name}</h3>
                                 <Badge variant="outline" className={cn("text-[11px] font-semibold uppercase tracking-wider", visibilityStatus.className)}>
