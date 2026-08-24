@@ -324,7 +324,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     return (
         <div className="space-y-4">
             {/* Breadcrumb */}
-            <div className="flex items-center text-sm text-muted-foreground bg-card p-3 rounded-lg border border-border">
+            <div className="flex items-center text-sm text-muted-foreground">
                 <button onClick={() => onPrefixChange("")} className={`hover:text-foreground transition-colors ${!prefix ? 'text-foreground font-medium' : ''}`}>
                     Drive
                 </button>
@@ -364,14 +364,18 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         const folderAllDone = folderIngestibleFiles.length > 0
                             && folderIngestibleFiles.every(f => f.ingestionStatus === 'done');
                         return folderPersonFolderId && folderAllDone ? (
-                            <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                                <div className="flex items-center gap-2 text-sm text-blue-300">
+                            <div className="flex items-center justify-between px-4 py-2.5 rounded-lg bg-primary/10 border border-primary/20">
+                                {/* text-shimmer-accent, not text-primary: the pale rose --primary
+                                    fails WCAG AA as body text on the light theme (see globals.css) —
+                                    --shimmer-accent is the same hue, darkened for readability there,
+                                    and equal to --primary on the dark theme where it's already legible. */}
+                                <div className="flex items-center gap-2 text-sm text-shimmer-accent">
                                     <MessageSquare className="w-4 h-4" />
                                     <span>All documents ingested — ready to chat</span>
                                 </div>
                                 <Button
                                     size="sm"
-                                    className="h-7 text-xs bg-blue-600 hover:bg-blue-500 text-white gap-1.5"
+                                    className="h-7 text-xs gap-1.5"
                                     disabled={!defaultAgentId}
                                     onClick={() => defaultAgentId && router.push(`/${tenant}/dashboard/chat?agentId=${defaultAgentId}&folderId=${folderPersonFolderId}`)}
                                 >
