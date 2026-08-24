@@ -66,17 +66,10 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                                 </Badge>
                             </div>
                         </div>
-                        {// A real <button> can't nest inside the card's <Link>; both states are styled
-                        // as one since the whole card already navigates on click.
-                        skill.installed ? (
-                            <span className={cn(
-                                buttonVariants({ variant: "outline", size: "xs" }),
-                                "shrink-0 pointer-events-none border-green-600/30 text-green-600 dark:border-green-500/30 dark:text-green-500"
-                            )}>
-                                <span className="h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-500" />
-                                Installed
-                            </span>
-                        ) : (
+                        {// A real <button> can't nest inside the card's <Link>; this is styled
+                        // as one since the whole card already navigates on click. Installed
+                        // state is conveyed at the bottom of the card instead of a badge here.
+                        !skill.installed && (
                             <span className={cn(buttonVariants({ variant: "outline", size: "xs" }), "shrink-0 pointer-events-none")}>
                                 <Download />
                                 Install
@@ -88,26 +81,31 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                         {skill.description ?? "No description"}
                     </p>
 
-                    <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                            <ArrowUp className="h-3.5 w-3.5" />
-                            {/* Run counts aren't tracked yet. */}
-                            &mdash; runs
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <Download className="h-3.5 w-3.5" />
-                            {/* Download counts aren't tracked yet. */}
-                            &mdash;
-                        </span>
-                        {hasReadyVersion && (
-                            <span className="flex items-center gap-1 border-l border-border pl-3">
-                                <Package className="h-3.5 w-3.5" />
-                                v{skill.latestVersion}
-                                {skill.installed && skill.installedVersion !== skill.latestVersion ? (
-                                    <> (<span className="text-green-600 dark:text-green-500">installed</span> v{skill.installedVersion})</>
-                                ) : skill.installed ? (
-                                    <> &middot; <span className="text-green-600 dark:text-green-500">installed</span></>
-                                ) : null}
+                    <div className="flex items-center justify-between gap-2 pt-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-3">
+                            <span className="flex items-center gap-1">
+                                <ArrowUp className="h-3.5 w-3.5" />
+                                {/* Run counts aren't tracked yet. */}
+                                &mdash; runs
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <Download className="h-3.5 w-3.5" />
+                                {/* Download counts aren't tracked yet. */}
+                                &mdash;
+                            </span>
+                            {hasReadyVersion && (
+                                <span className="flex items-center gap-1">
+                                    <Package className="h-3.5 w-3.5" />
+                                    v{skill.latestVersion}
+                                </span>
+                            )}
+                        </div>
+
+                        {skill.installed && (
+                            <span className="text-green-600 dark:text-green-500 shrink-0">
+                                {skill.installedVersion !== skill.latestVersion
+                                    ? `installed v${skill.installedVersion}`
+                                    : "installed"}
                             </span>
                         )}
                     </div>
