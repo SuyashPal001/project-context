@@ -1,21 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SkillCard } from "@/components/platform/skills/SkillCard";
+import { SkillDetailModal } from "@/components/platform/skills/SkillDetailModal";
 import { ImportSkillDialog } from "@/components/platform/skills/ImportSkillDialog";
 import { listSkills } from "@/components/platform/skills/actions";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
+import { useTenant } from "@/app/[tenant]/tenant-provider";
 
 export default function SkillsPage() {
     const queryClient = useQueryClient();
-    const tenantSlug = useParams().tenant as string;
+    const { tenantId } = useTenant();
     const [tab, setTab] = useState<"mine" | "explore">("mine");
     const [importOpen, setImportOpen] = useState(false);
+    const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
 
     // Poll only while an import is genuinely still running. latestVersion
     // stays at 0 for a *failed* import too, so keying off that alone
@@ -82,7 +84,7 @@ export default function SkillsPage() {
                 <SkillGrid
                     skills={mineSkills}
                     isLoading={mineLoading}
-                    tenantSlug={tenantSlug}
+                    onSelect={setSelectedSkillId}
                     emptyMessage="No skills yet — import one to get started."
                 />
             ) : (
@@ -92,7 +94,7 @@ export default function SkillsPage() {
                         <SkillGrid
                             skills={officialSkills}
                             isLoading={officialLoading}
-                            tenantSlug={tenantSlug}
+                            onSelect={setSelectedSkillId}
                             emptyMessage="No official skills yet."
                         />
                     </div>
@@ -101,7 +103,7 @@ export default function SkillsPage() {
                         <SkillGrid
                             skills={publicSkills}
                             isLoading={publicLoading}
-                            tenantSlug={tenantSlug}
+                            onSelect={setSelectedSkillId}
                             emptyMessage="No community skills yet."
                         />
                     </div>
@@ -113,6 +115,12 @@ export default function SkillsPage() {
                 onOpenChange={setImportOpen}
                 onImported={() => queryClient.invalidateQueries({ queryKey: ["skills"] })}
             />
+
+            <SkillDetailModal
+                skillId={selectedSkillId}
+                tenantId={tenantId}
+                onOpenChange={(open) => !open && setSelectedSkillId(null)}
+            />
         </div>
     );
 }
@@ -120,12 +128,12 @@ export default function SkillsPage() {
 function SkillGrid({
     skills,
     isLoading,
-    tenantSlug,
+    onSelect,
     emptyMessage,
 }: {
     skills: Skill[];
     isLoading: boolean;
-    tenantSlug: string;
+    onSelect: (skillId: string) => void;
     emptyMessage: string;
 }) {
     if (isLoading) {
@@ -150,7 +158,7 @@ function SkillGrid({
                 <SkillCard
                     key={skill.id}
                     skill={skill}
-                    href={`/${tenantSlug}/dashboard/skills/${skill.id}`}
+                    onClick={() => onSelect(skill.id)}
                 />
             ))}
         </div>

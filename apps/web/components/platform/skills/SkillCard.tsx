@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ArrowUp, Download, Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +8,7 @@ import type { Skill } from "./types";
 
 interface SkillCardProps {
     skill: Skill;
-    href: string;
+    onClick: () => void;
 }
 
 // A failed import leaves latestVersion at 0 forever, exactly like a still-running
@@ -24,7 +23,7 @@ export function skillImportState(skill: Skill) {
     return { importFailed, hasReadyVersion, dead, importing };
 }
 
-export function SkillCard({ skill, href }: SkillCardProps) {
+export function SkillCard({ skill, onClick }: SkillCardProps) {
     const { importFailed, hasReadyVersion, dead, importing } = skillImportState(skill);
 
     // Importing/failed are transient — shown as a badge up top where the Install
@@ -57,7 +56,7 @@ export function SkillCard({ skill, href }: SkillCardProps) {
             };
 
     return (
-        <Link href={href} className="block">
+        <button type="button" onClick={onClick} className="block w-full text-left">
             <Card className="h-full transition-colors hover:border-input">
                 <CardContent className="pt-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -108,8 +107,8 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                                     : "installed"}
                             </span>
                         ) : !transientStatus ? (
-                            // A real <button> can't nest inside the card's <Link>; this is styled
-                            // as one since the whole card already navigates on click.
+                            // A real <button> can't nest inside the card's own <button>; this is
+                            // styled as one since the whole card already opens the detail modal.
                             <span className={cn(buttonVariants({ variant: "outline", size: "xs" }), "shrink-0 pointer-events-none")}>
                                 <Download />
                                 Install
@@ -118,6 +117,6 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                     </div>
                 </CardContent>
             </Card>
-        </Link>
+        </button>
     );
 }
