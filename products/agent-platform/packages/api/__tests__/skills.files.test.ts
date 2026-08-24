@@ -12,8 +12,10 @@ vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: class { send = s3SendMock },
   PutObjectCommand: class { constructor(public input: unknown) {} },
   ListObjectsV2Command: class { constructor(public input: unknown) {} },
+  GetObjectCommand: class { constructor(public input: unknown) {} },
 }));
-vi.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: vi.fn(async () => 'https://signed.test/put') }));
+const getSignedUrlMock = vi.hoisted(() => vi.fn(async () => 'https://signed.test/get'));
+vi.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl: getSignedUrlMock }));
 
 const SKILL_ID = '22222222-2222-4222-8222-222222222222';
 const TENANT_1 = 'tenant-1';
@@ -115,5 +117,75 @@ describe('GET /skills/:id/files', () => {
     const res = await app.request(`/skills/${SKILL_ID}/files`);
     expect((await res.json()).data).toEqual([]);
     expect(s3SendMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /skills/:id/files/download-url', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.DOCUMENTS_BUCKET = 'test-bucket';
+  });
+
+  it('signs a URL for a file in the pinned version', async () => {
+    mockSkillAndInstall(
+      { id: SKILL_ID, ownerTenantId: TENANT_1, visibility: 'private', isOfficial: false, latestVersion: 3 },
+      [{ installedVersion: 2 }],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request(`/skills/${SKILL_ID}/files/download-url?path=scripts/run.py`);
+    expect(res.status).toBe(200);
+    expect((await res.json()).downloadUrl).toBe('https://signed.test/get');
+    expect(getSignedUrlMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ input: expect.objectContaining({ Key: `skill-packages/${SKILL_ID}/2/scripts/run.py` }) }),
+      expect.anything(),
+    );
+  });
+
+  it('returns 400 without a path', async () => {
+    mockSkillAndInstall(
+      { id: SKILL_ID, ownerTenantId: TENANT_1, visibility: 'private', isOfficial: false, latestVersion: 1 },
+      [],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request(`/skills/${SKILL_ID}/files/download-url`);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 403 for another tenant's private skill", async () => {
+    mockSkillAndInstall(
+      { id: SKILL_ID, ownerTenantId: 'tenant-2', visibility: 'private', isOfficial: false, latestVersion: 1 },
+      [],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request(`/skills/${SKILL_ID}/files/download-url?path=SKILL.md`);
+    expect(res.status).toBe(403);
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when no version is ready', async () => {
+    mockSkillAndInstall(
+      { id: SKILL_ID, ownerTenantId: TENANT_1, visibility: 'private', isOfficial: false, latestVersion: 0 },
+      [],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request(`/skills/${SKILL_ID}/files/download-url?path=SKILL.md`);
+    expect(res.status).toBe(404);
   });
 });

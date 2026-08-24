@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '../db';
 import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
@@ -411,6 +411,54 @@ skillsRoutes.get('/:id/files', async (c) => {
     return c.json({ data });
   } catch (err) {
     console.error('Failed to list skill files:', err);
+    return c.json(INTERNAL_ERROR, 500);
+  }
+});
+
+// GET /skills/:id/files/download-url?path=... — signed URL for one file inside
+// the package, so the browser can fetch/render/download its content directly
+// from S3 without proxying the body through the Lambda. Same access rule and
+// version resolution as the listing endpoint above, so a caller can only ever
+// get a URL to a file this tenant is already allowed to see the listing of.
+skillsRoutes.get('/:id/files/download-url', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  if (!hasPermission(permissions, 'skills', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  if (!uuidSchema.safeParse(skillId).success) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+
+  const path = c.req.query('path');
+  if (!path || path.length > 512) return c.json({ error: 'path is required', code: 'VALIDATION_ERROR' }, 400);
+
+  try {
+    const skill = await resolveSkill(skillId);
+    if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+    const isOwner = skill.ownerTenantId === tenantId;
+    if (!isOwner && skill.visibility !== 'public' && !skill.isOfficial) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const [install] = await db
+      .select({ installedVersion: skillInstalls.installedVersion })
+      .from(skillInstalls)
+      .where(and(
+        eq(skillInstalls.skillId, skillId),
+        eq(skillInstalls.tenantId, tenantId),
+        eq(skillInstalls.status, 'active'),
+      ))
+      .limit(1);
+
+    const version = install?.installedVersion ?? skill.latestVersion;
+    if (version < 1) return c.json({ error: 'File not found', code: 'NOT_FOUND' }, 404);
+
+    const key = `skill-packages/${skillId}/${version}/${path}`;
+    const command = new GetObjectCommand({ Bucket: process.env.DOCUMENTS_BUCKET!, Key: key });
+    const downloadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
+    return c.json({ downloadUrl });
+  } catch (err) {
+    console.error('Failed to sign skill file URL:', err);
     return c.json(INTERNAL_ERROR, 500);
   }
 });

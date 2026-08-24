@@ -52,6 +52,11 @@ export async function listSkillFiles(skillId: string): Promise<SkillFile[]> {
     return res.data;
 }
 
+export async function getSkillFileUrl(skillId: string, path: string): Promise<string> {
+    const res = await api.get<{ downloadUrl: string }>(`/api/v1/skills/${skillId}/files/download-url?path=${encodeURIComponent(path)}`);
+    return res.downloadUrl;
+}
+
 /**
  * Attaches an installed skill to an agent. The system prompt is NOT sent — the
  * server derives it from the pinned skill_versions manifest body, so it can't be

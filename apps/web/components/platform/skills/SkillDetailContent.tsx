@@ -1,9 +1,9 @@
-import { Download, FileText, Package, Plus, Sparkles, Zap } from "lucide-react";
+import { Download, Package, Plus, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { MarkdownViewer } from "@/components/platform/canvas/MarkdownViewer";
+import { SkillFilesPanel } from "./SkillFilesPanel";
 import { SkillIcon } from "./SkillIcon";
 import { skillImportState, skillVisibilityStatus } from "./SkillCard";
 import type { Skill, SkillFile } from "./types";
@@ -151,43 +151,5 @@ function SkillOverview({ skill, files }: { skill: Skill; files: SkillFile[] }) {
         return null;
     }
 
-    return (
-        <div className="grid gap-4 md:grid-cols-[1fr_240px]">
-            <div className="min-w-0 space-y-2">
-                <h4 className="text-sm font-semibold text-foreground">Skill overview</h4>
-                <div
-                    className={cn(
-                        "max-h-[480px] overflow-y-auto rounded-xl border border-border bg-muted/30 p-6",
-                        "[&_h1]:text-2xl [&_h1]:font-bold [&_h1]:tracking-tight [&_h1]:mb-4 [&_h1]:mt-0",
-                        "[&_h2]:text-base [&_h2]:font-bold [&_h2]:mb-2 [&_h2]:mt-6",
-                        "[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1.5 [&_h3]:mt-4",
-                        "[&_p]:text-sm [&_p]:leading-relaxed [&_p]:text-muted-foreground",
-                        "[&_li]:text-sm [&_li]:text-muted-foreground"
-                    )}
-                >
-                    <MarkdownViewer content={skill.body} />
-                </div>
-            </div>
-
-            <div className="rounded-lg border border-border p-3">
-                <div className="flex items-center gap-2 rounded-md bg-muted px-2.5 py-1.5 text-sm font-medium text-foreground">
-                    <Sparkles className="h-4 w-4" />
-                    Skill overview
-                </div>
-                <div className="mt-3 space-y-1.5">
-                    <h5 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Files</h5>
-                    {files.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No files</p>
-                    ) : (
-                        files.map((file) => (
-                            <div key={file.fileName} className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 text-sm text-foreground">
-                                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                <span className="truncate" title={file.fileName}>{file.fileName}</span>
-                            </div>
-                        ))
-                    )}
-                </div>
-            </div>
-        </div>
-    );
+    return <SkillFilesPanel skill={skill} files={files} />;
 }

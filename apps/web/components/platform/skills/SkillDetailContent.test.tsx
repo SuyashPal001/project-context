@@ -1,12 +1,21 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render as rtlRender, screen, cleanup, type RenderResult } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { SkillDetailContent } from "./SkillDetailContent";
 import type { Skill } from "./types";
 
 vi.mock("@/components/platform/canvas/MarkdownViewer", () => ({
     MarkdownViewer: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
 }));
+
+// SkillFilesPanel calls useQuery even when the query is disabled, so every
+// render here needs a QueryClientProvider ancestor.
+function render(ui: ReactElement): RenderResult {
+    const client = new QueryClient();
+    return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 afterEach(cleanup);
 
@@ -122,8 +131,10 @@ describe("SkillDetailContent files sidebar", () => {
                 isTesting={false}
             />,
         );
-        expect(screen.getByTitle("SKILL.md")).toBeTruthy();
-        expect(screen.getByText("scripts/run.py")).toBeTruthy();
+        // "SKILL.md" appears twice: the tree row and the selected-file header.
+        expect(screen.getAllByTitle("SKILL.md").length).toBeGreaterThan(0);
+        expect(screen.getByText("scripts")).toBeTruthy();
+        expect(screen.getByTitle("run.py")).toBeTruthy();
     });
 
     it("says so when the package has no listed files", () => {
