@@ -31,3 +31,23 @@ export function getFileCategory(contentType: string, filename: string): FileCate
 export function isIngestibleCategory(category: FileCategory): boolean {
     return category === 'document';
 }
+
+export type TimeRange = 'all' | 'today' | '7d' | '30d' | 'older';
+
+export const TIME_RANGE_LABELS: Record<TimeRange, string> = {
+    all: 'Any time',
+    today: 'Today',
+    '7d': 'Last 7 days',
+    '30d': 'Last 30 days',
+    older: 'Older (30+ days ago)',
+};
+
+export function matchesTimeRange(createdAt: string, range: TimeRange): boolean {
+    if (range === 'all') return true;
+    const ageMs = Date.now() - new Date(createdAt).getTime();
+    const day = 24 * 60 * 60 * 1000;
+    if (range === 'today') return ageMs < day;
+    if (range === '7d') return ageMs < 7 * day;
+    if (range === '30d') return ageMs < 30 * day;
+    return ageMs >= 30 * day;
+}

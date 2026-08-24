@@ -3,9 +3,10 @@
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { FileCategory, FILE_CATEGORY_LABELS } from "./fileCategory";
+import { FileCategory, FILE_CATEGORY_LABELS, TimeRange, TIME_RANGE_LABELS } from "./fileCategory";
 
 const CATEGORIES: FileCategory[] = ['document', 'image', 'audio-video', 'archive', 'other'];
+const TIME_RANGES: TimeRange[] = ['all', 'today', '7d', '30d', 'older'];
 
 interface Props {
     officeCodes: string[];
@@ -15,9 +16,11 @@ interface Props {
     onClassificationChange: (v: string) => void;
     filterCategory: string;
     onCategoryChange: (v: string) => void;
+    filterTimeRange: TimeRange;
+    onTimeRangeChange: (v: TimeRange) => void;
 }
 
-export function FilesFilter({ officeCodes, filterOffice, filterClassification, onOfficeChange, onClassificationChange, filterCategory, onCategoryChange }: Props) {
+export function FilesFilter({ officeCodes, filterOffice, filterClassification, onOfficeChange, onClassificationChange, filterCategory, onCategoryChange, filterTimeRange, onTimeRangeChange }: Props) {
     return (
         <div className="flex gap-2">
             <Select value={filterCategory} onValueChange={onCategoryChange}>
@@ -28,6 +31,16 @@ export function FilesFilter({ officeCodes, filterOffice, filterClassification, o
                     <SelectItem value="all" className="text-xs">All Types</SelectItem>
                     {CATEGORIES.map(c => (
                         <SelectItem key={c} value={c} className="text-xs">{FILE_CATEGORY_LABELS[c]}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            <Select value={filterTimeRange} onValueChange={(v) => onTimeRangeChange(v as TimeRange)}>
+                <SelectTrigger className="w-40 h-8 text-xs bg-secondary border-border">
+                    <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-secondary border-border">
+                    {TIME_RANGES.map(r => (
+                        <SelectItem key={r} value={r} className="text-xs">{TIME_RANGE_LABELS[r]}</SelectItem>
                     ))}
                 </SelectContent>
             </Select>

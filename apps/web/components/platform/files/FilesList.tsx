@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { EmptyState, ConfirmDialog } from "@/components/platform/shared";
 import {
-    Loader2, FolderOpen, FileText, Image as ImageIcon, Video, Music, FileCode, File, Download, Trash2, Folder as FolderIcon, ChevronRight, ChevronLeft, RefreshCw, Play, MessageSquare
+    Loader2, FolderOpen, FileText, Image as ImageIcon, Video, Music, FileCode, File, Download, Trash2, Folder as FolderIcon, ChevronRight, ChevronLeft, RefreshCw, Play, MessageSquare, LayoutGrid, List as ListIcon
 } from "lucide-react";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -17,7 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { IngestionSidePanel } from "./IngestionSidePanel";
 import { FilesFilter } from "./FilesFilter";
-import { getFileCategory, isIngestibleCategory } from "./fileCategory";
+import { FileThumbnail } from "./FileThumbnail";
+import { getFileCategory, isIngestibleCategory, matchesTimeRange, TimeRange } from "./fileCategory";
 
 interface ExtractedField {
     key: string;
@@ -137,9 +138,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const [filterOffice, setFilterOffice] = useState("all");
     const [filterClassification, setFilterClassification] = useState("all");
     const [filterCategory, setFilterCategory] = useState("all");
+    const [filterTimeRange, setFilterTimeRange] = useState<TimeRange>("all");
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [bulkDeleting, setBulkDeleting] = useState(false);
+    const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
     const PAGE_SIZE = 10;
 
     const { data: response, isLoading } = useQuery({
@@ -292,10 +295,20 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         };
     }, [response?.data, prefix]);
 
+    // Shared by both list (table folder rows) and grid (folder cards) so the
+    // done/ingesting computation isn't duplicated across the two render paths.
+    const folderCards = useMemo(() => virtualFolders.map(folderName => {
+        const folderPrefix = `${prefix}${folderName}/`;
+        const folderFiles = (response?.data ?? []).filter(f => f.key.startsWith(folderPrefix));
+        const allDone = folderFiles.length > 0 && folderFiles.every(f => f.ingestionStatus === 'done');
+        return { folderName, folderPrefix, allDone, isIngesting: ingestingFolders.has(folderName) };
+    }), [virtualFolders, response?.data, prefix, ingestingFolders]);
+
     const filteredFiles = files.filter(f =>
         (filterOffice === "all" || f.officeCode === filterOffice) &&
         (filterClassification === "all" || f.classification === filterClassification) &&
-        (filterCategory === "all" || getFileCategory(f.contentType, f.filename) === filterCategory));
+        (filterCategory === "all" || getFileCategory(f.contentType, f.filename) === filterCategory) &&
+        matchesTimeRange(f.createdAt, filterTimeRange));
 
     const totalPages = Math.max(1, Math.ceil(filteredFiles.length / PAGE_SIZE));
     const pagedFiles = filteredFiles.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -385,11 +398,34 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </div>
                         ) : null;
                     })()}
-                    {files.length > 0 && <FilesFilter
-                        officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
-                        filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }}
-                        filterCategory={filterCategory} onCategoryChange={v => { setFilterCategory(v); setCurrentPage(1); }}
-                    />}
+                    <div className="flex items-center justify-between gap-2">
+                        {files.length > 0 ? <FilesFilter
+                            officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
+                            filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }}
+                            filterCategory={filterCategory} onCategoryChange={v => { setFilterCategory(v); setCurrentPage(1); }}
+                            filterTimeRange={filterTimeRange} onTimeRangeChange={v => { setFilterTimeRange(v); setCurrentPage(1); }}
+                        /> : <div />}
+                        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-secondary border border-border">
+                            <Button
+                                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => setViewMode('list')}
+                                title="List view"
+                            >
+                                <ListIcon className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => setViewMode('grid')}
+                                title="Grid view"
+                            >
+                                <LayoutGrid className="w-3.5 h-3.5" />
+                            </Button>
+                        </div>
+                    </div>
                     {files.some(f =>
                         (f.ingestionStatus === 'pending' || f.ingestionStatus === 'failed')
                         && isIngestibleCategory(getFileCategory(f.contentType, f.filename))
@@ -420,7 +456,104 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         </div>
                     )}
                     <div className="flex gap-4 items-start">
-                    {/* Main table */}
+                    {viewMode === 'grid' ? (
+                    <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                        {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting }) => (
+                            <div
+                                key={`folder-${folderName}`}
+                                onClick={() => onPrefixChange(folderPrefix)}
+                                className="group relative flex flex-col p-3 rounded-xl border border-border bg-card hover:bg-secondary/60 transition-colors cursor-pointer"
+                            >
+                                <div className="flex items-center gap-2 mb-2">
+                                    <FolderIcon className="w-5 h-5 text-amber-500 fill-amber-500/20 shrink-0" />
+                                    <span className="font-medium text-foreground text-sm truncate" title={`${folderName}/`}>{folderName}/</span>
+                                </div>
+                                <div className="flex items-center justify-end gap-1 mt-auto opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-muted-foreground hover:text-green-400"
+                                        title="Ingest"
+                                        onClick={() => ingestFolder(folderName)}
+                                        disabled={allDone || isIngesting}
+                                    >
+                                        {isIngesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                                    </Button>
+                                    {canDelete && (
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => setDeletingFolderName(folderName)}>
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        {pagedFiles.map(file => {
+                            const category = getFileCategory(file.contentType, file.filename);
+                            const isIngestible = isIngestibleCategory(category);
+                            const isSelected = selectedIds.has(file.id);
+                            return (
+                                <div
+                                    key={file.id}
+                                    onClick={() => setSelectedFile(selectedFile?.id === file.id ? null : file)}
+                                    className={`group relative flex flex-col rounded-xl border bg-card hover:bg-secondary/60 transition-colors cursor-pointer overflow-hidden ${selectedFile?.id === file.id ? 'border-l-2 border-l-blue-500 border-border' : 'border-border'}`}
+                                >
+                                    <div className="absolute top-2 left-2 z-10" onClick={e => e.stopPropagation()}>
+                                        <Checkbox
+                                            checked={isSelected}
+                                            className="bg-background/70 backdrop-blur-sm"
+                                            onCheckedChange={() => setSelectedIds(prev => { const n = new Set(prev); n.has(file.id) ? n.delete(file.id) : n.add(file.id); return n; })}
+                                        />
+                                    </div>
+                                    <div className="aspect-square w-full bg-muted/20 flex items-center justify-center">
+                                        {category === 'image' ? (
+                                            <FileThumbnail fileId={file.id} alt={file.filename} />
+                                        ) : category === 'audio-video' && file.contentType.startsWith('video') ? (
+                                            <div className="w-full h-full flex items-center justify-center bg-muted/40">
+                                                <div className="h-9 w-9 rounded-full bg-background/80 flex items-center justify-center">
+                                                    <Play className="w-4 h-4 text-foreground/70 ml-0.5" />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="scale-[2.2]">{getFileIcon(file.contentType)}</div>
+                                        )}
+                                    </div>
+                                    <div className="p-2.5 flex flex-col gap-1">
+                                        <span className="text-xs font-medium text-foreground/80 truncate" title={file.filename}>{file.filename}</span>
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                            {isIngestible ? (
+                                                <ProcessingStepsIndicator status={file.ingestionStatus} />
+                                            ) : (
+                                                <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">{file.formatDetected ?? category}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-foreground" onClick={() => downloadFile(file.id)}>
+                                            <Download className="w-3 h-3" />
+                                        </Button>
+                                        {isIngestible && (file.ingestionStatus === 'pending' || file.ingestionStatus === 'failed') && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-green-400"
+                                                title="Ingest"
+                                                onClick={() => ingestFile(file.id)}
+                                                disabled={ingestingFiles.has(file.id)}
+                                            >
+                                                {ingestingFiles.has(file.id) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                            </Button>
+                                        )}
+                                        {canDelete && (
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-red-500" onClick={() => setDeletingFileId(file.id)}>
+                                                <Trash2 className="w-3 h-3" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    ) : (
                     <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
                         <Table>
                             <TableHeader className="bg-muted/50">
@@ -439,11 +572,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {virtualFolders.map(folderName => {
-                                    const folderPrefix = `${prefix}${folderName}/`;
-                                    const folderFiles = (response?.data ?? []).filter(f => f.key.startsWith(folderPrefix));
-                                    const allDone = folderFiles.length > 0 && folderFiles.every(f => f.ingestionStatus === 'done');
-                                    const isIngesting = ingestingFolders.has(folderName);
+                                {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting }) => {
                                     return (
                                         <TableRow
                                             key={`folder-${folderName}`}
@@ -566,6 +695,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </TableBody>
                         </Table>
                     </div>
+                    )}
 
                     {/* Side panel */}
                     {selectedFile && (
