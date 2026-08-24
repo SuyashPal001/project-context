@@ -385,12 +385,12 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </div>
                         ) : null;
                     })()}
-                    {prefix && <FilesFilter
+                    {files.length > 0 && <FilesFilter
                         officeCodes={officeCodes} filterOffice={filterOffice} onOfficeChange={v => { setFilterOffice(v); setCurrentPage(1); }}
                         filterClassification={filterClassification} onClassificationChange={v => { setFilterClassification(v); setCurrentPage(1); }}
                         filterCategory={filterCategory} onCategoryChange={v => { setFilterCategory(v); setCurrentPage(1); }}
                     />}
-                    {prefix && files.some(f =>
+                    {files.some(f =>
                         (f.ingestionStatus === 'pending' || f.ingestionStatus === 'failed')
                         && isIngestibleCategory(getFileCategory(f.contentType, f.filename))
                     ) && (
