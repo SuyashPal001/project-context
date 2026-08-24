@@ -101,13 +101,11 @@ export function SkillCard({ skill, onClick, onInstall }: SkillCardProps) {
                         <div className="flex items-center gap-3">
                             <span className="flex items-center gap-1">
                                 <ArrowUp className="h-3.5 w-3.5" />
-                                {/* Run counts aren't tracked yet. */}
-                                — runs
+                                {skill.runCount} runs
                             </span>
                             <span className="flex items-center gap-1">
                                 <Download className="h-3.5 w-3.5" />
-                                {/* Download counts aren't tracked yet. */}
-                                —
+                                {skill.downloadCount}
                             </span>
                             {hasReadyVersion && (
                                 <span className="flex items-center gap-1">

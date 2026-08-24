@@ -77,3 +77,18 @@ describe("SkillDetailContent author row", () => {
         expect(screen.getByText("Unknown")).toBeTruthy();
     });
 });
+
+describe("SkillDetailContent runs row", () => {
+    it("shows the tenant's run count", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ runCount: 12 })}
+                isOwner
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+            />,
+        );
+        expect(screen.getByText("12")).toBeTruthy();
+    });
+});

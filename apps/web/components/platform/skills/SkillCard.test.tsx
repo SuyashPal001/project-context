@@ -94,3 +94,22 @@ describe("SkillCard install button", () => {
         expect(onInstall).not.toHaveBeenCalled();
     });
 });
+
+describe("SkillCard counts", () => {
+    it("renders the real run and download counts", () => {
+        render(
+            <SkillCard
+                skill={makeSkill({ runCount: 12, downloadCount: 340 })}
+                onClick={vi.fn()}
+                onInstall={vi.fn()}
+            />,
+        );
+        expect(screen.getByText("12 runs")).toBeTruthy();
+        expect(screen.getByText("340")).toBeTruthy();
+    });
+
+    it("renders zeroes rather than dashes for an untouched skill", () => {
+        render(<SkillCard skill={makeSkill()} onClick={vi.fn()} onInstall={vi.fn()} />);
+        expect(screen.getByText("0 runs")).toBeTruthy();
+    });
+});

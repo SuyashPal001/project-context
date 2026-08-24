@@ -71,7 +71,7 @@ export function SkillDetailContent({
 
             <dl className="divide-y divide-border rounded-lg border border-border">
                 <MetaRow icon={User} label="Author" value={skill.ownerName ?? skill.ownerEmail ?? "Unknown"} />
-                <MetaRow icon={Zap} label="Runs" value="—" />
+                <MetaRow icon={Zap} label="Runs" value={String(skill.runCount)} />
                 <MetaRow icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
                 <MetaRow icon={CalendarPlus} label="Date created" value={relativeTime(skill.createdAt)} />
             </dl>

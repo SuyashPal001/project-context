@@ -26,9 +26,9 @@ export interface Skill {
     failureReason: string | null;
     /** Full SKILL.md body (frontmatter stripped), stored at import time. Only returned by GET /skills/:id, and only once the latest version is 'ready' — absent (not just null) on list responses. */
     body?: string | null;
-    /** Not tracked by the API yet — real counts land in a later task. Kept on the type now so fixtures/tests can already model it. */
+    /** Times a chat message ran with this skill attached, for THIS tenant only (skill_installs.run_count). 0 when never installed. */
     runCount: number;
-    /** Not tracked by the API yet — real counts land in a later task. Kept on the type now so fixtures/tests can already model it. */
+    /** Times this skill has been installed, counted globally across all tenants (skills.download_count). */
     downloadCount: number;
 }
 
