@@ -154,7 +154,7 @@ function SkillGrid({
 }) {
     if (isLoading) {
         return (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[140px] w-full rounded-xl" />)}
             </div>
         );
@@ -169,7 +169,7 @@ function SkillGrid({
     }
 
     return (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {skills.map((skill) => (
                 <SkillCard
                     key={skill.id}
