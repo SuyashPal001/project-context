@@ -2,6 +2,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Download, FileText, Package, Plus, Sparkles, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/platform/canvas/MarkdownViewer";
 import { SkillIcon } from "./SkillIcon";
@@ -93,7 +94,14 @@ export function SkillDetailContent({
                 </div>
             )}
 
-            <SkillOverview skill={skill} files={files} />
+            <Tabs defaultValue="about">
+                <TabsList variant="line">
+                    <TabsTrigger value="about">About</TabsTrigger>
+                </TabsList>
+                <TabsContent value="about" className="pt-4">
+                    <SkillOverview skill={skill} files={files} />
+                </TabsContent>
+            </Tabs>
 
             <div className="flex items-center justify-end gap-2">
                 {isOwner && skill.visibility === "private" && hasReadyVersion && (
