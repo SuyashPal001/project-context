@@ -133,6 +133,7 @@ skillsRoutes.get('/', async (c) => {
         ownerTenantId: skills.ownerTenantId, createdBy: skills.createdBy, createdAt: skills.createdAt, updatedAt: skills.updatedAt,
         installId: skillInstalls.id,
         installedVersion: skillInstalls.installedVersion, installStatus: skillInstalls.status,
+        runCount: skillInstalls.runCount,
       })
       .from(skills)
       .leftJoin(skillInstalls, and(eq(skillInstalls.skillId, skills.id), eq(skillInstalls.tenantId, tenantId)))
@@ -170,6 +171,7 @@ skillsRoutes.get('/', async (c) => {
           installed: r.installStatus === 'active',
           latestVersionStatus: latest?.status ?? null,
           ownerName: owner?.name ?? null,
+          runCount: r.runCount ?? 0,
           ownerEmail: r.ownerTenantId === tenantId ? (owner?.email ?? null) : null,
           // failureReason can carry raw, tenant-specific detail (a blocked
           // hostname, manifest/zip contents) for several failure classes —
@@ -237,6 +239,7 @@ skillsRoutes.get('/:id', async (c) => {
         installId: install?.id ?? null,
         installedVersion: install?.installedVersion ?? null,
         installed: install?.status === 'active',
+        runCount: install?.runCount ?? 0,
         latestVersionStatus: latest?.status ?? null,
         failureReason: isOwner ? (latest?.failureReason ?? null) : null,
         body: typeof body === 'string' ? body : null,

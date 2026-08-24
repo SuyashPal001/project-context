@@ -60,6 +60,10 @@ export const skillInstalls = pgTable('skill_installs', {
   status: skillInstallStatusEnum('status').notNull().default('active'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
+  // Per-tenant: incremented once per chat message sent while this install's
+  // skill is attached to the agent. Tenant-scoped by construction, unlike
+  // skills.download_count which is global.
+  runCount: integer('run_count').notNull().default(0),
 }, (t) => ({
   tenantSkillUniq: unique().on(t.tenantId, t.skillId),
   tenantStatusIdx: index('skill_installs_tenant_status_idx').on(t.tenantId, t.status),

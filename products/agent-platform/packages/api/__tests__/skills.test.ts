@@ -740,3 +740,37 @@ describe('download_count', () => {
     expect(dbMock.execute).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('run_count', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("exposes this tenant's runCount from its own install row", async () => {
+    mockList(
+      [{ id: SKILL_ID, name: 'PDF Tools', ownerTenantId: TENANT_1, createdBy: 'user-9', installStatus: 'active', installId: 'install-1', runCount: 7, downloadCount: 42 }],
+      [{ skillId: SKILL_ID, status: 'ready', failureReason: null }],
+      [{ id: 'user-9', name: 'Ada Lovelace', email: 'ada@example.com' }],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills?tab=installed');
+    expect((await res.json()).data[0].runCount).toBe(7);
+  });
+
+  it('reports runCount 0 when this tenant has no install row', async () => {
+    mockList(
+      [{ id: SKILL_ID, name: 'PDF Tools', ownerTenantId: 'tenant-2', createdBy: 'user-9', installStatus: null, installId: null, runCount: null, downloadCount: 42 }],
+      [{ skillId: SKILL_ID, status: 'ready', failureReason: null }],
+      [{ id: 'user-9', name: 'Ada Lovelace', email: 'ada@example.com' }],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills?tab=public');
+    expect((await res.json()).data[0].runCount).toBe(0);
+  });
+});

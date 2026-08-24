@@ -40,12 +40,14 @@ export interface AgentSkill {
   systemPrompt: string | null
   tools: string[] | null
   config: unknown
+  /** skill_installs.id when this agent_skills row came from an installed skill; null for hand-authored ones. */
+  installId: string | null
 }
 
 export async function fetchAgentSkill(agentId: string): Promise<AgentSkill | null> {
   const p = getPool()
-  const res = await p.query<{ system_prompt: string | null; tools: unknown; config: unknown }>(
-    `SELECT system_prompt, tools, config FROM agent_skills
+  const res = await p.query<{ system_prompt: string | null; tools: unknown; config: unknown; install_id: string | null }>(
+    `SELECT system_prompt, tools, config, install_id FROM agent_skills
      WHERE agent_id = $1 AND status = 'active'
      ORDER BY version DESC LIMIT 1`,
     [agentId],
@@ -56,7 +58,19 @@ export async function fetchAgentSkill(agentId: string): Promise<AgentSkill | nul
   const tools = Array.isArray(rawTools)
     ? (rawTools as string[])
     : null
-  return { systemPrompt: row.system_prompt, tools, config: row.config }
+  return { systemPrompt: row.system_prompt, tools, config: row.config, installId: row.install_id }
+}
+
+// run_count is per-tenant, so the UPDATE is scoped by tenant_id as well as the
+// install id — an install id from another tenant matches zero rows rather than
+// crediting the wrong tenant's counter.
+export async function recordSkillRun(installId: string, tenantId: string): Promise<void> {
+  const p = getPool()
+  await p.query(
+    `UPDATE skill_installs SET run_count = run_count + 1, updated_at = NOW()
+     WHERE id = $1 AND tenant_id = $2`,
+    [installId, tenantId],
+  )
 }
 
 export async function fetchAgentPersonality(agentId: string): Promise<string | null> {
