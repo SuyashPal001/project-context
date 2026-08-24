@@ -242,23 +242,6 @@ export function AgentsView() {
                 )}
             </div>
 
-            {tab === "mine" && (
-                <div className="flex gap-1 rounded-full border border-border p-1 w-fit">
-                    {(["employees", "teams"] as const).map((t) => (
-                        <button
-                            key={t}
-                            onClick={() => setMineSubTab(t)}
-                            className={cn(
-                                "rounded-full px-3 py-1 text-xs font-medium capitalize transition-colors",
-                                mineSubTab === t ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
-                            )}
-                        >
-                            {t}
-                        </button>
-                    ))}
-                </div>
-            )}
-
             {tab === "explore" && categories.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                     <Button
