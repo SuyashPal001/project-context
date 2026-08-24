@@ -1,8 +1,9 @@
 import { formatDistanceToNow } from "date-fns";
-import { CalendarClock, Download, FileText, Package, Plus, Sparkles, User, Zap } from "lucide-react";
+import { CalendarClock, CalendarPlus, Download, FileText, Package, Plus, Sparkles, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MarkdownViewer } from "@/components/platform/canvas/MarkdownViewer";
+import { SkillIcon } from "./SkillIcon";
 import { skillImportState } from "./SkillCard";
 import type { Skill, SkillFile } from "./types";
 
@@ -31,10 +32,17 @@ export function SkillDetailContent({
     return (
         <div className="space-y-6">
             <div className="space-y-3">
-                <div className="min-w-0 space-y-1.5">
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground">{skill.name}</h1>
-                    <p className="text-muted-foreground line-clamp-2">{skill.description ?? "No description"}</p>
+                <div className="flex items-center gap-3">
+                    <SkillIcon seed={skill.id} className="h-14 w-14 rounded-lg border border-border shrink-0" />
+                    <div className="min-w-0 space-y-0.5">
+                        <h1 className="text-2xl font-bold tracking-tight text-foreground truncate">{skill.name}</h1>
+                        <p className="text-sm text-muted-foreground truncate">
+                            {skill.isOfficial ? "ProjectContext" : skill.ownerName ?? skill.ownerEmail ?? "Unknown"}
+                        </p>
+                    </div>
                 </div>
+
+                <p className="text-muted-foreground line-clamp-2">{skill.description ?? "No description"}</p>
 
                 <div className="flex flex-wrap items-center gap-1.5">
                     {importFailed && <Badge variant="destructive">{dead ? "Failed" : "Update failed"}</Badge>}
@@ -68,11 +76,7 @@ export function SkillDetailContent({
             )}
 
             <div className="flex flex-wrap items-center gap-2">
-                <MetaPill
-                    icon={User}
-                    label="Created by"
-                    value={`${skill.ownerName ?? skill.ownerEmail ?? "Unknown"} · ${relativeTime(skill.createdAt)}`}
-                />
+                <MetaPill icon={CalendarPlus} label="Created" value={relativeTime(skill.createdAt)} />
                 <MetaPill icon={CalendarClock} label="Last update" value={relativeTime(skill.updatedAt)} />
             </div>
 
@@ -139,7 +143,7 @@ function SkillOverview({ skill, files }: { skill: Skill; files: SkillFile[] }) {
     );
 }
 
-function MetaPill({ icon: Icon, label, value }: { icon: typeof User; label: string; value: string }) {
+function MetaPill({ icon: Icon, label, value }: { icon: typeof CalendarClock; label: string; value: string }) {
     return (
         <span
             className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-sm text-foreground"
