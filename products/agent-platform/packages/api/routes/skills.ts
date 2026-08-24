@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, desc, inArray } from 'drizzle-orm';
+import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -129,6 +129,7 @@ skillsRoutes.get('/', async (c) => {
       .select({
         id: skills.id, name: skills.name, slug: skills.slug, description: skills.description,
         visibility: skills.visibility, isOfficial: skills.isOfficial, latestVersion: skills.latestVersion,
+        downloadCount: skills.downloadCount,
         ownerTenantId: skills.ownerTenantId, createdBy: skills.createdBy, createdAt: skills.createdAt, updatedAt: skills.updatedAt,
         installId: skillInstalls.id,
         installedVersion: skillInstalls.installedVersion, installStatus: skillInstalls.status,
@@ -230,6 +231,7 @@ skillsRoutes.get('/:id', async (c) => {
       data: {
         id: skill.id, name: skill.name, slug: skill.slug, description: skill.description,
         visibility: skill.visibility, isOfficial: skill.isOfficial, latestVersion: skill.latestVersion,
+        downloadCount: skill.downloadCount,
         ownerTenantId: skill.ownerTenantId, ownerName: owner?.name ?? null, ownerEmail: isOwner ? (owner?.email ?? null) : null,
         createdAt: skill.createdAt, updatedAt: skill.updatedAt,
         installId: install?.id ?? null,
@@ -415,6 +417,13 @@ skillsRoutes.post('/:id/install', async (c) => {
       target: [skillInstalls.tenantId, skillInstalls.skillId],
       set: { status: 'active', installedVersion: skill.latestVersion, updatedAt: new Date() },
     }).returning();
+
+    // Raw SQL, not db.update(skills): the Drizzle column has $onUpdate on
+    // updatedAt, so an ORM update would bump the skill's "Last update"
+    // timestamp on every install. Fire-and-forget — a counter must never fail
+    // the install itself.
+    db.execute(sql`UPDATE skills SET download_count = download_count + 1 WHERE id = ${skillId}`)
+      .catch((err: unknown) => console.error('Failed to increment skill download_count:', err));
 
     db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'skill_installed', resource: 'skill_install', resourceId: installed.id, metadata: { skillId, version: skill.latestVersion }, traceId: c.get('traceId') ?? '' }).catch(() => {});
     return c.json({ data: installed }, 201);

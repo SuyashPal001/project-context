@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
 import { users } from '@serverless-saas/database/schema/auth';
 
-const dbMock = vi.hoisted(() => ({ select: vi.fn(), selectDistinctOn: vi.fn(), insert: vi.fn(), update: vi.fn() }));
+const dbMock = vi.hoisted(() => ({ select: vi.fn(), selectDistinctOn: vi.fn(), insert: vi.fn(), update: vi.fn(), execute: vi.fn(() => Promise.resolve()) }));
 vi.mock('../db', () => ({ db: dbMock }));
 
 const publishToQueueMock = vi.hoisted(() => vi.fn());
@@ -124,24 +124,24 @@ describe('POST /skills', () => {
   });
 });
 
+function mockList(
+  rows: Record<string, unknown>[],
+  versionRows: Record<string, unknown>[],
+  ownerRows: Record<string, unknown>[] = [],
+) {
+  dbMock.select.mockImplementation(() => ({
+    from: (table: unknown) => {
+      if (table === users) return { where: async () => ownerRows };
+      return { leftJoin: () => ({ where: () => ({ orderBy: async () => rows }) }) };
+    },
+  }));
+  dbMock.selectDistinctOn.mockImplementation(() => ({
+    from: () => ({ where: () => ({ orderBy: async () => versionRows }) }),
+  }));
+}
+
 describe('GET /skills', () => {
   beforeEach(() => vi.clearAllMocks());
-
-  function mockList(
-    rows: Record<string, unknown>[],
-    versionRows: Record<string, unknown>[],
-    ownerRows: Record<string, unknown>[] = [],
-  ) {
-    dbMock.select.mockImplementation(() => ({
-      from: (table: unknown) => {
-        if (table === users) return { where: async () => ownerRows };
-        return { leftJoin: () => ({ where: () => ({ orderBy: async () => rows }) }) };
-      },
-    }));
-    dbMock.selectDistinctOn.mockImplementation(() => ({
-      from: () => ({ where: () => ({ orderBy: async () => versionRows }) }),
-    }));
-  }
 
   it('exposes the install row id so the attach picker can send a real skill_installs.id', async () => {
     mockList(
@@ -695,5 +695,48 @@ describe('GET /skills/:id — owner info', () => {
     const body = await res.json();
     expect(body.data.ownerName).toBe('Ada Lovelace');
     expect(body.data.ownerEmail).toBe('ada@example.com');
+  });
+});
+
+describe('download_count', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('exposes downloadCount on the list response', async () => {
+    mockList(
+      [{ id: SKILL_ID, name: 'PDF Tools', ownerTenantId: TENANT_1, createdBy: 'user-9', installStatus: null, downloadCount: 42 }],
+      [{ skillId: SKILL_ID, status: 'ready', failureReason: null }],
+      [{ id: 'user-9', name: 'Ada Lovelace', email: 'ada@example.com' }],
+    );
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills?tab=mine');
+    expect((await res.json()).data[0].downloadCount).toBe(42);
+  });
+
+  it('increments skills.download_count on every successful install, globally', async () => {
+    dbMock.select.mockImplementation(() => ({
+      from: (table: unknown) => {
+        if (table === skills) return { where: () => ({ limit: async () => [{ id: SKILL_ID, ownerTenantId: 'tenant-2', visibility: 'public', isOfficial: false, latestVersion: 3 }] }) };
+        throw new Error('unexpected select target');
+      },
+    }));
+    dbMock.insert.mockImplementation(() => ({
+      values: () => ({
+        onConflictDoUpdate: () => ({ returning: async () => [{ id: 'install-1', installedVersion: 3 }] }),
+        returning: async () => [{ id: 'audit-1' }],
+        catch: () => {},
+      }),
+    }));
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request(`/skills/${SKILL_ID}/install`, { method: 'POST' });
+    expect(res.status).toBe(201);
+    expect(dbMock.execute).toHaveBeenCalledTimes(1);
   });
 });
