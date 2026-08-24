@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Copy, Download, FileCode, FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Download, FileCode, FileImage, FileText, Grid2x2, List } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,41 @@ const CODE_EXTENSIONS = new Set([
     "py", "js", "jsx", "ts", "tsx", "sh", "bash", "json", "yaml", "yml",
     "toml", "css", "html", "rb", "go", "java", "c", "cpp", "rs", "sql",
 ]);
+
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"]);
+
+type FileKind = "image" | "pdf" | "docx" | "markdown" | "code" | "file";
+
+function classifyFile(path: string): FileKind {
+    const ext = path.split(".").pop()?.toLowerCase() ?? "";
+    if (IMAGE_EXTENSIONS.has(ext)) return "image";
+    if (ext === "pdf") return "pdf";
+    if (ext === "docx" || ext === "doc") return "docx";
+    if (ext === "md") return "markdown";
+    if (CODE_EXTENSIONS.has(ext)) return "code";
+    return "file";
+}
+
+// Same tinted-card language as AssetGallery.tsx (chat's asset grid) — a
+// consistent color per format instead of a flat background for anything
+// without a real per-file thumbnail.
+const KIND_STYLES: Record<FileKind, { bg: string; icon: string; badge: string }> = {
+    image: { bg: "bg-gradient-to-br from-emerald-500/20 via-teal-500/10 to-muted", icon: "text-emerald-400", badge: "IMG" },
+    pdf: { bg: "bg-gradient-to-br from-red-500/20 via-orange-500/10 to-muted", icon: "text-red-400", badge: "PDF" },
+    docx: { bg: "bg-gradient-to-br from-blue-500/20 via-sky-500/10 to-muted", icon: "text-blue-400", badge: "DOCX" },
+    markdown: { bg: "bg-gradient-to-br from-slate-500/20 via-gray-500/10 to-muted", icon: "text-slate-400", badge: "MD" },
+    code: { bg: "bg-gradient-to-br from-amber-500/20 via-yellow-500/10 to-muted", icon: "text-amber-400", badge: "CODE" },
+    file: { bg: "bg-muted", icon: "text-muted-foreground/60", badge: "FILE" },
+};
+
+const KIND_ICONS: Record<FileKind, React.ElementType> = {
+    image: FileImage,
+    pdf: FileText,
+    docx: FileText,
+    markdown: FileText,
+    code: FileCode,
+    file: FileText,
+};
 
 interface TreeNode {
     name: string;
@@ -122,6 +157,48 @@ function FileTreeRow({
         >
             <FileIcon path={node.path} className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{node.name}</span>
+        </button>
+    );
+}
+
+function FileGridCard({ skillId, file, isSelected, onSelect }: { skillId: string; file: SkillFile; isSelected: boolean; onSelect: () => void }) {
+    const kind = classifyFile(file.fileName);
+    const style = KIND_STYLES[kind];
+    const Icon = KIND_ICONS[kind];
+    const name = file.fileName.split("/").pop() ?? file.fileName;
+
+    // Only images get a real preview — everything else falls back to the
+    // tinted icon card, same as AssetGallery.tsx for pdf/docx/audio.
+    const { data: imageUrl } = useQuery({
+        queryKey: ["skills", "file-url", skillId, file.fileName],
+        queryFn: () => getSkillFileUrl(skillId, file.fileName),
+        staleTime: FILE_URL_STALE_MS,
+        enabled: kind === "image",
+    });
+
+    return (
+        <button
+            type="button"
+            onClick={onSelect}
+            title={file.fileName}
+            className={cn(
+                "group flex flex-col overflow-hidden rounded-xl border text-left transition-colors",
+                isSelected ? "border-primary" : "border-border/60 hover:border-primary/40"
+            )}
+        >
+            <div className={cn("relative aspect-video flex items-center justify-center", style.bg)}>
+                {imageUrl ? (
+                    <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
+                ) : (
+                    <Icon className={cn("h-7 w-7", style.icon)} />
+                )}
+                <span className="absolute bottom-1.5 right-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-black/60 text-white">
+                    {style.badge}
+                </span>
+            </div>
+            <div className="px-2 py-1.5">
+                <p className="text-xs font-medium truncate text-foreground">{name}</p>
+            </div>
         </button>
     );
 }
@@ -240,6 +317,7 @@ function FileContentViewer({ skillId, path, skillBody }: { skillId: string; path
 
 export function SkillFilesPanel({ skill, files, filesLoading = false }: { skill: Skill; files: SkillFile[]; filesLoading?: boolean }) {
     const tree = useMemo(() => buildFileTree(files), [files]);
+    const [viewMode, setViewMode] = useState<"tree" | "grid">("tree");
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
     // Files can arrive after an import finishes polling, so the default is
     // derived on every render rather than committed to state — no effect
@@ -273,19 +351,62 @@ export function SkillFilesPanel({ skill, files, filesLoading = false }: { skill:
     }
 
     return (
-        <div className="grid overflow-hidden rounded-xl border border-border md:grid-cols-[220px_1fr]">
-            <div className="max-h-[480px] overflow-y-auto border-b border-border p-2 md:border-b-0 md:border-r">
-                {tree.map((node) => (
-                    <FileTreeRow
-                        key={node.path}
-                        node={node}
-                        depth={0}
-                        selectedPath={selectedPath}
-                        onSelect={setExplicitPath}
-                        collapsed={collapsed}
-                        onToggle={toggleFolder}
-                    />
-                ))}
+        <div className={cn(
+            "grid overflow-hidden rounded-xl border border-border",
+            viewMode === "grid" ? "md:grid-cols-[320px_1fr]" : "md:grid-cols-[220px_1fr]"
+        )}>
+            <div className="flex max-h-[480px] flex-col overflow-hidden border-b border-border md:border-b-0 md:border-r">
+                <div className="flex shrink-0 items-center justify-end gap-1 border-b border-border p-1.5">
+                    <button
+                        type="button"
+                        onClick={() => setViewMode("tree")}
+                        title="List view"
+                        className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-md",
+                            viewMode === "tree" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                        )}
+                    >
+                        <List className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setViewMode("grid")}
+                        title="Grid view"
+                        className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-md",
+                            viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                        )}
+                    >
+                        <Grid2x2 className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+                <div className="overflow-y-auto p-2">
+                    {viewMode === "tree" ? (
+                        tree.map((node) => (
+                            <FileTreeRow
+                                key={node.path}
+                                node={node}
+                                depth={0}
+                                selectedPath={selectedPath}
+                                onSelect={setExplicitPath}
+                                collapsed={collapsed}
+                                onToggle={toggleFolder}
+                            />
+                        ))
+                    ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                            {files.map((file) => (
+                                <FileGridCard
+                                    key={file.fileName}
+                                    skillId={skill.id}
+                                    file={file}
+                                    isSelected={file.fileName === selectedPath}
+                                    onSelect={() => setExplicitPath(file.fileName)}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
             {selectedPath && <FileContentViewer skillId={skill.id} path={selectedPath} skillBody={skill.body} />}
         </div>
