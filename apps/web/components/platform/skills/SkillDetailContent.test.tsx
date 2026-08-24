@@ -48,6 +48,8 @@ describe("SkillDetailContent author row", () => {
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
+                onTest={noop}
+                isTesting={false}
             />,
         );
         expect(screen.getByText("Ada Lovelace")).toBeTruthy();
@@ -62,6 +64,8 @@ describe("SkillDetailContent author row", () => {
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
+                onTest={noop}
+                isTesting={false}
             />,
         );
         expect(screen.getByText("ada@example.com")).toBeTruthy();
@@ -75,6 +79,8 @@ describe("SkillDetailContent author row", () => {
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
+                onTest={noop}
+                isTesting={false}
             />,
         );
         expect(screen.getByText("Unknown")).toBeTruthy();
@@ -91,6 +97,8 @@ describe("SkillDetailContent runs row", () => {
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
+                onTest={noop}
+                isTesting={false}
             />,
         );
         expect(screen.getByText("12")).toBeTruthy();
@@ -110,6 +118,8 @@ describe("SkillDetailContent files sidebar", () => {
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
+                onTest={noop}
+                isTesting={false}
             />,
         );
         expect(screen.getByText("SKILL.md")).toBeTruthy();
@@ -125,8 +135,48 @@ describe("SkillDetailContent files sidebar", () => {
                 onInstall={noop}
                 onUninstall={noop}
                 onPublish={noop}
+                onTest={noop}
+                isTesting={false}
             />,
         );
         expect(screen.getByText("No files")).toBeTruthy();
+    });
+});
+
+describe("SkillDetailContent test button", () => {
+    it("offers Test alongside Uninstall for an installed skill", async () => {
+        const onTest = vi.fn();
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ installed: true, installedVersion: 2, installId: "install-1" })}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onTest={onTest}
+                isTesting={false}
+            />,
+        );
+
+        const button = screen.getByRole("button", { name: "Test in chat" });
+        button.click();
+        expect(onTest).toHaveBeenCalledTimes(1);
+    });
+
+    it("hides Test when the skill is not installed", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill()}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onTest={vi.fn()}
+                isTesting={false}
+            />,
+        );
+        expect(screen.queryByRole("button", { name: "Test in chat" })).toBeNull();
     });
 });

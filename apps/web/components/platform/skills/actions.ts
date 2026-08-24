@@ -1,5 +1,6 @@
 import { api, ApiError } from "@/lib/api";
 import type { Skill, SkillFile, SkillTab, SkillsResponse } from "./types";
+import type { Agent } from "@/components/platform/agents/types";
 
 export async function listSkills(tab: SkillTab): Promise<Skill[]> {
     const res = await api.get<SkillsResponse>(`/api/v1/skills?tab=${tab}`);
@@ -72,4 +73,34 @@ export async function attachSkillToAgent(agentId: string, skill: Skill): Promise
         }
         throw err;
     }
+}
+
+/**
+ * Deliberately identical to useChatPage.ts's New Chat fallback:
+ * `activeAgents.find(a => a.isDefault) ?? activeAgents[0]`. agents.isDefault is
+ * effectively a dead column (never written), so in practice this resolves to
+ * the earliest-created active agent. Reused rather than replaced so Test-in-chat
+ * lands the user on the same agent New Chat would.
+ */
+export function resolveDefaultAgent(agents: Agent[]): Agent | null {
+    const active = agents.filter((a) => a.status === "active");
+    return active.find((a) => a.isDefault) ?? active[0] ?? null;
+}
+
+/**
+ * Opens a fresh conversation on the tenant's default agent with this skill
+ * attached. The attach carries the real SKILL.md body (derived server-side), so
+ * the agent's behavior in that conversation genuinely reflects the skill.
+ * Throws Error("NO_ACTIVE_AGENTS") when the tenant has none.
+ */
+export async function startSkillTestChat(
+    skill: Skill,
+    agents: Agent[],
+): Promise<{ conversationId: string; agentId: string }> {
+    const agent = resolveDefaultAgent(agents);
+    if (!agent) throw new Error("NO_ACTIVE_AGENTS");
+
+    const conversation = await api.post<{ data: { id: string } }>("/api/v1/conversations", { agentId: agent.id });
+    await attachSkillToAgent(agent.id, skill);
+    return { conversationId: conversation.data.id, agentId: agent.id };
 }

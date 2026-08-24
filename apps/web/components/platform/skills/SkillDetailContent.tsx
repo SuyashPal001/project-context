@@ -15,7 +15,7 @@ function relativeTime(value: string | undefined | null): string {
 }
 
 export function SkillDetailContent({
-    skill, isOwner, files, onInstall, onUninstall, onPublish,
+    skill, isOwner, files, onInstall, onUninstall, onPublish, onTest, isTesting,
 }: {
     skill: Skill;
     isOwner: boolean;
@@ -23,6 +23,8 @@ export function SkillDetailContent({
     onInstall: () => void;
     onUninstall: () => void;
     onPublish: () => void;
+    onTest: () => void;
+    isTesting: boolean;
 }) {
     const { importFailed, hasReadyVersion, dead, importing } = skillImportState(skill);
 
@@ -35,9 +37,14 @@ export function SkillDetailContent({
                         <p className="text-muted-foreground line-clamp-2">{skill.description ?? "No description"}</p>
                     </div>
 
-                    <div className="shrink-0">
+                    <div className="flex shrink-0 items-center gap-2">
                         {skill.installed ? (
-                            <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
+                            <>
+                                <Button onClick={onTest} disabled={isTesting}>
+                                    {isTesting ? "Opening chat…" : "Test in chat"}
+                                </Button>
+                                <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
+                            </>
                         ) : dead ? null : (
                             <Button onClick={onInstall} disabled={importing}>
                                 <Plus className="h-4 w-4" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Maximize2, Minimize2, X } from "lucide-react";
@@ -8,9 +9,11 @@ import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
-import { getSkill, installSkill, listSkillFiles, publishSkill, uninstallSkill } from "./actions";
+import { api } from "@/lib/api";
+import { getSkill, installSkill, listSkillFiles, publishSkill, startSkillTestChat, uninstallSkill } from "./actions";
 import { SkillDetailContent } from "./SkillDetailContent";
 import type { Skill, SkillFile } from "./types";
+import type { Agent } from "@/components/platform/agents/types";
 
 interface SkillDetailModalProps {
     skillId: string | null;
@@ -21,6 +24,18 @@ interface SkillDetailModalProps {
 export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetailModalProps) {
     const queryClient = useQueryClient();
     const [expanded, setExpanded] = useState(false);
+    const router = useRouter();
+    const params = useParams();
+    const tenantSlug = params.tenant as string;
+    const [isTesting, setIsTesting] = useState(false);
+
+    // Same ['agents'] query key the chat page uses, so this shares its cache
+    // rather than issuing a second fetch.
+    const { data: agentsData } = useQuery<{ data: Agent[] }>({
+        queryKey: ["agents"],
+        queryFn: () => api.get("/api/v1/agents"),
+        enabled: skillId !== null,
+    });
 
     const { data: skill, isLoading, isError } = useQuery<Skill>({
         queryKey: ["skills", "detail", skillId],
@@ -79,6 +94,26 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
         }
     };
 
+    const handleTest = async () => {
+        if (!skill) return;
+        setIsTesting(true);
+        try {
+            const { conversationId } = await startSkillTestChat(skill, agentsData?.data ?? []);
+            onOpenChange(false);
+            router.push(`/${tenantSlug}/dashboard/chat?conversationId=${conversationId}`);
+        } catch (err) {
+            if (err instanceof Error && err.message === "NO_ACTIVE_AGENTS") {
+                toast.error("No active agents available. Please create one first.");
+            } else if (err instanceof Error && err.message === "NO_INSTALL_ID") {
+                toast.error("This skill has no install record — reinstall it from the Skills page first.");
+            } else {
+                toast.error("Failed to start a test chat.");
+            }
+        } finally {
+            setIsTesting(false);
+        }
+    };
+
     return (
         <Dialog open={skillId !== null} onOpenChange={onOpenChange}>
             <DialogContent
@@ -127,6 +162,8 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
                             onInstall={handleInstall}
                             onUninstall={handleUninstall}
                             onPublish={handlePublish}
+                            onTest={handleTest}
+                            isTesting={isTesting}
                         />
                     )}
                 </div>
