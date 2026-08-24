@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { UploadCloud, File, X, CheckCircle2, Loader2, AlertCircle, FolderOpen } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
+import { formatFileSize } from "./lib/fileIcons"
 
 interface UploadFileModalProps {
   open: boolean
@@ -21,14 +22,6 @@ type FileStatus = {
   progress: number
   status: 'pending' | 'uploading' | 'confirming' | 'done' | 'error'
   error?: string
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
 function uploadToS3(url: string, file: globalThis.File, onProgress: (pct: number) => void): Promise<void> {

@@ -32,6 +32,19 @@ export function isIngestibleCategory(category: FileCategory): boolean {
     return category === 'document';
 }
 
+interface IngestableFile {
+    contentType: string;
+    filename: string;
+    ingestionStatus: string;
+}
+
+// A file is a candidate for (re-)ingestion when it's a document that hasn't
+// finished processing yet.
+export function isParseable(file: IngestableFile): boolean {
+    return (file.ingestionStatus === 'pending' || file.ingestionStatus === 'failed')
+        && isIngestibleCategory(getFileCategory(file.contentType, file.filename));
+}
+
 export type TimeRange = 'all' | 'today' | '7d' | '30d' | 'older';
 
 export const TIME_RANGE_LABELS: Record<TimeRange, string> = {
