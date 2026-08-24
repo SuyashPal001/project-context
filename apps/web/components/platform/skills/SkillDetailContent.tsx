@@ -1,4 +1,3 @@
-import { formatDistanceToNow } from "date-fns";
 import { Download, FileText, Package, Plus, Sparkles, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,11 +9,24 @@ import { skillImportState, skillVisibilityStatus } from "./SkillCard";
 import type { Skill, SkillFile } from "./types";
 
 // updatedAt may be absent from an older API deploy — never let a malformed/missing
-// timestamp crash the whole modal.
+// timestamp crash the whole modal. Kept compact ("8h ago" not "about 8 hours ago")
+// since this sits inline as a one-line summary, not a standalone timestamp.
 function relativeTime(value: string | undefined | null): string {
     if (!value) return "—";
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? "—" : formatDistanceToNow(date, { addSuffix: true });
+    if (Number.isNaN(date.getTime())) return "—";
+
+    const seconds = Math.round((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return "just now";
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    const months = Math.round(days / 30);
+    if (months < 12) return `${months}mo ago`;
+    return `${Math.round(months / 12)}y ago`;
 }
 
 export function SkillDetailContent({
@@ -64,7 +76,9 @@ export function SkillDetailContent({
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                    Created {relativeTime(skill.createdAt)} · Last update {relativeTime(skill.updatedAt)}
+                    {skill.updatedAt && skill.updatedAt !== skill.createdAt
+                        ? `Created ${relativeTime(skill.createdAt)} · Updated ${relativeTime(skill.updatedAt)}`
+                        : `Created ${relativeTime(skill.createdAt)}`}
                 </p>
 
                 <p className="text-muted-foreground line-clamp-2">{skill.description ?? "No description"}</p>
