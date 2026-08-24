@@ -114,7 +114,7 @@ skillsRoutes.get('/', async (c) => {
       .select({
         id: skills.id, name: skills.name, slug: skills.slug, description: skills.description,
         visibility: skills.visibility, isOfficial: skills.isOfficial, latestVersion: skills.latestVersion,
-        ownerTenantId: skills.ownerTenantId, createdAt: skills.createdAt,
+        ownerTenantId: skills.ownerTenantId, createdAt: skills.createdAt, updatedAt: skills.updatedAt,
         installId: skillInstalls.id,
         installedVersion: skillInstalls.installedVersion, installStatus: skillInstalls.status,
       })
@@ -199,7 +199,7 @@ skillsRoutes.get('/:id', async (c) => {
       data: {
         id: skill.id, name: skill.name, slug: skill.slug, description: skill.description,
         visibility: skill.visibility, isOfficial: skill.isOfficial, latestVersion: skill.latestVersion,
-        ownerTenantId: skill.ownerTenantId, createdAt: skill.createdAt,
+        ownerTenantId: skill.ownerTenantId, createdAt: skill.createdAt, updatedAt: skill.updatedAt,
         installId: install?.id ?? null,
         installedVersion: install?.installedVersion ?? null,
         installed: install?.status === 'active',

@@ -12,6 +12,7 @@ export interface Skill {
     latestVersion: number;
     ownerTenantId: string;
     createdAt: string;
+    updatedAt: string;
     /** skill_installs.id — the FK agentSkills.installId points at. Null when this tenant has never installed the skill. */
     installId: string | null;
     installedVersion: number | null;
