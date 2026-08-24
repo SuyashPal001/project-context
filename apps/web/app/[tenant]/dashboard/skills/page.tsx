@@ -41,9 +41,11 @@ export default function SkillsPage() {
     const [tab, setTab] = useState<"mine" | "explore">("mine");
     const [importOpen, setImportOpen] = useState(false);
     const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
-    // Skills we've already toasted about, so a re-poll doesn't repeat the
-    // same "failed" / "stuck" notification every 5s.
-    const notifiedRef = useRef<Set<string>>(new Set());
+    // Last known dead/stuck state per skill, so we only toast on a live
+    // transition into that state (not for a skill that was already dead
+    // before this page load — that one gets silently filtered, no toast).
+    // `undefined` means "not seen yet this session" and must never toast.
+    const deadStateRef = useRef<Map<string, boolean>>(new Map());
 
     // Poll only while an import is genuinely still running. latestVersion
     // stays at 0 for a *failed* import too, so keying off that alone
@@ -63,13 +65,15 @@ export default function SkillsPage() {
         refetchInterval: pendingRefetchInterval,
     });
 
-    // Notify once per skill the moment its import becomes dead or stuck,
-    // since those cards are about to vanish from the grid below — without
-    // this the skill would just silently disappear.
+    // Notify only on a live transition into dead/stuck — a skill that was
+    // already dead before this page loaded gets silently filtered below,
+    // no toast, so refreshing the page never re-announces old failures.
     useEffect(() => {
         for (const skill of mineList ?? []) {
-            if (!isDeadOrStuck(skill) || notifiedRef.current.has(skill.id)) continue;
-            notifiedRef.current.add(skill.id);
+            const isDead = isDeadOrStuck(skill);
+            const wasDead = deadStateRef.current.get(skill.id);
+            deadStateRef.current.set(skill.id, isDead);
+            if (!isDead || wasDead !== false) continue;
             const { importFailed } = skillImportState(skill);
             toast.error(
                 importFailed
