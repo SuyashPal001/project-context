@@ -2,9 +2,10 @@ import { formatDistanceToNow } from "date-fns";
 import { Download, FileText, Package, Plus, Sparkles, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { MarkdownViewer } from "@/components/platform/canvas/MarkdownViewer";
 import { SkillIcon } from "./SkillIcon";
-import { skillImportState } from "./SkillCard";
+import { skillImportState, skillVisibilityStatus } from "./SkillCard";
 import type { Skill, SkillFile } from "./types";
 
 // updatedAt may be absent from an older API deploy — never let a malformed/missing
@@ -28,35 +29,42 @@ export function SkillDetailContent({
     isTesting: boolean;
 }) {
     const { importFailed, hasReadyVersion, dead, importing } = skillImportState(skill);
+    const visibilityStatus = skillVisibilityStatus(skill);
 
     return (
         <div className="space-y-6">
             <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                    <SkillIcon seed={skill.id} className="h-14 w-14 rounded-lg border border-border shrink-0" />
-                    <div className="min-w-0 space-y-0.5">
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-2xl font-bold tracking-tight text-foreground truncate">{skill.name}</h1>
-                            {skill.installed && (
-                                <span className="text-sm text-green-600 dark:text-green-500 shrink-0">
-                                    {skill.installedVersion !== skill.latestVersion
-                                        ? `installed v${skill.installedVersion}`
-                                        : "installed"}
-                                </span>
-                            )}
+                <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <SkillIcon seed={skill.id} className="h-14 w-14 rounded-lg border border-border shrink-0" />
+                        <div className="min-w-0 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                                <h1 className="text-2xl font-bold tracking-tight text-foreground truncate">{skill.name}</h1>
+                                {skill.installed && (
+                                    <span className="text-sm text-green-600 dark:text-green-500 shrink-0">
+                                        {skill.installedVersion !== skill.latestVersion
+                                            ? `installed v${skill.installedVersion}`
+                                            : "installed"}
+                                    </span>
+                                )}
+                            </div>
+                            <p className="text-sm text-muted-foreground truncate">
+                                {skill.isOfficial ? "ProjectContext" : skill.ownerName ?? skill.ownerEmail ?? "Unknown"}
+                            </p>
                         </div>
-                        <p className="text-sm text-muted-foreground truncate">
-                            {skill.isOfficial ? "ProjectContext" : skill.ownerName ?? skill.ownerEmail ?? "Unknown"}
-                        </p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1.5">
+                        {importFailed && <Badge variant="destructive">{dead ? "Failed" : "Update failed"}</Badge>}
+                        <Badge variant="outline" className={cn("text-[10px] font-semibold uppercase tracking-wider", visibilityStatus.className)}>
+                            {visibilityStatus.label}
+                        </Badge>
                     </div>
                 </div>
 
                 <p className="text-muted-foreground line-clamp-2">{skill.description ?? "No description"}</p>
 
                 <div className="flex flex-wrap items-center gap-1.5">
-                    {importFailed && <Badge variant="destructive">{dead ? "Failed" : "Update failed"}</Badge>}
-                    {skill.isOfficial && <Badge variant="secondary">Official</Badge>}
-                    <Badge variant="outline">{skill.visibility === "public" ? "Community" : "Private"}</Badge>
                     {hasReadyVersion && (
                         <span className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Package className="h-4 w-4" />
@@ -72,6 +80,10 @@ export function SkillDetailContent({
                         {skill.runCount}
                     </span>
                 </div>
+
+                <p className="text-xs text-muted-foreground">
+                    Created {relativeTime(skill.createdAt)} · Last update {relativeTime(skill.updatedAt)}
+                </p>
             </div>
 
             {importFailed && skill.failureReason && (
@@ -83,29 +95,23 @@ export function SkillDetailContent({
 
             <SkillOverview skill={skill} files={files} />
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
-                <p className="text-xs text-muted-foreground">
-                    Created {relativeTime(skill.createdAt)} · Last update {relativeTime(skill.updatedAt)}
-                </p>
-
-                <div className="flex items-center gap-2">
-                    {isOwner && skill.visibility === "private" && hasReadyVersion && (
-                        <Button variant="ghost" onClick={onPublish}>Publish</Button>
-                    )}
-                    {skill.installed ? (
-                        <>
-                            <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
-                            <Button onClick={onTest} disabled={isTesting}>
-                                {isTesting ? "Opening chat…" : "Test in chat"}
-                            </Button>
-                        </>
-                    ) : dead ? null : (
-                        <Button onClick={onInstall} disabled={importing}>
-                            <Plus className="h-4 w-4" />
-                            {importing ? "Importing…" : "Install skill"}
+            <div className="flex items-center justify-end gap-2">
+                {isOwner && skill.visibility === "private" && hasReadyVersion && (
+                    <Button variant="ghost" onClick={onPublish}>Publish</Button>
+                )}
+                {skill.installed ? (
+                    <>
+                        <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
+                        <Button onClick={onTest} disabled={isTesting}>
+                            {isTesting ? "Opening chat…" : "Test in chat"}
                         </Button>
-                    )}
-                </div>
+                    </>
+                ) : dead ? null : (
+                    <Button onClick={onInstall} disabled={importing}>
+                        <Plus className="h-4 w-4" />
+                        {importing ? "Importing…" : "Install skill"}
+                    </Button>
+                )}
             </div>
         </div>
     );

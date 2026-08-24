@@ -24,6 +24,24 @@ export function skillImportState(skill: Skill) {
     return { importFailed, hasReadyVersion, dead, importing };
 }
 
+// Shared with the skill detail panel so both agree on visibility badge color/label.
+export function skillVisibilityStatus(skill: Skill) {
+    return skill.isOfficial
+        ? {
+            label: "Official",
+            className: "border-indigo-600/30 text-indigo-700 dark:border-indigo-500/30 dark:text-indigo-400",
+        }
+        : skill.visibility === "public"
+            ? {
+                label: "Community",
+                className: "border-teal-600/30 text-teal-700 dark:border-teal-500/30 dark:text-teal-400",
+            }
+            : {
+                label: "Private",
+                className: "border-border text-muted-foreground",
+            };
+}
+
 export function SkillCard({ skill, onClick, onInstall }: SkillCardProps) {
     const { importFailed, hasReadyVersion, dead, importing } = skillImportState(skill);
 
@@ -41,20 +59,7 @@ export function SkillCard({ skill, onClick, onInstall }: SkillCardProps) {
             }
             : null;
 
-    const visibilityStatus = skill.isOfficial
-        ? {
-            label: "Official",
-            className: "border-indigo-600/30 text-indigo-700 dark:border-indigo-500/30 dark:text-indigo-400",
-        }
-        : skill.visibility === "public"
-            ? {
-                label: "Community",
-                className: "border-teal-600/30 text-teal-700 dark:border-teal-500/30 dark:text-teal-400",
-            }
-            : {
-                label: "Private",
-                className: "border-border text-muted-foreground",
-            };
+    const visibilityStatus = skillVisibilityStatus(skill);
 
     return (
         // Not a <button>: the Install control below is a real nested button, and
