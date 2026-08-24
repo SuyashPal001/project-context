@@ -56,25 +56,14 @@ export function SkillCard({ skill, href }: SkillCardProps) {
         <Link href={href} className="block">
             <Card className="h-full transition-colors hover:border-input">
                 <CardContent className="pt-3 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            <SkillIcon seed={skill.id} className="h-8 w-8 rounded-lg border border-border shrink-0" />
-                            <div className="min-w-0 space-y-1">
-                                <h3 className="font-semibold text-foreground truncate">{skill.name}</h3>
-                                <Badge variant="outline" className={cn("text-[11px] font-semibold uppercase tracking-wider", status.className)}>
-                                    {status.label}
-                                </Badge>
-                            </div>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <SkillIcon seed={skill.id} className="h-8 w-8 rounded-lg border border-border shrink-0" />
+                        <div className="min-w-0 space-y-1">
+                            <h3 className="font-semibold text-foreground truncate">{skill.name}</h3>
+                            <Badge variant="outline" className={cn("text-[11px] font-semibold uppercase tracking-wider", status.className)}>
+                                {status.label}
+                            </Badge>
                         </div>
-                        {// A real <button> can't nest inside the card's <Link>; this is styled
-                        // as one since the whole card already navigates on click. Installed
-                        // state is conveyed at the bottom of the card instead of a badge here.
-                        !skill.installed && (
-                            <span className={cn(buttonVariants({ variant: "outline", size: "xs" }), "shrink-0 pointer-events-none")}>
-                                <Download />
-                                Install
-                            </span>
-                        )}
                     </div>
 
                     <p className="text-sm text-muted-foreground line-clamp-2">
@@ -101,11 +90,18 @@ export function SkillCard({ skill, href }: SkillCardProps) {
                             )}
                         </div>
 
-                        {skill.installed && (
+                        {skill.installed ? (
                             <span className="text-green-600 dark:text-green-500 shrink-0">
                                 {skill.installedVersion !== skill.latestVersion
                                     ? `installed v${skill.installedVersion}`
                                     : "installed"}
+                            </span>
+                        ) : (
+                            // A real <button> can't nest inside the card's <Link>; this is styled
+                            // as one since the whole card already navigates on click.
+                            <span className={cn(buttonVariants({ variant: "outline", size: "xs" }), "shrink-0 pointer-events-none")}>
+                                <Download />
+                                Install
                             </span>
                         )}
                     </div>
