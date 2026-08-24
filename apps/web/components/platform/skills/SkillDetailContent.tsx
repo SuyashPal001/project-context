@@ -63,6 +63,10 @@ export function SkillDetailContent({
                     </div>
                 </div>
 
+                <p className="text-xs text-muted-foreground">
+                    Created {relativeTime(skill.createdAt)} · Last update {relativeTime(skill.updatedAt)}
+                </p>
+
                 <p className="text-muted-foreground line-clamp-2">{skill.description ?? "No description"}</p>
 
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -81,10 +85,6 @@ export function SkillDetailContent({
                         {skill.runCount}
                     </span>
                 </div>
-
-                <p className="text-xs text-muted-foreground">
-                    Created {relativeTime(skill.createdAt)} · Last update {relativeTime(skill.updatedAt)}
-                </p>
             </div>
 
             {importFailed && skill.failureReason && (
