@@ -60,17 +60,24 @@ Findings from research (see conversation) that shape this design:
   inject whatever's in that column).
 - This directly enables Phase E to be meaningful.
 
-### Phase C — Run-count tracking
+### Phase C — Run-count and download-count tracking
 - New column `skill_installs.run_count` (int, default 0) — tenant-scoped,
   matching what the card displays per-install.
 - Increment in `chatStream.ts` at the existing `fetchAgentSkill(agentId)`
   call site (per chat message sent while a skill is attached) — resolve the
   install and increment its counter.
-- `GET /skills` / `GET /skills/:id` add `runCount` to the response.
-  `SkillCard.tsx` / modal swap the `—` placeholder for the real number.
-- **Download count is removed, not implemented** — there is no concept in
-  the data model distinct from "install," so a separate counter would be
-  fabricated. The card drops that field entirely.
+- New column `skills.download_count` (int, default 0) — global across all
+  tenants (mirrors how the card already shows global badges like
+  Official/Community, not per-tenant state). Incremented in
+  `POST /skills/:id/install` (`skills.ts:367`) on every successful install,
+  regardless of whether the installing tenant had installed it before.
+  "Downloads" means "times installed, counted globally" — there is no
+  separate download action in the product, so install is the download
+  event.
+- `GET /skills` / `GET /skills/:id` add `runCount` (per-tenant, from
+  `skill_installs`) and `downloadCount` (global, from `skills`) to the
+  response. `SkillCard.tsx` / modal swap both `—` placeholders for the real
+  numbers.
 
 ### Phase D — Files sidebar
 - New endpoint `GET /skills/:id/files` — `ListObjectsV2` on
@@ -107,8 +114,9 @@ Findings from research (see conversation) that shape this design:
   `system_prompt` stored matches `skill_versions.manifest.body`, not the
   client-supplied description.
 - Phase C: integration test — send a chat message with an attached skill,
-  assert `skill_installs.run_count` increments by 1; assert `GET /skills`
-  reflects it.
+  assert `skill_installs.run_count` increments by 1; call
+  `POST /skills/:id/install`, assert `skills.download_count` increments by
+  1; assert `GET /skills` reflects both.
 - Phase E: manual verification in the running app (per CLAUDE.md — start
   dev servers, click through: open a skill detail modal → Test → confirm a
   new chat opens with the skill attached and the agent's behavior reflects
