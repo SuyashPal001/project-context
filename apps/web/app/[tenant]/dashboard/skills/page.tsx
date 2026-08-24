@@ -14,26 +14,45 @@ import type { Skill, SkillTab } from "@/components/platform/skills/types";
 export default function SkillsPage() {
     const queryClient = useQueryClient();
     const tenantSlug = useParams().tenant as string;
-    const [tab, setTab] = useState<SkillTab>("mine");
+    const [tab, setTab] = useState<"mine" | "explore">("mine");
     const [importOpen, setImportOpen] = useState(false);
 
-    const { data: skillsList, isLoading } = useQuery<Skill[]>({
-        queryKey: ["skills", tab],
-        queryFn: () => listSkills(tab),
-        // Poll only while an import is genuinely still running. latestVersion
-        // stays at 0 for a *failed* import too, so keying off that alone
-        // polled forever on a skill that would never change. The null branch
-        // covers the sliver between the skill row and its version row landing.
-        refetchInterval: (query) => {
-            const rows = query.state.data as Skill[] | undefined;
-            const anyPending = rows?.some(
-                (s) => s.latestVersionStatus === "pending" || (s.latestVersionStatus === null && s.latestVersion < 1)
-            ) ?? false;
-            return anyPending ? 5000 : false;
-        },
+    // Poll only while an import is genuinely still running. latestVersion
+    // stays at 0 for a *failed* import too, so keying off that alone
+    // polled forever on a skill that would never change. The null branch
+    // covers the sliver between the skill row and its version row landing.
+    const pendingRefetchInterval = (query: { state: { data?: Skill[] } }) => {
+        const anyPending = query.state.data?.some(
+            (s) => s.latestVersionStatus === "pending" || (s.latestVersionStatus === null && s.latestVersion < 1)
+        ) ?? false;
+        return anyPending ? 5000 : false;
+    };
+
+    const { data: mineList, isLoading: mineLoading } = useQuery<Skill[]>({
+        queryKey: ["skills", "mine"],
+        queryFn: () => listSkills("mine"),
+        enabled: tab === "mine",
+        refetchInterval: pendingRefetchInterval,
     });
 
-    const skills = skillsList ?? [];
+    const { data: officialList, isLoading: officialLoading } = useQuery<Skill[]>({
+        queryKey: ["skills", "official"],
+        queryFn: () => listSkills("official"),
+        enabled: tab === "explore",
+        refetchInterval: pendingRefetchInterval,
+    });
+
+    const { data: publicList, isLoading: publicLoading } = useQuery<Skill[]>({
+        queryKey: ["skills", "public"],
+        queryFn: () => listSkills("public"),
+        enabled: tab === "explore",
+        refetchInterval: pendingRefetchInterval,
+    });
+
+    const isLoading = tab === "mine" ? mineLoading : officialLoading || publicLoading;
+    const skills = tab === "mine"
+        ? mineList ?? []
+        : Array.from(new Map([...(officialList ?? []), ...(publicList ?? [])].map((s) => [s.id, s])).values());
 
     return (
         <div className="space-y-6">
@@ -46,7 +65,7 @@ export default function SkillsPage() {
             </div>
 
             <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
-                {(["mine", "official", "public"] as const).map((t) => (
+                {(["mine", "explore"] as const).map((t) => (
                     <button
                         key={t}
                         onClick={() => setTab(t)}
@@ -77,7 +96,7 @@ export default function SkillsPage() {
             ) : (
                 <div className="flex h-[300px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20">
                     <p className="text-sm text-muted-foreground">
-                        {tab === "mine" ? "No skills yet — import one to get started." : `No ${tab} skills yet.`}
+                        {tab === "mine" ? "No skills yet — import one to get started." : "No skills to explore yet."}
                     </p>
                 </div>
             )}
