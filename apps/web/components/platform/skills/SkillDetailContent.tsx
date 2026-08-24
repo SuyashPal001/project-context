@@ -123,23 +123,25 @@ export function SkillDetailContent({
                 </TabsContent>
             </Tabs>
 
-            <div className="flex items-center justify-end gap-2">
-                {isOwner && skill.visibility === "private" && hasReadyVersion && (
+            <div className="flex items-center justify-between gap-2">
+                {isOwner && skill.visibility === "private" && hasReadyVersion ? (
                     <Button variant="ghost" onClick={onPublish}>Publish</Button>
-                )}
-                {skill.installed ? (
-                    <>
-                        <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
-                        <Button onClick={onTest} disabled={isTesting}>
-                            {isTesting ? "Opening chat…" : "Test in chat"}
+                ) : <span />}
+                <div className="flex items-center gap-2">
+                    {skill.installed ? (
+                        <>
+                            <Button variant="outline" onClick={onUninstall}>Uninstall</Button>
+                            <Button onClick={onTest} disabled={isTesting}>
+                                {isTesting ? "Opening chat…" : "Test in chat"}
+                            </Button>
+                        </>
+                    ) : dead ? null : (
+                        <Button onClick={onInstall} disabled={importing}>
+                            <Plus className="h-4 w-4" />
+                            {importing ? "Importing…" : "Install skill"}
                         </Button>
-                    </>
-                ) : dead ? null : (
-                    <Button onClick={onInstall} disabled={importing}>
-                        <Plus className="h-4 w-4" />
-                        {importing ? "Importing…" : "Install skill"}
-                    </Button>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );
