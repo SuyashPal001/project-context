@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { Skill, SkillTab, SkillsResponse } from "./types";
 
 export async function listSkills(tab: SkillTab): Promise<Skill[]> {
@@ -44,4 +44,23 @@ export async function installSkill(skillId: string): Promise<void> {
 
 export async function uninstallSkill(skillId: string): Promise<void> {
     await api.del(`/api/v1/skills/${skillId}/install`);
+}
+
+/**
+ * Attaches an installed skill to an agent. The system prompt is NOT sent — the
+ * server derives it from the pinned skill_versions manifest body, so it can't be
+ * spoofed or go stale. A 409 means the same skill+version is already attached,
+ * which is the desired end state, so it resolves rather than throwing.
+ */
+export async function attachSkillToAgent(agentId: string, skill: Skill): Promise<void> {
+    if (!skill.installId) throw new Error("NO_INSTALL_ID");
+    try {
+        await api.post(`/api/v1/agents/${agentId}/skills`, {
+            name: skill.name,
+            installId: skill.installId,
+        });
+    } catch (err) {
+        if (err instanceof ApiError && err.status === 409) return;
+        throw err;
+    }
 }

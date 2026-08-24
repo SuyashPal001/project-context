@@ -6,8 +6,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api } from "@/lib/api";
-import { listSkills } from "./actions";
+import { attachSkillToAgent, listSkills } from "./actions";
 import type { Skill } from "./types";
 
 interface AttachSkillPickerProps {
@@ -33,25 +32,22 @@ export function AttachSkillPicker({ agentId, open, onOpenChange, onAttached }: A
     const installed = (skillsList ?? []).filter((s) => s.installed);
 
     const handleAttach = async (skill: Skill) => {
-        // installId is skill_installs.id — the row agentSkills.installId is an
-        // FK to. skill.id is a different row entirely; sending it produces a
-        // foreign-key violation, not an attached skill.
-        if (!skill.installId) {
-            toast.error("This skill has no install record — reinstall it from the Skills page first.");
-            return;
-        }
         setAttachingId(skill.id);
         try {
-            await api.post(`/api/v1/agents/${agentId}/skills`, {
-                name: skill.name,
-                systemPrompt: skill.description ?? skill.name,
-                installId: skill.installId,
-            });
+            // installId is skill_installs.id — the row agentSkills.installId is an
+            // FK to. skill.id is a different row entirely. The server reads the real
+            // SKILL.md body off that install's pinned version, so nothing about the
+            // skill content is sent from here.
+            await attachSkillToAgent(agentId, skill);
             toast.success(`${skill.name} attached.`);
             onAttached();
             onOpenChange(false);
-        } catch {
-            toast.error("Failed to attach skill.");
+        } catch (err) {
+            if (err instanceof Error && err.message === "NO_INSTALL_ID") {
+                toast.error("This skill has no install record — reinstall it from the Skills page first.");
+            } else {
+                toast.error("Failed to attach skill.");
+            }
         } finally {
             setAttachingId(null);
         }
