@@ -8,6 +8,8 @@ import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FilesFilter } from "./FilesFilter";
+import { stagePendingAttachments } from "@/lib/pendingAttachments";
+import { MAX_FILES_PER_SELECTION } from "@/components/platform/chat/useFileUpload";
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
 import { FileGridView } from "./components/FileGridView";
 import { FileListView } from "./components/FileListView";
@@ -41,6 +43,23 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
 
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
+    const tooManySelected = selection.selectedIds.size > MAX_FILES_PER_SELECTION;
+
+    // Hands the selection to the composer and opens a fresh conversation: no `id`
+    // in the URL, so useChatPage's auto-create effect makes a new one. The files
+    // travel through sessionStorage because that redirect drops query params.
+    const startSessionWithSelection = () => {
+        if (!defaultAgentId || tooManySelected) return;
+        const chosen = allFiles.filter(f => selection.selectedIds.has(f.id));
+        stagePendingAttachments(chosen.map(f => ({
+            fileId: f.id,
+            name: f.filename,
+            type: f.contentType,
+            size: f.size,
+        })));
+        router.push(`/${tenant}/dashboard/chat?agentId=${defaultAgentId}`);
+    };
 
     const folderCards: FolderCard[] = useMemo(() => virtualFolders.map(folderName => {
         const folderPrefix = `${prefix}${folderName}/`;
@@ -166,10 +185,26 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     {selection.selectedIds.size > 0 && (
                         <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-secondary border border-border text-sm">
                             <span className="text-foreground/80">Selected: <strong>{selection.selectedIds.size}</strong> {selection.selectedIds.size === 1 ? 'file' : 'files'}</span>
-                            <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={selection.bulkDelete} disabled={selection.bulkDeleting}>
-                                {selection.bulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                                Delete Selected
-                            </Button>
+                            <div className="flex items-center gap-2">
+                                {tooManySelected && (
+                                    <span className="text-xs text-muted-foreground">
+                                        Up to {MAX_FILES_PER_SELECTION} files per session
+                                    </span>
+                                )}
+                                <Button
+                                    size="sm"
+                                    className="h-7 text-xs gap-1"
+                                    disabled={tooManySelected || !defaultAgentId}
+                                    onClick={startSessionWithSelection}
+                                >
+                                    <MessageSquare className="w-3 h-3" />
+                                    Start session
+                                </Button>
+                                <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={selection.bulkDelete} disabled={selection.bulkDeleting}>
+                                    {selection.bulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                    Delete Selected
+                                </Button>
+                            </div>
                         </div>
                     )}
                     <div className="flex gap-4 items-start">

@@ -13,6 +13,7 @@ import { Attachment } from "@/types/agent-events";
 import { FileText } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { consumePendingAttachments } from "@/lib/pendingAttachments";
 
 import { useAudioRecorder } from "./useAudioRecorder";
 import { useFileUpload } from "./useFileUpload";
@@ -294,6 +295,13 @@ export function ChatInput({
         (window as any).__addComposeAttachment = uploader.addAttachment;
         return () => { delete (window as any).__addComposeAttachment; };
     }, [uploader.addAttachment]);
+
+    // Files chosen in Drive and handed over via "Start session".
+    useEffect(() => {
+        const staged = consumePendingAttachments();
+        if (staged.length > 0) uploader.addAttachments(staged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const showRecordingBar = recorder.isRecording || recorder.audioPreview;
 

@@ -229,12 +229,22 @@ export function useFileUpload() {
             : [...prev, assetToAttachment(asset)]);
     }, []);
 
+    // Drive files arrive already in Attachment shape — they have no sourceMessageId
+    // to fake an Asset with. Same de-duplication as addAttachment.
+    const addAttachments = useCallback((incoming: Attachment[]) => {
+        setAttachments(prev => {
+            const seen = new Set(prev.map(a => a.fileId));
+            return [...prev, ...incoming.filter(a => a.fileId && !seen.has(a.fileId))];
+        });
+    }, []);
+
     return {
         attachments,
         pendingUpload,
         isUploading,
         removeAttachment,
         addAttachment,
+        addAttachments,
         handleFileChange,
         uploadFile,
         uploadAudio,
