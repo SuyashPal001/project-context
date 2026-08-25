@@ -144,8 +144,20 @@ suggestion, which defeats the point of the grant.
 2. **Schema drift.** `document_chunks.person_folder_id` exists in the database but
    is absent from the Drizzle model (`products/agent-platform/packages/schema/documents.ts:48-62`).
    Queries depend on a column the ORM cannot see; `drizzle-kit push` would drop it.
-3. **No index** on `document_chunks.person_folder_id` — only `idx_chunks_tenant`
-   and `idx_chunks_doc`.
+3. ~~**No index** on `document_chunks.person_folder_id`.~~ **Retracted 2026-08-26 —
+   this defect does not exist.** It was inferred from the Drizzle model rather than
+   the database. Queried live, `document_chunks` carries five indexes:
+   `document_chunks_pkey`, `idx_chunks_tenant`, `idx_chunks_doc`,
+   `idx_chunks_sensitivity`, `document_chunks_person_folder_idx` — the last created
+   by migration `0056_document_chunks_person_folder`, which is present in
+   `_journal.json`. The drift in defect 2 is wider than stated, though:
+   `idx_chunks_sensitivity` and `document_chunks_person_folder_idx` are both live and
+   both absent from the model, so `drizzle-kit push` would drop indexes as well as a
+   column.
+
+   The lesson generalises past this row: **a Drizzle model is not evidence about the
+   database.** Several claims in §2 rest on what tables look like in code. Where a
+   decision turns on what actually exists, query it.
 
 Defects 2 and 3 concern the legacy `person_folder_id` path, which this design does
 not build on but does not remove either — 4 folders and 26 files still use it, and

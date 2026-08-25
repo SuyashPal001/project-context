@@ -138,7 +138,17 @@ Deploy: `pm2 restart agent-orchestrator` on the VM.
 
 ## Task 2: Chunk table hygiene — declare the column, index it
 
-`document_chunks.person_folder_id` exists in the database but not in the Drizzle model, so `drizzle-kit push` would drop it. It also has no index, so every scoped search scans.
+> **Corrected during execution.** The original text claimed there was no index on
+> `person_folder_id`. There is: `document_chunks_person_folder_idx`, from migration
+> `0056`, verified against the live database. The real defect is drift only — the
+> column and two indexes (`document_chunks_person_folder_idx`,
+> `idx_chunks_sensitivity`) exist live but are absent from the Drizzle model, so
+> `drizzle-kit push` would drop them. The migration must therefore be **idempotent**
+> (`IF NOT EXISTS`) and must reuse the live index names; a plain `ADD COLUMN` fails
+> outright and a new index name creates a duplicate. Steps below are superseded by
+> that correction where they conflict.
+
+`document_chunks.person_folder_id` exists in the database but not in the Drizzle model, so `drizzle-kit push` would drop it.
 
 **Files:**
 - Modify: `products/agent-platform/packages/schema/documents.ts:48-62`
