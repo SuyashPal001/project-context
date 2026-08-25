@@ -5,7 +5,7 @@ import { Play } from 'lucide-react';
 import { useConversationAssets } from '@/hooks/useConversationAssets';
 import { api } from '@/lib/api';
 import type { Asset, AssetType } from '@/types/assets';
-import { TYPE_ICONS, TYPE_BADGES, NO_PREVIEW_STYLES } from './assetTypeStyles';
+import { TYPE_ICONS, TYPE_BADGES, TYPE_STYLES } from './assetTypeStyles';
 
 interface AssetGalleryProps {
   conversationId: string;
@@ -112,7 +112,7 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
   const imageThumbnailUrl = useThumbnailUrl(asset);
   const videoFrameUrl = useVideoFrameThumbnail(asset);
   const thumbnailUrl = imageThumbnailUrl ?? videoFrameUrl;
-  const noPreviewStyle = NO_PREVIEW_STYLES[asset.type];
+  const typeStyle = TYPE_STYLES[asset.type];
   return (
     <div className="group relative flex flex-col rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
       <div
@@ -127,7 +127,7 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
         }}
         className="text-left hover:border-primary/40 transition-colors"
       >
-        <div className={`relative aspect-video flex items-center justify-center ${noPreviewStyle?.bg ?? 'bg-muted'}`}>
+        <div className={`relative aspect-video flex items-center justify-center ${typeStyle.bg}`}>
           {thumbnailUrl ? (
             <>
               <img src={thumbnailUrl} alt={asset.filename} className="w-full h-full object-cover" />
@@ -140,7 +140,7 @@ function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
               )}
             </>
           ) : (
-            <Icon className={`h-8 w-8 ${noPreviewStyle?.icon ?? 'text-muted-foreground/60'}`} />
+            <Icon className={`h-8 w-8 ${typeStyle.icon}`} />
           )}
           <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
             {TYPE_BADGES[asset.type]}
