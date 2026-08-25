@@ -148,6 +148,7 @@ Resources:
           DOCUMENTS_BUCKET: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/s3/documents-bucket-name}}"
           SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
           GITHUB_APP_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/github-app"
+          AGENT_ORCHESTRATOR_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/agent-orchestrator-url}}"
     Metadata:
       BuildMethod: makefile
 

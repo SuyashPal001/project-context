@@ -24,6 +24,7 @@
     "@serverless-saas/agent-api": "workspace:*",
     "@serverless-saas/agent-capabilities": "workspace:*",
     "@serverless-saas/agent-schema": "workspace:*",
+    "@serverless-saas/agent-worker-handlers": "workspace:*",
     "@serverless-saas/ai": "workspace:*",
     "@serverless-saas/auth": "workspace:*",
     "@serverless-saas/cache": "workspace:*",

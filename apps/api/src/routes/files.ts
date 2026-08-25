@@ -4,14 +4,16 @@ import { zValidator } from '@hono/zod-validator';
 import { storageService } from '@serverless-saas/storage';
 import { db } from '@serverless-saas/database';
 import { auditLog, files } from '@serverless-saas/database/schema';
-import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
 import { eq, and, ne, isNull } from 'drizzle-orm';
-import { personFolders } from '@serverless-saas/database/schema';
+import { publishToQueue } from '@serverless-saas/queue';
+import { runFileIngestion } from '@serverless-saas/agent-worker-handlers';
 import type { AppEnv } from '../types';
 
-const AGENT_ORCHESTRATOR_URL = process.env.AGENT_ORCHESTRATOR_URL ?? 'http://localhost:3001';
-
+// Fallback display classification for files ingested before `classification`
+// was backfilled on the row. The actual ingest-time classification (used to
+// tag chunks) lives in runFileIngestion (agent-worker-handlers) — duplicated
+// here rather than exported cross-package for one small pure heuristic.
 function classifyDocument(filename: string): string {
   const name = filename.toLowerCase();
   const confidentialKeywords = [
@@ -21,6 +23,21 @@ function classifyDocument(filename: string): string {
   ];
   if (confidentialKeywords.some(k => name.includes(k))) return 'Confidential';
   return 'Internal';
+}
+
+// Server-side mirror of apps/web/components/platform/files/fileCategory.ts —
+// only documents go through ingestion. Keep in sync with that file if the
+// category rules change; duplicated rather than shared across a web/API
+// package boundary for one small pure function.
+function isIngestibleDocument(contentType: string, filename: string): boolean {
+  const ct = contentType.toLowerCase();
+  const name = filename.toLowerCase();
+  return (
+    ct === 'application/pdf' || name.endsWith('.pdf') ||
+    ct === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || name.endsWith('.docx') ||
+    ct === 'text/plain' || name.endsWith('.txt') ||
+    ct === 'text/csv' || name.endsWith('.csv')
+  );
 }
 
 const filesRoutes = new Hono<AppEnv>();
@@ -100,7 +117,7 @@ filesRoutes.post(
 
     // Fetch the pending record to get its S3 key
     const [pendingRecord] = await db
-      .select({ key: files.key })
+      .select({ key: files.key, name: files.name, mimeType: files.mimeType })
       .from(files)
       .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)))
       .limit(1);
@@ -108,6 +125,16 @@ filesRoutes.post(
     if (!pendingRecord) {
       return c.json({ error: 'Not Found', message: 'File record not found' }, 404);
     }
+
+    const eligibleForAutoIngest = isIngestibleDocument(pendingRecord.mimeType ?? '', pendingRecord.name);
+    const enqueueAutoIngest = async (idToIngest: string) => {
+      const queueUrl = process.env.SQS_PROCESSING_QUEUE_URL;
+      if (!queueUrl) {
+        console.warn('[files/confirm] SQS_PROCESSING_QUEUE_URL not set — file.ingest job not published');
+        return;
+      }
+      await publishToQueue(queueUrl, { type: 'file.ingest', payload: { tenantId, fileId: idToIngest } });
+    };
 
     // Check for an existing uploaded record with the same key (dedup)
     const [existing] = await db
@@ -147,10 +174,14 @@ filesRoutes.post(
         ipAddress: c.get('clientIp'),
       });
 
+      if (eligibleForAutoIngest) await enqueueAutoIngest(existing.id);
+
       return c.json({ success: true, fileId: existing.id });
     }
 
     await storageService.confirmUpload(tenantId, fileId, size);
+
+    if (eligibleForAutoIngest) await enqueueAutoIngest(fileId);
 
     await db.insert(auditLog).values({
       tenantId,
@@ -282,11 +313,13 @@ filesRoutes.delete('/:id', async (c) => {
   return c.json({ success: true });
 });
 
-// Trigger ingestion processing for an uploaded file
+// Trigger ingestion processing for an uploaded file — manual re-trigger from
+// the Drive UI. Shares its implementation (runFileIngestion) with the
+// automatic file.ingest worker job fired from POST /:id/confirm below, so
+// the two trigger paths can never drift out of sync with each other.
 filesRoutes.post('/:id/ingest', async (c) => {
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
-  const userId = c.get('userId') as string;
   const fileId = c.req.param('id');
   const force = c.req.query('force') === 'true';
 
@@ -295,104 +328,20 @@ filesRoutes.post('/:id/ingest', async (c) => {
     return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
   }
 
-  const [fileRecord] = await db
-    .select()
-    .from(files)
-    .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)))
-    .limit(1);
-
-  if (!fileRecord) return c.json({ error: 'Not Found', message: 'File not found' }, 404);
-
-  if (fileRecord.ingestionStatus === 'done' && !force) {
-    return c.json({ error: 'Already ingested. Pass ?force=true to re-ingest.' }, 409);
-  }
-
-  // Look up uploader's personalIdentifier for chunk tagging
-  const [uploader] = await db
-    .select({ personalIdentifier: users.personalIdentifier })
-    .from(users)
-    .where(eq(users.id, fileRecord.uploadedBy ?? userId))
-    .limit(1);
-  const personalIdentifier = uploader?.personalIdentifier ?? undefined;
-
-  // Mark as processing
-  await db
-    .update(files)
-    .set({ ingestionStatus: 'processing', updatedAt: new Date() })
-    .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
-
   try {
-    const buffer = await storageService.downloadFile(tenantId, fileId);
-    const filename = fileRecord.name;
-    const mimeType = fileRecord.mimeType ?? '';
-
-    try {
-      // Resolve person folder identifier for RAG scoping
-      let personFolderId: string | undefined
-      let folderIdentifier: string | undefined
-      if (fileRecord.personFolderId) {
-        const [pf] = await db
-          .select({ id: personFolders.id, identifier: personFolders.identifier })
-          .from(personFolders)
-          .where(eq(personFolders.id, fileRecord.personFolderId))
-          .limit(1)
-        if (pf) { personFolderId = pf.id; folderIdentifier = pf.identifier }
-      }
-
-      // Pre-extract text so relay detectFormat classifies PDFs/DOCX correctly
-      let extractedText: string | undefined
-      if (mimeType === 'application/pdf' || filename.endsWith('.pdf')) {
-        const { extractTextFromPdf } = await import('../services/ingestion.js')
-        extractedText = await extractTextFromPdf(buffer)
-      } else if (
-        mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        filename.endsWith('.docx')
-      ) {
-        const mammoth = await import('mammoth')
-        const mmResult = await mammoth.extractRawText({ buffer })
-        extractedText = mmResult.value
-      } else if (mimeType === 'text/csv' || filename.endsWith('.csv')) {
-        extractedText = buffer.toString('utf-8')
-      }
-
-      const relayRes = await fetch(`${AGENT_ORCHESTRATOR_URL}/internal/ingest`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileId,
-          filename,
-          mimeType,
-          bufferBase64: buffer.toString('base64'),
-          extractedText,
-          tenantId: tenantId ?? 'unknown',
-          personalIdentifier: folderIdentifier ?? personalIdentifier,
-          personFolderId,
-          tenantName: requestContext?.tenant?.name ?? tenantId,
-          classification: classifyDocument(filename),
-        }),
-      });
-
-      if (!relayRes.ok) {
-        throw new Error(`Relay returned ${relayRes.status}`);
-      }
-
-      const relayData = await relayRes.json() as any;
-      if (!relayData.ok) {
-        throw new Error(relayData.error ?? 'Workflow failed');
-      }
-
-      // Relay processes async and updates DB itself — return 202 immediately
-      return c.json({ data: { fileId, ingestionStatus: 'processing' } }, 202);
-    } catch (err: any) {
-      console.error('[ingest] relay unreachable or returned error — marking failed', err);
-      throw err;
+    const outcome = await runFileIngestion({ tenantId, fileId, force });
+    switch (outcome) {
+      case 'not_found':
+        return c.json({ error: 'Not Found', message: 'File not found' }, 404);
+      case 'already_done':
+        return c.json({ error: 'Already ingested. Pass ?force=true to re-ingest.' }, 409);
+      case 'already_processing':
+        return c.json({ error: 'Ingestion already in progress for this file' }, 409);
+      case 'started':
+        return c.json({ data: { fileId, ingestionStatus: 'processing' } }, 202);
     }
   } catch (err: any) {
-    await db
-      .update(files)
-      .set({ ingestionStatus: 'failed', updatedAt: new Date() })
-      .where(and(eq(files.id, fileId), eq(files.tenantId, tenantId)));
-
+    console.error('[ingest] runFileIngestion failed', err);
     return c.json({ error: 'Ingestion failed', message: err.message }, 500);
   }
 });
