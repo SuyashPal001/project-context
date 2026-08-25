@@ -49,7 +49,7 @@ export function DocxPreview({ url, size }: { url: string; size?: number }) {
     return (
       <div className="text-sm text-muted-foreground text-center max-w-xs space-y-2">
         <p>This document is too large to preview inline ({(size! / 1024 / 1024).toFixed(1)} MB).</p>
-        <a href={url} download className="inline-flex items-center gap-1.5 text-primary hover:underline">
+        <a href={url} download className="inline-flex items-center gap-1.5 text-shimmer-accent hover:underline">
           <Download className="h-3.5 w-3.5" />
           Download to view
         </a>

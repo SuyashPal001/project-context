@@ -167,7 +167,9 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
                 download={asset.filename}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 mt-2 text-primary hover:underline"
+                // text-shimmer-accent, not text-primary: the pale rose --primary
+                // fails WCAG AA as body text on the light theme (see globals.css).
+                className="flex items-center gap-1.5 mt-2 text-shimmer-accent hover:underline"
               >
                 <Download className="h-3.5 w-3.5" />
                 Download
