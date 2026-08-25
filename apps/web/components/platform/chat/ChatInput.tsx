@@ -17,7 +17,7 @@ import { consumePendingAttachments } from "@/lib/pendingAttachments";
 import { DriveFilePicker } from "./DriveFilePicker";
 
 import { useAudioRecorder } from "./useAudioRecorder";
-import { useFileUpload, MAX_FILES_PER_SELECTION } from "./useFileUpload";
+import { useFileUpload, MAX_ATTACHMENTS_PER_MESSAGE } from "./useFileUpload";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { RecordingBar } from "./RecordingBar";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
@@ -326,7 +326,7 @@ export function ChatInput({
             <DriveFilePicker
                 open={drivePickerOpen}
                 onOpenChange={setDrivePickerOpen}
-                remainingSlots={Math.max(0, MAX_FILES_PER_SELECTION - uploader.attachments.length)}
+                remainingSlots={Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - uploader.attachments.length)}
                 onConfirm={uploader.addAttachments}
             />
 

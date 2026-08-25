@@ -8,7 +8,7 @@ import { getFileCategory, isIngestibleCategory, isParseable } from "../fileCateg
 import { getFileIcon } from "../lib/fileIcons";
 import { ProcessingStepsIndicator } from "./IngestionStatus";
 import { AddToChatMenu, folderChatLabel } from "./AddToChatMenu";
-import { MAX_FILES_PER_SELECTION } from "@/components/platform/chat/useFileUpload";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import type { Conversation } from "@/components/platform/chat/types";
 import type { FileRecord, FolderCard } from "../types";
 
@@ -56,7 +56,7 @@ export function FileGridView({
                         <AddToChatMenu
                             conversations={conversations}
                             variant="icon"
-                            disabled={fileCount === 0 || fileCount > MAX_FILES_PER_SELECTION}
+                            disabled={fileCount === 0 || fileCount > MAX_ATTACHMENTS_PER_MESSAGE}
                             label={folderChatLabel(fileCount)}
                             onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
                         />

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import { getAgentTypeIcon } from "@/components/platform/agents/agentTypeIcon";
-import { MAX_FILES_PER_SELECTION } from "@/components/platform/chat/useFileUpload";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import type { Conversation } from "@/components/platform/chat/types";
 
 /** A disabled folder trigger has to say *why* on its face: a disabled button
@@ -62,7 +62,7 @@ export function messagePreview(conversation: Conversation): string {
 
 export function folderChatLabel(fileCount: number): string {
     if (fileCount === 0) return 'Empty folder';
-    if (fileCount > MAX_FILES_PER_SELECTION) return `Over ${MAX_FILES_PER_SELECTION}-file limit`;
+    if (fileCount > MAX_ATTACHMENTS_PER_MESSAGE) return `Over ${MAX_ATTACHMENTS_PER_MESSAGE}-file limit`;
     return 'Add to chat';
 }
 

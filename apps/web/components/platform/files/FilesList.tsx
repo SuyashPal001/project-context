@@ -11,7 +11,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FilesFilter } from "./FilesFilter";
 import { stagePendingAttachments } from "@/lib/pendingAttachments";
-import { MAX_FILES_PER_SELECTION } from "@/components/platform/chat/useFileUpload";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
 import { FileGridView } from "./components/FileGridView";
 import { FileListView } from "./components/FileListView";
@@ -60,7 +60,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     });
     const conversations = conversationsData?.data ?? [];
 
-    const tooManySelected = selection.selectedIds.size > MAX_FILES_PER_SELECTION;
+    const tooManySelected = selection.selectedIds.size > MAX_ATTACHMENTS_PER_MESSAGE;
 
     // conversationId null opens a new session; otherwise the files land in that
     // existing chat. Either way ChatInput consumes the staged payload on mount,
@@ -232,7 +232,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             <div className="flex items-center gap-2">
                                 {tooManySelected && (
                                     <span className="text-xs text-muted-foreground">
-                                        Up to {MAX_FILES_PER_SELECTION} files per session
+                                        Up to {MAX_ATTACHMENTS_PER_MESSAGE} files per session
                                     </span>
                                 )}
                                 <AddToChatMenu

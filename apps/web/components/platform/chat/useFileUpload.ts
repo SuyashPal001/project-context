@@ -11,7 +11,16 @@ export interface PendingUpload {
     type: string;
 }
 
+/** How many files a browser file-picker may hand over in one go, before any of
+ *  them are uploaded. This is an upload-batch limit — it exists because each
+ *  file is a separate presign + PUT. */
 export const MAX_FILES_PER_SELECTION = 5;
+
+/** How many attachments one message may carry. Files coming from Drive are
+ *  already in S3, so none of the upload-batch reasoning applies to them: the
+ *  real cost is context, not transfer. Kept separate because conflating the two
+ *  is what made every real folder un-attachable. */
+export const MAX_ATTACHMENTS_PER_MESSAGE = 20;
 
 // Pure — no React, no upload side effects — so the cap logic is directly
 // testable without rendering the hook. `files: null` with no error means

@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { folderChatLabel, groupByAgent, messagePreview, relativeAge } from './AddToChatMenu';
 import type { Conversation } from '@/components/platform/chat/types';
-import { MAX_FILES_PER_SELECTION } from '@/components/platform/chat/useFileUpload';
+import { MAX_ATTACHMENTS_PER_MESSAGE } from '@/components/platform/chat/useFileUpload';
 
 // The label is the only place a disabled folder trigger can explain itself —
 // disabled buttons do not reliably fire hover, so the tooltip may never show.
 describe('folderChatLabel', () => {
     it('names the limit when the folder is over it', () => {
-        expect(folderChatLabel(MAX_FILES_PER_SELECTION + 1))
-            .toBe(`Over ${MAX_FILES_PER_SELECTION}-file limit`);
+        expect(folderChatLabel(MAX_ATTACHMENTS_PER_MESSAGE + 1))
+            .toBe(`Over ${MAX_ATTACHMENTS_PER_MESSAGE}-file limit`);
     });
 
     it('says the folder is empty rather than offering a dead action', () => {
@@ -16,7 +16,7 @@ describe('folderChatLabel', () => {
     });
 
     it('offers the action at the boundary, not one below it', () => {
-        expect(folderChatLabel(MAX_FILES_PER_SELECTION)).toBe('Add to chat');
+        expect(folderChatLabel(MAX_ATTACHMENTS_PER_MESSAGE)).toBe('Add to chat');
     });
 });
 
