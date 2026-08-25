@@ -16,6 +16,7 @@ import { ProcessingStepsIndicator } from "./IngestionStatus";
 import type { FileRecord, FolderCard } from "../types";
 import type { Conversation } from "@/components/platform/chat/types";
 import { AddToChatMenu } from "./AddToChatMenu";
+import { MAX_FILES_PER_SELECTION } from "@/components/platform/chat/useFileUpload";
 
 interface FileListViewProps {
     folderCards: FolderCard[];
@@ -36,6 +37,7 @@ interface FileListViewProps {
     onDeleteFolder: (folderName: string) => void;
     conversations: Conversation[];
     onAddToChat: (files: FileRecord[], conversationId: string | null) => void;
+    onAddFolderToChat: (folderPrefix: string, conversationId: string | null) => void;
     showPipelineDetails?: boolean;
 }
 
@@ -57,7 +59,7 @@ function RowMenuTrigger() {
 export function FileListView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     allPageSelected, onToggleSelectAll, ingestingFiles, onIngestFile, onIngestFolder,
-    onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder, conversations, onAddToChat,
+    onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder, conversations, onAddToChat, onAddFolderToChat,
     showPipelineDetails = false,
 }: FileListViewProps) {
     const columnCount = 5 + (showPipelineDetails ? 5 : 0);
@@ -89,7 +91,7 @@ export function FileListView({
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting }) => (
+                    {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount }) => (
                         <TableRow
                             key={`folder-${folderName}`}
                             onClick={() => onNavigateToFolder(folderPrefix)}
@@ -103,37 +105,45 @@ export function FileListView({
                                 </div>
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                {(canDelete || showPipelineDetails) && (
-                                    <DropdownMenu>
-                                        <RowMenuTrigger />
-                                        <DropdownMenuContent align="end" className="w-48">
-                                            {showPipelineDetails && (
-                                                <DropdownMenuItem
-                                                    onClick={() => onIngestFolder(folderName)}
-                                                    disabled={allDone || isIngesting}
-                                                    className="gap-2 cursor-pointer"
-                                                >
-                                                    {isIngesting
-                                                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                                                        : <Play className="w-4 h-4" />}
-                                                    {isIngesting ? 'Ingesting…' : 'Ingest folder'}
-                                                </DropdownMenuItem>
-                                            )}
-                                            {canDelete && (
-                                                <>
-                                                    {showPipelineDetails && <DropdownMenuSeparator />}
+                                <div className="flex items-center justify-end gap-1">
+                                    <AddToChatMenu
+                                        conversations={conversations}
+                                        disabled={fileCount === 0 || fileCount > MAX_FILES_PER_SELECTION}
+                                        label={fileCount > MAX_FILES_PER_SELECTION ? `${fileCount} files` : 'Add to chat'}
+                                        onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
+                                    />
+                                    {(canDelete || showPipelineDetails) && (
+                                        <DropdownMenu>
+                                            <RowMenuTrigger />
+                                            <DropdownMenuContent align="end" className="w-48">
+                                                {showPipelineDetails && (
                                                     <DropdownMenuItem
-                                                        onClick={() => onDeleteFolder(folderName)}
-                                                        className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                                        onClick={() => onIngestFolder(folderName)}
+                                                        disabled={allDone || isIngesting}
+                                                        className="gap-2 cursor-pointer"
                                                     >
-                                                        <Trash2 className="w-4 h-4" />
-                                                        Delete
+                                                        {isIngesting
+                                                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                            : <Play className="w-4 h-4" />}
+                                                        {isIngesting ? 'Ingesting…' : 'Ingest folder'}
                                                     </DropdownMenuItem>
-                                                </>
-                                            )}
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                )}
+                                                )}
+                                                {canDelete && (
+                                                    <>
+                                                        {showPipelineDetails && <DropdownMenuSeparator />}
+                                                        <DropdownMenuItem
+                                                            onClick={() => onDeleteFolder(folderName)}
+                                                            className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                            Delete
+                                                        </DropdownMenuItem>
+                                                    </>
+                                                )}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    )}
+                                </div>
                             </TableCell>
                         </TableRow>
                     ))}

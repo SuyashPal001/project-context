@@ -74,6 +74,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             : `/${tenant}/dashboard/chat?agentId=${defaultAgentId}`);
     };
 
+    // A folder attaches everything under its prefix, so it obeys the same cap as a
+    // multi-select. Large folders want folderId RAG scope instead — but that needs a
+    // personFolderId, which prefix-derived folders usually do not have.
+    const addFolderToChat = (folderPrefix: string, conversationId: string | null) => {
+        addToChat(allFiles.filter(f => f.key.startsWith(folderPrefix)), conversationId);
+    };
+
     const addSelectionToChat = (conversationId: string | null) => {
         if (tooManySelected) return;
         addToChat(allFiles.filter(f => selection.selectedIds.has(f.id)), conversationId);
@@ -83,7 +90,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         const folderPrefix = `${prefix}${folderName}/`;
         const folderFiles = allFiles.filter(f => f.key.startsWith(folderPrefix));
         const allDone = folderFiles.length > 0 && folderFiles.every(f => f.ingestionStatus === 'done');
-        return { folderName, folderPrefix, allDone, isIngesting: ingestion.ingestingFolders.has(folderName) };
+        return { folderName, folderPrefix, allDone, isIngesting: ingestion.ingestingFolders.has(folderName), fileCount: folderFiles.length };
     }), [virtualFolders, allFiles, prefix, ingestion.ingestingFolders]);
 
     const { pagedFiles, filteredFiles, totalPages, currentPage, setCurrentPage } = filters;
@@ -261,6 +268,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             onDeleteFolder={mutations.setDeletingFolderName}
                             conversations={conversations}
                             onAddToChat={addToChat}
+                            onAddFolderToChat={addFolderToChat}
                             showPipelineDetails={showPipelineDetails}
                         />
                     )}

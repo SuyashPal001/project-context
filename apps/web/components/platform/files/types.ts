@@ -29,4 +29,6 @@ export interface FolderCard {
     folderPrefix: string;
     allDone: boolean;
     isIngesting: boolean;
+    /** Files directly under this prefix — gates Add to chat against the attachment cap. */
+    fileCount: number;
 }
