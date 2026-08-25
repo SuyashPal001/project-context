@@ -64,6 +64,7 @@ const DOCUMENT_ACCEPT = [
     "application/pdf", ".pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx",
     "text/plain", ".txt",
+    "text/csv", ".csv",
     "application/zip", "application/x-zip-compressed", ".zip",
 ].join(",");
 
@@ -71,6 +72,10 @@ const DOCUMENT_MIME_TYPES = new Set([
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
+    "text/csv",
+    // Windows reports a .csv as an Excel type; the picker accepts it on the
+    // ".csv" extension above, but a drag-drop only ever sees the MIME.
+    "application/vnd.ms-excel",
     "application/zip",
     "application/x-zip-compressed",
 ]);
