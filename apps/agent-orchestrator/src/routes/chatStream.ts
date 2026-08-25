@@ -7,6 +7,7 @@ import { runWithGuardrailContext } from '../mastra/guardrails.js'
 import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
+import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
 import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRun } from '../usage.js'
 import { buildGatewayModelString } from '../mastra/model.js'
@@ -58,6 +59,7 @@ export interface ChatStreamOpts {
   closeStream: () => void
   isStreamClosed: () => boolean
   folderId?: string
+  folderPrefix?: string
 }
 
 type ContentPart =
@@ -138,7 +140,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed,
-    folderId,
+    folderId, folderPrefix,
   } = opts
 
   // Heartbeat while any tool call is in flight — see sendHeartbeat's doc
@@ -196,7 +198,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       ? `[AGENT MEMORY]\nYou have remembered the following about this tenant from previous sessions:\n${workingMemory}\n\n`
       : ''
     console.log('[session] tenantId:', tenantId, 'folderId:', folderId ?? '(none)')
-    const sessionCtx = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}\n</session_context>\n\n`
+    const sessionCtx = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}${folderScopeLine(folderPrefix)}\n</session_context>\n\n`
     const mastraMessage = await buildMastraMessage(attachments, memPreamble, sessionCtx, message, sessionId)
 
     if (isStreamClosed()) return
@@ -212,6 +214,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('conversationId', conversationId)
     requestContext.set('idToken', idToken)
     if (folderId) requestContext.set('folderId', folderId)
+    applyFolderScope(requestContext, folderPrefix)
 
     const mcpClient = getMCPClientForTenant(tenantId, agentId, sessionId)
     requestContext.set('__mcpClient', mcpClient as any)

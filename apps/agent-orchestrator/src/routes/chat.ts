@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { resolveFolderPrefix } from '../folderScopeContext.js'
 import type { AuthPayload } from '../auth.js'
 import { validateToken } from '../auth.js'
 import { checkMessageQuota, fetchAgentMemory } from '../usage.js'
@@ -86,6 +87,7 @@ chatRouter.post('/api/chat', async (c) => {
   const folderId = typeof (body as Record<string, unknown>).folderId === 'string'
     ? (body as Record<string, unknown>).folderId as string
     : undefined
+  const folderPrefix = resolveFolderPrefix(body)
 
   if (!conversationId || (!rawMessage && attachments.length === 0)) {
     return c.json({ error: 'conversationId and message or attachments are required' }, 400)
@@ -235,7 +237,7 @@ chatRouter.post('/api/chat', async (c) => {
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream,
     isStreamClosed: () => streamClosed,
-    folderId,
+    folderId, folderPrefix,
   })
 
   const origin = getAllowedOrigin(c.req.header('Origin'))

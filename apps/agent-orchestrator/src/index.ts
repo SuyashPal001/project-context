@@ -9,6 +9,7 @@ import type { Socket } from 'node:net'
 import { serve } from '@hono/node-server'
 import { WebSocketServer, WebSocket, RawData } from 'ws'
 import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
+import { resolveFolderPrefix, applyFolderScope, folderScopeLine } from './folderScopeContext.js'
 import { app } from './app.js'
 import { fireToolCallLog } from './events.js'
 import { API_BASE_URL, sessions } from './types.js'
@@ -72,6 +73,7 @@ async function handleSession(
     const effectiveMessage = filteredWsMsg || '[voice message]'
     const agentId = typeof body.agentId === 'string' ? body.agentId : ''
     const folderId = typeof body.folderId === 'string' && body.folderId ? body.folderId : undefined
+    const folderPrefix = resolveFolderPrefix(body)
 
     pendingUserMessage = effectiveMessage
     pendingAttachments = (attachments0 as Array<{ fileId?: string; name: string; type: string; size?: number }>)
@@ -112,7 +114,7 @@ async function handleSession(
           : ''
         if (workingMemory) console.log(`[session:${sessionId}] injected working memory agentId=${agentId}`)
 
-        const sessionContext = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}\n</session_context>\n\n`
+        const sessionContext = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}${folderScopeLine(folderPrefix)}\n</session_context>\n\n`
 
         // audio/* and video/* are intentionally excluded from synchronous download —
         // see the buildAttachmentNote doc comment in media.ts for why, and how the
@@ -184,6 +186,7 @@ async function handleSession(
         requestContext.set('sessionId', sessionId)
         requestContext.set('idToken', idToken)
         if (folderId) requestContext.set('folderId', folderId)
+        applyFolderScope(requestContext, folderPrefix)
         mcpClient = getMCPClientForTenant(tenantId, agentId)
         requestContext.set('__mcpClient', mcpClient as any)
 
