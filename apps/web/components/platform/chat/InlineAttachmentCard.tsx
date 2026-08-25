@@ -1,33 +1,9 @@
 'use client';
 
-import { FileVideo, FileAudio, FileImage, FileText, FileSpreadsheet } from 'lucide-react';
 import type { MessageAttachment } from './types';
-import type { Asset, AssetType } from '@/types/assets';
-
-function classifyMimeType(mimeType: string, filename: string): AssetType {
-  if (mimeType.startsWith('image/')) return 'image';
-  if (mimeType.startsWith('video/')) return 'video';
-  if (mimeType.startsWith('audio/')) return 'audio';
-  if (mimeType === 'text/markdown' || filename.toLowerCase().endsWith('.md')) return 'markdown';
-  if (mimeType === 'application/pdf') return 'pdf';
-  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
-  if (mimeType === 'text/csv' || filename.toLowerCase().endsWith('.csv')) return 'csv';
-  return 'file';
-}
-
-const TYPE_ICONS: Record<AssetType, React.ElementType> = {
-  video: FileVideo,
-  audio: FileAudio,
-  image: FileImage,
-  markdown: FileText,
-  pdf: FileText,
-  docx: FileText,
-  csv: FileSpreadsheet,
-  file: FileText,
-  prd: FileText,
-  roadmap: FileText,
-  tasks: FileText,
-};
+import type { Asset } from '@/types/assets';
+import { assetTypeForFile } from '@/lib/assetType';
+import { TYPE_ICONS, TYPE_STYLES } from '@/components/platform/canvas/assetTypeStyles';
 
 interface InlineAttachmentCardProps {
   file: MessageAttachment;
@@ -35,8 +11,12 @@ interface InlineAttachmentCardProps {
 }
 
 export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
-  const type = classifyMimeType(file.type, file.name);
+  // Shared with the composer tray, the canvas gallery and the Drive grid. The
+  // local copy this replaced had no extension fallback, so an mp3 uploaded as
+  // application/octet-stream classified as a generic file.
+  const type = assetTypeForFile(file.type, file.name);
   const Icon = TYPE_ICONS[type];
+  const typeStyle = TYPE_STYLES[type];
 
   const handleClick = () => {
     if (!file.fileId) return; // nothing to open in the right pane without a persisted reference
@@ -60,11 +40,11 @@ export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
       onClick={handleClick}
       className="flex items-center gap-2.5 px-2.5 py-2 bg-muted/40 border border-border/40 rounded-xl text-left hover:bg-muted/70 transition-colors min-w-[160px] max-w-[220px]"
     >
-      <div className="h-8 w-8 rounded-lg bg-background border border-border/40 flex items-center justify-center shrink-0 overflow-hidden">
+      <div className={`h-8 w-8 rounded-lg border border-border/40 flex items-center justify-center shrink-0 overflow-hidden ${typeStyle.bg}`}>
         {(type === 'image') && url ? (
           <img src={url} alt={file.name} className="h-full w-full object-cover" />
         ) : (
-          <Icon className="h-4 w-4 text-muted-foreground" />
+          <Icon className={`h-4 w-4 ${typeStyle.icon}`} />
         )}
       </div>
       <div className="flex-1 min-w-0">
