@@ -17,6 +17,7 @@ import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { listFolderTool } from '../tools/listFolder.js'
 import { findInFolderTool } from '../tools/findInFolder.js'
+import { readFileTool } from '../tools/readFile.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
 import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
 import { renderCanvas } from '../tools/renderCanvas.js'
@@ -171,6 +172,8 @@ export const SERVER_TOOLS = {
   // Routes to files, never answers — returns a ranked list so the agent spends
   // one read on the right file instead of pulling the folder into context.
   find_in_folder: findInFolderTool,
+  // Reads one file, enforced against the grant before a byte is fetched.
+  read_file: readFileTool,
 }
 
 // Server tool names used to filter out duplicate MCP tool registrations.

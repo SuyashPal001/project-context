@@ -51,6 +51,7 @@ describe('SERVER_TOOLS', () => {
       'get_task_thread',
       'internet_search',
       'list_folder',
+      'read_file',
       'render_canvas',
       'retrieve_documents',
       'start_task',
