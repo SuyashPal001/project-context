@@ -23,6 +23,35 @@ export function relativeAge(createdAt: string | undefined): string {
     return formatDistanceToNow(at, { addSuffix: true });
 }
 
+/** Most picks are the chat you were just in. Showing every chat turns a
+ *  one-glance decision into a scan, so older ones stay one click away.
+ *  Collapsing a single row would be pure friction, hence the +1. */
+const RECENT_LIMIT = 5;
+
+interface AgentGroup {
+    agentId: string;
+    agent: Conversation['agent'];
+    conversations: Conversation[];
+}
+
+/** The agent repeats on most rows, so it belongs in a heading rather than on
+ *  each one. Group order follows the newest chat inside each group, so the
+ *  agent you last worked with stays on top; `conversations` arrives newest-first
+ *  from the API, and that order is preserved within a group. */
+export function groupByAgent(conversations: Conversation[]): AgentGroup[] {
+    const groups = new Map<string, AgentGroup>();
+    for (const conversation of conversations) {
+        const existing = groups.get(conversation.agentId);
+        if (existing) existing.conversations.push(conversation);
+        else groups.set(conversation.agentId, {
+            agentId: conversation.agentId,
+            agent: conversation.agent,
+            conversations: [conversation],
+        });
+    }
+    return [...groups.values()];
+}
+
 export function folderChatLabel(fileCount: number): string {
     if (fileCount === 0) return 'Empty folder';
     if (fileCount > MAX_FILES_PER_SELECTION) return `Over ${MAX_FILES_PER_SELECTION}-file limit`;
@@ -48,6 +77,7 @@ export function AddToChatMenu({
 }: AddToChatMenuProps) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
+    const [showAll, setShowAll] = useState(false);
 
     const matches = useMemo(() => {
         const active = conversations.filter(c => c.status === 'active');
@@ -59,16 +89,23 @@ export function AddToChatMenu({
             `${c.title || 'Untitled'} ${c.agent?.name ?? ''}`.toLowerCase().includes(q));
     }, [conversations, query]);
 
+    // A search is an explicit request to look past the recent ones, so it never
+    // collapses — a hidden match reads as a broken search.
+    const collapsible = !query.trim() && matches.length > RECENT_LIMIT + 1;
+    const visible = collapsible && !showAll ? matches.slice(0, RECENT_LIMIT) : matches;
+    const hiddenCount = matches.length - visible.length;
+
     const pick = (conversationId: string | null) => {
         setOpen(false);
         setQuery('');
+        setShowAll(false);
         onPick(conversationId);
     };
 
     return (
         <Popover
             open={open}
-            onOpenChange={next => { setOpen(next); if (!next) setQuery(''); }}
+            onOpenChange={next => { setOpen(next); if (!next) { setQuery(''); setShowAll(false); } }}
         >
             <PopoverTrigger asChild>
                 <Button
@@ -113,45 +150,62 @@ export function AddToChatMenu({
                     />
                 </div>
 
-                <div className="max-h-56 overflow-y-auto">
+                <div className="max-h-72 overflow-y-auto">
                     {matches.length === 0 ? (
                         <p className="px-2 py-3 text-xs text-muted-foreground text-center">
                             {query ? 'No chats match.' : 'No chats yet.'}
                         </p>
                     ) : (
-                        matches.map(conversation => (
-                            <button
-                                key={conversation.id}
-                                type="button"
-                                onClick={() => pick(conversation.id)}
-                                className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm text-left hover:bg-secondary/60 transition-colors"
-                                title={conversation.agent?.name
-                                    ? `${conversation.title || 'Untitled'} — ${conversation.agent.name}`
-                                    : conversation.title || 'Untitled'}
-                            >
-                                {/* No `state`: this is a picker, so the avatar stays static. */}
-                                <PersonaAvatar
-                                    persona={conversation.agent?.persona}
-                                    avatarUrl={conversation.agent?.avatarUrl}
-                                    size={28}
-                                    className="rounded-full h-7 w-7"
-                                    iconClassName="text-foreground/50"
-                                    icon={getAgentTypeIcon(conversation.agent?.type)}
-                                />
-                                {/* The avatar only separates chats that differ by agent, and
-                                    most do not. Agent name plus age is what tells two chats
-                                    called "hey" apart. */}
-                                <span className="min-w-0 flex-1">
-                                    <span className="block truncate leading-tight">
-                                        {conversation.title || 'Untitled'}
+                        groupByAgent(visible).map(group => (
+                            <div key={group.agentId} className="mb-1 last:mb-0">
+                                {/* Identity stated once per agent. Not a button: the
+                                    agent is a label here, not a target — picking one
+                                    would be ambiguous between its chats. */}
+                                <div className="flex items-center gap-2 px-2 pt-2 pb-1">
+                                    {/* No `state`: this is a picker, so the avatar stays static. */}
+                                    <PersonaAvatar
+                                        persona={group.agent?.persona}
+                                        avatarUrl={group.agent?.avatarUrl}
+                                        size={20}
+                                        className="rounded-full h-5 w-5"
+                                        iconClassName="text-foreground/50"
+                                        icon={getAgentTypeIcon(group.agent?.type)}
+                                    />
+                                    <span className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                        {group.agent?.name || 'Agent'}
                                     </span>
-                                    <span className="block truncate text-[11px] leading-tight text-muted-foreground">
-                                        {[conversation.agent?.name, relativeAge(conversation.createdAt)]
-                                            .filter(Boolean).join(' · ')}
-                                    </span>
-                                </span>
-                            </button>
+                                </div>
+                                {group.conversations.map(conversation => (
+                                    <button
+                                        key={conversation.id}
+                                        type="button"
+                                        onClick={() => pick(conversation.id)}
+                                        // Indented to the heading's text, so the group reads
+                                        // as one block rather than a flat list with dividers.
+                                        className="w-full pl-9 pr-2 py-1.5 rounded-md text-sm text-left hover:bg-secondary/60 transition-colors"
+                                        title={conversation.title || 'Untitled'}
+                                    >
+                                        <span className="block truncate leading-tight">
+                                            {conversation.title || 'Untitled'}
+                                        </span>
+                                        {relativeAge(conversation.createdAt) && (
+                                            <span className="block truncate text-[11px] leading-tight text-muted-foreground">
+                                                {relativeAge(conversation.createdAt)}
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
                         ))
+                    )}
+                    {hiddenCount > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setShowAll(true)}
+                            className="w-full px-2 py-2 mt-1 rounded-md text-xs text-left text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors"
+                        >
+                            Show {hiddenCount} older
+                        </button>
                     )}
                 </div>
             </PopoverContent>
