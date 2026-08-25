@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Download, Trash2, Folder as FolderIcon, Play, RefreshCw, MoreHorizontal } from "lucide-react";
+import { Loader2, Download, Trash2, Folder as FolderIcon, Play, RefreshCw, MoreHorizontal, Eye } from "lucide-react";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -31,6 +31,7 @@ interface FileListViewProps {
     onIngestFile: (fileId: string) => void;
     onIngestFolder: (folderName: string) => void;
     onNavigateToFolder: (folderPrefix: string) => void;
+    onPreviewFile: (fileId: string) => void;
     onDownload: (fileId: string) => void;
     canDelete: boolean;
     onDeleteFile: (fileId: string) => void;
@@ -59,7 +60,7 @@ function RowMenuTrigger() {
 export function FileListView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     allPageSelected, onToggleSelectAll, ingestingFiles, onIngestFile, onIngestFolder,
-    onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder, conversations, onAddToChat, onAddFolderToChat,
+    onNavigateToFolder, onPreviewFile, onDownload, canDelete, onDeleteFile, onDeleteFolder, conversations, onAddToChat, onAddFolderToChat,
     showPipelineDetails = false,
 }: FileListViewProps) {
     // table-fixed hands any undeclared width to the one unsized column, so the
@@ -172,10 +173,16 @@ export function FileListView({
                                 />
                             </TableCell>
                             <TableCell className="py-3">
-                                <div className="flex items-center gap-2 min-w-0">
+                                {/* The name is the affordance to open the file — the checkbox
+                                    already owns selection, so a click here can't be ambiguous. */}
+                                <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); onPreviewFile(file.id); }}
+                                    className="flex items-center gap-2 min-w-0 w-full text-left rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
                                     <span className="shrink-0">{getFileIcon(file.contentType)}</span>
-                                    <span className="text-foreground/80 truncate text-sm font-medium" title={file.filename}>{file.filename}</span>
-                                </div>
+                                    <span className="text-foreground/80 truncate text-sm font-medium group-hover:underline" title={file.filename}>{file.filename}</span>
+                                </button>
                             </TableCell>
                             <TableCell className="text-xs font-mono text-muted-foreground">
                                 {formatFileSize(file.size)}
@@ -231,6 +238,10 @@ export function FileListView({
                                     <DropdownMenu>
                                         <RowMenuTrigger />
                                         <DropdownMenuContent align="end" className="w-48">
+                                            <DropdownMenuItem onClick={() => onPreviewFile(file.id)} className="gap-2 cursor-pointer">
+                                                <Eye className="w-4 h-4" />
+                                                Open
+                                            </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => onDownload(file.id)} className="gap-2 cursor-pointer">
                                                 <Download className="w-4 h-4" />
                                                 Download

@@ -24,6 +24,8 @@ import { useFileFilters } from "./hooks/useFileFilters";
 import type { FileRecord, FolderCard } from "./types";
 import type { ConversationsResponse } from "@/components/platform/chat/types";
 import { AddToChatMenu } from "./components/AddToChatMenu";
+import { AssetLightbox } from "@/components/platform/canvas/AssetLightbox";
+import { fileToAsset } from "./lib/assetFromFile";
 
 interface FilesListProps {
     prefix: string;
@@ -47,6 +49,9 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
 
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+    // Held as an id, not a record, so the lightbox's prev/next can hand back an
+    // Asset and still resolve to the row it came from.
+    const [previewFileId, setPreviewFileId] = useState<string | null>(null);
 
     // Same key the chat page uses, so whichever loads first warms the other.
     const { data: conversationsData } = useQuery({
@@ -103,6 +108,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     }), [virtualFolders, allFiles, prefix, ingestion.ingestingFolders]);
 
     const { pagedFiles, filteredFiles, totalPages, currentPage, setCurrentPage } = filters;
+
+    // The lightbox arrows walk the page you are looking at, in the order it is
+    // displayed — same set the table renders, so nothing scrolls past unseen.
+    const pageAssets = useMemo(() => pagedFiles.map(fileToAsset), [pagedFiles]);
+    const previewAsset = previewFileId ? pageAssets.find(a => a.id === previewFileId) ?? null : null;
     const allPageSelected = pagedFiles.length > 0 && pagedFiles.every(f => selection.selectedIds.has(f.id));
 
     const hasParseableFiles = files.some(isParseable);
@@ -251,6 +261,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             onIngestFile={ingestion.ingestFile}
                             onIngestFolder={(folderName) => ingestion.ingestFolder(folderName, allFiles)}
                             onNavigateToFolder={onPrefixChange}
+                            onPreviewFile={setPreviewFileId}
                             onDownload={mutations.downloadFile}
                             canDelete={canDelete}
                             onDeleteFile={mutations.setDeletingFileId}
@@ -274,6 +285,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             onIngestFile={ingestion.ingestFile}
                             onIngestFolder={(folderName) => ingestion.ingestFolder(folderName, allFiles)}
                             onNavigateToFolder={onPrefixChange}
+                            onPreviewFile={setPreviewFileId}
                             onDownload={mutations.downloadFile}
                             canDelete={canDelete}
                             onDeleteFile={mutations.setDeletingFileId}
@@ -311,6 +323,17 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* Same viewer the chat canvas uses, so a file plays the same way
+                wherever you open it from. */}
+            {previewAsset && (
+                <AssetLightbox
+                    asset={previewAsset}
+                    allAssets={pageAssets}
+                    onClose={() => setPreviewFileId(null)}
+                    onNavigate={(next) => setPreviewFileId(next.id)}
+                />
             )}
 
             <ConfirmDialog

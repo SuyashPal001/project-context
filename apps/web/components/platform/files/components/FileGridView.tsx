@@ -23,6 +23,7 @@ interface FileGridViewProps {
     onIngestFile: (fileId: string) => void;
     onIngestFolder: (folderName: string) => void;
     onNavigateToFolder: (folderPrefix: string) => void;
+    onPreviewFile: (fileId: string) => void;
     onDownload: (fileId: string) => void;
     canDelete: boolean;
     onDeleteFile: (fileId: string) => void;
@@ -35,7 +36,7 @@ interface FileGridViewProps {
 
 export function FileGridView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
-    ingestingFiles, onIngestFile, onIngestFolder, onNavigateToFolder, onDownload,
+    ingestingFiles, onIngestFile, onIngestFolder, onNavigateToFolder, onPreviewFile, onDownload,
     canDelete, onDeleteFile, onDeleteFolder, conversations, onAddToChat, onAddFolderToChat,
     showPipelineDetails = false,
 }: FileGridViewProps) {
@@ -96,7 +97,13 @@ export function FileGridView({
                                 onCheckedChange={() => onToggleSelect(file.id)}
                             />
                         </div>
-                        <div className="aspect-square w-full bg-muted/20 flex items-center justify-center">
+                        {/* The tile art is the affordance to open the file; the checkbox
+                            and the hover actions keep their own click targets. */}
+                        <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); onPreviewFile(file.id); }}
+                            className="aspect-square w-full bg-muted/20 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                        >
                             {category === 'image' ? (
                                 <FileThumbnail fileId={file.id} alt={file.filename} />
                             ) : category === 'audio-video' && file.contentType.startsWith('video') ? (
@@ -108,7 +115,7 @@ export function FileGridView({
                             ) : (
                                 <div className="scale-[2.2]">{getFileIcon(file.contentType)}</div>
                             )}
-                        </div>
+                        </button>
                         <div className="p-2.5 flex flex-col gap-1">
                             <span className="text-xs font-medium text-foreground/80 truncate" title={file.filename}>{file.filename}</span>
                             <div className="flex items-center gap-1 flex-wrap">

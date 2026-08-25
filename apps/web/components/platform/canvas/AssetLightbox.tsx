@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { X, ChevronLeft, ChevronRight, Copy, Download } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Copy, Download, File as FileIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { VideoPreview } from './lightbox/VideoPreview';
@@ -125,6 +125,15 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
             )}
             {!url && (asset.type === 'video' || asset.type === 'audio' || asset.type === 'image' || asset.type === 'pdf' || asset.type === 'docx') && (
               <p className="text-sm text-muted-foreground">Loading preview…</p>
+            )}
+            {asset.type === 'file' && (
+              // Nothing here can render a .zip or .csv — say so rather than
+              // opening onto an empty pane. The sidebar's Download still works.
+              <div className="flex flex-col items-center gap-2 text-center">
+                <FileIcon className="h-8 w-8 text-muted-foreground/50" />
+                <p className="text-sm font-medium">{asset.filename}</p>
+                <p className="text-sm text-muted-foreground">No preview available — download to open it.</p>
+              </div>
             )}
 
             {nextAsset && (
