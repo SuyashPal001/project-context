@@ -5,6 +5,7 @@ import { storageService } from '@serverless-saas/storage';
 import { eq, and } from 'drizzle-orm';
 import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
+import { isPlainTextDocument } from './extractText';
 
 const AGENT_ORCHESTRATOR_URL = process.env.AGENT_ORCHESTRATOR_URL ?? 'http://localhost:3001';
 
@@ -98,7 +99,7 @@ export async function runFileIngestion({ tenantId, fileId, force = false }: RunF
     ) {
       const mmResult = await mammoth.extractRawText({ buffer });
       extractedText = mmResult.value;
-    } else if (mimeType === 'text/csv' || filename.endsWith('.csv')) {
+    } else if (isPlainTextDocument(mimeType, filename)) {
       extractedText = buffer.toString('utf-8');
     }
 
