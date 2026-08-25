@@ -165,17 +165,21 @@ export function useFileUpload() {
             // are chunked, embedded and retrievable in later conversations.
             // The /files upload above only stores the object; on its own it
             // leaves the document invisible to retrieve_documents.
+            // The toasts no longer name the knowledge base: it is no longer a
+            // surface the user can open, so pointing at it invited a search for
+            // something that isn't there. Ingestion itself is unchanged — the
+            // document is still chunked and embedded for later retrieval.
             if (isIngestibleDocument(file)) {
                 try {
                     const { duplicate } = await ingestDocument(file);
                     toast.success(duplicate
-                        ? "Already in your knowledge base"
-                        : "Added to your knowledge base");
+                        ? "Already uploaded"
+                        : "File uploaded successfully");
                 } catch (ingestError) {
                     // The attachment itself succeeded — the agent can still see
                     // it in this conversation, just not in future ones.
-                    console.error("Knowledge base ingestion failed:", ingestError);
-                    toast.warning("Attached, but could not add it to your knowledge base");
+                    console.error("Document ingestion failed:", ingestError);
+                    toast.warning("Attached, but it won't be searchable in future chats");
                 }
             } else {
                 toast.success("File uploaded successfully");

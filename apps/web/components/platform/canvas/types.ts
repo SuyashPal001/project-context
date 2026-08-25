@@ -75,7 +75,7 @@ export interface CanvasOverlay {
   expiresAt: number;
 }
 
-export type CanvasTabKind = 'artifact' | 'knowledge' | 'file' | 'gallery';
+export type CanvasTabKind = 'artifact' | 'file' | 'gallery';
 
 export interface CanvasTab {
   id: string;

@@ -1,11 +1,10 @@
 'use client';
 
-import { Plus, X, FileText, BookOpen, Film, LayoutGrid } from 'lucide-react';
+import { Plus, X, FileText, Film, LayoutGrid } from 'lucide-react';
 import type { CanvasTab } from './types';
 
 const TAB_ICONS: Record<CanvasTab['kind'], React.ElementType> = {
   artifact: FileText,
-  knowledge: BookOpen,
   file: Film,
   gallery: LayoutGrid,
 };

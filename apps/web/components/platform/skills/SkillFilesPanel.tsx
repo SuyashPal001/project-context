@@ -170,7 +170,7 @@ function FileContentViewer({ skillId, path, skillBody }: { skillId: string; path
             // Several browsers ignore <a download> / navigation on a
             // cross-origin S3 URL and render the file inline instead of
             // saving it — fetch as a blob and download that instead, same
-            // pattern KnowledgeBaseSection.tsx uses for the same reason.
+            // same reason.
             let text = body;
             if (!text) {
                 const downloadUrl = await queryClient.fetchQuery({

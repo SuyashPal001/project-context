@@ -3,11 +3,9 @@
 import { useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
 
-// Mirrors KnowledgeBaseSection.tsx's PDF preview — the browser's own native
-// PDF viewer via <iframe>, no rendering library needed. That version points
-// at a local blob URL (URL.createObjectURL) since it previews a file still
-// in hand at upload time; here `url` is the file's presigned S3 URL instead,
-// since the gallery loads assets from persisted messages, not a live File.
+// The browser's own native PDF viewer via <iframe>, no rendering library
+// needed. `url` is the file's presigned S3 URL — the gallery loads assets
+// from persisted messages, not a live File already in memory.
 //
 // The iframe is handed the URL only after a probe confirms it actually serves
 // a PDF. Without that check a failed fetch is invisible: S3 answers with an

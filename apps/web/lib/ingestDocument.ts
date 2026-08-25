@@ -1,8 +1,10 @@
 /**
  * Upload a document into the workspace knowledge base.
  *
- * Extracted from KnowledgeBaseSection so the chat composer can use the same
- * path. Chat attachments previously went only to /files/upload, which stores
+ * The chat composer is now the only caller: the Knowledge Base UI it was
+ * originally extracted from has moved out of the canvas to dev studio, but
+ * ingestion itself is unchanged and still runs on every attached document.
+ * Chat attachments previously went only to /files/upload, which stores
  * the object but never chunks or embeds it — so a document dropped into chat
  * was invisible to retrieve_documents in every later conversation.
  *

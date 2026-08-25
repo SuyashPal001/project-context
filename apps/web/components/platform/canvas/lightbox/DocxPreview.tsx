@@ -3,9 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
 
-// Mirrors KnowledgeBaseSection.tsx's DOCX preview (mammoth.convertToHtml),
-// which there runs on a local File's arrayBuffer at upload time. Here `url`
-// is the file's presigned S3 URL — fetched fresh since the gallery loads
+// `url` is the file's presigned S3 URL, fetched fresh — the gallery loads
 // assets from persisted messages, not a live File already in memory.
 //
 // The actual conversion runs in docxConvertWorker.ts, off the main thread —

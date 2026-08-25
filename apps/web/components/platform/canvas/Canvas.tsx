@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { CanvasViewer } from './CanvasViewer';
-import { KnowledgeBaseSection } from './KnowledgeBaseSection';
 import { ArtifactPanel } from './ArtifactPanel';
 import { FileCreatedCard } from './FileCreatedCard';
 import { AssetGallery } from './AssetGallery';
@@ -41,11 +40,17 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
   const queryClient = useQueryClient();
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
-  const KNOWLEDGE_TAB: CanvasTab = { id: 'knowledge', kind: 'knowledge', title: 'Knowledge Base', closeable: false };
+  // The canvas's home tab. This was the Knowledge Base, which is an admin
+  // concern rather than something an end user manages — it moves to dev studio.
+  // Ingestion is untouched: attachments are still chunked and embedded, they
+  // just surface here, as the conversation's own files, instead of in a
+  // document library. Not closeable, so there is always a tab to fall back to.
+  const HOME_TAB_ID = 'gallery';
+  const HOME_TAB: CanvasTab = { id: HOME_TAB_ID, kind: 'gallery', title: 'Chat History', closeable: false };
   const ARTIFACT_TAB_ID = 'artifact';
 
-  const [tabs, setTabs] = useState<CanvasTab[]>([KNOWLEDGE_TAB]);
-  const [activeTabId, setActiveTabId] = useState<string>('knowledge');
+  const [tabs, setTabs] = useState<CanvasTab[]>([HOME_TAB]);
+  const [activeTabId, setActiveTabId] = useState<string>(HOME_TAB_ID);
   const [lightboxAsset, setLightboxAsset] = useState<{ asset: Asset; allAssets: Asset[] } | null>(null);
 
   const upsertArtifactTab = useCallback((updater: (prev: ArtifactState | null) => ArtifactState | null, focus: boolean) => {
@@ -69,12 +74,10 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
     setActiveTabId(tabId);
   }, []);
 
+  // The gallery is the home tab now, so it always exists — opening it is just
+  // focusing it, never creating a second one.
   const openGalleryTab = useCallback(() => {
-    const tabId = 'gallery';
-    setTabs(prev => prev.some(t => t.id === tabId)
-      ? prev
-      : [...prev, { id: tabId, kind: 'gallery', title: 'Chat History', closeable: true }]);
-    setActiveTabId(tabId);
+    setActiveTabId(HOME_TAB_ID);
   }, []);
 
   const closeTab = useCallback((tabId: string) => {
@@ -82,13 +85,13 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
       const next = prev.filter(t => t.id !== tabId);
       setActiveTabId(current => {
         if (current !== tabId) return current;
-        return next[next.length - 1]?.id ?? 'knowledge';
+        return next[next.length - 1]?.id ?? HOME_TAB_ID;
       });
       return next;
     });
   }, []);
 
-  const activeTab = tabs.find(t => t.id === activeTabId) ?? KNOWLEDGE_TAB;
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? HOME_TAB;
 
   // Restore latest PRD from DB when agentId changes (e.g. page refresh or conversation switch)
   useEffect(() => {
@@ -100,7 +103,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
       if (!prd) return;
       // Only steal focus if the tab list is still at its initial state — a user who has
       // already opened other tabs should not be yanked back to the restored artifact.
-      const isInitial = activeTabId === 'knowledge' && tabs.length === 1;
+      const isInitial = activeTabId === HOME_TAB_ID && tabs.length === 1;
       upsertArtifactTab(() => ({
         type: 'prd',
         title: prd.title,
@@ -247,8 +250,8 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
   const handleReset = useCallback(() => {
     setState(initialState);
     setRecentFiles([]);
-    setTabs([KNOWLEDGE_TAB]);
-    setActiveTabId('knowledge');
+    setTabs([HOME_TAB]);
+    setActiveTabId(HOME_TAB_ID);
   }, []);
 
   useEffect(() => {
@@ -396,7 +399,7 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         </div>
 
         {/* Recent Files */}
-        {recentFiles.length > 0 && activeTab.kind === 'knowledge' && (
+        {recentFiles.length > 0 && activeTab.kind === 'gallery' && (
           <div className="flex-none px-4 pb-3 space-y-2">
             <div className="flex items-center gap-2 mb-2">
               <div className="h-px flex-1 bg-border/50" />
@@ -420,8 +423,6 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
             />
           </div>
         )}
-
-        {activeTab.kind === 'knowledge' && <KnowledgeBaseSection />}
 
         {activeTab.kind === 'gallery' && (
           <AssetGallery conversationId={conversationId ?? ''} onCardClick={(asset, allAssets) => setLightboxAsset({ asset, allAssets })} />
