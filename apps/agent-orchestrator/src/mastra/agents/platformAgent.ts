@@ -15,6 +15,7 @@ import { isComposioEnabled, getComposioTools } from '../composio.js'
 import { createViolationHandler } from '../guardrails.js'
 import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
+import { listFolderTool } from '../tools/listFolder.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
 import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
 import { renderCanvas } from '../tools/renderCanvas.js'
@@ -163,6 +164,9 @@ export const SERVER_TOOLS = {
   render_canvas: renderCanvas,
   analyze_audio: analyzeAudioTool,
   analyze_video: analyzeVideoTool,
+  // Folder scope: the agent is granted a handle to a folder, not its contents.
+  // list_folder is the manifest — names and types only, no bytes read.
+  list_folder: listFolderTool,
 }
 
 // Server tool names used to filter out duplicate MCP tool registrations.
