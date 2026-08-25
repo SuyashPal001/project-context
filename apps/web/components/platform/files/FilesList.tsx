@@ -212,8 +212,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         />
                     )}
 
-                    {/* Side panel */}
-                    {selectedFile && (
+                    {/* Side panel — pipeline lineage only, so it follows the same flag */}
+                    {showPipelineDetails && selectedFile && (
                         <IngestionSidePanel file={selectedFile} onClose={() => setSelectedFile(null)} />
                     )}
                     </div>

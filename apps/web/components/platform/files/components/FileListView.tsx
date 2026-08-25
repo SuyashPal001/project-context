@@ -84,7 +84,7 @@ export function FileListView({
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7 text-muted-foreground hover:text-green-400"
+                                        className="h-7 w-7 text-muted-foreground hover:text-primary"
                                         title={isIngesting ? 'Ingesting…' : 'Ingest'}
                                         onClick={() => onIngestFolder(folderName)}
                                         disabled={allDone || isIngesting}
@@ -97,7 +97,7 @@ export function FileListView({
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-7 w-7 text-muted-foreground hover:text-red-500"
+                                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
                                             onClick={() => onDeleteFolder(folderName)}
                                         >
                                             <Trash2 className="w-3.5 h-3.5" />
@@ -112,8 +112,8 @@ export function FileListView({
                         return (
                         <TableRow
                             key={file.id}
-                            className={`border-border/50 hover:bg-secondary/60 transition-colors cursor-pointer ${selectedFile?.id === file.id ? 'bg-secondary/60 border-l-2 border-l-blue-500' : ''}`}
-                            onClick={() => onSelectFile(selectedFile?.id === file.id ? null : file)}
+                            className={`border-border/50 hover:bg-secondary/60 transition-colors ${showPipelineDetails ? 'cursor-pointer' : ''} ${selectedFile?.id === file.id ? 'bg-secondary/60 border-l-2 border-l-primary' : ''}`}
+                            onClick={showPipelineDetails ? () => onSelectFile(selectedFile?.id === file.id ? null : file) : undefined}
                         >
                             <TableCell className="w-10 py-3 align-middle" onClick={e => e.stopPropagation()}>
                                 <Checkbox checked={selectedIds.has(file.id)} onCheckedChange={() => onToggleSelect(file.id)} />
@@ -174,7 +174,7 @@ export function FileListView({
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-7 w-7 text-muted-foreground hover:text-green-400"
+                                            className="h-7 w-7 text-muted-foreground hover:text-primary"
                                             title="Ingest"
                                             onClick={() => onIngestFile(file.id)}
                                             disabled={ingestingFiles.has(file.id)}
@@ -185,7 +185,7 @@ export function FileListView({
                                         </Button>
                                     )}
                                     {canDelete && (
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-500" onClick={() => onDeleteFile(file.id)}>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onDeleteFile(file.id)}>
                                             <Trash2 className="w-3.5 h-3.5" />
                                         </Button>
                                     )}

@@ -47,7 +47,7 @@ export function FileGridView({
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-green-400"
+                            className="h-6 w-6 text-muted-foreground hover:text-primary"
                             title="Ingest"
                             onClick={() => onIngestFolder(folderName)}
                             disabled={allDone || isIngesting}
@@ -55,7 +55,7 @@ export function FileGridView({
                             {isIngesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                         </Button>
                         {canDelete && (
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-red-500" onClick={() => onDeleteFolder(folderName)}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => onDeleteFolder(folderName)}>
                                 <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                         )}
@@ -110,7 +110,7 @@ export function FileGridView({
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-green-400"
+                                    className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-primary"
                                     title="Ingest"
                                     onClick={() => onIngestFile(file.id)}
                                     disabled={ingestingFiles.has(file.id)}
@@ -119,7 +119,7 @@ export function FileGridView({
                                 </Button>
                             )}
                             {canDelete && (
-                                <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-red-500" onClick={() => onDeleteFile(file.id)}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-destructive" onClick={() => onDeleteFile(file.id)}>
                                     <Trash2 className="w-3 h-3" />
                                 </Button>
                             )}
