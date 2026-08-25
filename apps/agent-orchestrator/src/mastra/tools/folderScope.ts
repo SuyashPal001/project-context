@@ -2,6 +2,8 @@ import { sql, type SQL } from 'drizzle-orm'
 import { db } from '@serverless-saas/database'
 
 /**
+ * Shared by the folder tools.
+ *
  * drizzle-orm ships separate ESM and CJS type declarations. This package is ESM
  * and resolves `sql` through the ESM ones, while `db` arrives from
  * @serverless-saas/database typed through the CJS ones, so tsc sees two
@@ -10,7 +12,7 @@ import { db } from '@serverless-saas/database'
  * is a real parameterised SQL object and its parameters stay bound, so no value
  * is ever interpolated into the statement text.
  */
-function execute(query: SQL): Promise<unknown> {
+export function executeSql(query: SQL): Promise<unknown> {
   return (db.execute as unknown as (q: SQL) => Promise<unknown>)(query)
 }
 
@@ -63,7 +65,7 @@ function toGrantedFile(r: Record<string, unknown>): GrantedFile {
 export async function listGrantedFiles(tenantId: string, prefix: string): Promise<GrantedFile[]> {
   if (!tenantId || !prefix) return []
   const pattern = `${escapeLikePrefix(prefix)}%`
-  const result = await execute(sql`
+  const result = await executeSql(sql`
     SELECT id AS file_id, name, mime_type, size, created_at
     FROM files
     WHERE tenant_id = ${tenantId}
@@ -90,7 +92,7 @@ export async function assertFileInGrant(
   if (!tenantId || !prefix || !fileId) throw denied
 
   const pattern = `${escapeLikePrefix(prefix)}%`
-  const result = await execute(sql`
+  const result = await executeSql(sql`
     SELECT id AS file_id, name, mime_type, size, created_at
     FROM files
     WHERE tenant_id = ${tenantId}
