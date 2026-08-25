@@ -40,12 +40,10 @@ export function FileListView({
 }: FileListViewProps) {
     const columnCount = 5 + (showPipelineDetails ? 5 : 0);
     // table-fixed hands any undeclared width to the one unsized column, so the
-    // default view declares a share for every column — otherwise Name absorbs
-    // the whole remainder and opens a gap before Size. The pipeline view has
+    // default view declares a share for every column — otherwise Name absorbs the
+    // whole remainder and opens a gap before Size. Equal shares for the three
+    // metadata columns keep the gaps between them even. The pipeline view has
     // enough columns to fill the row on its own.
-    // Equal shares for the three metadata columns, all right-aligned, so the gaps
-    // between them read as one rhythm instead of some columns crowding and others
-    // drifting apart.
     const col = showPipelineDetails
         ? { name: '', size: 'w-24', added: 'w-28', actions: 'w-28' }
         : { name: 'w-[40%]', size: 'w-[19%]', added: 'w-[19%]', actions: 'w-[19%]' };
@@ -58,13 +56,13 @@ export function FileListView({
                             <Checkbox checked={allPageSelected} onCheckedChange={onToggleSelectAll} />
                         </TableHead>
                         <TableHead className={col.name}>Name</TableHead>
-                        <TableHead className={`${col.size} text-right`}>Size</TableHead>
+                        <TableHead className={col.size}>Size</TableHead>
                         {showPipelineDetails && <TableHead className="w-24">Format</TableHead>}
                         {showPipelineDetails && <TableHead className="w-32">Workspace</TableHead>}
                         {showPipelineDetails && <TableHead className="w-36">Classification</TableHead>}
                         {showPipelineDetails && <TableHead className="w-20 text-right">Chunks</TableHead>}
                         {showPipelineDetails && <TableHead className="w-40">Status</TableHead>}
-                        <TableHead className={`${col.added} text-right`}>Added</TableHead>
+                        <TableHead className={col.added}>Added</TableHead>
                         <TableHead className={`${col.actions} text-right`}>Actions</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -133,7 +131,7 @@ export function FileListView({
                                     <span className="text-foreground/80 truncate text-sm font-medium" title={file.filename}>{file.filename}</span>
                                 </div>
                             </TableCell>
-                            <TableCell className="text-right text-xs font-mono text-muted-foreground">
+                            <TableCell className="text-xs font-mono text-muted-foreground">
                                 {formatFileSize(file.size)}
                             </TableCell>
                             {showPipelineDetails && (
@@ -171,7 +169,7 @@ export function FileListView({
                                     {isIngestible && <ProcessingStepsIndicator status={file.ingestionStatus} />}
                                 </TableCell>
                             )}
-                            <TableCell className="text-right text-xs font-mono text-muted-foreground">
+                            <TableCell className="text-xs font-mono text-muted-foreground">
                                 {format(new Date(file.createdAt), 'dd MMM yyyy')}
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
