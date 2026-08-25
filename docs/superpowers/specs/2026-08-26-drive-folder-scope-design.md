@@ -151,6 +151,29 @@ stays live, not because this design needs them.
 
 Defect 1 is independent of this design and should ship on its own.
 
+## Open — decide before building tier 2 or 3
+
+**Where the media pass runs, and what drives it.** §3 states the constraint —
+`analyzeAudio` / `analyzeVideo` call the inference gateway on the VM's
+`localhost:4001`, and the Lambda worker cannot reach it — but does not design the
+thing that satisfies it. Undecided:
+
+- What process runs it. A new PM2 service beside `mcp-server-pc` and
+  `inference-gateway` is the obvious shape, but nothing is chosen.
+- How work reaches it. The existing path is SQS → Lambda; a VM-side consumer needs
+  either its own SQS consumer or an internal endpoint the API calls. The VM already
+  authenticates internal calls with `INTERNAL_SERVICE_KEY`, so the second is
+  cheaper.
+- What happens when it is down. Tier 1 keeps working — files stay listable and
+  routable — so the failure is degraded ranking, not an outage. That is the
+  argument for not making tier 2 blocking anywhere.
+- Retry policy. `files` has no attempt counter, which is why the watchdog marks
+  stalls `failed` and never retries. A media pass that retries needs one, or it
+  loops a broken file forever.
+
+This is the largest unknown in the build. Everything in §1, §2, §4, §5 and tier 1
+of §3 can be built and shipped without resolving it.
+
 ## Non-goals
 
 - Replacing individual-file attachments. Files stay explicit, immediate and
