@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Download, Trash2, Folder as FolderIcon, Play, RefreshCw, MoreHorizontal, MessageSquare } from "lucide-react";
+import { Loader2, Download, Trash2, Folder as FolderIcon, Play, RefreshCw, MoreHorizontal } from "lucide-react";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -14,6 +14,8 @@ import { isIngestibleCategory, getFileCategory, isParseable } from "../fileCateg
 import { getFileIcon, formatFileSize } from "../lib/fileIcons";
 import { ProcessingStepsIndicator } from "./IngestionStatus";
 import type { FileRecord, FolderCard } from "../types";
+import type { Conversation } from "@/components/platform/chat/types";
+import { AddToChatMenu } from "./AddToChatMenu";
 
 interface FileListViewProps {
     folderCards: FolderCard[];
@@ -32,7 +34,8 @@ interface FileListViewProps {
     canDelete: boolean;
     onDeleteFile: (fileId: string) => void;
     onDeleteFolder: (folderName: string) => void;
-    onStartSession: (files: FileRecord[]) => void;
+    conversations: Conversation[];
+    onAddToChat: (files: FileRecord[], conversationId: string | null) => void;
     showPipelineDetails?: boolean;
 }
 
@@ -54,7 +57,7 @@ function RowMenuTrigger() {
 export function FileListView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     allPageSelected, onToggleSelectAll, ingestingFiles, onIngestFile, onIngestFolder,
-    onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder, onStartSession,
+    onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder, conversations, onAddToChat,
     showPipelineDetails = false,
 }: FileListViewProps) {
     const columnCount = 5 + (showPipelineDetails ? 5 : 0);
@@ -201,15 +204,10 @@ export function FileListView({
                                     {/* Visible at rest, not hover-only: this is the row's reason to
                                         exist, and the column is otherwise dead space. Muted until
                                         hover so eleven of them do not shout. */}
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 text-xs gap-1.5 text-muted-foreground/70 hover:text-foreground"
-                                        onClick={() => onStartSession([file])}
-                                    >
-                                        <MessageSquare className="w-3.5 h-3.5" />
-                                        Add to chat
-                                    </Button>
+                                    <AddToChatMenu
+                                        conversations={conversations}
+                                        onPick={(conversationId) => onAddToChat([file], conversationId)}
+                                    />
                                     <DropdownMenu>
                                         <RowMenuTrigger />
                                         <DropdownMenuContent align="end" className="w-48">

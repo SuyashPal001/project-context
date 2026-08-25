@@ -5,6 +5,8 @@ import {
     Loader2, FolderOpen, ChevronRight, ChevronLeft, MessageSquare, LayoutGrid, List as ListIcon, Play, Trash2
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FilesFilter } from "./FilesFilter";
@@ -20,6 +22,8 @@ import { useFileSelection } from "./hooks/useFileSelection";
 import { useFileMutations } from "./hooks/useFileMutations";
 import { useFileFilters } from "./hooks/useFileFilters";
 import type { FileRecord, FolderCard } from "./types";
+import type { ConversationsResponse } from "@/components/platform/chat/types";
+import { AddToChatMenu } from "./components/AddToChatMenu";
 
 interface FilesListProps {
     prefix: string;
@@ -44,25 +48,35 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
+    // Same key the chat page uses, so whichever loads first warms the other.
+    const { data: conversationsData } = useQuery({
+        queryKey: ['conversations'],
+        queryFn: () => api.get<ConversationsResponse>('/api/v1/conversations'),
+    });
+    const conversations = conversationsData?.data ?? [];
+
     const tooManySelected = selection.selectedIds.size > MAX_FILES_PER_SELECTION;
 
-    // Hands the selection to the composer and opens a fresh conversation: no `id`
-    // in the URL, so useChatPage's auto-create effect makes a new one. The files
-    // travel through sessionStorage because that redirect drops query params.
-    const startSessionWith = (chosen: FileRecord[]) => {
-        if (!defaultAgentId || chosen.length === 0) return;
+    // conversationId null opens a new session; otherwise the files land in that
+    // existing chat. Either way ChatInput consumes the staged payload on mount,
+    // so the destination is just which route we navigate to.
+    const addToChat = (chosen: FileRecord[], conversationId: string | null) => {
+        if (chosen.length === 0) return;
+        if (!conversationId && !defaultAgentId) return;
         stagePendingAttachments(chosen.map(f => ({
             fileId: f.id,
             name: f.filename,
             type: f.contentType,
             size: f.size,
         })));
-        router.push(`/${tenant}/dashboard/chat?agentId=${defaultAgentId}`);
+        router.push(conversationId
+            ? `/${tenant}/dashboard/chat?id=${conversationId}`
+            : `/${tenant}/dashboard/chat?agentId=${defaultAgentId}`);
     };
 
-    const startSessionWithSelection = () => {
+    const addSelectionToChat = (conversationId: string | null) => {
         if (tooManySelected) return;
-        startSessionWith(allFiles.filter(f => selection.selectedIds.has(f.id)));
+        addToChat(allFiles.filter(f => selection.selectedIds.has(f.id)), conversationId);
     };
 
     const folderCards: FolderCard[] = useMemo(() => virtualFolders.map(folderName => {
@@ -195,15 +209,12 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         Up to {MAX_FILES_PER_SELECTION} files per session
                                     </span>
                                 )}
-                                <Button
-                                    size="sm"
-                                    className="h-7 text-xs gap-1"
+                                <AddToChatMenu
+                                    variant="bulk"
+                                    conversations={conversations}
                                     disabled={tooManySelected || !defaultAgentId}
-                                    onClick={startSessionWithSelection}
-                                >
-                                    <MessageSquare className="w-3 h-3" />
-                                    Start session
-                                </Button>
+                                    onPick={addSelectionToChat}
+                                />
                                 <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={selection.bulkDelete} disabled={selection.bulkDeleting}>
                                     {selection.bulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                                     Delete Selected
@@ -248,7 +259,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             canDelete={canDelete}
                             onDeleteFile={mutations.setDeletingFileId}
                             onDeleteFolder={mutations.setDeletingFolderName}
-                            onStartSession={startSessionWith}
+                            conversations={conversations}
+                            onAddToChat={addToChat}
                             showPipelineDetails={showPipelineDetails}
                         />
                     )}
