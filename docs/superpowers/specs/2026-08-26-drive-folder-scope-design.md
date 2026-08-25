@@ -70,22 +70,40 @@ to update, versus re-tagging every chunk. Cost is a join (files → documents �
 chunks) instead of one column compare — not a real loss, since
 `document_chunks.person_folder_id` has no index anyway.
 
-### 3. Background extraction makes every type searchable
+### 3. Three tiers, cheapest first
 
 Indexing looks text-only, which seems to disqualify it for a mixed folder — a
 folder holds video, audio, images and PDFs side by side. It is only text-only if
-nothing makes text first. Extend `file.ingest` so each type produces text, then
-joins the chunk + embed path that already exists:
+nothing makes text first. But making text is not required for a file to be
+*findable*, and conflating the two is what makes indexing look expensive.
 
-| Type | Produces |
-|---|---|
-| pdf / docx / txt / csv | extracted text (already built) |
-| audio | transcript via `analyzeAudio` deep |
-| video | transcript / description via `analyzeVideo` deep |
-| image | caption + OCR |
+| Tier | Applies to | Cost | Buys |
+|---|---|---|---|
+| **1. Metadata** — filename, type, size, dates, prefix, `fileId` | every file | free | the file is listable and routable whenever its name carries signal |
+| **2. Quick pass** — 1–2 sentence description | media | ~45 s, once | tells two same-shaped files apart when names do not |
+| **3. Deep pass** — full transcript / extracted text | on read, or documents at ingest | 150 s | the actual answer |
 
-The 150 s is then paid **once per file**, not once per question, and a video stops
-being invisible to search.
+Tier 1 is the manifest. The manifest and the index are therefore the same thing,
+not two mechanisms — a file is in the index the moment it exists, with no job
+having run.
+
+Tier 2 exists because metadata routing fails exactly where it is needed. Real
+filenames in this Drive today: `hf_20260817_212810_eeda703e-…` (video),
+`hf_20260816_163114_61866578-…` (image), `ElevenLabs_2026-08-18T00_13_38_…`,
+`cartesia_audio_2026-08-18T06_47_52…`. Generator prefixes and timestamps. A router
+given only metadata cannot answer "which video shows the dashboard" — there is
+nothing to match on. One cheap sentence per media file fixes that.
+
+`analyzeAudio` and `analyzeVideo` already implement this split: `QUICK_TIMEOUT_MS`
+45 s returns a 1–2 sentence summary, `DEEP_TIMEOUT_MS` 150 s returns a full
+transcript. The cheap tier is already built; only tier 3 needs to persist its
+output.
+
+Documents keep extracting at ingest as they do today — text extraction is cheap
+enough that the tiering does not pay for itself there.
+
+The 150 s is then paid **once per file at most**, and only for files an agent
+actually opens — never once per question.
 
 **Constraint — the media branch cannot run in the Lambda worker.** `analyzeAudio`
 and `analyzeVideo` live on the GCP VM and call the inference gateway on
@@ -147,6 +165,9 @@ Defect 1 is independent of this design and should ship on its own.
 - Enforcement: a `fileId` from another tenant is refused; a `fileId` inside the
   tenant but outside the granted prefix is refused.
 - Routing: search returns ranked files, not prose.
-- Extraction: each type produces indexable text; a failure marks
-  `ingestion_status` and does not strand the file in `processing`.
+- Tier 1: a file is listable and routable the moment it exists, with no job run.
+- Tier 2: two media files with generator-prefix names are distinguishable after
+  the quick pass and are not before it.
+- Tier 3 failure marks `ingestion_status` and does not strand the file in
+  `processing`; a file whose quick pass failed is still findable by metadata.
 - Rename: updating a grant's prefix keeps the conversation working.
