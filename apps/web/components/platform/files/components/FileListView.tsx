@@ -1,9 +1,12 @@
 "use client";
 
-import { Loader2, Download, Trash2, Folder as FolderIcon, Play, RefreshCw } from "lucide-react";
+import { Loader2, Download, Trash2, Folder as FolderIcon, Play, RefreshCw, MoreHorizontal, MessageSquare } from "lucide-react";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,13 +32,29 @@ interface FileListViewProps {
     canDelete: boolean;
     onDeleteFile: (fileId: string) => void;
     onDeleteFolder: (folderName: string) => void;
+    onStartSession: (files: FileRecord[]) => void;
     showPipelineDetails?: boolean;
+}
+
+/** Shared trigger so the row menu sits in the same place on file and folder rows. */
+function RowMenuTrigger() {
+    return (
+        <DropdownMenuTrigger asChild>
+            <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity"
+            >
+                <MoreHorizontal className="w-4 h-4" />
+            </Button>
+        </DropdownMenuTrigger>
+    );
 }
 
 export function FileListView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     allPageSelected, onToggleSelectAll, ingestingFiles, onIngestFile, onIngestFolder,
-    onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder,
+    onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder, onStartSession,
     showPipelineDetails = false,
 }: FileListViewProps) {
     const columnCount = 5 + (showPipelineDetails ? 5 : 0);
@@ -46,7 +65,7 @@ export function FileListView({
     // enough columns to fill the row on its own.
     const col = showPipelineDetails
         ? { name: '', size: 'w-24', added: 'w-28', actions: 'w-28' }
-        : { name: 'w-[40%]', size: 'w-[19%]', added: 'w-[19%]', actions: 'w-[19%]' };
+        : { name: 'w-[46%]', size: 'w-[19%]', added: 'w-[19%]', actions: 'w-[12%]' };
     return (
         <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
             <Table className="table-fixed [&_th]:px-4 [&_td]:px-4">
@@ -81,32 +100,37 @@ export function FileListView({
                                 </div>
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                                    {showPipelineDetails && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 text-muted-foreground hover:text-green-400"
-                                            title={isIngesting ? 'Ingesting…' : 'Ingest'}
-                                            onClick={() => onIngestFolder(folderName)}
-                                            disabled={allDone || isIngesting}
-                                        >
-                                            {isIngesting
-                                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                : <Play className="w-3.5 h-3.5" />}
-                                        </Button>
-                                    )}
-                                    {canDelete && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                            onClick={() => onDeleteFolder(folderName)}
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </Button>
-                                    )}
-                                </div>
+                                {(canDelete || showPipelineDetails) && (
+                                    <DropdownMenu>
+                                        <RowMenuTrigger />
+                                        <DropdownMenuContent align="end" className="w-48">
+                                            {showPipelineDetails && (
+                                                <DropdownMenuItem
+                                                    onClick={() => onIngestFolder(folderName)}
+                                                    disabled={allDone || isIngesting}
+                                                    className="gap-2 cursor-pointer"
+                                                >
+                                                    {isIngesting
+                                                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                        : <Play className="w-4 h-4" />}
+                                                    {isIngesting ? 'Ingesting…' : 'Ingest folder'}
+                                                </DropdownMenuItem>
+                                            )}
+                                            {canDelete && (
+                                                <>
+                                                    {showPipelineDetails && <DropdownMenuSeparator />}
+                                                    <DropdownMenuItem
+                                                        onClick={() => onDeleteFolder(folderName)}
+                                                        className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                        Delete
+                                                    </DropdownMenuItem>
+                                                </>
+                                            )}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )}
                             </TableCell>
                         </TableRow>
                     ))}
@@ -173,30 +197,43 @@ export function FileListView({
                                 {format(new Date(file.createdAt), 'dd MMM yyyy')}
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => onDownload(file.id)}>
-                                        <Download className="w-3.5 h-3.5" />
-                                    </Button>
-                                    {showPipelineDetails && isParseable(file) && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 text-muted-foreground hover:text-green-400"
-                                            title="Ingest"
-                                            onClick={() => onIngestFile(file.id)}
-                                            disabled={ingestingFiles.has(file.id)}
-                                        >
-                                            {ingestingFiles.has(file.id)
-                                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                : <RefreshCw className="w-3.5 h-3.5" />}
-                                        </Button>
-                                    )}
-                                    {canDelete && (
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onDeleteFile(file.id)}>
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </Button>
-                                    )}
-                                </div>
+                                <DropdownMenu>
+                                    <RowMenuTrigger />
+                                    <DropdownMenuContent align="end" className="w-48">
+                                        <DropdownMenuItem onClick={() => onStartSession([file])} className="gap-2 cursor-pointer">
+                                            <MessageSquare className="w-4 h-4" />
+                                            Start session
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => onDownload(file.id)} className="gap-2 cursor-pointer">
+                                            <Download className="w-4 h-4" />
+                                            Download
+                                        </DropdownMenuItem>
+                                        {showPipelineDetails && isParseable(file) && (
+                                            <DropdownMenuItem
+                                                onClick={() => onIngestFile(file.id)}
+                                                disabled={ingestingFiles.has(file.id)}
+                                                className="gap-2 cursor-pointer"
+                                            >
+                                                {ingestingFiles.has(file.id)
+                                                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                    : <RefreshCw className="w-4 h-4" />}
+                                                {ingestingFiles.has(file.id) ? 'Ingesting…' : 'Re-ingest'}
+                                            </DropdownMenuItem>
+                                        )}
+                                        {canDelete && (
+                                            <>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem
+                                                    onClick={() => onDeleteFile(file.id)}
+                                                    className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                    Delete
+                                                </DropdownMenuItem>
+                                            </>
+                                        )}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </TableCell>
                         </TableRow>
                         );

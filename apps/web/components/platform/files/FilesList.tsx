@@ -49,9 +49,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // Hands the selection to the composer and opens a fresh conversation: no `id`
     // in the URL, so useChatPage's auto-create effect makes a new one. The files
     // travel through sessionStorage because that redirect drops query params.
-    const startSessionWithSelection = () => {
-        if (!defaultAgentId || tooManySelected) return;
-        const chosen = allFiles.filter(f => selection.selectedIds.has(f.id));
+    const startSessionWith = (chosen: FileRecord[]) => {
+        if (!defaultAgentId || chosen.length === 0) return;
         stagePendingAttachments(chosen.map(f => ({
             fileId: f.id,
             name: f.filename,
@@ -59,6 +58,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             size: f.size,
         })));
         router.push(`/${tenant}/dashboard/chat?agentId=${defaultAgentId}`);
+    };
+
+    const startSessionWithSelection = () => {
+        if (tooManySelected) return;
+        startSessionWith(allFiles.filter(f => selection.selectedIds.has(f.id)));
     };
 
     const folderCards: FolderCard[] = useMemo(() => virtualFolders.map(folderName => {
@@ -244,6 +248,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             canDelete={canDelete}
                             onDeleteFile={mutations.setDeletingFileId}
                             onDeleteFolder={mutations.setDeletingFolderName}
+                            onStartSession={startSessionWith}
                             showPipelineDetails={showPipelineDetails}
                         />
                     )}
