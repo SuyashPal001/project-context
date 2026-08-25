@@ -5,6 +5,8 @@ import { MessageSquare, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
+import { getAgentTypeIcon } from "@/components/platform/agents/agentTypeIcon";
 import type { Conversation } from "@/components/platform/chat/types";
 
 interface AddToChatMenuProps {
@@ -70,7 +72,10 @@ export function AddToChatMenu({
                     onClick={() => pick(null)}
                     className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm text-left hover:bg-secondary/60 transition-colors"
                 >
-                    <Plus className="w-4 h-4 shrink-0" />
+                    {/* Boxed to the avatar's width so the labels below line up. */}
+                    <span className="flex h-[22px] w-[22px] items-center justify-center shrink-0">
+                        <Plus className="w-4 h-4" />
+                    </span>
                     New session
                 </button>
 
@@ -96,10 +101,21 @@ export function AddToChatMenu({
                                 key={conversation.id}
                                 type="button"
                                 onClick={() => pick(conversation.id)}
-                                className="w-full px-2 py-2 rounded-md text-sm text-left truncate hover:bg-secondary/60 transition-colors"
-                                title={conversation.title || 'Untitled'}
+                                className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm text-left hover:bg-secondary/60 transition-colors"
+                                title={conversation.agent?.name
+                                    ? `${conversation.title || 'Untitled'} — ${conversation.agent.name}`
+                                    : conversation.title || 'Untitled'}
                             >
-                                {conversation.title || 'Untitled'}
+                                {/* No `state`: this is a picker, so the avatar stays static. */}
+                                <PersonaAvatar
+                                    persona={conversation.agent?.persona}
+                                    avatarUrl={conversation.agent?.avatarUrl}
+                                    size={22}
+                                    className="rounded-full h-[22px] w-[22px]"
+                                    iconClassName="text-foreground/50"
+                                    icon={getAgentTypeIcon(conversation.agent?.type)}
+                                />
+                                <span className="truncate">{conversation.title || 'Untitled'}</span>
                             </button>
                         ))
                     )}
