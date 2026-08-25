@@ -246,6 +246,9 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             canDelete={canDelete}
                             onDeleteFile={mutations.setDeletingFileId}
                             onDeleteFolder={mutations.setDeletingFolderName}
+                            conversations={conversations}
+                            onAddToChat={addToChat}
+                            onAddFolderToChat={addFolderToChat}
                             showPipelineDetails={showPipelineDetails}
                         />
                     ) : (

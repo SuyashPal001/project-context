@@ -13,12 +13,16 @@ interface AddToChatMenuProps {
     label?: string;
     /** `null` means a new conversation. */
     onPick: (conversationId: string | null) => void;
-    /** Row triggers sit quiet until hovered; the bulk bar's is a primary action. */
-    variant?: 'row' | 'bulk';
+    /** Row triggers sit quiet until hovered; the bulk bar's is a primary action.
+     *  `icon` drops the label for grid cards, where there is no room for it. */
+    variant?: 'row' | 'bulk' | 'icon';
+    /** Lets a caller match local chrome (the grid's translucent overlay). */
+    triggerClassName?: string;
 }
 
 export function AddToChatMenu({
     conversations, disabled, label = 'Add to chat', onPick, variant = 'row',
+    triggerClassName = '',
 }: AddToChatMenuProps) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
@@ -44,14 +48,18 @@ export function AddToChatMenu({
             <PopoverTrigger asChild>
                 <Button
                     variant={variant === 'bulk' ? 'default' : 'ghost'}
-                    size="sm"
+                    size={variant === 'icon' ? 'icon' : 'sm'}
                     disabled={disabled}
-                    className={variant === 'bulk'
-                        ? 'h-7 text-xs gap-1.5'
-                        : 'h-7 text-xs gap-1.5 text-muted-foreground/70 hover:text-foreground'}
+                    title={variant === 'icon' ? label : undefined}
+                    className={[
+                        variant === 'bulk' ? 'h-7 text-xs gap-1.5'
+                            : variant === 'icon' ? 'h-6 w-6 text-muted-foreground hover:text-foreground'
+                                : 'h-7 text-xs gap-1.5 text-muted-foreground/70 hover:text-foreground',
+                        triggerClassName,
+                    ].join(' ').trim()}
                 >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    {label}
+                    <MessageSquare className={variant === 'icon' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
+                    {variant !== 'icon' && label}
                 </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64 p-1.5">

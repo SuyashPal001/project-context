@@ -7,6 +7,9 @@ import { FileThumbnail } from "../FileThumbnail";
 import { getFileCategory, isIngestibleCategory, isParseable } from "../fileCategory";
 import { getFileIcon } from "../lib/fileIcons";
 import { ProcessingStepsIndicator } from "./IngestionStatus";
+import { AddToChatMenu } from "./AddToChatMenu";
+import { MAX_FILES_PER_SELECTION } from "@/components/platform/chat/useFileUpload";
+import type { Conversation } from "@/components/platform/chat/types";
 import type { FileRecord, FolderCard } from "../types";
 
 interface FileGridViewProps {
@@ -24,17 +27,21 @@ interface FileGridViewProps {
     canDelete: boolean;
     onDeleteFile: (fileId: string) => void;
     onDeleteFolder: (folderName: string) => void;
+    conversations: Conversation[];
+    onAddToChat: (files: FileRecord[], conversationId: string | null) => void;
+    onAddFolderToChat: (folderPrefix: string, conversationId: string | null) => void;
     showPipelineDetails?: boolean;
 }
 
 export function FileGridView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     ingestingFiles, onIngestFile, onIngestFolder, onNavigateToFolder, onDownload,
-    canDelete, onDeleteFile, onDeleteFolder, showPipelineDetails = false,
+    canDelete, onDeleteFile, onDeleteFolder, conversations, onAddToChat, onAddFolderToChat,
+    showPipelineDetails = false,
 }: FileGridViewProps) {
     return (
         <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting }) => (
+            {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount }) => (
                 <div
                     key={`folder-${folderName}`}
                     onClick={() => onNavigateToFolder(folderPrefix)}
@@ -45,6 +52,13 @@ export function FileGridView({
                         <span className="font-medium text-foreground text-sm truncate" title={`${folderName}/`}>{folderName}/</span>
                     </div>
                     <div className="flex items-center justify-end gap-1 mt-auto opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                        <AddToChatMenu
+                            conversations={conversations}
+                            variant="icon"
+                            disabled={fileCount === 0 || fileCount > MAX_FILES_PER_SELECTION}
+                            label={fileCount > MAX_FILES_PER_SELECTION ? `Too many files (${fileCount})` : 'Add to chat'}
+                            onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
+                        />
                         {showPipelineDetails && (
                             <Button
                                 variant="ghost"
@@ -108,6 +122,12 @@ export function FileGridView({
                             </div>
                         </div>
                         <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                            <AddToChatMenu
+                                conversations={conversations}
+                                variant="icon"
+                                triggerClassName="bg-background/70 backdrop-blur-sm"
+                                onPick={(conversationId) => onAddToChat([file], conversationId)}
+                            />
                             <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-foreground" onClick={() => onDownload(file.id)}>
                                 <Download className="w-3 h-3" />
                             </Button>
