@@ -43,12 +43,15 @@ export function FileListView({
     // default view declares a share for every column — otherwise Name absorbs
     // the whole remainder and opens a gap before Size. The pipeline view has
     // enough columns to fill the row on its own.
+    // Equal shares for the three metadata columns, all right-aligned, so the gaps
+    // between them read as one rhythm instead of some columns crowding and others
+    // drifting apart.
     const col = showPipelineDetails
         ? { name: '', size: 'w-24', added: 'w-28', actions: 'w-28' }
-        : { name: 'w-[40%]', size: 'w-[15%]', added: 'w-[20%]', actions: 'w-[21%]' };
+        : { name: 'w-[40%]', size: 'w-[19%]', added: 'w-[19%]', actions: 'w-[19%]' };
     return (
         <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
-            <Table className="table-fixed">
+            <Table className="table-fixed [&_th]:px-4 [&_td]:px-4">
                 <TableHeader className="bg-muted/50">
                     <TableRow className="border-border hover:bg-transparent">
                         <TableHead className="w-10">
@@ -61,7 +64,7 @@ export function FileListView({
                         {showPipelineDetails && <TableHead className="w-36">Classification</TableHead>}
                         {showPipelineDetails && <TableHead className="w-20 text-right">Chunks</TableHead>}
                         {showPipelineDetails && <TableHead className="w-40">Status</TableHead>}
-                        <TableHead className={col.added}>Added</TableHead>
+                        <TableHead className={`${col.added} text-right`}>Added</TableHead>
                         <TableHead className={`${col.actions} text-right`}>Actions</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -70,7 +73,7 @@ export function FileListView({
                         <TableRow
                             key={`folder-${folderName}`}
                             onClick={() => onNavigateToFolder(folderPrefix)}
-                            className="cursor-pointer border-border/50 hover:bg-secondary/60 transition-colors"
+                            className="group cursor-pointer border-border/50 hover:bg-secondary/60 transition-colors"
                         >
                             <TableCell className="py-3" onClick={e => e.stopPropagation()} />
                             <TableCell className="py-3" colSpan={columnCount - 2}>
@@ -80,7 +83,7 @@ export function FileListView({
                                 </div>
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-end gap-1">
+                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                     {showPipelineDetails && (
                                         <Button
                                             variant="ghost"
@@ -114,11 +117,15 @@ export function FileListView({
                         return (
                         <TableRow
                             key={file.id}
-                            className={`border-border/50 hover:bg-secondary/60 transition-colors ${showPipelineDetails ? 'cursor-pointer' : ''} ${selectedFile?.id === file.id ? 'bg-secondary/60 border-l-2 border-l-primary' : ''}`}
+                            className={`group border-border/50 hover:bg-secondary/60 transition-colors ${showPipelineDetails ? 'cursor-pointer' : ''} ${selectedFile?.id === file.id ? 'bg-secondary/60 border-l-2 border-l-primary' : ''}`}
                             onClick={showPipelineDetails ? () => onSelectFile(selectedFile?.id === file.id ? null : file) : undefined}
                         >
                             <TableCell className="w-10 py-3 align-middle" onClick={e => e.stopPropagation()}>
-                                <Checkbox checked={selectedIds.has(file.id)} onCheckedChange={() => onToggleSelect(file.id)} />
+                                <Checkbox
+                                    checked={selectedIds.has(file.id)}
+                                    onCheckedChange={() => onToggleSelect(file.id)}
+                                    className={`transition-opacity ${selectedIds.has(file.id) ? '' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`}
+                                />
                             </TableCell>
                             <TableCell className="py-3">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -164,11 +171,11 @@ export function FileListView({
                                     {isIngestible && <ProcessingStepsIndicator status={file.ingestionStatus} />}
                                 </TableCell>
                             )}
-                            <TableCell className="text-xs font-mono text-muted-foreground">
+                            <TableCell className="text-right text-xs font-mono text-muted-foreground">
                                 {format(new Date(file.createdAt), 'dd MMM yyyy')}
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-end gap-1">
+                                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => onDownload(file.id)}>
                                         <Download className="w-3.5 h-3.5" />
                                     </Button>

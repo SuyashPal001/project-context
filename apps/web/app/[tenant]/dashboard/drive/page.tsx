@@ -26,7 +26,7 @@ export default function FilesPage() {
                             Drive
                         </h1>
                         <p className="text-muted-foreground mt-2">
-                            Store and index files for your AI team. Multi-format detection · OCR extraction · RAG indexed.
+                            Upload once — then put any file to work in a chat.
                         </p>
                     </div>
                     {canUpload && (
