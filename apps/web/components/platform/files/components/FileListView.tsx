@@ -62,7 +62,6 @@ export function FileListView({
     onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder, conversations, onAddToChat, onAddFolderToChat,
     showPipelineDetails = false,
 }: FileListViewProps) {
-    const columnCount = 5 + (showPipelineDetails ? 5 : 0);
     // table-fixed hands any undeclared width to the one unsized column, so the
     // default view declares a share for every column — otherwise Name absorbs the
     // whole remainder and opens a gap before Size. Equal shares for the three
@@ -91,18 +90,27 @@ export function FileListView({
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount }) => (
+                    {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount, totalSize, latestAddedAt }) => (
                         <TableRow
                             key={`folder-${folderName}`}
                             onClick={() => onNavigateToFolder(folderPrefix)}
                             className="group cursor-pointer border-border/50 hover:bg-secondary/60 transition-colors"
                         >
                             <TableCell className="py-3" onClick={e => e.stopPropagation()} />
-                            <TableCell className="py-3" colSpan={columnCount - 2}>
+                            <TableCell className="py-3">
                                 <div className="flex items-center gap-2">
                                     <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
                                     <span className="font-medium text-foreground">{folderName}/</span>
                                 </div>
+                            </TableCell>
+                            {/* A folder has a size and a date like anything else — the sum of
+                                what is in it, and when it last gained something. */}
+                            <TableCell className="py-3 text-xs font-mono text-muted-foreground">
+                                {fileCount > 0 ? formatFileSize(totalSize) : '—'}
+                            </TableCell>
+                            {showPipelineDetails && <TableCell className="py-3" colSpan={5} />}
+                            <TableCell className="py-3 text-xs font-mono text-muted-foreground">
+                                {latestAddedAt ? format(new Date(latestAddedAt), 'dd MMM yyyy') : '—'}
                             </TableCell>
                             <TableCell onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-start gap-1">

@@ -90,7 +90,16 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         const folderPrefix = `${prefix}${folderName}/`;
         const folderFiles = allFiles.filter(f => f.key.startsWith(folderPrefix));
         const allDone = folderFiles.length > 0 && folderFiles.every(f => f.ingestionStatus === 'done');
-        return { folderName, folderPrefix, allDone, isIngesting: ingestion.ingestingFolders.has(folderName), fileCount: folderFiles.length };
+        const totalSize = folderFiles.reduce((sum, f) => sum + (f.size ?? 0), 0);
+        // Newest file in the folder: a folder's "Added" is when it last gained
+        // something, which is what you sort and scan by.
+        const latestAddedAt = folderFiles.reduce<string | null>(
+            (latest, f) => (!latest || f.createdAt > latest ? f.createdAt : latest), null);
+        return {
+            folderName, folderPrefix, allDone,
+            isIngesting: ingestion.ingestingFolders.has(folderName),
+            fileCount: folderFiles.length, totalSize, latestAddedAt,
+        };
     }), [virtualFolders, allFiles, prefix, ingestion.ingestingFolders]);
 
     const { pagedFiles, filteredFiles, totalPages, currentPage, setCurrentPage } = filters;

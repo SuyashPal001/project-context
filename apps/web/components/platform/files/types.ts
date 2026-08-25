@@ -31,4 +31,8 @@ export interface FolderCard {
     isIngesting: boolean;
     /** Files directly under this prefix — gates Add to chat against the attachment cap. */
     fileCount: number;
+    /** Aggregates over the same files, so the folder row can fill Size and Added
+     *  instead of spanning past them. */
+    totalSize: number;
+    latestAddedAt: string | null;
 }
