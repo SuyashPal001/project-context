@@ -276,7 +276,7 @@ export function KnowledgeBaseSection() {
             {documents.map((doc) => (
               <div key={doc.id} className="group relative flex flex-col p-3.5 rounded-xl border border-border/60 bg-card hover:bg-muted/40 transition-colors cursor-pointer text-sm shadow-card min-h-[110px]" onClick={() => openPreview(doc)}>
                 <div className="flex-1 mb-3 pr-4">
-                  <h5 className="font-medium text-zinc-200 line-clamp-3 leading-snug break-words">{doc.name}</h5>
+                  <h5 className="font-medium text-foreground line-clamp-3 leading-snug break-words">{doc.name}</h5>
                   {doc.errorMessage && <p className="text-[10px] text-red-400 mt-1 leading-snug">{doc.errorMessage}</p>}
                   <p className="text-[11px] text-muted-foreground mt-1.5 font-medium flex items-center gap-1">
                     {doc.isPolling && <Loader2 className="h-2.5 w-2.5 animate-spin shrink-0" />}
@@ -298,7 +298,7 @@ export function KnowledgeBaseSection() {
       </div>
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent className="max-w-sm bg-[#1C1C1C] border-[#2C2C2C] text-zinc-50">
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete Document</DialogTitle>
             <DialogDescription>Are you sure you want to delete &apos;{deleteTarget?.name}&apos;? This cannot be undone.</DialogDescription>
@@ -311,36 +311,36 @@ export function KnowledgeBaseSection() {
       </Dialog>
 
       <Dialog open={!!previewDoc} onOpenChange={(open) => !open && setPreviewDocId(null)}>
-        <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0 bg-[#1C1C1C] border-[#2C2C2C] text-zinc-50 overflow-hidden sm:rounded-xl">
-          <DialogHeader className="flex-none p-4 border-b border-[#2C2C2C] bg-[#181818]">
-            <DialogTitle className="text-xl font-medium truncate pr-6 text-zinc-100">{previewDoc?.name}</DialogTitle>
+        <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-0 gap-0 overflow-hidden sm:rounded-xl">
+          <DialogHeader className="flex-none p-4 border-b border-border bg-muted/30">
+            <DialogTitle className="text-xl font-medium truncate pr-6 text-foreground">{previewDoc?.name}</DialogTitle>
             <DialogDescription className="sr-only">Document preview</DialogDescription>
           </DialogHeader>
-          <div className="flex-1 overflow-auto relative flex flex-col items-center justify-center p-4 bg-[#1C1C1C]">
+          <div className="flex-1 overflow-auto relative flex flex-col items-center justify-center p-4 bg-background">
             {previewDoc?.isResolvingPreview ? (
-              <div className="flex flex-col items-center gap-3 text-zinc-500">
+              <div className="flex flex-col items-center gap-3 text-muted-foreground">
                 <Loader2 className="h-8 w-8 animate-spin" />
                 <p>Loading preview...</p>
               </div>
             ) : previewDoc?.type === 'pdf' && previewDoc.previewUrl ? (
               <iframe src={`${previewDoc.previewUrl}#toolbar=0`} className="w-full h-full max-w-3xl border-0 rounded-md bg-white shadow-xl" title={previewDoc.name} />
             ) : previewDoc?.type === 'txt' && previewDoc.textContent !== undefined ? (
-              <div className="w-full h-full max-w-3xl bg-[#252525] p-6 rounded-md overflow-auto border border-[#333] shadow-xl">
-                <pre className="whitespace-pre-wrap font-mono text-sm text-zinc-300">{previewDoc.textContent}</pre>
+              <div className="w-full h-full max-w-3xl bg-muted p-6 rounded-md overflow-auto border border-border shadow-xl">
+                <pre className="whitespace-pre-wrap font-mono text-sm text-foreground">{previewDoc.textContent}</pre>
               </div>
             ) : previewDoc?.type === 'docx' && previewDoc.htmlContent ? (
               <div className="w-full h-full max-w-3xl bg-white p-8 rounded-md overflow-auto shadow-xl text-black">
                 <div className="prose prose-sm max-w-none prose-zinc" dangerouslySetInnerHTML={{ __html: previewDoc.htmlContent }} />
               </div>
             ) : (
-              <div className="flex flex-col items-center gap-4 text-zinc-500">
+              <div className="flex flex-col items-center gap-4 text-muted-foreground">
                 <FileText className="h-16 w-16 opacity-50" />
                 <p>Preview not available for .{previewDoc?.type} files</p>
               </div>
             )}
           </div>
-          <div className="flex-none p-4 border-t border-[#2C2C2C] flex justify-center bg-[#181818]">
-            <Button variant="ghost" className="text-zinc-300 hover:text-white hover:bg-zinc-800 gap-2 font-medium" onClick={() => previewDoc && downloadFile(previewDoc)}>
+          <div className="flex-none p-4 border-t border-border flex justify-center bg-muted/30">
+            <Button variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-muted gap-2 font-medium" onClick={() => previewDoc && downloadFile(previewDoc)}>
               <Download className="h-4 w-4" />Download
             </Button>
           </div>
