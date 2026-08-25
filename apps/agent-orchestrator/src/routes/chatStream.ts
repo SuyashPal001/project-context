@@ -63,7 +63,7 @@ type ContentPart =
   | { type: 'text'; text: string }
   | { type: 'image'; image: string; mimeType: string }
 
-async function buildMastraMessage(
+export async function buildMastraMessage(
   attachments: Attachment[],
   preamble: string,
   sessionCtx: string,
@@ -85,7 +85,21 @@ async function buildMastraMessage(
       a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   )
 
-  if (mediaAttachments.length === 0) return preamble + sessionCtx + message
+  // audio/* and video/* don't go through synchronous processing (see the
+  // exclusion comment below on mediaAttachments) — instead, tell the agent
+  // they exist so it can call analyzeAudio/analyzeVideo on demand.
+  const understandableAttachments = attachments.filter(
+    (a) => a.type?.startsWith('audio/') || a.type?.startsWith('video/')
+  )
+  const attachmentNote = understandableAttachments.length > 0
+    ? '<attachments>\n' + understandableAttachments.map((a) => {
+        const kind = a.type?.startsWith('audio/') ? 'audio' : 'video'
+        const tool = kind === 'audio' ? 'analyzeAudio' : 'analyzeVideo'
+        return `- ${kind}: "${a.name ?? a.fileId ?? 'attachment'}" (fileId: ${a.fileId}) — call ${tool} if you need to understand its content`
+      }).join('\n') + '\n</attachments>\n\n'
+    : ''
+
+  if (mediaAttachments.length === 0) return attachmentNote + preamble + sessionCtx + message
 
   const downloaded = (await Promise.all(
     mediaAttachments.map((a) => downloadMediaAttachment(a, sessionId))
@@ -96,7 +110,7 @@ async function buildMastraMessage(
   const textDocs = downloaded.filter(d => d.mimeType === 'text/plain')
   const imageFiles = downloaded.filter(d => d.mimeType !== 'text/plain')
 
-  let finalMessage = preamble + sessionCtx + message
+  let finalMessage = attachmentNote + preamble + sessionCtx + message
   for (const doc of textDocs) {
     const text = Buffer.from(doc.base64.replace(/^data:text\/plain;base64,/, ''), 'base64').toString('utf8')
     finalMessage = `[File: ${doc.name} | path: ${doc.filePath}]\n${text}\n\n${finalMessage}`
