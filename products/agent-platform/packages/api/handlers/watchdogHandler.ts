@@ -229,12 +229,31 @@ export const handler: ScheduledHandler = async () => {
   // five minutes forever. Recovery is the manual re-ingest control in Drive —
   // which is why those buttons were hidden behind showPipelineDetails rather
   // than deleted.
+  //
+  // Only files that were eligible for ingestion in the first place. ingestion_status
+  // defaults to 'pending' on every row, but POST /files/:id/confirm enqueues
+  // file.ingest only for pdf/docx/txt/csv — so without this filter the sweep marks
+  // every image, video, audio file and avatar SVG as 'failed' half an hour after
+  // upload, for a job that was never meant to run. Observed on dev: 25 of 32
+  // 'failed' rows were files that had no pipeline to fail in. Kept in step with
+  // isIngestibleDocument in apps/api/src/routes/files.ts.
+  const ingestible = sql`(
+        ${files.mimeType} IN (
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain',
+          'text/csv'
+        )
+        OR lower(${files.name}) ~ '\\.(pdf|docx|txt|csv)$'
+      )`;
+
   const stalledIngests = await db
     .update(files)
     .set({ ingestionStatus: 'failed', updatedAt: new Date() })
     .where(and(
       inArray(files.ingestionStatus, ['pending', 'processing']),
       sql`${files.updatedAt} < NOW() - INTERVAL '30 minutes'`,
+      ingestible,
     ))
     .returning({ id: files.id, tenantId: files.tenantId, name: files.name });
 
