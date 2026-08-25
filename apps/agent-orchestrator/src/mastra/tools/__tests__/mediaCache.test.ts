@@ -56,6 +56,8 @@ describe('downloadToSessionCache', () => {
     testPaths.push(first.filePath)
     const second = await downloadToSessionCache('session-2', 'file-2', 'https://example.com/signed', 1024)
     expect(second.filePath).toBe(first.filePath)
+    expect(second.mimeType).toBe(first.mimeType)
+    expect(second.mimeType).toBe('audio/mpeg')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 

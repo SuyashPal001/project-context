@@ -12,10 +12,10 @@ export async function fetchPresignedUrl(fileId: string, idToken: string): Promis
   return data.presignedUrl
 }
 
-// sessionId:fileId -> local file path. Lets multiple tool calls against the
+// sessionId:fileId -> { filePath, mimeType }. Lets multiple tool calls against the
 // same attachment within one session reuse a single download instead of
 // re-fetching from S3 each time.
-const sessionCache = new Map<string, string>()
+const sessionCache = new Map<string, { filePath: string; mimeType: string }>()
 
 export async function downloadToSessionCache(
   sessionId: string,
@@ -24,9 +24,9 @@ export async function downloadToSessionCache(
   maxSizeBytes: number,
 ): Promise<{ filePath: string; buf: Buffer; mimeType: string }> {
   const cacheKey = `${sessionId}:${fileId}`
-  const cachedPath = sessionCache.get(cacheKey)
-  if (cachedPath && existsSync(cachedPath)) {
-    return { filePath: cachedPath, buf: readFileSync(cachedPath), mimeType: 'application/octet-stream' }
+  const cached = sessionCache.get(cacheKey)
+  if (cached && existsSync(cached.filePath)) {
+    return { filePath: cached.filePath, buf: readFileSync(cached.filePath), mimeType: cached.mimeType }
   }
 
   const url = new URL(presignedUrl)
@@ -48,6 +48,6 @@ export async function downloadToSessionCache(
   mkdirSync(MEDIA_DIR, { recursive: true })
   const filePath = join(MEDIA_DIR, `${sessionId}-${fileId}`)
   writeFileSync(filePath, buf)
-  sessionCache.set(cacheKey, filePath)
+  sessionCache.set(cacheKey, { filePath, mimeType })
   return { filePath, buf, mimeType }
 }
