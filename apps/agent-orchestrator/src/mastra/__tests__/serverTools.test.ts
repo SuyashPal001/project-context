@@ -40,12 +40,17 @@ describe('SERVER_TOOLS', () => {
   it('exposes retrieval alongside the web research tools', async () => {
     const { SERVER_TOOLS } = await import('../agents/platformAgent.js')
 
+    // Exhaustive by design: every name here is something the model can be
+    // asked to call, so widening the agent's reach should require editing this
+    // list rather than happening as a side effect of adding a file.
     expect(Object.keys(SERVER_TOOLS).sort()).toEqual([
       'analyze_audio',
       'analyze_video',
       'ask_clarifying_questions',
+      'find_in_folder',
       'get_task_thread',
       'internet_search',
+      'list_folder',
       'render_canvas',
       'retrieve_documents',
       'start_task',
