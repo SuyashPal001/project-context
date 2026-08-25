@@ -65,7 +65,7 @@ export function FileListView({
     // enough columns to fill the row on its own.
     const col = showPipelineDetails
         ? { name: '', size: 'w-24', added: 'w-28', actions: 'w-28' }
-        : { name: 'w-[46%]', size: 'w-[19%]', added: 'w-[19%]', actions: 'w-[12%]' };
+        : { name: 'w-[38%]', size: 'w-[19%]', added: 'w-[19%]', actions: 'w-[20%]' };
     return (
         <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
             <Table className="table-fixed [&_th]:px-4 [&_td]:px-4">
@@ -197,43 +197,53 @@ export function FileListView({
                                 {format(new Date(file.createdAt), 'dd MMM yyyy')}
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                <DropdownMenu>
-                                    <RowMenuTrigger />
-                                    <DropdownMenuContent align="end" className="w-48">
-                                        <DropdownMenuItem onClick={() => onStartSession([file])} className="gap-2 cursor-pointer">
-                                            <MessageSquare className="w-4 h-4" />
-                                            Start session
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDownload(file.id)} className="gap-2 cursor-pointer">
-                                            <Download className="w-4 h-4" />
-                                            Download
-                                        </DropdownMenuItem>
-                                        {showPipelineDetails && isParseable(file) && (
-                                            <DropdownMenuItem
-                                                onClick={() => onIngestFile(file.id)}
-                                                disabled={ingestingFiles.has(file.id)}
-                                                className="gap-2 cursor-pointer"
-                                            >
-                                                {ingestingFiles.has(file.id)
-                                                    ? <Loader2 className="w-4 h-4 animate-spin" />
-                                                    : <RefreshCw className="w-4 h-4" />}
-                                                {ingestingFiles.has(file.id) ? 'Ingesting…' : 'Re-ingest'}
+                                <div className="flex items-center justify-end gap-1">
+                                    {/* Visible at rest, not hover-only: this is the row's reason to
+                                        exist, and the column is otherwise dead space. Muted until
+                                        hover so eleven of them do not shout. */}
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs gap-1.5 text-muted-foreground/70 hover:text-foreground"
+                                        onClick={() => onStartSession([file])}
+                                    >
+                                        <MessageSquare className="w-3.5 h-3.5" />
+                                        Add to chat
+                                    </Button>
+                                    <DropdownMenu>
+                                        <RowMenuTrigger />
+                                        <DropdownMenuContent align="end" className="w-48">
+                                            <DropdownMenuItem onClick={() => onDownload(file.id)} className="gap-2 cursor-pointer">
+                                                <Download className="w-4 h-4" />
+                                                Download
                                             </DropdownMenuItem>
-                                        )}
-                                        {canDelete && (
-                                            <>
-                                                <DropdownMenuSeparator />
+                                            {showPipelineDetails && isParseable(file) && (
                                                 <DropdownMenuItem
-                                                    onClick={() => onDeleteFile(file.id)}
-                                                    className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                                    onClick={() => onIngestFile(file.id)}
+                                                    disabled={ingestingFiles.has(file.id)}
+                                                    className="gap-2 cursor-pointer"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
-                                                    Delete
+                                                    {ingestingFiles.has(file.id)
+                                                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                        : <RefreshCw className="w-4 h-4" />}
+                                                    {ingestingFiles.has(file.id) ? 'Ingesting…' : 'Re-ingest'}
                                                 </DropdownMenuItem>
-                                            </>
-                                        )}
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                            )}
+                                            {canDelete && (
+                                                <>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem
+                                                        onClick={() => onDeleteFile(file.id)}
+                                                        className="gap-2 cursor-pointer text-destructive focus:text-destructive"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                        Delete
+                                                    </DropdownMenuItem>
+                                                </>
+                                            )}
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </div>
                             </TableCell>
                         </TableRow>
                         );
