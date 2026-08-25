@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, integer, jsonb, pgEnum, unique, varchar, decimal } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, integer, jsonb, pgEnum, unique, varchar, decimal, index } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { users } from '@serverless-saas/database/schema/auth';
@@ -62,7 +62,14 @@ export const messages = pgTable('messages', {
   // write-tool approval card so the pending/approved/dismissed state survives a reload.
   approvalRequest: jsonb('approval_request'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (t) => ({
+  // Postgres does not index foreign keys on its own, and this table had no index
+  // at all: every "messages in this conversation" read was a sequential scan.
+  // Ordered so the newest-first reads (thread load, last-message preview) are
+  // served by the index rather than a sort.
+  conversationCreatedIdx: index('messages_conversation_created_idx')
+    .on(t.conversationId, t.createdAt.desc()),
+}));
 
 export const messagesRelations = relations(messages, ({ one }) => ({
   conversation: one(conversations, {

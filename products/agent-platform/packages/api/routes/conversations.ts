@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '@serverless-saas/database/client';
 import { storageService } from '@serverless-saas/storage';
-import { conversations } from '@serverless-saas/agent-schema/conversations';
+import { conversations, messages } from '@serverless-saas/agent-schema/conversations';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { personas } from '@serverless-saas/agent-schema/personas';
 import { hasPermission } from '@serverless-saas/permissions';
@@ -101,6 +101,22 @@ conversationsRoutes.get('/', async (c) => {
                 metadata: conversations.metadata,
                 createdAt: conversations.createdAt,
                 updatedAt: conversations.updatedAt,
+                // Titles are auto-promoted from the opening message, so two chats
+                // with one agent routinely read "hey" and "hey". Where they went is
+                // the only thing that separates them. Truncated here rather than in
+                // the client so a long message never rides the list payload; system
+                // and tool rows are skipped because they are not what the user said
+                // or was told, and empty rows are the streaming placeholders.
+                lastMessage: sql<{ role: string; content: string; createdAt: string } | null>`(
+                    select json_build_object('role', m.role, 'content', left(m.content, 160), 'createdAt', m.created_at)
+                    from ${messages} m
+                    where m.conversation_id = ${conversations.id}
+                      and m.tenant_id = ${conversations.tenantId}
+                      and m.role in ('user', 'assistant')
+                      and m.content <> ''
+                    order by m.created_at desc
+                    limit 1
+                )`,
                 agent: {
                     id: agents.id, name: agents.name, type: agents.type,
                     avatarFileId: agents.avatarFileId,

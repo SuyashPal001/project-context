@@ -149,6 +149,9 @@ export interface Conversation {
     status: 'active' | 'archived';
     createdAt: string;
     agent?: Agent;
+    /** Newest user/assistant message, truncated server-side to 160 chars.
+     *  Null for a conversation with nothing but placeholders in it. */
+    lastMessage?: { role: string; content: string; createdAt: string } | null;
 }
 
 export interface ConversationsResponse {

@@ -52,6 +52,14 @@ export function groupByAgent(conversations: Conversation[]): AgentGroup[] {
     return [...groups.values()];
 }
 
+/** "You: " marks which side spoke, so a preview is not misread as the agent's
+ *  words. Content arrives already truncated (160 chars) from the API. */
+export function messagePreview(conversation: Conversation): string {
+    const last = conversation.lastMessage;
+    if (!last?.content?.trim()) return '';
+    return last.role === 'user' ? `You: ${last.content.trim()}` : last.content.trim();
+}
+
 export function folderChatLabel(fileCount: number): string {
     if (fileCount === 0) return 'Empty folder';
     if (fileCount > MAX_FILES_PER_SELECTION) return `Over ${MAX_FILES_PER_SELECTION}-file limit`;
@@ -86,7 +94,8 @@ export function AddToChatMenu({
         // The agent name is on the row now, so it has to be searchable — a visible
         // field that does not match is read as broken search.
         return active.filter(c =>
-            `${c.title || 'Untitled'} ${c.agent?.name ?? ''}`.toLowerCase().includes(q));
+            `${c.title || 'Untitled'} ${c.agent?.name ?? ''} ${messagePreview(c)}`
+                .toLowerCase().includes(q));
     }, [conversations, query]);
 
     // A search is an explicit request to look past the recent ones, so it never
@@ -185,12 +194,20 @@ export function AddToChatMenu({
                                         className="w-full pl-9 pr-2 py-1.5 rounded-md text-sm text-left hover:bg-secondary/60 transition-colors"
                                         title={conversation.title || 'Untitled'}
                                     >
-                                        <span className="block truncate leading-tight">
-                                            {conversation.title || 'Untitled'}
-                                        </span>
-                                        {relativeAge(conversation.createdAt) && (
-                                            <span className="block truncate text-[11px] leading-tight text-muted-foreground">
+                                        <span className="flex items-baseline gap-2">
+                                            <span className="truncate leading-tight flex-1">
+                                                {conversation.title || 'Untitled'}
+                                            </span>
+                                            <span className="shrink-0 text-[11px] leading-tight text-muted-foreground">
                                                 {relativeAge(conversation.createdAt)}
+                                            </span>
+                                        </span>
+                                        {/* Titles are auto-promoted from the opening message,
+                                            so two chats with one agent both read "hey". Where
+                                            the conversation went is what separates them. */}
+                                        {messagePreview(conversation) && (
+                                            <span className="block truncate text-[11px] leading-tight text-muted-foreground">
+                                                {messagePreview(conversation)}
                                             </span>
                                         )}
                                     </button>

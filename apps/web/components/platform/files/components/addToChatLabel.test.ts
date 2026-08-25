@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { folderChatLabel, groupByAgent, relativeAge } from './AddToChatMenu';
+import { folderChatLabel, groupByAgent, messagePreview, relativeAge } from './AddToChatMenu';
 import type { Conversation } from '@/components/platform/chat/types';
 import { MAX_FILES_PER_SELECTION } from '@/components/platform/chat/useFileUpload';
 
@@ -68,5 +68,26 @@ describe('groupByAgent', () => {
         ]);
         expect(groups).toHaveLength(2);
         expect(groups[0].conversations.map(c => c.id)).toEqual(['a', 'c']);
+    });
+});
+
+describe('messagePreview', () => {
+    const withLast = (role: string, content: string): Conversation =>
+        ({ ...conv('a', 'agent-1', 'Scout'), lastMessage: { role, content, createdAt: '' } });
+
+    it('marks the user side so a preview is not read as the agent speaking', () => {
+        expect(messagePreview(withLast('user', 'ship it'))).toBe('You: ship it');
+    });
+
+    it('leaves an assistant reply unprefixed', () => {
+        expect(messagePreview(withLast('assistant', 'done'))).toBe('done');
+    });
+
+    it('yields nothing for a conversation with no messages', () => {
+        expect(messagePreview(conv('a', 'agent-1', 'Scout'))).toBe('');
+    });
+
+    it('treats a whitespace-only placeholder as no preview', () => {
+        expect(messagePreview(withLast('assistant', '   '))).toBe('');
     });
 });
