@@ -18,6 +18,8 @@ import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
 import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
 import { renderCanvas } from '../tools/renderCanvas.js'
+import { analyzeAudioTool } from '../tools/analyzeAudio.js'
+import { analyzeVideoTool } from '../tools/analyzeVideo.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -159,6 +161,8 @@ export const SERVER_TOOLS = {
   }),
   ask_clarifying_questions: askClarifyingQuestionsTool,
   render_canvas: renderCanvas,
+  analyze_audio: analyzeAudioTool,
+  analyze_video: analyzeVideoTool,
 }
 
 // Server tool names used to filter out duplicate MCP tool registrations.
