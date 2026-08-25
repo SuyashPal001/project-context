@@ -4,6 +4,7 @@ import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { parseFolderId } from '@/lib/folderScope';
+import { greetingName } from "@/lib/greetingName";
 import { useSidebar } from '@/components/platform/SidebarContext';
 import { useTenant } from '@/app/[tenant]/tenant-provider';
 import { toast } from 'sonner';
@@ -47,7 +48,7 @@ export function useChatPage() {
 
     const { isChatSidebarCollapsed, toggleChatSidebar } = useSidebar();
     const tenantClaims = useTenant();
-    const firstName = 'Gov Officer';
+    const firstName = greetingName(tenantClaims);
 
     const { data: providersData } = useQuery<{ providers: LLMProvider[] }>({
         queryKey: ['llm-providers'],
