@@ -56,9 +56,18 @@ export const documentChunks = pgTable('document_chunks', {
   chunkIndex:      integer('chunk_index').notNull(),
   metadata:   jsonb('metadata'),
   createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // Legacy per-person folder scope. Present in the database since before this
+  // model existed; declared here so drizzle-kit push cannot drop it.
+  personFolderId: uuid('person_folder_id'),
 }, (t) => ({
   tenantIdx: index('idx_chunks_tenant').on(t.tenantId),
   docIdx:    index('idx_chunks_doc').on(t.documentId),
+  // Both of these already exist in the database under these exact names and were
+  // simply never modelled. Declared with their real names rather than new ones:
+  // drizzle skips a CREATE only when the *name* matches, so inventing a name
+  // would add a second, identical index — write cost on every insert, no gain.
+  personFolderIdx:  index('document_chunks_person_folder_idx').on(t.personFolderId),
+  sensitivityIdx:   index('idx_chunks_sensitivity').on(t.tenantId, t.sensitivityLevel),
 }));
 
 export const embeddingCache = pgTable('embedding_cache', {
