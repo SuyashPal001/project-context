@@ -38,7 +38,13 @@ export function DocxPreview({ url, size }: { url: string; size?: number }) {
     worker.onerror = () => { if (!cancelled) setFailed(true); };
 
     fetch(url)
-      .then(res => res.arrayBuffer())
+      // Same failure the PDF preview guards against: a denied presigned URL
+      // returns an XML error body with a 403, which without this check is fed
+      // to mammoth as though it were a document.
+      .then(res => {
+        if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+        return res.arrayBuffer();
+      })
       .then(arrayBuffer => worker.postMessage(arrayBuffer, [arrayBuffer]))
       .catch(() => { if (!cancelled) setFailed(true); });
 
@@ -63,8 +69,12 @@ export function DocxPreview({ url, size }: { url: string; size?: number }) {
     return <p className="text-sm text-muted-foreground">Loading preview…</p>;
   }
   return (
-    <div className="w-full h-full max-w-3xl overflow-y-auto bg-white rounded-md shadow-xl p-8 text-black">
-      <div className="prose prose-sm max-w-none prose-zinc" dangerouslySetInnerHTML={{ __html: html }} />
+    // Unlike the PDF viewer, this is our own DOM — mammoth hands back plain
+    // HTML — so it follows the theme instead of forcing a white page onto a
+    // dark canvas. prose-invert flips the typography plugin's own colours in
+    // dark mode; without it the prose styles keep emitting near-black text.
+    <div className="w-full h-full max-w-3xl overflow-y-auto bg-card text-card-foreground rounded-md shadow-xl p-8">
+      <div className="prose prose-sm max-w-none prose-zinc dark:prose-invert" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
 }
