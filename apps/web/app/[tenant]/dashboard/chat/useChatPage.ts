@@ -3,6 +3,7 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { parseFolderId } from '@/lib/folderScope';
 import { useSidebar } from '@/components/platform/SidebarContext';
 import { useTenant } from '@/app/[tenant]/tenant-provider';
 import { toast } from 'sonner';
@@ -27,7 +28,7 @@ export function useChatPage() {
     const rawConvId = searchParams.get('id');
     const incomingConvId = searchParams.get('conversationId');
     const incomingAgentId = searchParams.get('agentId');
-    const incomingFolderId = searchParams.get('folderId');
+    const incomingFolderId = parseFolderId(searchParams.get('folderId'));
 
     const conversationId = rawConvId ?? incomingConvId;
     const conversationIdRef = useRef(conversationId);

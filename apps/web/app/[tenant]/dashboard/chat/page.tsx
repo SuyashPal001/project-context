@@ -29,10 +29,11 @@ import {
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { parseFolderId } from "@/lib/folderScope";
 
 function ChatPage() {
     const searchParams = useSearchParams();
-    const folderId = searchParams.get('folderId') ?? undefined;
+    const folderId = parseFolderId(searchParams.get('folderId'));
     const page = useChatPage();
     const {
         tenantSlug, conversationId, conversationIdRef, firstName,

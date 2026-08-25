@@ -173,7 +173,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 size="sm"
                                 className="h-7 text-xs gap-1.5"
                                 disabled={!defaultAgentId}
-                                onClick={() => defaultAgentId && router.push(`/${tenant}/dashboard/chat?agentId=${defaultAgentId}&folderId=${folderPersonFolderId}`)}
+                                // Only scope when there is a real id: prefix-derived folders
+                                // usually have no personFolderId, and emitting the literal
+                                // "null" made retrieveChunks throw for the whole conversation.
+                                onClick={() => defaultAgentId && router.push(
+                                    `/${tenant}/dashboard/chat?agentId=${defaultAgentId}`
+                                    + (folderPersonFolderId ? `&folderId=${folderPersonFolderId}` : '')
+                                )}
                             >
                                 <MessageSquare className="w-3 h-3" />
                                 Chat with Agent
