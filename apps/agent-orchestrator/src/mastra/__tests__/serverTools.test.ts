@@ -23,7 +23,12 @@ vi.mock('@serverless-saas/ai', () => ({ retrieveChunks: vi.fn() }))
 vi.mock('@serverless-saas/database', () => ({ db: {} }))
 vi.mock('@serverless-saas/mcp', () => ({ getMcpRegistry: vi.fn() }))
 vi.mock('@serverless-saas/agent-capabilities', () => ({ registerAgentPlatformMcpTools: vi.fn() }))
-vi.mock('@serverless-saas/permissions', () => ({ resolveUserPermissions: vi.fn() }))
+vi.mock('@serverless-saas/permissions', () => {
+  // See platform-capabilities.test.ts for why both a `default` key and the
+  // named export are needed here.
+  const resolveUserPermissions = vi.fn()
+  return { default: { resolveUserPermissions }, resolveUserPermissions }
+})
 
 describe('SERVER_TOOLS', () => {
   it('registers the document retrieval tool the prompts instruct agents to call', async () => {
@@ -41,6 +46,7 @@ describe('SERVER_TOOLS', () => {
       'ask_clarifying_questions',
       'get_task_thread',
       'internet_search',
+      'render_canvas',
       'retrieve_documents',
       'start_task',
       'web_fetch',

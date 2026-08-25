@@ -7,9 +7,16 @@ vi.mock('@serverless-saas/mcp', () => ({
 vi.mock('@serverless-saas/agent-capabilities', () => ({
   registerAgentPlatformMcpTools: vi.fn(),
 }))
-vi.mock('@serverless-saas/permissions', () => ({
-  resolveUserPermissions: vi.fn(),
-}))
+vi.mock('@serverless-saas/permissions', () => {
+  // platform-capabilities.ts does a default import (`import permissionsPkg
+  // from '@serverless-saas/permissions'`) — the mock needs a `default` key or
+  // that import throws "No default export defined on the mock". The named
+  // export is kept as the SAME function reference so `vi.mocked(...)` in the
+  // tests below (which import it by name) controls the exact function the
+  // code under test actually calls via `permissionsPkg.resolveUserPermissions`.
+  const resolveUserPermissions = vi.fn()
+  return { default: { resolveUserPermissions }, resolveUserPermissions }
+})
 
 describe('platform-capabilities Mastra tools', () => {
   it('exposes start_task and get_task_thread', async () => {

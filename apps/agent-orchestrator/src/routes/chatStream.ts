@@ -1,6 +1,6 @@
 import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
 import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload } from '../persistence.js'
-import { downloadMediaAttachment } from '../media.js'
+import { downloadMediaAttachment, buildAttachmentNote } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { resolveAgent, resolveAgentLabel } from '../mastra/registry.js'
 import { runWithGuardrailContext } from '../mastra/guardrails.js'
@@ -54,6 +54,7 @@ export interface ChatStreamOpts {
   startTime: number
   workingMemoryPromise: Promise<string | null>
   sendEvent: (event: string, data: object) => void
+  sendHeartbeat: () => void
   closeStream: () => void
   isStreamClosed: () => boolean
   folderId?: string
@@ -70,14 +71,10 @@ export async function buildMastraMessage(
   message: string,
   sessionId: string,
 ): Promise<string | { role: 'user'; content: ContentPart[] }> {
-  // audio/* and video/* intentionally excluded: both require slow processing
-  // (Speech-to-Text, ffmpeg frame extraction) that has no business blocking a live
-  // chat turn. Routing them through this synchronous path held the SSE connection
-  // open with no bytes flowing for the length of the processing call, which
-  // Cloudflare's edge would kill as a QUIC protocol error. Both attachment types
-  // still reach chat history via saveUserMessage() below (finish and error paths).
-  // Real agent understanding of audio/video belongs in an async artifact pipeline
-  // (queue job -> worker -> result delivered as a follow-up), not this request path.
+  // audio/* and video/* are intentionally excluded from synchronous download —
+  // see the buildAttachmentNote doc comment in media.ts for why, and how the
+  // agent is told about them instead so it can call analyze_audio/analyze_video
+  // on demand.
   const mediaAttachments = attachments.filter(
     (a) =>
       a.type?.startsWith('image/') ||
@@ -85,19 +82,7 @@ export async function buildMastraMessage(
       a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   )
 
-  // audio/* and video/* don't go through synchronous processing (see the
-  // exclusion comment below on mediaAttachments) — instead, tell the agent
-  // they exist so it can call analyzeAudio/analyzeVideo on demand.
-  const understandableAttachments = attachments.filter(
-    (a) => a.type?.startsWith('audio/') || a.type?.startsWith('video/')
-  )
-  const attachmentNote = understandableAttachments.length > 0
-    ? '<attachments>\n' + understandableAttachments.map((a) => {
-        const kind = a.type?.startsWith('audio/') ? 'audio' : 'video'
-        const tool = kind === 'audio' ? 'analyzeAudio' : 'analyzeVideo'
-        return `- ${kind}: "${a.name ?? a.fileId ?? 'attachment'}" (fileId: ${a.fileId}) — call ${tool} if you need to understand its content`
-      }).join('\n') + '\n</attachments>\n\n'
-    : ''
+  const attachmentNote = buildAttachmentNote(attachments)
 
   if (mediaAttachments.length === 0) return attachmentNote + preamble + sessionCtx + message
 
@@ -152,9 +137,35 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
-    workingMemoryPromise, sendEvent, closeStream, isStreamClosed,
+    workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed,
     folderId,
   } = opts
+
+  // Heartbeat while any tool call is in flight — see sendHeartbeat's doc
+  // comment in chat.ts. activeToolCalls tracks concurrent calls (tool-call
+  // without a matching tool-result yet) since more than one can be in flight
+  // at once; the interval runs only while that count is > 0.
+  let activeToolCalls = 0
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  const HEARTBEAT_INTERVAL_MS = 15_000
+  const onToolCallStart = (): void => {
+    activeToolCalls++
+    if (!heartbeatTimer) heartbeatTimer = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS)
+  }
+  const onToolCallEnd = (): void => {
+    activeToolCalls = Math.max(0, activeToolCalls - 1)
+    if (activeToolCalls === 0 && heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = null
+    }
+  }
+  const stopHeartbeat = (): void => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = null
+    }
+    activeToolCalls = 0
+  }
 
   let ragFired = false
   let ragChunksRetrieved = 0
@@ -305,6 +316,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
           toolCallCount++
           sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
+          onToolCallStart()
           if (toolName === 'retrieve_documents') ragFired = true
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
           break
@@ -318,6 +330,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const result = (p.result ?? p.output ?? {}) as Record<string, unknown>
           console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
           sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
+          onToolCallEnd()
 
           // Capture citations from RAG tool
           if (resolvedToolName === 'retrieve_documents' && Array.isArray(result.sources)) {
@@ -422,8 +435,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     }
     }) // end runWithGuardrailContext
 
+    stopHeartbeat()
     closeStream()
   } catch (err) {
+    stopHeartbeat()
     console.error(`[sse:${sessionId}] fatal error:`, (err as Error).message)
     sendEvent('error', { message: 'Internal server error', conversationId })
     // Save the user message even on error so attachments aren't lost.

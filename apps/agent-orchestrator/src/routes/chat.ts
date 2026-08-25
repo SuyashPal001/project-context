@@ -161,6 +161,23 @@ chatRouter.post('/api/chat', async (c) => {
     }
   }
 
+  // A bare SSE comment line — no "event:"/"data:" — so it's invisible to the
+  // client's event listeners but still puts bytes on the wire. Used while a
+  // tool call is in flight: between `tool_call` and `tool_done`, the stream
+  // would otherwise go fully silent for the tool's entire duration (up to the
+  // 150s deep-mode budget on analyze_audio/analyze_video), which is the same
+  // silent-stream condition that made Cloudflare kill the original synchronous
+  // media pipeline this plan replaced — just moved mid-stream instead of
+  // pre-stream.
+  const sendHeartbeat = (): void => {
+    if (streamClosed) return
+    try {
+      streamController.enqueue(encoder.encode(': heartbeat\n\n'))
+    } catch {
+      // enqueue after close — swallow
+    }
+  }
+
   const closeStream = (): void => {
     if (streamClosed) return
     streamClosed = true
@@ -216,7 +233,7 @@ chatRouter.post('/api/chat', async (c) => {
   runChatStream({
     message, displayMessage: filteredMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
-    workingMemoryPromise, sendEvent, closeStream,
+    workingMemoryPromise, sendEvent, sendHeartbeat, closeStream,
     isStreamClosed: () => streamClosed,
     folderId,
   })

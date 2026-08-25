@@ -12,7 +12,7 @@ import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@m
 import { app } from './app.js'
 import { fireToolCallLog } from './events.js'
 import { API_BASE_URL, sessions } from './types.js'
-import { downloadMediaAttachment } from './media.js'
+import { downloadMediaAttachment, buildAttachmentNote } from './media.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 import { validateToken } from './auth.js'
 import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
@@ -114,13 +114,17 @@ async function handleSession(
 
         const sessionContext = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}\n</session_context>\n\n`
 
+        // audio/* and video/* are intentionally excluded from synchronous download —
+        // see the buildAttachmentNote doc comment in media.ts for why, and how the
+        // agent is told about them instead so it can call analyze_audio/analyze_video
+        // on demand. Kept in sync with routes/chatStream.ts's identical filter.
         const mediaAttachments = (attachments0 as any[]).filter((a: any) =>
           a.type?.startsWith('image/') ||
-          a.type?.startsWith('video/') ||
-          a.type?.startsWith('audio/') ||
           a.type === 'application/pdf' ||
           a.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
+
+        const attachmentNote = buildAttachmentNote(attachments0 as any[])
 
         type ContentPart =
           | { type: 'text'; text: string }
@@ -138,7 +142,7 @@ async function handleSession(
           const textDocs = downloaded.filter(d => d.mimeType === 'text/plain')
           const imageFiles = downloaded.filter(d => d.mimeType !== 'text/plain')
 
-          let finalMessage = memPreamble + sessionContext + effectiveMessage
+          let finalMessage = attachmentNote + memPreamble + sessionContext + effectiveMessage
           for (const doc of textDocs) {
             const text = Buffer.from(doc.base64.replace(/^data:text\/plain;base64,/, ''), 'base64').toString('utf8')
             finalMessage = `[File: ${doc.name} | path: ${doc.filePath}]\n${text}\n\n${finalMessage}`
@@ -158,7 +162,7 @@ async function handleSession(
             mastraMessage = finalMessage
           }
         } else {
-          mastraMessage = memPreamble + sessionContext + effectiveMessage
+          mastraMessage = attachmentNote + memPreamble + sessionContext + effectiveMessage
         }
 
         const requestContext = new RequestContext()
@@ -173,6 +177,12 @@ async function handleSession(
         // requireToolAssignment's human-caller branch and any userId-scoped logic
         // downstream have nothing to read.
         requestContext.set('userId', internalUserId)
+        // Mirrors chatStream.ts: analyze_audio/analyze_video (Mastra tools) read
+        // sessionId + idToken off the requestContext to fetch a presigned URL and
+        // cache the download — without these, both tools return
+        // { success: false, error: 'no_active_session' } on this path.
+        requestContext.set('sessionId', sessionId)
+        requestContext.set('idToken', idToken)
         if (folderId) requestContext.set('folderId', folderId)
         mcpClient = getMCPClientForTenant(tenantId, agentId)
         requestContext.set('__mcpClient', mcpClient as any)

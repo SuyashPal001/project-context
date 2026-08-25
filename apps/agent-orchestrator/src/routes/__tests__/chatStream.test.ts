@@ -3,9 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Mock dependencies before importing chatStream
 vi.mock('@mastra/core/request-context', () => ({}))
 vi.mock('../../persistence.js', () => ({}))
-vi.mock('../../media.js', () => ({
-  downloadMediaAttachment: vi.fn(),
-}))
+vi.mock('../../media.js', async () => {
+  const actual = await vi.importActual<typeof import('../../media.js')>('../../media.js')
+  return {
+    downloadMediaAttachment: vi.fn(),
+    buildAttachmentNote: actual.buildAttachmentNote,
+  }
+})
 vi.mock('../../events.js', () => ({}))
 vi.mock('../../mastra/registry.js', () => ({}))
 vi.mock('../../mastra/guardrails.js', () => ({}))
@@ -43,9 +47,9 @@ describe('buildMastraMessage', () => {
     const text = result as string
     expect(text).toContain('what is in these?')
     expect(text).toContain('audio: "voice-memo.mp3" (fileId: a1)')
-    expect(text).toContain('analyzeAudio')
+    expect(text).toContain('analyze_audio')
     expect(text).toContain('video: "demo.mov" (fileId: v1)')
-    expect(text).toContain('analyzeVideo')
+    expect(text).toContain('analyze_video')
   })
 
   it('omits the attachments block entirely when there are none', async () => {
@@ -83,7 +87,7 @@ describe('buildMastraMessage', () => {
 
     // Assert the attachment note survived through the image processing path
     expect(finalText).toContain('audio: "voice-memo.mp3" (fileId: a1)')
-    expect(finalText).toContain('analyzeAudio')
+    expect(finalText).toContain('analyze_audio')
     expect(finalText).toContain('analyze these')
   })
 })

@@ -37,7 +37,7 @@ describe('analyzeVideoTool', () => {
     }))
     const result = await analyzeVideoTool.execute!({ fileId: 'f1', mode: 'quick' } as any, ctx())
     expect(result).toEqual({ success: true, summary: 'a cat walks across a table', frameCount: 1 })
-    expect(vi.mocked(extractVideoFrames)).toHaveBeenCalledWith('/tmp/fake.mp4', 'f1', 'session-1', 8)
+    expect(vi.mocked(extractVideoFrames)).toHaveBeenCalledWith('/tmp/fake.mp4', 'f1', 'session-1', 8, expect.any(AbortSignal))
   })
 
   it('samples more frames in deep mode', async () => {
@@ -46,7 +46,7 @@ describe('analyzeVideoTool', () => {
       json: async () => ({ choices: [{ message: { content: 'summary' } }] }),
     }))
     await analyzeVideoTool.execute!({ fileId: 'f1', mode: 'deep' } as any, ctx())
-    expect(vi.mocked(extractVideoFrames)).toHaveBeenCalledWith('/tmp/fake.mp4', 'f1', 'session-1', 20)
+    expect(vi.mocked(extractVideoFrames)).toHaveBeenCalledWith('/tmp/fake.mp4', 'f1', 'session-1', 20, expect.any(AbortSignal))
   })
 
   it('returns a structured error when frame extraction produces nothing', async () => {
