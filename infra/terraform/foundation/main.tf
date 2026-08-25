@@ -485,6 +485,29 @@ module "iam" {
             Resource = module.eventbridge.bus_arns["main"]
           }]
         })
+        # Same grants as the worker role's s3_documents. The API needs them in
+        # its own right: a presigned URL carries the *signer's* identity, so a
+        # URL this Lambda signs is evaluated against this role when the browser
+        # fetches it — without GetObject, every file preview and download 403s
+        # and the viewer renders S3's AccessDenied body as if it were the file.
+        # ListBucket is required by products/agent-platform/packages/api/
+        # routes/skills.ts, which issues ListObjectsV2 from this Lambda.
+        s3_documents = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Effect = "Allow"
+            Action = [
+              "s3:GetObject",
+              "s3:PutObject",
+              "s3:DeleteObject",
+              "s3:ListBucket"
+            ]
+            Resource = [
+              "arn:aws:s3:::${var.project}-${var.environment}-files",
+              "arn:aws:s3:::${var.project}-${var.environment}-files/*"
+            ]
+          }]
+        })
         cognito_idp = jsonencode({
           Version = "2012-10-17"
           Statement = [{
