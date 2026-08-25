@@ -1,5 +1,5 @@
 'use client';
-import { Info, MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive } from 'lucide-react';
+import { MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -77,9 +77,6 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
                         )}
                     </button>
                 )}
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/50">
-                    <Info className="h-4 w-4" />
-                </Button>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/50">
