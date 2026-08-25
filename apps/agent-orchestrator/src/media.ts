@@ -14,8 +14,9 @@ export async function extractVideoFrames(
   sessionId: string,
   maxFrames = 8,
 ): Promise<DownloadedMedia[]> {
-  const frameDir = mkdtempSync(join(tmpdir(), 'vframes-'))
+  let frameDir: string | undefined
   try {
+    frameDir = mkdtempSync(join(tmpdir(), 'vframes-'))
     let duration = 0
     try {
       const { stdout: probe } = await execFile('ffprobe', [
@@ -52,10 +53,12 @@ export async function extractVideoFrames(
     console.error(`[session:${sessionId}] video frame extraction error:`, (err as Error).message)
     return []
   } finally {
-    try {
-      for (const f of readdirSync(frameDir)) unlinkSync(join(frameDir, f))
-      rmdirSync(frameDir)
-    } catch {}
+    if (frameDir) {
+      try {
+        for (const f of readdirSync(frameDir)) unlinkSync(join(frameDir, f))
+        rmdirSync(frameDir)
+      } catch {}
+    }
   }
 }
 

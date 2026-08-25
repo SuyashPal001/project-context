@@ -1,12 +1,20 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { writeFileSync, mkdtempSync as realMkdtemp, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFile as execFileCb } from 'node:child_process'
 
+// Store the real mkdtempSync for use in tests
+const realMkdtempSync = realMkdtemp
+
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>()
   return { ...actual, execFile: vi.fn() }
+})
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return { ...actual, mkdtempSync: vi.fn(actual.mkdtempSync) }
 })
 
 describe('extractVideoFrames', () => {
@@ -46,5 +54,19 @@ describe('extractVideoFrames', () => {
     expect(result).toHaveLength(2)
     expect(result[0].mimeType).toBe('image/jpeg')
     expect(result[0].name).toBe('clip.mp4_frame1.jpg')
+  })
+
+  it('returns an empty array when mkdtempSync fails, without throwing', async () => {
+    const { extractVideoFrames } = await import('../media.js')
+
+    // Get the mocked mkdtempSync from the mocked fs module
+    const fsModule = await import('node:fs')
+    const mockedMkdtemp = vi.mocked(fsModule.mkdtempSync)
+    mockedMkdtemp.mockImplementationOnce(() => {
+      throw new Error('tmp directory unwritable')
+    })
+
+    const result = await extractVideoFrames('/tmp/does-not-matter.mp4', 'clip.mp4', 'session-1')
+    expect(result).toEqual([])
   })
 })
