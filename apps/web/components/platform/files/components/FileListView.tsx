@@ -32,36 +32,20 @@ interface FileListViewProps {
     showPipelineDetails?: boolean;
 }
 
-function QuietStatusIndicator({ status }: { status: FileRecord['ingestionStatus'] }) {
-    const config: Record<string, { label: string; dotClassName: string }> = {
-        done:       { label: 'Ready',      dotClassName: 'bg-green-500' },
-        processing: { label: 'Processing', dotClassName: 'bg-amber-400' },
-        pending:    { label: 'Processing', dotClassName: 'bg-amber-400' },
-        failed:     { label: 'Failed',     dotClassName: 'bg-red-500' },
-    };
-    const cfg = config[status] ?? { label: status, dotClassName: 'bg-muted-foreground' };
-    return (
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotClassName}`} />
-            {cfg.label}
-        </span>
-    );
-}
-
 export function FileListView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     allPageSelected, onToggleSelectAll, ingestingFiles, onIngestFile, onIngestFolder,
     onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder,
     showPipelineDetails = false,
 }: FileListViewProps) {
-    const columnCount = 6 + (showPipelineDetails ? 4 : 0);
+    const columnCount = 5 + (showPipelineDetails ? 5 : 0);
     // table-fixed hands any undeclared width to the one unsized column, so the
     // default view declares a share for every column — otherwise Name absorbs
     // the whole remainder and opens a gap before Size. The pipeline view has
     // enough columns to fill the row on its own.
     const col = showPipelineDetails
-        ? { name: '', size: 'w-24', status: 'w-40', added: 'w-28', actions: 'w-28' }
-        : { name: 'w-[36%]', size: 'w-[13%]', status: 'w-[17%]', added: 'w-[15%]', actions: 'w-[15%]' };
+        ? { name: '', size: 'w-24', added: 'w-28', actions: 'w-28' }
+        : { name: 'w-[40%]', size: 'w-[15%]', added: 'w-[20%]', actions: 'w-[21%]' };
     return (
         <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
             <Table className="table-fixed">
@@ -76,7 +60,7 @@ export function FileListView({
                         {showPipelineDetails && <TableHead className="w-32">Workspace</TableHead>}
                         {showPipelineDetails && <TableHead className="w-36">Classification</TableHead>}
                         {showPipelineDetails && <TableHead className="w-20 text-right">Chunks</TableHead>}
-                        <TableHead className={col.status}>Status</TableHead>
+                        {showPipelineDetails && <TableHead className="w-40">Status</TableHead>}
                         <TableHead className={col.added}>Added</TableHead>
                         <TableHead className={`${col.actions} text-right`}>Actions</TableHead>
                     </TableRow>
@@ -173,11 +157,11 @@ export function FileListView({
                                     {isIngestible && file.chunkCount > 0 ? file.chunkCount : '—'}
                                 </TableCell>
                             )}
-                            <TableCell>
-                                {isIngestible && (showPipelineDetails
-                                    ? <ProcessingStepsIndicator status={file.ingestionStatus} />
-                                    : <QuietStatusIndicator status={file.ingestionStatus} />)}
-                            </TableCell>
+                            {showPipelineDetails && (
+                                <TableCell>
+                                    {isIngestible && <ProcessingStepsIndicator status={file.ingestionStatus} />}
+                                </TableCell>
+                            )}
                             <TableCell className="text-xs font-mono text-muted-foreground">
                                 {format(new Date(file.createdAt), 'dd MMM yyyy')}
                             </TableCell>
