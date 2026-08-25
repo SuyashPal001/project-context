@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FileThumbnail } from "../FileThumbnail";
 import { getFileCategory, isIngestibleCategory, isParseable } from "../fileCategory";
-import { getFileIcon } from "../lib/fileIcons";
+import { assetTypeForFile } from "../lib/assetFromFile";
+import { TYPE_ICONS, TYPE_BADGES, NO_PREVIEW_STYLES } from "@/components/platform/canvas/assetTypeStyles";
 import { ProcessingStepsIndicator } from "./IngestionStatus";
 import { AddToChatMenu, folderChatLabel } from "./AddToChatMenu";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
@@ -84,6 +85,11 @@ export function FileGridView({
                 const category = getFileCategory(file.contentType, file.filename);
                 const isIngestible = isIngestibleCategory(category);
                 const isSelected = selectedIds.has(file.id);
+                // Same treatment the chat asset cards use, so a file looks the
+                // same wherever it is listed.
+                const assetType = assetTypeForFile(file.contentType, file.filename);
+                const noPreviewStyle = NO_PREVIEW_STYLES[assetType];
+                const TypeIcon = TYPE_ICONS[assetType];
                 return (
                     <div
                         key={file.id}
@@ -102,18 +108,25 @@ export function FileGridView({
                         <button
                             type="button"
                             onClick={e => { e.stopPropagation(); onPreviewFile(file.id); }}
-                            className="aspect-square w-full bg-muted/20 flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                            className={`relative aspect-square w-full flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${noPreviewStyle?.bg ?? 'bg-muted/20'}`}
                         >
                             {category === 'image' ? (
                                 <FileThumbnail fileId={file.id} alt={file.filename} />
-                            ) : category === 'audio-video' && file.contentType.startsWith('video') ? (
+                            ) : assetType === 'video' ? (
                                 <div className="w-full h-full flex items-center justify-center bg-muted/40">
                                     <div className="h-9 w-9 rounded-full bg-background/80 flex items-center justify-center">
                                         <Play className="w-4 h-4 text-foreground/70 ml-0.5" />
                                     </div>
                                 </div>
                             ) : (
-                                <div className="scale-[2.2]">{getFileIcon(file.contentType)}</div>
+                                <TypeIcon className={`h-8 w-8 ${noPreviewStyle?.icon ?? 'text-muted-foreground/60'}`} />
+                            )}
+                            {/* Bottom-left, not top-left as in chat: the selection
+                                checkbox owns that corner here. */}
+                            {category !== 'image' && (
+                                <span className="absolute bottom-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
+                                    {TYPE_BADGES[assetType]}
+                                </span>
                             )}
                         </button>
                         <div className="p-2.5 flex flex-col gap-1">

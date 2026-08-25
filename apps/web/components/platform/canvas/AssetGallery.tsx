@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { FileVideo, FileAudio, FileImage, FileText, File as FileIcon, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { useConversationAssets } from '@/hooks/useConversationAssets';
 import { api } from '@/lib/api';
 import type { Asset, AssetType } from '@/types/assets';
+import { TYPE_ICONS, TYPE_BADGES, NO_PREVIEW_STYLES } from './assetTypeStyles';
 
 interface AssetGalleryProps {
   conversationId: string;
@@ -12,32 +13,6 @@ interface AssetGalleryProps {
   fallbackAsset?: Asset;
   onCardClick: (asset: Asset, allAssets: Asset[]) => void;
 }
-
-const TYPE_ICONS: Record<AssetType, React.ElementType> = {
-  video: FileVideo,
-  audio: FileAudio,
-  image: FileImage,
-  markdown: FileText,
-  pdf: FileText,
-  docx: FileText,
-  file: FileIcon,
-  prd: FileText,
-  roadmap: FileText,
-  tasks: FileText,
-};
-
-const TYPE_BADGES: Record<AssetType, string> = {
-  video: 'MP4',
-  audio: 'MP3',
-  image: 'IMG',
-  markdown: 'MD',
-  pdf: 'PDF',
-  docx: 'DOCX',
-  file: 'FILE',
-  prd: 'PRD',
-  roadmap: 'ROADMAP',
-  tasks: 'TASKS',
-};
 
 const TYPE_FILTER_LABELS: Record<AssetType, string> = {
   video: 'Video',
@@ -131,16 +106,6 @@ function useVideoFrameThumbnail(asset: Asset): string | undefined {
   }, [asset.type, asset.fileId]);
   return frameUrl;
 }
-
-// Card styling for types with no real per-file thumbnail (audio, pdf, docx) —
-// a consistent tinted background + icon color instead of the plain flat
-// background used for a genuinely missing/unresolved thumbnail, so it reads
-// as an intentional design rather than a broken preview.
-const NO_PREVIEW_STYLES: Partial<Record<AssetType, { bg: string; icon: string }>> = {
-  audio: { bg: 'bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-muted', icon: 'text-violet-400' },
-  pdf: { bg: 'bg-gradient-to-br from-red-500/20 via-orange-500/10 to-muted', icon: 'text-red-400' },
-  docx: { bg: 'bg-gradient-to-br from-blue-500/20 via-sky-500/10 to-muted', icon: 'text-blue-400' },
-};
 
 function AssetCard({ asset, onClick }: { asset: Asset; onClick: () => void }) {
   const Icon = TYPE_ICONS[asset.type];
