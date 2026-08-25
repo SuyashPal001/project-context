@@ -55,6 +55,13 @@ export function FileListView({
     showPipelineDetails = false,
 }: FileListViewProps) {
     const columnCount = 6 + (showPipelineDetails ? 4 : 0);
+    // table-fixed hands any undeclared width to the one unsized column, so the
+    // default view declares a share for every column — otherwise Name absorbs
+    // the whole remainder and opens a gap before Size. The pipeline view has
+    // enough columns to fill the row on its own.
+    const col = showPipelineDetails
+        ? { name: '', size: 'w-24', status: 'w-40', added: 'w-28', actions: 'w-28' }
+        : { name: 'w-[36%]', size: 'w-[13%]', status: 'w-[17%]', added: 'w-[15%]', actions: 'w-[15%]' };
     return (
         <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
             <Table className="table-fixed">
@@ -63,15 +70,15 @@ export function FileListView({
                         <TableHead className="w-10">
                             <Checkbox checked={allPageSelected} onCheckedChange={onToggleSelectAll} />
                         </TableHead>
-                        <TableHead>Name</TableHead>
-                        <TableHead className="w-24 text-right">Size</TableHead>
+                        <TableHead className={col.name}>Name</TableHead>
+                        <TableHead className={`${col.size} text-right`}>Size</TableHead>
                         {showPipelineDetails && <TableHead className="w-24">Format</TableHead>}
                         {showPipelineDetails && <TableHead className="w-32">Workspace</TableHead>}
                         {showPipelineDetails && <TableHead className="w-36">Classification</TableHead>}
                         {showPipelineDetails && <TableHead className="w-20 text-right">Chunks</TableHead>}
-                        <TableHead className={showPipelineDetails ? "w-40" : "w-32"}>Status</TableHead>
-                        <TableHead className="w-28">Added</TableHead>
-                        <TableHead className="w-28 text-right">Actions</TableHead>
+                        <TableHead className={col.status}>Status</TableHead>
+                        <TableHead className={col.added}>Added</TableHead>
+                        <TableHead className={`${col.actions} text-right`}>Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
