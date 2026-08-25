@@ -24,12 +24,13 @@ interface FileGridViewProps {
     canDelete: boolean;
     onDeleteFile: (fileId: string) => void;
     onDeleteFolder: (folderName: string) => void;
+    showPipelineDetails?: boolean;
 }
 
 export function FileGridView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     ingestingFiles, onIngestFile, onIngestFolder, onNavigateToFolder, onDownload,
-    canDelete, onDeleteFile, onDeleteFolder,
+    canDelete, onDeleteFile, onDeleteFolder, showPipelineDetails = false,
 }: FileGridViewProps) {
     return (
         <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
@@ -47,7 +48,7 @@ export function FileGridView({
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-primary"
+                            className="h-6 w-6 text-muted-foreground hover:text-green-400"
                             title="Ingest"
                             onClick={() => onIngestFolder(folderName)}
                             disabled={allDone || isIngesting}
@@ -69,8 +70,8 @@ export function FileGridView({
                 return (
                     <div
                         key={file.id}
-                        onClick={() => onSelectFile(selectedFile?.id === file.id ? null : file)}
-                        className={`group relative flex flex-col rounded-xl border bg-card hover:bg-secondary/60 transition-colors cursor-pointer overflow-hidden ${selectedFile?.id === file.id ? 'border-l-2 border-l-blue-500 border-border' : 'border-border'}`}
+                        onClick={showPipelineDetails ? () => onSelectFile(selectedFile?.id === file.id ? null : file) : undefined}
+                        className={`group relative flex flex-col rounded-xl border bg-card hover:bg-secondary/60 transition-colors overflow-hidden ${showPipelineDetails ? 'cursor-pointer' : ''} ${selectedFile?.id === file.id ? 'border-l-2 border-l-primary border-border' : 'border-border'}`}
                     >
                         <div className="absolute top-2 left-2 z-10" onClick={e => e.stopPropagation()}>
                             <Checkbox
@@ -95,10 +96,12 @@ export function FileGridView({
                         <div className="p-2.5 flex flex-col gap-1">
                             <span className="text-xs font-medium text-foreground/80 truncate" title={file.filename}>{file.filename}</span>
                             <div className="flex items-center gap-1 flex-wrap">
-                                {isIngestible ? (
+                                {showPipelineDetails && isIngestible ? (
                                     <ProcessingStepsIndicator status={file.ingestionStatus} />
                                 ) : (
-                                    <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">{file.formatDetected ?? category}</span>
+                                    <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">
+                                        {showPipelineDetails ? (file.formatDetected ?? category) : category}
+                                    </span>
                                 )}
                             </div>
                         </div>
@@ -110,7 +113,7 @@ export function FileGridView({
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-primary"
+                                    className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-green-400"
                                     title="Ingest"
                                     onClick={() => onIngestFile(file.id)}
                                     disabled={ingestingFiles.has(file.id)}

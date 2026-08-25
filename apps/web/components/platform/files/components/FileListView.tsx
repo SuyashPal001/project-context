@@ -84,7 +84,7 @@ export function FileListView({
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                        className="h-7 w-7 text-muted-foreground hover:text-green-400"
                                         title={isIngesting ? 'Ingesting…' : 'Ingest'}
                                         onClick={() => onIngestFolder(folderName)}
                                         disabled={allDone || isIngesting}
@@ -174,7 +174,7 @@ export function FileListView({
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                            className="h-7 w-7 text-muted-foreground hover:text-green-400"
                                             title="Ingest"
                                             onClick={() => onIngestFile(file.id)}
                                             disabled={ingestingFiles.has(file.id)}

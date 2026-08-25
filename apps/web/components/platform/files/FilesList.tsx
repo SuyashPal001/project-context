@@ -189,6 +189,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             canDelete={canDelete}
                             onDeleteFile={mutations.setDeletingFileId}
                             onDeleteFolder={mutations.setDeletingFolderName}
+                            showPipelineDetails={showPipelineDetails}
                         />
                     ) : (
                         <FileListView
