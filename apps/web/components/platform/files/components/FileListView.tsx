@@ -57,21 +57,21 @@ export function FileListView({
     const columnCount = 6 + (showPipelineDetails ? 4 : 0);
     return (
         <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
-            <Table>
+            <Table className="table-fixed">
                 <TableHeader className="bg-muted/50">
                     <TableRow className="border-border hover:bg-transparent">
                         <TableHead className="w-10">
                             <Checkbox checked={allPageSelected} onCheckedChange={onToggleSelectAll} />
                         </TableHead>
-                        <TableHead>Document</TableHead>
-                        <TableHead className="text-right">Size</TableHead>
-                        {showPipelineDetails && <TableHead>Format</TableHead>}
-                        {showPipelineDetails && <TableHead>Workspace</TableHead>}
-                        {showPipelineDetails && <TableHead>Classification</TableHead>}
-                        {showPipelineDetails && <TableHead>Chunks</TableHead>}
-                        <TableHead>Status</TableHead>
-                        <TableHead>Added</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead className="w-24 text-right">Size</TableHead>
+                        {showPipelineDetails && <TableHead className="w-24">Format</TableHead>}
+                        {showPipelineDetails && <TableHead className="w-32">Workspace</TableHead>}
+                        {showPipelineDetails && <TableHead className="w-36">Classification</TableHead>}
+                        {showPipelineDetails && <TableHead className="w-20 text-right">Chunks</TableHead>}
+                        <TableHead className={showPipelineDetails ? "w-40" : "w-32"}>Status</TableHead>
+                        <TableHead className="w-28">Added</TableHead>
+                        <TableHead className="w-28 text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -92,15 +92,15 @@ export function FileListView({
                                 <div className="flex items-center justify-end gap-1">
                                     <Button
                                         variant="ghost"
-                                        size="sm"
-                                        className="h-7 text-xs text-muted-foreground hover:text-green-400 gap-1"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground hover:text-green-400"
+                                        title={isIngesting ? 'Ingesting…' : 'Ingest'}
                                         onClick={() => onIngestFolder(folderName)}
                                         disabled={allDone || isIngesting}
                                     >
                                         {isIngesting
-                                            ? <Loader2 className="w-3 h-3 animate-spin" />
-                                            : <Play className="w-3 h-3" />}
-                                        {isIngesting ? 'Ingesting…' : 'Ingest'}
+                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            : <Play className="w-3.5 h-3.5" />}
                                     </Button>
                                     {canDelete && (
                                         <Button
@@ -127,9 +127,9 @@ export function FileListView({
                             <TableCell className="w-10 py-3 align-middle" onClick={e => e.stopPropagation()}>
                                 <Checkbox checked={selectedIds.has(file.id)} onCheckedChange={() => onToggleSelect(file.id)} />
                             </TableCell>
-                            <TableCell className="max-w-[380px] py-3">
-                                <div className="flex items-center gap-2">
-                                    {getFileIcon(file.contentType)}
+                            <TableCell className="py-3">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="shrink-0">{getFileIcon(file.contentType)}</span>
                                     <span className="text-foreground/80 truncate text-sm font-medium" title={file.filename}>{file.filename}</span>
                                 </div>
                             </TableCell>
@@ -167,11 +167,9 @@ export function FileListView({
                                 </TableCell>
                             )}
                             <TableCell>
-                                {isIngestible
-                                    ? (showPipelineDetails
-                                        ? <ProcessingStepsIndicator status={file.ingestionStatus} />
-                                        : <QuietStatusIndicator status={file.ingestionStatus} />)
-                                    : <span className="text-xs text-muted-foreground/50">—</span>}
+                                {isIngestible && (showPipelineDetails
+                                    ? <ProcessingStepsIndicator status={file.ingestionStatus} />
+                                    : <QuietStatusIndicator status={file.ingestionStatus} />)}
                             </TableCell>
                             <TableCell className="text-xs font-mono text-muted-foreground">
                                 {format(new Date(file.createdAt), 'dd MMM yyyy')}
