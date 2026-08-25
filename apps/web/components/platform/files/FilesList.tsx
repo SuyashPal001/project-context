@@ -104,7 +104,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 and equal to --primary on the dark theme where it's already legible. */}
                             <div className="flex items-center gap-2 text-sm text-shimmer-accent">
                                 <MessageSquare className="w-4 h-4" />
-                                <span>All documents ingested — ready to chat</span>
+                                <span>These files are ready to work with</span>
                             </div>
                             <Button
                                 size="sm"

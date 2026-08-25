@@ -1,8 +1,9 @@
 import type { ScheduledHandler } from 'aws-lambda';
 import { agentTasks, taskEvents } from '@serverless-saas/agent-schema';
 import { auditLog } from '@serverless-saas/database/schema/audit';
+import { files } from '@serverless-saas/database/schema/storage';
 import { db } from '../db';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
 import { getCacheClient } from '@serverless-saas/cache';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '@serverless-saas/queue';
@@ -213,6 +214,47 @@ export const handler: ScheduledHandler = async () => {
       });
     } catch (wsErr) {
       wlog('error', 'WS push failed (approval sweep)', { taskId: task.id, error: (wsErr as Error).message });
+    }
+  }
+
+  // --- Sweep 4: Stalled file ingests (> 30 minutes) ---
+  // file.ingest runs on FoundationWorkerFunction, whose SAM timeout is 300s, so
+  // no ingest can still be alive after 30 minutes even allowing for SQS
+  // redelivery. A row left in pending/processing past that is dead: the worker
+  // crashed mid-pipeline, or the job was never enqueued at all (the confirm
+  // route skips publishing when SQS_PROCESSING_QUEUE_URL is unset).
+  //
+  // Marked failed, not re-queued. `files` has no attempt counter, so retrying
+  // automatically would loop a genuinely broken file through the pipeline every
+  // five minutes forever. Recovery is the manual re-ingest control in Drive —
+  // which is why those buttons were hidden behind showPipelineDetails rather
+  // than deleted.
+  const stalledIngests = await db
+    .update(files)
+    .set({ ingestionStatus: 'failed', updatedAt: new Date() })
+    .where(and(
+      inArray(files.ingestionStatus, ['pending', 'processing']),
+      sql`${files.updatedAt} < NOW() - INTERVAL '30 minutes'`,
+    ))
+    .returning({ id: files.id, tenantId: files.tenantId, name: files.name });
+
+  if (stalledIngests.length > 0) {
+    wlog('warn', 'Stalled file ingests marked failed', {
+      count: stalledIngests.length,
+      fileIds: stalledIngests.map((f) => f.id),
+    });
+
+    for (const file of stalledIngests) {
+      db.insert(auditLog).values({
+        tenantId: file.tenantId,
+        actorId: 'system',
+        actorType: 'system',
+        action: 'file_ingest_timed_out',
+        resource: 'file',
+        resourceId: file.id,
+        metadata: { filename: file.name, reason: 'Ingestion exceeded 30 minutes without completing.' },
+        traceId: '',
+      }).catch(() => {});
     }
   }
 };
