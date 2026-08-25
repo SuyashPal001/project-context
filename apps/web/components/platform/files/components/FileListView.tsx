@@ -4,11 +4,11 @@ import { Loader2, Download, Trash2, Folder as FolderIcon, Play, RefreshCw } from
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { isIngestibleCategory, getFileCategory, isParseable } from "../fileCategory";
-import { getFileIcon } from "../lib/fileIcons";
+import { getFileIcon, formatFileSize } from "../lib/fileIcons";
 import { ProcessingStepsIndicator } from "./IngestionStatus";
 import type { FileRecord, FolderCard } from "../types";
 
@@ -29,13 +29,32 @@ interface FileListViewProps {
     canDelete: boolean;
     onDeleteFile: (fileId: string) => void;
     onDeleteFolder: (folderName: string) => void;
+    showPipelineDetails?: boolean;
+}
+
+function QuietStatusIndicator({ status }: { status: FileRecord['ingestionStatus'] }) {
+    const config: Record<string, { label: string; dotClassName: string }> = {
+        done:       { label: 'Ready',      dotClassName: 'bg-green-500' },
+        processing: { label: 'Processing', dotClassName: 'bg-amber-400' },
+        pending:    { label: 'Processing', dotClassName: 'bg-amber-400' },
+        failed:     { label: 'Failed',     dotClassName: 'bg-red-500' },
+    };
+    const cfg = config[status] ?? { label: status, dotClassName: 'bg-muted-foreground' };
+    return (
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotClassName}`} />
+            {cfg.label}
+        </span>
+    );
 }
 
 export function FileListView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     allPageSelected, onToggleSelectAll, ingestingFiles, onIngestFile, onIngestFolder,
     onNavigateToFolder, onDownload, canDelete, onDeleteFile, onDeleteFolder,
+    showPipelineDetails = false,
 }: FileListViewProps) {
+    const columnCount = 6 + (showPipelineDetails ? 4 : 0);
     return (
         <div className="flex-1 border border-border rounded-lg bg-card overflow-hidden min-w-0">
             <Table>
@@ -45,12 +64,13 @@ export function FileListView({
                             <Checkbox checked={allPageSelected} onCheckedChange={onToggleSelectAll} />
                         </TableHead>
                         <TableHead>Document</TableHead>
-                        <TableHead>Format</TableHead>
-                        <TableHead>Workspace</TableHead>
-                        <TableHead>Classification</TableHead>
-                        <TableHead>Chunks</TableHead>
+                        <TableHead className="text-right">Size</TableHead>
+                        {showPipelineDetails && <TableHead>Format</TableHead>}
+                        {showPipelineDetails && <TableHead>Workspace</TableHead>}
+                        {showPipelineDetails && <TableHead>Classification</TableHead>}
+                        {showPipelineDetails && <TableHead>Chunks</TableHead>}
                         <TableHead>Status</TableHead>
-                        <TableHead>Ingested</TableHead>
+                        <TableHead>Added</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -62,7 +82,7 @@ export function FileListView({
                             className="cursor-pointer border-border/50 hover:bg-secondary/60 transition-colors"
                         >
                             <TableCell className="py-3" onClick={e => e.stopPropagation()} />
-                            <TableCell className="py-3" colSpan={7}>
+                            <TableCell className="py-3" colSpan={columnCount - 2}>
                                 <div className="flex items-center gap-2">
                                     <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
                                     <span className="font-medium text-foreground">{folderName}/</span>
@@ -107,41 +127,54 @@ export function FileListView({
                             <TableCell className="w-10 py-3 align-middle" onClick={e => e.stopPropagation()}>
                                 <Checkbox checked={selectedIds.has(file.id)} onCheckedChange={() => onToggleSelect(file.id)} />
                             </TableCell>
-                            <TableCell className="max-w-[180px] py-3">
+                            <TableCell className="max-w-[380px] py-3">
                                 <div className="flex items-center gap-2">
                                     {getFileIcon(file.contentType)}
                                     <span className="text-foreground/80 truncate text-sm font-medium" title={file.filename}>{file.filename}</span>
                                 </div>
                             </TableCell>
-                            <TableCell>
-                                <span className="text-xs font-mono text-muted-foreground">
-                                    {file.formatDetected ?? '—'}
-                                </span>
+                            <TableCell className="text-right text-xs font-mono text-muted-foreground">
+                                {formatFileSize(file.size)}
                             </TableCell>
-                            <TableCell className="py-3">
-                                {file.workspaceName ? (
-                                    <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-mono">
-                                        {file.workspaceName}
+                            {showPipelineDetails && (
+                                <TableCell>
+                                    <span className="text-xs font-mono text-muted-foreground">
+                                        {file.formatDetected ?? '—'}
                                     </span>
-                                ) : (
-                                    <span className="text-xs text-muted-foreground/50">—</span>
-                                )}
-                            </TableCell>
-                            <TableCell className="py-3">
-                                <span className={`text-xs px-2 py-0.5 rounded font-medium border ${file.classification === 'Confidential' ? 'border-red-500/30 text-red-400 bg-red-500/10' : 'border-amber-500/30 text-amber-400 bg-amber-500/10'}`}>
-                                    {file.classification}
-                                </span>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-sm">
-                                {isIngestible && file.chunkCount > 0 ? file.chunkCount : '—'}
-                            </TableCell>
+                                </TableCell>
+                            )}
+                            {showPipelineDetails && (
+                                <TableCell className="py-3">
+                                    {file.workspaceName ? (
+                                        <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-mono">
+                                            {file.workspaceName}
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs text-muted-foreground/50">—</span>
+                                    )}
+                                </TableCell>
+                            )}
+                            {showPipelineDetails && (
+                                <TableCell className="py-3">
+                                    <span className={`text-xs px-2 py-0.5 rounded font-medium border ${file.classification === 'Confidential' ? 'border-red-500/30 text-red-400 bg-red-500/10' : 'border-amber-500/30 text-amber-400 bg-amber-500/10'}`}>
+                                        {file.classification}
+                                    </span>
+                                </TableCell>
+                            )}
+                            {showPipelineDetails && (
+                                <TableCell className="text-muted-foreground text-sm">
+                                    {isIngestible && file.chunkCount > 0 ? file.chunkCount : '—'}
+                                </TableCell>
+                            )}
                             <TableCell>
                                 {isIngestible
-                                    ? <ProcessingStepsIndicator status={file.ingestionStatus} />
+                                    ? (showPipelineDetails
+                                        ? <ProcessingStepsIndicator status={file.ingestionStatus} />
+                                        : <QuietStatusIndicator status={file.ingestionStatus} />)
                                     : <span className="text-xs text-muted-foreground/50">—</span>}
                             </TableCell>
-                            <TableCell className="text-muted-foreground text-sm">
-                                {formatDistanceToNow(new Date(file.createdAt), { addSuffix: true })}
+                            <TableCell className="text-xs font-mono text-muted-foreground">
+                                {format(new Date(file.createdAt), 'dd MMM yyyy')}
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1">
