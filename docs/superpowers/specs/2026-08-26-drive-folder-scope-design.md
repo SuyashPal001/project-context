@@ -29,9 +29,12 @@ So the work has to happen **before** the question, not during it.
   `POST /files/:id/confirm`.
 - `retrieveChunks` (`packages/foundation/ai/src/retrieve.ts`) — hybrid vector +
   text search, with a folder-scoped branch.
-- `retrieveDocuments` — reads scope from `requestContext`, never from model input.
-  **The "enforce server-side, not by prompt" requirement is already satisfied by
-  this pattern**; new tools must follow it.
+- `retrieveDocuments` — reads scope from `requestContext`. **Correction:** it also
+  accepts `folderId` as a *tool argument* and prefers it (`folderId ?? contextFolderId`,
+  `retrieveDocuments.ts:41,46`), so the model can currently choose its own scope.
+  `tenantId` still comes from context, so this is not cross-tenant, but within a
+  tenant it is a real hole. An earlier draft of this spec claimed the opposite.
+  Fixing it is Task 1 of the plan.
 - `files.ingestion_status` plus the watchdog that fails stalled ingests.
 
 ## Design
