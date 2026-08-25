@@ -36,7 +36,7 @@ type GeminiPart =
 
 type GeminiContent = { role: string; parts: GeminiPart[] }
 
-function toGeminiParts(content: string | OpenAIContentPart[] | null): GeminiPart[] {
+export function toGeminiParts(content: string | OpenAIContentPart[] | null): GeminiPart[] {
   if (content === null) return []
   if (typeof content === 'string') return [{ text: content }]
   return content.flatMap((block): GeminiPart[] => {
@@ -46,6 +46,9 @@ function toGeminiParts(content: string | OpenAIContentPart[] | null): GeminiPart
       const dataUri = url.match(/^data:([^;]+);base64,(.+)$/)
       if (dataUri) return [{ inlineData: { mimeType: dataUri[1], data: dataUri[2] } }]
       return [{ fileData: { mimeType: 'image/jpeg', fileUri: url } }]
+    }
+    if (block.type === 'input_audio' && block.input_audio) {
+      return [{ inlineData: { mimeType: `audio/${block.input_audio.format}`, data: block.input_audio.data } }]
     }
     return []
   })

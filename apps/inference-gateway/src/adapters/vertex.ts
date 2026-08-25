@@ -54,7 +54,7 @@ function getModel(name: string) {
 // OpenAI → Gemini translation
 // ---------------------------------------------------------------------------
 
-function toGeminiParts(content: string | OpenAIContentPart[] | null): Part[] {
+export function toGeminiParts(content: string | OpenAIContentPart[] | null): Part[] {
   if (content === null) return [];
   if (typeof content === 'string') return [{ text: content }];
 
@@ -69,6 +69,9 @@ function toGeminiParts(content: string | OpenAIContentPart[] | null): Part[] {
         return [{ inlineData: { mimeType: dataUri[1], data: dataUri[2] } }];
       }
       return [{ fileData: { mimeType: 'image/jpeg', fileUri: url } }];
+    }
+    if (block.type === 'input_audio' && block.input_audio) {
+      return [{ inlineData: { mimeType: `audio/${block.input_audio.format}`, data: block.input_audio.data } }];
     }
     return [];
   });
