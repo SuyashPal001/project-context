@@ -9,6 +9,15 @@ import { personas } from '@serverless-saas/agent-schema/personas';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 
+// A grant prefix is a Drive path segment, not a path expression. It must end in
+// "/" so `key LIKE prefix || '%'` cannot reach a sibling folder whose name merely
+// starts with the same letters ("new" would match "newer/"), and it must not
+// traverse or be absolute. This is the outer edge of what the agent can read, so
+// it is validated on the way in rather than trusted at query time.
+const folderPrefix = z.string().min(1).max(512)
+    .refine(p => p.endsWith('/'), 'prefix must end with "/"')
+    .refine(p => !p.startsWith('/') && !p.includes('..'), 'prefix must not traverse');
+
 export const conversationsRoutes = new Hono<AppEnv>();
 
 // Presigned GET URLs expire (1hr — see storageService.getDownloadUrl), so avatarUrl is
@@ -238,13 +247,17 @@ conversationsRoutes.patch('/:id', async (c) => {
     const scope = and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId));
 
     try {
-        const [existing] = await db.select({ id: conversations.id }).from(conversations).where(scope).limit(1);
+        // metadata comes back on the ownership check so a folderScope patch can
+        // merge into it without a second round trip.
+        const [existing] = await db.select({ id: conversations.id, metadata: conversations.metadata })
+            .from(conversations).where(scope).limit(1);
         if (!existing) return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
 
         const schema = z.object({
             title: z.string().max(255).optional(),
             status: z.enum(['active', 'archived', 'escalated']).optional(),
             needsHuman: z.boolean().optional(),
+            folderScope: z.object({ prefix: folderPrefix }).nullable().optional(),
         });
 
         const result = schema.safeParse(await c.req.json());
@@ -255,7 +268,18 @@ conversationsRoutes.patch('/:id', async (c) => {
             return c.json({ error: 'No fields provided for update', code: 'VALIDATION_ERROR' }, 400);
         }
 
-        await db.update(conversations).set({ ...result.data, updatedAt: new Date() }).where(scope);
+        const { folderScope, ...rest } = result.data;
+        const patch: Record<string, unknown> = { ...rest };
+        if (folderScope !== undefined) {
+            // Merge, never overwrite: metadata is shared with whatever else the
+            // product stores on a conversation.
+            const current = { ...((existing.metadata ?? {}) as Record<string, unknown>) };
+            if (folderScope === null) delete current.folderScope;
+            else current.folderScope = folderScope;
+            patch.metadata = current;
+        }
+
+        await db.update(conversations).set({ ...patch, updatedAt: new Date() }).where(scope);
 
         const [updated] = await db.select(conversationSelect)
             .from(conversations)
