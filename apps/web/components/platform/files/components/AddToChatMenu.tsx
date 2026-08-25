@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { MessageSquare, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,15 @@ import type { Conversation } from "@/components/platform/chat/types";
 /** A disabled folder trigger has to say *why* on its face: a disabled button
  *  does not reliably fire hover in every browser, so a `title` alone leaves the
  *  user with a dead control and no reason. Shared so grid and list agree. */
+/** Undated rows are worse than none: a bad timestamp reads as fact. Anything
+ *  unparseable drops out of the line entirely rather than rendering "Invalid Date". */
+export function relativeAge(createdAt: string | undefined): string {
+    if (!createdAt) return '';
+    const at = new Date(createdAt);
+    if (Number.isNaN(at.getTime())) return '';
+    return formatDistanceToNow(at, { addSuffix: true });
+}
+
 export function folderChatLabel(fileCount: number): string {
     if (fileCount === 0) return 'Empty folder';
     if (fileCount > MAX_FILES_PER_SELECTION) return `Over ${MAX_FILES_PER_SELECTION}-file limit`;
@@ -43,7 +53,10 @@ export function AddToChatMenu({
         const active = conversations.filter(c => c.status === 'active');
         const q = query.trim().toLowerCase();
         if (!q) return active;
-        return active.filter(c => (c.title || 'Untitled').toLowerCase().includes(q));
+        // The agent name is on the row now, so it has to be searchable — a visible
+        // field that does not match is read as broken search.
+        return active.filter(c =>
+            `${c.title || 'Untitled'} ${c.agent?.name ?? ''}`.toLowerCase().includes(q));
     }, [conversations, query]);
 
     const pick = (conversationId: string | null) => {
@@ -74,7 +87,7 @@ export function AddToChatMenu({
                     {variant !== 'icon' && label}
                 </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64 p-1.5">
+            <PopoverContent align="end" className="w-72 p-1.5">
                 {/* New session first and always reachable: it is the one option that
                     never depends on what the search turns up. */}
                 <button
@@ -120,12 +133,23 @@ export function AddToChatMenu({
                                 <PersonaAvatar
                                     persona={conversation.agent?.persona}
                                     avatarUrl={conversation.agent?.avatarUrl}
-                                    size={22}
-                                    className="rounded-full h-[22px] w-[22px]"
+                                    size={28}
+                                    className="rounded-full h-7 w-7"
                                     iconClassName="text-foreground/50"
                                     icon={getAgentTypeIcon(conversation.agent?.type)}
                                 />
-                                <span className="truncate">{conversation.title || 'Untitled'}</span>
+                                {/* The avatar only separates chats that differ by agent, and
+                                    most do not. Agent name plus age is what tells two chats
+                                    called "hey" apart. */}
+                                <span className="min-w-0 flex-1">
+                                    <span className="block truncate leading-tight">
+                                        {conversation.title || 'Untitled'}
+                                    </span>
+                                    <span className="block truncate text-[11px] leading-tight text-muted-foreground">
+                                        {[conversation.agent?.name, relativeAge(conversation.createdAt)]
+                                            .filter(Boolean).join(' · ')}
+                                    </span>
+                                </span>
                             </button>
                         ))
                     )}
