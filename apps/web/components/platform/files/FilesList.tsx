@@ -113,6 +113,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // displayed — same set the table renders, so nothing scrolls past unseen.
     const pageAssets = useMemo(() => pagedFiles.map(fileToAsset), [pagedFiles]);
     const previewAsset = previewFileId ? pageAssets.find(a => a.id === previewFileId) ?? null : null;
+    // The lightbox works in Assets, but Add to chat stages a FileRecord.
+    const previewFile = previewFileId ? pagedFiles.find(f => f.id === previewFileId) ?? null : null;
     const allPageSelected = pagedFiles.length > 0 && pagedFiles.every(f => selection.selectedIds.has(f.id));
 
     const hasParseableFiles = files.some(isParseable);
@@ -339,6 +341,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     allAssets={pageAssets}
                     onClose={() => setPreviewFileId(null)}
                     onNavigate={(next) => setPreviewFileId(next.id)}
+                    headerActions={previewFile && (
+                        <AddToChatMenu
+                            conversations={conversations}
+                            disabled={!defaultAgentId}
+                            onPick={(conversationId) => addToChat([previewFile], conversationId)}
+                        />
+                    )}
                 />
             )}
 

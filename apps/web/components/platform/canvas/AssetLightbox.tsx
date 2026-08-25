@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { X, ChevronLeft, ChevronRight, Copy, Download, File as FileIcon } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { X, ChevronLeft, ChevronRight, Download, File as FileIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { VideoPreview } from './lightbox/VideoPreview';
@@ -17,6 +17,9 @@ interface AssetLightboxProps {
   allAssets: Asset[];
   onClose: () => void;
   onNavigate: (asset: Asset) => void;
+  /** Slot beside the close button. Drive puts "Add to chat" here; the chat
+   *  canvas leaves it empty, since an asset there is already in a chat. */
+  headerActions?: ReactNode;
 }
 
 function useAssetUrl(asset: Asset): string | null {
@@ -72,7 +75,7 @@ function useMarkdownContent(asset: Asset, fileUrl: string | null): string {
   return content;
 }
 
-export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLightboxProps) {
+export function AssetLightbox({ asset, allAssets, onClose, onNavigate, headerActions }: AssetLightboxProps) {
   const url = useAssetUrl(asset);
   const markdownContent = useMarkdownContent(asset, url);
   const index = allAssets.findIndex(a => a.id === asset.id);
@@ -88,9 +91,7 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate }: AssetLi
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{asset.type}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50">
-              <Copy className="h-4 w-4" />
-            </button>
+            {headerActions}
             <button onClick={onClose} className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50">
               <X className="h-4 w-4" />
             </button>
