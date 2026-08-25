@@ -273,7 +273,7 @@ filesRoutes.get('/', async (c) => {
     updatedAt: f.updatedAt.toISOString(),
     // Ingestion metadata
     formatDetected: f.formatDetected ?? null,
-    officeCode: f.officeCode ?? null,
+    workspaceName: f.workspaceName ?? null,
     classification: f.classification ?? classifyDocument(f.name),
     chunkCount: f.chunkCount ?? 0,
     ingestionStatus: f.ingestionStatus ?? 'pending',

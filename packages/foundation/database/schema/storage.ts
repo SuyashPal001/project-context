@@ -33,7 +33,10 @@ export const files = pgTable('files', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   // Ingestion metadata
   formatDetected: varchar('format_detected', { length: 64 }),
-  officeCode: varchar('office_code', { length: 32 }).default('PB-001'),
+  // The uploading tenant's display name, stamped on at ingest time (see
+  // fileIngest.ts) — not a real office/branch code despite the column name's
+  // history; kept as a plain workspace label.
+  workspaceName: varchar('workspace_name', { length: 32 }),
   classification: varchar('classification', { length: 32 }).default('Confidential'),
   chunkCount: integer('chunk_count').default(0),
   ingestionStatus: ingestionStatusEnum('ingestion_status').default('pending'),

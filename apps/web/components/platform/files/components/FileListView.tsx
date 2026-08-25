@@ -46,7 +46,7 @@ export function FileListView({
                         </TableHead>
                         <TableHead>Document</TableHead>
                         <TableHead>Format</TableHead>
-                        <TableHead>Office</TableHead>
+                        <TableHead>Workspace</TableHead>
                         <TableHead>Classification</TableHead>
                         <TableHead>Chunks</TableHead>
                         <TableHead>Status</TableHead>
@@ -119,9 +119,9 @@ export function FileListView({
                                 </span>
                             </TableCell>
                             <TableCell className="py-3">
-                                {file.officeCode ? (
+                                {file.workspaceName ? (
                                     <span className="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-mono">
-                                        {file.officeCode}
+                                        {file.workspaceName}
                                     </span>
                                 ) : (
                                     <span className="text-xs text-muted-foreground/50">—</span>

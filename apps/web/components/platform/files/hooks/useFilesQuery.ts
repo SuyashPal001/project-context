@@ -33,7 +33,7 @@ export function useFilesQuery(prefix: string) {
         }));
     }, [prefix]);
 
-    const { virtualFolders, files, officeCodes } = useMemo(() => {
+    const { virtualFolders, files, workspaceNames } = useMemo(() => {
         const allFiles = response?.data || [];
         const folders = new Set<string>();
         const directFiles: FileRecord[] = [];
@@ -51,7 +51,7 @@ export function useFilesQuery(prefix: string) {
 
         return {
             virtualFolders: Array.from(folders).sort(),
-            officeCodes: Array.from(new Set(allFiles.map(f => f.officeCode).filter(Boolean))).sort() as string[],
+            workspaceNames: Array.from(new Set(allFiles.map(f => f.workspaceName).filter(Boolean))).sort() as string[],
             files: directFiles.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         };
     }, [response?.data, prefix]);
@@ -60,7 +60,7 @@ export function useFilesQuery(prefix: string) {
         allFiles: response?.data ?? [],
         files,
         virtualFolders,
-        officeCodes,
+        workspaceNames,
         breadcrumbs,
         isLoading,
         defaultAgentId,

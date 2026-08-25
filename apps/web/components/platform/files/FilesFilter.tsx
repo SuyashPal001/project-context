@@ -9,10 +9,10 @@ const CATEGORIES: FileCategory[] = ['document', 'image', 'audio-video', 'archive
 const TIME_RANGES: TimeRange[] = ['all', 'today', '7d', '30d', 'older'];
 
 interface Props {
-    officeCodes: string[];
-    filterOffice: string;
+    workspaceNames: string[];
+    filterWorkspace: string;
     filterClassification: string;
-    onOfficeChange: (v: string) => void;
+    onWorkspaceChange: (v: string) => void;
     onClassificationChange: (v: string) => void;
     filterCategory: string;
     onCategoryChange: (v: string) => void;
@@ -20,7 +20,7 @@ interface Props {
     onTimeRangeChange: (v: TimeRange) => void;
 }
 
-export function FilesFilter({ officeCodes, filterOffice, filterClassification, onOfficeChange, onClassificationChange, filterCategory, onCategoryChange, filterTimeRange, onTimeRangeChange }: Props) {
+export function FilesFilter({ workspaceNames, filterWorkspace, filterClassification, onWorkspaceChange, onClassificationChange, filterCategory, onCategoryChange, filterTimeRange, onTimeRangeChange }: Props) {
     return (
         <div className="flex gap-2">
             <Select value={filterCategory} onValueChange={onCategoryChange}>
@@ -44,13 +44,13 @@ export function FilesFilter({ officeCodes, filterOffice, filterClassification, o
                     ))}
                 </SelectContent>
             </Select>
-            <Select value={filterOffice} onValueChange={onOfficeChange}>
+            <Select value={filterWorkspace} onValueChange={onWorkspaceChange}>
                 <SelectTrigger className="w-36 h-8 text-xs bg-secondary border-border">
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-secondary border-border">
-                    <SelectItem value="all" className="text-xs">All Offices</SelectItem>
-                    {officeCodes.map(c => (
+                    <SelectItem value="all" className="text-xs">All Workspaces</SelectItem>
+                    {workspaceNames.map(c => (
                         <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
                     ))}
                 </SelectContent>

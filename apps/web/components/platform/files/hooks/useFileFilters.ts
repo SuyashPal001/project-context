@@ -5,7 +5,7 @@ import type { FileRecord } from "../types";
 const PAGE_SIZE = 10;
 
 export function useFileFilters(files: FileRecord[]) {
-    const [filterOffice, setFilterOffice] = useState("all");
+    const [filterWorkspace, setFilterWorkspace] = useState("all");
     const [filterClassification, setFilterClassification] = useState("all");
     const [filterCategory, setFilterCategory] = useState("all");
     const [filterTimeRange, setFilterTimeRange] = useState<TimeRange>("all");
@@ -16,7 +16,7 @@ export function useFileFilters(files: FileRecord[]) {
     const withPageReset = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setCurrentPage(1); };
 
     const filteredFiles = files.filter(f =>
-        (filterOffice === "all" || f.officeCode === filterOffice) &&
+        (filterWorkspace === "all" || f.workspaceName === filterWorkspace) &&
         (filterClassification === "all" || f.classification === filterClassification) &&
         (filterCategory === "all" || getFileCategory(f.contentType, f.filename) === filterCategory) &&
         matchesTimeRange(f.createdAt, filterTimeRange));
@@ -25,7 +25,7 @@ export function useFileFilters(files: FileRecord[]) {
     const pagedFiles = filteredFiles.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
     return {
-        filterOffice, onOfficeChange: withPageReset(setFilterOffice),
+        filterWorkspace, onWorkspaceChange: withPageReset(setFilterWorkspace),
         filterClassification, onClassificationChange: withPageReset(setFilterClassification),
         filterCategory, onCategoryChange: withPageReset(setFilterCategory),
         filterTimeRange, onTimeRangeChange: withPageReset(setFilterTimeRange),

@@ -16,7 +16,7 @@ export interface FileRecord {
     createdAt: string;
     updatedAt: string;
     formatDetected: string | null;
-    officeCode: string | null;
+    workspaceName: string | null;
     classification: string;
     chunkCount: number;
     ingestionStatus: 'pending' | 'processing' | 'done' | 'failed';

@@ -32,7 +32,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const router = useRouter();
     const tenant = params.tenant as string;
 
-    const { allFiles, files, virtualFolders, officeCodes, breadcrumbs, isLoading, defaultAgentId } = useFilesQuery(prefix);
+    const { allFiles, files, virtualFolders, workspaceNames, breadcrumbs, isLoading, defaultAgentId } = useFilesQuery(prefix);
     const ingestion = useFileIngestion({ prefix, onPrefixChange });
     const selection = useFileSelection();
     const mutations = useFileMutations();
@@ -118,7 +118,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     )}
                     <div className="flex items-center justify-between gap-2">
                         {files.length > 0 ? <FilesFilter
-                            officeCodes={officeCodes} filterOffice={filters.filterOffice} onOfficeChange={filters.onOfficeChange}
+                            workspaceNames={workspaceNames} filterWorkspace={filters.filterWorkspace} onWorkspaceChange={filters.onWorkspaceChange}
                             filterClassification={filters.filterClassification} onClassificationChange={filters.onClassificationChange}
                             filterCategory={filters.filterCategory} onCategoryChange={filters.onCategoryChange}
                             filterTimeRange={filters.filterTimeRange} onTimeRangeChange={filters.onTimeRangeChange}
