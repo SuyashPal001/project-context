@@ -18,9 +18,10 @@ interface Props {
     onCategoryChange: (v: string) => void;
     filterTimeRange: TimeRange;
     onTimeRangeChange: (v: TimeRange) => void;
+    showPipelineDetails?: boolean;
 }
 
-export function FilesFilter({ workspaceNames, filterWorkspace, filterClassification, onWorkspaceChange, onClassificationChange, filterCategory, onCategoryChange, filterTimeRange, onTimeRangeChange }: Props) {
+export function FilesFilter({ workspaceNames, filterWorkspace, filterClassification, onWorkspaceChange, onClassificationChange, filterCategory, onCategoryChange, filterTimeRange, onTimeRangeChange, showPipelineDetails = false }: Props) {
     return (
         <div className="flex gap-2">
             <Select value={filterCategory} onValueChange={onCategoryChange}>
@@ -44,29 +45,33 @@ export function FilesFilter({ workspaceNames, filterWorkspace, filterClassificat
                     ))}
                 </SelectContent>
             </Select>
-            <Select value={filterWorkspace} onValueChange={onWorkspaceChange}>
-                <SelectTrigger className="w-36 h-8 text-xs bg-secondary border-border">
-                    <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-secondary border-border">
-                    <SelectItem value="all" className="text-xs">All Workspaces</SelectItem>
-                    {workspaceNames.map(c => (
-                        <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-            <Select value={filterClassification} onValueChange={onClassificationChange}>
-                <SelectTrigger className="w-44 h-8 text-xs bg-secondary border-border">
-                    <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-secondary border-border">
-                    {(["all", "Confidential", "Internal"] as const).map(v => (
-                        <SelectItem key={v} value={v} className="text-xs">
-                            {v === "all" ? "All Classifications" : v}
-                        </SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
+            {showPipelineDetails && (
+                <Select value={filterWorkspace} onValueChange={onWorkspaceChange}>
+                    <SelectTrigger className="w-36 h-8 text-xs bg-secondary border-border">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-secondary border-border">
+                        <SelectItem value="all" className="text-xs">All Workspaces</SelectItem>
+                        {workspaceNames.map(c => (
+                            <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
+            {showPipelineDetails && (
+                <Select value={filterClassification} onValueChange={onClassificationChange}>
+                    <SelectTrigger className="w-44 h-8 text-xs bg-secondary border-border">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-secondary border-border">
+                        {(["all", "Confidential", "Internal"] as const).map(v => (
+                            <SelectItem key={v} value={v} className="text-xs">
+                                {v === "all" ? "All Classifications" : v}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            )}
         </div>
     );
 }

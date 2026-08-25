@@ -25,9 +25,10 @@ interface FilesListProps {
     onUploadClick: () => void;
     canUpload: boolean;
     canDelete: boolean;
+    showPipelineDetails?: boolean;
 }
 
-export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, canDelete }: FilesListProps) {
+export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, canDelete, showPipelineDetails = false }: FilesListProps) {
     const params = useParams();
     const router = useRouter();
     const tenant = params.tenant as string;
@@ -122,6 +123,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             filterClassification={filters.filterClassification} onClassificationChange={filters.onClassificationChange}
                             filterCategory={filters.filterCategory} onCategoryChange={filters.onCategoryChange}
                             filterTimeRange={filters.filterTimeRange} onTimeRangeChange={filters.onTimeRangeChange}
+                            showPipelineDetails={showPipelineDetails}
                         /> : <div />}
                         <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-secondary border border-border">
                             <Button
@@ -206,6 +208,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             canDelete={canDelete}
                             onDeleteFile={mutations.setDeletingFileId}
                             onDeleteFolder={mutations.setDeletingFolderName}
+                            showPipelineDetails={showPipelineDetails}
                         />
                     )}
 
