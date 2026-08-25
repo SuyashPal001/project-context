@@ -54,7 +54,7 @@ describe('retrieveDocumentsTool', () => {
     mockGateChunks.mockResolvedValue([])
 
     const result = await (retrieveDocumentsTool as any).execute(
-      { query: 'gratuity limit', folderId: 'folder-1' },
+      { query: 'gratuity limit' },
       { requestContext: makeRequestContext('tenant-1') }
     )
 
@@ -70,7 +70,7 @@ describe('retrieveDocumentsTool', () => {
     mockGateChunks.mockResolvedValue(scoredChunks.slice(0, 5))
 
     const result = await (retrieveDocumentsTool as any).execute(
-      { query: 'gratuity limit', folderId: 'folder-1' },
+      { query: 'gratuity limit' },
       { requestContext: makeRequestContext('tenant-1') }
     )
 
@@ -80,11 +80,11 @@ describe('retrieveDocumentsTool', () => {
     expect(contextChunks.length).toBeLessThanOrEqual(5)
   })
 
-  // Folder-scoped retrieval is not implemented: retrieveChunks takes
-  // (query, tenantId, limit, scoreThreshold) and the tool's inputSchema accepts
-  // only { query }. This test previously asserted a fifth folderId argument and
-  // had been failing ever since it was written. It now pins the real contract —
-  // tenant scoping, which is the part that matters for isolation.
+  // retrieveChunks takes (query, tenantId, limit, scoreThreshold, folderScope).
+  // The tool's inputSchema accepts only { query } — folder scope is read from
+  // the request context alone, so the fifth argument is undefined when the
+  // conversation has no grant. This test asserted four arguments and had been
+  // failing ever since it was written; five is the real arity.
   it('scopes retrieval to the caller tenant', async () => {
     mockRetrieveChunks.mockResolvedValue([])
     mockFastGate.mockReturnValue([])
@@ -99,7 +99,8 @@ describe('retrieveDocumentsTool', () => {
       'pension rules',
       'tenant-99',
       expect.any(Number),
-      expect.any(Number)
+      expect.any(Number),
+      undefined
     )
   })
 
@@ -112,7 +113,7 @@ describe('retrieveDocumentsTool', () => {
     mockGateChunks.mockRejectedValue(new Error('LLM timeout'))
 
     const result = await (retrieveDocumentsTool as any).execute(
-      { query: 'gratuity limit', folderId: 'folder-1' },
+      { query: 'gratuity limit' },
       { requestContext: makeRequestContext('tenant-1') }
     )
 

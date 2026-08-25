@@ -28,7 +28,6 @@ If this returns no results, say you cannot find the information — never guess.
 
   inputSchema: z.object({
     query:    z.string().optional().default('document summary').describe('What to search for — use the user\'s question or topic. Defaults to a broad summary search if omitted.'),
-    folderId: z.string().optional().describe('The folder ID to scope retrieval to, if the conversation is scoped to a specific folder'),
   }),
 
   requestContextSchema,
@@ -39,11 +38,14 @@ If this returns no results, say you cannot find the information — never guess.
     sources: z.array(z.object({ name: z.string(), score: z.number() })).optional(),
   }),
 
-  execute: async ({ query, folderId }, execContext) => {
+  execute: async ({ query }, execContext) => {
     const tenantId = (execContext as any)?.requestContext?.get('tenantId') as string | undefined
       ?? (execContext as any)?.context?.tenantId as string | undefined
       ?? ''
-    const contextFolderId = (execContext as any)?.requestContext?.get('folderId') as string | undefined
+    // Scope is granted server-side and is not negotiable by the model: a tool
+    // argument naming a folder would let the agent widen its own reach to any
+    // folder in the tenant.
+    const folderId = (execContext as any)?.requestContext?.get('folderId') as string | undefined
 
     if (!tenantId) {
       console.error('[retrieveDocuments] tenantId missing from requestContext')
@@ -52,7 +54,7 @@ If this returns no results, say you cannot find the information — never guess.
 
     let chunks: RetrievedChunk[]
     try {
-      chunks = await retrieveChunks(query, tenantId, RETRIEVE_LIMIT, 0, folderId ?? contextFolderId)
+      chunks = await retrieveChunks(query, tenantId, RETRIEVE_LIMIT, 0, folderId)
     } catch (err) {
       console.error('[retrieveDocuments] retrieveChunks threw:', (err as Error).message)
       return { found: false, context: 'Document retrieval failed. Please try again.' }
