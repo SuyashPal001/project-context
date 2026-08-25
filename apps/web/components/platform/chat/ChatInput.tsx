@@ -1,4 +1,4 @@
-import { ArrowUp, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Bot, Zap, Check, Sparkles } from "lucide-react";
+import { ArrowUp, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -14,9 +14,10 @@ import { FileText } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { consumePendingAttachments } from "@/lib/pendingAttachments";
+import { DriveFilePicker } from "./DriveFilePicker";
 
 import { useAudioRecorder } from "./useAudioRecorder";
-import { useFileUpload } from "./useFileUpload";
+import { useFileUpload, MAX_FILES_PER_SELECTION } from "./useFileUpload";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { RecordingBar } from "./RecordingBar";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
@@ -125,6 +126,7 @@ export function ChatInput({
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [drivePickerOpen, setDrivePickerOpen] = useState(false);
     const uploadTypeRef = useRef<'image' | 'video' | 'audio' | 'document' | null>(null);
     const paletteRef = useRef<PaletteHandle>(null);
     // dragenter/dragleave fire on every child element as the pointer crosses them,
@@ -321,6 +323,13 @@ export function ChatInput({
                 onChange={handleFileChange}
             />
 
+            <DriveFilePicker
+                open={drivePickerOpen}
+                onOpenChange={setDrivePickerOpen}
+                remainingSlots={Math.max(0, MAX_FILES_PER_SELECTION - uploader.attachments.length)}
+                onConfirm={uploader.addAttachments}
+            />
+
             <div className="relative max-w-3xl mx-auto w-full">
                 {paletteMode === 'slash' && (
                     <SlashPalette
@@ -454,6 +463,10 @@ export function ChatInput({
                                                 <DropdownMenuItem onClick={() => handleMediaClick('document')} className="gap-2 cursor-pointer py-2">
                                                     <FileText className="h-4 w-4" />
                                                     <span>Document (PDF, DOCX)</span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setDrivePickerOpen(true)} className="gap-2 cursor-pointer py-2">
+                                                    <HardDrive className="h-4 w-4" />
+                                                    <span>From Drive</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
                                                 <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
