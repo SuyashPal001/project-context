@@ -146,7 +146,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </Button>
                         </div>
                     </div>
-                    {hasParseableFiles && (
+                    {showPipelineDetails && hasParseableFiles && (
                         <div className="flex justify-end">
                             <Button
                                 size="sm"

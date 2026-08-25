@@ -45,16 +45,18 @@ export function FileGridView({
                         <span className="font-medium text-foreground text-sm truncate" title={`${folderName}/`}>{folderName}/</span>
                     </div>
                     <div className="flex items-center justify-end gap-1 mt-auto opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-muted-foreground hover:text-green-400"
-                            title="Ingest"
-                            onClick={() => onIngestFolder(folderName)}
-                            disabled={allDone || isIngesting}
-                        >
-                            {isIngesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                        </Button>
+                        {showPipelineDetails && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-green-400"
+                                title="Ingest"
+                                onClick={() => onIngestFolder(folderName)}
+                                disabled={allDone || isIngesting}
+                            >
+                                {isIngesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                            </Button>
+                        )}
                         {canDelete && (
                             <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => onDeleteFolder(folderName)}>
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -109,7 +111,7 @@ export function FileGridView({
                             <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-foreground" onClick={() => onDownload(file.id)}>
                                 <Download className="w-3 h-3" />
                             </Button>
-                            {isParseable(file) && (
+                            {showPipelineDetails && isParseable(file) && (
                                 <Button
                                     variant="ghost"
                                     size="icon"

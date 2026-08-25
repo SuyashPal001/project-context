@@ -81,18 +81,20 @@ export function FileListView({
                             </TableCell>
                             <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1">
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-muted-foreground hover:text-green-400"
-                                        title={isIngesting ? 'Ingesting…' : 'Ingest'}
-                                        onClick={() => onIngestFolder(folderName)}
-                                        disabled={allDone || isIngesting}
-                                    >
-                                        {isIngesting
-                                            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            : <Play className="w-3.5 h-3.5" />}
-                                    </Button>
+                                    {showPipelineDetails && (
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-7 w-7 text-muted-foreground hover:text-green-400"
+                                            title={isIngesting ? 'Ingesting…' : 'Ingest'}
+                                            onClick={() => onIngestFolder(folderName)}
+                                            disabled={allDone || isIngesting}
+                                        >
+                                            {isIngesting
+                                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                : <Play className="w-3.5 h-3.5" />}
+                                        </Button>
+                                    )}
                                     {canDelete && (
                                         <Button
                                             variant="ghost"
@@ -170,7 +172,7 @@ export function FileListView({
                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => onDownload(file.id)}>
                                         <Download className="w-3.5 h-3.5" />
                                     </Button>
-                                    {isParseable(file) && (
+                                    {showPipelineDetails && isParseable(file) && (
                                         <Button
                                             variant="ghost"
                                             size="icon"
