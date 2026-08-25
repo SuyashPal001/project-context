@@ -87,7 +87,7 @@ export function FileListView({
                         {showPipelineDetails && <TableHead className="w-20 text-right">Chunks</TableHead>}
                         {showPipelineDetails && <TableHead className="w-40">Status</TableHead>}
                         <TableHead className={col.added}>Added</TableHead>
-                        <TableHead className={`${col.actions} text-right`}>Actions</TableHead>
+                        <TableHead className={col.actions}>Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -104,10 +104,11 @@ export function FileListView({
                                     <span className="font-medium text-foreground">{folderName}/</span>
                                 </div>
                             </TableCell>
-                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-end gap-1">
+                            <TableCell onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-start gap-1">
                                     <AddToChatMenu
                                         conversations={conversations}
+                                        triggerClassName="-ml-2.5"
                                         disabled={fileCount === 0 || fileCount > MAX_FILES_PER_SELECTION}
                                         label={fileCount > MAX_FILES_PER_SELECTION ? `${fileCount} files` : 'Add to chat'}
                                         onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
@@ -209,13 +210,14 @@ export function FileListView({
                             <TableCell className="text-xs font-mono text-muted-foreground">
                                 {format(new Date(file.createdAt), 'dd MMM yyyy')}
                             </TableCell>
-                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                <div className="flex items-center justify-end gap-1">
+                            <TableCell onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-start gap-1">
                                     {/* Visible at rest, not hover-only: this is the row's reason to
                                         exist, and the column is otherwise dead space. Muted until
                                         hover so eleven of them do not shout. */}
                                     <AddToChatMenu
                                         conversations={conversations}
+                                        triggerClassName="-ml-2.5"
                                         onPick={(conversationId) => onAddToChat([file], conversationId)}
                                     />
                                     <DropdownMenu>
