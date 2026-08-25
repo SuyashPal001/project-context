@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FileThumbnail } from "../FileThumbnail";
 import { getFileCategory, isIngestibleCategory, isParseable } from "../fileCategory";
+import type { FileCategory } from "../fileCategory";
 import { assetTypeForFile } from "../lib/assetFromFile";
 import { TYPE_ICONS, TYPE_BADGES, TYPE_STYLES } from "@/components/platform/canvas/assetTypeStyles";
+import { useVideoFrameThumbnail } from "@/components/platform/canvas/videoFrameThumbnail";
 import { ProcessingStepsIndicator } from "./IngestionStatus";
 import { AddToChatMenu, folderChatLabel } from "./AddToChatMenu";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
@@ -33,6 +35,43 @@ interface FileGridViewProps {
     onAddToChat: (files: FileRecord[], conversationId: string | null) => void;
     onAddFolderToChat: (folderPrefix: string, conversationId: string | null) => void;
     showPipelineDetails?: boolean;
+}
+
+/** The tile art: the affordance to open the file, and the only place a hook can
+ *  live — the grid body is a .map callback. Same type treatment the chat asset
+ *  cards use, so a file looks the same wherever it is listed. */
+function FileTileArt({ file, category, onPreview }: { file: FileRecord; category: FileCategory; onPreview: () => void }) {
+    const assetType = assetTypeForFile(file.contentType, file.filename);
+    const typeStyle = TYPE_STYLES[assetType];
+    const TypeIcon = TYPE_ICONS[assetType];
+    const videoFrameUrl = useVideoFrameThumbnail(file.id, assetType === 'video');
+
+    return (
+        <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onPreview(); }}
+            className={`relative aspect-square w-full flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${typeStyle.bg}`}
+        >
+            {category === 'image' ? (
+                <FileThumbnail fileId={file.id} alt={file.filename} />
+            ) : assetType === 'video' ? (
+                <>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a captured data: URI, nothing next/image can optimize */}
+                    {videoFrameUrl && <img src={videoFrameUrl} alt={file.filename} className="absolute inset-0 w-full h-full object-cover" />}
+                    <div className={`relative h-9 w-9 rounded-full flex items-center justify-center ${videoFrameUrl ? 'bg-black/50' : 'bg-background/80'}`}>
+                        <Play className={`w-4 h-4 ml-0.5 ${videoFrameUrl ? 'text-white fill-white' : 'text-foreground/70'}`} />
+                    </div>
+                </>
+            ) : (
+                <TypeIcon className={`h-8 w-8 ${typeStyle.icon}`} />
+            )}
+            {/* Bottom-left, not top-left as in chat: the selection checkbox owns
+                that corner here. */}
+            <span className="absolute bottom-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
+                {TYPE_BADGES[assetType]}
+            </span>
+        </button>
+    );
 }
 
 export function FileGridView({
@@ -85,11 +124,6 @@ export function FileGridView({
                 const category = getFileCategory(file.contentType, file.filename);
                 const isIngestible = isIngestibleCategory(category);
                 const isSelected = selectedIds.has(file.id);
-                // Same treatment the chat asset cards use, so a file looks the
-                // same wherever it is listed.
-                const assetType = assetTypeForFile(file.contentType, file.filename);
-                const typeStyle = TYPE_STYLES[assetType];
-                const TypeIcon = TYPE_ICONS[assetType];
                 return (
                     <div
                         key={file.id}
@@ -103,28 +137,7 @@ export function FileGridView({
                                 onCheckedChange={() => onToggleSelect(file.id)}
                             />
                         </div>
-                        {/* The tile art is the affordance to open the file; the checkbox
-                            and the hover actions keep their own click targets. */}
-                        <button
-                            type="button"
-                            onClick={e => { e.stopPropagation(); onPreviewFile(file.id); }}
-                            className={`relative aspect-square w-full flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${typeStyle.bg}`}
-                        >
-                            {category === 'image' ? (
-                                <FileThumbnail fileId={file.id} alt={file.filename} />
-                            ) : assetType === 'video' ? (
-                                <div className="h-9 w-9 rounded-full bg-background/80 flex items-center justify-center">
-                                    <Play className="w-4 h-4 text-foreground/70 ml-0.5" />
-                                </div>
-                            ) : (
-                                <TypeIcon className={`h-8 w-8 ${typeStyle.icon}`} />
-                            )}
-                            {/* Bottom-left, not top-left as in chat: the selection
-                                checkbox owns that corner here. */}
-                            <span className="absolute bottom-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
-                                {TYPE_BADGES[assetType]}
-                            </span>
-                        </button>
+                        <FileTileArt file={file} category={category} onPreview={() => onPreviewFile(file.id)} />
                         <div className="p-2.5 flex flex-col gap-1">
                             <span className="text-xs font-medium text-foreground/80 truncate" title={file.filename}>{file.filename}</span>
                             <div className="flex items-center gap-1 flex-wrap">

@@ -127,8 +127,8 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate, headerAct
             {!url && (asset.type === 'video' || asset.type === 'audio' || asset.type === 'image' || asset.type === 'pdf' || asset.type === 'docx') && (
               <p className="text-sm text-muted-foreground">Loading preview…</p>
             )}
-            {asset.type === 'file' && (
-              // Nothing here can render a .zip or .csv — say so rather than
+            {(asset.type === 'file' || asset.type === 'csv') && (
+              // Nothing here can render a .zip or a spreadsheet — say so rather than
               // opening onto an empty pane. The sidebar's Download still works.
               <div className="flex flex-col items-center gap-2 text-center">
                 <FileIcon className="h-8 w-8 text-muted-foreground/50" />

@@ -1,6 +1,6 @@
 'use client';
 
-import { FileVideo, FileAudio, FileImage, FileText } from 'lucide-react';
+import { FileVideo, FileAudio, FileImage, FileText, FileSpreadsheet } from 'lucide-react';
 import type { MessageAttachment } from './types';
 import type { Asset, AssetType } from '@/types/assets';
 
@@ -11,6 +11,7 @@ function classifyMimeType(mimeType: string, filename: string): AssetType {
   if (mimeType === 'text/markdown' || filename.toLowerCase().endsWith('.md')) return 'markdown';
   if (mimeType === 'application/pdf') return 'pdf';
   if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (mimeType === 'text/csv' || filename.toLowerCase().endsWith('.csv')) return 'csv';
   return 'file';
 }
 
@@ -21,6 +22,7 @@ const TYPE_ICONS: Record<AssetType, React.ElementType> = {
   markdown: FileText,
   pdf: FileText,
   docx: FileText,
+  csv: FileSpreadsheet,
   file: FileText,
   prd: FileText,
   roadmap: FileText,

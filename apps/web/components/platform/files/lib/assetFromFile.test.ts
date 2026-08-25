@@ -48,7 +48,11 @@ describe('fileToAsset', () => {
 
     it('degrades to the plain file type when nothing can preview it', () => {
         expect(fileToAsset(makeFile({ contentType: 'application/zip', filename: 'bundle.zip' })).type).toBe('file');
-        expect(fileToAsset(makeFile({ contentType: 'text/csv', filename: 'rows.csv' })).type).toBe('file');
+    });
+
+    it('gives csv its own type rather than lumping it in with unknown files', () => {
+        expect(fileToAsset(makeFile({ contentType: 'text/csv', filename: 'rows.csv' })).type).toBe('csv');
+        expect(fileToAsset(makeFile({ contentType: 'application/octet-stream', filename: 'rows.csv' })).type).toBe('csv');
     });
 
     it('preserves size and createdAt for the metadata sidebar', () => {

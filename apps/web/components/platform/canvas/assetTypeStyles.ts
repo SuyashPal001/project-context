@@ -1,4 +1,4 @@
-import { FileVideo, FileAudio, FileImage, FileText, File as FileIcon } from 'lucide-react';
+import { FileVideo, FileAudio, FileImage, FileText, FileSpreadsheet, File as FileIcon } from 'lucide-react';
 import type { AssetType } from '@/types/assets';
 
 export const TYPE_ICONS: Record<AssetType, React.ElementType> = {
@@ -8,6 +8,7 @@ export const TYPE_ICONS: Record<AssetType, React.ElementType> = {
   markdown: FileText,
   pdf: FileText,
   docx: FileText,
+  csv: FileSpreadsheet,
   file: FileIcon,
   prd: FileText,
   roadmap: FileText,
@@ -21,6 +22,7 @@ export const TYPE_BADGES: Record<AssetType, string> = {
   markdown: 'MD',
   pdf: 'PDF',
   docx: 'DOCX',
+  csv: 'CSV',
   file: 'FILE',
   prd: 'PRD',
   roadmap: 'ROADMAP',
@@ -39,6 +41,7 @@ export const TYPE_STYLES: Record<AssetType, { bg: string; icon: string }> = {
   audio: { bg: 'bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-muted', icon: 'text-violet-400' },
   pdf: { bg: 'bg-gradient-to-br from-red-500/20 via-orange-500/10 to-muted', icon: 'text-red-400' },
   docx: { bg: 'bg-gradient-to-br from-blue-500/20 via-sky-500/10 to-muted', icon: 'text-blue-400' },
+  csv: { bg: 'bg-gradient-to-br from-teal-500/20 via-cyan-500/10 to-muted', icon: 'text-teal-400' },
   image: { bg: 'bg-gradient-to-br from-emerald-500/20 via-teal-500/10 to-muted', icon: 'text-emerald-400' },
   video: { bg: 'bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-muted', icon: 'text-amber-400' },
   markdown: { bg: 'bg-gradient-to-br from-slate-500/20 via-slate-400/10 to-muted', icon: 'text-slate-400' },

@@ -7,7 +7,7 @@ import type { AppEnv } from '@serverless-saas/types';
 
 export const assetsRoutes = new Hono<AppEnv>();
 
-type AssetType = 'video' | 'audio' | 'image' | 'markdown' | 'pdf' | 'docx' | 'file' | 'prd' | 'roadmap' | 'tasks';
+type AssetType = 'video' | 'audio' | 'image' | 'markdown' | 'pdf' | 'docx' | 'csv' | 'file' | 'prd' | 'roadmap' | 'tasks';
 
 interface AssetDTO {
     id: string;
@@ -28,6 +28,7 @@ function classifyMimeType(mimeType: string, filename: string): AssetType {
     if (mimeType === 'text/markdown' || filename.toLowerCase().endsWith('.md')) return 'markdown';
     if (mimeType === 'application/pdf') return 'pdf';
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+    if (mimeType === 'text/csv' || filename.toLowerCase().endsWith('.csv')) return 'csv';
     return 'file';
 }
 

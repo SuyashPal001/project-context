@@ -14,6 +14,7 @@ const EXTENSION_TYPES: Record<string, AssetType> = {
     png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image', svg: 'image', avif: 'image',
     pdf: 'pdf',
     docx: 'docx',
+    csv: 'csv',
     md: 'markdown', markdown: 'markdown',
 };
 
@@ -26,6 +27,7 @@ export function assetTypeForFile(contentType: string, filename: string): AssetTy
     if (ct === 'application/pdf') return 'pdf';
     if (ct === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
     if (ct === 'text/markdown') return 'markdown';
+    if (ct === 'text/csv') return 'csv';
 
     const ext = filename.toLowerCase().split('.').pop() ?? '';
     // 'file' is the lightbox's no-preview branch — a download link, not a blank pane.
