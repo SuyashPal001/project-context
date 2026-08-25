@@ -15,7 +15,7 @@ import { getFileIcon, formatFileSize } from "../lib/fileIcons";
 import { ProcessingStepsIndicator } from "./IngestionStatus";
 import type { FileRecord, FolderCard } from "../types";
 import type { Conversation } from "@/components/platform/chat/types";
-import { AddToChatMenu } from "./AddToChatMenu";
+import { AddToChatMenu, folderChatLabel } from "./AddToChatMenu";
 import { MAX_FILES_PER_SELECTION } from "@/components/platform/chat/useFileUpload";
 
 interface FileListViewProps {
@@ -110,7 +110,7 @@ export function FileListView({
                                         conversations={conversations}
                                         triggerClassName="-ml-2.5"
                                         disabled={fileCount === 0 || fileCount > MAX_FILES_PER_SELECTION}
-                                        label={fileCount > MAX_FILES_PER_SELECTION ? `${fileCount} files` : 'Add to chat'}
+                                        label={folderChatLabel(fileCount)}
                                         onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
                                     />
                                     {(canDelete || showPipelineDetails) && (

@@ -7,7 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import { getAgentTypeIcon } from "@/components/platform/agents/agentTypeIcon";
+import { MAX_FILES_PER_SELECTION } from "@/components/platform/chat/useFileUpload";
 import type { Conversation } from "@/components/platform/chat/types";
+
+/** A disabled folder trigger has to say *why* on its face: a disabled button
+ *  does not reliably fire hover in every browser, so a `title` alone leaves the
+ *  user with a dead control and no reason. Shared so grid and list agree. */
+export function folderChatLabel(fileCount: number): string {
+    if (fileCount === 0) return 'Empty folder';
+    if (fileCount > MAX_FILES_PER_SELECTION) return `Over ${MAX_FILES_PER_SELECTION}-file limit`;
+    return 'Add to chat';
+}
 
 interface AddToChatMenuProps {
     conversations: Conversation[];
