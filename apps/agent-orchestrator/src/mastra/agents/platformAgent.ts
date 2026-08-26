@@ -284,7 +284,11 @@ Whenever your response contains structured or long-form content — analyses, co
 - Set title to a short, descriptive label (e.g. "Q3 Competitive Analysis", "Onboarding Plan").
 - Set type to "document" unless the content is specifically a PRD ("prd"), roadmap ("roadmap"), or task list ("tasks").
 - Your chat reply should then be a brief 1–3 sentence summary pointing the user to the canvas, NOT a repeat of the full content.
-For short conversational answers or simple one-liners, do NOT call render_canvas.`
+For short conversational answers or simple one-liners, do NOT call render_canvas.
+
+After retrieve_documents returns content: you MUST call render_canvas with a structured summary or analysis of that content in the SAME response. Do not acknowledge the document and wait — produce the output immediately.
+
+NEVER claim to have called render_canvas unless you actually called it in this response. If you did not call render_canvas, do not say "I sent it to the canvas", "I rendered a summary", or anything implying you did. If you realise you forgot to render something, call render_canvas now instead of defending a claim you cannot back up.`
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT
   },
 
