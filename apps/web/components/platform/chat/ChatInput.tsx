@@ -548,8 +548,10 @@ export function ChatInput({
                                                     {providers.find(p => p.id === llmProviderId)?.displayName ?? 'Mind'}
                                                 </button>
                                             </DropdownMenuTrigger>
-                                            <DropdownMenuContent side="top" align="start" className="w-60 p-2">
-                                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Mind</div>
+                                            <DropdownMenuContent side="top" align="start" className="w-72 p-2.5 rounded-2xl">
+                                                <div className="px-1.5 pb-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+                                                    Models
+                                                </div>
                                                 {(() => {
                                                     const badges = costTierBadges(providers);
                                                     return providers.map(provider => {
@@ -559,24 +561,36 @@ export function ChatInput({
                                                                 key={provider.id}
                                                                 disabled={provider.status !== 'live'}
                                                                 onClick={() => onModelChange?.(provider.id)}
-                                                                className="flex items-center gap-2.5 cursor-pointer py-2"
+                                                                className="flex items-center gap-3 cursor-pointer py-2.5 px-1.5 rounded-xl"
                                                             >
-                                                                <ProviderIcon
-                                                                    provider={provider.provider}
+                                                                <span
                                                                     className={cn(
-                                                                        "h-3.5 w-3.5 shrink-0",
-                                                                        provider.status === 'live' ? "text-foreground/70" : "text-muted-foreground/30",
+                                                                        "h-8 w-8 shrink-0 rounded-lg border border-border/40 flex items-center justify-center",
+                                                                        provider.status === 'live' ? "bg-background" : "bg-muted/40",
                                                                     )}
-                                                                />
-                                                                <span className="flex-1 truncate">{provider.displayName}</span>
+                                                                >
+                                                                    <ProviderIcon
+                                                                        provider={provider.provider}
+                                                                        className={cn(
+                                                                            "h-4 w-4 shrink-0",
+                                                                            provider.status === 'live' ? "text-foreground/80" : "text-muted-foreground/30",
+                                                                        )}
+                                                                    />
+                                                                </span>
+                                                                <span className={cn(
+                                                                    "flex-1 truncate text-sm",
+                                                                    provider.status === 'live' ? "text-foreground font-medium" : "text-muted-foreground",
+                                                                )}>
+                                                                    {provider.displayName}
+                                                                </span>
                                                                 {provider.status !== 'live' ? (
-                                                                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                                                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
                                                                         Coming soon
                                                                     </span>
                                                                 ) : isSelected ? (
-                                                                    <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                                                                    <Check className="h-4 w-4 shrink-0 text-primary" />
                                                                 ) : badges.get(provider.id) ? (
-                                                                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                                                                    <span className="shrink-0 text-xs text-muted-foreground">
                                                                         {badges.get(provider.id)}
                                                                     </span>
                                                                 ) : null}
