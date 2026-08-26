@@ -1,5 +1,5 @@
 import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
-import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload } from '../persistence.js'
+import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload, type AttachmentPayload } from '../persistence.js'
 import { downloadMediaAttachment, buildAttachmentNote } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { resolveAgent, resolveAgentLabel } from '../mastra/registry.js'
@@ -118,6 +118,27 @@ export async function buildMastraMessage(
   return finalMessage
 }
 
+/**
+ * Turns one render-canvas tool-result into an AttachmentPayload, or null if
+ * this result isn't a persisted canvas output. Pure — callers push the
+ * result onto pendingAttachments themselves, so N canvas outputs in one turn
+ * each get their own call and their own array entry; nothing here dedupes
+ * or overwrites across calls.
+ */
+export function attachmentFromCanvasToolResult(
+  normalizedToolName: string,
+  result: Record<string, unknown>,
+): AttachmentPayload | null {
+  if (normalizedToolName !== 'render-canvas') return null
+  if (typeof result.fileId !== 'string') return null
+  return {
+    fileId: result.fileId,
+    name: String(result.name ?? 'document.md'),
+    type: String(result.fileType ?? 'text/markdown'),
+    size: typeof result.size === 'number' ? result.size : 0,
+  }
+}
+
 function extractPlanJson(text: string): Record<string, unknown> | null {
   const candidates: string[] = []
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
@@ -183,6 +204,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const toolCallNames = new Map<string, string>()
   const assistantMessageId = crypto.randomUUID()
   let pendingArtifactRef: ArtifactRefPayload | null = null
+  const pendingAttachments: AttachmentPayload[] = []
   const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas'])
 
   const flushMetrics = (): void => {
@@ -360,6 +382,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
               }
             }
           }
+
+          // render-canvas persists its content as a file (see renderCanvas.ts);
+          // collect it into the assistant message's attachments alongside any
+          // user-uploaded ones, so multiple canvas outputs in one turn all survive.
+          const canvasAttachment = attachmentFromCanvasToolResult(normName, result)
+          if (canvasAttachment) pendingAttachments.push(canvasAttachment)
           break
         }
         case 'finish': {
@@ -423,7 +451,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
             ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
             : null
-          saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef, completedTrace)
+          saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
 
           // FREE-AI Sutra 1 — non-blocking, runs after client already received `done`

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 const API_BASE = process.env.API_BASE_URL ?? ''
 
 function authHeaders(idToken: string): Record<string, string> {
@@ -205,6 +207,102 @@ export function updateApprovalRequest(
   })
 }
 
+
+export interface AttachmentPayload {
+  fileId: string
+  name: string
+  type: string
+  size: number
+}
+
+/**
+ * Build the S3 user-space key for agent-generated content.
+ *
+ * storageService.getUploadUrl defaults the key to `userKey || filename`, which is
+ * neither unique nor immutable: two canvases titled the same produce the same key,
+ * and POST /files/:id/confirm's dedup branch would then update the first row and
+ * soft-delete the second. So the caller always supplies its own key, and the uuid
+ * — not the title — is what makes it unique.
+ */
+export function generatedFileKey(conversationId: string, title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+  return `generated/${conversationId}/${randomUUID()}-${slug || 'document'}.md`
+}
+
+/**
+ * Persist agent-generated content through the same path a browser upload takes:
+ * mint a pending row + presigned URL, PUT the bytes, then confirm.
+ *
+ * There is no server-side putObject on StorageProvider, so this is genuinely three
+ * hops rather than one write. Every failure yields null instead of throwing: the
+ * canvas has already been streamed to the user by the time this runs, so a failed
+ * upload should cost the download, not the reply.
+ */
+export async function uploadGeneratedFile(
+  idToken: string,
+  input: { conversationId: string; title: string; content: string },
+): Promise<AttachmentPayload | null> {
+  const { conversationId, title, content } = input
+  const name = `${title}.md`
+  const type = 'text/markdown'
+  const size = Buffer.byteLength(content)
+
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/files/upload`, {
+      method: 'POST',
+      headers: authHeaders(idToken),
+      body: JSON.stringify({
+        filename: name,
+        contentType: type,
+        key: generatedFileKey(conversationId, title),
+      }),
+    })
+    if (!res.ok) {
+      console.error('[persistence] uploadGeneratedFile /upload failed:', res.status, await res.text().catch(() => ''))
+      return null
+    }
+    const json = await res.json() as { data?: { fileId?: string; uploadUrl?: string } }
+    const fileId = json.data?.fileId
+    const uploadUrl = json.data?.uploadUrl
+    if (!fileId || !uploadUrl) {
+      console.error('[persistence] uploadGeneratedFile: missing fileId/uploadUrl in response')
+      return null
+    }
+
+    const put = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': type },
+      body: content,
+    })
+    if (!put.ok) {
+      // The files row stays 'pending' and is never confirmed, so it cannot surface
+      // as an asset — a dangling row is preferable to an attachment pointing at
+      // bytes that were never written.
+      console.error('[persistence] uploadGeneratedFile PUT failed:', put.status)
+      return null
+    }
+
+    const confirm = await fetch(`${API_BASE}/api/v1/files/${fileId}/confirm`, {
+      method: 'POST',
+      headers: authHeaders(idToken),
+      body: JSON.stringify({ size }),
+    })
+    if (!confirm.ok) {
+      console.error('[persistence] uploadGeneratedFile /confirm failed:', confirm.status, await confirm.text().catch(() => ''))
+      return null
+    }
+
+    return { fileId, name, type, size }
+  } catch (err) {
+    console.error('[persistence] uploadGeneratedFile error:', (err as Error).message)
+    return null
+  }
+}
+
 export function saveAssistantMessage(
   idToken: string,
   conversationId: string,
@@ -212,6 +310,7 @@ export function saveAssistantMessage(
   messageId?: string,
   artifactRef?: ArtifactRefPayload | null,
   completedTrace?: CompletedTracePayload | null,
+  attachments?: AttachmentPayload[] | null,
 ): void {
   const payload: Record<string, unknown> = {
     role: 'assistant',
@@ -221,6 +320,7 @@ export function saveAssistantMessage(
   if (messageId) payload.id = messageId
   if (artifactRef) payload.artifactRef = artifactRef
   if (completedTrace) payload.completedTrace = completedTrace
+  if (attachments && attachments.length > 0) payload.attachments = attachments
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
     method: 'POST',
     headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },

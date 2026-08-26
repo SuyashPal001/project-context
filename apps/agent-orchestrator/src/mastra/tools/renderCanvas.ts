@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { uploadGeneratedFile } from '../../persistence.js'
 
 export const renderCanvas = createTool({
   id: 'render-canvas',
@@ -20,9 +21,31 @@ export const renderCanvas = createTool({
     title: z.string(),
     content: z.string(),
     type: z.string(),
+    fileId: z.string().optional(),
+    name: z.string().optional(),
+    fileType: z.string().optional(),
+    size: z.number().optional(),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, execContext) => {
     const { title, content, type } = inputData as { title: string; content: string; type?: string }
-    return { title, content, type: type ?? 'document' }
+
+    const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
+    const idToken = execContext?.requestContext?.get('idToken') as string | undefined
+
+    // Persistence is best-effort: the canvas has already been streamed to the
+    // user by the time this runs, so a failed upload should cost the
+    // downloadable attachment, not the reply.
+    const attachment = conversationId && idToken
+      ? await uploadGeneratedFile(idToken, { conversationId, title, content })
+      : null
+
+    return {
+      title,
+      content,
+      type: type ?? 'document',
+      ...(attachment
+        ? { fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size }
+        : {}),
+    }
   },
 })

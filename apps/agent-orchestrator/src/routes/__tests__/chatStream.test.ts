@@ -23,7 +23,7 @@ vi.mock('../../llm/quickCall.js', () => ({}))
 vi.mock('@serverless-saas/ai', () => ({}))
 vi.mock('@serverless-saas/database', () => ({ db: {} }))
 
-import { buildMastraMessage } from '../chatStream.js'
+import { buildMastraMessage, attachmentFromCanvasToolResult } from '../chatStream.js'
 import { downloadMediaAttachment } from '../../media.js'
 import type { Attachment } from '../../types.js'
 
@@ -89,5 +89,39 @@ describe('buildMastraMessage', () => {
     expect(finalText).toContain('audio: "voice-memo.mp3" (fileId: a1)')
     expect(finalText).toContain('analyze_audio')
     expect(finalText).toContain('analyze these')
+  })
+})
+
+describe('attachmentFromCanvasToolResult', () => {
+  it('a single turn producing two canvas outputs persists both, distinctly', () => {
+    // Mirrors the runChatStream tool-result loop: one push per tool-result,
+    // onto the same pendingAttachments array, across the whole turn.
+    const pendingAttachments: ReturnType<typeof attachmentFromCanvasToolResult>[] = []
+
+    const first = attachmentFromCanvasToolResult('render-canvas', {
+      fileId: 'file-1', name: 'Q3 Analysis.md', fileType: 'text/markdown', size: 100,
+    })
+    const second = attachmentFromCanvasToolResult('render-canvas', {
+      fileId: 'file-2', name: 'Q3 Analysis.md', fileType: 'text/markdown', size: 200,
+    })
+    if (first) pendingAttachments.push(first)
+    if (second) pendingAttachments.push(second)
+
+    expect(pendingAttachments).toHaveLength(2)
+    expect(pendingAttachments).toEqual([
+      { fileId: 'file-1', name: 'Q3 Analysis.md', type: 'text/markdown', size: 100 },
+      { fileId: 'file-2', name: 'Q3 Analysis.md', type: 'text/markdown', size: 200 },
+    ])
+    // Neither entry overwrote or deduped the other, even with identical titles/names.
+    const fileIds = pendingAttachments.map((a) => a?.fileId)
+    expect(new Set(fileIds).size).toBe(2)
+  })
+
+  it('returns null for a non-canvas tool result', () => {
+    expect(attachmentFromCanvasToolResult('save-prd', { fileId: 'file-1' })).toBeNull()
+  })
+
+  it('returns null when the canvas tool result has no fileId (upload failed)', () => {
+    expect(attachmentFromCanvasToolResult('render-canvas', { title: 'x' })).toBeNull()
   })
 })

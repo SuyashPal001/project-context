@@ -112,6 +112,58 @@ describe('GET /conversations/:id/assets', () => {
         ]);
     });
 
+    it('classifies a canvas-generated attachment as markdown, with the right name/size, not the generic file fallback', async () => {
+        // Exact shape uploadGeneratedFile() (apps/agent-orchestrator/src/persistence.ts)
+        // produces for a render-canvas output: name is `${title}.md`, type is
+        // the literal 'text/markdown', size is Buffer.byteLength(content).
+        const conversationRow = { id: 'conv-1', tenantId: 'tenant-1', userId: 'user-1' };
+        const messageRows = [
+            {
+                id: 'msg-1',
+                createdAt: new Date('2026-08-01T00:00:00Z'),
+                attachments: [
+                    { fileId: 'file-1', name: 'Q3 Analysis.md', type: 'text/markdown', size: 4821 },
+                ],
+                artifactRef: null,
+            },
+            // A second canvas output in the same turn, same message row — both
+            // must appear as distinct assets (mirrors chatStream.test.ts's
+            // attachmentFromCanvasToolResult coverage on the write side).
+            {
+                id: 'msg-2',
+                createdAt: new Date('2026-08-01T00:00:01Z'),
+                attachments: [
+                    { fileId: 'file-2', name: 'Q3 Analysis.md', type: 'text/markdown', size: 5010 },
+                ],
+                artifactRef: null,
+            },
+        ];
+
+        let call = 0;
+        dbMock.select.mockImplementation(() => ({
+            from: () => ({
+                where: (...args: unknown[]) => {
+                    call += 1;
+                    if (call === 1) {
+                        return { limit: async () => [conversationRow] };
+                    }
+                    return { orderBy: async () => messageRows };
+                },
+            }),
+        }));
+
+        const { assetsRoutes } = await import('../routes/assets');
+        const app = appWithContext().route('/conversations', assetsRoutes);
+        const res = await app.request('/conversations/conv-1/assets');
+        const body = await res.json() as { data: Array<{ id: string; type: string; filename: string; mimeType?: string; size?: number }> };
+
+        expect(res.status).toBe(200);
+        expect(body.data).toEqual([
+            { id: 'file-1', type: 'markdown', filename: 'Q3 Analysis.md', mimeType: 'text/markdown', size: 4821, createdAt: '2026-08-01T00:00:00.000Z', sourceMessageId: 'msg-1', fileId: 'file-1' },
+            { id: 'file-2', type: 'markdown', filename: 'Q3 Analysis.md', mimeType: 'text/markdown', size: 5010, createdAt: '2026-08-01T00:00:01.000Z', sourceMessageId: 'msg-2', fileId: 'file-2' },
+        ]);
+    });
+
     it('skips a malformed artifactRef (missing entityId) and produces zero assets from that message', async () => {
         const conversationRow = { id: 'conv-1', tenantId: 'tenant-1', userId: 'user-1' };
         const messageRows = [
