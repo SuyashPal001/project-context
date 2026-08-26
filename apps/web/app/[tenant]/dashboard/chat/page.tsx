@@ -7,7 +7,6 @@ import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatTimelineNavigator } from "@/components/platform/chat/ChatTimelineNavigator";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
-import { FolderScopeChip } from "@/components/platform/chat/FolderScopeChip";
 import { WelcomeView } from "@/components/platform/chat/WelcomeView";
 import { WizardView } from "@/components/platform/chat/WizardView";
 import { AgentSelector } from "@/components/platform/chat/AgentSelector";
@@ -68,15 +67,14 @@ function ChatPage() {
         onError: () => toast.error('Could not revoke folder access'),
     });
 
-    const folderScopeChip = folderPrefix ? (
-        <div className="px-4 pt-2">
-            <FolderScopeChip
-                prefix={folderPrefix}
-                onRevoke={() => revokeFolderScope.mutate()}
-                isRevoking={revokeFolderScope.isPending}
-            />
-        </div>
-    ) : null;
+    // Spread into every ChatInput rather than rendered beside one of them: the
+    // composer appears in three branches here, and a chip added to a single
+    // branch is invisible in the others.
+    const folderScopeProps = {
+        folderPrefix,
+        onRevokeFolder: () => revokeFolderScope.mutate(),
+        isRevokingFolder: revokeFolderScope.isPending,
+    };
 
     const stream = useChatStream({
         conversationId,
@@ -303,11 +301,11 @@ function ChatPage() {
                                 {!hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
                                     activePill !== null ? (
                                         <WizardView pill={activePill} onBack={() => setActivePill(null)} onSubmit={(prompt) => sendMessage(prompt)}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...modelChangeProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} />
                                         </WizardView>
                                     ) : (
                                         <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={(text) => setInputPrefill(text)} avatarLiveState={displayState}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...modelChangeProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} />
                                         </WelcomeView>
                                     )
                                 ) : (
@@ -316,8 +314,7 @@ function ChatPage() {
                                         <ChatTimelineNavigator messages={messages} />
                                         {!awaitingClarificationReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                                {folderScopeChip}
-                                                <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
+                                                <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                             </div>
                                         )}
                                     </>

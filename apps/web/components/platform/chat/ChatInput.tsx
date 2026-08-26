@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { consumePendingAttachments } from "@/lib/pendingAttachments";
 import { DriveFilePicker } from "./DriveFilePicker";
+import { FolderScopeChip } from "./FolderScopeChip";
 
 import { useAudioRecorder } from "./useAudioRecorder";
 import { useFileUpload, MAX_ATTACHMENTS_PER_MESSAGE } from "./useFileUpload";
@@ -99,6 +100,10 @@ interface ChatInputProps {
     providers?: LLMProvider[];
     onModelChange?: (providerId: string) => void;
     prefill?: string;
+    /** Folder this conversation's agent may read, if one was granted from Drive. */
+    folderPrefix?: string;
+    onRevokeFolder?: () => void;
+    isRevokingFolder?: boolean;
 }
 
 export function ChatInput({
@@ -112,6 +117,9 @@ export function ChatInput({
     providers,
     onModelChange,
     prefill,
+    folderPrefix,
+    onRevokeFolder,
+    isRevokingFolder,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
     const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | null>(null);
@@ -388,6 +396,21 @@ export function ChatInput({
                     {isDraggingFile && (
                         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[28px] bg-primary/5 backdrop-blur-[1px] pointer-events-none">
                             <span className="text-sm font-medium text-primary">Drop to attach</span>
+                        </div>
+                    )}
+
+                    {/* Above the attachments, and rendered here rather than at each
+                        call site: the page has three ChatInput branches and the chip
+                        was originally added to only one of them — the branch a
+                        brand-new conversation never takes, which is exactly the
+                        Drive → New session flow the grant exists for. */}
+                    {folderPrefix && onRevokeFolder && (
+                        <div className="px-1 pb-2">
+                            <FolderScopeChip
+                                prefix={folderPrefix}
+                                onRevoke={onRevokeFolder}
+                                isRevoking={isRevokingFolder}
+                            />
                         </div>
                     )}
 
