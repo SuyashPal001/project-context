@@ -1,4 +1,4 @@
-import { ArrowUp, Loader2, Image as ImageIcon, Plus, Video, Mic, StopCircle, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
+import { ArrowUp, Loader2, Image as ImageIcon, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -603,9 +603,12 @@ export function ChatInput({
                                     {isStreaming ? (
                                         <button
                                             onClick={onStop}
-                                            className="h-8 w-8 flex items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 transition-all shadow-sm"
+                                            className="h-8 w-8 flex items-center justify-center rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] hover:opacity-90 transition-all shadow-sm"
                                         >
-                                            <StopCircle className="h-4 w-4" />
+                                            {/* Fixed black fill, not a foreground/background token — the gradient
+                                                surface itself is always a light rose/peach regardless of theme,
+                                                so black is the one icon color that stays legible on it in both. */}
+                                            <Square className="h-3 w-3 fill-black text-black" />
                                         </button>
                                     ) : (
                                         <button
