@@ -43,8 +43,8 @@
 
 ## Execution status — 2026-08-26
 
-**Tasks 1–8 are complete and on `main`.** Task 9 is the only one left; Tasks 10–11
-remain blocked as written. Do not re-run 1–8.
+**Tasks 1–9 are complete and on `main`.** Tasks 10–11 remain blocked as written.
+Do not re-run 1–9.
 
 | Task | Commit | State |
 |---|---|---|
@@ -56,10 +56,11 @@ remain blocked as written. Do not re-run 1–8.
 | 6 `list_folder` | `e6d3b67f` | done — needs `pm2 restart` |
 | 7 `find_in_folder` | `624fef07` (+`8c21df92`) | done — needs `pm2 restart` |
 | 8 `read_file` | `25862373` | done — needs `pm2 restart` |
-| 9 grant from Drive + chip | — | **not started** |
+| 9 grant from Drive + chip | `afa94992` | done — needs `./deploy.sh` |
 
-Until Task 9 lands nothing sets `folderPrefix`, so the tools exist but the feature is
-inert.
+The feature is complete in code but **not usable until both sides are deployed**: the
+web app needs `./deploy.sh` and the orchestrator needs `pm2 restart agent-orchestrator`.
+Task 3 is the only piece already live (via `sam deploy`).
 
 ### Corrections the plan needed, beyond the index retraction below
 
@@ -86,6 +87,13 @@ Each was found by running or querying, not by reading:
   `undefined` content, which the agent reads as "this file is blank" and answers from.
 - **Registering a tool breaks `serverTools.test.ts`** by design — it asserts the full
   tool list exhaustively. Update it in the same commit.
+- **Task 9's new-conversation case**: there is no conversation id to PATCH when the user
+  clicks a folder in Drive, so the prefix rides the URL as `?grantFolder=` and
+  `useChatPage` grants it after creation. Granting an *existing* conversation PATCHes
+  directly.
+- **Task 9 removes the folder attachment cap.** A folder used to be unusable unless it
+  fitted inside the per-message attachment limit; a grant is a handle, so size stops
+  mattering. `folderChatLabel`'s over-limit branch and its test go with it.
 
 ## Already done — do not redo
 
