@@ -41,6 +41,52 @@
 
 ---
 
+## Execution status — 2026-08-26
+
+**Tasks 1–8 are complete and on `main`.** Task 9 is the only one left; Tasks 10–11
+remain blocked as written. Do not re-run 1–8.
+
+| Task | Commit | State |
+|---|---|---|
+| 1 scope-override hole | `c90a7f71` | done — needs `pm2 restart agent-orchestrator` |
+| 2 chunk table hygiene | `b6fb2374` | done — migration `0068` applied to dev |
+| 3 grant on conversation | `828415f3` | done — **deployed** (`sam deploy`) |
+| 4 folderScope resolver | `d5d05d11` | done — needs `pm2 restart` |
+| 5 grant → requestContext | `7609fbad` | done — needs `pm2 restart` |
+| 6 `list_folder` | `e6d3b67f` | done — needs `pm2 restart` |
+| 7 `find_in_folder` | `624fef07` (+`8c21df92`) | done — needs `pm2 restart` |
+| 8 `read_file` | `25862373` | done — needs `pm2 restart` |
+| 9 grant from Drive + chip | — | **not started** |
+
+Until Task 9 lands nothing sets `folderPrefix`, so the tools exist but the feature is
+inert.
+
+### Corrections the plan needed, beyond the index retraction below
+
+Each was found by running or querying, not by reading:
+
+- **Task 1's test**: export is `retrieveDocumentsTool`; the tool imports `retrieveChunks`
+  from `@serverless-saas/ai`, not the `/retrieve` subpath; and it declares a
+  `requestContextSchema`, so a `{ get }` stub is rejected before `execute` runs — build a
+  real `RequestContext`.
+- **Task 4's SQL**: columns are `name` and `mime_type`, not `filename`/`content_type`;
+  the orchestrator imports `db` from `@serverless-saas/database`, not `/client`;
+  `db.execute` returns `.rows` on some drivers. **Security**: the prefix reaches a `LIKE`
+  pattern and nothing escaped `%`/`_` — a grant of `n%/`, naming no real folder, returned
+  all 8 files under `new/` on dev. `escapeLikePrefix` closes it.
+- **Task 5's scope**: `index.ts` is the WebSocket path only. The browser uses
+  `chat.ts` → `chatStream.ts` (SSE). Doing only `index.ts` ships a feature that works on
+  mobile and silently does nothing in the web app. All three sites are wired.
+- **Task 7's `ai.embed`**: `embedQuery` is already exported from `@serverless-saas/ai`
+  (`index.ts:41`). The join is confirmed: `files.id::text = documents.file_key` gives 21
+  of 26 documents; the naive `files.key` join gives 0. The Risks section's fear that every
+  document has one chunk is wrong — 183 chunks across 26 documents.
+- **Task 8's dispatch**: `analyze_audio` returns `{ success, transcript }` and
+  `analyze_video` `{ success, summary }` — **not** `{ text }`. Reading `out.text` returns
+  `undefined` content, which the agent reads as "this file is blank" and answers from.
+- **Registering a tool breaks `serverTools.test.ts`** by design — it asserts the full
+  tool list exhaustively. Update it in the same commit.
+
 ## Already done — do not redo
 
 **Spec defect 1 (`folderId=null`) is fixed** in `be788d8`: the emitter omits the
