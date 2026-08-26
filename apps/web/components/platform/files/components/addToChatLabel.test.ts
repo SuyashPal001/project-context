@@ -5,17 +5,18 @@ import { MAX_ATTACHMENTS_PER_MESSAGE } from '@/components/platform/chat/useFileU
 
 // The label is the only place a disabled folder trigger can explain itself —
 // disabled buttons do not reliably fire hover, so the tooltip may never show.
+// Only an empty folder is disabled now: a folder is granted rather than
+// attached, so the per-message attachment cap no longer applies to it.
 describe('folderChatLabel', () => {
-    it('names the limit when the folder is over it', () => {
-        expect(folderChatLabel(MAX_ATTACHMENTS_PER_MESSAGE + 1))
-            .toBe(`Over ${MAX_ATTACHMENTS_PER_MESSAGE}-file limit`);
-    });
-
     it('says the folder is empty rather than offering a dead action', () => {
         expect(folderChatLabel(0)).toBe('Empty folder');
     });
 
-    it('offers the action at the boundary, not one below it', () => {
+    it('offers the action for a folder far larger than the attachment cap', () => {
+        expect(folderChatLabel(MAX_ATTACHMENTS_PER_MESSAGE * 10)).toBe('Add to chat');
+    });
+
+    it('offers the action at the old boundary', () => {
         expect(folderChatLabel(MAX_ATTACHMENTS_PER_MESSAGE)).toBe('Add to chat');
     });
 });

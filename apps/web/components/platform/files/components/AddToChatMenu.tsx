@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import { getAgentTypeIcon } from "@/components/platform/agents/agentTypeIcon";
-import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import type { Conversation } from "@/components/platform/chat/types";
 
 /** A disabled folder trigger has to say *why* on its face: a disabled button
@@ -60,9 +59,11 @@ export function messagePreview(conversation: Conversation): string {
     return last.role === 'user' ? `You: ${last.content.trim()}` : last.content.trim();
 }
 
+/** A folder is granted rather than attached, so the per-message attachment cap
+ *  does not apply to it — only an empty folder has nothing to grant. This is the
+ *  point of the change: a folder of any size now works where one of six did not. */
 export function folderChatLabel(fileCount: number): string {
     if (fileCount === 0) return 'Empty folder';
-    if (fileCount > MAX_ATTACHMENTS_PER_MESSAGE) return `Over ${MAX_ATTACHMENTS_PER_MESSAGE}-file limit`;
     return 'Add to chat';
 }
 

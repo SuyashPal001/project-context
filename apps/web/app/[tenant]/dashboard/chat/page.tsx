@@ -2,11 +2,12 @@
 
 import { useCallback, Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatTimelineNavigator } from "@/components/platform/chat/ChatTimelineNavigator";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
+import { FolderScopeChip } from "@/components/platform/chat/FolderScopeChip";
 import { WelcomeView } from "@/components/platform/chat/WelcomeView";
 import { WizardView } from "@/components/platform/chat/WizardView";
 import { AgentSelector } from "@/components/platform/chat/AgentSelector";
@@ -23,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 import type { MessagesResponse } from "@/components/platform/chat/types";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -51,11 +53,37 @@ function ChatPage() {
     const queryClient = useQueryClient();
     const { isCanvasOpen, isCanvasExpanded, hasActivity, toggleCanvas, toggleExpand, openCanvas, handleCanvasUpdate, flushPending } = useCanvas();
 
+    // The grant lives on the conversation, so it survives a reload and is not
+    // something the client can talk itself into — the server decides what it says.
+    const folderPrefix = selectedConversation?.metadata?.folderScope?.prefix;
+
+    // Revoking is a server-side clear, not a UI toggle: the grant is what the
+    // orchestrator enforces against, so the chip must not be able to lie about it.
+    const revokeFolderScope = useMutation({
+        mutationFn: () => api.patch(`/api/v1/conversations/${conversationId}`, { folderScope: null }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        },
+        onError: () => toast.error('Could not revoke folder access'),
+    });
+
+    const folderScopeChip = folderPrefix ? (
+        <div className="px-4 pt-2">
+            <FolderScopeChip
+                prefix={folderPrefix}
+                onRevoke={() => revokeFolderScope.mutate()}
+                isRevoking={revokeFolderScope.isPending}
+            />
+        </div>
+    ) : null;
+
     const stream = useChatStream({
         conversationId,
         conversationIdRef,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
         folderId,
+        folderPrefix,
         selectedConversation,
         messages,
         handleCanvasUpdate,
@@ -288,6 +316,7 @@ function ChatPage() {
                                         <ChatTimelineNavigator messages={messages} />
                                         {!awaitingClarificationReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                                                {folderScopeChip}
                                                 <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                             </div>
                                         )}

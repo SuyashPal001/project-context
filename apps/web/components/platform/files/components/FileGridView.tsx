@@ -11,7 +11,6 @@ import { TYPE_ICONS, TYPE_BADGES, TYPE_STYLES } from "@/components/platform/canv
 import { useVideoFrameThumbnail } from "@/components/platform/canvas/videoFrameThumbnail";
 import { ProcessingStepsIndicator } from "./IngestionStatus";
 import { AddToChatMenu, folderChatLabel } from "./AddToChatMenu";
-import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import type { Conversation } from "@/components/platform/chat/types";
 import type { FileRecord, FolderCard } from "../types";
 
@@ -96,7 +95,7 @@ export function FileGridView({
                         <AddToChatMenu
                             conversations={conversations}
                             variant="icon"
-                            disabled={fileCount === 0 || fileCount > MAX_ATTACHMENTS_PER_MESSAGE}
+                            disabled={fileCount === 0}
                             label={folderChatLabel(fileCount)}
                             onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
                         />

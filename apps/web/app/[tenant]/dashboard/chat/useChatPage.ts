@@ -30,6 +30,7 @@ export function useChatPage() {
     const incomingConvId = searchParams.get('conversationId');
     const incomingAgentId = searchParams.get('agentId');
     const incomingFolderId = parseFolderId(searchParams.get('folderId'));
+    const incomingGrantFolder = searchParams.get('grantFolder');
 
     const conversationId = rawConvId ?? incomingConvId;
     const conversationIdRef = useRef(conversationId);
@@ -157,14 +158,27 @@ export function useChatPage() {
         if (!incomingAgentId || conversationId || autoCreatingRef.current || isLoadingConversations) return;
         autoCreatingRef.current = true;
         api.post<{ data: Conversation }>('/api/v1/conversations', { agentId: incomingAgentId })
-            .then((res) => {
+            .then(async (res) => {
+                // A folder granted from Drive has to wait for the conversation to
+                // exist — there was no id to PATCH when the user clicked. Awaited
+                // before navigating so the chip is on screen at first paint rather
+                // than appearing a beat later.
+                if (incomingGrantFolder) {
+                    try {
+                        await api.patch(`/api/v1/conversations/${res.data.id}`, {
+                            folderScope: { prefix: incomingGrantFolder },
+                        });
+                    } catch {
+                        toast.error('Could not grant folder access');
+                    }
+                }
                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
                 const folderParam = incomingFolderId ? `&folderId=${incomingFolderId}` : '';
                 router.replace(`/${tenantSlug}/dashboard/chat?id=${res.data.id}${folderParam}`);
             })
             .catch(() => { autoCreatingRef.current = false; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [incomingAgentId, incomingFolderId, conversationId, isLoadingConversations]);
+    }, [incomingAgentId, incomingFolderId, incomingGrantFolder, conversationId, isLoadingConversations]);
 
     const handleSelectConversation = (conv: Conversation) =>
         router.push(`/${tenantSlug}/dashboard/chat?id=${conv.id}`);

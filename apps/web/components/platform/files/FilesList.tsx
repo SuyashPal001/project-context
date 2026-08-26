@@ -5,8 +5,9 @@ import {
     Loader2, FolderOpen, ChevronRight, ChevronLeft, MessageSquare, LayoutGrid, List as ListIcon, Play, Trash2
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FilesFilter } from "./FilesFilter";
@@ -40,6 +41,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const params = useParams();
     const router = useRouter();
     const tenant = params.tenant as string;
+    const queryClient = useQueryClient();
 
     const { allFiles, files, virtualFolders, workspaceNames, breadcrumbs, isLoading, defaultAgentId } = useFilesQuery(prefix);
     const ingestion = useFileIngestion({ prefix, onPrefixChange });
@@ -79,11 +81,28 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             : `/${tenant}/dashboard/chat?agentId=${defaultAgentId}`);
     };
 
-    // A folder attaches everything under its prefix, so it obeys the same cap as a
-    // multi-select. Large folders want folderId RAG scope instead — but that needs a
-    // personFolderId, which prefix-derived folders usually do not have.
-    const addFolderToChat = (folderPrefix: string, conversationId: string | null) => {
-        addToChat(allFiles.filter(f => f.key.startsWith(folderPrefix)), conversationId);
+    // A folder is granted, not attached. Attaching pushed every file's bytes into
+    // context and capped the feature at whatever the composer would carry; a grant
+    // hands the agent a handle, and it lists and reads on demand. That is why a
+    // folder of any size now works where one of six did not.
+    //
+    // An existing conversation is granted directly. A new one does not exist yet,
+    // so the prefix rides the URL and the chat page grants it once the conversation
+    // has been created.
+    const grantFolderToChat = async (folderPrefix: string, conversationId: string | null) => {
+        if (!conversationId) {
+            if (!defaultAgentId) return;
+            router.push(`/${tenant}/dashboard/chat?agentId=${defaultAgentId}&grantFolder=${encodeURIComponent(folderPrefix)}`);
+            return;
+        }
+        try {
+            await api.patch(`/api/v1/conversations/${conversationId}`, { folderScope: { prefix: folderPrefix } });
+            queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+            router.push(`/${tenant}/dashboard/chat?id=${conversationId}`);
+        } catch {
+            toast.error('Could not grant folder access');
+        }
     };
 
     const addSelectionToChat = (conversationId: string | null) => {
@@ -276,7 +295,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             onDeleteFolder={mutations.setDeletingFolderName}
                             conversations={conversations}
                             onAddToChat={addToChat}
-                            onAddFolderToChat={addFolderToChat}
+                            onAddFolderToChat={grantFolderToChat}
                             showPipelineDetails={showPipelineDetails}
                         />
                     ) : (
@@ -300,7 +319,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             onDeleteFolder={mutations.setDeletingFolderName}
                             conversations={conversations}
                             onAddToChat={addToChat}
-                            onAddFolderToChat={addFolderToChat}
+                            onAddFolderToChat={grantFolderToChat}
                             showPipelineDetails={showPipelineDetails}
                         />
                     )}
