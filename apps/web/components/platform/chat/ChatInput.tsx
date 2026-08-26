@@ -493,7 +493,7 @@ export function ChatInput({
                                 }}
                                 onKeyDown={handleKeyDown}
                                 placeholder="Ask anything, @ to mention, / for workflows..."
-                                className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50"
+                                className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50 caret-primary"
                                 disabled={disabled}
                             />
 
