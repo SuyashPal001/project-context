@@ -13,8 +13,13 @@ export function ProjectContextLogo({ variant = "full", className, iconSize = 32 
     return (
         <div className={cn("flex items-center gap-2.5 select-none", className)}>
             <span
-                className="shrink-0 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)]"
-                style={{ width: iconSize, height: iconSize }}
+                className="shrink-0 rounded-lg flex items-center justify-center shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)]"
+                style={{
+                    width: iconSize,
+                    height: iconSize,
+                    // Rose → peach mark, picked over the flat --primary fill.
+                    background: "linear-gradient(135deg, #E69DB8, #F2A679)",
+                }}
             >
                 <Brain
                     style={{
