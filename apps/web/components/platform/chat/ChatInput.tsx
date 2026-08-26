@@ -614,7 +614,9 @@ export function ChatInput({
                                             title="Enter to send, Shift+Enter for a new line"
                                             className={cn(
                                                 "h-8 w-8 flex items-center justify-center rounded-full transition-all active:scale-95 shadow-sm",
-                                                (content.trim() || mentionedAgents.length > 0 || uploader.attachments.length > 0) ? "bg-ring text-background" : "bg-muted text-muted-foreground opacity-40"
+                                                (content.trim() || mentionedAgents.length > 0 || uploader.attachments.length > 0)
+                                                    ? "bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-background"
+                                                    : "bg-muted text-muted-foreground opacity-40"
                                             )}
                                         >
                                             {isLoading || uploader.isUploading ? (
