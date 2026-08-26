@@ -421,7 +421,7 @@ export function ChatInput({
                         brand-new conversation never takes, which is exactly the
                         Drive → New session flow the grant exists for. */}
                     {folderPrefix && onRevokeFolder && (
-                        <div className="px-1 pb-2">
+                        <div className="px-4 pt-3">
                             <FolderScopeChip
                                 prefix={folderPrefix}
                                 onRevoke={onRevokeFolder}
@@ -431,7 +431,7 @@ export function ChatInput({
                     )}
 
                     {mentionedAgents.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 px-1 pb-2">
+                        <div className="flex flex-wrap gap-1.5 px-4 pt-3">
                             {mentionedAgents.map(agent => (
                                 <MentionChip
                                     key={agent.id}
