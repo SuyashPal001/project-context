@@ -19,11 +19,11 @@ interface CanvasTabStripProps {
 
 export function CanvasTabStrip({ tabs, activeTabId, onSelect, onClose, onOpenGallery }: CanvasTabStripProps) {
   return (
-    <div className="flex-none flex items-stretch border-b border-border overflow-x-auto">
+    <div className="flex-none flex items-center gap-1.5 px-2 py-2 border-b border-border overflow-x-auto">
       <button
         onClick={onOpenGallery}
         title="Open Chat History"
-        className="flex-none w-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 border-r border-border"
+        className="flex-none h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
       >
         <Plus className="h-4 w-4" />
       </button>
@@ -33,8 +33,8 @@ export function CanvasTabStrip({ tabs, activeTabId, onSelect, onClose, onOpenGal
         return (
           <div
             key={tab.id}
-            className={`group flex-none flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap cursor-pointer transition-colors ${
-              isActive ? 'text-foreground border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'
+            className={`group flex-none flex items-center gap-1.5 h-8 pl-3 pr-2 rounded-full text-xs font-medium whitespace-nowrap cursor-pointer transition-colors ${
+              isActive ? 'bg-secondary text-foreground border border-border' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
             }`}
             onClick={() => onSelect(tab.id)}
           >
@@ -46,7 +46,7 @@ export function CanvasTabStrip({ tabs, activeTabId, onSelect, onClose, onOpenGal
             {tab.closeable && (
               <button
                 onClick={(e) => { e.stopPropagation(); onClose(tab.id); }}
-                className="opacity-0 group-hover:opacity-100 h-4 w-4 flex items-center justify-center rounded hover:bg-muted shrink-0"
+                className="opacity-0 group-hover:opacity-100 h-4 w-4 flex items-center justify-center rounded-full hover:bg-muted shrink-0"
               >
                 <X className="h-3 w-3" />
               </button>

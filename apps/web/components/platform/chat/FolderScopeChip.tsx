@@ -30,8 +30,10 @@ export function FolderScopeChip({ prefix, onRevoke, isRevoking }: FolderScopeChi
     const name = folderDisplayName(prefix);
 
     return (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary border border-border text-xs w-fit">
-            <FolderIcon className="w-3 h-3 text-amber-500 fill-amber-500/20 shrink-0" />
+        <div className="flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full bg-secondary border border-border text-xs w-fit">
+            <div className="h-5 w-5 rounded-md bg-background border border-border/40 flex items-center justify-center shrink-0">
+                <FolderIcon className="w-3 h-3 text-amber-400 fill-amber-400/20" />
+            </div>
             <span className="text-muted-foreground">Agent can read</span>
             <span className="font-medium text-foreground truncate max-w-[160px]" title={prefix}>
                 {name}

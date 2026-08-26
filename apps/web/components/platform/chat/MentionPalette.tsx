@@ -11,7 +11,7 @@ import type { PaletteHandle } from "./SlashPalette";
 
 interface MentionPaletteProps {
     query: string;
-    onSelect: (label: string) => void;
+    onSelect: (agent: Agent) => void;
     onClose: () => void;
 }
 
@@ -59,7 +59,7 @@ export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(fun
     const selectActive = () => {
         const agent = filtered[activeIndex];
         if (!agent) return false;
-        onSelect(agent.name);
+        onSelect(agent);
         onClose();
         return true;
     };
@@ -96,7 +96,7 @@ export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(fun
                     <button
                         key={agent.id}
                         type="button"
-                        onClick={() => { onSelect(agent.name); onClose(); }}
+                        onClick={() => { onSelect(agent); onClose(); }}
                         onMouseEnter={() => setActiveIndex(i)}
                         className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-colors ${i === activeIndex ? 'bg-muted/60' : 'hover:bg-muted/60'}`}
                     >

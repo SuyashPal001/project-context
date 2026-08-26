@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Play } from 'lucide-react';
+import { Play, LayoutGrid, ChevronRight, FolderOpen } from 'lucide-react';
 import { useConversationAssets } from '@/hooks/useConversationAssets';
 import { api } from '@/lib/api';
 import type { Asset, AssetType } from '@/types/assets';
@@ -121,8 +121,17 @@ export function AssetGallery({ conversationId, filterAssetId, fallbackAsset, onC
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-none px-4 py-3 border-b border-border space-y-2">
-        <h3 className="text-sm font-semibold">Chat History</h3>
+      <div className="flex-none px-4 py-3 border-b border-border space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-sm min-w-0">
+            <span className="text-muted-foreground shrink-0">Generate in</span>
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="flex items-center gap-1.5 font-medium truncate">
+              <LayoutGrid className="h-3.5 w-3.5 shrink-0" />
+              Chat History
+            </span>
+          </div>
+        </div>
         {!filterAssetId && availableTypes.length > 1 && (
           <div className="flex items-center gap-1.5 overflow-x-auto">
             <button
@@ -156,11 +165,21 @@ export function AssetGallery({ conversationId, filterAssetId, fallbackAsset, onC
             <AssetCard asset={fallbackAsset} onClick={() => onCardClick(fallbackAsset, [fallbackAsset])} />
           </div>
         ) : visible.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {typeFilter === 'all'
-              ? 'Nothing generated in this conversation yet.'
-              : `No ${TYPE_FILTER_LABELS[typeFilter].toLowerCase()} files in this conversation.`}
-          </p>
+          <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-6">
+            <div className="h-14 w-14 rounded-2xl bg-muted/60 border border-border/60 flex items-center justify-center">
+              <FolderOpen className="h-6 w-6 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold">
+                {typeFilter === 'all' ? 'Nothing generated yet' : `No ${TYPE_FILTER_LABELS[typeFilter].toLowerCase()} files yet`}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {typeFilter === 'all'
+                  ? 'Ask the agent to build something in this conversation.'
+                  : `No ${TYPE_FILTER_LABELS[typeFilter].toLowerCase()} files in this conversation.`}
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {visible.map(asset => (

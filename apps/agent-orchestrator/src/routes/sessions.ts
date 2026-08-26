@@ -162,11 +162,9 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
 
   let callerTenantId = ''
-  let callerUserId = ''
   try {
     const payload = await validateToken(token)
     callerTenantId = payload['custom:tenantId'] ?? ''
-    callerUserId = payload.sub
   } catch {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
@@ -182,7 +180,12 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
 
   const pending = pendingClarifications.get(clarificationId)
   if (!pending) return c.json({ ok: false, error: 'clarification_not_found' }, 404, corsHeaders)
-  if (!callerTenantId || pending.tenantId !== callerTenantId || pending.userId !== callerUserId) {
+  // Tenant-scoped only, matching /api/chat/approval just above — pending.userId
+  // is the internal auth-service UUID (resolved via /auth/me when the
+  // clarification was created) while callerUserId here is the raw Cognito
+  // `sub` straight off the JWT. Those are different identifier spaces and are
+  // essentially never equal, so comparing them made every real answer 404.
+  if (!callerTenantId || pending.tenantId !== callerTenantId) {
     return c.json({ ok: false, error: 'clarification_not_found' }, 404, corsHeaders)
   }
 

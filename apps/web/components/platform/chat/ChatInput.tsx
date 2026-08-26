@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { consumePendingAttachments } from "@/lib/pendingAttachments";
 import { DriveFilePicker } from "./DriveFilePicker";
 import { FolderScopeChip } from "./FolderScopeChip";
+import { MentionChip } from "./MentionChip";
 
 import { useAudioRecorder } from "./useAudioRecorder";
 import { useFileUpload, MAX_ATTACHMENTS_PER_MESSAGE } from "./useFileUpload";
@@ -133,6 +134,10 @@ export function ChatInput({
     // trailing text.
     const [paletteRange, setPaletteRange] = useState<{ start: number; end: number } | null>(null);
     const [isDraggingFile, setIsDraggingFile] = useState(false);
+    // Agents picked via "@" — rendered as removable chips instead of woven into
+    // `content`, then re-serialized back into "@Name" text at send time so the
+    // wire format (and whatever downstream reads it) is unchanged.
+    const [mentionedAgents, setMentionedAgents] = useState<Agent[]>([]);
 
     const recorder = useAudioRecorder();
     const uploader = useFileUpload();
@@ -154,14 +159,21 @@ export function ChatInput({
             return;
         }
 
+        // Mention chips aren't part of `content` — re-serialize them back into
+        // the "@Name" text the backend/agent prompt already knows how to read,
+        // so switching to chip UI doesn't change the wire format.
+        const mentionPrefix = mentionedAgents.map(a => `@${a.name}`).join(' ');
+        const contentWithMentions = [mentionPrefix, content.trim()].filter(Boolean).join(' ');
+
         if (recorder.audioPreview) {
             try {
                 const voiceAttachment = await uploader.uploadAudio(
                     recorder.audioPreview.blob,
                     recorder.audioPreview.url,
                 );
-                onSend(content.trim(), [...uploader.attachments, voiceAttachment]);
+                onSend(contentWithMentions, [...uploader.attachments, voiceAttachment]);
                 setContent("");
+                setMentionedAgents([]);
                 uploader.clearAttachments();
                 recorder.clearPreview();
             } catch (err) {
@@ -171,10 +183,11 @@ export function ChatInput({
             return;
         }
 
-        if ((!content.trim() && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading) return;
+        if ((!content.trim() && mentionedAgents.length === 0 && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading) return;
 
-        onSend(content.trim(), uploader.attachments.length > 0 ? uploader.attachments : undefined);
+        onSend(contentWithMentions, uploader.attachments.length > 0 ? uploader.attachments : undefined);
         setContent("");
+        setMentionedAgents([]);
         uploader.clearAttachments();
         // Safety net: a send can happen with a palette still open (e.g. the Send
         // button clicked directly instead of Enter). Never leave a stale palette
@@ -365,11 +378,14 @@ export function ChatInput({
                     <MentionPalette
                         ref={paletteRef}
                         query={paletteQuery}
-                        onSelect={(label: string) => {
+                        onSelect={(agent: Agent) => {
+                            // Remove the typed "@query" trigger text — the pick becomes a
+                            // chip below, not text inside the draft.
                             setContent(c => {
                                 if (!paletteRange) return c;
-                                return c.slice(0, paletteRange.start) + `@${label} ` + c.slice(paletteRange.end);
+                                return c.slice(0, paletteRange.start) + c.slice(paletteRange.end);
                             });
+                            setMentionedAgents(prev => prev.some(a => a.id === agent.id) ? prev : [...prev, agent]);
                             // The palette owns its own search input (focus lives there, not
                             // the textarea, while it's open) — hand focus back once a pick is made.
                             textareaRef.current?.focus();
@@ -411,6 +427,18 @@ export function ChatInput({
                                 onRevoke={onRevokeFolder}
                                 isRevoking={isRevokingFolder}
                             />
+                        </div>
+                    )}
+
+                    {mentionedAgents.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 px-1 pb-2">
+                            {mentionedAgents.map(agent => (
+                                <MentionChip
+                                    key={agent.id}
+                                    agent={agent}
+                                    onRemove={() => setMentionedAgents(prev => prev.filter(a => a.id !== agent.id))}
+                                />
+                            ))}
                         </div>
                     )}
 
@@ -575,18 +603,18 @@ export function ChatInput({
                                     {isStreaming ? (
                                         <button
                                             onClick={onStop}
-                                            className="h-8 w-8 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-all shadow-sm"
+                                            className="h-8 w-8 flex items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 transition-all shadow-sm"
                                         >
                                             <StopCircle className="h-4 w-4" />
                                         </button>
                                     ) : (
                                         <button
                                             onClick={handleSend}
-                                            disabled={(!content.trim() && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading}
+                                            disabled={(!content.trim() && mentionedAgents.length === 0 && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading}
                                             title="Enter to send, Shift+Enter for a new line"
                                             className={cn(
                                                 "h-8 w-8 flex items-center justify-center rounded-full transition-all active:scale-95 shadow-sm",
-                                                (content.trim() || uploader.attachments.length > 0) ? "bg-ring text-background" : "bg-muted text-muted-foreground opacity-40"
+                                                (content.trim() || mentionedAgents.length > 0 || uploader.attachments.length > 0) ? "bg-ring text-background" : "bg-muted text-muted-foreground opacity-40"
                                             )}
                                         >
                                             {isLoading || uploader.isUploading ? (
