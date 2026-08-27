@@ -56,7 +56,7 @@ export function PersonaAvatar({ persona, avatarUrl, state, size = 40, className,
                 alt={persona?.name ?? "Agent"}
                 width={size}
                 height={size}
-                className={cn("h-full w-full rounded-xl object-cover border border-border/50 bg-primary/10", className)}
+                className={cn("h-full w-full rounded-xl object-cover border border-border/50", className)}
             />
         </div>
     );
