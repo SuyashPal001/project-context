@@ -44,7 +44,7 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
     const getAvatarBg = () => {
         if (role === 'platform_admin') return "bg-[#ff7f50]" // Coral
         if (role === 'member') return "bg-blue-500"
-        return "bg-black" // Admin/Owner default
+        return "bg-[#3A3B42]" // Admin/Owner default — graphite, not pure black
     }
 
     const isStarterPlan = ['free', 'starter'].includes(plan?.toLowerCase() || '')
