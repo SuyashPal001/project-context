@@ -399,17 +399,22 @@ export function ChatInput({
                     />
                 )}
 
-                {/* Rotating gradient ring via the padding trick: this wrapper reserves
-                    a 1.5px gap (p-[1.5px]) so the oversized, spinning conic-gradient
-                    layer behind it only ever shows through as a thin border, never
-                    the fill. motion-reduce freezes rotation but keeps the gradient
-                    visible as a static ring rather than removing it outright. */}
-                <div className="relative rounded-[29px] p-[1.5px] overflow-hidden group/composer">
+                {/* Gradient ring via the padding trick: this wrapper reserves a 1.5px
+                    gap (p-[1.5px]) so the layer behind it only ever shows through as
+                    a thin border, never the fill. The gradient has no transparent
+                    stops, so it reads as a fully filled ring at rest — it only spins
+                    (an oversized layer rotating behind the fixed-radius mask) while
+                    the assistant is actually generating a reply; motion-reduce keeps
+                    it filled but static instead of removing it outright. */}
+                <div className="relative rounded-[29px] p-[1.5px] overflow-hidden">
                     <div
                         aria-hidden
-                        className="absolute inset-[-30%] motion-safe:animate-[spin_5s_linear_infinite] motion-reduce:animate-none opacity-70 group-focus-within/composer:opacity-100 transition-opacity"
+                        className={cn(
+                            "absolute inset-[-30%]",
+                            (isLoading || isStreaming) && "motion-safe:animate-[spin_2.5s_linear_infinite]",
+                        )}
                         style={{
-                            background: "conic-gradient(from 0deg, transparent 0deg, #E69DB8 90deg, #F2A679 180deg, transparent 270deg, transparent 360deg)",
+                            background: "conic-gradient(from 0deg, #E69DB8, #F2A679, #E69DB8, #F2A679, #E69DB8)",
                         }}
                     />
                     <div
