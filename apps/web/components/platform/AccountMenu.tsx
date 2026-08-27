@@ -84,7 +84,14 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
             <DropdownMenuContent
                 align="start"
                 side={collapsed ? "right" : "top"}
-                className="w-[272px] p-2.5 rounded-2xl bg-card border-border/50 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+                className={cn(
+                    "p-2.5 rounded-2xl bg-card border-border/50 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)]",
+                    // Expanded: sit flush inside the sidebar column, same as the reference,
+                    // by matching the trigger's own width rather than a fixed px value.
+                    // Collapsed: the trigger is a small icon button, so that width would be
+                    // far too narrow — keep a fixed size and float it off to the side instead.
+                    collapsed ? "w-[272px]" : "w-(--radix-dropdown-menu-trigger-width)",
+                )}
             >
                 {/* Header Block - Non-clickable */}
                 <div className="flex items-center gap-3 px-1.5 pb-2.5">
