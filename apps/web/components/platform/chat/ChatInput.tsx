@@ -399,16 +399,29 @@ export function ChatInput({
                     />
                 )}
 
-                <div
-                    className={cn(
-                        "relative flex flex-col rounded-[28px] border bg-card transition-colors shadow-elevated overflow-hidden",
-                        isDraggingFile ? "border-primary/60" : "border-border/60 focus-within:border-primary/30",
-                    )}
-                    onDragEnter={handleDragEnter}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                >
+                {/* Rotating gradient ring via the padding trick: this wrapper reserves
+                    a 1.5px gap (p-[1.5px]) so the oversized, spinning conic-gradient
+                    layer behind it only ever shows through as a thin border, never
+                    the fill. motion-reduce freezes rotation but keeps the gradient
+                    visible as a static ring rather than removing it outright. */}
+                <div className="relative rounded-[29px] p-[1.5px] overflow-hidden group/composer">
+                    <div
+                        aria-hidden
+                        className="absolute inset-[-30%] motion-safe:animate-[spin_5s_linear_infinite] motion-reduce:animate-none opacity-70 group-focus-within/composer:opacity-100 transition-opacity"
+                        style={{
+                            background: "conic-gradient(from 0deg, transparent 0deg, #E69DB8 90deg, #F2A679 180deg, transparent 270deg, transparent 360deg)",
+                        }}
+                    />
+                    <div
+                        className={cn(
+                            "relative z-10 flex flex-col rounded-[28px] bg-card transition-all shadow-elevated overflow-hidden",
+                            isDraggingFile && "ring-2 ring-primary/60",
+                        )}
+                        onDragEnter={handleDragEnter}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                    >
                     {isDraggingFile && (
                         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-[28px] bg-primary/5 backdrop-blur-[1px] pointer-events-none">
                             <span className="text-sm font-medium text-primary">Drop to attach</span>
@@ -667,6 +680,7 @@ export function ChatInput({
                             </div>
                         </>
                     )}
+                    </div>
                 </div>
 
                 <p className="text-[10px] text-center text-muted-foreground/70 mt-2">
