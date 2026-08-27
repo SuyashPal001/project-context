@@ -85,7 +85,7 @@ export function PlanSelectorDialog({ currentPlan }: { currentPlan: string }) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button className="w-full sm:w-auto rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-black hover:opacity-90 shadow-sm border-0">
+                <Button className="w-full sm:w-auto rounded-full">
                     <ArrowRight className="w-4 h-4 mr-2" />
                     Change Plan
                 </Button>
