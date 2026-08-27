@@ -119,9 +119,9 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                         {isStarterPlan && (
                             <Link
                                 href={`/${tenantSlug}/dashboard/billing`}
-                                className="flex items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
+                                className="flex items-center gap-1 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-3 py-1 text-[11px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity"
                             >
-                                <Zap className="h-3 w-3 text-primary" />
+                                <Zap className="h-3 w-3 fill-black" />
                                 Upgrade
                             </Link>
                         )}
@@ -160,10 +160,10 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     <DropdownMenuSeparator className="my-1.5 bg-border/40" />
 
                     <DropdownMenuItem
-                        className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-xl text-muted-foreground hover:text-foreground focus:bg-accent/50 focus:text-accent-foreground group"
+                        className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-2xl text-foreground focus:bg-accent/50 focus:text-accent-foreground"
                         onClick={() => signOut()}
                     >
-                        <LogOut className="mr-2.5 h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+                        <LogOut className="mr-2.5 h-4 w-4 opacity-70" />
                         <span>Sign out</span>
                     </DropdownMenuItem>
                 </div>
