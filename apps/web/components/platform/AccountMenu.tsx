@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
-import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor } from "lucide-react"
+import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor, Zap } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
@@ -81,59 +81,67 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     )}
                 </div>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" side={collapsed ? "right" : "top"} className="w-[240px] p-0 overflow-hidden bg-card border-border shadow-md">
+            <DropdownMenuContent
+                align="start"
+                side={collapsed ? "right" : "top"}
+                className="w-[272px] p-2.5 rounded-2xl bg-card border-border/50 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+            >
                 {/* Header Block - Non-clickable */}
-                <div className="flex flex-col space-y-0.5 p-3 px-[12px] bg-accent/5">
-                    <p className="text-[13px] font-medium text-foreground truncate">{name || "User"}</p>
-                    <p className="text-[12px] text-muted-foreground truncate overflow-hidden whitespace-nowrap">
-                        {email || "user@platform.com"}
-                    </p>
+                <div className="flex items-center gap-3 px-1.5 pb-2.5">
+                    <div className={cn(
+                        "w-9 h-9 rounded-full flex items-center justify-center shrink-0 border border-border shadow-sm overflow-hidden",
+                        getAvatarBg()
+                    )}>
+                        <span className="text-xs font-bold text-white">{getInitials()}</span>
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                        <p className="text-[13px] font-medium text-foreground truncate">{name || "User"}</p>
+                        <p className="text-[12px] text-muted-foreground truncate">
+                            {email || "user@platform.com"}
+                        </p>
+                    </div>
                 </div>
 
-                <DropdownMenuSeparator className="m-0 bg-border/40" />
-
-                {/* Metadata Section */}
-                <div className="p-[8px] px-[12px] space-y-1">
-                    <p className="text-[12px] text-muted-foreground truncate leading-tight">
+                {/* Plan card */}
+                <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
+                    <p className="text-[11px] text-muted-foreground truncate leading-none">
                         {tenantSlug}
                     </p>
-                    <div className="flex items-center gap-1.5 text-[12px] leading-tight">
-                        <span className="text-foreground capitalize">{plan || "Free"}</span>
+                    <div className="flex items-center justify-between">
+                        <span className="text-[13px] font-semibold text-foreground capitalize">{plan || "Free"}</span>
                         {isStarterPlan && (
-                            <>
-                                <span className="text-muted-foreground/30 font-light translate-y-[-1px]">·</span>
-                                <Link
-                                    href={`/${tenantSlug}/dashboard/billing`}
-                                    className="text-primary/80 hover:text-primary font-medium transition-colors"
-                                >
-                                    Upgrade
-                                </Link>
-                            </>
+                            <Link
+                                href={`/${tenantSlug}/dashboard/billing`}
+                                className="flex items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
+                            >
+                                <Zap className="h-3 w-3 text-primary" />
+                                Upgrade
+                            </Link>
                         )}
                     </div>
                 </div>
 
-                <DropdownMenuSeparator className="m-0 bg-border/40" />
+                <DropdownMenuSeparator className="my-2 bg-border/40" />
 
                 {/* Navigation Section */}
-                <div className="p-[4px] px-[4px]">
+                <div className="space-y-0.5">
                     <DropdownMenuItem
-                        className="flex items-center px-[12px] py-[8px] cursor-pointer text-[13px] rounded-sm focus:bg-accent/50 focus:text-accent-foreground"
+                        className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-xl focus:bg-accent/50 focus:text-accent-foreground"
                         onClick={() => router.push(`/${tenantSlug}/dashboard/settings/profile`)}
                     >
-                        <User className="mr-2 h-4 w-4 opacity-70" />
+                        <User className="mr-2.5 h-4 w-4 opacity-70" />
                         <span>Profile settings</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuSub>
-                        <DropdownMenuSubTrigger className="flex items-center px-[12px] py-[8px] cursor-pointer text-[13px] rounded-sm focus:bg-accent/50 focus:text-accent-foreground data-[state=open]:bg-accent/50">
-                            <CurrentThemeIcon className="mr-2 h-4 w-4 opacity-70" />
+                        <DropdownMenuSubTrigger className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-xl focus:bg-accent/50 focus:text-accent-foreground data-[state=open]:bg-accent/50">
+                            <CurrentThemeIcon className="mr-2.5 h-4 w-4 opacity-70" />
                             <span>Theme</span>
                         </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent className="w-36">
+                        <DropdownMenuSubContent className="w-36 rounded-xl">
                             <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={setTheme}>
                                 {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
-                                    <DropdownMenuRadioItem key={value} value={value} className="gap-2 cursor-pointer text-[13px]">
+                                    <DropdownMenuRadioItem key={value} value={value} className="gap-2 cursor-pointer text-[13px] rounded-lg">
                                         <Icon className="h-3.5 w-3.5" />
                                         {label}
                                     </DropdownMenuRadioItem>
@@ -142,13 +150,13 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>
 
-                    <DropdownMenuSeparator className="my-[4px] bg-border/40 mx-[-4px]" />
+                    <DropdownMenuSeparator className="my-1.5 bg-border/40" />
 
                     <DropdownMenuItem
-                        className="flex items-center px-[12px] py-[8px] cursor-pointer text-[13px] rounded-sm text-muted-foreground hover:text-foreground focus:bg-accent/50 focus:text-accent-foreground group"
+                        className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-xl text-muted-foreground hover:text-foreground focus:bg-accent/50 focus:text-accent-foreground group"
                         onClick={() => signOut()}
                     >
-                        <LogOut className="mr-2 h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
+                        <LogOut className="mr-2.5 h-4 w-4 opacity-70 group-hover:opacity-100 transition-opacity" />
                         <span>Sign out</span>
                     </DropdownMenuItem>
                 </div>
