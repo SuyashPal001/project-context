@@ -85,7 +85,7 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                 align="start"
                 side={collapsed ? "right" : "top"}
                 className={cn(
-                    "p-2.5 rounded-2xl bg-card border-border/50 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)]",
+                    "p-2.5 rounded-[28px] bg-card border-border/50 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)]",
                     // Expanded: sit flush inside the sidebar column, same as the reference,
                     // by matching the trigger's own width rather than a fixed px value.
                     // Collapsed: the trigger is a small icon button, so that width would be
@@ -110,7 +110,7 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                 </div>
 
                 {/* Plan card */}
-                <div className="rounded-xl border border-border/60 bg-muted/30 p-3 space-y-2">
+                <div className="rounded-3xl border border-border/60 bg-muted/30 p-3.5 space-y-2">
                     <p className="text-[11px] text-muted-foreground truncate leading-none">
                         {tenantSlug}
                     </p>
@@ -133,7 +133,7 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                 {/* Navigation Section */}
                 <div className="space-y-0.5">
                     <DropdownMenuItem
-                        className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-xl focus:bg-accent/50 focus:text-accent-foreground"
+                        className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-2xl focus:bg-accent/50 focus:text-accent-foreground"
                         onClick={() => router.push(`/${tenantSlug}/dashboard/settings/profile`)}
                     >
                         <User className="mr-2.5 h-4 w-4 opacity-70" />
@@ -141,14 +141,14 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     </DropdownMenuItem>
 
                     <DropdownMenuSub>
-                        <DropdownMenuSubTrigger className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-xl focus:bg-accent/50 focus:text-accent-foreground data-[state=open]:bg-accent/50">
+                        <DropdownMenuSubTrigger className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-2xl focus:bg-accent/50 focus:text-accent-foreground data-[state=open]:bg-accent/50">
                             <CurrentThemeIcon className="mr-2.5 h-4 w-4 opacity-70" />
                             <span>Theme</span>
                         </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent className="w-36 rounded-xl">
+                        <DropdownMenuSubContent className="w-36 rounded-2xl">
                             <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={setTheme}>
                                 {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
-                                    <DropdownMenuRadioItem key={value} value={value} className="gap-2 cursor-pointer text-[13px] rounded-lg">
+                                    <DropdownMenuRadioItem key={value} value={value} className="gap-2 cursor-pointer text-[13px] rounded-xl">
                                         <Icon className="h-3.5 w-3.5" />
                                         {label}
                                     </DropdownMenuRadioItem>
