@@ -24,11 +24,14 @@ function AnthropicMark(props: React.SVGProps<SVGSVGElement>) {
 }
 
 function GeminiMark(props: React.SVGProps<SVGSVGElement>) {
+    // A proper 4-point sparkle (N/E/S/W), not just a vertical lens — the
+    // previous path had no horizontal spread and read as a thin squeezed
+    // sliver at small sizes.
     return (
         <svg viewBox="0 0 24 24" fill="none" {...props}>
             <path
                 fill="currentColor"
-                d="M12 2c0 4.5-1.5 8-4 9.5C10.5 13 12 16.5 12 21c0-4.5 1.5-8 4-9.5C13.5 10 12 6.5 12 2Z"
+                d="M12 2c.7 4.2 2.1 7.1 4.6 8.9.8.6 1.7 1 2.7 1.3-1 .3-1.9.7-2.7 1.3-2.5 1.8-3.9 4.7-4.6 8.9-.7-4.2-2.1-7.1-4.6-8.9-.8-.6-1.7-1-2.7-1.3 1-.3 1.9-.7 2.7-1.3C9.9 9.1 11.3 6.2 12 2Z"
             />
         </svg>
     );

@@ -610,8 +610,8 @@ export function ChatInput({
                                                                     )}
                                                                 </span>
                                                                 {isSelected && (
-                                                                    <span className="shrink-0 h-5 w-5 rounded-full bg-primary/15 flex items-center justify-center mt-0.5">
-                                                                        <Check className="h-3 w-3 text-primary" strokeWidth={2.5} />
+                                                                    <span className="shrink-0 h-5 w-5 rounded-full bg-primary flex items-center justify-center mt-0.5 shadow-sm">
+                                                                        <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
                                                                     </span>
                                                                 )}
                                                             </DropdownMenuItem>
