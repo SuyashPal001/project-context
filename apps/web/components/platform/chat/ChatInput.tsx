@@ -399,36 +399,44 @@ export function ChatInput({
                     />
                 )}
 
-                {/* Gradient ring via the padding trick: this wrapper reserves a 1.5px
-                    gap (p-px, 1px) so the layer behind it only ever shows through as
-                    a thin border, never the fill. A conic gradient reads fine while
+                {/* Gradient ring: neutral border-border/60 idle, gradient appears only
+                    once there's something to send (typing/mention) or the assistant
+                    is generating. Active state uses the padding trick — p-px gap
+                    shows the layer behind as a thin border. Conic reads fine while
                     spinning, but centered on a wide short pill like this composer it
                     puts almost the entire top/bottom edge at nearly the same angle —
-                    at rest that shows as one flat color with the rose/peach
-                    transition squeezed into the short end-caps. So idle uses a plain
-                    diagonal linear-gradient (always both colors, no angle
-                    distortion); only the active "generating" state switches to the
-                    rotating conic layer, where motion hides that distortion anyway.
-                    Under prefers-reduced-motion the spin itself is suppressed
-                    (motion-safe:), so the active state briefly shows the unspun
-                    conic layer rather than the linear one — an acceptable tradeoff
-                    for a state that's transient by definition. */}
-                <div className="relative rounded-[29px] p-px overflow-hidden">
-                    <div
-                        aria-hidden
-                        className={cn(
-                            "absolute inset-[-30%]",
-                            (isLoading || isStreaming) && "motion-safe:animate-[spin_2.5s_linear_infinite]",
-                        )}
-                        style={{
-                            background: (isLoading || isStreaming)
-                                ? "conic-gradient(from 0deg, #E69DB8, #F2A679, #E69DB8, #F2A679, #E69DB8)"
-                                : "linear-gradient(135deg, #E69DB8, #F2A679)",
-                        }}
-                    />
+                    static that shows as one flat color with the rose/peach
+                    transition squeezed into the short end-caps. So "has content"
+                    uses a plain diagonal linear-gradient (always both colors, no
+                    angle distortion); only "generating" switches to the rotating
+                    conic layer, where motion hides that distortion anyway. Under
+                    prefers-reduced-motion the spin itself is suppressed
+                    (motion-safe:), so generating briefly shows the unspun conic
+                    layer rather than the linear one — an acceptable tradeoff for a
+                    state that's transient by definition. */}
+                {(() => {
+                    const isGenerating = isLoading || isStreaming;
+                    const isActive = isGenerating || content.trim().length > 0 || mentionedAgents.length > 0;
+                    return (
+                <div className={cn("relative rounded-[29px] overflow-hidden", isActive ? "p-px" : "p-0")}>
+                    {isActive && (
+                        <div
+                            aria-hidden
+                            className={cn(
+                                "absolute inset-[-30%]",
+                                isGenerating && "motion-safe:animate-[spin_2.5s_linear_infinite]",
+                            )}
+                            style={{
+                                background: isGenerating
+                                    ? "conic-gradient(from 0deg, #E69DB8, #F2A679, #E69DB8, #F2A679, #E69DB8)"
+                                    : "linear-gradient(135deg, #E69DB8, #F2A679)",
+                            }}
+                        />
+                    )}
                     <div
                         className={cn(
                             "relative z-10 flex flex-col rounded-[28px] bg-card transition-all shadow-elevated overflow-hidden",
+                            !isActive && "border border-border/60",
                             isDraggingFile && "ring-2 ring-primary/60",
                         )}
                         onDragEnter={handleDragEnter}
@@ -696,6 +704,8 @@ export function ChatInput({
                     )}
                     </div>
                 </div>
+                    );
+                })()}
 
                 <p className="text-[10px] text-center text-muted-foreground/70 mt-2">
                     AI can make mistakes. Please verify important information.
