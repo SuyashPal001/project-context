@@ -400,13 +400,20 @@ export function ChatInput({
                 )}
 
                 {/* Gradient ring via the padding trick: this wrapper reserves a 1.5px
-                    gap (p-[1.5px]) so the layer behind it only ever shows through as
-                    a thin border, never the fill. The gradient has no transparent
-                    stops, so it reads as a fully filled ring at rest — it only spins
-                    (an oversized layer rotating behind the fixed-radius mask) while
-                    the assistant is actually generating a reply; motion-reduce keeps
-                    it filled but static instead of removing it outright. */}
-                <div className="relative rounded-[29px] p-[1.5px] overflow-hidden">
+                    gap (p-px, 1px) so the layer behind it only ever shows through as
+                    a thin border, never the fill. A conic gradient reads fine while
+                    spinning, but centered on a wide short pill like this composer it
+                    puts almost the entire top/bottom edge at nearly the same angle —
+                    at rest that shows as one flat color with the rose/peach
+                    transition squeezed into the short end-caps. So idle uses a plain
+                    diagonal linear-gradient (always both colors, no angle
+                    distortion); only the active "generating" state switches to the
+                    rotating conic layer, where motion hides that distortion anyway.
+                    Under prefers-reduced-motion the spin itself is suppressed
+                    (motion-safe:), so the active state briefly shows the unspun
+                    conic layer rather than the linear one — an acceptable tradeoff
+                    for a state that's transient by definition. */}
+                <div className="relative rounded-[29px] p-px overflow-hidden">
                     <div
                         aria-hidden
                         className={cn(
@@ -414,7 +421,9 @@ export function ChatInput({
                             (isLoading || isStreaming) && "motion-safe:animate-[spin_2.5s_linear_infinite]",
                         )}
                         style={{
-                            background: "conic-gradient(from 0deg, #E69DB8, #F2A679, #E69DB8, #F2A679, #E69DB8)",
+                            background: (isLoading || isStreaming)
+                                ? "conic-gradient(from 0deg, #E69DB8, #F2A679, #E69DB8, #F2A679, #E69DB8)"
+                                : "linear-gradient(135deg, #E69DB8, #F2A679)",
                         }}
                     />
                     <div
