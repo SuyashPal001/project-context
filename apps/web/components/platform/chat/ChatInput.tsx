@@ -423,7 +423,7 @@ export function ChatInput({
                         <div
                             aria-hidden
                             className={cn(
-                                "absolute inset-[-30%]",
+                                "absolute inset-[-30%] opacity-60",
                                 isGenerating && "motion-safe:animate-[spin_2.5s_linear_infinite]",
                             )}
                             style={{
