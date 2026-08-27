@@ -39,6 +39,11 @@ function MetricProgress({
     const percentage = metrics.unlimited || metrics.limit === 0
         ? 0
         : Math.min(Math.round((metrics.used / metrics.limit) * 100), 100);
+    // A real but tiny ratio (e.g. 1/50 = 2%) renders as a near-invisible sliver —
+    // floor the *visual* width so any nonzero usage stays legible, without
+    // touching `percentage` itself (still drives the color thresholds and the
+    // exact number shown).
+    const displayWidth = percentage === 0 ? 0 : Math.max(percentage, 4);
 
     return (
         <div className="space-y-2">
@@ -60,7 +65,7 @@ function MetricProgress({
                     <div
                         className={`h-full rounded-full transition-all ${percentage > 90 ? "bg-destructive" : percentage > 75 ? "bg-amber-500" : "bg-primary"
                             }`}
-                        style={{ width: `${percentage}%` }}
+                        style={{ width: `${displayWidth}%` }}
                     />
                 </div>
             )}
