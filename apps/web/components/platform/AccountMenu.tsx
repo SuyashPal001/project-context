@@ -139,7 +139,9 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     <p className="text-[13px] leading-snug">
                         <span className="font-semibold text-foreground">{currentPlanName} plan.</span>
                         {nextPlan && (
-                            <span className="text-muted-foreground"> Upgrade to {nextPlan.name} for {nextPlan.price}.</span>
+                            <span className="text-muted-foreground">
+                                {" "}Upgrade to {nextPlan.name}{nextPlan.price === "Custom" ? " for custom pricing." : ` for ${nextPlan.price}.`}
+                            </span>
                         )}
                     </p>
 
@@ -152,17 +154,17 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     )}
 
                     {nextPlan && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                             <Link
                                 href={`/${tenantSlug}/dashboard/billing`}
-                                className="flex items-center gap-1 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-3 py-1.5 text-[11px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity"
+                                className="flex items-center gap-1 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-3 py-1.5 text-[11px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap"
                             >
-                                <Zap className="h-3 w-3 fill-black" />
-                                Upgrade &middot; {nextPlan.price}
+                                <Zap className="h-3 w-3 fill-black shrink-0" />
+                                {nextPlan.price === "Custom" ? "Upgrade" : `Upgrade · ${nextPlan.price}`}
                             </Link>
                             <Link
                                 href={`/${tenantSlug}/dashboard/billing`}
-                                className="rounded-full border border-border/60 bg-background px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
+                                className="rounded-full border border-border/60 bg-background px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-accent transition-colors whitespace-nowrap"
                             >
                                 Details
                             </Link>
