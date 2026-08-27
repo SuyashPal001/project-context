@@ -548,7 +548,11 @@ export function ChatInput({
                                                     {providers.find(p => p.id === llmProviderId)?.displayName ?? 'Mind'}
                                                 </button>
                                             </DropdownMenuTrigger>
-                                            <DropdownMenuContent side="top" align="start" className="w-72 p-2.5 rounded-2xl">
+                                            <DropdownMenuContent
+                                                side="top"
+                                                align="start"
+                                                className="w-72 p-2.5 rounded-2xl border-border/50 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)]"
+                                            >
                                                 <div className="px-1.5 pb-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
                                                     Models
                                                 </div>
@@ -565,8 +569,10 @@ export function ChatInput({
                                                             >
                                                                 <span
                                                                     className={cn(
-                                                                        "h-8 w-8 shrink-0 rounded-lg border border-border/40 flex items-center justify-center",
-                                                                        provider.status === 'live' ? "bg-background" : "bg-muted/40",
+                                                                        "h-8 w-8 shrink-0 rounded-lg border flex items-center justify-center",
+                                                                        provider.status === 'live'
+                                                                            ? "border-border/60 bg-gradient-to-b from-muted/60 to-muted/20 shadow-sm"
+                                                                            : "border-border/30 bg-muted/20",
                                                                     )}
                                                                 >
                                                                     <ProviderIcon
@@ -588,7 +594,9 @@ export function ChatInput({
                                                                         Coming soon
                                                                     </span>
                                                                 ) : isSelected ? (
-                                                                    <Check className="h-4 w-4 shrink-0 text-primary" />
+                                                                    <span className="shrink-0 h-5 w-5 rounded-full bg-primary/15 flex items-center justify-center">
+                                                                        <Check className="h-3 w-3 text-primary" strokeWidth={2.5} />
+                                                                    </span>
                                                                 ) : badges.get(provider.id) ? (
                                                                     <span className="shrink-0 text-xs text-muted-foreground">
                                                                         {badges.get(provider.id)}
