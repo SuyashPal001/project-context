@@ -25,7 +25,7 @@ interface Plan {
     features: string[];
 }
 
-const PLANS: Plan[] = [
+export const PLANS: Plan[] = [
     {
         id: "free",
         name: "Free",

@@ -4,10 +4,13 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
+import { useQuery } from "@tanstack/react-query"
 import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor, Zap } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
+import { PLANS } from "@/components/platform/billing/PlanSelectorDialog"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -47,9 +50,24 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
         return "bg-[#3A3B42]" // Admin/Owner default — graphite, not pure black
     }
 
-    const isStarterPlan = ['free', 'starter'].includes(plan?.toLowerCase() || '')
     const currentThemeIcon = mounted ? (THEME_OPTIONS.find(o => o.value === theme)?.icon ?? Monitor) : Monitor
     const CurrentThemeIcon = currentThemeIcon
+
+    const planIndex = PLANS.findIndex(p => p.id === (plan?.toLowerCase() || 'free'))
+    const nextPlan = planIndex >= 0 && planIndex < PLANS.length - 1 ? PLANS[planIndex + 1] : null
+    const currentPlanName = planIndex >= 0 ? PLANS[planIndex].name : (plan || "Free")
+
+    // Same query key as UsageBar.tsx — shares its cache, no extra request in practice.
+    interface EntitlementsResponse {
+        messages: { used: number; limit: number; unlimited: boolean }
+        [key: string]: unknown
+    }
+    const { data: entitlements } = useQuery({
+        queryKey: ['entitlements', tenantSlug],
+        queryFn: () => api.get<EntitlementsResponse>('/api/v1/entitlements'),
+        staleTime: 60_000,
+    })
+    const messages = entitlements?.messages
 
     return (
         <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -69,8 +87,11 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     {!collapsed && (
                         <>
                             <div className="flex flex-col min-w-0 text-left flex-1">
-                                <p className="text-[13px] font-medium text-foreground truncate leading-none mb-1">
-                                    {name || "User"}
+                                <p className="flex items-center gap-1.5 text-[13px] font-medium text-foreground truncate leading-none mb-1">
+                                    <span className="truncate">{name || "User"}</span>
+                                    <span className="shrink-0 text-[9px] font-bold tracking-wide text-muted-foreground/70 uppercase">
+                                        {currentPlanName}
+                                    </span>
                                 </p>
                                 <p className="text-[11px] text-muted-foreground truncate leading-none">
                                     {email || "user@platform.com"}
@@ -110,22 +131,43 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                 </div>
 
                 {/* Plan card */}
-                <div className="rounded-3xl border border-border/60 bg-muted/30 p-3.5 space-y-2">
+                <div className="rounded-3xl border border-border/60 bg-muted/30 p-3.5 space-y-3">
                     <p className="text-[11px] text-muted-foreground truncate leading-none">
                         {tenantSlug}
                     </p>
-                    <div className="flex items-center justify-between">
-                        <span className="text-[13px] font-semibold text-foreground capitalize">{plan || "Free"}</span>
-                        {isStarterPlan && (
+
+                    <p className="text-[13px] leading-snug">
+                        <span className="font-semibold text-foreground">{currentPlanName} plan.</span>
+                        {nextPlan && (
+                            <span className="text-muted-foreground"> Upgrade to {nextPlan.name} for {nextPlan.price}.</span>
+                        )}
+                    </p>
+
+                    {messages && (
+                        <p className="text-[11px] text-muted-foreground">
+                            {messages.unlimited
+                                ? <><span className="font-medium text-foreground">{messages.used.toLocaleString()}</span> messages this month</>
+                                : <><span className="font-medium text-foreground">{messages.used.toLocaleString()}</span> / {messages.limit.toLocaleString()} messages</>}
+                        </p>
+                    )}
+
+                    {nextPlan && (
+                        <div className="flex items-center gap-2">
                             <Link
                                 href={`/${tenantSlug}/dashboard/billing`}
-                                className="flex items-center gap-1 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-3 py-1 text-[11px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity"
+                                className="flex items-center gap-1 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-3 py-1.5 text-[11px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity"
                             >
                                 <Zap className="h-3 w-3 fill-black" />
-                                Upgrade
+                                Upgrade &middot; {nextPlan.price}
                             </Link>
-                        )}
-                    </div>
+                            <Link
+                                href={`/${tenantSlug}/dashboard/billing`}
+                                className="rounded-full border border-border/60 bg-background px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
+                            >
+                                Details
+                            </Link>
+                        </div>
+                    )}
                 </div>
 
                 <DropdownMenuSeparator className="my-2 bg-border/40" />
