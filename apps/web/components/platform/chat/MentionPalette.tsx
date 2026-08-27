@@ -67,8 +67,8 @@ export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(fun
     useImperativeHandle(ref, () => ({ moveActive, selectActive }), [filtered, activeIndex, onSelect]);
 
     return (
-        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border bg-popover shadow-elevated p-2 max-h-80 overflow-y-auto custom-scrollbar">
-            <div className="flex items-center gap-2 px-3 h-10 mb-1 rounded-xl bg-muted/50 focus-within:ring-1 focus-within:ring-primary/30">
+        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border/50 bg-popover shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)] p-2.5 max-h-80 overflow-y-auto custom-scrollbar">
+            <div className="flex items-center gap-2 px-3 h-10 mb-2 rounded-xl bg-muted/50 focus-within:ring-1 focus-within:ring-primary/30">
                 <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <input
                     ref={inputRef}
@@ -98,10 +98,15 @@ export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(fun
                         type="button"
                         onClick={() => { onSelect(agent); onClose(); }}
                         onMouseEnter={() => setActiveIndex(i)}
-                        className={`w-full flex items-center gap-3 px-2 py-2 rounded-xl text-left transition-colors ${i === activeIndex ? 'bg-muted/60' : 'hover:bg-muted/60'}`}
+                        className={`w-full flex items-start gap-3 px-2 py-2.5 rounded-xl text-left transition-colors ${i === activeIndex ? 'bg-muted/60' : 'hover:bg-muted/60'}`}
                     >
-                        <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={36} className="rounded-full" icon={getAgentTypeIcon(agent.type)} />
-                        <span className="text-sm truncate">{agent.name}</span>
+                        <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-xl shrink-0" icon={getAgentTypeIcon(agent.type)} />
+                        <span className="flex-1 min-w-0 flex flex-col gap-0.5 pt-0.5">
+                            <span className="text-sm font-medium text-foreground truncate">{agent.name}</span>
+                            <span className="text-xs text-muted-foreground truncate">
+                                {agent.description ?? `${agent.type.replace(/_/g, ' ')} agent`}
+                            </span>
+                        </span>
                     </button>
                 ))
             )}
