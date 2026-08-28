@@ -64,12 +64,15 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'taskId, tenantId, and steps are required' }, 400)
   }
 
-  // `attempt` — the number of clarification rounds already completed for
-  // this task — is computed by the caller (taskWorker.execution.ts, which
-  // has Drizzle access to task_events) and threaded through untouched.
-  // attempt 0 (never clarified, or the field is simply absent — an older
-  // caller, or a direct test) keeps the original `task:{taskId}` key, so
-  // existing behavior is unchanged for the common case. See taskChargeKey().
+  // `attempt` — the number of EXECUTION-phase clarification rounds already
+  // completed for this task (ones that interrupted an already-charged run
+  // and triggered a refund; a PLANNING-phase clarification, raised before
+  // any charge, does not count) — is computed by the caller
+  // (taskWorker.execution.ts, which has Drizzle access to task_events) and
+  // threaded through untouched. attempt 0 (never clarified mid-execution, or
+  // the field is simply absent — an older caller, or a direct test) keeps
+  // the original `task:{taskId}` key, so existing behavior is unchanged for
+  // the common case. See taskChargeKey().
   const attempt = typeof body.attempt === 'number' && Number.isFinite(body.attempt) && body.attempt > 0
     ? Math.floor(body.attempt)
     : 0
@@ -121,6 +124,28 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
   const taskId = c.req.param('taskId')
   const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
   const p = getPool()
+
+  // `attempt` — computed by handleWorkflowApprove (products/agent-platform's
+  // API package, which owns task_events) and threaded through untouched —
+  // must match the SAME attempt the run being resumed was originally charged
+  // under. Without this, resume's settle/refund default to the unsuffixed
+  // task:{taskId} key regardless of which attempt is actually running:
+  // for a task that was clarified during PLANNING (no debit exists under
+  // task:{taskId} at all — chargeTaskEstimate ran once, under the attempt-1
+  // key), settleTask silently no-ops and refundTask sees net===0 and no-ops,
+  // leaving a terminal post-resume failure fully charged with no refund; for
+  // a task clarified MID-EXECUTION, task:{taskId} instead holds the
+  // attempt-0 debit that onTaskComment already refunded in full, so
+  // settleTask would settle real tokens against that dead, already-refunded
+  // estimate — an over-credit and an unsettled current charge at once.
+  // A missing/absent body (an older caller) defaults to attempt 0, matching
+  // pre-attempt-key behavior exactly for a task that was never clarified.
+  let resumeBody: { attempt?: unknown } = {}
+  try { resumeBody = await c.req.json() } catch { /* no body is fine — attempt defaults to 0 */ }
+  const attempt = typeof resumeBody.attempt === 'number' && Number.isFinite(resumeBody.attempt) && resumeBody.attempt > 0
+    ? Math.floor(resumeBody.attempt)
+    : 0
+  const chargeKey = taskChargeKey(taskId, attempt)
 
   const taskRes = await p.query<{ mastra_run_id: string | null; tenant_id: string; agent_id: string | null }>(
     `SELECT mastra_run_id, tenant_id, agent_id FROM agent_tasks WHERE id = $1 LIMIT 1`,
@@ -185,7 +210,7 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     console.error(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} resume error:`, message)
     await postTaskComment(taskId, `❌ Resume failed: ${message}`, agentId ?? 'system')
     await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
-    await refundTask({ tenantId, taskId })
+    await refundTask({ tenantId, taskId, chargeKey })
     return c.json({ error: message }, 500)
   }
 
@@ -223,7 +248,7 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
       const settleModel = settleModelSelection?.model ?? DEFAULT_TASK_MODEL
       await settleTask({
         tenantId, taskId, agentId: agentId ?? 'system', model: settleModel,
-        inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
+        inputTokens: totalInputTokens, outputTokens: totalOutputTokens, chargeKey,
       })
     })()
   } else {
@@ -234,7 +259,7 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     }
     await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId ?? 'system')
     await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
-    await refundTask({ tenantId, taskId })
+    await refundTask({ tenantId, taskId, chargeKey })
     return c.json({ error: message }, 500)
   }
 

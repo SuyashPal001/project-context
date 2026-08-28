@@ -112,7 +112,12 @@ export async function handleClarifyTask(c: Context<AppEnv>) {
 
     const numbered = questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
     await db.update(agentTasks).set({ status: 'blocked', blockedReason: `Agent needs clarification:\n${numbered}`, updatedAt: new Date() }).where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)));
-    await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId, eventType: 'clarification_requested', payload: { questions } });
+    // phase: 'execution' — this clarification interrupted an already-charged
+    // run (onTaskComment refunds the estimate right before calling this
+    // endpoint), so it DOES need to bump the credit charge-attempt counter
+    // (see taskChargeKey() in apps/agent-orchestrator/src/credits.ts and its
+    // two callers' attempt count queries, which filter ON this phase).
+    await db.insert(taskEvents).values({ taskId, tenantId, actorType: 'agent', actorId, eventType: 'clarification_requested', payload: { questions, phase: 'execution' } });
     db.insert(auditLog).values({ tenantId, actorId, actorType: 'agent', action: 'task_clarification_requested', resource: 'agent_task', resourceId: taskId, metadata: { questions }, traceId: c.req.header('x-trace-id') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
     await fireNotification(process.env.SQS_PROCESSING_QUEUE_URL, tenantId, 'task.needs_clarification', actorId, task.createdBy, task.id, task.title);
 

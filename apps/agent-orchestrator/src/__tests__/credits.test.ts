@@ -179,6 +179,30 @@ describe('settleAmount', () => {
   });
 });
 
+// Direct unit test of the real function — both tasks-execute-attempt-key.test.ts
+// and tasks-resume-attempt-key.test.ts re-implement this inside their own
+// vi.mock('../credits.js'), so mutating the real taskChargeKey() breaks
+// nothing in either of those suites. This is the only test exercising the
+// actual implementation.
+describe('taskChargeKey', () => {
+  it('keeps the exact original unsuffixed key at attempt 0', async () => {
+    const { taskChargeKey } = await import('../credits.js');
+    expect(taskChargeKey('task-1', 0)).toBe('task:task-1');
+  });
+
+  it('suffixes with the attempt number for attempt >= 1', async () => {
+    const { taskChargeKey } = await import('../credits.js');
+    expect(taskChargeKey('task-1', 1)).toBe('task:task-1:attempt:1');
+    expect(taskChargeKey('task-1', 2)).toBe('task:task-1:attempt:2');
+  });
+
+  it('produces a different key for every distinct attempt on the same taskId', async () => {
+    const { taskChargeKey } = await import('../credits.js');
+    const keys = [0, 1, 2, 3].map(attempt => taskChargeKey('task-1', attempt));
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
 describe('settleTask', () => {
   const baseArgs = {
     tenantId: 'tenant-1', taskId: 'task-1', agentId: 'agent-1', model: 'gemini-2.5-flash',

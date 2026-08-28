@@ -180,11 +180,19 @@ begin
       -- credit_grants/credit_ledger during one of the inserts/updates in the
       -- loop, would land here too. Without this guard that would be
       -- silently reported as insufficient = true and surface as a 402,
-      -- masking a real bug as a billing message. v_remaining > 0 is exactly
-      -- the condition the shortfall raise itself checked immediately before
-      -- raising, and nothing between that check and here can change it, so
-      -- it reliably distinguishes "this is our own shortfall" from
-      -- "something else raised P0001".
+      -- masking a real bug as a billing message.
+      --
+      -- `v_remaining > 0` only reliably distinguishes the two in the narrow
+      -- POST-LOOP region: it is exactly the condition the shortfall raise
+      -- itself checks immediately before raising (lines above), and nothing
+      -- between that check and here can change it. It does NOT distinguish
+      -- a P0001 raised from INSIDE the loop (a trigger firing on one of the
+      -- per-grant inserts/updates a few lines up) - v_remaining is still >
+      -- 0 for most of that loop's iterations (it only reaches 0 once the
+      -- request is fully drained), so an in-loop raise would still be
+      -- misreported as a shortfall by this guard. Covering that case would
+      -- need a distinct marker set only by the shortfall raise itself, not
+      -- attempted here.
       if v_remaining > 0 then
         -- Rolls back to the implicit savepoint at this block's `begin`:
         -- every credit_grants update and credit_ledger debit row inserted

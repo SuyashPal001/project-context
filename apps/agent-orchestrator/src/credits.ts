@@ -167,11 +167,20 @@ export const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
  * product flow, not an edge case, so that gap made every clarified task run
  * for free.
  *
- * `attempt` is the number of `clarification_requested` events already
- * recorded for this task by the time this run starts (computed in
- * products/agent-platform/packages/api/workers/taskWorker.execution.ts,
- * where the task-events table lives) — 0 for a first run, 1 after one
- * clarify round, and so on.
+ * `attempt` is the number of EXECUTION-phase clarification rounds already
+ * completed for this task by the time this run starts — i.e. ones that
+ * interrupted an already-charged run and triggered a refund (onTaskComment
+ * in tasks.execution.ts). It is NOT a count of every `clarification_requested`
+ * event: a PLANNING-phase clarification (raised before this task has ever
+ * been charged — taskWorker.planning.ts, tagged `phase: 'planning'` at
+ * insert) does not bump it, because the run that eventually executes is
+ * still genuinely the first charged attempt. Computed in
+ * products/agent-platform/packages/api/workers/taskWorker.execution.ts (for
+ * a fresh execution) and .../routes/tasks.approval.ts's handleWorkflowApprove
+ * (for a resume after a suspended workflow run), both filtering
+ * `clarification_requested` events on `payload->>'phase' = 'execution'` —
+ * where the task-events table lives — 0 for a first run, 1 after one
+ * execution-phase clarify round, and so on.
  */
 export function taskChargeKey(taskId: string, attempt: number): string {
   return attempt > 0 ? `task:${taskId}:attempt:${attempt}` : `task:${taskId}`

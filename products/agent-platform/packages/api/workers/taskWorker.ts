@@ -23,7 +23,11 @@ export const handler: SQSHandler = async (event) => {
                 message.feedbackHistoryMap as Record<string, Array<{ round: number; feedback: string; generalInstruction: string | null; replannedAt: string }>> | undefined,
             );
         } else if (type === 'execute_task') {
-            await handleExecution(taskId, traceId);
+            // `attempt` is computed once by the publisher (tasks.approval.ts's
+            // handlePlanApprove) at enqueue time and carried in the message so
+            // an SQS redelivery of this exact message replays the SAME attempt
+            // rather than recomputing a higher one — see the comment there.
+            await handleExecution(taskId, traceId, message.attempt as number | undefined);
         }
     }
 };

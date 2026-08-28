@@ -1,11 +1,11 @@
 import { agentTasks, taskSteps, taskEvents, agents } from '@serverless-saas/agent-schema';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, and, asc, sql } from 'drizzle-orm';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { getCacheClient } from '@serverless-saas/cache';
 import { db, AGENT_ORCHESTRATOR_URL, INTERNAL_SERVICE_KEY, sanitizeTaskInput, makeLog, extractAttachments } from './taskWorker.utils';
 import { startTaskHeartbeat, clearTaskHeartbeat } from '../lib/task-heartbeat';
 
-export async function handleExecution(taskId: string, traceId: string) {
+export async function handleExecution(taskId: string, traceId: string, attemptOverride?: number) {
     const log = makeLog(traceId, taskId);
     const task = await db.query.agentTasks.findFirst({ where: eq(agentTasks.id, taskId) });
     if (!task) throw new Error(`Task not found: ${taskId}`);
@@ -18,12 +18,32 @@ export async function handleExecution(taskId: string, traceId: string) {
     // taskChargeKey()), or the resumed run's chargeTaskEstimate call replays
     // the ORIGINAL (already-refunded-by-onTaskComment) debit under the
     // unsuffixed task:{taskId} key instead of actually charging. `attempt` is
-    // the number of clarification rounds already completed for this task —
-    // 0 for a task that was never clarified, so this execution keeps the
-    // exact original key and existing behavior for that common case.
-    const clarificationRounds = await db.select({ id: taskEvents.id }).from(taskEvents)
-        .where(and(eq(taskEvents.taskId, taskId), eq(taskEvents.eventType, 'clarification_requested')));
-    const attempt = clarificationRounds.length;
+    // the number of EXECUTION-phase clarification rounds already completed
+    // for this task — i.e. ones that interrupted an already-charged run and
+    // triggered a refund (onTaskComment, tagged phase: 'execution' at
+    // insert). A PLANNING-phase clarification (taskWorker.planning.ts, tagged
+    // phase: 'planning') happens before this task has ever been charged, so
+    // it must NOT bump this counter — the run that eventually executes is
+    // still genuinely the first charged attempt. 0 for a task that was never
+    // clarified mid-execution — the common case — keeps the exact original
+    // key.
+    //
+    // `attemptOverride` is supplied by the publisher (tasks.approval.ts's
+    // handlePlanApprove) at enqueue time, computed ONCE there and carried in
+    // the SQS message body, precisely so an SQS redelivery of this exact
+    // message (the fetch below can run up to 290s against a Lambda timeout
+    // around 300s, so redelivery is plausible) replays the SAME attempt
+    // rather than recomputing a higher one if a clarification landed on this
+    // task in the gap between deliveries — which would otherwise charge the
+    // retry under a fresh key: a real double charge on a duplicate delivery.
+    // The live query below is kept only as a fallback for a message enqueued
+    // before this field existed.
+    const attempt = attemptOverride ?? (await db.select({ id: taskEvents.id }).from(taskEvents)
+        .where(and(
+            eq(taskEvents.taskId, taskId),
+            eq(taskEvents.eventType, 'clarification_requested'),
+            sql`${taskEvents.payload}->>'phase' = 'execution'`,
+        ))).length;
     const pendingSteps = steps.filter((s: { status: string }) => s.status === 'pending');
 
     if (pendingSteps.length === 0 && steps.every((s: { status: string }) => s.status === 'done')) {

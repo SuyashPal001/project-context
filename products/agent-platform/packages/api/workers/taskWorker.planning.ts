@@ -61,7 +61,11 @@ export async function handlePlanning(
             const questions = body.questions ?? [];
             const reason = `Agent needs clarification:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
             await db.update(agentTasks).set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() }).where(eq(agentTasks.id, task.id));
-            await db.insert(taskEvents).values({ taskId: task.id, tenantId: task.tenantId, actorType: 'agent', actorId: task.agentId ?? 'system', eventType: 'clarification_requested', payload: { questions } });
+            // phase: 'planning' — no charge has happened yet for this run (charging
+            // starts at execute_task/handleExecution), so this clarification must NOT
+            // bump the credit charge-attempt counter (see handleExecution's and
+            // handleWorkflowApprove's attempt count queries, which filter this out).
+            await db.insert(taskEvents).values({ taskId: task.id, tenantId: task.tenantId, actorType: 'agent', actorId: task.agentId ?? 'system', eventType: 'clarification_requested', payload: { questions, phase: 'planning' } });
             await pushWebSocketEvent(task.tenantId, { type: 'task.status.changed', taskId: task.id, status: 'blocked' });
             return;
         }

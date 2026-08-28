@@ -78,9 +78,30 @@ export async function handlePlanApprove(c: Context<AppEnv>) {
     });
     db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'task_plan_approved', resource: 'agent_task', resourceId: taskId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
+    // Computed ONCE here at enqueue time, not inside handleExecution on
+    // every delivery: the execution fetch in taskWorker.execution.ts can run
+    // up to 290s against a Lambda timeout around 300s, so an SQS redelivery
+    // of this exact execute_task message is plausible. If attempt were
+    // recomputed per delivery instead, a clarification recorded on this task
+    // between two deliveries of the SAME message would make the redelivery
+    // compute a HIGHER attempt and charge a genuinely new key — a real
+    // double charge on a duplicate delivery, not the free replay the shared
+    // key gave before per-attempt keys existed. Same phase-scoped query as
+    // handleWorkflowApprove's (tasks.approval.ts) and the fallback inside
+    // handleExecution (taskWorker.execution.ts) — see taskChargeKey() in
+    // apps/agent-orchestrator/src/credits.ts for what "EXECUTION-phase"
+    // means here.
+    const clarificationRounds = await db.select({ id: taskEvents.id }).from(taskEvents)
+        .where(and(
+            eq(taskEvents.taskId, taskId),
+            eq(taskEvents.eventType, 'clarification_requested'),
+            sql`${taskEvents.payload}->>'phase' = 'execution'`,
+        ));
+    const attempt = clarificationRounds.length;
+
     console.log('[SQS] Publishing execute_task for task', taskId);
     try {
-        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId, traceId: randomUUID() });
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId, traceId: randomUUID(), attempt });
     } catch (sqsErr) {
         console.error('[SQS] execute_task publish failed for task', taskId, sqsErr);
         await db.update(agentTasks)
@@ -195,6 +216,26 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
     const relayUrl = process.env.AGENT_ORCHESTRATOR_URL;
     if (!relayUrl) return c.json({ error: 'Relay not configured' }, 503);
 
+    // The run being resumed was charged under taskChargeKey(taskId, attempt)
+    // (apps/agent-orchestrator/src/credits.ts) — attempt being the number of
+    // EXECUTION-phase clarification rounds completed for this task (ones
+    // that interrupted an already-charged run and triggered a refund; a
+    // PLANNING-phase clarification happens before any charge and must not
+    // count — see taskWorker.planning.ts / internal/tasks.lifecycle.ts's
+    // phase tags on the clarification_requested event). Resume's
+    // settle/refund must key off the SAME attempt or they silently miss the
+    // actual charge (see the relay's /api/tasks/:taskId/resume handler for
+    // the two failure shapes this produces). Identical query, same reasoning,
+    // as taskWorker.execution.ts's handleExecution, the other caller that
+    // charges/settles a task run.
+    const clarificationRounds = await db.select({ id: taskEvents.id }).from(taskEvents)
+        .where(and(
+            eq(taskEvents.taskId, taskId),
+            eq(taskEvents.eventType, 'clarification_requested'),
+            sql`${taskEvents.payload}->>'phase' = 'execution'`,
+        ));
+    const attempt = clarificationRounds.length;
+
     const res = await fetch(`${relayUrl}/api/tasks/${taskId}/resume`, {
         method: 'POST',
         headers: {
@@ -202,7 +243,7 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
             'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
             'x-trace-id': c.get('traceId') ?? randomUUID(),
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ attempt }),
     });
 
     if (!res.ok) {
