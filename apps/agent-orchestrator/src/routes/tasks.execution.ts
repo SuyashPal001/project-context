@@ -170,6 +170,15 @@ export async function runMastraTaskSteps(
       await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
       recordUsage({ tenantId, actorId: agentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
       void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+    } else {
+      // A workflow returning `status !== 'success'` (the ordinary failure
+      // shape) sets earlyTermination but throws nothing, so it never reaches
+      // either catch block below. Without this, the estimate charged at :42
+      // stands forever for work that never landed. refundTask is safe to
+      // call unconditionally: it no-ops for unlimited tenants, no-ops if a
+      // settle already ran for this task, and no-ops if net >= 0 (nothing
+      // was ever charged) — see tasks.workflow.ts for the same pattern.
+      await refundTask({ tenantId, taskId })
     }
     return { planResult: docPlanResult }
   }
@@ -237,6 +246,13 @@ export async function runMastraTaskSteps(
     await postTaskEval({ taskId, tenantId, taskTitle, taskDescription, finalOutput: stepOutputs.join('\n\n') || taskTitle })
     recordUsage({ tenantId, actorId: agentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
     void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+  } else {
+    // Reachable from onStepFail, onTaskComment, or the workflow's own
+    // non-success result branch above — none of those throw, so none reach
+    // the catch block's refundTask call. Without this, the estimate charged
+    // at :42 stands forever for work that never landed. Safe unconditionally
+    // — see refundTask's settled-row and net>=0n guards.
+    await refundTask({ tenantId, taskId })
   }
   return {}
 }
