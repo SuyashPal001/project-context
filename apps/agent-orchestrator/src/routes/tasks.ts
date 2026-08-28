@@ -4,17 +4,13 @@ import { INTERNAL_SERVICE_KEY } from '../types.js'
 import { createPlanFromPrd, type PrdData } from '../services/planService.js'
 import type { TaskStep, WorkflowStep } from '../types.js'
 import { fetchAgentModelSelection, getPool, recordUsage } from '../usage.js'
-import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, refundTask, settleTask } from '../credits.js'
+import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
 import { filterPII } from '../pii-filter.js'
 import { runMastraTaskSteps } from './tasks.execution.js'
 import type { PlanResult } from './tasks.execution.js'
 import { runMastraWorkflowSteps } from './tasks.workflow.js'
 import { callInternalTaskApi, postTaskComment } from './tasks.helpers.js'
 import { isInternalServiceKey } from '../service-key.js'
-
-// Default model used for the up-front charge when an agent has no explicit
-// model selection row yet — matches the '*' wildcard credit_rates subject.
-const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
 
 // Re-export for documents.ts and any other consumers
 export { fetchTaskComments } from './tasks.helpers.js'
@@ -205,18 +201,17 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
     recordUsage({ tenantId, actorId: agentId ?? 'system', inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
     // Fire-and-forget, like recordUsage above — settleTask swallows its own
-    // errors and never rejects. Recompute the same estimate that was charged
-    // at submit time from the task's total step count (all steps, not just
-    // the running ones this resume call fetched) so the delta is meaningful.
+    // errors and never rejects. settleTask reads the ORIGINAL charged amount
+    // back from credit_ledger itself (this resume call happens in a
+    // different request than the one that charged, possibly minutes later,
+    // so nothing here may be recomputed as a stand-in for what was charged).
+    // `model` is passed only as settleTask's unmetered-charge fallback.
     void (async () => {
-      const totalStepsRes = await p.query<{ count: string }>(`SELECT count(*)::int AS count FROM task_steps WHERE task_id = $1`, [taskId])
-      const totalStepCount = totalStepsRes.rows[0]?.count ? Number(totalStepsRes.rows[0].count) : runningSteps.length
       const settleModelSelection = await fetchAgentModelSelection(agentId ?? '')
       const settleModel = settleModelSelection?.model ?? DEFAULT_TASK_MODEL
-      const settleEstimateMicro = await estimateTaskMicro(totalStepCount, settleModel)
       await settleTask({
         tenantId, taskId, agentId: agentId ?? 'system', model: settleModel,
-        inputTokens: totalInputTokens, outputTokens: totalOutputTokens, estimateMicro: settleEstimateMicro,
+        inputTokens: totalInputTokens, outputTokens: totalOutputTokens,
       })
     })()
   } else {

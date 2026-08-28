@@ -4,14 +4,10 @@ import {
   fetchAgentSkill, fetchAgentModelSelection,
   fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage,
 } from '../usage.js'
-import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, settleTask, refundTask } from '../credits.js'
+import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, settleTask, refundTask, DEFAULT_TASK_MODEL } from '../credits.js'
 import { taskExecutionWorkflow, documentWorkflow } from '../mastra/index.js'
 import type { WorkflowContext } from '../mastra/index.js'
 import { callInternalTaskApi, postTaskEval, logToolCall, postTaskComment } from './tasks.helpers.js'
-
-// Default model used for the up-front charge/settle when an agent has no
-// explicit model selection row yet — matches the '*' wildcard credit_rates subject.
-const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
 
 export type PlanResult = {
   summary: string
@@ -173,7 +169,7 @@ export async function runMastraTaskSteps(
       await postTaskComment(taskId, `✅ All steps completed.`, agentId)
       await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
       recordUsage({ tenantId, actorId: agentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
-      void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, estimateMicro })
+      void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
     }
     return { planResult: docPlanResult }
   }
@@ -240,7 +236,7 @@ export async function runMastraTaskSteps(
     await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
     await postTaskEval({ taskId, tenantId, taskTitle, taskDescription, finalOutput: stepOutputs.join('\n\n') || taskTitle })
     recordUsage({ tenantId, actorId: agentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
-    void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, estimateMicro })
+    void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
   }
   return {}
 }

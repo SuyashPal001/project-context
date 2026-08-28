@@ -1,6 +1,7 @@
 import { INTERNAL_SERVICE_KEY, INTERNAL_API_URL } from '../types.js'
 import type { WorkflowStep } from '../types.js'
 import { fetchAgentSkill, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from '../usage.js'
+import { refundTask } from '../credits.js'
 import { runMastraWorkflow } from '../mastra/index.js'
 import type { WorkflowContext } from '../mastra/index.js'
 
@@ -30,6 +31,12 @@ export async function runMastraWorkflowSteps(
 
   const wfStepsCompleted: unknown[] = []
   const wfToolsCalled: unknown[] = []
+  // chargeTaskEstimate at the /api/workflows/execute route (keyed by
+  // workflowRunId) has no separate settle step for workflows (no token
+  // totals are tracked here the way runMastraTaskSteps tracks them) — a
+  // failed step is this flow's only terminal-failure signal, so it is also
+  // the only place the charge can be refunded.
+  let hadFailure = false
 
   const ctx: WorkflowContext = {
     taskId: workflowRunId, tenantId, agentId, agentSlug: agentId, instructions,
@@ -56,6 +63,7 @@ export async function runMastraWorkflowSteps(
       console.log(JSON.stringify({ level: 'info', msg: 'workflow step complete', traceId, workflowRunId, stepId, status: output.status, ts: Date.now() }))
     },
     onStepFail: async (stepId, error) => {
+      hadFailure = true
       wfStepsCompleted.push({ stepId, status: 'failed', error, completedAt: new Date().toISOString() })
       await fetch(`${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`, {
         method: 'POST',
@@ -77,6 +85,16 @@ export async function runMastraWorkflowSteps(
   }
 
   await runMastraWorkflow(ctx)
+
+  if (hadFailure) {
+    // onStepFail already posted the 'failed' status update per-step; refund
+    // the estimate charged at submit time so a failed workflow run doesn't
+    // leave the tenant charged for work that didn't land. Skip the
+    // 'completed' update below — it would otherwise overwrite the 'failed'
+    // status onStepFail already reported.
+    await refundTask({ tenantId, taskId: workflowRunId })
+    return
+  }
 
   await fetch(`${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`, {
     method: 'POST',

@@ -1,5 +1,6 @@
 import type pg from 'pg'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
+import type { PricingSchema } from '@serverless-saas/credits'
 import { getPool } from './usage.js'
 
 export interface CreditBalanceResult {
@@ -146,6 +147,10 @@ export async function debitChatTurn(args: DebitChatTurnArgs, deps: DebitChatTurn
 /** Tokens assumed per workflow step when no better estimate exists. Tune from token_costs. */
 const AVERAGE_STEP_TOKENS = { input: 4000, output: 1000 }
 
+/** Default model used for the up-front charge/settle when an agent has no
+ * explicit model selection row yet — matches the '*' wildcard credit_rates subject. */
+export const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
+
 export interface EstimateTaskMicroDeps {
   resolveRate?: typeof resolveRate
 }
@@ -249,11 +254,14 @@ export interface SettleTaskArgs {
   tenantId: string
   taskId: string
   agentId: string
+  /** Fallback model, used ONLY when the original charge's debit rows carry no
+   * rate_id (an unmetered charge — no active rate existed at charge time). */
   model: string
   inputTokens: number
   outputTokens: number
-  estimateMicro: bigint
-  /** Idempotency key. Defaults to `task:{taskId}:settle`; Task 10 overrides this. */
+  /** Idempotency key of the ORIGINAL charge to settle against. Defaults to `task:{taskId}`; Task 10 (documents) overrides this. */
+  chargeKey?: string
+  /** Idempotency key for the settle write itself. Defaults to `task:{taskId}:settle`; Task 10 overrides this. */
   key?: string
   jobType?: string
 }
@@ -262,31 +270,79 @@ export interface SettleTaskDeps {
   isUnlimited?: typeof isUnlimited
   resolveRate?: typeof resolveRate
   spendCredits?: typeof spendCredits
+  pool?: pg.Pool
 }
 
 /**
  * Reconciles the estimate charged by chargeTaskEstimate against actual token
- * usage once the run ends. Fire-and-forget like debitChatTurn: never throws
- * out — any failure is logged and swallowed, because by the time this runs
- * the task has already been reported complete and a credits hiccup here must
- * not undo that. Skips the round trip entirely when settleAmount is 0n.
- * Unlimited tenants skip entirely (they were never charged an estimate).
+ * usage once the run ends.
+ *
+ * The baseline for the delta is READ BACK from credit_ledger — never
+ * recomputed from "current" inputs (step count, model selection) — because
+ * this function can run in a different request than the one that charged
+ * (e.g. after an approval resume), possibly minutes later, by which point
+ * the step count or the agent's model may have changed. Recomputing would
+ * silently settle against a number nobody was ever actually charged.
+ * Summed and rate-sourced from the tenant-scoped `task:{taskId}` debit
+ * row(s) (same scoping discipline as refundTask, for the same migration-0071
+ * reason) — the rate_id/rate_version on those rows is the rate that priced
+ * the ORIGINAL charge, so actual usage is settled at that historical rate,
+ * not today's active rate. `args.model` is only a fallback, used if the
+ * original charge landed with no rate at all (rateId null — e.g. an
+ * unmetered subject at charge time).
+ *
+ * Fire-and-forget like debitChatTurn: never throws out — any failure is
+ * logged and swallowed, because by the time this runs the task has already
+ * been reported complete and a credits hiccup here must not undo that.
+ * Skips the round trip entirely when settleAmount is 0n, or when no debit
+ * row exists at all (nothing was ever charged — unlimited tenant, or a
+ * charge that never landed).
  */
 export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}): Promise<void> {
   const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
   const resolveRateFn = deps.resolveRate ?? resolveRate
   const spendCreditsFn = deps.spendCredits ?? spendCredits
+  const pool = deps.pool ?? getPool()
   try {
     if (await isUnlimitedFn(args.tenantId)) return
 
-    const rate = await resolveRateFn('llm_tokens', rateSubjectFor(args.model))
-    if (!rate) return
+    const chargeKey = args.chargeKey ?? `task:${args.taskId}`
+    const chargeRows = await pool.query<{
+      amount_micro: string
+      rate_id: string | null
+      rate_version: number | null
+      pricing_schema: PricingSchema | null
+    }>(
+      `select cl.amount_micro, cl.rate_id, cl.rate_version, cr.pricing_schema
+         from credit_ledger cl
+         left join credit_rates cr on cr.id = cl.rate_id
+        where cl.tenant_id = $1 and cl.idempotency_key = $2 and cl.kind = 'debit'`,
+      [args.tenantId, chargeKey],
+    )
+    if (chargeRows.rows.length === 0) return // nothing was ever charged — nothing to settle
 
-    const actualMicro = costMicro(rate.schema, {
+    const estimateMicro = -chargeRows.rows.reduce((sum, row) => sum + BigInt(row.amount_micro), 0n)
+    const priced = chargeRows.rows.find(row => row.pricing_schema != null)
+    let schema = priced?.pricing_schema ?? null
+    let rateId = priced?.rate_id ?? null
+    let rateVersion = priced?.rate_version ?? null
+
+    if (!schema) {
+      // The original charge landed with no rate (unmetered at charge time) —
+      // fall back to today's active rate for args.model so actual usage is
+      // still priced somehow, rather than settling blind.
+      const fallback = await resolveRateFn('llm_tokens', rateSubjectFor(args.model))
+      if (!fallback) return
+      schema = fallback.schema
+      rateId = fallback.id
+      rateVersion = fallback.version
+    }
+
+    const actualMicro = costMicro(schema, {
       inputTokens: args.inputTokens,
       outputTokens: args.outputTokens,
     })
-    const delta = settleAmount({ estimateMicro: args.estimateMicro, actualMicro })
+    const delta = settleAmount({ estimateMicro, actualMicro })
     if (delta === 0n) return
 
     await spendCreditsFn({
@@ -296,8 +352,8 @@ export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}
       kind: 'settle',
       actorId: args.agentId,
       actorType: 'agent',
-      rateId: rate.id,
-      rateVersion: rate.version,
+      rateId,
+      rateVersion,
       jobId: args.taskId,
       jobType: args.jobType ?? 'agent_task',
       grantType: delta > 0n ? 'refund' : null,
@@ -339,6 +395,7 @@ export async function refundTask(args: RefundTaskArgs, deps: RefundTaskDeps = {}
   const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
   const spendCreditsFn = deps.spendCredits ?? spendCredits
   const pool = deps.pool ?? getPool()
+  const refundKey = `task:${args.taskId}:refund`
   try {
     if (await isUnlimitedFn(args.tenantId)) return
 
@@ -358,16 +415,34 @@ export async function refundTask(args: RefundTaskArgs, deps: RefundTaskDeps = {}
     const net = BigInt(res.rows[0]?.total ?? '0') // negative if the tenant was charged; 0 if never charged
     if (net >= 0n) return
 
-    await spendCreditsFn({
-      tenantId: args.tenantId,
-      amountMicro: -net,
-      key: `task:${args.taskId}:refund`,
-      kind: 'refund',
-      grantType: 'refund',
-      jobId: args.taskId,
-      jobType: 'agent_task',
-      reason: 'task failed',
-    })
+    // A failure past this point means real money owed to the tenant gets
+    // stuck — unlike debitChatTurn's fire-and-forget (a dropped debit costs
+    // us revenue we chose not to chase), a dropped refund is money WE owe.
+    // The swallow below is intentional (a throwing refund must not break the
+    // failure path it runs on), but it must be loud and replay-ready: the
+    // refund key is idempotent per tenant, so a human can safely replay this
+    // exact spend_credits() call by hand once they see the log line.
+    try {
+      await spendCreditsFn({
+        tenantId: args.tenantId,
+        amountMicro: -net,
+        key: refundKey,
+        kind: 'refund',
+        grantType: 'refund',
+        jobId: args.taskId,
+        jobType: 'agent_task',
+        reason: 'task failed',
+      })
+    } catch (spendErr) {
+      console.error(
+        `[credits] UNREFUNDED CHARGE: tenantId=${args.tenantId} taskId=${args.taskId} ` +
+        `key=${refundKey} amountMicro=${-net} — refund write failed and was swallowed; ` +
+        `tenant is still down ${-net} micro-credits for a task that did not complete. ` +
+        `Replay by hand: spend_credits('${args.tenantId}', ${-net}, '${refundKey}', 'refund', ...) ` +
+        `(idempotent per tenant on this key, safe to retry). Cause:`,
+        (spendErr as Error).message,
+      )
+    }
   } catch (err) {
     console.error(`[credits] refundTask failed tenantId=${args.tenantId} taskId=${args.taskId}:`, (err as Error).message)
   }

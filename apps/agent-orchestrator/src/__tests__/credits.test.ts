@@ -182,37 +182,75 @@ describe('settleAmount', () => {
 describe('settleTask', () => {
   const baseArgs = {
     tenantId: 'tenant-1', taskId: 'task-1', agentId: 'agent-1', model: 'gemini-2.5-flash',
-    inputTokens: 4000, outputTokens: 1000, estimateMicro: 100_000n,
+    inputTokens: 4000, outputTokens: 1000,
   };
-  const rate = { id: 'rate-1', version: 1, schema: { per_million_tokens_micro: { input: 15_000_000, output: 60_000_000 } } };
-  // costMicro(rate, {4000, 1000}) = (4000*15e6 + 1000*60e6)/1e6 = 120_000
+  const schema = { per_million_tokens_micro: { input: 15_000_000, output: 60_000_000 } };
+  const rate = { id: 'rate-1', version: 1, schema };
+  // costMicro(schema, {4000, 1000}) = (4000*15e6 + 1000*60e6)/1e6 = 120_000
+  const chargeRow = (amountMicro: number) => ({
+    rows: [{ amount_micro: String(amountMicro), rate_id: 'rate-1', rate_version: 1, pricing_schema: schema }],
+  });
 
-  it('never calls spendCredits for an unlimited tenant', async () => {
+  it('never touches the pool or spendCredits for an unlimited tenant', async () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(true);
     const resolveRate = vi.fn();
     const spendCredits = vi.fn();
-    await settleTask(baseArgs, { isUnlimited, resolveRate, spendCredits });
-    expect(resolveRate).not.toHaveBeenCalled();
+    const pool = { query: vi.fn() };
+    await settleTask(baseArgs, { isUnlimited, resolveRate, spendCredits, pool: pool as never });
+    expect(pool.query).not.toHaveBeenCalled();
     expect(spendCredits).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when no debit row exists for the task (nothing was ever charged)', async () => {
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const spendCredits = vi.fn();
+    const pool = { query: vi.fn().mockResolvedValue({ rows: [] }) };
+    await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
+    expect(spendCredits).not.toHaveBeenCalled();
+  });
+
+  it('reads the ORIGINAL charged amount and rate back from the ledger — never from caller-supplied inputs', async () => {
+    // This is the regression test for the resume-settle bug: settleTask no
+    // longer accepts an `estimateMicro` argument at all, so there is no
+    // channel left for a "recomputed from current state" number to leak in.
+    // The estimate baseline and the rate used to price actual usage both
+    // come from the debit ledger row this test hands back — a mock
+    // `resolveRate` that would be called if settleTask fell back to
+    // resolving TODAY's active rate is asserted as never called.
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const resolveRate = vi.fn();
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-240_000)) };
+    // 240_000 was the amount actually charged (e.g. for a since-changed step
+    // count); actual usage here prices to 120_000 -> delta = 240_000 - 120_000.
+    await settleTask(baseArgs, { isUnlimited, resolveRate, spendCredits, pool: pool as never });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("kind = 'debit'"), ['tenant-1', 'task:task-1']);
+    expect(resolveRate).not.toHaveBeenCalled();
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.amountMicro).toBe(120_000n); // 240_000 (charged) - 120_000 (actual)
+    expect(call.rateId).toBe('rate-1');
+    expect(call.rateVersion).toBe(1);
   });
 
   it('skips the round trip entirely when the settle amount is 0n', async () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
-    const resolveRate = vi.fn().mockResolvedValue(rate);
     const spendCredits = vi.fn();
-    // estimateMicro exactly equal to actual (120_000)
-    await settleTask({ ...baseArgs, estimateMicro: 120_000n }, { isUnlimited, resolveRate, spendCredits });
+    // Charged 120_000; actual also prices to 120_000 -> delta 0n.
+    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-120_000)) };
+    await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
     expect(spendCredits).not.toHaveBeenCalled();
   });
 
-  it('settles the shortfall as a negative amount with kind settle when actual exceeds estimate', async () => {
+  it('settles the shortfall as a negative amount with kind settle when actual exceeds the charged amount', async () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
-    const resolveRate = vi.fn().mockResolvedValue(rate);
     const spendCredits = vi.fn().mockResolvedValue(0n);
-    await settleTask({ ...baseArgs, estimateMicro: 50_000n }, { isUnlimited, resolveRate, spendCredits });
+    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-50_000)) };
+    await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
     expect(spendCredits).toHaveBeenCalledTimes(1);
     const call = spendCredits.mock.calls[0][0];
     expect(call.key).toBe('task:task-1:settle');
@@ -221,23 +259,63 @@ describe('settleTask', () => {
     expect(call.grantType).toBeNull();
   });
 
-  it('credits back the remainder with grantType refund when actual is under estimate', async () => {
+  it('credits back the remainder with grantType refund when actual is under the charged amount', async () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
-    const resolveRate = vi.fn().mockResolvedValue(rate);
     const spendCredits = vi.fn().mockResolvedValue(0n);
-    await settleTask({ ...baseArgs, estimateMicro: 200_000n }, { isUnlimited, resolveRate, spendCredits });
+    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-200_000)) };
+    await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
     const call = spendCredits.mock.calls[0][0];
     expect(call.amountMicro).toBe(80_000n); // 200_000 - 120_000
     expect(call.grantType).toBe('refund');
   });
 
-  it('returns quietly (never throws) when spendCredits rejects', async () => {
+  it('sums multiple debit rows under the same key (one chargeTaskEstimate call can draw from several FIFO grants)', async () => {
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    const pool = { query: vi.fn().mockResolvedValueOnce({
+      rows: [
+        { amount_micro: '-30000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema },
+        { amount_micro: '-170000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema },
+      ],
+    }) };
+    await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.amountMicro).toBe(80_000n); // (30_000+170_000) - 120_000
+  });
+
+  it('falls back to resolving today\'s active rate when the original charge landed with no rate', async () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const resolveRate = vi.fn().mockResolvedValue(rate);
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    // Original charge landed unmetered: 0 micro, no rate_id, no pricing_schema.
+    const pool = { query: vi.fn().mockResolvedValueOnce({
+      rows: [{ amount_micro: '0', rate_id: null, rate_version: null, pricing_schema: null }],
+    }) };
+    await settleTask(baseArgs, { isUnlimited, resolveRate, spendCredits, pool: pool as never });
+    expect(resolveRate).toHaveBeenCalledWith('llm_tokens', 'gemini-2.5-flash');
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.amountMicro).toBe(-120_000n); // 0 (charged) - 120_000 (actual, priced via fallback rate)
+    expect(call.rateId).toBe('rate-1');
+  });
+
+  it('returns quietly (never throws) when spendCredits rejects', async () => {
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
     const spendCredits = vi.fn().mockRejectedValue(new Error('db down'));
-    await expect(settleTask({ ...baseArgs, estimateMicro: 200_000n }, { isUnlimited, resolveRate, spendCredits }))
+    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-200_000)) };
+    await expect(settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never }))
+      .resolves.toBeUndefined();
+  });
+
+  it('returns quietly (never throws) on a pool error', async () => {
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const spendCredits = vi.fn();
+    const pool = { query: vi.fn().mockRejectedValue(new Error('connection refused')) };
+    await expect(settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never }))
       .resolves.toBeUndefined();
   });
 });
@@ -310,6 +388,36 @@ describe('refundTask', () => {
     await expect(refundTask({ tenantId: 'tenant-1', taskId: 'task-1' }, { isUnlimited, spendCredits, pool: pool as never }))
       .resolves.toBeUndefined();
   });
+
+  it('logs a loud, replay-ready UNREFUNDED CHARGE error when the refund write itself fails', async () => {
+    // A dropped debit (debitChatTurn) costs revenue we chose not to chase; a
+    // dropped refund is money we owe. The write must still be swallowed (a
+    // throwing refund must not break the failure path it runs on) but the
+    // log must carry everything a human needs to replay it by hand:
+    // tenantId, taskId, the idempotency key, and the amount owed.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { refundTask } = await import('../credits.js');
+      const isUnlimited = vi.fn().mockResolvedValue(false);
+      const pool = {
+        query: vi.fn()
+          .mockResolvedValueOnce({ rows: [{ exists: false }] })
+          .mockResolvedValueOnce({ rows: [{ total: '-100000' }] }),
+      };
+      const spendCredits = vi.fn().mockRejectedValue(new Error('connection refused'));
+      await refundTask({ tenantId: 'tenant-1', taskId: 'task-1' }, { isUnlimited, spendCredits, pool: pool as never });
+
+      const unrefundedLog = errorSpy.mock.calls.find(call => String(call[0]).includes('UNREFUNDED CHARGE'));
+      expect(unrefundedLog).toBeDefined();
+      const message = String(unrefundedLog![0]);
+      expect(message).toContain('tenant-1');
+      expect(message).toContain('task-1');
+      expect(message).toContain('task:task-1:refund');
+      expect(message).toContain('100000');
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
 
 // --- Integration: proves the refund query's tenant scoping actually holds
@@ -376,6 +484,70 @@ describe.skipIf(!TEST_DB)('refundTask (integration)', () => {
 
     const refundRowsB = await pool.query(`select 1 from credit_ledger where tenant_id = $1 and kind = 'refund'`, [TENANT_B]);
     expect(refundRowsB.rows.length).toBe(0);
+  });
+});
+
+// --- Integration: reproduces the exact scenario the resume-settle bug was
+// found in — charge happens in one request, settle happens in a LATER,
+// separate request, and something about the task (here: step count) changed
+// in between. Proves settleTask reads the amount that was actually charged
+// back out of credit_ledger rather than trusting any "current" recomputation.
+describe.skipIf(!TEST_DB)('settleTask (integration)', () => {
+  const TENANT = '00000000-0000-0000-0000-0000000000d1';
+  const TASK_ID = '00000000-0000-0000-0000-00000000ad71';
+  const MODEL = 'gemini-2.5-flash';
+
+  let pg: typeof import('pg');
+  let pool: import('pg').Pool;
+
+  beforeAll(async () => {
+    pg = (await import('pg')).default as unknown as typeof import('pg');
+    pool = new pg.Pool({ connectionString: TEST_DB });
+
+    await pool.query(`delete from credit_ledger where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from credit_grants where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from credit_accounts where tenant_id = $1`, [TENANT]);
+    await pool.query(
+      `insert into tenants (id, name, slug) values ($1, 'credits test', 'credits-test-d1') on conflict (id) do nothing`,
+      [TENANT],
+    );
+
+    const { grantCredits } = await import('@serverless-saas/credits');
+    await grantCredits({ tenantId: TENANT, amountMicro: 5_000_000n, key: 'seed:d1', grantType: 'admin' });
+  });
+
+  afterAll(async () => {
+    await pool.query(`delete from credit_ledger where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from credit_grants where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from credit_accounts where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from tenants where id = $1`, [TENANT]);
+    await pool.end();
+  });
+
+  it('settles against the amount actually charged for a 2-step estimate, not a 5-step recomputation made later', async () => {
+    const { chargeTaskEstimate, settleTask, estimateTaskMicro } = await import('../credits.js');
+
+    // Submit-time charge: task had 2 steps.
+    const estimateForTwoSteps = await estimateTaskMicro(2, MODEL);
+    const estimateForFiveSteps = await estimateTaskMicro(5, MODEL);
+    expect(estimateForFiveSteps).not.toBe(estimateForTwoSteps); // sanity: the two genuinely differ
+
+    await chargeTaskEstimate({ tenantId: TENANT, taskId: TASK_ID, agentId: TENANT, estimateMicro: estimateForTwoSteps });
+
+    // Between submit and settle (e.g. an approval resume, possibly minutes
+    // later), a step was added — task_steps now has 5 rows. A caller that
+    // recomputes the "estimate" from the CURRENT step count would get
+    // estimateForFiveSteps, not what was actually charged.
+    await settleTask({ tenantId: TENANT, taskId: TASK_ID, agentId: TENANT, model: MODEL, inputTokens: 0, outputTokens: 0 });
+
+    const settleRow = await pool.query<{ amount_micro: string }>(
+      `select amount_micro from credit_ledger where tenant_id = $1 and idempotency_key = $2`,
+      [TENANT, `task:${TASK_ID}:settle`],
+    );
+    // actual usage priced at 0 (inputTokens/outputTokens both 0) -> full estimate credited back.
+    expect(BigInt(settleRow.rows[0].amount_micro)).toBe(estimateForTwoSteps);
+    // The buggy recompute-from-current-state value must NOT appear anywhere.
+    expect(BigInt(settleRow.rows[0].amount_micro)).not.toBe(estimateForFiveSteps);
   });
 });
 
