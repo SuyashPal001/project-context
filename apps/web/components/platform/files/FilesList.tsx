@@ -47,7 +47,6 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const ingestion = useFileIngestion({ prefix, onPrefixChange });
     const selection = useFileSelection();
     const mutations = useFileMutations();
-    const filters = useFileFilters(files);
 
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -110,7 +109,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         addToChat(allFiles.filter(f => selection.selectedIds.has(f.id)), conversationId);
     };
 
-    const folderCards: FolderCard[] = useMemo(() => virtualFolders.map(folderName => {
+    const allFolderCards: FolderCard[] = useMemo(() => virtualFolders.map(folderName => {
         const folderPrefix = `${prefix}${folderName}/`;
         const folderFiles = allFiles.filter(f => f.key.startsWith(folderPrefix));
         const allDone = folderFiles.length > 0 && folderFiles.every(f => f.ingestionStatus === 'done');
@@ -126,7 +125,12 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         };
     }), [virtualFolders, allFiles, prefix, ingestion.ingestingFolders]);
 
-    const { pagedFiles, filteredFiles, totalPages, currentPage, setCurrentPage } = filters;
+    // Folders share the page budget with files, so the hook needs their count.
+    const filters = useFileFilters(files, allFolderCards.length);
+    const { pagedFiles, filteredFiles, totalPages, currentPage, setCurrentPage, folderRange } = filters;
+    const folderCards = useMemo(
+        () => allFolderCards.slice(folderRange.start, folderRange.end),
+        [allFolderCards, folderRange.start, folderRange.end]);
 
     // The lightbox arrows walk the page you are looking at, in the order it is
     // displayed — same set the table renders, so nothing scrolls past unseen.
@@ -334,7 +338,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     {totalPages > 1 && (
                         <div className="flex items-center justify-between pt-1">
                             <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
                                     <ChevronLeft className="w-4 h-4" />
                                 </Button>
                                 {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
@@ -342,11 +346,15 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                         {page}
                                     </Button>
                                 ))}
-                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}>
                                     <ChevronRight className="w-4 h-4" />
                                 </Button>
                             </div>
-                            <span className="text-xs text-muted-foreground/70">Total {filteredFiles.length} files</span>
+                            <span className="text-xs text-muted-foreground/70">
+                                {allFolderCards.length > 0
+                                    ? `Total ${allFolderCards.length} ${allFolderCards.length === 1 ? 'folder' : 'folders'}, ${filteredFiles.length} files`
+                                    : `Total ${filteredFiles.length} files`}
+                            </span>
                         </div>
                     )}
                 </div>
