@@ -1,9 +1,28 @@
 "use client";
 
+import { useMemo } from "react";
 import { Bot, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { buildAvatarSvg } from "@/components/platform/agents/avatar-builder/buildAvatarSvg";
+import { randomizeAvatarParams } from "@/components/platform/agents/avatar-builder/avatarParams";
 import type { PersonaSummary } from "./types";
 import type { PersonaAnimationState } from "./usePersonaAnimationState";
+
+// Deterministic string -> PRNG (xmur3 + mulberry32), so the same persona
+// always rolls the same generated face instead of a new one every render.
+function seededRng(seed: string): () => number {
+    let h = 1779033703 ^ seed.length;
+    for (let i = 0; i < seed.length; i++) {
+        h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+        h = (h << 13) | (h >>> 19);
+    }
+    return () => {
+        h = Math.imul(h ^ (h >>> 16), 2246822507);
+        h = Math.imul(h ^ (h >>> 13), 3266489909);
+        h ^= h >>> 16;
+        return (h >>> 0) / 4294967296;
+    };
+}
 
 interface PersonaAvatarProps {
     persona?: PersonaSummary | null;
@@ -30,6 +49,29 @@ export function PersonaAvatar({ persona, avatarUrl, state, size = 40, className,
     // icon. Falls through to the generic Icon tile until personas get a real
     // avatar field.
     const asset = avatarUrl ?? undefined;
+
+    // No uploaded image at all: for a persona, generate the same deterministic
+    // cartoon face every time (seeded off persona.id) via the avatar builder's
+    // own SVG generator — real art, not a random reroll, without needing any
+    // upload/backend field. Only falls all the way through to the bare Icon
+    // tile when there's no persona to seed from either.
+    const generatedSvg = useMemo(() => {
+        if (asset || !persona) return null;
+        return buildAvatarSvg(randomizeAvatarParams(seededRng(persona.id)));
+    }, [asset, persona]);
+
+    if (!asset && generatedSvg) {
+        return (
+            <div
+                className={cn("shrink-0 rounded-xl overflow-hidden border border-border/50 bg-secondary [&>svg]:h-full [&>svg]:w-full", className)}
+                style={{ width: size, height: size }}
+                // buildAvatarSvg only ever interpolates AvatarParams' closed enum
+                // values and hex color strings — never free text — so this is not
+                // an injection surface. See avatar-builder's design spec.
+                dangerouslySetInnerHTML={{ __html: generatedSvg }}
+            />
+        );
+    }
 
     if (!asset) {
         return (
