@@ -15,6 +15,13 @@ describe('costMicro', () => {
                      { inputTokens: 1, outputTokens: 0 })).toBe(1n);   // 0.000001 -> 1
   });
 
+  it('sums fractional components before rounding, not after', () => {
+    expect(costMicro(
+      { per_million_tokens_micro: { input: 1, output: 1 } },
+      { inputTokens: 1, outputTokens: 1 }
+    )).toBe(1n);   // 1 + 1 = 2 micro-numerator; ceil(2 / 1_000_000) = 1
+  });               // rounding per component would give ceil(1/1e6) + ceil(1/1e6) = 2n
+
   it('prices flat resources by count', () => {
     expect(costMicro({ per_message_micro: 250_000 }, { count: 2 })).toBe(500_000n);
     expect(costMicro({ per_call_micro: 0 }, { count: 7 })).toBe(0n);
