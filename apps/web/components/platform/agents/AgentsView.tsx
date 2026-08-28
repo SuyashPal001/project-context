@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -100,6 +100,25 @@ export function AgentsView() {
     });
 
     const selectedAgent = selectedPersona ? hiredAgentFor(selectedPersona.id) : undefined;
+
+    // Deep-link a persona by slug (?persona=<slug>) — the name in Explore is a
+    // real shareable URL, not just an in-memory modal toggle. Runs once the
+    // personas list has loaded so a link opened cold (Explore tab not yet
+    // fetched) still resolves.
+    useEffect(() => {
+        const slug = searchParams.get("persona");
+        if (!slug || personas.length === 0 || selectedPersona) return;
+        const match = personas.find((p) => p.slug === slug);
+        if (match) setSelectedPersona(match);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [personas, searchParams]);
+
+    const closePersona = () => {
+        setSelectedPersona(null);
+        const next = new URLSearchParams(searchParams.toString());
+        next.delete("persona");
+        router.push(`/${tenantSlug}/dashboard/agents?${next.toString()}`, { scroll: false });
+    };
 
     const handleHire = async (personaId: string) => {
         const persona = personas.find((p) => p.id === personaId);
@@ -342,7 +361,7 @@ export function AgentsView() {
                             key={persona.id}
                             persona={persona}
                             isHired={Boolean(hiredAgentFor(persona.id))}
-                            onClick={() => setSelectedPersona(persona)}
+                            href={`/${tenantSlug}/dashboard/agents?tab=explore&persona=${persona.slug}`}
                         />
                     ))}
                 </div>
@@ -355,7 +374,7 @@ export function AgentsView() {
             <PersonaDetailModal
                 persona={selectedPersona}
                 open={selectedPersona !== null}
-                onOpenChange={(open) => !open && setSelectedPersona(null)}
+                onOpenChange={(open) => !open && closePersona()}
                 isHired={Boolean(selectedAgent)}
                 onHire={handleHire}
                 onFire={handleFire}

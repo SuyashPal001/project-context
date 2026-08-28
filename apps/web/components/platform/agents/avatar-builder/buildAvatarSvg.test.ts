@@ -12,7 +12,7 @@ describe('buildAvatarSvg', () => {
         const svg = buildAvatarSvg(DEFAULT_AVATAR_PARAMS);
         expect(svg.trim().startsWith('<svg')).toBe(true);
         expect(svg.trim().endsWith('</svg>')).toBe(true);
-        expect(svg).toContain('viewBox="0 0 200 200"');
+        expect(svg).toContain('viewBox="0 -15 200 215"');
     });
 
     it('never interpolates anything other than the closed AvatarParams fields (no free text reaches markup)', () => {

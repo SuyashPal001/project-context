@@ -9,10 +9,13 @@ import type { PersonaSummary } from "./types";
 interface PersonaCardProps {
     persona: PersonaSummary;
     isHired: boolean;
-    onClick: () => void;
+    /** A real, shareable/right-clickable URL to this persona — deep-links the
+     * Explore modal open via ?persona=<slug>, same pattern AgentCard uses for
+     * the Mine tab's href, instead of a bare onClick with no URL. */
+    href: string;
 }
 
-export function PersonaCard({ persona, isHired, onClick }: PersonaCardProps) {
+export function PersonaCard({ persona, isHired, href }: PersonaCardProps) {
     const outcomes = [
         persona.exampleAssetUrl && { url: persona.exampleAssetUrl, caption: persona.exampleCaption },
         persona.exampleAssetUrl2 && { url: persona.exampleAssetUrl2, caption: persona.exampleCaption2 },
@@ -20,7 +23,7 @@ export function PersonaCard({ persona, isHired, onClick }: PersonaCardProps) {
 
     return (
         <EmployeeCard
-            onClick={onClick}
+            href={href}
             avatar={<PersonaAvatar persona={persona} size={44} className="rounded-2xl" />}
             name={persona.name}
             headerBadge={

@@ -165,5 +165,8 @@ export function buildAvatarSvg(params: AvatarParams): string {
         renderMouthLine(params.mouth, g),
     ];
 
-    return `<svg width="220" height="220" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
+    // viewBox starts at y=-15, not 0 — animespikes' tallest tip renders at
+    // headY-40 (as low as -6 for the "tall" head shape), which a 0-origin
+    // viewBox clips flat since SVG crops anything outside it by default.
+    return `<svg width="220" height="220" viewBox="0 -15 200 215" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
 }
