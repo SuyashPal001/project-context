@@ -46,18 +46,22 @@ function AssetGridCard({ file, isActive, isBlocked, onPick, onHover }: {
             onClick={onPick}
             onMouseEnter={onHover}
             disabled={isBlocked}
-            className={`flex flex-col rounded-xl overflow-hidden border text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`w-full flex flex-col rounded-xl overflow-hidden border text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 isActive ? 'border-primary/50 bg-accent/40' : 'border-border/60 hover:border-border'
             }`}
         >
-            <div className="aspect-[16/10] flex items-center justify-center bg-muted/50 relative">
+            {/* Fixed height, not aspect-ratio — the thumbnail box collapsed to a
+                sliver when its width came out unreliable inside the grid, taking
+                the whole card down to a thin pill with it. A plain h-16 can't
+                collapse regardless of parent width. */}
+            <div className="h-16 w-full flex items-center justify-center bg-muted/50 relative shrink-0">
                 {thumbnailUrl ? (
                     <img src={thumbnailUrl} alt={file.filename} className="h-full w-full object-cover" />
                 ) : (
                     getFileIcon(file.contentType)
                 )}
             </div>
-            <div className="px-2 py-1.5">
+            <div className="px-2 py-1.5 w-full">
                 <p className="text-[11px] font-medium truncate" title={file.filename}>{file.filename}</p>
                 <p className="text-[10px] text-muted-foreground">{formatFileSize(file.size)}</p>
             </div>
@@ -139,7 +143,7 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
                     {searchValue ? `No files match "${searchValue}".` : 'No files in Drive yet.'}
                 </div>
             ) : (
-                <div className="grid grid-cols-3 gap-2 overflow-y-auto custom-scrollbar">
+                <div className="grid grid-cols-3 gap-2 overflow-y-auto custom-scrollbar flex-1 min-h-0">
                     {filtered.map((file, i) => (
                         <AssetGridCard
                             key={file.id}
