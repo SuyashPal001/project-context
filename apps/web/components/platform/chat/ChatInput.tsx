@@ -1,4 +1,4 @@
-import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
+import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -14,7 +14,6 @@ import { FileText } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { consumePendingAttachments } from "@/lib/pendingAttachments";
-import { DriveFilePicker } from "./DriveFilePicker";
 import { FolderScopeChip } from "./FolderScopeChip";
 import { MentionChip } from "./MentionChip";
 
@@ -145,7 +144,6 @@ export function ChatInput({
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [drivePickerOpen, setDrivePickerOpen] = useState(false);
     const uploadTypeRef = useRef<'file' | 'video' | 'audio' | null>(null);
     const paletteRef = useRef<PaletteHandle>(null);
     // dragenter/dragleave fire on every child element as the pointer crosses them,
@@ -349,13 +347,6 @@ export function ChatInput({
                 onChange={handleFileChange}
             />
 
-            <DriveFilePicker
-                open={drivePickerOpen}
-                onOpenChange={setDrivePickerOpen}
-                remainingSlots={Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - uploader.attachments.length)}
-                onConfirm={uploader.addAttachments}
-            />
-
             <div className="relative max-w-3xl mx-auto w-full">
                 {paletteMode === 'slash' && (
                     <SlashPalette
@@ -403,19 +394,19 @@ export function ChatInput({
                         ref={paletteRef}
                         query={paletteQuery}
                         remainingSlots={Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - uploader.attachments.length)}
-                        onSelect={(file) => {
+                        onConfirm={(files) => {
                             // Same as the mention chip: strip the typed "#query" trigger
-                            // text, the pick shows up in the attachment strip instead —
+                            // text, the picks show up in the attachment strip instead —
                             // not as text inside the draft.
                             setContent(c => {
                                 if (!paletteRange) return c;
                                 return c.slice(0, paletteRange.start) + c.slice(paletteRange.end);
                             });
-                            // Reuses the exact same attach path DriveFilePicker's onConfirm
-                            // uses — a reference by fileId, not a re-upload — so it dedupes
-                            // against anything already attached and renders in the same
-                            // AttachmentStrip.
-                            uploader.addAttachments([{ fileId: file.id, name: file.filename, type: file.contentType, size: file.size }]);
+                            // Reference by fileId, not a re-upload — dedupes against
+                            // anything already attached and renders in the same
+                            // AttachmentStrip. This is now the only Drive-attach path;
+                            // the old "+" -> "From Drive" checkbox dialog was merged in.
+                            uploader.addAttachments(files.map(file => ({ fileId: file.id, name: file.filename, type: file.contentType, size: file.size })));
                             textareaRef.current?.focus();
                         }}
                         onClose={() => {
@@ -584,10 +575,6 @@ export function ChatInput({
                                                 <DropdownMenuItem onClick={() => handleMediaClick('video')} className="hidden gap-2 cursor-pointer py-2">
                                                     <Video className="h-4 w-4" />
                                                     <span>Video</span>
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => setDrivePickerOpen(true)} className="gap-2 cursor-pointer py-2">
-                                                    <HardDrive className="h-4 w-4" />
-                                                    <span>From Drive</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
                                                 <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
