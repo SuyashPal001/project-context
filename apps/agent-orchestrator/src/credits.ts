@@ -73,6 +73,16 @@ function rateSubjectFor(model: string): string {
   return model.includes('/') ? model.split('/').pop()! : model
 }
 
+// Test seam — same reason `checkCreditBalance` takes an injectable `pool`:
+// lets a unit test assert exactly what debitChatTurn calls (or skips calling)
+// without pulling in drizzle/a live DB. Defaults are the real
+// @serverless-saas/credits functions; production call sites never pass this.
+export interface DebitChatTurnDeps {
+  isUnlimited?: typeof isUnlimited
+  resolveRate?: typeof resolveRate
+  spendCredits?: typeof spendCredits
+}
+
 /**
  * Post-turn debit, called beside persistCost() after the stream finishes.
  * Fire-and-forget by contract: never throws out — any failure is logged and
@@ -84,22 +94,28 @@ function rateSubjectFor(model: string): string {
  * balance_micro equals the sum of live grant remainders. They still get their
  * usage_records row from recordUsage(), called by the same call site.
  */
-export async function debitChatTurn(args: DebitChatTurnArgs): Promise<void> {
+export async function debitChatTurn(args: DebitChatTurnArgs, deps: DebitChatTurnDeps = {}): Promise<void> {
   const { tenantId, agentId, messageId, model, inputTokens, outputTokens } = args
+  const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
+  const resolveRateFn = deps.resolveRate ?? resolveRate
+  const spendCreditsFn = deps.spendCredits ?? spendCredits
   try {
-    if (await isUnlimited(tenantId)) return
+    if (await isUnlimitedFn(tenantId)) return
 
     const subject = rateSubjectFor(model)
-    const rate = await resolveRate('llm_tokens', subject)
+    const rate = await resolveRateFn('llm_tokens', subject)
     if (!rate) {
-      console.error(`[credits] debitChatTurn: no active llm_tokens rate for subject=${subject} tenantId=${tenantId} — skipping debit`)
+      // Unmetered by omission: usage_records still gets its row (recorded by
+      // the same chatStream.ts call site), but this turn is never billed —
+      // seed a credit_rates row for this subject or it stays free forever.
+      console.error(`[credits] UNBILLED CHAT TURN: no active llm_tokens rate for model=${model} subject=${subject} tenantId=${tenantId} messageId=${messageId} — turn was NOT debited`)
       return
     }
 
     const amountMicro = costMicro(rate.schema, { inputTokens, outputTokens })
     if (amountMicro <= 0n) return
 
-    await spendCredits({
+    await spendCreditsFn({
       tenantId,
       amountMicro: -amountMicro,
       key: `chat:${messageId}`,
