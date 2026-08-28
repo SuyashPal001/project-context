@@ -110,7 +110,7 @@ export function EmployeeCard({
                         {outcomes.map((outcome, i) => (
                             <figure key={i} className="relative overflow-hidden rounded-lg border border-border">
                                 {/* eslint-disable-next-line @next/next/no-img-element -- persona-authored example asset, not a static build asset */}
-                                <img src={outcome.url} alt={outcome.caption ?? name} className="aspect-video w-full object-cover" />
+                                <img src={outcome.url} alt={outcome.caption ?? name} className="aspect-video w-full max-h-48 object-cover" />
                                 {outcome.caption && (
                                     <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide text-white">
                                         {outcome.caption}

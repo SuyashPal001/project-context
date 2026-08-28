@@ -349,13 +349,13 @@ export function AgentsView() {
                     </div>
                 )
             ) : personasLoading ? (
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {Array.from({ length: 4 }).map((_, i) => (
                         <Skeleton key={i} className="h-[320px] w-full rounded-xl" />
                     ))}
                 </div>
             ) : explorePersonas.length > 0 ? (
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {explorePersonas.map((persona) => (
                         <PersonaCard
                             key={persona.id}
