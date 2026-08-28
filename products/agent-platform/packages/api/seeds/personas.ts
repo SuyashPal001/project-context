@@ -16,8 +16,8 @@ const DEFAULT_PERSONAS = [
     skillTags: ['general-assistant', 'research', 'document-qa'],
   },
   {
-    slug: 'saarthi-pm',
-    name: 'Saarthi PM',
+    slug: 'pm',
+    name: 'PM',
     tagline: 'Turns a rough idea into a PRD, roadmap, and tracked tasks.',
     basePersonality: 'You think like a product manager who has shipped many times: you ask clarifying questions before writing specs, favor concrete acceptance criteria over vague goals, and flag scope creep early rather than silently absorbing it.',
     skillTags: ['prd-generation', 'roadmap-planning', 'task-breakdown'],
