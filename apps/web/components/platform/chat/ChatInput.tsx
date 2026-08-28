@@ -1,4 +1,4 @@
-import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles } from "lucide-react";
+import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -210,6 +210,16 @@ export function ChatInput({
         // silently no-ops.
         const cursor = textareaRef.current?.selectionStart ?? content.length;
         setPaletteMode('slash');
+        setPaletteQuery('');
+        setPaletteRange({ start: cursor, end: cursor });
+    };
+
+    // "From Drive" in the "+" menu — links to the same "#" picker rather than
+    // a separate dialog (the old DriveFilePicker.tsx was removed, merged into
+    // HashFilePalette). Same empty-range trick as handleUseEmployee above.
+    const handleOpenDrivePalette = () => {
+        const cursor = textareaRef.current?.selectionStart ?? content.length;
+        setPaletteMode('hash');
         setPaletteQuery('');
         setPaletteRange({ start: cursor, end: cursor });
     };
@@ -575,6 +585,10 @@ export function ChatInput({
                                                 <DropdownMenuItem onClick={() => handleMediaClick('video')} className="hidden gap-2 cursor-pointer py-2">
                                                     <Video className="h-4 w-4" />
                                                     <span>Video</span>
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={handleOpenDrivePalette} className="gap-2 cursor-pointer py-2">
+                                                    <HardDrive className="h-4 w-4" />
+                                                    <span>From Drive</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
                                                 <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
