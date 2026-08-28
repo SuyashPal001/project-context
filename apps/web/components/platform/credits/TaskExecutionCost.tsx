@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { ApproveCost } from './ApproveCost';
 import { AVERAGE_STEP_TOKENS, DEFAULT_TASK_MODEL, rateSubjectFor } from '@/lib/hooks/useCredits';
@@ -51,13 +52,18 @@ export function TaskExecutionCost({ agentId, stepCount, onApprove }: TaskExecuti
 
     // Model isn't knowable (agent lookup failed, or there's no agent at
     // all) — per policy, show no figure rather than a wrong one. Approve
-    // still works: spend_credits() on the actual charge is the authoritative
-    // check regardless of what this preview could or couldn't show — this
-    // control is a preview, never a reservation.
+    // must still work here: spend_credits() on the real charge is the
+    // authoritative check and fails closed on its own (it posts an
+    // "Insufficient credits" comment and blocks the task if the tenant is
+    // actually broke) — this preview not having a number is not a reason to
+    // take away the only way to approve the plan at all.
     if (!agentId || isError) {
         return (
-            <div className="px-3 py-2 text-xs text-muted-foreground" data-testid="task-execution-cost-unknown">
-                A cost will apply when this runs — couldn&apos;t estimate it in advance.
+            <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs" data-testid="task-execution-cost-unknown">
+                <span className="text-muted-foreground">A cost will apply when this runs — couldn&apos;t estimate it in advance.</span>
+                <Button type="button" size="sm" onClick={onApprove}>
+                    Approve
+                </Button>
             </div>
         );
     }
@@ -73,12 +79,7 @@ export function TaskExecutionCost({ agentId, stepCount, onApprove }: TaskExecuti
                 inputTokens: AVERAGE_STEP_TOKENS.input * stepCount,
                 outputTokens: AVERAGE_STEP_TOKENS.output * stepCount,
             }}
-            // The generated idempotency key is intentionally unused: PUT
-            // .../plan/approve doesn't accept one and doesn't need one — its
-            // atomic status-transition predicate (status must still be
-            // 'awaiting_approval') already makes a retry 409 instead of
-            // double-enqueuing execute_task.
-            onApprove={() => onApprove()}
+            onApprove={onApprove}
         />
     );
 }

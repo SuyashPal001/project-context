@@ -29,7 +29,6 @@ interface TaskSidebarProps {
     newLinkInputRef: React.RefObject<HTMLInputElement | null>
     referenceTextRef: React.RefObject<HTMLTextAreaElement | null>
     taskOperations: {
-        approvePlan: (opts?: { approved: boolean }) => Promise<void>
         deleteTask: () => Promise<void>
         removeLink: (url: string) => void
         addLink: (url: string) => void
@@ -164,7 +163,6 @@ export function TaskSidebar({
 
             <SidebarActions
                 status={task.status}
-                onApprovePlan={() => taskOperations.approvePlan({ approved: true })}
                 onStartTask={taskOperations.startTask}
                 onDeleteTask={taskOperations.deleteTask}
             />

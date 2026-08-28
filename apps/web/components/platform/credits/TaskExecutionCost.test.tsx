@@ -26,6 +26,12 @@ function render(ui: ReactElement): RenderResult {
     return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
 
+async function expectEnabledApprove() {
+    const approveBtn = (await screen.findByRole('button', { name: 'Approve' })) as HTMLButtonElement;
+    expect(approveBtn.disabled).toBe(false);
+    return approveBtn;
+}
+
 describe('TaskExecutionCost', () => {
     it('fetches the agent detail, then estimates llm_tokens at the agent\'s real llmProvider.model — not agents.model', async () => {
         apiGetMock.mockImplementation((path: string) => {
@@ -93,16 +99,42 @@ describe('TaskExecutionCost', () => {
         expect(query.get('subject')).toBe('gemini-2.5-flash');
     });
 
-    it('shows an "unknown cost" state and never calls /credits/estimate when agentId is null', () => {
-        render(<TaskExecutionCost agentId={null} stepCount={3} onApprove={vi.fn()} />);
+    it('shows an "unknown cost" state with a working Approve, and never calls /credits/estimate, when agentId is null', async () => {
+        const onApprove = vi.fn();
+        render(<TaskExecutionCost agentId={null} stepCount={3} onApprove={onApprove} />);
         expect(screen.getByTestId('task-execution-cost-unknown')).not.toBeNull();
         expect(apiGetMock).not.toHaveBeenCalled();
+
+        await userEvent.click(await expectEnabledApprove());
+        expect(onApprove).toHaveBeenCalledTimes(1);
     });
 
-    it('shows the "unknown cost" state (not a crash) when the agent lookup fails', async () => {
+    it('shows the "unknown cost" state with a working Approve (not a crash, not a dead end) when the agent lookup fails', async () => {
         apiGetMock.mockRejectedValue(new Error('boom'));
-        render(<TaskExecutionCost agentId="agent-1" stepCount={2} onApprove={vi.fn()} />);
+        const onApprove = vi.fn();
+        render(<TaskExecutionCost agentId="agent-1" stepCount={2} onApprove={onApprove} />);
         await screen.findByTestId('task-execution-cost-unknown');
+
+        await userEvent.click(await expectEnabledApprove());
+        expect(onApprove).toHaveBeenCalledTimes(1);
+    });
+
+    it('still offers a working Approve when the agent resolves but the cost estimate itself fails', async () => {
+        apiGetMock.mockImplementation((path: string) => {
+            if (path === '/api/v1/agents/agent-1') {
+                return Promise.resolve({ llmProvider: { model: 'gemini-2.5-flash' } });
+            }
+            if (path.startsWith('/api/v1/credits/estimate')) {
+                return Promise.reject(new Error('estimate service down'));
+            }
+            throw new Error(`unexpected GET ${path}`);
+        });
+        const onApprove = vi.fn();
+        render(<TaskExecutionCost agentId="agent-1" stepCount={2} onApprove={onApprove} />);
+        await screen.findByTestId('approve-cost-error');
+
+        await userEvent.click(await expectEnabledApprove());
+        expect(onApprove).toHaveBeenCalledTimes(1);
     });
 
     it('calls onApprove when the resulting ApproveCost control is approved', async () => {
@@ -122,8 +154,5 @@ describe('TaskExecutionCost', () => {
         await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
         expect(onApprove).toHaveBeenCalledTimes(1);
-        // TaskExecutionCost's onApprove takes no argument — the idempotency
-        // key ApproveCost generates internally is deliberately discarded here.
-        expect(onApprove.mock.calls[0]).toEqual([]);
     });
 });

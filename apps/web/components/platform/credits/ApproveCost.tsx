@@ -24,25 +24,11 @@ export interface ApproveCostProps {
         inputTokens?: number;
         outputTokens?: number;
     };
-    onApprove: (idempotencyKey: string) => void;
+    onApprove: () => void;
     onCancel?: () => void;
-    /**
-     * Forces the "out of credits" state even if the cached estimate still
-     * says sufficient. Set this after a submit comes back 402 — the estimate
-     * is a preview, not a reservation, so the balance can run out between
-     * the estimate call and the actual spend.
-     */
-    insufficientOverride?: boolean;
 }
 
-export function ApproveCost({
-    resourceType,
-    subject,
-    params,
-    onApprove,
-    onCancel,
-    insufficientOverride = false,
-}: ApproveCostProps) {
+export function ApproveCost({ resourceType, subject, params, onApprove, onCancel }: ApproveCostProps) {
     const { tenantSlug } = useTenant();
 
     const estimateParams: CreditEstimateParams = useMemo(
@@ -58,10 +44,6 @@ export function ApproveCost({
 
     const { data, isLoading, isError } = useCreditEstimate(estimateParams);
 
-    const handleApprove = () => {
-        onApprove(crypto.randomUUID());
-    };
-
     if (isLoading) {
         return (
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground" data-testid="approve-cost-loading">
@@ -71,16 +53,23 @@ export function ApproveCost({
         );
     }
 
+    // The estimate is a preview, not a reservation — spend_credits() on the
+    // real charge is the authoritative check and fails closed on its own.
+    // A failed preview must never block approval: it just means this
+    // control can't tell the user a number in advance.
     if (isError || !data) {
         return (
             <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs" data-testid="approve-cost-error">
-                <span className="text-red-500">Couldn&apos;t estimate cost.</span>
+                <span className="text-muted-foreground">Couldn&apos;t estimate cost — balance will be checked when this runs.</span>
                 <div className="flex gap-2">
                     {onCancel && (
                         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
                             Cancel
                         </Button>
                     )}
+                    <Button type="button" size="sm" onClick={onApprove}>
+                        Approve
+                    </Button>
                 </div>
             </div>
         );
@@ -97,7 +86,7 @@ export function ApproveCost({
                             Cancel
                         </Button>
                     )}
-                    <Button type="button" size="sm" onClick={handleApprove}>
+                    <Button type="button" size="sm" onClick={onApprove}>
                         Approve
                     </Button>
                 </div>
@@ -105,7 +94,7 @@ export function ApproveCost({
         );
     }
 
-    const insufficient = insufficientOverride || !data.sufficient;
+    const insufficient = !data.sufficient;
     const costCredits = formatCredits(microToCredits(data.costMicro));
     const balanceCredits = formatCredits(microToCredits(data.balanceMicro));
 
@@ -134,7 +123,7 @@ export function ApproveCost({
                         Cancel
                     </Button>
                 )}
-                <Button type="button" size="sm" disabled={insufficient} onClick={handleApprove}>
+                <Button type="button" size="sm" disabled={insufficient} onClick={onApprove}>
                     Approve
                 </Button>
             </div>
