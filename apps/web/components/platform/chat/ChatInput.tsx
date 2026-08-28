@@ -1,9 +1,8 @@
-import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
+import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Puzzle, Check, Sparkles, FolderOpen } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -587,16 +586,15 @@ export function ChatInput({
                                                     <span>Video</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={handleOpenDrivePalette} className="gap-2 cursor-pointer py-2">
-                                                    <HardDrive className="h-4 w-4" />
+                                                    <FolderOpen className="h-4 w-4" />
                                                     <span>From Drive</span>
                                                 </DropdownMenuItem>
-                                                <DropdownMenuSeparator />
                                                 <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
                                                     <Bot className="h-4 w-4" />
                                                     <span>Use employee</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
-                                                    <Zap className="h-4 w-4" />
+                                                    <Puzzle className="h-4 w-4" />
                                                     <span>Use skill</span>
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
