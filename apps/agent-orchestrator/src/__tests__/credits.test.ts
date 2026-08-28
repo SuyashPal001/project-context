@@ -224,13 +224,34 @@ describe('settleTask', () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const spendCredits = vi.fn().mockResolvedValue(0n);
-    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-200_000)) };
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce(chargeRow(-200_000)) };
     await settleTask(
       { ...baseArgs, chargeKey: 'task:task-1:attempt:1' },
       { isUnlimited, spendCredits, pool: pool as never },
     );
     const call = spendCredits.mock.calls[0][0];
     expect(call.key).toBe('task:task-1:attempt:1:settle');
+  });
+
+  it('does nothing when a refund already landed under this chargeKey — the mirror of refundTask\'s settled-row guard', async () => {
+    // The asymmetric bug this fixes: refundTask already skips when a settle
+    // row exists under `{chargeKey}:settle` (see refundTask tests below).
+    // settleTask had no mirror — a settle landing on top of an already-
+    // refunded estimate (e.g. because the attempt derivation was wrong and
+    // reused a refunded chargeKey) silently wrote a second credit. This
+    // guard must catch that even when the attempt derivation is broken.
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const spendCredits = vi.fn();
+    const pool = { query: vi.fn().mockResolvedValueOnce({ rows: [{ exists: true }] }) };
+    await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    const [refundSql, refundParams] = pool.query.mock.calls[0];
+    expect(refundSql).toContain('credit_ledger');
+    expect(refundParams).toEqual(['tenant-1', 'task:task-1:refund']);
+    expect(spendCredits).not.toHaveBeenCalled();
   });
 
   it('never touches the pool or spendCredits for an unlimited tenant', async () => {
@@ -265,7 +286,9 @@ describe('settleTask', () => {
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const resolveRate = vi.fn();
     const spendCredits = vi.fn().mockResolvedValue(0n);
-    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-240_000)) };
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce(chargeRow(-240_000)) };
     // 240_000 was the amount actually charged (e.g. for a since-changed step
     // count); actual usage here prices to 120_000 -> delta = 240_000 - 120_000.
     await settleTask(baseArgs, { isUnlimited, resolveRate, spendCredits, pool: pool as never });
@@ -282,7 +305,9 @@ describe('settleTask', () => {
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const spendCredits = vi.fn();
     // Charged 120_000; actual also prices to 120_000 -> delta 0n.
-    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-120_000)) };
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce(chargeRow(-120_000)) };
     await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
     expect(spendCredits).not.toHaveBeenCalled();
   });
@@ -291,7 +316,9 @@ describe('settleTask', () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const spendCredits = vi.fn().mockResolvedValue(0n);
-    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-50_000)) };
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce(chargeRow(-50_000)) };
     await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
     expect(spendCredits).toHaveBeenCalledTimes(1);
     const call = spendCredits.mock.calls[0][0];
@@ -305,7 +332,9 @@ describe('settleTask', () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const spendCredits = vi.fn().mockResolvedValue(0n);
-    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-200_000)) };
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce(chargeRow(-200_000)) };
     await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
     const call = spendCredits.mock.calls[0][0];
     expect(call.amountMicro).toBe(80_000n); // 200_000 - 120_000
@@ -319,7 +348,9 @@ describe('settleTask', () => {
     const spendCredits = vi.fn().mockResolvedValue(0n);
     const soon = '2026-09-01T00:00:00.000Z';
     const later = '2026-12-01T00:00:00.000Z';
-    const pool = { query: vi.fn().mockResolvedValueOnce({
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce({
       rows: [
         { amount_micro: '-100000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema, expires_at: later },
         { amount_micro: '-100000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema, expires_at: soon },
@@ -338,7 +369,9 @@ describe('settleTask', () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const spendCredits = vi.fn().mockResolvedValue(0n);
-    const pool = { query: vi.fn().mockResolvedValueOnce({
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce({
       rows: [{ amount_micro: '-50000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema, expires_at: '2026-09-01T00:00:00.000Z' }],
     }) };
     await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
@@ -351,7 +384,9 @@ describe('settleTask', () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const spendCredits = vi.fn().mockResolvedValue(0n);
-    const pool = { query: vi.fn().mockResolvedValueOnce({
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce({
       rows: [
         { amount_micro: '-30000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema },
         { amount_micro: '-170000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema },
@@ -368,7 +403,9 @@ describe('settleTask', () => {
     const resolveRate = vi.fn().mockResolvedValue(rate);
     const spendCredits = vi.fn().mockResolvedValue(0n);
     // Original charge landed unmetered: 0 micro, no rate_id, no pricing_schema.
-    const pool = { query: vi.fn().mockResolvedValueOnce({
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce({
       rows: [{ amount_micro: '0', rate_id: null, rate_version: null, pricing_schema: null }],
     }) };
     await settleTask(baseArgs, { isUnlimited, resolveRate, spendCredits, pool: pool as never });
@@ -382,7 +419,9 @@ describe('settleTask', () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);
     const spendCredits = vi.fn().mockRejectedValue(new Error('db down'));
-    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-200_000)) };
+    const pool = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ exists: false }] })
+      .mockResolvedValueOnce(chargeRow(-200_000)) };
     await expect(settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never }))
       .resolves.toBeUndefined();
   });
@@ -711,6 +750,132 @@ describe.skipIf(!TEST_DB)('settleTask (integration)', () => {
     expect(BigInt(settleRow.rows[0].amount_micro)).toBe(estimateForTwoSteps);
     // The buggy recompute-from-current-state value must NOT appear anywhere.
     expect(BigInt(settleRow.rows[0].amount_micro)).not.toBe(estimateForFiveSteps);
+  });
+
+  it('writes nothing when a refund already landed on this chargeKey — the double-credit bug this guard closes', async () => {
+    // Reproduces the retry-billing defect directly: a task run fails,
+    // refundTask returns the whole estimate, and then (because of a wrong
+    // attempt derivation, or any other bug that reuses a refunded chargeKey)
+    // settleTask is called against the SAME chargeKey afterward. Without the
+    // guard, settleTask reads the original debit row (still there — refunds
+    // never delete it), computes delta = estimate - actual, and writes a
+    // FRESH credit on top of the refund that already made the tenant whole.
+    const TASK_ID_2 = '00000000-0000-0000-0000-00000000ad72';
+    const { chargeTaskEstimate, refundTask, settleTask: settleTaskFn } = await import('../credits.js');
+
+    const estimate = await (await import('../credits.js')).estimateTaskMicro(2, MODEL);
+    await chargeTaskEstimate({ tenantId: TENANT, taskId: TASK_ID_2, agentId: TENANT, estimateMicro: estimate });
+    await refundTask({ tenantId: TENANT, taskId: TASK_ID_2 }, { pool });
+
+    const balanceBeforeSettle = await pool.query<{ balance_micro: string }>(
+      `select balance_micro from credit_accounts where tenant_id = $1`, [TENANT],
+    );
+
+    // Real usage happened to be smaller than the estimate, so an unguarded
+    // settle would credit the difference back a SECOND time.
+    await settleTaskFn({ tenantId: TENANT, taskId: TASK_ID_2, agentId: TENANT, model: MODEL, inputTokens: 0, outputTokens: 0 });
+
+    const settleRows = await pool.query(
+      `select 1 from credit_ledger where tenant_id = $1 and idempotency_key = $2`,
+      [TENANT, `task:${TASK_ID_2}:settle`],
+    );
+    expect(settleRows.rows.length).toBe(0); // no settle row was ever written
+
+    const balanceAfterSettle = await pool.query<{ balance_micro: string }>(
+      `select balance_micro from credit_accounts where tenant_id = $1`, [TENANT],
+    );
+    expect(balanceAfterSettle.rows[0].balance_micro).toBe(balanceBeforeSettle.rows[0].balance_micro);
+  });
+});
+
+// --- Integration: reproduces the reachable "free re-run" shape of the
+// retry-billing defect end to end — chargeTaskEstimate under the bare
+// `task:{taskId}` key, refundTask on failure, then a re-run under
+// taskChargeKey(taskId, 1) (the key the fixed attempt derivation produces,
+// since it counts this exact refund row) — and proves the re-run is a
+// genuinely NEW charge, not a replay of the refunded debit under the old key.
+describe.skipIf(!TEST_DB)('charge -> refund -> re-run (integration)', () => {
+  const TENANT = '00000000-0000-0000-0000-0000000000e1';
+  const TASK_ID = '00000000-0000-0000-0000-00000000ae71';
+
+  let pg: typeof import('pg');
+  let pool: import('pg').Pool;
+
+  beforeAll(async () => {
+    pg = (await import('pg')).default as unknown as typeof import('pg');
+    pool = new pg.Pool({ connectionString: TEST_DB });
+
+    await pool.query(`delete from credit_ledger where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from credit_grants where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from credit_accounts where tenant_id = $1`, [TENANT]);
+    await pool.query(
+      `insert into tenants (id, name, slug) values ($1, 'credits test', 'credits-test-e1') on conflict (id) do nothing`,
+      [TENANT],
+    );
+
+    const { grantCredits } = await import('@serverless-saas/credits');
+    await grantCredits({ tenantId: TENANT, amountMicro: 5_000_000n, key: 'seed:e1', grantType: 'admin' });
+  });
+
+  afterAll(async () => {
+    await pool.query(`delete from credit_ledger where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from credit_grants where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from credit_accounts where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from tenants where id = $1`, [TENANT]);
+    await pool.end();
+  });
+
+  it('charges a fresh debit for the re-run instead of replaying the refunded attempt-0 charge', async () => {
+    const { chargeTaskEstimate, refundTask, taskChargeKey } = await import('../credits.js');
+
+    const balanceAtStart = (await pool.query<{ balance_micro: string }>(
+      `select balance_micro from credit_accounts where tenant_id = $1`, [TENANT],
+    )).rows[0].balance_micro;
+
+    // Attempt 0: the ordinary first run, charged and then failed/refunded.
+    await chargeTaskEstimate({ tenantId: TENANT, taskId: TASK_ID, agentId: TENANT, estimateMicro: 100_000n });
+    await refundTask({ tenantId: TENANT, taskId: TASK_ID }, { pool });
+
+    const balanceAfterFailedAttempt = (await pool.query<{ balance_micro: string }>(
+      `select balance_micro from credit_accounts where tenant_id = $1`, [TENANT],
+    )).rows[0].balance_micro;
+    // Charge (-100_000) then refund (+100_000) nets to the starting balance —
+    // the tenant was made whole for the failed run, as intended.
+    expect(balanceAfterFailedAttempt).toBe(balanceAtStart);
+
+    // This IS the fixed derivation's contract: count of prior refund rows
+    // for this task, tenant-scoped (see countTaskRefunds in
+    // products/agent-platform/packages/api/lib/credit-attempt.ts) — the same
+    // query, expressed directly in SQL since that function lives in a
+    // different package with its own drizzle client.
+    const refundCount = await pool.query<{ n: string }>(
+      `select count(*) as n from credit_ledger where tenant_id = $1 and job_id = $2 and kind = 'refund'`,
+      [TENANT, TASK_ID],
+    );
+    const attempt = Number(refundCount.rows[0].n);
+    expect(attempt).toBe(1);
+
+    // Re-run, keyed by the derived attempt — must be a genuine NEW charge.
+    const chargeKey = taskChargeKey(TASK_ID, attempt);
+    expect(chargeKey).toBe(`task:${TASK_ID}:attempt:1`); // not the bare, already-refunded key
+    await chargeTaskEstimate({ tenantId: TENANT, taskId: TASK_ID, agentId: TENANT, estimateMicro: 100_000n, key: chargeKey });
+
+    const balanceAfterRerun = (await pool.query<{ balance_micro: string }>(
+      `select balance_micro from credit_accounts where tenant_id = $1`, [TENANT],
+    )).rows[0].balance_micro;
+    // A genuine second charge landed: down another 100_000 from the
+    // post-refund balance. A replay under the stale bare key would have left
+    // this balance UNCHANGED (spend_credits' idempotency would have no-opped).
+    expect(BigInt(balanceAtStart) - BigInt(balanceAfterRerun)).toBe(100_000n);
+
+    const debitRows = await pool.query(
+      `select idempotency_key from credit_ledger where tenant_id = $1 and job_id = $2 and kind = 'debit' order by created_at`,
+      [TENANT, TASK_ID],
+    );
+    expect(debitRows.rows.map((r: { idempotency_key: string }) => r.idempotency_key)).toEqual([
+      `task:${TASK_ID}`,
+      `task:${TASK_ID}:attempt:1`,
+    ]);
   });
 });
 

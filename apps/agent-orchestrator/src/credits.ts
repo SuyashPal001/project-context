@@ -152,35 +152,33 @@ const AVERAGE_STEP_TOKENS = { input: 4000, output: 1000 }
 export const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
 
 /**
- * Per-attempt task charge key. Attempt 0 (a task that is never clarified —
- * the common case) keeps the exact original `task:{taskId}` key, so existing
- * behavior is unchanged for tasks that never pause. Each subsequent attempt
- * (after a clarify-and-resume cycle: onTaskComment refunds the estimate and
- * the task pauses, the user answers, and the task is replanned and
- * re-executed) gets its OWN key.
+ * Per-attempt task charge key. Attempt 0 (a task that has never been
+ * refunded — the common case) keeps the exact original `task:{taskId}` key,
+ * so existing behavior is unchanged for tasks that never pause or fail.
+ * Each subsequent attempt (after refundTask ran — a clarify-and-resume
+ * cycle, a plain step failure, or the workflow's own non-success branch, the
+ * task then gets replanned/resumed and re-executed) gets its OWN key.
  *
- * Without this, a resumed run's chargeTaskEstimate call would carry the same
+ * Without this, a re-run's chargeTaskEstimate call would carry the same
  * `task:{taskId}` key as the original charge — already refunded by then —
  * and spend_credits()'s replay check (invariant 5) would find that original
  * debit's ledger row and return the current balance without charging
- * anything for the new run. The clarify-and-resume cycle is the ordinary
- * product flow, not an edge case, so that gap made every clarified task run
- * for free.
+ * anything for the new run. A refund-then-retry is the ordinary product
+ * flow, not an edge case, so that gap made every retried task run for free.
  *
- * `attempt` is the number of EXECUTION-phase clarification rounds already
- * completed for this task by the time this run starts — i.e. ones that
- * interrupted an already-charged run and triggered a refund (onTaskComment
- * in tasks.execution.ts). It is NOT a count of every `clarification_requested`
- * event: a PLANNING-phase clarification (raised before this task has ever
- * been charged — taskWorker.planning.ts, tagged `phase: 'planning'` at
- * insert) does not bump it, because the run that eventually executes is
- * still genuinely the first charged attempt. Computed in
- * products/agent-platform/packages/api/workers/taskWorker.execution.ts (for
- * a fresh execution) and .../routes/tasks.approval.ts's handleWorkflowApprove
- * (for a resume after a suspended workflow run), both filtering
- * `clarification_requested` events on `payload->>'phase' = 'execution'` —
- * where the task-events table lives — 0 for a first run, 1 after one
- * execution-phase clarify round, and so on.
+ * `attempt` is the number of refunds already recorded against this task in
+ * credit_ledger, tenant-scoped — see countTaskRefunds() in
+ * products/agent-platform/packages/api/lib/credit-attempt.ts, called from
+ * taskWorker.execution.ts (for a fresh execution) and
+ * tasks.approval.ts's handlePlanApprove/handleWorkflowApprove (for a
+ * replan/resume). Deriving from credit_ledger — the authority on what was
+ * actually charged and returned — rather than from
+ * `clarification_requested` events means every cause of a refund bumps the
+ * counter the same way, not only the clarification-shaped one. A prior
+ * revision derived this from clarification events tagged by phase, which
+ * missed refunds triggered by a plain failure (onStepFail / the workflow's
+ * non-success branch) — see the retry-billing fix report for the full
+ * defect writeup. 0 for a first run, 1 after one refund, and so on.
  */
 export function taskChargeKey(taskId: string, attempt: number): string {
   return attempt > 0 ? `task:${taskId}:attempt:${attempt}` : `task:${taskId}`
@@ -356,6 +354,15 @@ export interface SettleTaskDeps {
  * Skips the round trip entirely when settleAmount is 0n, or when no debit
  * row exists at all (nothing was ever charged — unlimited tenant, or a
  * charge that never landed).
+ *
+ * Skipped if a refund already ran against this chargeKey — the mirror of
+ * refundTask's settled-row guard below. A settle must never land on top of
+ * an estimate that was already refunded: refundTask fires on every early
+ * termination (a clarify-and-resume pause, onStepFail, or the workflow's own
+ * non-success branch), not only the ones a caller's attempt-key derivation
+ * expects, so this guard is the belt to that derivation's braces — it holds
+ * even if the derivation is wrong and a settle is attempted against an
+ * already-refunded key.
  */
 export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}): Promise<void> {
   const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
@@ -366,6 +373,14 @@ export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}
     if (await isUnlimitedFn(args.tenantId)) return
 
     const chargeKey = args.chargeKey ?? `task:${args.taskId}`
+
+    const refundKey = `${chargeKey}:refund`
+    const refunded = await pool.query<{ exists: boolean }>(
+      `select exists(select 1 from credit_ledger where tenant_id = $1 and idempotency_key = $2) as exists`,
+      [args.tenantId, refundKey],
+    )
+    if (refunded.rows[0]?.exists) return
+
     const chargeRows = await pool.query<{
       amount_micro: string
       rate_id: string | null

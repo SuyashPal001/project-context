@@ -264,9 +264,10 @@ export async function runMastraTaskSteps(
     // NOTE: onTaskComment (a clarification pause, not a terminal failure)
     // also lands here and refunds. That's correct, not a bug: the resumed
     // run gets its OWN chargeKey (a new attempt number, computed by the
-    // route handler from the clarification-round count), so the resumed
-    // run's chargeTaskEstimate genuinely re-charges instead of replaying
-    // this now-refunded debit. See taskChargeKey() in credits.ts.
+    // route handler from the count of refunds already recorded against this
+    // task in credit_ledger — see countTaskRefunds), so the resumed run's
+    // chargeTaskEstimate genuinely re-charges instead of replaying this
+    // now-refunded debit. See taskChargeKey() in credits.ts.
     await refundTask({ tenantId, taskId, chargeKey })
   }
   return {}

@@ -7,6 +7,7 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '@serverless-saas/queue';
+import { countTaskRefunds } from '../lib/credit-attempt';
 import type { Context } from 'hono';
 import type { AppEnv } from '@serverless-saas/types';
 
@@ -82,22 +83,15 @@ export async function handlePlanApprove(c: Context<AppEnv>) {
     // every delivery: the execution fetch in taskWorker.execution.ts can run
     // up to 290s against a Lambda timeout around 300s, so an SQS redelivery
     // of this exact execute_task message is plausible. If attempt were
-    // recomputed per delivery instead, a clarification recorded on this task
+    // recomputed per delivery instead, a refund recorded on this task
     // between two deliveries of the SAME message would make the redelivery
     // compute a HIGHER attempt and charge a genuinely new key — a real
     // double charge on a duplicate delivery, not the free replay the shared
-    // key gave before per-attempt keys existed. Same phase-scoped query as
+    // key gave before per-attempt keys existed. Same derivation as
     // handleWorkflowApprove's (tasks.approval.ts) and the fallback inside
-    // handleExecution (taskWorker.execution.ts) — see taskChargeKey() in
-    // apps/agent-orchestrator/src/credits.ts for what "EXECUTION-phase"
-    // means here.
-    const clarificationRounds = await db.select({ id: taskEvents.id }).from(taskEvents)
-        .where(and(
-            eq(taskEvents.taskId, taskId),
-            eq(taskEvents.eventType, 'clarification_requested'),
-            sql`${taskEvents.payload}->>'phase' = 'execution'`,
-        ));
-    const attempt = clarificationRounds.length;
+    // handleExecution (taskWorker.execution.ts) — see countTaskRefunds and
+    // taskChargeKey() in apps/agent-orchestrator/src/credits.ts.
+    const attempt = await countTaskRefunds(db, tenantId, taskId);
 
     console.log('[SQS] Publishing execute_task for task', taskId);
     try {
@@ -218,23 +212,14 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
 
     // The run being resumed was charged under taskChargeKey(taskId, attempt)
     // (apps/agent-orchestrator/src/credits.ts) — attempt being the number of
-    // EXECUTION-phase clarification rounds completed for this task (ones
-    // that interrupted an already-charged run and triggered a refund; a
-    // PLANNING-phase clarification happens before any charge and must not
-    // count — see taskWorker.planning.ts / internal/tasks.lifecycle.ts's
-    // phase tags on the clarification_requested event). Resume's
-    // settle/refund must key off the SAME attempt or they silently miss the
-    // actual charge (see the relay's /api/tasks/:taskId/resume handler for
-    // the two failure shapes this produces). Identical query, same reasoning,
-    // as taskWorker.execution.ts's handleExecution, the other caller that
+    // refunds already recorded against this task in credit_ledger, tenant-
+    // scoped (see countTaskRefunds). Resume's settle/refund must key off the
+    // SAME attempt or they silently miss the actual charge (see the relay's
+    // /api/tasks/:taskId/resume handler for the two failure shapes this
+    // produces). Identical derivation, same reasoning, as
+    // taskWorker.execution.ts's handleExecution, the other caller that
     // charges/settles a task run.
-    const clarificationRounds = await db.select({ id: taskEvents.id }).from(taskEvents)
-        .where(and(
-            eq(taskEvents.taskId, taskId),
-            eq(taskEvents.eventType, 'clarification_requested'),
-            sql`${taskEvents.payload}->>'phase' = 'execution'`,
-        ));
-    const attempt = clarificationRounds.length;
+    const attempt = await countTaskRefunds(db, tenantId, taskId);
 
     const res = await fetch(`${relayUrl}/api/tasks/${taskId}/resume`, {
         method: 'POST',

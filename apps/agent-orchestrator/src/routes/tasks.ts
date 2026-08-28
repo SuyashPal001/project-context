@@ -64,15 +64,13 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'taskId, tenantId, and steps are required' }, 400)
   }
 
-  // `attempt` — the number of EXECUTION-phase clarification rounds already
-  // completed for this task (ones that interrupted an already-charged run
-  // and triggered a refund; a PLANNING-phase clarification, raised before
-  // any charge, does not count) — is computed by the caller
-  // (taskWorker.execution.ts, which has Drizzle access to task_events) and
-  // threaded through untouched. attempt 0 (never clarified mid-execution, or
-  // the field is simply absent — an older caller, or a direct test) keeps
-  // the original `task:{taskId}` key, so existing behavior is unchanged for
-  // the common case. See taskChargeKey().
+  // `attempt` — the number of refunds already recorded against this task in
+  // credit_ledger, tenant-scoped — is computed by the caller
+  // (taskWorker.execution.ts's countTaskRefunds, which has Drizzle access to
+  // credit_ledger) and threaded through untouched. attempt 0 (never
+  // refunded, or the field is simply absent — an older caller, or a direct
+  // test) keeps the original `task:{taskId}` key, so existing behavior is
+  // unchanged for the common case. See taskChargeKey().
   const attempt = typeof body.attempt === 'number' && Number.isFinite(body.attempt) && body.attempt > 0
     ? Math.floor(body.attempt)
     : 0
