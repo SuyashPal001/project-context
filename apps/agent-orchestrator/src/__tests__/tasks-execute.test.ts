@@ -4,7 +4,6 @@ vi.hoisted(() => {
   process.env.INTERNAL_SERVICE_KEY = 'test-key'
 })
 vi.mock('../usage.js', () => ({
-  checkMessageQuota: vi.fn().mockResolvedValue({ allowed: true, used: 0, limit: 100, unlimited: false }),
   fetchAgentModelId: vi.fn().mockResolvedValue(null),
   fetchAgentSlug: vi.fn().mockResolvedValue(null),
   recordUsage: vi.fn(),
