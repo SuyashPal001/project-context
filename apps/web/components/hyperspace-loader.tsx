@@ -11,20 +11,22 @@ interface HyperspaceLoaderProps {
     mode?: 'signup' | 'signin';
 }
 
+// Rose (#E69DB8) -> peach (#F2A679), 5 evenly-interpolated stops — replaces the
+// old unrelated rainbow (blue/orange/cyan/pink/purple) checkpoint colors.
 const CHECKPOINTS_SIGNIN = [
-    { label: "verifying identity", color: "#6c8fff" },
-    { label: "loading workspace", color: "#ff9f43" },
-    { label: "waking your agents", color: "#48dbfb" },
-    { label: "syncing permissions", color: "#ff6b9d" },
-    { label: "destination reached", color: "#a29bfe" },
+    { label: "verifying identity", color: "#E69DB8" },
+    { label: "loading workspace", color: "#E99FA8" },
+    { label: "waking your agents", color: "#ECA299" },
+    { label: "syncing permissions", color: "#EFA489" },
+    { label: "destination reached", color: "#F2A679" },
 ];
 
 const CHECKPOINTS_SIGNUP = [
-    { label: "verifying identity", color: "#6c8fff" },
-    { label: "creating workspace", color: "#ff9f43" },
-    { label: "provisioning agent", color: "#48dbfb" },
-    { label: "almost ready", color: "#ff6b9d" },
-    { label: "destination reached", color: "#a29bfe" },
+    { label: "verifying identity", color: "#E69DB8" },
+    { label: "creating workspace", color: "#E99FA8" },
+    { label: "provisioning agent", color: "#ECA299" },
+    { label: "almost ready", color: "#EFA489" },
+    { label: "destination reached", color: "#F2A679" },
 ];
 
 export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mode = 'signin' }: HyperspaceLoaderProps) {
