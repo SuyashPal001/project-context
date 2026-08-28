@@ -134,7 +134,7 @@ export default function SignupPage() {
                                 </FormItem>
                             )}
                         />
-                        <Button type="submit" className="w-full" disabled={isLoading}>
+                        <Button type="submit" className="w-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-black hover:opacity-90 border-0" disabled={isLoading}>
                             {isLoading ? "Creating account..." : "Sign up"}
                         </Button>
                     </form>
@@ -152,9 +152,8 @@ export default function SignupPage() {
                         </div>
 
                         <Button
-                            variant="outline"
                             type="button"
-                            className="w-full"
+                            className="w-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-black hover:opacity-90 border-0"
                             onClick={() => initiateGoogleSignIn()}
                             disabled={isLoading}
                         >
