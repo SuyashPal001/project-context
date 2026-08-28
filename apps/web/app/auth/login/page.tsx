@@ -163,7 +163,7 @@ function LoginPageContent() {
                                 </Button>
                             </>
                         )}
-                        <p className="text-center text-sm text-muted-foreground">Don&apos;t have an account?{' '}<a href="/auth/signup" className="text-primary hover:underline">Sign up</a></p>
+                        <p className="text-center text-sm text-muted-foreground">Don&apos;t have an account?{' '}<a href="/auth/signup" className="text-foreground font-medium hover:underline">Sign up</a></p>
                     </>
                 )}
 
