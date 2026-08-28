@@ -49,22 +49,33 @@ function AssetGridCard({ file, isActive, isPicked, isBlocked, onToggle, onHover 
             onClick={onToggle}
             onMouseEnter={onHover}
             disabled={isBlocked}
-            className={`relative w-full flex flex-col rounded-xl overflow-hidden border text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`relative flex flex-col overflow-hidden border text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 isPicked ? 'border-primary bg-primary/5' : isActive ? 'border-primary/50 bg-accent/40' : 'border-border/60 hover:border-border'
             }`}
+            // Inline, not Tailwind utilities — this grid/card layout was silently
+            // not receiving several of its utility classes in production (cause
+            // still unconfirmed), collapsing every card to a full-width sliver.
+            // Inline styles can't be dropped by whatever that pipeline issue is.
+            style={{ width: '100%', borderRadius: '12px', boxSizing: 'border-box' }}
         >
-            <span className={`absolute top-1.5 right-1.5 z-10 h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
-                isPicked ? 'bg-primary border-primary' : 'bg-background/80 border-border'
-            }`}>
+            <span
+                className={`absolute top-1.5 right-1.5 z-10 rounded-full border flex items-center justify-center transition-colors ${
+                    isPicked ? 'bg-primary border-primary' : 'bg-background/80 border-border'
+                }`}
+                style={{ height: '18px', width: '18px' }}
+            >
                 {isPicked && <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />}
             </span>
             {/* Fixed height, not aspect-ratio — the thumbnail box collapsed to a
                 sliver when its width came out unreliable inside the grid, taking
-                the whole card down to a thin pill with it. A plain h-16 can't
-                collapse regardless of parent width. */}
-            <div className="h-16 w-full flex items-center justify-center bg-muted/50 relative shrink-0">
+                the whole card down to a thin pill with it. A plain fixed height
+                can't collapse regardless of parent width. */}
+            <div
+                className="flex items-center justify-center bg-muted/50 relative"
+                style={{ height: '64px', width: '100%', flexShrink: 0 }}
+            >
                 {thumbnailUrl ? (
-                    <img src={thumbnailUrl} alt={file.filename} className="h-full w-full object-cover" />
+                    <img src={thumbnailUrl} alt={file.filename} className="object-cover" style={{ height: '100%', width: '100%' }} />
                 ) : (
                     getFileIcon(file.contentType)
                 )}
@@ -172,7 +183,10 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
                     {searchValue ? `No files match "${searchValue}".` : 'No files in Drive yet.'}
                 </div>
             ) : (
-                <div className="grid grid-cols-3 gap-2 overflow-y-auto custom-scrollbar flex-1 min-h-0">
+                <div
+                    className="overflow-y-auto flex-1 min-h-0"
+                    style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}
+                >
                     {filtered.map((file, i) => (
                         <AssetGridCard
                             key={file.id}
