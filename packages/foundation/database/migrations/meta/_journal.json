@@ -498,6 +498,13 @@
       "when": 1787920000000,
       "tag": "0070_spend_credits_fn",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787921000000,
+      "tag": "0071_credit_ledger_tenant_scoped_idempotency",
+      "breakpoints": true
     }
   ]
 }

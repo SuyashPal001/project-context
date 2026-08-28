@@ -64,6 +64,8 @@ export const creditLedger = pgTable('credit_ledger', {
   reason: text('reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex('credit_ledger_key_seq_uq').on(t.idempotencyKey, t.seq),
+  // The key namespace is per-tenant: ops top-up keys are operator-chosen and
+  // free-form, so the same string will legitimately be reused across tenants.
+  uniqueIndex('credit_ledger_tenant_key_seq_uq').on(t.tenantId, t.idempotencyKey, t.seq),
   index('credit_ledger_tenant_time_idx').on(t.tenantId, t.createdAt),
 ]);

@@ -58,7 +58,11 @@ are at cost with no markup. Change the seed, not the code, to introduce margin.
 5. **Idempotency: one key, N rows.** A spend that drains grant A then grant B writes one
    ledger row per slice under one `idempotency_key`, distinguished by `seq`. The replay
    check runs *after* the account lock so concurrent duplicates serialize into a clean
-   replay; `unique(idempotency_key, seq)` is the backstop, not the mechanism.
+   replay; `unique(tenant_id, idempotency_key, seq)` is the backstop, not the mechanism.
+   **The key namespace is per-tenant**, not global: ops top-up keys are operator-supplied
+   and free-form (section 5), so the same string will legitimately be reused across
+   tenants, and a global namespace would silently replay tenant B's grant off tenant A's
+   ledger row. Every replay lookup filters on `tenant_id` as well as the key.
 6. **The estimate never locks and never reserves.** It reads current rates and current
    balance. The real check is inside `spend_credits()`.
 7. **Rate edits are versioned and immutable.** Editing a price inserts a new
@@ -153,7 +157,7 @@ export const creditLedger = pgTable('credit_ledger', {
   reason: text('reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex('credit_ledger_key_seq_uq').on(t.idempotencyKey, t.seq),
+  uniqueIndex('credit_ledger_tenant_key_seq_uq').on(t.tenantId, t.idempotencyKey, t.seq),
   index('credit_ledger_tenant_time_idx').on(t.tenantId, t.createdAt),
 ]);
 ```
@@ -252,7 +256,8 @@ begin
   -- replay instead of one of them dying on the unique index.
   select balance_after_micro into v_dummy
     from credit_ledger
-   where idempotency_key = p_key
+   where tenant_id = p_tenant
+     and idempotency_key = p_key
    order by seq desc
    limit 1;
   if found then
