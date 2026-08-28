@@ -40,6 +40,27 @@ Two further leaks make a naive quota ineffective:
   enough that ordinary use never approaches them.
 - No restriction on file type. Video and audio remain uploadable.
 - No storage-class tiering or lifecycle cost optimization. Out of scope.
+- Enterprise pay-as-you-go billing is out of scope for this build. See below.
+
+## Deferred: enterprise pay-as-you-go
+
+Enterprise storage is unlimited and billed by consumption. Metering it is
+deliberately not part of this build, but the shape is worth recording because it
+constrains nothing here and reuses what this build produces.
+
+Storage is a stock, not a flow. Every other metered feature — `api_calls`,
+`llm_tokens`, `messages` — increments on an event, which is what `usage.record`
+and `usageRecordingMiddleware` are built for. Storage cannot be derived that way:
+100GB held for a month is the billable quantity, and upload events do not
+describe it. Billing it needs periodic sampling — a daily snapshot of each
+tenant's bytes, aggregated into GB-months at invoice time — which means a
+scheduled job and a snapshot table.
+
+That work reads the same counter this build registers, so nothing here needs to
+anticipate it beyond keeping the counter correct for tenants whose entitlement is
+`unlimited`. The counter must therefore run for enterprise tenants even though
+both enforcement gates skip them: a tenant that is never metered cannot later be
+billed, and the historical data cannot be reconstructed after the fact.
 
 ## Decisions
 
