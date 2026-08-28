@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
+import { InsufficientCreditsError } from '@serverless-saas/credits'
 import { TaskComment, INTERNAL_SERVICE_KEY } from '../types.js'
-import { checkMessageQuota, fetchAgentSkill, fetchConnectedProviders } from '../usage.js'
+import { fetchAgentModelSelection, fetchAgentSkill, fetchConnectedProviders } from '../usage.js'
+import { chargeTaskEstimate, DEFAULT_TASK_MODEL, estimateTaskMicro, resolveTaskRate, settleTask } from '../credits.js'
 import { createTenantAgent } from '../mastra/index.js'
 import { filterPII } from '../pii-filter.js'
 import { fetchTaskComments } from './tasks.helpers.js'
@@ -167,10 +169,28 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
     return c.json({ error: 'taskId, tenantId, and title are required' }, 400)
   }
 
-  const planQuota = await checkMessageQuota(tenantId)
-  if (!planQuota.allowed) {
-    console.warn(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${planQuota.used} limit=${planQuota.limit}`)
-    return c.json({ error: 'Message quota exceeded', used: planQuota.used, limit: planQuota.limit }, 429)
+  // Metered like task execution (Task 9), but keyed under a `document:` namespace
+  // so this planning charge never collides with the `task:{taskId}` charge that
+  // /api/tasks/execute makes for the same taskId. jobType: 'document' distinguishes
+  // the ledger rows. The charge IS the check — chargeTaskEstimate throws
+  // InsufficientCreditsError under the account lock when the estimate can't be
+  // covered; no separate balance pre-check here (see credits.ts's comment on why).
+  const planModelSelection = await fetchAgentModelSelection(agentId)
+  const planModel = planModelSelection?.model ?? DEFAULT_TASK_MODEL
+  const planEstimateMicro = await estimateTaskMicro(1, planModel)
+  const planRate = await resolveTaskRate(planModel)
+  try {
+    await chargeTaskEstimate({
+      tenantId, taskId, agentId, estimateMicro: planEstimateMicro,
+      rateId: planRate?.id ?? null, rateVersion: planRate?.version ?? null,
+      key: `document:${taskId}`, jobType: 'document',
+    })
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      console.warn(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} insufficient credits for estimate=${planEstimateMicro}`)
+      return c.json({ error: 'Insufficient credits' }, 402)
+    }
+    throw err
   }
 
   console.log(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} title="${title}"`)
@@ -204,8 +224,22 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
       memory: { thread: planThreadId, resource: tenantId },
     })
     agentOutput = result.text ?? ''
+    // The Mastra generate() result reports real token totals here (same
+    // result.usage shape read at every other agent.generate() call site in
+    // this codebase), so settle against them now rather than leaving the
+    // up-front estimate as the final charge. Fire-and-forget, like every
+    // other settleTask call site — never blocks the response.
+    void settleTask({
+      tenantId, taskId, agentId, model: planModel,
+      inputTokens: result.usage?.inputTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
+      chargeKey: `document:${taskId}`, key: `document:${taskId}:settle`, jobType: 'document',
+    })
   } catch (err) {
     console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} Mastra error:`, (err as Error).message)
+    // No token totals exist when generate() itself throws — the estimate
+    // charged above stands as the final charge (per Task 10 brief: don't
+    // invent a settle with no numbers behind it).
     return c.json({ error: 'Agent error', detail: (err as Error).message }, 502)
   } finally {
     await planMcpClient.disconnect()
