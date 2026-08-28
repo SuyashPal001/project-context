@@ -12,11 +12,26 @@ export interface GrantSummary {
 export type LedgerRow = typeof creditLedger.$inferSelect;
 
 /**
- * Reads the `credits` entitlement. Stubbed for now - Task 5 wires this to the
- * real entitlement check. The wrapper tests in this task don't exercise it.
+ * Reads the `credits` entitlement for a tenant's active/trialing subscription.
+ * A tenant feature override wins over the plan entitlement. Mirrors the
+ * entitlement lookup in `checkMessageQuota`
+ * (apps/agent-orchestrator/src/usage.ts). Returns false (not unlimited) for a
+ * tenant with no active subscription row, rather than throwing.
  */
-export async function isUnlimited(_tenantId: string): Promise<boolean> {
-  return false; // Task 5
+export async function isUnlimited(tenantId: string): Promise<boolean> {
+  const [row] = await db.execute(sql`
+    select coalesce(tfo.unlimited, pe.unlimited, false) as unlimited
+      from subscriptions s
+      join features f on f.key = 'credits'
+      left join plan_entitlements pe on pe.plan = s.plan::text and pe.feature_id = f.id
+      left join tenant_feature_overrides tfo
+             on tfo.tenant_id = s.tenant_id and tfo.feature_id = f.id
+            and tfo.revoked_at is null and tfo.deleted_at is null
+            and (tfo.expires_at is null or tfo.expires_at > now())
+     where s.tenant_id = ${tenantId} and s.status in ('active','trialing')
+     limit 1
+  `) as unknown as { unlimited: boolean }[];
+  return row?.unlimited ?? false;
 }
 
 export async function getBalance(tenantId: string): Promise<{

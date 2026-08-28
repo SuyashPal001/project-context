@@ -7,6 +7,7 @@ import { seedPermissions } from './permissions';
 import { seedRolePermissions } from './role-permissions';
 import { seedFeatures } from './features';
 import { seedPlanEntitlements } from './plan-entitlements';
+import { seedCreditRates } from './credit-rates';
 import { seedLlmProviders } from './llm-providers';
 import { seedNotificationTemplates } from './notification-templates';
 import { seedTools } from './tools';
@@ -22,6 +23,7 @@ async function run() {
     await seedRolePermissions(db);
     await seedFeatures(db);
     await seedPlanEntitlements(db);
+    await seedCreditRates(db);
     await seedLlmProviders(db);
 
     try {
