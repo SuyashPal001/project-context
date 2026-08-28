@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Play, LayoutGrid, ChevronRight, FolderOpen } from 'lucide-react';
+import { Play, LayoutGrid, ChevronRight, Sparkles } from 'lucide-react';
 import { useConversationAssets } from '@/hooks/useConversationAssets';
 import { api } from '@/lib/api';
 import type { Asset, AssetType } from '@/types/assets';
@@ -165,9 +165,16 @@ export function AssetGallery({ conversationId, filterAssetId, fallbackAsset, onC
             <AssetCard asset={fallbackAsset} onClick={() => onCardClick(fallbackAsset, [fallbackAsset])} />
           </div>
         ) : visible.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center gap-4 text-center px-6">
-            <div className="h-14 w-14 rounded-2xl bg-muted/60 border border-border/60 flex items-center justify-center">
-              <FolderOpen className="h-6 w-6 text-muted-foreground" />
+          <div className="h-full flex flex-col items-center justify-center gap-5 text-center px-6">
+            <div className="relative h-20 w-28">
+              {/* peeking card stack, fanned behind the tab — same idea as the
+                  reference's polaroid stack, abstract instead of fake photos */}
+              <div className="absolute left-1 top-0 h-14 w-11 -rotate-12 rounded-lg bg-card border border-border/60 shadow-sm" />
+              <div className="absolute left-1/2 -translate-x-1/2 top-0 h-14 w-11 rounded-lg bg-card border border-border/60 shadow-sm" />
+              <div className="absolute right-1 top-0 h-14 w-11 rotate-12 rounded-lg bg-card border border-border/60 shadow-sm" />
+              <div className="absolute inset-x-2 bottom-0 h-12 rounded-2xl bg-gradient-to-br from-[#E69DB8] to-[#F2A679] shadow-md flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-black/70" />
+              </div>
             </div>
             <div className="space-y-1">
               <p className="text-sm font-semibold">
