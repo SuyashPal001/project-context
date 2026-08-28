@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { ThumbsDown, ThumbsUp } from 'lucide-react'
+import { ThumbsDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StepCard } from '../StepCard'
+import { TaskExecutionCost } from '@/components/platform/credits/TaskExecutionCost'
 import type { Task, Step } from '@/types/task'
 
 interface PlanReviewPhaseProps {
@@ -42,15 +43,16 @@ export function PlanReviewPhase({ task, steps, onApprovePlan, onRejectPlan }: Pl
                             >
                                 <ThumbsDown className="w-3.5 h-3.5" /> Request Changes
                             </Button>
-                            <Button
-                                size="sm"
-                                className="text-xs h-8 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                                onClick={onApprovePlan}
-                            >
-                                <ThumbsUp className="w-3.5 h-3.5" /> Approve Plan
-                            </Button>
                         </div>
                     </div>
+
+                    {/* Approving here is what actually enqueues execution — this is
+                        the moment credits are committed, so the cost preview and the
+                        Approve control both live inside TaskExecutionCost. */}
+                    <div className="border-t border-[#1e1e1e]">
+                        <TaskExecutionCost agentId={task.agentId} stepCount={steps.length} onApprove={onApprovePlan} />
+                    </div>
+
                     {rejecting && (
                         <div className="px-3 pb-3 border-t border-[#1e1e1e] pt-3 space-y-2">
                             <textarea

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { microToCredits, type CreditBalance, type CreditEstimate } from './useCredits';
+import { microToCredits, rateSubjectFor, type CreditBalance, type CreditEstimate } from './useCredits';
 
 describe('microToCredits', () => {
     it('divides a micro string by 1,000,000 to get credits', () => {
@@ -39,6 +39,23 @@ describe('CreditBalance shape (compile-time + narrowing smoke test)', () => {
     it('carries balanceMicro and grants when unlimited is false', () => {
         const limited: CreditBalance = { unlimited: false, balanceMicro: '2000000', grants: [] };
         expect(limited.balanceMicro).toBe('2000000');
+    });
+});
+
+describe('rateSubjectFor', () => {
+    // Mirrors apps/agent-orchestrator/src/credits.ts rateSubjectFor exactly —
+    // this must resolve to the same credit_rates subject the real charge
+    // resolves to, or the client-side estimate quotes a rate nobody pays.
+    it('routes any ollama/* model to the "ollama" rate subject', () => {
+        expect(rateSubjectFor('ollama/llama3')).toBe('ollama');
+    });
+
+    it('strips a non-ollama provider prefix down to the bare model name', () => {
+        expect(rateSubjectFor('vertex/gemini-2.5-flash')).toBe('gemini-2.5-flash');
+    });
+
+    it('passes a bare model name through unchanged', () => {
+        expect(rateSubjectFor('gemini-2.5-pro')).toBe('gemini-2.5-pro');
     });
 });
 

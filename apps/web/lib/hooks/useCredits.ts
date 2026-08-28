@@ -72,3 +72,27 @@ export function useCreditEstimate(params: CreditEstimateParams | null) {
         enabled: params !== null,
     });
 }
+
+// ─── Task-execution cost mirror ─────────────────────────────────────────────
+//
+// These three constants/functions are duplicated from
+// apps/agent-orchestrator/src/credits.ts, which is Node server code the web
+// app cannot import. They exist so a client-side estimate of "what will this
+// task cost when it runs" can match, input-for-input, what
+// runMastraTaskSteps() actually charges via estimateTaskMicro() — same
+// resourceType ('llm_tokens'), same subject-normalization, same
+// per-step token assumption. If those orchestrator constants change, these
+// must change with them or the preview silently drifts from the real charge.
+
+/** Mirrors apps/agent-orchestrator/src/credits.ts AVERAGE_STEP_TOKENS. */
+export const AVERAGE_STEP_TOKENS = { input: 4000, output: 1000 };
+
+/** Mirrors apps/agent-orchestrator/src/credits.ts DEFAULT_TASK_MODEL — the
+ * model charged when an agent has no llm_provider selection yet. */
+export const DEFAULT_TASK_MODEL = 'gemini-2.5-flash';
+
+/** Mirrors apps/agent-orchestrator/src/credits.ts rateSubjectFor(). */
+export function rateSubjectFor(model: string): string {
+    if (model.startsWith('ollama/')) return 'ollama';
+    return model.includes('/') ? (model.split('/').pop() as string) : model;
+}
