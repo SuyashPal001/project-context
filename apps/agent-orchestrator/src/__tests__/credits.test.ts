@@ -268,6 +268,41 @@ describe('settleTask', () => {
     const call = spendCredits.mock.calls[0][0];
     expect(call.amountMicro).toBe(80_000n); // 200_000 - 120_000
     expect(call.grantType).toBe('refund');
+    expect(call.expiresAt).toBeNull(); // chargeRow's row carries no expires_at
+  });
+
+  it('carries the shortest expiresAt among the original debit\'s grants into a settle refund, per spec section 4', async () => {
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    const soon = '2026-09-01T00:00:00.000Z';
+    const later = '2026-12-01T00:00:00.000Z';
+    const pool = { query: vi.fn().mockResolvedValueOnce({
+      rows: [
+        { amount_micro: '-100000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema, expires_at: later },
+        { amount_micro: '-100000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema, expires_at: soon },
+      ],
+    }) };
+    await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.amountMicro).toBe(80_000n); // 200_000 - 120_000, grantType refund path
+    expect(call.grantType).toBe('refund');
+    expect(call.expiresAt).toEqual(new Date(soon));
+  });
+
+  it('does not attach an expiresAt to a settle-side debit (actual ran over the charged amount)', async () => {
+    // spend_credits() ignores p_expires_at on a negative amount anyway, but
+    // this pins that settleTask does not even try to compute one on this path.
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    const pool = { query: vi.fn().mockResolvedValueOnce({
+      rows: [{ amount_micro: '-50000', rate_id: 'rate-1', rate_version: 1, pricing_schema: schema, expires_at: '2026-09-01T00:00:00.000Z' }],
+    }) };
+    await settleTask(baseArgs, { isUnlimited, spendCredits, pool: pool as never });
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.grantType).toBeNull();
+    expect(call.expiresAt).toBeNull();
   });
 
   it('sums multiple debit rows under the same key (one chargeTaskEstimate call can draw from several FIFO grants)', async () => {
@@ -347,7 +382,7 @@ describe('refundTask', () => {
     const pool = {
       query: vi.fn()
         .mockResolvedValueOnce({ rows: [{ exists: false }] })
-        .mockResolvedValueOnce({ rows: [{ total: '-100000' }] }),
+        .mockResolvedValueOnce({ rows: [{ amount_micro: '-100000', expires_at: null }] }),
     };
     const spendCredits = vi.fn().mockResolvedValue(0n);
     await refundTask({ tenantId: 'tenant-1', taskId: 'task-1' }, { isUnlimited, spendCredits, pool: pool as never });
@@ -365,6 +400,50 @@ describe('refundTask', () => {
     expect(call.kind).toBe('refund');
     expect(call.grantType).toBe('refund');
     expect(call.amountMicro).toBe(100_000n);
+    expect(call.expiresAt).toBeNull();
+  });
+
+  it('carries the shortest expiresAt among the drawn grants into the refund, per spec section 4', async () => {
+    const { refundTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const soon = '2026-09-01T00:00:00.000Z';
+    const later = '2026-12-01T00:00:00.000Z';
+    const pool = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ exists: false }] })
+        // Two grants drawn from: one expiring later, one sooner, plus a
+        // never-expiring grant — the never-expiring one must not win.
+        .mockResolvedValueOnce({ rows: [
+          { amount_micro: '-40000', expires_at: later },
+          { amount_micro: '-30000', expires_at: soon },
+          { amount_micro: '-30000', expires_at: null },
+        ] }),
+    };
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    await refundTask({ tenantId: 'tenant-1', taskId: 'task-1' }, { isUnlimited, spendCredits, pool: pool as never });
+
+    expect(spendCredits).toHaveBeenCalledTimes(1);
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.amountMicro).toBe(100_000n);
+    expect(call.expiresAt).toEqual(new Date(soon));
+  });
+
+  it('carries a null expiresAt (never expires) only when every drawn grant was permanent', async () => {
+    const { refundTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const pool = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ exists: false }] })
+        .mockResolvedValueOnce({ rows: [
+          { amount_micro: '-50000', expires_at: null },
+          { amount_micro: '-50000', expires_at: null },
+        ] }),
+    };
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    await refundTask({ tenantId: 'tenant-1', taskId: 'task-1' }, { isUnlimited, spendCredits, pool: pool as never });
+
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.expiresAt).toBeNull();
   });
 
   it('honors an explicit chargeKey/jobType override (Task 10 document flow), scoping the settled-row check and debit sum to the same namespace', async () => {
@@ -373,7 +452,7 @@ describe('refundTask', () => {
     const pool = {
       query: vi.fn()
         .mockResolvedValueOnce({ rows: [{ exists: false }] })
-        .mockResolvedValueOnce({ rows: [{ total: '-100000' }] }),
+        .mockResolvedValueOnce({ rows: [{ amount_micro: '-100000', expires_at: null }] }),
     };
     const spendCredits = vi.fn().mockResolvedValue(0n);
     await refundTask(
@@ -415,7 +494,7 @@ describe('refundTask', () => {
     const pool = {
       query: vi.fn()
         .mockResolvedValueOnce({ rows: [{ exists: false }] })
-        .mockResolvedValueOnce({ rows: [{ total: '0' }] }),
+        .mockResolvedValueOnce({ rows: [{ amount_micro: '0', expires_at: null }] }),
     };
     const spendCredits = vi.fn();
     await refundTask({ tenantId: 'tenant-1', taskId: 'task-1' }, { isUnlimited, spendCredits, pool: pool as never });
@@ -444,7 +523,7 @@ describe('refundTask', () => {
       const pool = {
         query: vi.fn()
           .mockResolvedValueOnce({ rows: [{ exists: false }] })
-          .mockResolvedValueOnce({ rows: [{ total: '-100000' }] }),
+          .mockResolvedValueOnce({ rows: [{ amount_micro: '-100000', expires_at: null }] }),
       };
       const spendCredits = vi.fn().mockRejectedValue(new Error('connection refused'));
       await refundTask({ tenantId: 'tenant-1', taskId: 'task-1' }, { isUnlimited, spendCredits, pool: pool as never });

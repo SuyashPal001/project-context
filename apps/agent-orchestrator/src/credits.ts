@@ -242,6 +242,27 @@ export async function chargeTaskEstimate(
 }
 
 /**
+ * Spec §4: "The refund lands in a new grant carrying the shortest expires_at
+ * among the grants it came from, so a refund can never extend a credit's
+ * life." `min()` over a set of timestamps where some are null (never
+ * expires) is exactly the right operator for this: a null contributes
+ * nothing (SQL aggregates and Array.reduce below both treat it as "no
+ * constraint", i.e. effectively +Infinity), so the result is the earliest
+ * REAL expiry among the drawn grants — or null only if every drawn grant was
+ * itself permanent, in which case there is nothing to shorten and a
+ * permanent refund is correct, not a bug.
+ */
+function shortestExpiresAt(expiresAts: Array<Date | string | null>): Date | null {
+  let shortest: Date | null = null
+  for (const raw of expiresAts) {
+    if (raw == null) continue
+    const d = raw instanceof Date ? raw : new Date(raw)
+    if (shortest === null || d.getTime() < shortest.getTime()) shortest = d
+  }
+  return shortest
+}
+
+/**
  * Positive credits the tenant back (actual came in under estimate); negative
  * debits the shortfall (actual ran over); 0n means the estimate was exact and
  * nothing should be written. Pure — no I/O, trivially unit-testable.
@@ -312,16 +333,21 @@ export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}
       rate_id: string | null
       rate_version: number | null
       pricing_schema: PricingSchema | null
+      expires_at: string | null
     }>(
-      `select cl.amount_micro, cl.rate_id, cl.rate_version, cr.pricing_schema
+      `select cl.amount_micro, cl.rate_id, cl.rate_version, cr.pricing_schema, cg.expires_at
          from credit_ledger cl
          left join credit_rates cr on cr.id = cl.rate_id
+         left join credit_grants cg on cg.id = cl.grant_id
         where cl.tenant_id = $1 and cl.idempotency_key = $2 and cl.kind = 'debit'`,
       [args.tenantId, chargeKey],
     )
     if (chargeRows.rows.length === 0) return // nothing was ever charged — nothing to settle
 
     const estimateMicro = -chargeRows.rows.reduce((sum, row) => sum + BigInt(row.amount_micro), 0n)
+    // The grants the original debit drew from — used only when this settle
+    // turns out to be a refund (delta > 0n) below.
+    const originalGrantExpiresAt = shortestExpiresAt(chargeRows.rows.map(row => row.expires_at))
     const priced = chargeRows.rows.find(row => row.pricing_schema != null)
     let schema = priced?.pricing_schema ?? null
     let rateId = priced?.rate_id ?? null
@@ -357,6 +383,10 @@ export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}
       jobId: args.taskId,
       jobType: args.jobType ?? 'agent_task',
       grantType: delta > 0n ? 'refund' : null,
+      // Only meaningful when delta > 0 (spend_credits() ignores expiresAt on
+      // a negative amount) — the new refund grant can never outlive the
+      // shortest-lived grant the original estimate charge drew from.
+      expiresAt: delta > 0n ? originalGrantExpiresAt : null,
       reason: 'settle estimate to actual',
     })
   } catch (err) {
@@ -414,13 +444,18 @@ export async function refundTask(args: RefundTaskArgs, deps: RefundTaskDeps = {}
     if (settled.rows[0]?.exists) return
 
     const debitKey = chargeKey
-    const res = await pool.query<{ total: string }>(
-      `select coalesce(sum(amount_micro), 0) as total from credit_ledger
-        where tenant_id = $1 and idempotency_key = $2 and kind = 'debit'`,
+    const res = await pool.query<{ amount_micro: string; expires_at: string | null }>(
+      `select cl.amount_micro, cg.expires_at
+         from credit_ledger cl
+         left join credit_grants cg on cg.id = cl.grant_id
+        where cl.tenant_id = $1 and cl.idempotency_key = $2 and cl.kind = 'debit'`,
       [args.tenantId, debitKey],
     )
-    const net = BigInt(res.rows[0]?.total ?? '0') // negative if the tenant was charged; 0 if never charged
+    const net = res.rows.reduce((sum, row) => sum + BigInt(row.amount_micro), 0n) // negative if the tenant was charged; 0 if never charged
     if (net >= 0n) return
+    // Spec §4: the refund grant can never outlive the shortest-lived grant
+    // the original debit drew from.
+    const originalGrantExpiresAt = shortestExpiresAt(res.rows.map(row => row.expires_at))
 
     // A failure past this point means real money owed to the tenant gets
     // stuck — unlike debitChatTurn's fire-and-forget (a dropped debit costs
@@ -438,6 +473,7 @@ export async function refundTask(args: RefundTaskArgs, deps: RefundTaskDeps = {}
         grantType: 'refund',
         jobId: args.taskId,
         jobType: args.jobType ?? 'agent_task',
+        expiresAt: originalGrantExpiresAt,
         reason: 'task failed',
       })
     } catch (spendErr) {

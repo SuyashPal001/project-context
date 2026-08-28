@@ -33,33 +33,35 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
  * transaction - required over the Supabase transaction pooler (6543), where a
  * client-side BEGIN/COMMIT could span two different backends. Never wrap this
  * call in a transaction.
+ *
+ * Migration 0072: spend_credits() no longer raises SQLSTATE P0001 for a plain
+ * shortfall. It used to, but that raise aborted the whole statement -
+ * including the lazy expiry sweep the same call had just performed under the
+ * account lock, so a spend that failed discarded the very expiry it found
+ * (invariant 3 violation). The function now reports a shortfall through two
+ * OUT columns (`insufficient`, `short_by`) instead, which lets the call
+ * complete normally - and the sweep's write, already committed earlier in
+ * the same function body, survives. This function still throws
+ * InsufficientCreditsError to preserve the exact contract every existing
+ * caller relies on; the difference is entirely internal to this file. A
+ * genuine unexpected database error still propagates as a thrown error and
+ * still rolls back the whole call, unchanged.
  */
 export async function spendCredits(i: SpendInput): Promise<bigint> {
-  try {
-    const result = await db.execute(sql`
-      select spend_credits(
-        ${i.tenantId}::uuid, ${i.amountMicro.toString()}::bigint, ${i.key}, ${i.kind},
-        ${i.actorId ?? null}::uuid, ${i.actorType ?? null}::actor_type,
-        ${i.rateId ?? null}::uuid, ${i.rateVersion ?? null}::integer,
-        ${i.jobId ?? null}::uuid, ${i.jobType ?? null},
-        ${i.grantType ?? null}, ${i.expiresAt?.toISOString() ?? null}::timestamptz, ${i.reason ?? null}
-      ) as balance
-    `);
-    const [row] = rowsOf(result);
-    return BigInt(row.balance as string | number | bigint);
-  } catch (err) {
-    // drizzle-orm's postgres-js driver wraps every query failure in a
-    // DrizzleQueryError ("Failed query: ...") and puts the real postgres.js
-    // PostgresError - the one carrying .code/.message from `raise exception`
-    // - on .cause. Check both so this doesn't silently stop matching if a
-    // future drizzle-orm version ever throws the raw error unwrapped.
-    const raised = err as { code?: string; message?: string; cause?: { code?: string; message?: string } };
-    const pgErr = raised.cause ?? raised;
-    if (pgErr.code === 'P0001' || String(pgErr.message).includes('INSUFFICIENT_CREDITS')) {
-      throw new InsufficientCreditsError();
-    }
-    throw err;
+  const result = await db.execute(sql`
+    select * from spend_credits(
+      ${i.tenantId}::uuid, ${i.amountMicro.toString()}::bigint, ${i.key}, ${i.kind},
+      ${i.actorId ?? null}::uuid, ${i.actorType ?? null}::actor_type,
+      ${i.rateId ?? null}::uuid, ${i.rateVersion ?? null}::integer,
+      ${i.jobId ?? null}::uuid, ${i.jobType ?? null},
+      ${i.grantType ?? null}, ${i.expiresAt?.toISOString() ?? null}::timestamptz, ${i.reason ?? null}
+    )
+  `);
+  const [row] = rowsOf(result);
+  if (row.insufficient) {
+    throw new InsufficientCreditsError();
   }
+  return BigInt(row.new_balance as string | number | bigint);
 }
 
 export interface GrantInput {

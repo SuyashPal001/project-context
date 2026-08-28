@@ -42,8 +42,12 @@ async function liveGrantSum(tenant: string) {
   return BigInt(r.live);
 }
 
+// Migration 0072: spend_credits() returns a row of (new_balance, insufficient,
+// short_by) rather than a bare scalar, so a shortfall can be reported without
+// raising - raising would abort the whole statement and take the lazy expiry
+// sweep down with it (see 0072's migration comment).
 const spend = (amount: bigint, key: string, kind = 'debit') =>
-  sql`select spend_credits(${TENANT}, ${amount}, ${key}, ${kind}, null, null) as balance`;
+  sql`select * from spend_credits(${TENANT}, ${amount}, ${key}, ${kind}, null, null)`;
 
 describe.skipIf(!TEST_DB)('spend_credits', () => {
   beforeEach(reset);
@@ -52,12 +56,15 @@ describe.skipIf(!TEST_DB)('spend_credits', () => {
   it('debits from a single grant and returns the new balance', async () => {
     await grant(1_000_000n, null);
     const [row] = await spend(-250_000n, 'test:1');
-    expect(BigInt(row.balance)).toBe(750_000n);
+    expect(BigInt(row.new_balance)).toBe(750_000n);
   });
 
-  it('raises INSUFFICIENT_CREDITS and writes no rows when short', async () => {
+  it('reports insufficient (no throw) and writes no debit rows when short', async () => {
     await grant(100_000n, null);
-    await expect(spend(-500_000n, 'test:2')).rejects.toThrow(/INSUFFICIENT_CREDITS/);
+    const [row] = await spend(-500_000n, 'test:2');
+    expect(row.insufficient).toBe(true);
+    expect(BigInt(row.short_by)).toBe(400_000n);
+    expect(BigInt(row.new_balance)).toBe(100_000n);   // unchanged - nothing to sweep, nothing charged
     const rows = await sql`select * from credit_ledger where idempotency_key = 'test:2'`;
     expect(rows.length).toBe(0);
   });
@@ -76,7 +83,7 @@ describe.skipIf(!TEST_DB)('spend_credits', () => {
     await grant(1_000_000n, null);
     await spend(-400_000n, 'test:4');
     const [row] = await spend(-400_000n, 'test:4');
-    expect(BigInt(row.balance)).toBe(600_000n);
+    expect(BigInt(row.new_balance)).toBe(600_000n);
     const rows = await sql`select * from credit_ledger where idempotency_key = 'test:4'`;
     expect(rows.length).toBe(1);
   });
@@ -85,7 +92,7 @@ describe.skipIf(!TEST_DB)('spend_credits', () => {
     await grant(1_000_000n, new Date(Date.now() - 60_000).toISOString());
     await grant(200_000n, null);
     const [row] = await spend(-100_000n, 'test:5');
-    expect(BigInt(row.balance)).toBe(100_000n);            // expired 1_000_000 swept, not spent
+    expect(BigInt(row.new_balance)).toBe(100_000n);            // expired 1_000_000 swept, not spent
     const [exp] = await sql`select kind from credit_ledger where kind = 'expiry' and tenant_id = ${TENANT}`;
     expect(exp.kind).toBe('expiry');
   });
@@ -93,9 +100,9 @@ describe.skipIf(!TEST_DB)('spend_credits', () => {
   it('credits into a NEW grant rather than un-spending an old one', async () => {
     await grant(500_000n, null);
     await spend(-500_000n, 'test:6');
-    const [row] = await sql`select spend_credits(${TENANT}, ${200_000n}, 'test:6:refund', 'refund',
-                                                 null, null, null, null, null, null, 'refund') as balance`;
-    expect(BigInt(row.balance)).toBe(200_000n);
+    const [row] = await sql`select * from spend_credits(${TENANT}, ${200_000n}, 'test:6:refund', 'refund',
+                                                 null, null, null, null, null, null, 'refund')`;
+    expect(BigInt(row.new_balance)).toBe(200_000n);
     const grants = await sql`select grant_type from credit_grants where tenant_id = ${TENANT}`;
     expect(grants.map(g => g.grant_type).sort()).toEqual(['admin', 'refund']);
   });
@@ -105,7 +112,10 @@ describe.skipIf(!TEST_DB)('spend_credits', () => {
     const results = await Promise.allSettled(
       Array.from({ length: 10 }, (_, i) => spend(-200_000n, `test:conc:${i}`)),
     );
-    const ok = results.filter(r => r.status === 'fulfilled').length;
+    // None of these throw any more (0072) - a shortfall is reported through
+    // the row, not a rejection - so "succeeded" now means fulfilled AND not
+    // insufficient.
+    const ok = results.filter(r => r.status === 'fulfilled' && !r.value[0].insufficient).length;
     expect(ok).toBe(5);                                     // 5 x 200_000 = the whole grant
     const [acct] = await sql`select balance_micro from credit_accounts where tenant_id = ${TENANT}`;
     expect(BigInt(acct.balance_micro)).toBe(0n);            // never negative
@@ -130,14 +140,14 @@ describe.skipIf(!TEST_DB)('spend_credits', () => {
   it('scopes the idempotency key per tenant, so one key can be reused across tenants', async () => {
     const KEY = 'aug-promo';
     const topUp = (tenant: string) =>
-      sql`select spend_credits(${tenant}, ${500_000n}, ${KEY}, 'grant',
-                               null, null, null, null, null, null, 'admin') as balance`;
+      sql`select * from spend_credits(${tenant}, ${500_000n}, ${KEY}, 'grant',
+                               null, null, null, null, null, null, 'admin')`;
 
     const [a] = await topUp(TENANT);
     const [b] = await topUp(TENANT_B);
 
-    expect(BigInt(a.balance)).toBe(500_000n);
-    expect(BigInt(b.balance)).toBe(500_000n);   // tenant B is credited, not replayed off A
+    expect(BigInt(a.new_balance)).toBe(500_000n);
+    expect(BigInt(b.new_balance)).toBe(500_000n);   // tenant B is credited, not replayed off A
 
     const ledger = await sql`select tenant_id from credit_ledger where idempotency_key = ${KEY}
                              order by tenant_id`;
@@ -153,7 +163,7 @@ describe.skipIf(!TEST_DB)('spend_credits', () => {
 
     // ...and a genuine replay within one tenant still replays.
     const [again] = await topUp(TENANT);
-    expect(BigInt(again.balance)).toBe(500_000n);
+    expect(BigInt(again.new_balance)).toBe(500_000n);
     const aRows = await sql`select 1 from credit_ledger
                             where tenant_id = ${TENANT} and idempotency_key = ${KEY}`;
     expect(aRows.length).toBe(1);
@@ -173,9 +183,9 @@ describe.skipIf(!TEST_DB)('spend_credits', () => {
     // Sum the debit's rows and issue ONE positive call - spec section 4, no special case.
     const refund = debits.reduce((acc, r) => acc - BigInt(r.amount_micro), 0n);
     expect(refund).toBe(450_000n);
-    const [row] = await sql`select spend_credits(${TENANT}, ${refund}, 'inv:debit:refund', 'refund',
-                                                 null, null) as balance`;
-    expect(BigInt(row.balance)).toBe(500_000n);
+    const [row] = await sql`select * from spend_credits(${TENANT}, ${refund}, 'inv:debit:refund', 'refund',
+                                                 null, null)`;
+    expect(BigInt(row.new_balance)).toBe(500_000n);
 
     const [acct] = await sql`select balance_micro from credit_accounts where tenant_id = ${TENANT}`;
     expect(BigInt(acct.balance_micro)).toBe(await liveGrantSum(TENANT));

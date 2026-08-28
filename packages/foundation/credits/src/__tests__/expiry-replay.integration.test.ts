@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { grantCredits, spendCredits } from '../index';
+import { InsufficientCreditsError } from '../errors';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
@@ -76,5 +77,62 @@ describe.skipIf(!TEST_DB)('spend_credits() lazy expiry replay safety', () => {
     await spendCredits({ tenantId: TENANT, amountMicro: 0n, key: `expiry-sweep:${TENANT}:direct-1`, kind: 'adjust' });
     await spendCredits({ tenantId: TENANT, amountMicro: 0n, key: `expiry-sweep:${TENANT}:direct-2`, kind: 'adjust' });
     expect(await ledgerRows(TENANT, 'expiry:')).toHaveLength(1);
+  });
+});
+
+// Regression for the bug fixed in migration 0072: 0071's spend_credits() ran
+// the lazy expiry sweep and the debit attempt in one flat sequence inside a
+// single implicit transaction, so `raise exception 'INSUFFICIENT_CREDITS'`
+// rolled back the sweep it had just performed a moment earlier under the same
+// lock - the balance stayed overstated by exactly the expired amount until
+// the nightly cron caught up. Own tenant UUID, distinct from every other
+// tenant suffix listed above this file's TENANT comment.
+const SHORTFALL_TENANT = '00000000-0000-0000-0000-0000000000a7';
+
+describe.skipIf(!TEST_DB)('spend_credits() sweep survives an insufficient-credits shortfall', () => {
+  beforeEach(async () => {
+    await db.execute(sql`delete from credit_ledger where tenant_id = ${SHORTFALL_TENANT}`);
+    await db.execute(sql`delete from credit_grants where tenant_id = ${SHORTFALL_TENANT}`);
+    await db.execute(sql`delete from credit_accounts where tenant_id = ${SHORTFALL_TENANT}`);
+    await seedTenant(SHORTFALL_TENANT);
+  });
+
+  afterAll(async () => {
+    await db.execute(sql`delete from credit_ledger where tenant_id = ${SHORTFALL_TENANT}`);
+    await db.execute(sql`delete from credit_grants where tenant_id = ${SHORTFALL_TENANT}`);
+    await db.execute(sql`delete from credit_accounts where tenant_id = ${SHORTFALL_TENANT}`);
+    await db.execute(sql`delete from tenants where id = ${SHORTFALL_TENANT}`);
+  });
+
+  it('sweeps an expired grant and throws InsufficientCreditsError, even though the debit itself is short', async () => {
+    // One grant, expired yesterday, never spent - balance_micro overstates
+    // what's actually spendable until the next sweep runs.
+    await grantExpiringYesterday(SHORTFALL_TENANT, 1_000_000n);
+
+    // The grant only just expired for real, so balance_micro is still stale
+    // at 1,000,000 in credit_accounts before this call.
+    const [before] = rowsOf(await db.execute(
+      sql`select balance_micro from credit_accounts where tenant_id = ${SHORTFALL_TENANT}`,
+    ));
+    expect(BigInt(before.balance_micro as string)).toBe(1_000_000n);
+
+    await expect(
+      spendCredits({ tenantId: SHORTFALL_TENANT, amountMicro: -50_000n, key: 'shortfall:1', kind: 'debit' }),
+    ).rejects.toThrow(InsufficientCreditsError);
+
+    // The sweep must have landed anyway: balance zeroed, one expiry row, the
+    // grant fully spent-out - none of it undone by the failed debit above.
+    const [acct] = rowsOf(await db.execute(
+      sql`select balance_micro from credit_accounts where tenant_id = ${SHORTFALL_TENANT}`,
+    ));
+    expect(BigInt(acct.balance_micro as string)).toBe(0n);
+    expect(await ledgerRows(SHORTFALL_TENANT, 'expiry:')).toHaveLength(1);
+    const [grant] = rowsOf(await db.execute(
+      sql`select spent_micro, amount_micro from credit_grants where tenant_id = ${SHORTFALL_TENANT}`,
+    ));
+    expect(BigInt(grant.spent_micro as string)).toBe(BigInt(grant.amount_micro as string));
+
+    // And no partial debit row survived under the failed key.
+    expect(await ledgerRows(SHORTFALL_TENANT, 'shortfall:1')).toHaveLength(0);
   });
 });
