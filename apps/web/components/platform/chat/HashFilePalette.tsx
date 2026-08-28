@@ -2,9 +2,12 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Check, Plus } from "lucide-react";
+import { Search, Check, Plus, Play } from "lucide-react";
 import { api } from "@/lib/api";
-import { getFileIcon, formatFileSize } from "@/components/platform/files/lib/fileIcons";
+import { formatFileSize } from "@/components/platform/files/lib/fileIcons";
+import { assetTypeForFile } from "@/lib/assetType";
+import { TYPE_ICONS, TYPE_STYLES } from "@/components/platform/canvas/assetTypeStyles";
+import { useVideoFrameThumbnail } from "@/components/platform/canvas/videoFrameThumbnail";
 import type { FileRecord } from "@/components/platform/files/types";
 import type { PaletteHandle } from "./SlashPalette";
 
@@ -20,17 +23,92 @@ interface HashFilePaletteProps {
     remainingSlots: number;
 }
 
-function useThumbnailUrl(file: FileRecord): string | undefined {
+// The API rate-limits at 60 requests/minute/tenant (apps/api/src/app.ts) and
+// answers 429 past that. One presigned-url fetch per card meant a Drive with
+// 20-40 media files fired 20-40 requests the instant the palette opened, blew
+// through the budget, and every 429 was swallowed by a bare `.catch(() => {})`
+// — so the thumbnails simply never appeared. A narrow search hid the bug
+// because 1-3 cards stayed under the limit.
+//
+// Three bounds, in order of how much they save: cards only fetch once they
+// scroll into view, identical fileIds share one request/result, and at most
+// MAX_CONCURRENT_THUMBNAIL_FETCHES are ever in flight.
+const MAX_CONCURRENT_THUMBNAIL_FETCHES = 4;
+// Comfortably inside the presigned URL's own lifetime — a cached entry that
+// outlived the signature would render a broken image instead of refetching.
+const PRESIGNED_CACHE_TTL_MS = 5 * 60_000;
+
+let activeThumbnailFetches = 0;
+const thumbnailFetchQueue: Array<() => void> = [];
+const presignedCache = new Map<string, { url: string; at: number }>();
+const presignedInFlight = new Map<string, Promise<string | undefined>>();
+
+function acquireThumbnailSlot(): Promise<void> {
+    if (activeThumbnailFetches < MAX_CONCURRENT_THUMBNAIL_FETCHES) {
+        activeThumbnailFetches++;
+        return Promise.resolve();
+    }
+    return new Promise<void>(resolve => {
+        thumbnailFetchQueue.push(() => { activeThumbnailFetches++; resolve(); });
+    });
+}
+
+function releaseThumbnailSlot() {
+    activeThumbnailFetches--;
+    thumbnailFetchQueue.shift()?.();
+}
+
+function getPresignedUrl(fileId: string): Promise<string | undefined> {
+    const cached = presignedCache.get(fileId);
+    if (cached && Date.now() - cached.at < PRESIGNED_CACHE_TTL_MS) return Promise.resolve(cached.url);
+
+    const existing = presignedInFlight.get(fileId);
+    if (existing) return existing;
+
+    const request = acquireThumbnailSlot()
+        .then(() => api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(fileId)}/presigned-url`))
+        .then(res => {
+            presignedCache.set(fileId, { url: res.presignedUrl, at: Date.now() });
+            return res.presignedUrl as string | undefined;
+        })
+        .catch(() => undefined)
+        .finally(() => {
+            releaseThumbnailSlot();
+            presignedInFlight.delete(fileId);
+        });
+
+    presignedInFlight.set(fileId, request);
+    return request;
+}
+
+/** True once the element has been within 200px of the scroll viewport — latches
+ *  on so a card that scrolls back out doesn't re-request its thumbnail. */
+function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
+    const [inView, setInView] = useState(false);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        if (typeof IntersectionObserver === 'undefined') { setInView(true); return; }
+        const observer = new IntersectionObserver(entries => {
+            if (entries.some(e => e.isIntersecting)) {
+                setInView(true);
+                observer.disconnect();
+            }
+        }, { rootMargin: '200px' });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [ref]);
+    return inView;
+}
+
+function useThumbnailUrl(fileId: string, enabled: boolean): string | undefined {
     const [url, setUrl] = useState<string | undefined>(undefined);
     useEffect(() => {
-        setUrl(undefined);
-        if (!file.contentType.includes('image')) return;
+        if (!enabled) return;
         let cancelled = false;
-        api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(file.id)}/presigned-url`)
-            .then(res => { if (!cancelled) setUrl(res.presignedUrl); })
-            .catch(() => {});
+        getPresignedUrl(fileId).then(next => { if (!cancelled && next) setUrl(next); });
         return () => { cancelled = true; };
-    }, [file.id, file.contentType]);
+    }, [fileId, enabled]);
     return url;
 }
 
@@ -42,9 +120,21 @@ function AssetGridCard({ file, isActive, isPicked, isBlocked, onToggle, onHover 
     onToggle: () => void;
     onHover: () => void;
 }) {
-    const thumbnailUrl = useThumbnailUrl(file);
+    const cardRef = useRef<HTMLButtonElement>(null);
+    const inView = useInView(cardRef);
+    // Same classifier/icon/tint system as the Drive grid and AssetGallery, so a
+    // file looks identical wherever it's listed. For audio/pdf/docx the tinted
+    // background *is* the preview.
+    const assetType = assetTypeForFile(file.contentType, file.filename);
+    const Icon = TYPE_ICONS[assetType];
+    const typeStyle = TYPE_STYLES[assetType];
+    const isVideo = assetType === 'video';
+    const imageThumbnailUrl = useThumbnailUrl(file.id, inView && assetType === 'image');
+    const videoFrameUrl = useVideoFrameThumbnail(file.id, inView && isVideo);
+    const thumbnailUrl = imageThumbnailUrl ?? videoFrameUrl;
     return (
         <button
+            ref={cardRef}
             type="button"
             onClick={onToggle}
             onMouseEnter={onHover}
@@ -62,17 +152,26 @@ function AssetGridCard({ file, isActive, isPicked, isBlocked, onToggle, onHover 
             >
                 {isPicked && <Check className="h-3.5 w-3.5 text-primary-foreground" strokeWidth={3} />}
             </span>
-            {/* Fixed height, not aspect-ratio — a Tailwind pipeline issue in this
-                file was dropping several utility classes in production; fixed
-                pixel heights via inline style can't be affected by that. */}
+            {/* Fixed pixel height rather than aspect-ratio: the row track that
+                holds this card is now min-content, so the card's height has to
+                come from a size the box itself declares. */}
             <div
-                className="flex items-center justify-center bg-muted/50 relative overflow-hidden"
+                className={`flex items-center justify-center relative overflow-hidden ${typeStyle.bg}`}
                 style={{ height: '150px', width: '100%', flexShrink: 0 }}
             >
                 {thumbnailUrl ? (
-                    <img src={thumbnailUrl} alt={file.filename} className="object-cover" style={{ height: '100%', width: '100%' }} />
+                    <>
+                        <img src={thumbnailUrl} alt={file.filename} className="object-cover" style={{ height: '100%', width: '100%' }} />
+                        {isVideo && (
+                            <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                <span className="h-8 w-8 rounded-full bg-black/50 flex items-center justify-center">
+                                    <Play className="h-4 w-4 text-white fill-white" />
+                                </span>
+                            </span>
+                        )}
+                    </>
                 ) : (
-                    <span style={{ transform: 'scale(1.8)' }}>{getFileIcon(file.contentType)}</span>
+                    <Icon className={`h-10 w-10 ${typeStyle.icon}`} />
                 )}
                 {!isPicked && !isBlocked && (
                     <span
@@ -87,7 +186,10 @@ function AssetGridCard({ file, isActive, isPicked, isBlocked, onToggle, onHover 
             </div>
             <div className="px-2.5 py-2 w-full">
                 <p className="text-[12px] font-medium truncate" title={file.filename}>{file.filename}</p>
-                <p className="text-[10px] text-muted-foreground">{formatFileSize(file.size)}</p>
+                {/* size is nullable in the DB; formatFileSize(null) renders "NaN undefined". */}
+                <p className="text-[10px] text-muted-foreground">
+                    {typeof file.size === 'number' && Number.isFinite(file.size) ? formatFileSize(file.size) : '—'}
+                </p>
             </div>
         </button>
     );
@@ -132,11 +234,16 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
         setActiveIndex(i => (i + delta + filtered.length) % filtered.length);
     };
 
-    const toggle = (id: string, index: number) => {
+    // Blocked when the *selection* is full, not by list position. The old
+    // `index < remainingSlots` test made every card past slot N permanently
+    // unpickable in a long list (and greyed out at opacity-40), while a short
+    // filtered list never hit it — a second reason the unfiltered grid looked
+    // broken.
+    const toggle = (id: string) => {
         setPicked(prev => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id);
-            else if (index < remainingSlots) next.add(id);
+            else if (next.size < remainingSlots) next.add(id);
             return next;
         });
     };
@@ -154,7 +261,7 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
     const selectActive = () => {
         const file = filtered[activeIndex];
         if (!file) return false;
-        toggle(file.id, activeIndex);
+        toggle(file.id);
         return true;
     };
 
@@ -194,7 +301,26 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
             ) : (
                 <div
                     className="overflow-y-auto flex-1 min-h-0"
-                    style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' }}
+                    // gridAutoRows is load-bearing, not cosmetic. `flex-1 min-h-0`
+                    // gives this grid a *definite* height (the panel is capped at
+                    // 70vh). Implicit rows default to `auto`, whose minimum is the
+                    // item's automatic minimum size — and every card sets
+                    // `overflow-hidden`, which makes that minimum 0. Once the rows
+                    // don't fit (roughly 4+ rows, i.e. 10+ files) the free space
+                    // goes negative and the track sizing algorithm freezes every
+                    // row at that 0 minimum instead of overflowing into the
+                    // scroller: all 150px cards collapse into ~25px slivers. A
+                    // short filtered list has positive free space, so it looked
+                    // fine — which is why this read as a size-dependent bug.
+                    // `min-content` pins each row to the card's real height, and
+                    // `start` keeps rows from stretching when the list is short.
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gridAutoRows: 'min-content',
+                        alignContent: 'start',
+                        gap: '10px',
+                    }}
                 >
                     {filtered.map((file, i) => (
                         <AssetGridCard
@@ -202,8 +328,8 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
                             file={file}
                             isActive={i === activeIndex}
                             isPicked={picked.has(file.id)}
-                            isBlocked={!picked.has(file.id) && i >= remainingSlots}
-                            onToggle={() => toggle(file.id, i)}
+                            isBlocked={!picked.has(file.id) && picked.size >= remainingSlots}
+                            onToggle={() => toggle(file.id)}
                             onHover={() => setActiveIndex(i)}
                         />
                     ))}
