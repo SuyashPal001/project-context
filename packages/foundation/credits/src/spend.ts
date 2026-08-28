@@ -42,7 +42,7 @@ export async function spendCredits(i: SpendInput): Promise<bigint> {
         ${i.actorId ?? null}::uuid, ${i.actorType ?? null}::actor_type,
         ${i.rateId ?? null}::uuid, ${i.rateVersion ?? null}::integer,
         ${i.jobId ?? null}::uuid, ${i.jobType ?? null},
-        ${i.grantType ?? null}, ${i.expiresAt ?? null}::timestamptz, ${i.reason ?? null}
+        ${i.grantType ?? null}, ${i.expiresAt?.toISOString() ?? null}::timestamptz, ${i.reason ?? null}
       ) as balance
     `);
     const [row] = rowsOf(result);
