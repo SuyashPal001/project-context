@@ -2,7 +2,8 @@ import { Hono } from 'hono'
 import { resolveFolderPrefix } from '../folderScopeContext.js'
 import type { AuthPayload } from '../auth.js'
 import { validateToken } from '../auth.js'
-import { checkMessageQuota, fetchAgentMemory } from '../usage.js'
+import { fetchAgentMemory } from '../usage.js'
+import { checkCreditBalance } from '../credits.js'
 import { filterPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
 import { isInternalServiceKey } from '../service-key.js'
@@ -110,11 +111,11 @@ chatRouter.post('/api/chat', async (c) => {
     return c.json({ error: 'tenantId required for internal service calls' }, 400)
   }
 
-  // Parallel pre-stream fetches — auth/me, quota check, working memory run concurrently.
+  // Parallel pre-stream fetches — auth/me, credit pre-check, working memory run concurrently.
   // Per-agent memory (MEMORY.md), not per-tenant — each hired employee keeps
   // its own working notes rather than sharing one blob across a tenant's agents.
   const workingMemoryPromise = fetchAgentMemory(agentId)
-  const [, chatQuota] = await Promise.all([
+  const [, creditCheck] = await Promise.all([
     // auth/me — resolve Cognito sub → internal UUID
     !isInternalCall
       ? fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${idToken}` } })
@@ -130,18 +131,18 @@ chatRouter.post('/api/chat', async (c) => {
             console.warn('[sse] auth/me fetch failed — falling back to Cognito sub:', (err as Error).message)
           })
       : Promise.resolve(),
-    // quota check
+    // credit pre-check
     !isInternalCall
-      ? checkMessageQuota(tenantId)
-      : Promise.resolve({ allowed: true, used: 0, limit: 0 } as const),
+      ? checkCreditBalance(tenantId)
+      : Promise.resolve({ allowed: true, balanceMicro: 0n, unlimited: true } as const),
     // working memory runs concurrently; awaited inside the async handler below
     workingMemoryPromise,
   ])
 
-  // Quota guard — checked before ReadableStream setup so we can return plain 429, not SSE error.
-  if (!isInternalCall && !chatQuota.allowed) {
-    console.warn(`[sse] tenantId=${tenantId} userId=${userId} quota exceeded used=${chatQuota.used} limit=${chatQuota.limit}`)
-    return c.json({ error: 'Message quota exceeded', used: chatQuota.used, limit: chatQuota.limit }, 429)
+  // Credit guard — checked before ReadableStream setup so we can return plain 402, not SSE error.
+  if (!isInternalCall && !creditCheck.allowed) {
+    console.warn(`[sse] tenantId=${tenantId} userId=${userId} insufficient credits balanceMicro=${creditCheck.balanceMicro}`)
+    return c.json({ error: 'Insufficient credits', balanceMicro: String(creditCheck.balanceMicro) }, 402)
   }
 
   const sessionId = crypto.randomUUID()
