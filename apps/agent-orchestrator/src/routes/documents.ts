@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { InsufficientCreditsError } from '@serverless-saas/credits'
 import { TaskComment, INTERNAL_SERVICE_KEY } from '../types.js'
 import { fetchAgentModelSelection, fetchAgentSkill, fetchConnectedProviders } from '../usage.js'
-import { chargeTaskEstimate, DEFAULT_TASK_MODEL, estimateTaskMicro, resolveTaskRate, settleTask } from '../credits.js'
+import { chargeTaskEstimate, DEFAULT_TASK_MODEL, estimateTaskMicro, refundTask, resolveTaskRate, settleTask } from '../credits.js'
 import { createTenantAgent } from '../mastra/index.js'
 import { filterPII } from '../pii-filter.js'
 import { fetchTaskComments } from './tasks.helpers.js'
@@ -227,9 +227,16 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
     // The Mastra generate() result reports real token totals here (same
     // result.usage shape read at every other agent.generate() call site in
     // this codebase), so settle against them now rather than leaving the
-    // up-front estimate as the final charge. Fire-and-forget, like every
-    // other settleTask call site — never blocks the response.
-    void settleTask({
+    // up-front estimate as the final charge on a successful run. Unlike
+    // every other settleTask call site, this one is AWAITED rather than
+    // fire-and-forget: this route (unlike tasks.ts's background job) decides
+    // synchronously, a few lines below, whether to also call refundTask on
+    // an empty response — refundTask's settled-row guard only prevents a
+    // double-adjustment if the settle it's checking for has actually landed
+    // by the time it runs. Firing this without awaiting would race that
+    // guard and could let both a settle and a full refund apply to the same
+    // charge.
+    await settleTask({
       tenantId, taskId, agentId, model: planModel,
       inputTokens: result.usage?.inputTokens ?? 0,
       outputTokens: result.usage?.outputTokens ?? 0,
@@ -237,9 +244,11 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
     })
   } catch (err) {
     console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} Mastra error:`, (err as Error).message)
-    // No token totals exist when generate() itself throws — the estimate
-    // charged above stands as the final charge (per Task 10 brief: don't
-    // invent a settle with no numbers behind it).
+    // No token totals exist when generate() itself throws, so there is
+    // nothing to settle against — but the plan delivered zero work, so the
+    // estimate charged above must not stand. Refund it, mirroring tasks.ts's
+    // refundTask calls on the same failure semantics.
+    await refundTask({ tenantId, taskId, chargeKey: `document:${taskId}`, jobType: 'document' })
     return c.json({ error: 'Agent error', detail: (err as Error).message }, 502)
   } finally {
     await planMcpClient.disconnect()
@@ -247,6 +256,17 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
 
   if (!agentOutput) {
     console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} empty response`)
+    // The plan delivered zero usable work, so refund what was charged — but
+    // settleTask already ran above and may have already reconciled this
+    // charge to real token usage (generate() succeeded; an empty *text*
+    // result doesn't mean zero tokens were spent producing it). refundTask
+    // itself is what decides whether there is anything left to undo: its
+    // settled-row check skips entirely once a settle row exists for this
+    // chargeKey (that reconciliation stands as final), and otherwise its
+    // ledger-balance check only refunds a nonzero remaining debit. Because
+    // settleTask was awaited above rather than fired-and-forgotten, that
+    // settled-row check is race-free by the time refundTask runs it.
+    await refundTask({ tenantId, taskId, chargeKey: `document:${taskId}`, jobType: 'document' })
     return c.json({ error: 'Agent returned empty response' }, 502)
   }
 

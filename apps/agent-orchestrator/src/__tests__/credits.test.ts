@@ -367,6 +367,48 @@ describe('refundTask', () => {
     expect(call.amountMicro).toBe(100_000n);
   });
 
+  it('honors an explicit chargeKey/jobType override (Task 10 document flow), scoping the settled-row check and debit sum to the same namespace', async () => {
+    const { refundTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const pool = {
+      query: vi.fn()
+        .mockResolvedValueOnce({ rows: [{ exists: false }] })
+        .mockResolvedValueOnce({ rows: [{ total: '-100000' }] }),
+    };
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    await refundTask(
+      { tenantId: 'tenant-1', taskId: 'doc-1', chargeKey: 'document:doc-1', jobType: 'document' },
+      { isUnlimited, spendCredits, pool: pool as never },
+    );
+
+    // Both reads must key off the override namespace, not the default task:{taskId} one.
+    const [, settledParams] = pool.query.mock.calls[0];
+    expect(settledParams).toEqual(['tenant-1', 'document:doc-1:settle']);
+    const [, debitParams] = pool.query.mock.calls[1];
+    expect(debitParams).toEqual(['tenant-1', 'document:doc-1']);
+
+    expect(spendCredits).toHaveBeenCalledTimes(1);
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.key).toBe('document:doc-1:refund');
+    expect(call.jobType).toBe('document');
+    expect(call.amountMicro).toBe(100_000n);
+  });
+
+  it('skips the refund when a settle already landed under the override chargeKey namespace (no double-adjustment)', async () => {
+    const { refundTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const pool = { query: vi.fn().mockResolvedValueOnce({ rows: [{ exists: true }] }) };
+    const spendCredits = vi.fn();
+    await refundTask(
+      { tenantId: 'tenant-1', taskId: 'doc-1', chargeKey: 'document:doc-1', jobType: 'document' },
+      { isUnlimited, spendCredits, pool: pool as never },
+    );
+    const [, settledParams] = pool.query.mock.calls[0];
+    expect(settledParams).toEqual(['tenant-1', 'document:doc-1:settle']);
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(spendCredits).not.toHaveBeenCalled();
+  });
+
   it('does nothing when nothing was ever charged (net is 0)', async () => {
     const { refundTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(false);

@@ -367,6 +367,12 @@ export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}
 export interface RefundTaskArgs {
   tenantId: string
   taskId: string
+  /** Idempotency key of the ORIGINAL charge to refund. Defaults to `task:{taskId}`; Task 10 (documents) overrides this. */
+  chargeKey?: string
+  /** Idempotency key for the refund write itself. Defaults to `{chargeKey}:refund`. */
+  key?: string
+  /** credit_ledger.job_type. Defaults to 'agent_task'; Task 10 overrides with 'document'. */
+  jobType?: string
 }
 
 export interface RefundTaskDeps {
@@ -395,18 +401,19 @@ export async function refundTask(args: RefundTaskArgs, deps: RefundTaskDeps = {}
   const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
   const spendCreditsFn = deps.spendCredits ?? spendCredits
   const pool = deps.pool ?? getPool()
-  const refundKey = `task:${args.taskId}:refund`
+  const chargeKey = args.chargeKey ?? `task:${args.taskId}`
+  const refundKey = args.key ?? `${chargeKey}:refund`
   try {
     if (await isUnlimitedFn(args.tenantId)) return
 
-    const settleKey = `task:${args.taskId}:settle`
+    const settleKey = `${chargeKey}:settle`
     const settled = await pool.query<{ exists: boolean }>(
       `select exists(select 1 from credit_ledger where tenant_id = $1 and idempotency_key = $2) as exists`,
       [args.tenantId, settleKey],
     )
     if (settled.rows[0]?.exists) return
 
-    const debitKey = `task:${args.taskId}`
+    const debitKey = chargeKey
     const res = await pool.query<{ total: string }>(
       `select coalesce(sum(amount_micro), 0) as total from credit_ledger
         where tenant_id = $1 and idempotency_key = $2 and kind = 'debit'`,
@@ -430,7 +437,7 @@ export async function refundTask(args: RefundTaskArgs, deps: RefundTaskDeps = {}
         kind: 'refund',
         grantType: 'refund',
         jobId: args.taskId,
-        jobType: 'agent_task',
+        jobType: args.jobType ?? 'agent_task',
         reason: 'task failed',
       })
     } catch (spendErr) {
