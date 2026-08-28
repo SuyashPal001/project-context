@@ -8,6 +8,7 @@ import { formatFileSize } from "@/components/platform/files/lib/fileIcons";
 import { assetTypeForFile } from "@/lib/assetType";
 import { TYPE_ICONS, TYPE_STYLES } from "@/components/platform/canvas/assetTypeStyles";
 import { useVideoFrameThumbnail } from "@/components/platform/canvas/videoFrameThumbnail";
+import { useLazyThumbnail, useThumbnailUrl } from "@/hooks/useAssetThumbnail";
 import type { FileRecord } from "@/components/platform/files/types";
 import type { PaletteHandle } from "./SlashPalette";
 
@@ -23,94 +24,9 @@ interface HashFilePaletteProps {
     remainingSlots: number;
 }
 
-// The API rate-limits at 60 requests/minute/tenant (apps/api/src/app.ts) and
-// answers 429 past that. One presigned-url fetch per card meant a Drive with
-// 20-40 media files fired 20-40 requests the instant the palette opened, blew
-// through the budget, and every 429 was swallowed by a bare `.catch(() => {})`
-// — so the thumbnails simply never appeared. A narrow search hid the bug
-// because 1-3 cards stayed under the limit.
-//
-// Three bounds, in order of how much they save: cards only fetch once they
-// scroll into view, identical fileIds share one request/result, and at most
-// MAX_CONCURRENT_THUMBNAIL_FETCHES are ever in flight.
-const MAX_CONCURRENT_THUMBNAIL_FETCHES = 4;
-// Comfortably inside the presigned URL's own lifetime — a cached entry that
-// outlived the signature would render a broken image instead of refetching.
-const PRESIGNED_CACHE_TTL_MS = 5 * 60_000;
-
-let activeThumbnailFetches = 0;
-const thumbnailFetchQueue: Array<() => void> = [];
-const presignedCache = new Map<string, { url: string; at: number }>();
-const presignedInFlight = new Map<string, Promise<string | undefined>>();
-
-function acquireThumbnailSlot(): Promise<void> {
-    if (activeThumbnailFetches < MAX_CONCURRENT_THUMBNAIL_FETCHES) {
-        activeThumbnailFetches++;
-        return Promise.resolve();
-    }
-    return new Promise<void>(resolve => {
-        thumbnailFetchQueue.push(() => { activeThumbnailFetches++; resolve(); });
-    });
-}
-
-function releaseThumbnailSlot() {
-    activeThumbnailFetches--;
-    thumbnailFetchQueue.shift()?.();
-}
-
-function getPresignedUrl(fileId: string): Promise<string | undefined> {
-    const cached = presignedCache.get(fileId);
-    if (cached && Date.now() - cached.at < PRESIGNED_CACHE_TTL_MS) return Promise.resolve(cached.url);
-
-    const existing = presignedInFlight.get(fileId);
-    if (existing) return existing;
-
-    const request = acquireThumbnailSlot()
-        .then(() => api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(fileId)}/presigned-url`))
-        .then(res => {
-            presignedCache.set(fileId, { url: res.presignedUrl, at: Date.now() });
-            return res.presignedUrl as string | undefined;
-        })
-        .catch(() => undefined)
-        .finally(() => {
-            releaseThumbnailSlot();
-            presignedInFlight.delete(fileId);
-        });
-
-    presignedInFlight.set(fileId, request);
-    return request;
-}
-
-/** True once the element has been within 200px of the scroll viewport — latches
- *  on so a card that scrolls back out doesn't re-request its thumbnail. */
-function useInView(ref: React.RefObject<HTMLElement | null>): boolean {
-    const [inView, setInView] = useState(false);
-    useEffect(() => {
-        const el = ref.current;
-        if (!el) return;
-        if (typeof IntersectionObserver === 'undefined') { setInView(true); return; }
-        const observer = new IntersectionObserver(entries => {
-            if (entries.some(e => e.isIntersecting)) {
-                setInView(true);
-                observer.disconnect();
-            }
-        }, { rootMargin: '200px' });
-        observer.observe(el);
-        return () => observer.disconnect();
-    }, [ref]);
-    return inView;
-}
-
-function useThumbnailUrl(fileId: string, enabled: boolean): string | undefined {
-    const [url, setUrl] = useState<string | undefined>(undefined);
-    useEffect(() => {
-        if (!enabled) return;
-        let cancelled = false;
-        getPresignedUrl(fileId).then(next => { if (!cancelled && next) setUrl(next); });
-        return () => { cancelled = true; };
-    }, [fileId, enabled]);
-    return url;
-}
+// Thumbnail fetching (rate-limit-safe presigned URLs, lazy in-view loading)
+// lives in hooks/useAssetThumbnail.ts, shared with AttachmentStrip's tiles —
+// see that file for why the bounding matters (60/min/tenant API rate limit).
 
 function AssetGridCard({ file, isActive, isPicked, isBlocked, onToggle, onHover }: {
     file: FileRecord;
@@ -120,8 +36,7 @@ function AssetGridCard({ file, isActive, isPicked, isBlocked, onToggle, onHover 
     onToggle: () => void;
     onHover: () => void;
 }) {
-    const cardRef = useRef<HTMLButtonElement>(null);
-    const inView = useInView(cardRef);
+    const { ref: cardRef, inView } = useLazyThumbnail<HTMLButtonElement>();
     // Same classifier/icon/tint system as the Drive grid and AssetGallery, so a
     // file looks identical wherever it's listed. For audio/pdf/docx the tinted
     // background *is* the preview.

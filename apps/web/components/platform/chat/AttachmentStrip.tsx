@@ -2,6 +2,8 @@ import { X, Loader2 } from "lucide-react";
 import { Attachment } from "@/types/agent-events";
 import { assetTypeForFile } from "@/lib/assetType";
 import { TYPE_ICONS, TYPE_BADGES, TYPE_STYLES } from "@/components/platform/canvas/assetTypeStyles";
+import { useVideoFrameThumbnail } from "@/components/platform/canvas/videoFrameThumbnail";
+import { useThumbnailUrl } from "@/hooks/useAssetThumbnail";
 import { PendingUpload } from "./useFileUpload";
 
 // One 80x80 tile. Shares the classifier and the tint/icon/badge maps with the
@@ -9,15 +11,27 @@ import { PendingUpload } from "./useFileUpload";
 // composer as it does everywhere else it is listed — previously this fork knew
 // only "video or not", and every mp3, pdf and csv rendered as the same grey
 // document.
-function AttachmentTile({ name, type, previewUrl }: { name: string; type: string; previewUrl?: string }) {
+function AttachmentTile({ fileId, name, type, previewUrl }: { fileId?: string; name: string; type: string; previewUrl?: string }) {
     const assetType = assetTypeForFile(type, name);
     const Icon = TYPE_ICONS[assetType];
     const typeStyle = TYPE_STYLES[assetType];
 
+    // `previewUrl` only ever arrives for a fresh local upload (a blob: URL).
+    // A file attached by reference (Drive / the "#" picker) has a fileId but
+    // no previewUrl, and previously fell straight to the icon regardless of
+    // type — fetch the same real thumbnail the "#" picker itself shows,
+    // through the same rate-limit-safe shared hook (small fixed list here,
+    // so no lazy in-view gating needed — just `enabled`).
+    const isImage = assetType === 'image';
+    const isVideo = assetType === 'video';
+    const fetchedImageUrl = useThumbnailUrl(fileId ?? '', !previewUrl && isImage && !!fileId);
+    const fetchedVideoUrl = useVideoFrameThumbnail(fileId ?? '', !previewUrl && isVideo && !!fileId);
+    const resolvedUrl = previewUrl ?? fetchedImageUrl ?? fetchedVideoUrl;
+
     return (
         <div className={`relative h-20 w-20 rounded-xl overflow-hidden border border-border/40 shadow-sm ${typeStyle.bg}`}>
-            {previewUrl ? (
-                <img src={previewUrl} alt={name} className="h-full w-full object-cover" />
+            {resolvedUrl ? (
+                <img src={resolvedUrl} alt={name} className="h-full w-full object-cover" />
             ) : (
                 <div className="h-full w-full flex flex-col items-center justify-center gap-1 p-2">
                     <Icon className={`h-7 w-7 ${typeStyle.icon}`} />
@@ -44,7 +58,7 @@ export function AttachmentStrip({ attachments, pendingUpload, onRemove }: Attach
         <div className="flex flex-wrap gap-3 p-3 pb-2 animate-in fade-in slide-in-from-top-2 duration-300 w-full">
             {attachments.map((file) => (
                 <div key={file.fileId} className="relative">
-                    <AttachmentTile name={file.name} type={file.type} previewUrl={file.previewUrl} />
+                    <AttachmentTile fileId={file.fileId} name={file.name} type={file.type} previewUrl={file.previewUrl} />
                     <button
                         onClick={() => onRemove(file.fileId)}
                         className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-foreground text-background flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-150"
