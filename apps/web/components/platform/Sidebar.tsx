@@ -39,6 +39,7 @@ import { Badge } from "@/components/ui/badge"
 import { getSidebarItems, getDeveloperPanelItems, getSettingsPanelItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
 import { UsageBar } from "./UsageBar"
+import { CreditBalanceIndicator } from "./credits/CreditBalanceIndicator"
 import { WorkspaceSwitcherPill } from "./WorkspaceSwitcherPill"
 import { AccountMenu } from "./AccountMenu"
 
@@ -302,6 +303,7 @@ export function Sidebar() {
 
                 {/* Messages usage — hidden when collapsed */}
                 {!isSidebarCollapsed && <UsageBar />}
+                {!isSidebarCollapsed && <CreditBalanceIndicator />}
 
                 {/* Footer Section */}
                 <div className="mt-auto pt-4 border-t border-border">

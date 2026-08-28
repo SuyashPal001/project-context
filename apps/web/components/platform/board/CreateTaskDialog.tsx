@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { toast } from 'sonner'
 import { Plus, X, Loader2, Bot, ChevronDown, ChevronUp, Paperclip, FileText, Link2, User, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -19,6 +19,7 @@ import { PRIORITY_CONFIG } from './types'
 import { StatusIcon } from './TaskCard'
 import { AddLinkDialog } from './AddLinkDialog'
 import { ReferenceDocumentDialog } from './ReferenceDocumentDialog'
+import { ApproveCost } from '../credits/ApproveCost'
 import type { AgentsResponse, MembersResponse, Assignee } from './types'
 
 const createTaskSchema = z.object({
@@ -72,6 +73,15 @@ export function CreateTaskDialog({
     const [attachmentFileIds, setAttachmentFileIds] = useState<{ fileId: string; name: string; size: number; type: string }[]>([])
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
     const attachFileInputRef = useRef<HTMLInputElement>(null)
+    // Agent-assigned tasks cost credits — set once the form is submitted for
+    // an agent assignee, which swaps the footer's submit button for the
+    // estimate-and-approve control. Non-agent tasks (no assignee, or a human
+    // member) skip this entirely and submit directly.
+    const [pendingPayload, setPendingPayload] = useState<Record<string, unknown> | null>(null)
+    // Forces ApproveCost into its "out of credits" state after a submit
+    // comes back 402 — the estimate is a preview, not a reservation, so the
+    // balance can run out between the estimate call and the actual spend.
+    const [insufficientCredits, setInsufficientCredits] = useState(false)
 
     const { register, control, handleSubmit, reset, watch, formState: { errors } } = useForm<CreateTaskForm>({
         resolver: zodResolver(createTaskSchema as any),
@@ -105,7 +115,7 @@ export function CreateTaskDialog({
     }
 
     const { mutate, isPending } = useMutation({
-        mutationFn: (payload: any) => api.post('/api/v1/tasks', payload),
+        mutationFn: (payload: Record<string, unknown>) => api.post('/api/v1/tasks', payload),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['tasks'] })
             if (milestoneId) queryClient.invalidateQueries({ queryKey: ['milestoneTasks', milestoneId] })
@@ -116,14 +126,25 @@ export function CreateTaskDialog({
             setAttachmentFileIds([])
             setSelectedAssignee(null)
             setSelectedPriority('medium')
+            setPendingPayload(null)
+            setInsufficientCredits(false)
             onOpenChange(false)
         },
-        onError: (err: Error) => toast.error(err.message || 'Failed to create task'),
+        onError: (err: unknown) => {
+            // 402 means insufficient credits — surface the same "out of
+            // credits" state ApproveCost already knows how to render,
+            // rather than a generic error toast.
+            if (err instanceof ApiError && err.status === 402) {
+                setInsufficientCredits(true)
+                return
+            }
+            toast.error(err instanceof Error ? err.message : 'Failed to create task')
+        },
     })
 
-    const onSubmit = (data: CreateTaskForm) => {
+    const buildPayload = (data: CreateTaskForm) => {
         const hours = data.estimatedHours ? parseFloat(data.estimatedHours) : undefined
-        mutate({
+        return {
             agentId: selectedAssignee?.type === 'agent' ? selectedAssignee.id : undefined,
             assigneeId: selectedAssignee?.type === 'member' ? selectedAssignee.id : undefined,
             title: data.title,
@@ -137,11 +158,33 @@ export function CreateTaskDialog({
             milestoneId,
             planId,
             parentTaskId,
-        })
+        }
+    }
+
+    const onSubmit = (data: CreateTaskForm) => {
+        const payload = buildPayload(data)
+        // Only agent-assigned tasks spend credits — a human assignee (or no
+        // assignee) submits directly, same as before this feature existed.
+        if (selectedAssignee?.type === 'agent') {
+            setInsufficientCredits(false)
+            setPendingPayload(payload)
+            return
+        }
+        mutate(payload)
+    }
+
+    const handleApprove = (idempotencyKey: string) => {
+        if (!pendingPayload) return
+        mutate({ ...pendingPayload, idempotencyKey })
+    }
+
+    const handleCancelApprove = () => {
+        setPendingPayload(null)
+        setInsufficientCredits(false)
     }
 
     return (
-        <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); onOpenChange(v) } }}>
+        <Dialog open={open} onOpenChange={(v) => { if (!v) { reset(); setPendingPayload(null); setInsufficientCredits(false); onOpenChange(v) } }}>
             <DialogContent className="max-w-2xl bg-[#0f0f0f] border-[#1e1e1e] rounded-xl p-0 gap-0 overflow-hidden [&>button]:hidden shadow-2xl">
                 <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col">
                     <input
@@ -287,20 +330,32 @@ export function CreateTaskDialog({
                     </div>
 
                     {/* Footer */}
-                    <div className="flex items-center justify-between px-6 py-4 border-t border-[#1e1e1e]">
-                        <div className="flex flex-col">
-                            <span className="text-xs text-muted-foreground/40 flex items-center gap-1.5">
-                                <Bot className="w-3.5 h-3.5" /> Move to Todo to start planning
-                            </span>
-                            {errors.title && <span className="text-[10px] text-destructive mt-1">{errors.title.message}</span>}
+                    {pendingPayload ? (
+                        <div className="border-t border-[#1e1e1e]">
+                            <ApproveCost
+                                resourceType="tool_call"
+                                subject="task.create"
+                                onApprove={handleApprove}
+                                onCancel={handleCancelApprove}
+                                insufficientOverride={insufficientCredits}
+                            />
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Button type="button" variant="ghost" className="text-sm text-muted-foreground hover:text-foreground" onClick={() => { reset(); onOpenChange(false) }}>Cancel</Button>
-                            <Button type="submit" disabled={isPending} className="bg-[#2a2a2a] hover:bg-[#333] text-white border border-[#3a3a3a] text-sm px-4 py-2 rounded-lg font-medium">
-                                {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</> : 'Create Task'}
-                            </Button>
+                    ) : (
+                        <div className="flex items-center justify-between px-6 py-4 border-t border-[#1e1e1e]">
+                            <div className="flex flex-col">
+                                <span className="text-xs text-muted-foreground/40 flex items-center gap-1.5">
+                                    <Bot className="w-3.5 h-3.5" /> Move to Todo to start planning
+                                </span>
+                                {errors.title && <span className="text-[10px] text-destructive mt-1">{errors.title.message}</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button type="button" variant="ghost" className="text-sm text-muted-foreground hover:text-foreground" onClick={() => { reset(); onOpenChange(false) }}>Cancel</Button>
+                                <Button type="submit" disabled={isPending} className="bg-[#2a2a2a] hover:bg-[#333] text-white border border-[#3a3a3a] text-sm px-4 py-2 rounded-lg font-medium">
+                                    {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</> : 'Create Task'}
+                                </Button>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </form>
             </DialogContent>
             <AddLinkDialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen} onAddLink={link => setLinks(p => [...p, link])} />
