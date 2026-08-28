@@ -299,7 +299,6 @@ function ChatPage() {
                     <div className={cn(
                         "relative flex flex-col overflow-hidden transition-all h-full min-w-0",
                         isCanvasExpanded ? "w-0 opacity-0 pointer-events-none" : "flex-1",
-                        isCanvasOpen ? "border-r border-border" : ""
                     )}>
                         {selectedConversation ? (
                             <>
@@ -362,7 +361,7 @@ function ChatPage() {
 
                     {/* Canvas Panel */}
                     {FEATURE_FLAGS.chatCanvas && (
-                        <div className={cn("transition-all overflow-hidden h-full z-10 bg-background", isCanvasExpanded ? "w-full flex-1" : (isCanvasOpen ? "w-1/2 border-l border-border" : "w-0"))}>
+                        <div className={cn("transition-all overflow-hidden h-full z-10 bg-card", isCanvasExpanded ? "w-full flex-1" : (isCanvasOpen ? "w-1/2 border-l border-border shadow-[-8px_0_24px_-16px_rgba(0,0,0,0.25)]" : "w-0"))}>
                             <Canvas isOpen={isCanvasOpen} isExpanded={isCanvasExpanded} onExpand={toggleExpand} onActivity={noopActivity} tenantSlug={tenantSlug} flushPending={flushPending} agentId={selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id} conversationId={conversationId ?? ''} />
                         </div>
                     )}
