@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import {
     getBalance,
@@ -14,9 +14,14 @@ import type { AppEnv } from '../types';
 export const creditsRoutes = new Hono<AppEnv>();
 
 const RESOURCE_TYPES = ['llm_tokens', 'message', 'tool_call', 'skill_run'] as const;
+const LEDGER_KINDS = ['grant', 'debit', 'refund', 'settle', 'expiry', 'adjust'] as const;
 
-function forbidden(c: any) {
+function forbidden(c: Context<AppEnv>) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+}
+
+function validationFailed(c: Context<AppEnv>, details: unknown) {
+    return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details }, 400);
 }
 
 // GET /credits/balance — current balance for the caller's tenant.
@@ -51,6 +56,16 @@ creditsRoutes.get('/balance', async (c) => {
     });
 });
 
+const estimateQuerySchema = z.object({
+    resourceType: z.enum(RESOURCE_TYPES),
+    subject: z.string().min(1).optional(),
+    // Missing count silently estimating zero reads as "free" to a client, so
+    // it defaults to 1 rather than 0.
+    count: z.coerce.number().int().nonnegative().optional().default(1),
+    inputTokens: z.coerce.number().int().nonnegative().optional(),
+    outputTokens: z.coerce.number().int().nonnegative().optional(),
+});
+
 // GET /credits/estimate — preview the cost of a would-be operation against the
 // current rate and current balance. Never locks, never reserves, never writes
 // a ledger row: the authoritative check lives inside spend_credits().
@@ -63,30 +78,24 @@ creditsRoutes.get('/estimate', async (c) => {
         return forbidden(c);
     }
 
-    const resourceType = c.req.query('resourceType');
-    const subject = c.req.query('subject') ?? '*';
-    const countParam = c.req.query('count');
-    const inputTokensParam = c.req.query('inputTokens');
-    const outputTokensParam = c.req.query('outputTokens');
-
-    if (!resourceType || !(RESOURCE_TYPES as readonly string[]).includes(resourceType)) {
-        return c.json({
-            error: 'Validation failed',
-            code: 'VALIDATION_ERROR',
-            details: `resourceType must be one of: ${RESOURCE_TYPES.join(', ')}`,
-        }, 400);
+    const parsed = estimateQuerySchema.safeParse({
+        resourceType: c.req.query('resourceType'),
+        subject: c.req.query('subject'),
+        count: c.req.query('count'),
+        inputTokens: c.req.query('inputTokens'),
+        outputTokens: c.req.query('outputTokens'),
+    });
+    if (!parsed.success) {
+        return validationFailed(c, parsed.error.flatten());
     }
+    const { resourceType, subject, count, inputTokens, outputTokens } = parsed.data;
 
-    const rate = await resolveRate(resourceType, subject);
+    const rate = await resolveRate(resourceType, subject ?? '*');
     if (!rate) {
         return c.json({ error: 'Rate not found', code: 'RATE_NOT_FOUND' }, 404);
     }
 
-    const costMicroAmount = costMicro(rate.schema, {
-        count: countParam !== undefined ? Number(countParam) : undefined,
-        inputTokens: inputTokensParam !== undefined ? Number(inputTokensParam) : undefined,
-        outputTokens: outputTokensParam !== undefined ? Number(outputTokensParam) : undefined,
-    });
+    const costMicroAmount = costMicro(rate.schema, { count, inputTokens, outputTokens });
 
     const balance = await getBalance(tenantId);
 
@@ -104,6 +113,12 @@ creditsRoutes.get('/estimate', async (c) => {
     return c.json(body);
 });
 
+const ledgerQuerySchema = z.object({
+    limit: z.coerce.number().int().nonnegative().optional(),
+    before: z.string().datetime().optional(),
+    kind: z.enum(LEDGER_KINDS).optional(),
+});
+
 // GET /credits/ledger — paginated ledger history for the caller's tenant.
 creditsRoutes.get('/ledger', async (c) => {
     const requestContext = c.get('requestContext') as any;
@@ -114,14 +129,20 @@ creditsRoutes.get('/ledger', async (c) => {
         return forbidden(c);
     }
 
-    const limitParam = c.req.query('limit');
-    const beforeParam = c.req.query('before');
-    const kind = c.req.query('kind');
+    const parsed = ledgerQuerySchema.safeParse({
+        limit: c.req.query('limit'),
+        before: c.req.query('before'),
+        kind: c.req.query('kind'),
+    });
+    if (!parsed.success) {
+        return validationFailed(c, parsed.error.flatten());
+    }
+    const { limit, before, kind } = parsed.data;
 
     const rows = await getLedger(tenantId, {
-        limit: limitParam !== undefined ? Number(limitParam) : undefined,
-        before: beforeParam ? new Date(beforeParam) : undefined,
-        kind: kind ?? undefined,
+        limit,
+        before: before ? new Date(before) : undefined,
+        kind,
     });
 
     return c.json({
@@ -173,15 +194,18 @@ creditsRoutes.post('/grants', async (c) => {
     try {
         payload = await c.req.json();
     } catch {
-        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: 'invalid JSON body' }, 400);
+        return validationFailed(c, 'invalid JSON body');
     }
 
     const result = grantSchema.safeParse(payload);
     if (!result.success) {
-        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+        return validationFailed(c, result.error.flatten());
     }
 
     try {
+        // tenantId always comes from requestContext (the JWT claim), never
+        // from the body — grantSchema has no tenantId field, so a caller
+        // cannot mint credits into another tenant's account by supplying one.
         const balanceMicro = await grantCredits({
             tenantId,
             amountMicro: BigInt(result.data.amountMicro),

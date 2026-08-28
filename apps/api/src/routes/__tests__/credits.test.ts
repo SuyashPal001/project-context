@@ -187,6 +187,62 @@ describe('GET /credits/estimate', () => {
         const res = await app.request('/credits/estimate?resourceType=message&subject=*&count=1');
         expect(res.status).toBe(404);
     });
+
+    it('returns 400 for a non-numeric count instead of NaN reaching costMicro', async () => {
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/estimate?resourceType=message&subject=*&count=abc');
+        expect(res.status).toBe(400);
+        expect(resolveRate).not.toHaveBeenCalled();
+        expect(costMicro).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for a non-numeric inputTokens', async () => {
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/estimate?resourceType=llm_tokens&subject=*&inputTokens=abc');
+        expect(res.status).toBe(400);
+        expect(costMicro).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for a non-numeric outputTokens', async () => {
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/estimate?resourceType=llm_tokens&subject=*&outputTokens=abc');
+        expect(res.status).toBe(400);
+        expect(costMicro).not.toHaveBeenCalled();
+    });
+
+    it('defaults count to 1 rather than 0 when omitted, so an unmetered call is never reported free', async () => {
+        vi.mocked(resolveRate).mockResolvedValue({
+            id: 'rate-1',
+            version: 1,
+            schema: { per_message_micro: 250 },
+        });
+        vi.mocked(costMicro).mockReturnValue(250n);
+        vi.mocked(getBalance).mockResolvedValue({ balanceMicro: 1000n, unlimited: false, grants: [] });
+
+        const app = appWith(readCtx);
+        await app.request('/credits/estimate?resourceType=message&subject=*');
+
+        expect(costMicro).toHaveBeenCalledWith(
+            { per_message_micro: 250 },
+            expect.objectContaining({ count: 1 }),
+        );
+    });
+
+    it('scopes the estimate lookup to the caller tenant, ignoring a user-supplied tenantId', async () => {
+        vi.mocked(resolveRate).mockResolvedValue({
+            id: 'rate-1',
+            version: 1,
+            schema: { per_message_micro: 100 },
+        });
+        vi.mocked(costMicro).mockReturnValue(100n);
+        vi.mocked(getBalance).mockResolvedValue({ balanceMicro: 1000n, unlimited: false, grants: [] });
+
+        const app = appWith(readCtx);
+        await app.request(`/credits/estimate?resourceType=message&subject=*&count=1&tenantId=${OTHER_TENANT}`);
+
+        expect(getBalance).toHaveBeenCalledWith(TENANT);
+        expect(getBalance).not.toHaveBeenCalledWith(OTHER_TENANT);
+    });
 });
 
 describe('GET /credits/ledger', () => {
@@ -228,11 +284,45 @@ describe('GET /credits/ledger', () => {
         expect(getLedger).not.toHaveBeenCalled();
     });
 
-    it('scopes the ledger lookup to the caller tenant', async () => {
+    it('scopes the ledger lookup to the caller tenant, ignoring a user-supplied tenantId', async () => {
         vi.mocked(getLedger).mockResolvedValue([]);
         const app = appWith(readCtx);
-        await app.request('/credits/ledger');
+        await app.request(`/credits/ledger?tenantId=${OTHER_TENANT}`);
         expect(getLedger).toHaveBeenCalledWith(TENANT, expect.any(Object));
+        expect(getLedger).not.toHaveBeenCalledWith(OTHER_TENANT, expect.anything());
+    });
+
+    it('forwards limit, before, and kind verbatim - not just "some object"', async () => {
+        vi.mocked(getLedger).mockResolvedValue([]);
+        const app = appWith(readCtx);
+        await app.request('/credits/ledger?limit=25&before=2026-01-01T00:00:00.000Z&kind=debit');
+
+        expect(getLedger).toHaveBeenCalledWith(TENANT, {
+            limit: 25,
+            before: new Date('2026-01-01T00:00:00.000Z'),
+            kind: 'debit',
+        });
+    });
+
+    it('returns 400 for a non-numeric limit', async () => {
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/ledger?limit=abc');
+        expect(res.status).toBe(400);
+        expect(getLedger).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an unparsable before date', async () => {
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/ledger?before=garbage');
+        expect(res.status).toBe(400);
+        expect(getLedger).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for a kind outside the ledger enum', async () => {
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/ledger?kind=nonsense');
+        expect(res.status).toBe(400);
+        expect(getLedger).not.toHaveBeenCalled();
     });
 });
 
@@ -312,5 +402,19 @@ describe('POST /credits/grants', () => {
         });
 
         expect(res.status).toBe(402);
+    });
+
+    it('scopes the grant to the caller tenant, ignoring a body-supplied tenantId', async () => {
+        vi.mocked(grantCredits).mockResolvedValue(1n);
+
+        const app = appWith(createCtx);
+        await app.request('/credits/grants', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ...validBody, tenantId: OTHER_TENANT }),
+        });
+
+        expect(grantCredits).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }));
+        expect(grantCredits).not.toHaveBeenCalledWith(expect.objectContaining({ tenantId: OTHER_TENANT }));
     });
 });

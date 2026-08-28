@@ -7,15 +7,23 @@ const ALL_PERMS = Object.entries(RESOURCES).flatMap(
     ([res, actions]) => actions.map((a) => `${res}:${a}`)
 );
 
-const ROLE_PERMISSIONS: Record<string, string[]> = {
-    owner: ALL_PERMS,
+// Minting credits is an ops action, not tenant self-service: a customer's own
+// owner/admin must not be able to grant themselves unbounded credits against a
+// metered billing system (POST /credits/grants takes an arbitrary amountMicro).
+// The tenant-facing purchase path belongs to billing and is out of scope for v1.
+// The permission stays defined in permissions.ts and the route's
+// ('credits', 'create') guard is unchanged - this is a seed-only exclusion,
+// mirroring how entitlements:{create,update,delete} is already excluded from admin.
+export const ROLE_PERMISSIONS: Record<string, string[]> = {
+    owner: ALL_PERMS.filter((p) => p !== 'credits:create'),
 
     admin: ALL_PERMS.filter(
         (p) =>
             p !== 'tenant:delete' &&
             p !== 'entitlements:create' &&
             p !== 'entitlements:update' &&
-            p !== 'entitlements:delete'
+            p !== 'entitlements:delete' &&
+            p !== 'credits:create'
     ),
 
     member: [
