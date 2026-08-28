@@ -25,6 +25,7 @@ import { RecordingBar } from "./RecordingBar";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SlashPalette, PaletteHandle } from "./SlashPalette";
 import { MentionPalette } from "./MentionPalette";
+import { HashFilePalette } from "./HashFilePalette";
 import { ProviderIcon } from "./ProviderIcon";
 import { Agent } from "../agents/types";
 
@@ -123,7 +124,7 @@ export function ChatInput({
     isRevokingFolder,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
-    const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | null>(null);
+    const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | 'hash' | null>(null);
     const [paletteQuery, setPaletteQuery] = useState('');
     // Character range in `content` covered by the trigger (e.g. "/foo" or "@bar"),
     // captured at the moment it was typed. Used to splice the selection back into
@@ -145,7 +146,7 @@ export function ChatInput({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [drivePickerOpen, setDrivePickerOpen] = useState(false);
-    const uploadTypeRef = useRef<'image' | 'video' | 'audio' | 'document' | null>(null);
+    const uploadTypeRef = useRef<'file' | 'video' | 'audio' | null>(null);
     const paletteRef = useRef<PaletteHandle>(null);
     // dragenter/dragleave fire on every child element as the pointer crosses them,
     // so a plain boolean flickers the overlay off while dragging over nested
@@ -397,6 +398,34 @@ export function ChatInput({
                         }}
                     />
                 )}
+                {paletteMode === 'hash' && (
+                    <HashFilePalette
+                        ref={paletteRef}
+                        query={paletteQuery}
+                        remainingSlots={Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - uploader.attachments.length)}
+                        onSelect={(file) => {
+                            // Same as the mention chip: strip the typed "#query" trigger
+                            // text, the pick shows up in the attachment strip instead —
+                            // not as text inside the draft.
+                            setContent(c => {
+                                if (!paletteRange) return c;
+                                return c.slice(0, paletteRange.start) + c.slice(paletteRange.end);
+                            });
+                            // Reuses the exact same attach path DriveFilePicker's onConfirm
+                            // uses — a reference by fileId, not a re-upload — so it dedupes
+                            // against anything already attached and renders in the same
+                            // AttachmentStrip.
+                            uploader.addAttachments([{ fileId: file.id, name: file.filename, type: file.contentType, size: file.size }]);
+                            textareaRef.current?.focus();
+                        }}
+                        onClose={() => {
+                            setPaletteMode(null);
+                            setPaletteQuery('');
+                            setPaletteRange(null);
+                            textareaRef.current?.focus();
+                        }}
+                    />
+                )}
 
                 {/* Gradient ring: neutral border-border/60 idle, gradient appears only
                     once there's something to send (typing/mention) or the assistant
@@ -505,6 +534,7 @@ export function ChatInput({
                                     const upToCursor = value.slice(0, cursor);
                                     const slashMatch = upToCursor.match(/(?:^|\s)\/(\w*)$/);
                                     const mentionMatch = upToCursor.match(/(?:^|\s)@(\w*)$/);
+                                    const hashMatch = upToCursor.match(/(?:^|\s)#(\w*)$/);
                                     if (slashMatch) {
                                         const query = slashMatch[1];
                                         setPaletteMode('slash');
@@ -519,6 +549,11 @@ export function ChatInput({
                                         setPaletteMode('mention');
                                         setPaletteQuery(query);
                                         setPaletteRange({ start: cursor - 1 - query.length, end: cursor });
+                                    } else if (hashMatch) {
+                                        const query = hashMatch[1];
+                                        setPaletteMode('hash');
+                                        setPaletteQuery(query);
+                                        setPaletteRange({ start: cursor - 1 - query.length, end: cursor });
                                     } else {
                                         setPaletteMode(null);
                                         setPaletteQuery('');
@@ -526,7 +561,7 @@ export function ChatInput({
                                     }
                                 }}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Ask anything, @ to mention, / for workflows..."
+                                placeholder="Ask anything, @ to mention, / for workflows, # for files..."
                                 className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50 caret-primary"
                                 disabled={disabled}
                             />
