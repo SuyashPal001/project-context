@@ -1,4 +1,4 @@
-import { ArrowUp, Loader2, Image as ImageIcon, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
+import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -93,7 +93,7 @@ interface ChatInputProps {
     onSend: (content: string, attachments?: Attachment[]) => void;
     onStop?: () => void;
     onVoiceClick?: () => void;
-    onMediaClick?: (type: 'image' | 'video' | 'audio' | 'document') => void;
+    onMediaClick?: (type: 'file' | 'video' | 'audio') => void;
     disabled?: boolean;
     isLoading?: boolean;
     isStreaming?: boolean;
@@ -197,7 +197,7 @@ export function ChatInput({
         setPaletteRange(null);
     };
 
-    const handleMediaClick = (type: 'image' | 'video' | 'audio' | 'document') => {
+    const handleMediaClick = (type: 'file' | 'video' | 'audio') => {
         if (uploader.isUploading) return;
         uploadTypeRef.current = type;
         fileInputRef.current?.click();
@@ -343,7 +343,6 @@ export function ChatInput({
                 accept={
                     uploadTypeRef.current === 'video' ? "video/*" :
                     uploadTypeRef.current === 'audio' ? "audio/*" :
-                    uploadTypeRef.current === 'document' ? DOCUMENT_ACCEPT :
                     `image/*,video/*,audio/*,${DOCUMENT_ACCEPT}`
                 }
                 onChange={handleFileChange}
@@ -543,17 +542,13 @@ export function ChatInput({
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent side="top" align="start" className="w-52 p-2">
                                                 <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
-                                                <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
-                                                    <ImageIcon className="h-4 w-4" />
-                                                    <span>Media</span>
+                                                <DropdownMenuItem onClick={() => handleMediaClick('file')} className="gap-2 cursor-pointer py-2">
+                                                    <FileText className="h-4 w-4" />
+                                                    <span>File</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={() => handleMediaClick('video')} className="hidden gap-2 cursor-pointer py-2">
                                                     <Video className="h-4 w-4" />
                                                     <span>Video</span>
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleMediaClick('document')} className="gap-2 cursor-pointer py-2">
-                                                    <FileText className="h-4 w-4" />
-                                                    <span>Document (PDF, DOCX)</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={() => setDrivePickerOpen(true)} className="gap-2 cursor-pointer py-2">
                                                     <HardDrive className="h-4 w-4" />
