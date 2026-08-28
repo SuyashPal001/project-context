@@ -146,11 +146,18 @@ any row is inserted or any URL is signed:
 
 Both are skipped when the resolved entitlement is `unlimited`.
 
-The existing `checkUsage` helper in `packages/foundation/entitlements/src/check.ts`
-answers whether *any* quota remains (`used < limit`). It cannot answer whether a
-specific file fits, so this path performs headroom arithmetic against the
-resolved metered entitlement directly rather than calling that helper. The helper
-is left unchanged; other callers depend on its current semantics.
+The `check.ts` helpers in `packages/foundation/entitlements` are not usable here,
+for a structural reason worth stating: `entitlementsMiddleware` builds its map
+keyed by **featureId (UUID)** with the shape `{enabled, valueLimit, unlimited}`,
+while `checkUsage` and its siblings look up by feature *key* and read `.type` and
+`.used`. The two shapes cannot meet. Nothing outside the entitlements package
+calls those helpers — they are dead code, and this build does not revive them.
+
+The working pattern is the one in `apps/api/src/routes/tenants.ts:48-54`: query
+`features` by key to obtain the UUID, index the resolved map by that UUID, then
+do the arithmetic in the route. An absent map means the middleware did not run —
+a wiring error — and must throw rather than default, following the reasoning
+already documented in `apps/api/src/routes/tenants.limit.ts`.
 
 The presigned PUT is then signed with `ContentLength` set to the declared size.
 The signature covers the `content-length` header, so S3 rejects a body of any
