@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { db } from '@serverless-saas/database';
+import { db, nextCycleEnd } from '@serverless-saas/database';
 import { grantTrialCredits, grantSubscriptionCycleCredits, planCreditAllowance } from '../../lib/creditsLifecycle';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -159,6 +159,64 @@ describe.skipIf(!TEST_DB)('trial and subscription credit grants', () => {
     await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', new Date()); // toggle back
     const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
     expect(rows).toHaveLength(1);
+  });
+
+  it('truncates the fresh-cycle key to a UTC date, not the full millisecond timestamp', async () => {
+    // Pins the review fix for a concurrency gap: on a tenant's first-ever
+    // subscription grant (or the first call after a genuine cycle boundary)
+    // there is no prior grant to reuse yet, so `expiresAt` is computed fresh
+    // via nextCycleEnd(startedAt, ...), which preserves startedAt's
+    // milliseconds. `startedAt` is a fresh `new Date()` per request in
+    // billing.ts, so N concurrent calls racing this branch would each
+    // compute a slightly different `expiresAt` and therefore a different
+    // key, unless the key's period component is coarser than the value
+    // stored on the grant. A real two-connection race isn't reproducible
+    // deterministically in this suite (same structural limit as Task 14's
+    // `for update` lock - see that mutation note); asserting the key format
+    // directly is the deterministic proxy: it fails exactly when the
+    // truncation is removed, independent of timing.
+    await seedTenantWithPlan(TENANT, 'starter');
+    const start = new Date();
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', start);
+    const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
+    expect(rows).toHaveLength(1);
+    const expectedDate = nextCycleEnd(start, 'monthly').toISOString().slice(0, 10);
+    expect(rows[0].idempotency_key).toBe(`sub:${TENANT}:starter:${expectedDate}`);
+  });
+
+  it('grants once per distinct plan on a genuine mid-cycle plan change, with no clawback of the earlier grant', async () => {
+    // Pins the accepted v1 bound from the review: a real plan change mid-cycle
+    // still gets a full fresh allowance (no proration/clawback), but that is
+    // bounded to once PER DISTINCT PLAN within the period - repeating a plan
+    // that already granted in this cycle must still collapse. Uses free,
+    // starter, business (concrete credits amounts); enterprise is excluded
+    // here because it is the `unlimited` plan and takes the isUnlimited()
+    // early-return path instead - already covered by the unlimited-tenant
+    // test below.
+    await seedTenantWithPlan(TENANT, 'free');
+    const start = new Date();
+
+    await grantSubscriptionCycleCredits(TENANT, 'free', 'monthly', start);
+    // A genuine plan change: mirrors what upgradeHandler does to the
+    // subscriptions row before calling grantSubscriptionCycleCredits with the
+    // new plan value - planCreditAllowance() reads the tenant's ACTIVE
+    // subscription row, not the `plan` argument, so the row has to move too.
+    await db.execute(sql`update subscriptions set plan = 'starter' where tenant_id = ${TENANT} and status = 'active'`);
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', start);
+    await db.execute(sql`update subscriptions set plan = 'business' where tenant_id = ${TENANT} and status = 'active'`);
+    await grantSubscriptionCycleCredits(TENANT, 'business', 'monthly', start);
+    // Repeating a plan already granted this cycle must still collapse.
+    await grantSubscriptionCycleCredits(TENANT, 'business', 'monthly', start);
+
+    const freeRows = await ledgerRows(TENANT, `sub:${TENANT}:free:`);
+    const starterRows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
+    const businessRows = await ledgerRows(TENANT, `sub:${TENANT}:business:`);
+    expect(freeRows).toHaveLength(1);
+    expect(starterRows).toHaveLength(1);
+    expect(businessRows).toHaveLength(1);
+    expect(BigInt(freeRows[0].amount_micro as string)).toBe(200n * 1_000_000n);
+    expect(BigInt(starterRows[0].amount_micro as string)).toBe(2_000n * 1_000_000n);
+    expect(BigInt(businessRows[0].amount_micro as string)).toBe(10_000n * 1_000_000n);
   });
 
   it('grants again once the prior cycle has actually ended, even for the same plan', async () => {

@@ -93,7 +93,7 @@ async function lastSubscriptionGrantExpiry(tenantId: string): Promise<Date | nul
     select expires_at
       from credit_grants
      where tenant_id = ${tenantId} and grant_type = 'subscription'
-     order by created_at desc
+     order by created_at desc, id desc
      limit 1
   `);
   const [row] = rowsOf(result) as unknown as { expires_at: string | Date | null }[];
@@ -141,6 +141,29 @@ async function lastSubscriptionGrantExpiry(tenantId: string): Promise<Date | nul
  * `billingCycle` is deliberately NOT part of the key - only `plan` and the
  * resolved cycle end are. That is what makes toggling monthly<->annual with
  * the same plan collapse to one grant instead of two.
+ *
+ * ---- Why the key truncates expiresAt to a UTC date, not the full timestamp ----
+ * The "still inside a prior cycle" branch above only fires once a grant from
+ * an EARLIER call already exists to look up. On the very first call for a
+ * cycle - a tenant's first-ever subscription grant, or the first call after
+ * a genuine cycle boundary - there is nothing to reuse yet, so `expiresAt`
+ * is computed fresh via nextCycleEnd(startedAt, ...), and nextCycleEnd()
+ * preserves startedAt's hours/minutes/seconds/milliseconds. `startedAt` is a
+ * fresh `new Date()` per request (billing.ts). A burst of N concurrent calls
+ * that all read lastSubscriptionGrantExpiry() before any of their grants has
+ * committed each compute a slightly different `expiresAt` (different
+ * milliseconds), hence a different key - the account-row lock inside
+ * spend_credits() serializes them but can't collapse them, since the replay
+ * check matches on the exact key string. That's up to N full allowances
+ * instead of one, at exactly the two moments (first-ever grant, cycle
+ * rollover) this key scheme exists to protect. Truncating the key's period
+ * component to a UTC date (`YYYY-MM-DD`) closes this: one plan cannot have
+ * two cycle ends on the same UTC date (nextCycleEnd() steps by whole months),
+ * so no legitimate grant collapses that shouldn't, but every racer in the
+ * same burst now computes the same key and converges on one grant. The full
+ * `expiresAt` (with its real time-of-day) is still stored on the grant row
+ * itself via `GrantInput.expiresAt` - only the *key* is date-truncated, so
+ * expiry behavior is unaffected.
  */
 export async function grantSubscriptionCycleCredits(
   tenantId: string,
@@ -164,7 +187,7 @@ export async function grantSubscriptionCycleCredits(
     await grantCredits({
       tenantId,
       amountMicro: BigInt(credits) * MICRO_PER_CREDIT,
-      key: `sub:${tenantId}:${plan}:${expiresAt.toISOString()}`,
+      key: `sub:${tenantId}:${plan}:${expiresAt.toISOString().slice(0, 10)}`,
       grantType: 'subscription',
       expiresAt,
       reason: 'subscription cycle credits',
