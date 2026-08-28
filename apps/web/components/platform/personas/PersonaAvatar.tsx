@@ -22,10 +22,14 @@ interface PersonaAvatarProps {
 export function PersonaAvatar({ persona, avatarUrl, state, size = 40, className, iconClassName, icon: Icon = Bot }: PersonaAvatarProps) {
     // Motion (via `state` below) is fully decoupled from persona art — see
     // globals.css's persona-avatar-motion rules — so there's no per-state image to
-    // look up. avatarUrl (the specific agent's own avatar) wins when present;
-    // exampleAssetUrl is only a fallback for persona-template browsing (Explore),
-    // where no agent exists yet.
-    const asset = avatarUrl ?? persona?.exampleAssetUrl ?? undefined;
+    // look up. Personas have no dedicated avatar field (only avatarUrl on a
+    // hired agent) — exampleAssetUrl used to fill in as a stand-in avatar for
+    // persona-template browsing (Explore), but that field is a portfolio
+    // outcome screenshot, not a face; once real outcome art replaced the
+    // placeholders it rendered as a cropped scene fragment instead of an
+    // icon. Falls through to the generic Icon tile until personas get a real
+    // avatar field.
+    const asset = avatarUrl ?? undefined;
 
     if (!asset) {
         return (
