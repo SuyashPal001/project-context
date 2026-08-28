@@ -14,6 +14,7 @@ import { eq, isNull, and, desc } from 'drizzle-orm';
 
 import type { AppEnv } from '../types';
 import { buildResearchEngineerPrompt, withUploadGuidance } from '@serverless-saas/agent-api/lib/agentPrompts';
+import { grantTrialCredits } from '../lib/creditsLifecycle';
 
 const onboardingSchema = z.object({
     workspaceName: z.string().min(3).max(20),
@@ -102,6 +103,11 @@ onboardingRoutes.post('/complete', async (c) => {
     });
 
     const tenantId = tenant.id;
+
+    // Trial credit grant + account row. Never throws - a grant failure must
+    // not roll back tenant creation (task 13); the credits backfill script
+    // (task 7) can repair a missing grant later.
+    await grantTrialCredits(tenantId);
 
     try {
         await db.insert(auditLog).values({

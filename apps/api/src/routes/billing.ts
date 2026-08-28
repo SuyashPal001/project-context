@@ -8,6 +8,7 @@ import { features, planEntitlements } from '@serverless-saas/database/schema/ent
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { getCacheClient, entitlementSetKey } from '@serverless-saas/cache';
+import { grantSubscriptionCycleCredits } from '../lib/creditsLifecycle';
 import type { AppEnv } from '../types';
 
 
@@ -109,6 +110,13 @@ const upgradeHandler = async (c: Context<AppEnv>) => {
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
     }
+
+    // Subscription-cycle credit grant (task 13). This is the only place in
+    // this codebase that creates a new active subscription today - there is
+    // no recurring-charge billing engine yet (see the TODOs on this route),
+    // so every plan/cycle change is treated as a fresh cycle. Never throws -
+    // a grant failure must not roll back the subscription change.
+    await grantSubscriptionCycleCredits(tenantId, newSub.id, newSub.startedAt, newSub.billingCycle);
 
     // Activate/deactivate agents based on new plan's agent limit
     try {
