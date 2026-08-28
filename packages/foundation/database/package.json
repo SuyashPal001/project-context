@@ -37,7 +37,8 @@
     "db:seed": "tsx seeds/index.ts",
     "index:knowledge": "tsx scripts/indexKnowledge.ts",
     "index:knowledge:dry": "tsx scripts/indexKnowledge.ts --dry-run",
-    "backfill:credits": "tsx scripts/backfillCredits.ts"
+    "backfill:credits": "tsx scripts/backfillCredits.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
@@ -49,6 +50,7 @@
   "devDependencies": {
     "dotenv": "^16.4.0",
     "drizzle-kit": "^0.28.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.5"
   }
 }

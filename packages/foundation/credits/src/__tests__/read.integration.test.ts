@@ -39,4 +39,23 @@ describe.skipIf(!TEST_DB)('credits wrappers', () => {
     expect(rows[0].kind).toBe('debit');
     expect(rows[1].kind).toBe('grant');
   });
+
+  // Regression: spendCredits() interpolated a raw JS Date into the
+  // drizzle-orm `sql` template passed to db.execute(). That path hits
+  // postgres.js's prepared-param encoder, which - unlike postgres.js's own
+  // tagged-template call - does not serialize Date objects and throws
+  // ERR_INVALID_ARG_TYPE. No existing test caught it because every other
+  // grantCredits call in this suite omits expiresAt; the credits backfill
+  // script (task 7) is the first real caller that always passes one, and
+  // every trial/subscription-renewal grant (task 13) rides this same path.
+  it('accepts a Date expiresAt and round-trips it through credit_grants.expires_at', async () => {
+    const expiresAt = new Date('2027-06-01T00:00:00.000Z');
+    await grantCredits({
+      tenantId: TENANT, amountMicro: 250_000n, key: 'g:expiry',
+      grantType: 'subscription', expiresAt,
+    });
+    const balance = await getBalance(TENANT);
+    expect(balance.grants).toHaveLength(1);
+    expect(balance.grants[0].expiresAt?.getTime()).toBe(expiresAt.getTime());
+  });
 });

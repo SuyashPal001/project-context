@@ -18,6 +18,12 @@
 // sum of live grant remainders (spend_credits() never consults "unlimited";
 // it only knows grants).
 //
+// A tenant whose plan carries no `credits` entitlement row at all (a plan
+// seed gap, not a normal state) is granted nothing - see MISSING ENTITLEMENT
+// below. That is reported as a distinct, hard-to-miss section and fails the
+// process's exit code, but does not stop the run: everyone else still gets
+// granted.
+//
 // Run against DATABASE_URL explicitly on the command line - never rely on
 // the ambient env, which apps/api/.env points at the shared Supabase dev
 // database:
@@ -25,18 +31,16 @@
 
 import postgres from 'postgres';
 import { grantCredits, isUnlimited, MICRO_PER_CREDIT } from '../../credits/src/index';
+import { nextCycleEnd, type BillingCycle } from './cycleEnd';
 
 const dryRun = process.argv.includes('--dry-run');
 const sql = postgres(process.env.DATABASE_URL!, { max: 1 });
 
-function endOfMonth(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-}
-
 interface TenantRow {
   tenant_id: string;
   value_limit: number | null;
+  started_at: Date;
+  billing_cycle: BillingCycle;
 }
 
 async function run() {
@@ -50,7 +54,8 @@ async function run() {
   // started one deterministically rather than granting once per duplicate row.
   const tenants = await sql<TenantRow[]>`
     select distinct on (s.tenant_id)
-           s.tenant_id, coalesce(tfo.value_limit, pe.value_limit) as value_limit
+           s.tenant_id, coalesce(tfo.value_limit, pe.value_limit) as value_limit,
+           s.started_at, s.billing_cycle
       from subscriptions s
       join features f on f.key = 'credits'
       left join plan_entitlements pe on pe.plan = s.plan::text and pe.feature_id = f.id
@@ -65,12 +70,16 @@ async function run() {
   if (dryRun) console.log('[DRY RUN] - no DB writes\n');
 
   let granted = 0;
+  const missingEntitlement: string[] = [];
   for (const t of tenants) {
     if (await isUnlimited(t.tenant_id)) {
       console.log(`skip ${t.tenant_id}: unlimited`);
       continue;
     }
     if (t.value_limit == null) {
+      // Don't abort the run - grant everyone else, then fail loudly (see the
+      // MISSING ENTITLEMENT section below and the non-zero exit code).
+      missingEntitlement.push(t.tenant_id);
       console.warn(`skip ${t.tenant_id}: no credits entitlement - check the plan seed`);
       continue;
     }
@@ -86,7 +95,8 @@ async function run() {
     }
 
     const amountMicro = BigInt(t.value_limit) * MICRO_PER_CREDIT;
-    console.log(`${dryRun ? 'would grant' : 'grant'} ${t.value_limit} credits to ${t.tenant_id}`);
+    const expiresAt = nextCycleEnd(t.started_at, t.billing_cycle);
+    console.log(`${dryRun ? 'would grant' : 'grant'} ${t.value_limit} credits to ${t.tenant_id} (expires ${expiresAt.toISOString()})`);
     if (!dryRun) {
       // spend_credits() creates the credit_accounts row itself
       // (`insert ... on conflict do nothing`) under the same row lock it
@@ -96,7 +106,7 @@ async function run() {
         amountMicro,
         key,
         grantType: 'subscription',
-        expiresAt: endOfMonth(),
+        expiresAt,
         reason: 'opening balance at credit system rollout',
       });
     }
@@ -104,13 +114,19 @@ async function run() {
   }
 
   console.log(`${dryRun ? 'would grant' : 'granted'} ${granted} of ${tenants.length} tenant(s)`);
+
+  if (missingEntitlement.length > 0) {
+    console.error(`\nMISSING ENTITLEMENT - ${missingEntitlement.length} tenant(s) granted NOTHING (plan seed needs review):`);
+    for (const id of missingEntitlement) console.error(`  ${id}`);
+  }
+
   await sql.end();
   // grantCredits/isUnlimited go through @serverless-saas/database's shared
   // drizzle client (a pooled postgres.js connection, max 10, opened at import
   // time), which this script never owns a handle to and so cannot .end(). It
   // has no idle timeout, so without an explicit exit here the process hangs
   // after a successful run instead of returning to the shell.
-  process.exit(0);
+  process.exit(missingEntitlement.length > 0 ? 1 : 0);
 }
 
 run().catch(async (err) => {
