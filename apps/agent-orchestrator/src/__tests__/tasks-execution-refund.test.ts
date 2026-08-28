@@ -30,6 +30,7 @@ vi.mock('../credits.js', () => ({
   estimateTaskMicro,
   resolveTaskRate,
   DEFAULT_TASK_MODEL: 'gemini-2.5-flash',
+  taskChargeKey: (taskId: string, attempt: number) => attempt > 0 ? `task:${taskId}:attempt:${attempt}` : `task:${taskId}`,
 }))
 
 vi.mock('../usage.js', () => ({
@@ -49,7 +50,7 @@ const postTaskEval = vi.fn().mockResolvedValue(undefined)
 const logToolCall = vi.fn().mockResolvedValue(undefined)
 const postTaskComment = vi.fn().mockResolvedValue(undefined)
 
-vi.mock('./tasks.helpers.js', () => ({
+vi.mock('../routes/tasks.helpers.js', () => ({
   callInternalTaskApi, postTaskEval, logToolCall, postTaskComment,
 }))
 
@@ -93,8 +94,22 @@ describe('runMastraTaskSteps — refund on non-throwing failure', () => {
     )
 
     expect(refundTask).toHaveBeenCalledTimes(1)
-    expect(refundTask).toHaveBeenCalledWith({ tenantId: 'tenant-1', taskId: 'task-1' })
+    expect(refundTask).toHaveBeenCalledWith({ tenantId: 'tenant-1', taskId: 'task-1', chargeKey: 'task:task-1' })
     expect(settleTask).not.toHaveBeenCalled()
+  })
+
+  it('does NOT refund (or settle) when the execution workflow suspends for approval — suspension is not terminal, and resume replays the same key', async () => {
+    executionRunResult = { status: 'suspended' }
+    const { runMastraTaskSteps } = await import('../routes/tasks.execution.js')
+
+    await runMastraTaskSteps(
+      'task-suspend', 'agent-1', 'tenant-1', STEPS, 'Title', 'Desc', 'Agent',
+      null, ['https://example.com'], null, null, 'trace-suspend',
+    )
+
+    expect(refundTask).not.toHaveBeenCalled()
+    expect(settleTask).not.toHaveBeenCalled()
+    expect(callInternalTaskApi).toHaveBeenCalledWith('/internal/tasks/task-suspend/suspend', {}, 'trace-suspend')
   })
 
   it('does NOT refund when the execution workflow succeeds', async () => {
@@ -119,7 +134,7 @@ describe('runMastraTaskSteps — refund on non-throwing failure', () => {
     )
 
     expect(refundTask).toHaveBeenCalledTimes(1)
-    expect(refundTask).toHaveBeenCalledWith({ tenantId: 'tenant-1', taskId: 'task-3' })
+    expect(refundTask).toHaveBeenCalledWith({ tenantId: 'tenant-1', taskId: 'task-3', chargeKey: 'task:task-3' })
     expect(settleTask).not.toHaveBeenCalled()
   })
 

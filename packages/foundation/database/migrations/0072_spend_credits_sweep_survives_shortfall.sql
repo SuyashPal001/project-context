@@ -174,24 +174,52 @@ begin
       new_balance := v_debit_balance;
 
     exception when sqlstate 'P0001' then
-      -- Rolls back to the implicit savepoint at this block's `begin`: every
-      -- credit_grants update and credit_ledger debit row inserted in this
-      -- loop is undone - the same "no partial debit rows survive" guarantee
-      -- 0071 had - but the sweep's update above, made before this savepoint,
-      -- is untouched. Report the shortfall through the OUT params rather
-      -- than re-raising: re-raising here would abort the whole statement and
-      -- take the sweep down with it, which is the exact bug this migration
-      -- fixes. v_remaining still holds the shortfall - local variable
-      -- assignments are not part of what a savepoint rollback undoes.
-      insufficient := true;
-      short_by := v_remaining;
-      new_balance := v_balance; -- swept balance; no debit applied
+      -- `sqlstate 'P0001'` is the default code for ANY bare `raise
+      -- exception` in Postgres, not one private to the shortfall raise
+      -- above - a future raise added to this block, or a trigger firing on
+      -- credit_grants/credit_ledger during one of the inserts/updates in the
+      -- loop, would land here too. Without this guard that would be
+      -- silently reported as insufficient = true and surface as a 402,
+      -- masking a real bug as a billing message. v_remaining > 0 is exactly
+      -- the condition the shortfall raise itself checked immediately before
+      -- raising, and nothing between that check and here can change it, so
+      -- it reliably distinguishes "this is our own shortfall" from
+      -- "something else raised P0001".
+      if v_remaining > 0 then
+        -- Rolls back to the implicit savepoint at this block's `begin`:
+        -- every credit_grants update and credit_ledger debit row inserted
+        -- in this loop is undone - the same "no partial debit rows
+        -- survive" guarantee 0071 had - but the sweep's update above, made
+        -- before this savepoint, is untouched. Report the shortfall
+        -- through the OUT params rather than re-raising: re-raising here
+        -- would abort the whole statement and take the sweep down with
+        -- it, which is the exact bug this migration fixes. v_remaining
+        -- still holds the shortfall - local variable assignments are not
+        -- part of what a savepoint rollback undoes.
+        insufficient := true;
+        short_by := v_remaining;
+        new_balance := v_balance; -- swept balance; no debit applied
+      else
+        raise;
+      end if;
     end;
 
   elsif p_amount_micro > 0 then
     -- A credit ALWAYS creates a new grant. Never un-spend an old one: it may
     -- have expired, and the credits would then sit in the balance where FIFO
     -- cannot reach them (invariant 3).
+    --
+    -- Note on p_expires_at: a caller computing "the shortest expires_at among
+    -- the grants a debit drew from" (spec section 4's refund rule) can hand
+    -- back a timestamp that is ALREADY in the past by the time this call
+    -- lands - e.g. the source grant expired in the gap between the original
+    -- debit and this refund. That's not a bug: the new grant this insert
+    -- creates is immediately eligible for the lazy sweep below on the very
+    -- next spend_credits() call for this tenant (its `v_balance +=
+    -- p_amount_micro` a few lines down transiently overstates the balance
+    -- until then), which is exactly the same self-correction invariant 3
+    -- relies on everywhere else, and only reachable now that a shortfall no
+    -- longer discards the sweep that would catch it (this migration).
     insert into credit_grants (tenant_id, actor_id, actor_type, grant_type,
                                amount_micro, expires_at)
       values (p_tenant, p_actor, p_actor_type,

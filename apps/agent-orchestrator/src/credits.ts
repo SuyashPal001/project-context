@@ -151,6 +151,32 @@ const AVERAGE_STEP_TOKENS = { input: 4000, output: 1000 }
  * explicit model selection row yet — matches the '*' wildcard credit_rates subject. */
 export const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
 
+/**
+ * Per-attempt task charge key. Attempt 0 (a task that is never clarified —
+ * the common case) keeps the exact original `task:{taskId}` key, so existing
+ * behavior is unchanged for tasks that never pause. Each subsequent attempt
+ * (after a clarify-and-resume cycle: onTaskComment refunds the estimate and
+ * the task pauses, the user answers, and the task is replanned and
+ * re-executed) gets its OWN key.
+ *
+ * Without this, a resumed run's chargeTaskEstimate call would carry the same
+ * `task:{taskId}` key as the original charge — already refunded by then —
+ * and spend_credits()'s replay check (invariant 5) would find that original
+ * debit's ledger row and return the current balance without charging
+ * anything for the new run. The clarify-and-resume cycle is the ordinary
+ * product flow, not an edge case, so that gap made every clarified task run
+ * for free.
+ *
+ * `attempt` is the number of `clarification_requested` events already
+ * recorded for this task by the time this run starts (computed in
+ * products/agent-platform/packages/api/workers/taskWorker.execution.ts,
+ * where the task-events table lives) — 0 for a first run, 1 after one
+ * clarify round, and so on.
+ */
+export function taskChargeKey(taskId: string, attempt: number): string {
+  return attempt > 0 ? `task:${taskId}:attempt:${attempt}` : `task:${taskId}`
+}
+
 export interface EstimateTaskMicroDeps {
   resolveRate?: typeof resolveRate
 }
@@ -282,7 +308,10 @@ export interface SettleTaskArgs {
   outputTokens: number
   /** Idempotency key of the ORIGINAL charge to settle against. Defaults to `task:{taskId}`; Task 10 (documents) overrides this. */
   chargeKey?: string
-  /** Idempotency key for the settle write itself. Defaults to `task:{taskId}:settle`; Task 10 overrides this. */
+  /** Idempotency key for the settle write itself. Defaults to `{chargeKey}:settle`
+   * — NOT `task:{taskId}:settle` directly, so an attempt-scoped chargeKey
+   * (taskChargeKey()) still lands its settle write beside the charge it is
+   * reconciling. Task 10 (documents) overrides this explicitly. */
   key?: string
   jobType?: string
 }
@@ -374,7 +403,12 @@ export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}
     await spendCreditsFn({
       tenantId: args.tenantId,
       amountMicro: delta,
-      key: args.key ?? `task:${args.taskId}:settle`,
+      // Was hardcoded off args.taskId directly (`task:{taskId}:settle`),
+      // which silently diverged from an attempt-scoped chargeKey once
+      // taskChargeKey() started varying the charge key per attempt — the
+      // read above (chargeRows) already correctly scopes by `chargeKey`,
+      // only the default write key didn't follow it.
+      key: args.key ?? `${chargeKey}:settle`,
       kind: 'settle',
       actorId: args.agentId,
       actorType: 'agent',

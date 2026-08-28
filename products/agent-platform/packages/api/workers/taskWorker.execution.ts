@@ -12,6 +12,18 @@ export async function handleExecution(taskId: string, traceId: string) {
 
     const agent = task.agentId ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0] : null;
     const steps = await db.select().from(taskSteps).where(eq(taskSteps.taskId, taskId)).orderBy(asc(taskSteps.stepNumber));
+
+    // Each clarify-and-resume cycle needs its OWN credit charge key
+    // (task:{taskId}:attempt:{n} — see apps/agent-orchestrator/src/credits.ts
+    // taskChargeKey()), or the resumed run's chargeTaskEstimate call replays
+    // the ORIGINAL (already-refunded-by-onTaskComment) debit under the
+    // unsuffixed task:{taskId} key instead of actually charging. `attempt` is
+    // the number of clarification rounds already completed for this task —
+    // 0 for a task that was never clarified, so this execution keeps the
+    // exact original key and existing behavior for that common case.
+    const clarificationRounds = await db.select({ id: taskEvents.id }).from(taskEvents)
+        .where(and(eq(taskEvents.taskId, taskId), eq(taskEvents.eventType, 'clarification_requested')));
+    const attempt = clarificationRounds.length;
     const pendingSteps = steps.filter((s: { status: string }) => s.status === 'pending');
 
     if (pendingSteps.length === 0 && steps.every((s: { status: string }) => s.status === 'done')) {
@@ -39,6 +51,7 @@ export async function handleExecution(taskId: string, traceId: string) {
                 links: (task.links ?? []).map((l: string) => `<user_input>${l}</user_input>`),
                 attachmentContext: attachmentContext ?? null,
                 steps: pendingSteps.map((s: typeof taskSteps.$inferSelect) => ({ id: s.id, stepNumber: s.stepNumber, title: sanitizeTaskInput(s.title), description: sanitizeTaskInput(s.description), toolName: s.toolName })),
+                attempt,
             }),
             signal: AbortSignal.timeout(290_000),
         });

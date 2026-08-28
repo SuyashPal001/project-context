@@ -4,7 +4,7 @@ import { INTERNAL_SERVICE_KEY } from '../types.js'
 import { createPlanFromPrd, type PrdData } from '../services/planService.js'
 import type { TaskStep, WorkflowStep } from '../types.js'
 import { fetchAgentModelSelection, getPool, recordUsage } from '../usage.js'
-import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
+import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, refundTask, settleTask, taskChargeKey, DEFAULT_TASK_MODEL } from '../credits.js'
 import { filterPII } from '../pii-filter.js'
 import { runMastraTaskSteps } from './tasks.execution.js'
 import type { PlanResult } from './tasks.execution.js'
@@ -27,7 +27,7 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
-  let body: { taskId?: unknown; agentId?: unknown; tenantId?: unknown; steps?: unknown; taskTitle?: unknown; taskDescription?: unknown; agentName?: unknown; referenceText?: unknown; links?: unknown; attachmentContext?: unknown; acceptanceCriteria?: unknown }
+  let body: { taskId?: unknown; agentId?: unknown; tenantId?: unknown; steps?: unknown; taskTitle?: unknown; taskDescription?: unknown; agentName?: unknown; referenceText?: unknown; links?: unknown; attachmentContext?: unknown; acceptanceCriteria?: unknown; attempt?: unknown }
   try {
     body = await c.req.json()
   } catch {
@@ -64,6 +64,17 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'taskId, tenantId, and steps are required' }, 400)
   }
 
+  // `attempt` — the number of clarification rounds already completed for
+  // this task — is computed by the caller (taskWorker.execution.ts, which
+  // has Drizzle access to task_events) and threaded through untouched.
+  // attempt 0 (never clarified, or the field is simply absent — an older
+  // caller, or a direct test) keeps the original `task:{taskId}` key, so
+  // existing behavior is unchanged for the common case. See taskChargeKey().
+  const attempt = typeof body.attempt === 'number' && Number.isFinite(body.attempt) && body.attempt > 0
+    ? Math.floor(body.attempt)
+    : 0
+  const chargeKey = taskChargeKey(taskId, attempt)
+
   const execModelSelection = await fetchAgentModelSelection(agentId)
   const execModel = execModelSelection?.model ?? DEFAULT_TASK_MODEL
   const execEstimateMicro = await estimateTaskMicro(steps.length, execModel)
@@ -72,6 +83,7 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
     await chargeTaskEstimate({
       tenantId, taskId, agentId, estimateMicro: execEstimateMicro,
       rateId: execRate?.id ?? null, rateVersion: execRate?.version ?? null,
+      key: chargeKey,
     })
   } catch (err) {
     if (err instanceof InsufficientCreditsError) {
@@ -87,12 +99,12 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
   // Document workflow branch — PRD attached, no links: run synchronously to return planResult
   const isDocWorkflow = !!(attachmentContext) && (!links || links.length === 0)
   if (isDocWorkflow) {
-    const result = await runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId)
+    const result = await runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId, chargeKey)
     return c.json({ ok: true, taskId, planResult: result.planResult as PlanResult | undefined })
   }
 
   // Standard task execution — fire-and-forget
-  runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId).catch((err: Error) => {
+  runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId, chargeKey).catch((err: Error) => {
     console.error(JSON.stringify({ level: 'error', msg: 'mastra unhandled error', traceId, taskId, tenantId, error: err.message, ts: Date.now() }))
   })
   return c.json({ ok: true, taskId })

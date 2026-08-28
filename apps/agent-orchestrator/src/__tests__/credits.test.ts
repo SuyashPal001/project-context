@@ -191,6 +191,24 @@ describe('settleTask', () => {
     rows: [{ amount_micro: String(amountMicro), rate_id: 'rate-1', rate_version: 1, pricing_schema: schema }],
   });
 
+  it('derives the settle write\'s default key from chargeKey, not from taskId directly — an attempt-scoped chargeKey must carry through', async () => {
+    // Regression: this default used to be hardcoded as `task:{taskId}:settle`
+    // directly, which silently diverged from an explicit chargeKey override
+    // once taskChargeKey() started varying the charge key per clarify-and-
+    // resume attempt. The read side (the chargeRows query) already correctly
+    // scoped by chargeKey; only the write side's default didn't follow it.
+    const { settleTask } = await import('../credits.js');
+    const isUnlimited = vi.fn().mockResolvedValue(false);
+    const spendCredits = vi.fn().mockResolvedValue(0n);
+    const pool = { query: vi.fn().mockResolvedValueOnce(chargeRow(-200_000)) };
+    await settleTask(
+      { ...baseArgs, chargeKey: 'task:task-1:attempt:1' },
+      { isUnlimited, spendCredits, pool: pool as never },
+    );
+    const call = spendCredits.mock.calls[0][0];
+    expect(call.key).toBe('task:task-1:attempt:1:settle');
+  });
+
   it('never touches the pool or spendCredits for an unlimited tenant', async () => {
     const { settleTask } = await import('../credits.js');
     const isUnlimited = vi.fn().mockResolvedValue(true);
