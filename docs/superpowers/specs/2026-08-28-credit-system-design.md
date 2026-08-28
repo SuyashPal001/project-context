@@ -354,9 +354,9 @@ with `spent_micro = amount_micro`; otherwise it can race a lazy sweep and collid
 survive - and maps to HTTP 402 at the API boundary.
 
 **Refund of a multi-grant debit** needs no special case: sum the debit's rows
-(`where idempotency_key = 'task:{id}' and kind = 'debit'`) and issue one positive call.
-The refund lands in a new grant carrying the shortest `expires_at` among the grants it
-came from, so a refund can never extend a credit's life.
+(`where tenant_id = {tenant} and idempotency_key = 'task:{id}' and kind = 'debit'`) and
+issue one positive call. The refund lands in a new grant carrying the shortest
+`expires_at` among the grants it came from, so a refund can never extend a credit's life.
 
 ---
 
