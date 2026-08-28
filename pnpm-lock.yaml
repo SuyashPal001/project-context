@@ -87,6 +87,9 @@ importers:
       '@serverless-saas/ai':
         specifier: workspace:*
         version: link:../../packages/foundation/ai
+      '@serverless-saas/credits':
+        specifier: workspace:*
+        version: link:../../packages/foundation/credits
       '@serverless-saas/database':
         specifier: workspace:*
         version: link:../../packages/foundation/database
