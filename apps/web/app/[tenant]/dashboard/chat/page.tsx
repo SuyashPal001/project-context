@@ -52,6 +52,20 @@ function ChatPage() {
     const queryClient = useQueryClient();
     const { isCanvasOpen, isCanvasExpanded, hasActivity, toggleCanvas, toggleExpand, openCanvas, handleCanvasUpdate, flushPending } = useCanvas();
 
+    // Auto-collapse the conversation list the moment Canvas opens, giving
+    // chat+canvas the room the two-column layout needs — same collapse the
+    // PanelLeftClose button already does manually, just triggered
+    // automatically on this one transition. Fires only on the false->true
+    // edge (not on every render where canvas stays open) so it never fights
+    // the user manually re-opening the list afterward.
+    const wasCanvasOpenRef = useRef(false);
+    useEffect(() => {
+        if (isCanvasOpen && !wasCanvasOpenRef.current && !isChatSidebarCollapsed) {
+            toggleChatSidebar();
+        }
+        wasCanvasOpenRef.current = isCanvasOpen;
+    }, [isCanvasOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // The grant lives on the conversation, so it survives a reload and is not
     // something the client can talk itself into — the server decides what it says.
     const folderPrefix = selectedConversation?.metadata?.folderScope?.prefix;

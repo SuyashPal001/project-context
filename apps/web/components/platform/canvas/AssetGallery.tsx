@@ -169,9 +169,9 @@ export function AssetGallery({ conversationId, filterAssetId, fallbackAsset, onC
             <div className="relative h-20 w-28">
               {/* peeking card stack, fanned behind the tab — same idea as the
                   reference's polaroid stack, abstract instead of fake photos */}
-              <div className="absolute left-1 top-0 h-14 w-11 -rotate-12 rounded-lg bg-card border border-border/60 shadow-sm" />
-              <div className="absolute left-1/2 -translate-x-1/2 top-0 h-14 w-11 rounded-lg bg-card border border-border/60 shadow-sm" />
-              <div className="absolute right-1 top-0 h-14 w-11 rotate-12 rounded-lg bg-card border border-border/60 shadow-sm" />
+              <div className="absolute left-1 top-0 h-14 w-11 -rotate-12 rounded-lg bg-muted border border-border shadow-md" />
+              <div className="absolute left-1/2 -translate-x-1/2 top-0 h-14 w-11 rounded-lg bg-muted border border-border shadow-md" />
+              <div className="absolute right-1 top-0 h-14 w-11 rotate-12 rounded-lg bg-muted border border-border shadow-md" />
               <div className="absolute inset-x-2 bottom-0 h-12 rounded-2xl bg-gradient-to-br from-[#E69DB8] to-[#F2A679] shadow-md flex items-center justify-center">
                 <Sparkles className="h-5 w-5 text-black/70" />
               </div>
