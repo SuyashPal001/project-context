@@ -2,7 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Check } from "lucide-react";
+import { Search, Check, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { getFileIcon, formatFileSize } from "@/components/platform/files/lib/fileIcons";
 import type { FileRecord } from "@/components/platform/files/types";
@@ -49,39 +49,44 @@ function AssetGridCard({ file, isActive, isPicked, isBlocked, onToggle, onHover 
             onClick={onToggle}
             onMouseEnter={onHover}
             disabled={isBlocked}
-            className={`relative flex flex-col overflow-hidden border text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`group relative flex flex-col overflow-hidden border text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 isPicked ? 'border-primary bg-primary/5' : isActive ? 'border-primary/50 bg-accent/40' : 'border-border/60 hover:border-border'
             }`}
-            // Inline, not Tailwind utilities — this grid/card layout was silently
-            // not receiving several of its utility classes in production (cause
-            // still unconfirmed), collapsing every card to a full-width sliver.
-            // Inline styles can't be dropped by whatever that pipeline issue is.
-            style={{ width: '100%', borderRadius: '12px', boxSizing: 'border-box' }}
+            style={{ width: '100%', borderRadius: '14px', boxSizing: 'border-box' }}
         >
             <span
-                className={`absolute top-1.5 right-1.5 z-10 rounded-full border flex items-center justify-center transition-colors ${
-                    isPicked ? 'bg-primary border-primary' : 'bg-background/80 border-border'
+                className={`absolute top-2 right-2 z-10 rounded-full border flex items-center justify-center transition-colors ${
+                    isPicked ? 'bg-primary border-primary' : 'bg-background/90 border-border'
                 }`}
-                style={{ height: '18px', width: '18px' }}
+                style={{ height: '22px', width: '22px' }}
             >
-                {isPicked && <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />}
+                {isPicked && <Check className="h-3.5 w-3.5 text-primary-foreground" strokeWidth={3} />}
             </span>
-            {/* Fixed height, not aspect-ratio — the thumbnail box collapsed to a
-                sliver when its width came out unreliable inside the grid, taking
-                the whole card down to a thin pill with it. A plain fixed height
-                can't collapse regardless of parent width. */}
+            {/* Fixed height, not aspect-ratio — a Tailwind pipeline issue in this
+                file was dropping several utility classes in production; fixed
+                pixel heights via inline style can't be affected by that. */}
             <div
-                className="flex items-center justify-center bg-muted/50 relative"
-                style={{ height: '64px', width: '100%', flexShrink: 0 }}
+                className="flex items-center justify-center bg-muted/50 relative overflow-hidden"
+                style={{ height: '150px', width: '100%', flexShrink: 0 }}
             >
                 {thumbnailUrl ? (
                     <img src={thumbnailUrl} alt={file.filename} className="object-cover" style={{ height: '100%', width: '100%' }} />
                 ) : (
-                    getFileIcon(file.contentType)
+                    <span style={{ transform: 'scale(1.8)' }}>{getFileIcon(file.contentType)}</span>
+                )}
+                {!isPicked && !isBlocked && (
+                    <span
+                        className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/35 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                        <span className="flex items-center gap-1.5 rounded-full bg-background text-foreground text-xs font-medium px-3 py-1.5 shadow-sm">
+                            <Plus className="h-3.5 w-3.5" />
+                            Select
+                        </span>
+                    </span>
                 )}
             </div>
-            <div className="px-2 py-1.5 w-full">
-                <p className="text-[11px] font-medium truncate" title={file.filename}>{file.filename}</p>
+            <div className="px-2.5 py-2 w-full">
+                <p className="text-[12px] font-medium truncate" title={file.filename}>{file.filename}</p>
                 <p className="text-[10px] text-muted-foreground">{formatFileSize(file.size)}</p>
             </div>
         </button>
@@ -145,8 +150,7 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
 
     // Enter toggles the highlighted card into/out of the selection rather than
     // immediately confirming — multi-select needs a distinct "I'm done" step
-    // (the Add button, or Enter again with nothing newly toggled won't do
-    // since there's always something highlighted; Cmd/Ctrl+Enter confirms).
+    // (the Add button, or Cmd/Ctrl+Enter from the keyboard).
     const selectActive = () => {
         const file = filtered[activeIndex];
         if (!file) return false;
@@ -157,8 +161,11 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
     useImperativeHandle(ref, () => ({ moveActive, selectActive }), [filtered, activeIndex, remainingSlots]);
 
     return (
-        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border/50 bg-popover shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)] p-2.5 max-h-80 flex flex-col">
-            <div className="flex items-center gap-2 px-3 h-10 mb-2 rounded-xl bg-muted/50 focus-within:ring-1 focus-within:ring-primary/30 shrink-0">
+        <div
+            className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border/50 bg-popover shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)] p-3 flex flex-col"
+            style={{ maxHeight: '70vh' }}
+        >
+            <div className="flex items-center gap-2 px-3 h-11 mb-3 rounded-xl bg-muted/50 focus-within:ring-1 focus-within:ring-primary/30 shrink-0">
                 <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <input
                     ref={inputRef}
@@ -166,8 +173,10 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
                     value={searchValue}
                     onChange={e => setSearchValue(e.target.value)}
                     onKeyDown={e => {
-                        if (e.key === "ArrowDown") { e.preventDefault(); moveActive(1); return; }
-                        if (e.key === "ArrowUp") { e.preventDefault(); moveActive(-1); return; }
+                        if (e.key === "ArrowDown") { e.preventDefault(); moveActive(3); return; }
+                        if (e.key === "ArrowUp") { e.preventDefault(); moveActive(-3); return; }
+                        if (e.key === "ArrowRight") { e.preventDefault(); moveActive(1); return; }
+                        if (e.key === "ArrowLeft") { e.preventDefault(); moveActive(-1); return; }
                         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); confirm(); return; }
                         if (e.key === "Enter") { e.preventDefault(); selectActive(); return; }
                         if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
@@ -177,15 +186,15 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
                 />
             </div>
             {isLoading ? (
-                <div className="px-3 py-8 text-xs text-muted-foreground text-center">Loading…</div>
+                <div className="px-3 py-12 text-xs text-muted-foreground text-center">Loading…</div>
             ) : filtered.length === 0 ? (
-                <div className="px-3 py-8 text-xs text-muted-foreground text-center">
+                <div className="px-3 py-12 text-xs text-muted-foreground text-center">
                     {searchValue ? `No files match "${searchValue}".` : 'No files in Drive yet.'}
                 </div>
             ) : (
                 <div
                     className="overflow-y-auto flex-1 min-h-0"
-                    style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}
+                    style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' }}
                 >
                     {filtered.map((file, i) => (
                         <AssetGridCard
@@ -200,11 +209,16 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
                     ))}
                 </div>
             )}
-            <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/40 shrink-0">
-                <span className="text-[11px] text-muted-foreground px-1">
-                    {picked.size} of {remainingSlots} selected
-                </span>
+            <div className="flex items-center justify-between pt-3 mt-3 border-t border-border/40 shrink-0">
+                <div className="flex items-center gap-3 text-[10.5px] text-muted-foreground font-mono">
+                    <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 rounded bg-muted">↑↓</kbd>move</span>
+                    <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 rounded bg-muted">↵</kbd>select</span>
+                    <span className="flex items-center gap-1"><kbd className="px-1.5 py-0.5 rounded bg-muted">esc</kbd>close</span>
+                </div>
                 <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground px-1">
+                        {picked.size} of {remainingSlots} selected
+                    </span>
                     <button type="button" onClick={onClose} className="text-xs font-medium text-muted-foreground hover:text-foreground px-2 py-1">
                         Cancel
                     </button>
