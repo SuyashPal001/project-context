@@ -580,7 +580,7 @@ export function ChatInput({
                                                 <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
                                                 <DropdownMenuItem onClick={() => handleMediaClick('file')} className="gap-2 cursor-pointer py-2">
                                                     <FileText className="h-4 w-4" />
-                                                    <span>File</span>
+                                                    <span>Upload</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={() => handleMediaClick('video')} className="hidden gap-2 cursor-pointer py-2">
                                                     <Video className="h-4 w-4" />
