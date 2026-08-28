@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { grantCredits, spendCredits } from '@serverless-saas/credits';
+import { grantCredits } from '@serverless-saas/credits';
 import { handleCreditsExpire } from '../creditsExpire';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -90,22 +90,10 @@ describe.skipIf(!TEST_DB)('handleCreditsExpire', () => {
     expect(await balanceOf(TENANT_LIVE)).toBe(500_000n);
   });
 
-  // This handler's own tenant-candidate query already filters out grants
-  // where spent_micro = amount_micro, so calling handleCreditsExpire() twice
-  // in a row never re-invokes spend_credits() for an already-expired grant -
-  // the two tests above can't observe a regression in spend_credits()'s own
-  // guard. Call spend_credits() directly, twice, with two DIFFERENT
-  // idempotency keys (so the outer per-call replay check on p_key doesn't
-  // short-circuit the second call either) to force its internal lazy-expiry
-  // loop to run twice against the same already-expired grant - proving the
-  // `spent_micro < amount_micro` filter inside spend_credits() itself is what
-  // stops the second run from re-inserting a colliding `expiry:{grantId}`
-  // ledger row (which would otherwise abort with a unique-constraint error
-  // and, per the brief, take a legitimate concurrent spend down with it).
-  it('does not re-process an already-expired grant even if the zero-amount sweep call itself repeats', async () => {
-    await grantExpiringYesterday(TENANT, 500_000n);
-    await spendCredits({ tenantId: TENANT, amountMicro: 0n, key: `expiry-sweep:${TENANT}:direct-1`, kind: 'adjust' });
-    await spendCredits({ tenantId: TENANT, amountMicro: 0n, key: `expiry-sweep:${TENANT}:direct-2`, kind: 'adjust' });
-    expect(await ledgerRows(TENANT, 'expiry:')).toHaveLength(1);
-  });
+  // A fourth test used to live here calling spend_credits() directly (never
+  // handleCreditsExpire()) to prove its internal lazy-expiry loop doesn't
+  // double-deduct when replayed with different idempotency keys. That's
+  // spend_credits()'s own property, not this handler's, so it moved to
+  // packages/foundation/credits/src/__tests__/expiry-replay.integration.test.ts,
+  // beside the rest of spend_credits()'s coverage.
 });

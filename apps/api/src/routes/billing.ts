@@ -111,12 +111,14 @@ const upgradeHandler = async (c: Context<AppEnv>) => {
         console.error('Audit log write failed:', auditErr);
     }
 
-    // Subscription-cycle credit grant (task 13). This is the only place in
-    // this codebase that creates a new active subscription today - there is
-    // no recurring-charge billing engine yet (see the TODOs on this route),
-    // so every plan/cycle change is treated as a fresh cycle. Never throws -
-    // a grant failure must not roll back the subscription change.
-    await grantSubscriptionCycleCredits(tenantId, newSub.id, newSub.startedAt, newSub.billingCycle);
+    // Subscription-cycle credit grant (task 13; hardened after code review -
+    // see the design note on grantSubscriptionCycleCredits). Keyed per
+    // (tenant, plan, cycle), NOT per subscription row: this route cancels the
+    // active subscription and inserts a fresh-uuid row on every call, so a
+    // key built from that row would never repeat and a same-plan retry or a
+    // monthly<->annual toggle would each mint a brand new grant. Never
+    // throws - a grant failure must not roll back the subscription change.
+    await grantSubscriptionCycleCredits(tenantId, newSub.plan, newSub.billingCycle, newSub.startedAt);
 
     // Activate/deactivate agents based on new plan's agent limit
     try {

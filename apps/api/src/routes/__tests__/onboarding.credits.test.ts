@@ -136,26 +136,51 @@ describe.skipIf(!TEST_DB)('trial and subscription credit grants', () => {
     expect(await planCreditAllowance(TENANT)).toBe(10_000);
   });
 
-  it('grants subscription credits on renewal, keyed by subscription id and cycle', async () => {
+  it('grants subscription credits on a plan change, keyed by tenant, plan, and cycle end', async () => {
     await seedTenantWithPlan(TENANT, 'starter');
-    await grantSubscriptionCycleCredits(TENANT, 'sub-abc', new Date(), 'monthly');
-    const rows = await ledgerRows(TENANT, 'sub:sub-abc:');
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', new Date());
+    const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
     expect(rows).toHaveLength(1);
-    expect(rows[0].idempotency_key).toBe('sub:sub-abc:0');
     expect(BigInt(rows[0].amount_micro as string)).toBe(2_000n * 1_000_000n);
   });
 
-  it('grants subscription credits exactly once per subscription cycle', async () => {
+  it('grants subscription credits exactly once when the same call repeats (the abuse case: spamming /billing/upgrade)', async () => {
     await seedTenantWithPlan(TENANT, 'starter');
-    await grantSubscriptionCycleCredits(TENANT, 'sub-abc', new Date(), 'monthly');
-    await grantSubscriptionCycleCredits(TENANT, 'sub-abc', new Date(), 'monthly'); // replay
-    const rows = await ledgerRows(TENANT, 'sub:sub-abc:');
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', new Date());
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', new Date()); // replay
+    const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
     expect(rows).toHaveLength(1);
+  });
+
+  it('does not re-grant when billingCycle toggles monthly<->annual within the same cycle', async () => {
+    await seedTenantWithPlan(TENANT, 'starter');
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', new Date());
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'annual', new Date());  // toggle to annual
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', new Date()); // toggle back
+    const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('grants again once the prior cycle has actually ended, even for the same plan', async () => {
+    await seedTenantWithPlan(TENANT, 'starter');
+    const firstStart = new Date();
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', firstStart);
+    const first = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
+    expect(first).toHaveLength(1);
+
+    // Don't touch the grant row - pass a `startedAt` far enough past the
+    // first grant's own cycle end (~1 month out) that the real elapsed-time
+    // check must be the thing deciding this is a fresh cycle, not a
+    // coincidentally-different key from mutating expires_at directly.
+    const secondStart = new Date(firstStart.getTime() + 40 * 24 * 60 * 60 * 1000);
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', secondStart);
+    const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
+    expect(rows).toHaveLength(2);
   });
 
   it('does not grant subscription credits to an unlimited tenant', async () => {
     await seedUnlimitedOverride(UNLIMITED_TENANT);
-    await grantSubscriptionCycleCredits(UNLIMITED_TENANT, 'sub-xyz', new Date(), 'monthly');
-    expect(await ledgerRows(UNLIMITED_TENANT, 'sub:sub-xyz:')).toHaveLength(0);
+    await grantSubscriptionCycleCredits(UNLIMITED_TENANT, 'starter', 'monthly', new Date());
+    expect(await ledgerRows(UNLIMITED_TENANT, `sub:${UNLIMITED_TENANT}:`)).toHaveLength(0);
   });
 });

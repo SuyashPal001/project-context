@@ -17,6 +17,14 @@ export type LedgerRow = typeof creditLedger.$inferSelect;
  * entitlement lookup in `checkMessageQuota`
  * (apps/agent-orchestrator/src/usage.ts). Returns false (not unlimited) for a
  * tenant with no active subscription row, rather than throwing.
+ *
+ * Ordered `started_at desc nulls last, limit 1` to match
+ * apps/api/src/lib/creditsLifecycle.ts's planCreditAllowance(), which runs
+ * the same join. A tenant should never carry two rows in ('active',
+ * 'trialing') at once, but if one ever slips through, a bare `limit 1` here
+ * and an ordered `limit 1` there could each pick a different row and
+ * disagree on whether the tenant is unlimited - keep the ordering identical
+ * rather than relying on that invariant never breaking.
  */
 export async function isUnlimited(tenantId: string): Promise<boolean> {
   const [row] = await db.execute(sql`
@@ -29,6 +37,7 @@ export async function isUnlimited(tenantId: string): Promise<boolean> {
             and tfo.revoked_at is null and tfo.deleted_at is null
             and (tfo.expires_at is null or tfo.expires_at > now())
      where s.tenant_id = ${tenantId} and s.status in ('active','trialing')
+     order by s.started_at desc nulls last
      limit 1
   `) as unknown as { unlimited: boolean }[];
   return row?.unlimited ?? false;

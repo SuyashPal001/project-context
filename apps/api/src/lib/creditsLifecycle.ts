@@ -84,26 +84,69 @@ export async function grantTrialCredits(tenantId: string): Promise<void> {
 }
 
 /**
- * Subscription-cycle grant, called from the subscription renewal path
+ * Looks up the `expires_at` of the tenant's most recent `subscription`-type
+ * grant. Used only to decide whether a new upgrade call lands inside the
+ * cycle that grant already covers - see grantSubscriptionCycleCredits below.
+ */
+async function lastSubscriptionGrantExpiry(tenantId: string): Promise<Date | null> {
+  const result = await db.execute(sql`
+    select expires_at
+      from credit_grants
+     where tenant_id = ${tenantId} and grant_type = 'subscription'
+     order by created_at desc
+     limit 1
+  `);
+  const [row] = rowsOf(result) as unknown as { expires_at: string | Date | null }[];
+  if (!row?.expires_at) return null;
+  const parsed = row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * Subscription-cycle grant, called from the plan-change path
  * (apps/api/src/routes/billing.ts's upgradeHandler, the only place in this
  * codebase that creates a new active subscription today - there is no
  * recurring-charge billing engine yet, see the TODOs in billing.ts).
  *
- * Keyed `sub:{subscriptionId}:{cycle}` so each cycle grants exactly once and
- * non-rollover falls out of expiry rather than needing a reset job. This
- * codebase creates a brand-new subscription row on every plan/cycle change
- * (upgradeHandler ends the old row and inserts a new one) rather than
- * recycling one subscription id across renewals, so `subscriptionId` is
- * always fresh here and `cycle` is always 0 - the key shape still matches the
- * spec and stays forward-compatible with a real recurring-billing engine
- * keying multiple cycles off one subscription id later.
+ * ---- Why this is keyed per (tenant, plan, cycle) and not per subscription row ----
+ * upgradeHandler cancels the tenant's active subscription and inserts a
+ * BRAND NEW row - with a fresh uuid - on every call, including a same-plan
+ * retry or a monthly<->annual toggle. An idempotency key built from that
+ * fresh subscription id (the original design) is fresh on every call by
+ * construction, so spend_credits()'s replay check can never fire: anyone
+ * with `billing:update` could mint an unbounded number of grants by calling
+ * POST /billing/upgrade in a loop, or by toggling billing cycle back and
+ * forth. There is also no payment gate yet (see billing.ts's TODO), so nothing
+ * upstream of this function stops the loop either.
+ *
+ * The fix: never key on the subscription row at all. Key on
+ * `sub:{tenantId}:{plan}:{cycleEndISO}`, where `cycleEndISO` identifies the
+ * billing period rather than the row that happened to represent it:
+ *   - If the tenant's most recent subscription-type grant is still live
+ *     (`startedAt` is before its `expires_at`), this call lands inside the
+ *     SAME period that grant already covers. Reuse that `expires_at` as both
+ *     the key's period identifier and this call's own `expiresAt` - so a
+ *     same-plan retry, or a monthly<->annual toggle mid-period, produces the
+ *     exact same key as the original grant and collapses via
+ *     spend_credits()'s replay check. It also stops that toggle from
+ *     quietly extending the credit window on every flip.
+ *   - Otherwise (no prior subscription grant, or its cycle has genuinely
+ *     ended) this is a fresh period: compute a new `expiresAt` via
+ *     nextCycleEnd() from the new subscription's own start. A real plan
+ *     change lands here too - if it happens mid-cycle it still gets a full
+ *     fresh allowance for the new plan (proration/clawback of the old grant
+ *     is out of scope for v1; see the review notes), and if it happens in a
+ *     new cycle it grants as a plain renewal would.
+ *
+ * `billingCycle` is deliberately NOT part of the key - only `plan` and the
+ * resolved cycle end are. That is what makes toggling monthly<->annual with
+ * the same plan collapse to one grant instead of two.
  */
 export async function grantSubscriptionCycleCredits(
   tenantId: string,
-  subscriptionId: string,
-  cycleStartedAt: Date,
+  plan: string,
   billingCycle: 'monthly' | 'annual',
-  cycle = 0,
+  startedAt: Date,
 ): Promise<void> {
   try {
     if (await isUnlimited(tenantId)) return;
@@ -114,12 +157,14 @@ export async function grantSubscriptionCycleCredits(
       return;
     }
 
-    const expiresAt = nextCycleEnd(cycleStartedAt, billingCycle);
+    const lastExpiry = await lastSubscriptionGrantExpiry(tenantId);
+    const stillInPriorCycle = lastExpiry != null && startedAt < lastExpiry;
+    const expiresAt = stillInPriorCycle ? lastExpiry : nextCycleEnd(startedAt, billingCycle);
 
     await grantCredits({
       tenantId,
       amountMicro: BigInt(credits) * MICRO_PER_CREDIT,
-      key: `sub:${subscriptionId}:${cycle}`,
+      key: `sub:${tenantId}:${plan}:${expiresAt.toISOString()}`,
       grantType: 'subscription',
       expiresAt,
       reason: 'subscription cycle credits',
