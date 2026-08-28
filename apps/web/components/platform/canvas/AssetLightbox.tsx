@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { X, ChevronLeft, ChevronRight, Download, File as FileIcon } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Download, File as FileIcon, Info } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { VideoPreview } from './lightbox/VideoPreview';
@@ -115,7 +115,11 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate, headerAct
             {url && asset.type === 'pdf' && <PdfPreview url={url} />}
             {url && asset.type === 'docx' && <DocxPreview url={url} size={asset.size} />}
             {(asset.type === 'markdown' || asset.type === 'prd' || asset.type === 'roadmap' || asset.type === 'tasks') && markdownContent && (
-              <div className="w-full h-full max-w-3xl overflow-y-auto text-sm px-2">
+              // Scoped size bump for this full-screen view only — MarkdownViewer's
+              // own defaults (h1 at text-base etc.) stay small on purpose for the
+              // narrower contexts it's also used in (inline chat, ArtifactPanel's
+              // side column). Descendant overrides here don't touch those.
+              <div className="w-full h-full max-w-3xl overflow-y-auto text-base leading-relaxed px-2 [&_h1]:text-4xl [&_h1]:mb-4 [&_h1]:mt-0 [&_h2]:text-2xl [&_h2]:mt-8 [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mt-6">
                 <MarkdownViewer content={markdownContent} />
               </div>
             )}
@@ -147,32 +151,37 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate, headerAct
             )}
           </div>
 
-          <div className="w-64 flex-none border-l border-border p-4 space-y-3 text-xs">
-            <div>
-              <p className="text-muted-foreground">Type</p>
-              <p className="font-medium">{asset.type}</p>
+          <div className="w-72 flex-none border-l border-border bg-muted/20 p-5 flex flex-col">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+              <Info className="h-3 w-3" />
+              Details
             </div>
-            {asset.size != null && (
+            <div className="space-y-4 text-xs">
               <div>
-                <p className="text-muted-foreground">Size</p>
-                <p className="font-medium">{(asset.size / 1024 / 1024).toFixed(2)} MB</p>
+                <p className="text-muted-foreground">Type</p>
+                <p className="font-medium mt-0.5">{asset.type}</p>
               </div>
-            )}
-            <div>
-              <p className="text-muted-foreground">Created</p>
-              <p className="font-medium">{new Date(asset.createdAt).toLocaleString()}</p>
+              {asset.size != null && (
+                <div>
+                  <p className="text-muted-foreground">Size</p>
+                  <p className="font-medium mt-0.5">{(asset.size / 1024 / 1024).toFixed(2)} MB</p>
+                </div>
+              )}
+              <div>
+                <p className="text-muted-foreground">Created</p>
+                <p className="font-medium mt-0.5">{new Date(asset.createdAt).toLocaleString()}</p>
+              </div>
             </div>
+            <div className="flex-1" />
             {url && (
               <a
                 href={url}
                 download={asset.filename}
                 target="_blank"
                 rel="noopener noreferrer"
-                // text-shimmer-accent, not text-primary: the pale rose --primary
-                // fails WCAG AA as body text on the light theme (see globals.css).
-                className="flex items-center gap-1.5 mt-2 text-shimmer-accent hover:underline"
+                className="flex items-center justify-center gap-2 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-black font-semibold text-sm py-2.5 shadow-sm hover:opacity-90 transition-opacity"
               >
-                <Download className="h-3.5 w-3.5" />
+                <Download className="h-4 w-4" />
                 Download
               </a>
             )}
