@@ -398,6 +398,33 @@ workflow, not a v1 blocker.
 
 ---
 
+### Retiring the entitlement quotas
+
+Credits and the existing monthly quotas are the same enforcement job done twice. Left
+side by side, a tenant inside their balance can still be blocked by `checkMessageQuota`,
+or the reverse. So **credits replace them**, and the plan entitlement becomes the grant
+size rather than a parallel limit:
+
+- Retire the `messages` and `llm_tokens` feature rows. Add one feature, `credits`, whose
+  `value_limit` is **credits per billing cycle** (`plan_entitlements`, overridable per
+  tenant through `tenant_feature_overrides` exactly as today - the ops surface does not
+  change).
+- The subscription renewal grant (section 5) reads that entitlement for its amount, so
+  plan sizing stays where ops already edits it.
+- Delete `checkMessageQuota` and `checkTokenQuota` from
+  `apps/agent-orchestrator/src/usage.ts` and their five call sites (`chat.ts:135`,
+  `tasks.ts:65,228`, `tasks.execution.ts:30,38`, `documents.ts:170`). The credit
+  pre-check replaces them at each site.
+- **Unlimited tenants skip the credit layer entirely.** When the `credits` entitlement is
+  `unlimited`, the pre-check passes and no debit is written - no synthetic infinite grant,
+  which would break invariant 3. `usage_records` still records everything, so unlimited
+  tenants remain fully metered in the raw layer; `/credits/balance` reports
+  `unlimited: true` with no figure.
+- Both quota functions fail *open* today (a DB error returns `allowed: true`). The credit
+  pre-check must fail **closed** on a database error, because failing open here gives away
+  paid capacity rather than a rate limit. This is a deliberate behavior change; call it
+  out in the rollout note.
+
 ## 7. Retiring the hardcoded prices
 
 `apps/agent-orchestrator/src/mastra/cost.ts:5` holds a Gemini-only `PRICING` map and is
@@ -451,7 +478,12 @@ it. A Hono idempotency middleware is a separate piece of work if it is ever want
 3. **Subscription grant.** On renewal: `expires_at = cycle_end`. Non-rollover falls out of
    the expiry mechanism; no separate reset job.
 4. **Purchase grant.** Webhook, out of scope for v1.
-5. **Expiry.** Lazy under the spend lock, plus a nightly worker job
+5. **Backfill (one-off, before the wiring lands).** Every existing tenant gets an
+   opening grant sized from its plan's `credits` entitlement, keyed
+   `backfill:{tenant_id}`, `expires_at` = current cycle end. Without it the first chat
+   turn after deploy raises `INSUFFICIENT_CREDITS` for every existing tenant. The script
+   is idempotent per tenant and safe to re-run.
+6. **Expiry.** Lazy under the spend lock, plus a nightly worker job
    (`credits.expire` in `apps/worker/src/router.ts`) for tenants that never spend, so
    dormant balances do not read high forever.
 
@@ -472,7 +504,11 @@ Tests:
 **Phase 2 - rates.** Seed from `cost.ts`; `cost.ts` reads `credit_rates` with static
 fallback. No behavior change on ship day.
 
-**Phase 3 - wiring (5 call sites).** `chat.ts:135` pre-check; `chatStream.ts:402` debit +
+**Phase 3 - wiring (5 call sites).** Runs *after* the backfill script has granted every
+existing tenant its opening balance, and retires the entitlement quotas in the same
+change so no window exists where both systems enforce.
+
+**Call sites.** `chat.ts:135` pre-check; `chatStream.ts:402` debit +
 the missing `usage_records` row; `tasks.ts:65` estimate-and-charge; `tasks.execution.ts:160,225`
 and `tasks.ts:188` settle; `documents.ts:170` same pattern; terminal-failure refund.
 
@@ -505,6 +541,12 @@ and Lambda changes need `sam deploy` with product packages rebuilt first.
    spend, without waiting for the cron.
 9. `balance_micro` equals the sum of live unexpired grant remainders after every
    operation, including refunds of multi-grant debits (property test).
+10. `checkMessageQuota` and `checkTokenQuota` no longer exist, and no route enforces both
+    a quota and a balance.
+11. An unlimited tenant is never debited, still writes `usage_records`, and is never
+    blocked by the pre-check.
+12. Every tenant existing before the rollout has an opening grant; no existing tenant's
+    first post-deploy turn fails for lack of credits.
 
 ---
 
@@ -517,3 +559,9 @@ and Lambda changes need `sam deploy` with product packages rebuilt first.
 3. **Trial length and size.** 14 days is a placeholder with no product rationale behind it;
    the earlier draft's appeal to the EEA/UK withdrawal window is unrelated to credit expiry.
 4. **Chat overdraft mitigation.** Threshold pre-check or per-tenant stream cap (section 6).
+5. **Plan sizes in credits.** Retiring `messages`/`llm_tokens` means each plan needs a
+   `credits` per-cycle number. Free/starter/business/enterprise values are unset; pick
+   them alongside open question 1, since they are the same decision in different units.
+6. **Fail-closed confirmation.** The quota functions fail open today; the credit
+   pre-check fails closed (section 6). Confirm - it means a credits DB outage stops chat
+   rather than serving it free.
