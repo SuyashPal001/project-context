@@ -7,6 +7,7 @@ import { ArtifactPanel } from './ArtifactPanel';
 import { FileCreatedCard } from './FileCreatedCard';
 import { AssetGallery } from './AssetGallery';
 import { AssetLightbox } from './AssetLightbox';
+import { FileTabContent } from './FileTabContent';
 import { CanvasTabStrip } from './CanvasTabStrip';
 import { api } from '@/lib/api';
 import type {
@@ -429,7 +430,12 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         )}
 
         {activeTab.kind === 'file' && activeTab.asset && (
-          <AssetGallery conversationId={conversationId ?? ''} filterAssetId={activeTab.asset.id} fallbackAsset={activeTab.asset} onCardClick={(asset, allAssets) => setLightboxAsset({ asset, allAssets })} />
+          <FileTabContent
+            asset={activeTab.asset}
+            isExpanded={isExpanded}
+            onExpand={onExpand}
+            onClose={() => closeTab(activeTab.id)}
+          />
         )}
       </div>
       {lightboxAsset && (
