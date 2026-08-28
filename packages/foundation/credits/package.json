@@ -1,0 +1,22 @@
+{
+  "name": "@serverless-saas/credits",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@serverless-saas/database": "workspace:*",
+    "@serverless-saas/types": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.5"
+  }
+}
