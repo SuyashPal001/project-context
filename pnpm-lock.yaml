@@ -214,6 +214,9 @@ importers:
       '@serverless-saas/cache':
         specifier: workspace:*
         version: link:../../packages/foundation/cache
+      '@serverless-saas/credits':
+        specifier: workspace:*
+        version: link:../../packages/foundation/credits
       '@serverless-saas/database':
         specifier: workspace:*
         version: link:../../packages/foundation/database

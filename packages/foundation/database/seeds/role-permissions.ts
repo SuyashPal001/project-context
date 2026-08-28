@@ -25,6 +25,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'notifications:update',
         'tenant:read',
         'usage:read',
+        'credits:read',
         'webhooks:read',
         'agents:read',
         'skills:read',
@@ -78,6 +79,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'notifications:read',
         'integrations:read',
         'usage:read',
+        'credits:read',
     ],
 
     'custom-agent': [
@@ -99,6 +101,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
         'notifications:read',
         'integrations:read',
         'usage:read',
+        'credits:read',
     ],
 
     // platform_admin has no tenant — access is gated by isPlatformAdmin() JWT check,
