@@ -21,3 +21,8 @@ build-FoundationWorkerFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/worker/src/lambda.ts \
 	  --outfile=$(ARTIFACTS_DIR)/lambda.js \
 	  $(ESBUILD_FLAGS)
+
+build-CreditsExpireFunction:
+	$(ESBUILD) $(REPO_ROOT)/apps/worker/src/creditsExpireHandler.ts \
+	  --outfile=$(ARTIFACTS_DIR)/creditsExpireHandler.js \
+	  $(ESBUILD_FLAGS)

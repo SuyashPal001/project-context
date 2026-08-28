@@ -547,6 +547,9 @@ importers:
       '@serverless-saas/cache':
         specifier: workspace:*
         version: link:../../packages/foundation/cache
+      '@serverless-saas/credits':
+        specifier: workspace:*
+        version: link:../../packages/foundation/credits
       '@serverless-saas/database':
         specifier: workspace:*
         version: link:../../packages/foundation/database
@@ -581,6 +584,9 @@ importers:
       '@types/uuid':
         specifier: ^11.0.0
         version: 11.0.0
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.5(@opentelemetry/api@1.9.0)(@types/node@25.3.3)(jsdom@26.1.0)(msw@2.12.10(@types/node@25.3.3)(typescript@5.9.3))(vite@8.0.10(@types/node@25.3.3)(esbuild@0.28.0)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/foundation/ai:
     dependencies:
