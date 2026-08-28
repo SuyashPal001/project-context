@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, X, FileText, Film, LayoutGrid } from 'lucide-react';
+import { X, FileText, Film, LayoutGrid } from 'lucide-react';
 import type { CanvasTab } from './types';
 
 const TAB_ICONS: Record<CanvasTab['kind'], React.ElementType> = {
@@ -23,9 +23,12 @@ export function CanvasTabStrip({ tabs, activeTabId, onSelect, onClose, onOpenGal
       <button
         onClick={onOpenGallery}
         title="Open Chat History"
+        // Same icon as the "gallery" tab kind below (LayoutGrid) — this button
+        // jumps back to that tab, so it should read as "go to gallery," not a
+        // generic "+" that implies creating something new.
         className="flex-none h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
       >
-        <Plus className="h-4 w-4" />
+        <LayoutGrid className="h-4 w-4" />
       </button>
       {tabs.map(tab => {
         const Icon = TAB_ICONS[tab.kind];
