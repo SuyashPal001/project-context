@@ -1,11 +1,17 @@
+import { InsufficientCreditsError } from '@serverless-saas/credits'
 import type { TaskStep } from '../types.js'
 import {
-  checkMessageQuota, checkTokenQuota, fetchAgentSkill,
+  fetchAgentSkill, fetchAgentModelSelection,
   fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage,
 } from '../usage.js'
+import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, settleTask, refundTask } from '../credits.js'
 import { taskExecutionWorkflow, documentWorkflow } from '../mastra/index.js'
 import type { WorkflowContext } from '../mastra/index.js'
 import { callInternalTaskApi, postTaskEval, logToolCall, postTaskComment } from './tasks.helpers.js'
+
+// Default model used for the up-front charge/settle when an agent has no
+// explicit model selection row yet — matches the '*' wildcard credit_rates subject.
+const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
 
 export type PlanResult = {
   summary: string
@@ -27,20 +33,28 @@ export async function runMastraTaskSteps(
   acceptanceCriteria?: string | null,
   traceId: string = crypto.randomUUID()
 ): Promise<{ planResult?: PlanResult }> {
-  const quota = await checkMessageQuota(tenantId)
-  if (!quota.allowed) {
-    console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${quota.used} limit=${quota.limit}`)
-    await postTaskComment(taskId, `❌ Message quota exceeded (${quota.used}/${quota.limit} messages used this month). Upgrade your plan to continue.`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' }, traceId)
-    return {}
-  }
-
-  const tokenQuota = await checkTokenQuota(tenantId)
-  if (!tokenQuota.allowed) {
-    console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} token quota exceeded used=${tokenQuota.used} limit=${tokenQuota.limit}`)
-    await postTaskComment(taskId, `❌ Token quota exceeded for your plan (${tokenQuota.used?.toLocaleString()}/${tokenQuota.limit?.toLocaleString()} tokens used this month). Upgrade to continue.`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Token quota exceeded for your plan. Upgrade to continue.' }, traceId)
-    return {}
+  // Charging IS the balance check (see credits.ts) — do not add a separate
+  // checkCreditBalance pre-check in front of this. Idempotent by
+  // `task:{taskId}`: the route handler that dispatches to runMastraTaskSteps
+  // already charged this same estimate before calling in, so this call
+  // safely replays rather than double-charging.
+  const modelSelection = await fetchAgentModelSelection(agentId)
+  const model = modelSelection?.model ?? DEFAULT_TASK_MODEL
+  const estimateMicro = await estimateTaskMicro(steps.length, model)
+  try {
+    const rate = await resolveTaskRate(model)
+    await chargeTaskEstimate({
+      tenantId, taskId, agentId, estimateMicro,
+      rateId: rate?.id ?? null, rateVersion: rate?.version ?? null,
+    })
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} insufficient credits for estimate=${estimateMicro}`)
+      await postTaskComment(taskId, `❌ Insufficient credits to run this task. Add credits to continue.`, agentId)
+      await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Insufficient credits' }, traceId)
+      return {}
+    }
+    throw err
   }
 
   const skill = await fetchAgentSkill(agentId)
@@ -152,12 +166,14 @@ export async function runMastraTaskSteps(
       console.error(`[mastra/doc] tenantId=${tenantId} taskId=${taskId} error:`, message)
       await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId)
       await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+      await refundTask({ tenantId, taskId })
       return {}
     }
     if (!earlyTermination) {
       await postTaskComment(taskId, `✅ All steps completed.`, agentId)
       await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
       recordUsage({ tenantId, actorId: agentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+      void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, estimateMicro })
     }
     return { planResult: docPlanResult }
   }
@@ -215,6 +231,7 @@ export async function runMastraTaskSteps(
     console.error(`[mastra] tenantId=${tenantId} taskId=${taskId} workflow error:`, message)
     await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId)
     await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+    await refundTask({ tenantId, taskId })
     return {}
   }
 
@@ -223,6 +240,7 @@ export async function runMastraTaskSteps(
     await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
     await postTaskEval({ taskId, tenantId, taskTitle, taskDescription, finalOutput: stepOutputs.join('\n\n') || taskTitle })
     recordUsage({ tenantId, actorId: agentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+    void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, estimateMicro })
   }
   return {}
 }

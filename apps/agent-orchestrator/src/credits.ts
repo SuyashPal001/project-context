@@ -67,8 +67,9 @@ export interface DebitChatTurnArgs {
 
 // Same model-key normalization cost.ts uses (mastra/cost.ts:keyFor) — strip a
 // provider prefix, and route self-hosted ollama/* models to the 'ollama' rate
-// subject rather than their bare model name.
-function rateSubjectFor(model: string): string {
+// subject rather than their bare model name. Exported: task call sites need it
+// too, to resolve a rate for chargeTaskEstimate's rateId/rateVersion.
+export function rateSubjectFor(model: string): string {
   if (model.startsWith('ollama/')) return 'ollama'
   return model.includes('/') ? model.split('/').pop()! : model
 }
@@ -128,5 +129,246 @@ export async function debitChatTurn(args: DebitChatTurnArgs, deps: DebitChatTurn
     })
   } catch (err) {
     console.error(`[credits] debitChatTurn failed tenantId=${tenantId} messageId=${messageId}:`, (err as Error).message)
+  }
+}
+
+// ─── Task metering: estimate → charge → settle → refund ──────────────────────
+//
+// Chat charges after the fact because token counts only exist once the stream
+// finishes (debitChatTurn above). Tasks are the opposite: cost is estimable up
+// front, so the authoritative balance check happens INSIDE spend_credits() at
+// submit time, under the account lock — chargeTaskEstimate's call to
+// spend_credits() *is* the check. Overdraft on this path is therefore zero,
+// unlike the chat balance>0 pre-check, which N concurrent streams can each
+// pass independently. Never add a separate balance pre-check in front of
+// chargeTaskEstimate — that reopens exactly the race this design closes.
+
+/** Tokens assumed per workflow step when no better estimate exists. Tune from token_costs. */
+const AVERAGE_STEP_TOKENS = { input: 4000, output: 1000 }
+
+export interface EstimateTaskMicroDeps {
+  resolveRate?: typeof resolveRate
+}
+
+/** Rough up-front cost for a task with `stepCount` steps, at `model`'s current rate. */
+export async function estimateTaskMicro(
+  stepCount: number,
+  model: string,
+  deps: EstimateTaskMicroDeps = {},
+): Promise<bigint> {
+  const resolveRateFn = deps.resolveRate ?? resolveRate
+  const rate = await resolveRateFn('llm_tokens', rateSubjectFor(model))
+  if (!rate) return 0n
+  return costMicro(rate.schema, {
+    inputTokens: AVERAGE_STEP_TOKENS.input * stepCount,
+    outputTokens: AVERAGE_STEP_TOKENS.output * stepCount,
+  })
+}
+
+export interface ResolveTaskRateDeps {
+  resolveRate?: typeof resolveRate
+}
+
+/**
+ * The active llm_tokens rate for `model`, normalized through the same
+ * subject key estimateTaskMicro/settleTask use. Route call sites use this to
+ * get the rateId/rateVersion to pass into chargeTaskEstimate for ledger
+ * audit metadata — a null return means the task/document is charged at 0
+ * estimate (no active rate for that model), matching estimateTaskMicro's own
+ * `if (!rate) return 0n` fallback.
+ */
+export async function resolveTaskRate(
+  model: string,
+  deps: ResolveTaskRateDeps = {},
+): Promise<{ id: string; version: number } | null> {
+  const resolveRateFn = deps.resolveRate ?? resolveRate
+  const rate = await resolveRateFn('llm_tokens', rateSubjectFor(model))
+  return rate ? { id: rate.id, version: rate.version } : null
+}
+
+export interface ChargeTaskEstimateArgs {
+  tenantId: string
+  taskId: string
+  agentId: string
+  estimateMicro: bigint
+  rateId?: string | null
+  rateVersion?: number | null
+  /** Idempotency key. Defaults to `task:{taskId}`; Task 10 (documents) overrides this. */
+  key?: string
+  /** credit_ledger.job_type. Defaults to 'agent_task'; Task 10 overrides with 'document'. */
+  jobType?: string
+}
+
+export interface ChargeTaskEstimateDeps {
+  isUnlimited?: typeof isUnlimited
+  spendCredits?: typeof spendCredits
+}
+
+/**
+ * Charges the up-front estimate for a task run. This call IS the balance
+ * check: spend_credits() throws InsufficientCreditsError under the account
+ * lock when the estimate can't be covered, and that throw MUST propagate
+ * uncaught here so the route boundary can map it to HTTP 402 — unlike
+ * debitChatTurn/settleTask, this function is not fire-and-forget.
+ *
+ * Unlimited tenants skip the credit layer entirely: no charge, no synthetic
+ * grant.
+ */
+export async function chargeTaskEstimate(
+  args: ChargeTaskEstimateArgs,
+  deps: ChargeTaskEstimateDeps = {},
+): Promise<void> {
+  const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
+  const spendCreditsFn = deps.spendCredits ?? spendCredits
+  if (await isUnlimitedFn(args.tenantId)) return
+
+  await spendCreditsFn({
+    tenantId: args.tenantId,
+    amountMicro: -args.estimateMicro,
+    key: args.key ?? `task:${args.taskId}`,
+    kind: 'debit',
+    actorId: args.agentId,
+    actorType: 'agent',
+    rateId: args.rateId ?? null,
+    rateVersion: args.rateVersion ?? null,
+    jobId: args.taskId,
+    jobType: args.jobType ?? 'agent_task',
+  })
+}
+
+/**
+ * Positive credits the tenant back (actual came in under estimate); negative
+ * debits the shortfall (actual ran over); 0n means the estimate was exact and
+ * nothing should be written. Pure — no I/O, trivially unit-testable.
+ */
+export function settleAmount(args: { estimateMicro: bigint; actualMicro: bigint }): bigint {
+  return args.estimateMicro - args.actualMicro
+}
+
+export interface SettleTaskArgs {
+  tenantId: string
+  taskId: string
+  agentId: string
+  model: string
+  inputTokens: number
+  outputTokens: number
+  estimateMicro: bigint
+  /** Idempotency key. Defaults to `task:{taskId}:settle`; Task 10 overrides this. */
+  key?: string
+  jobType?: string
+}
+
+export interface SettleTaskDeps {
+  isUnlimited?: typeof isUnlimited
+  resolveRate?: typeof resolveRate
+  spendCredits?: typeof spendCredits
+}
+
+/**
+ * Reconciles the estimate charged by chargeTaskEstimate against actual token
+ * usage once the run ends. Fire-and-forget like debitChatTurn: never throws
+ * out — any failure is logged and swallowed, because by the time this runs
+ * the task has already been reported complete and a credits hiccup here must
+ * not undo that. Skips the round trip entirely when settleAmount is 0n.
+ * Unlimited tenants skip entirely (they were never charged an estimate).
+ */
+export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}): Promise<void> {
+  const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
+  const resolveRateFn = deps.resolveRate ?? resolveRate
+  const spendCreditsFn = deps.spendCredits ?? spendCredits
+  try {
+    if (await isUnlimitedFn(args.tenantId)) return
+
+    const rate = await resolveRateFn('llm_tokens', rateSubjectFor(args.model))
+    if (!rate) return
+
+    const actualMicro = costMicro(rate.schema, {
+      inputTokens: args.inputTokens,
+      outputTokens: args.outputTokens,
+    })
+    const delta = settleAmount({ estimateMicro: args.estimateMicro, actualMicro })
+    if (delta === 0n) return
+
+    await spendCreditsFn({
+      tenantId: args.tenantId,
+      amountMicro: delta,
+      key: args.key ?? `task:${args.taskId}:settle`,
+      kind: 'settle',
+      actorId: args.agentId,
+      actorType: 'agent',
+      rateId: rate.id,
+      rateVersion: rate.version,
+      jobId: args.taskId,
+      jobType: args.jobType ?? 'agent_task',
+      grantType: delta > 0n ? 'refund' : null,
+      reason: 'settle estimate to actual',
+    })
+  } catch (err) {
+    console.error(`[credits] settleTask failed tenantId=${args.tenantId} taskId=${args.taskId}:`, (err as Error).message)
+  }
+}
+
+export interface RefundTaskArgs {
+  tenantId: string
+  taskId: string
+}
+
+export interface RefundTaskDeps {
+  isUnlimited?: typeof isUnlimited
+  spendCredits?: typeof spendCredits
+  pool?: pg.Pool
+}
+
+/**
+ * Refunds a task's charge on terminal failure. Never un-spends the original
+ * debit's grant — spend_credits() guarantees that already; this always
+ * creates a NEW grant for whatever net amount the tenant is down.
+ *
+ * Sums only the original `task:{taskId}` debit row, scoped by tenant_id —
+ * migration 0071 made the idempotency namespace per-tenant specifically
+ * because an unscoped `idempotency_key` lookup let one tenant's key silently
+ * affect another's; this query must never regress that.
+ *
+ * Skipped if a settle already ran for this task: the success path already
+ * reconciled the charge, so a failure callback racing in after that must not
+ * refund on top of it. Skipped for unlimited tenants (nothing was charged).
+ * A second refundTask call for the same task is additionally guarded by
+ * spend_credits()'s own idempotency on the `task:{taskId}:refund` key.
+ */
+export async function refundTask(args: RefundTaskArgs, deps: RefundTaskDeps = {}): Promise<void> {
+  const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
+  const spendCreditsFn = deps.spendCredits ?? spendCredits
+  const pool = deps.pool ?? getPool()
+  try {
+    if (await isUnlimitedFn(args.tenantId)) return
+
+    const settleKey = `task:${args.taskId}:settle`
+    const settled = await pool.query<{ exists: boolean }>(
+      `select exists(select 1 from credit_ledger where tenant_id = $1 and idempotency_key = $2) as exists`,
+      [args.tenantId, settleKey],
+    )
+    if (settled.rows[0]?.exists) return
+
+    const debitKey = `task:${args.taskId}`
+    const res = await pool.query<{ total: string }>(
+      `select coalesce(sum(amount_micro), 0) as total from credit_ledger
+        where tenant_id = $1 and idempotency_key = $2 and kind = 'debit'`,
+      [args.tenantId, debitKey],
+    )
+    const net = BigInt(res.rows[0]?.total ?? '0') // negative if the tenant was charged; 0 if never charged
+    if (net >= 0n) return
+
+    await spendCreditsFn({
+      tenantId: args.tenantId,
+      amountMicro: -net,
+      key: `task:${args.taskId}:refund`,
+      kind: 'refund',
+      grantType: 'refund',
+      jobId: args.taskId,
+      jobType: 'agent_task',
+      reason: 'task failed',
+    })
+  } catch (err) {
+    console.error(`[credits] refundTask failed tenantId=${args.tenantId} taskId=${args.taskId}:`, (err as Error).message)
   }
 }

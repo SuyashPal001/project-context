@@ -1,14 +1,20 @@
 import { Hono } from 'hono'
+import { InsufficientCreditsError } from '@serverless-saas/credits'
 import { INTERNAL_SERVICE_KEY } from '../types.js'
 import { createPlanFromPrd, type PrdData } from '../services/planService.js'
 import type { TaskStep, WorkflowStep } from '../types.js'
-import { checkMessageQuota, getPool, recordUsage } from '../usage.js'
+import { fetchAgentModelSelection, getPool, recordUsage } from '../usage.js'
+import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, refundTask, settleTask } from '../credits.js'
 import { filterPII } from '../pii-filter.js'
 import { runMastraTaskSteps } from './tasks.execution.js'
 import type { PlanResult } from './tasks.execution.js'
 import { runMastraWorkflowSteps } from './tasks.workflow.js'
 import { callInternalTaskApi, postTaskComment } from './tasks.helpers.js'
 import { isInternalServiceKey } from '../service-key.js'
+
+// Default model used for the up-front charge when an agent has no explicit
+// model selection row yet — matches the '*' wildcard credit_rates subject.
+const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
 
 // Re-export for documents.ts and any other consumers
 export { fetchTaskComments } from './tasks.helpers.js'
@@ -62,10 +68,21 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'taskId, tenantId, and steps are required' }, 400)
   }
 
-  const execQuota = await checkMessageQuota(tenantId)
-  if (!execQuota.allowed) {
-    console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${execQuota.used} limit=${execQuota.limit}`)
-    return c.json({ error: 'Message quota exceeded', used: execQuota.used, limit: execQuota.limit }, 429)
+  const execModelSelection = await fetchAgentModelSelection(agentId)
+  const execModel = execModelSelection?.model ?? DEFAULT_TASK_MODEL
+  const execEstimateMicro = await estimateTaskMicro(steps.length, execModel)
+  const execRate = await resolveTaskRate(execModel)
+  try {
+    await chargeTaskEstimate({
+      tenantId, taskId, agentId, estimateMicro: execEstimateMicro,
+      rateId: execRate?.id ?? null, rateVersion: execRate?.version ?? null,
+    })
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} insufficient credits for estimate=${execEstimateMicro}`)
+      return c.json({ error: 'Insufficient credits' }, 402)
+    }
+    throw err
   }
 
   const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
@@ -160,6 +177,7 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     console.error(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} resume error:`, message)
     await postTaskComment(taskId, `❌ Resume failed: ${message}`, agentId ?? 'system')
     await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+    await refundTask({ tenantId, taskId })
     return c.json({ error: message }, 500)
   }
 
@@ -186,6 +204,21 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     await postTaskComment(taskId, `✅ All steps completed.`, agentId ?? 'system')
     await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
     recordUsage({ tenantId, actorId: agentId ?? 'system', inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+    // Fire-and-forget, like recordUsage above — settleTask swallows its own
+    // errors and never rejects. Recompute the same estimate that was charged
+    // at submit time from the task's total step count (all steps, not just
+    // the running ones this resume call fetched) so the delta is meaningful.
+    void (async () => {
+      const totalStepsRes = await p.query<{ count: string }>(`SELECT count(*)::int AS count FROM task_steps WHERE task_id = $1`, [taskId])
+      const totalStepCount = totalStepsRes.rows[0]?.count ? Number(totalStepsRes.rows[0].count) : runningSteps.length
+      const settleModelSelection = await fetchAgentModelSelection(agentId ?? '')
+      const settleModel = settleModelSelection?.model ?? DEFAULT_TASK_MODEL
+      const settleEstimateMicro = await estimateTaskMicro(totalStepCount, settleModel)
+      await settleTask({
+        tenantId, taskId, agentId: agentId ?? 'system', model: settleModel,
+        inputTokens: totalInputTokens, outputTokens: totalOutputTokens, estimateMicro: settleEstimateMicro,
+      })
+    })()
   } else {
     const message = resumeResult.error?.message ?? 'Workflow failed after resume'
     console.error(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} workflow failed:`, message)
@@ -194,6 +227,7 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     }
     await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId ?? 'system')
     await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+    await refundTask({ tenantId, taskId })
     return c.json({ error: message }, 500)
   }
 
@@ -225,10 +259,21 @@ tasksRouter.post('/api/workflows/execute', async (c) => {
     return c.json({ error: 'workflowId, workflowRunId, tenantId, and agentId are required' }, 400)
   }
 
-  const quota = await checkMessageQuota(tenantId)
-  if (!quota.allowed) {
-    console.warn(`[workflows] tenantId=${tenantId} workflowId=${workflowId} quota exceeded used=${quota.used} limit=${quota.limit}`)
-    return c.json({ error: 'Message quota exceeded', used: quota.used, limit: quota.limit }, 429)
+  const wfModelSelection = await fetchAgentModelSelection(agentId)
+  const wfModel = wfModelSelection?.model ?? DEFAULT_TASK_MODEL
+  const wfEstimateMicro = await estimateTaskMicro(steps.length, wfModel)
+  const wfRate = await resolveTaskRate(wfModel)
+  try {
+    await chargeTaskEstimate({
+      tenantId, taskId: workflowRunId, agentId, estimateMicro: wfEstimateMicro,
+      rateId: wfRate?.id ?? null, rateVersion: wfRate?.version ?? null,
+    })
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      console.warn(`[workflows] tenantId=${tenantId} workflowId=${workflowId} insufficient credits for estimate=${wfEstimateMicro}`)
+      return c.json({ error: 'Insufficient credits' }, 402)
+    }
+    throw err
   }
 
   const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
