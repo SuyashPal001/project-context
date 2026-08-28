@@ -78,9 +78,16 @@ export function StarfieldCanvas({ speedMode = 'warp', active = true }: Starfield
                 const size = Math.max(0.1, (1 - s.z / w) * 2.5);
                 const opacity = Math.max(0, 1 - s.z / w);
 
+                // Rose (#E69DB8) -> peach (#F2A679), blended per-star by screen
+                // position instead of one flat color, so the streaks actually
+                // read as a gradient field rather than a single accent color.
+                const t = Math.min(1, Math.max(0, (sx + w / 2) / w));
+                const r = Math.round(230 + (242 - 230) * t);
+                const g = Math.round(157 + (166 - 157) * t);
+                const b = Math.round(184 + (121 - 184) * t);
                 const color = isLight
-                    ? `rgba(100, 100, 130, ${opacity})`
-                    : `rgba(200, 210, 255, ${opacity})`;
+                    ? `rgba(${r}, ${g}, ${b}, ${opacity * 0.85})`
+                    : `rgba(${r}, ${g}, ${b}, ${opacity})`;
 
                 const dist = Math.sqrt((sx - px) ** 2 + (sy - py) ** 2);
 
