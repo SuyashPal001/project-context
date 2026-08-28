@@ -15,5 +15,13 @@ export default defineConfig({
     env: {
       ...(process.env.TEST_DATABASE_URL ? { DATABASE_URL: process.env.TEST_DATABASE_URL } : {}),
     },
+    // Integration test files in this package share one live test database and
+    // some fixture rows reuse the same tenant UUID across files (e.g.
+    // read.integration.test.ts's TENANT and spend.integration.test.ts's
+    // TENANT_B are both ...a2). Vitest's default parallel file execution lets
+    // one file's beforeEach truncate rows another file is mid-assertion on -
+    // a real, scheduler-dependent race, not a theoretical one. Do not remove
+    // this for speed; serialize instead of chasing per-file isolation.
+    fileParallelism: false,
   },
 })
