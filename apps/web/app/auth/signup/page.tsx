@@ -152,8 +152,9 @@ export default function SignupPage() {
                         </div>
 
                         <Button
+                            variant="outline"
                             type="button"
-                            className="w-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-black hover:opacity-90 border-0"
+                            className="w-full"
                             onClick={() => initiateGoogleSignIn()}
                             disabled={isLoading}
                         >
