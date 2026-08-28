@@ -120,6 +120,16 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate, headerAct
               // narrower contexts it's also used in (inline chat, ArtifactPanel's
               // side column). Descendant overrides here don't touch those.
               <div className="w-full h-full max-w-3xl overflow-y-auto text-base leading-relaxed px-2 [&_h1]:text-4xl [&_h1]:mb-4 [&_h1]:mt-0 [&_h2]:text-2xl [&_h2]:mt-8 [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:mt-6">
+                {/* Not every generated document opens with its own "# Heading" —
+                    without one, the reader just starts mid-paragraph with nothing
+                    tying it back to what it is. Falls back to a title derived from
+                    the filename so the page always has an anchor, skipped when the
+                    content already supplies its own H1. */}
+                {!markdownContent.trimStart().startsWith('#') && (
+                  <h1 className="text-4xl font-bold mb-4">
+                    {asset.filename.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ')}
+                  </h1>
+                )}
                 <MarkdownViewer content={markdownContent} />
               </div>
             )}
