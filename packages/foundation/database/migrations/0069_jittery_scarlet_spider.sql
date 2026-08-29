@@ -1,1 +1,0 @@
-ALTER TYPE "public"."file_status" ADD VALUE 'expired';
