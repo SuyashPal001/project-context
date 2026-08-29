@@ -262,12 +262,11 @@ export async function runMastraTaskSteps(
     // — see refundTask's settled-row and net>=0n guards.
     //
     // NOTE: onTaskComment (a clarification pause, not a terminal failure)
-    // also lands here and refunds. That's correct, not a bug: the resumed
-    // run gets its OWN chargeKey (a new attempt number, computed by the
-    // route handler from the count of refunds already recorded against this
-    // task in credit_ledger — see countTaskRefunds), so the resumed run's
-    // chargeTaskEstimate genuinely re-charges instead of replaying this
-    // now-refunded debit. See taskChargeKey() in credits.ts.
+    // also lands here and refunds. That's correct, not a bug: this refund
+    // advances agent_tasks.credit_attempt, so the resumed run gets its OWN
+    // chargeKey and its chargeTaskEstimate genuinely re-charges instead of
+    // replaying this now-refunded debit. See taskChargeKey() in
+    // @serverless-saas/agent-credits.
     await refundTask({ tenantId, taskId, chargeKey })
   }
   return {}

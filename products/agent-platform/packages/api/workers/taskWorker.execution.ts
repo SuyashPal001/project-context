@@ -4,7 +4,6 @@ import { pushWebSocketEvent } from '../lib/websocket';
 import { getCacheClient } from '@serverless-saas/cache';
 import { db, AGENT_ORCHESTRATOR_URL, INTERNAL_SERVICE_KEY, sanitizeTaskInput, makeLog, extractAttachments } from './taskWorker.utils';
 import { startTaskHeartbeat, clearTaskHeartbeat } from '../lib/task-heartbeat';
-import { countTaskRefunds } from '../lib/credit-attempt';
 
 export async function handleExecution(taskId: string, traceId: string, attemptOverride?: number) {
     const log = makeLog(traceId, taskId);
@@ -14,30 +13,26 @@ export async function handleExecution(taskId: string, traceId: string, attemptOv
     const agent = task.agentId ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0] : null;
     const steps = await db.select().from(taskSteps).where(eq(taskSteps.taskId, taskId)).orderBy(asc(taskSteps.stepNumber));
 
-    // Each clarify-and-resume cycle needs its OWN credit charge key
-    // (task:{taskId}:attempt:{n} — see apps/agent-orchestrator/src/credits.ts
-    // taskChargeKey()), or the resumed run's chargeTaskEstimate call replays
-    // the ORIGINAL (already-refunded) debit under the unsuffixed
-    // task:{taskId} key instead of actually charging. `attempt` is the
-    // number of refunds already recorded against this task in credit_ledger,
-    // tenant-scoped (see countTaskRefunds) — refundTask fires on every early
-    // termination that invalidates a charge key (a clarify-and-resume pause,
-    // onStepFail, or the workflow's own non-success branch), so counting
-    // refunds subsumes all of those rather than only the clarification-
-    // shaped one. 0 for a task that was never refunded — the common case —
+    // Each abandoned charge needs the NEXT run to use its OWN credit charge
+    // key (task:{taskId}:attempt:{n} — see taskChargeKey() in
+    // @serverless-saas/agent-credits), or the retry's chargeTaskEstimate call
+    // replays the ORIGINAL (already-refunded) debit under the unsuffixed
+    // task:{taskId} key instead of actually charging. `attempt` is
+    // agent_tasks.credit_attempt, advanced by refundTask each time a charge is
+    // abandoned. 0 for a task that has never been refunded — the common case —
     // keeps the exact original key.
     //
     // `attemptOverride` is supplied by the publisher (tasks.approval.ts's
-    // handlePlanApprove) at enqueue time, computed ONCE there and carried in
-    // the SQS message body, precisely so an SQS redelivery of this exact
-    // message (the fetch below can run up to 290s against a Lambda timeout
-    // around 300s, so redelivery is plausible) replays the SAME attempt
-    // rather than recomputing a higher one if a refund landed on this task
-    // in the gap between deliveries — which would otherwise charge the retry
-    // under a fresh key: a real double charge on a duplicate delivery. The
-    // live query below is kept only as a fallback for a message enqueued
-    // before this field existed.
-    const attempt = attemptOverride ?? (await countTaskRefunds(db, task.tenantId, taskId));
+    // handlePlanApprove) at enqueue time, read ONCE there and carried in the
+    // SQS message body, precisely so an SQS redelivery of this exact message
+    // (the fetch below can run up to 290s against a Lambda timeout around
+    // 300s, so redelivery is plausible) reuses the SAME attempt rather than
+    // re-reading a higher one if a refund landed on this task in the gap
+    // between deliveries — which would otherwise charge the retry under a
+    // fresh key: a real double charge on a duplicate delivery. The column read
+    // below is kept only as a fallback for a message enqueued before that
+    // field existed.
+    const attempt = attemptOverride ?? task.creditAttempt;
     const pendingSteps = steps.filter((s: { status: string }) => s.status === 'pending');
 
     if (pendingSteps.length === 0 && steps.every((s: { status: string }) => s.status === 'done')) {

@@ -791,12 +791,25 @@ describe.skipIf(!TEST_DB)('settleTask (integration)', () => {
 // --- Integration: reproduces the reachable "free re-run" shape of the
 // retry-billing defect end to end — chargeTaskEstimate under the bare
 // `task:{taskId}` key, refundTask on failure, then a re-run under
-// taskChargeKey(taskId, 1) (the key the fixed attempt derivation produces,
-// since it counts this exact refund row) — and proves the re-run is a
-// genuinely NEW charge, not a replay of the refunded debit under the old key.
+// taskChargeKey(taskId, 1) — and proves the re-run is a genuinely NEW charge,
+// not a replay of the refunded debit under the old key.
+//
+// The attempt number comes from agent_tasks.credit_attempt, which refundTask
+// advances as part of the refund. An earlier revision DERIVED it by counting
+// refund rows, which broke in three ways at once: the watchdog abandoned
+// charges without writing a refund, the document routes wrote refunds under
+// the same job_id, and the approve handler recounted mid-flight. So this test
+// seeds a real agent_tasks row and asserts on the column, not on a count —
+// a count would still read 1 here even if the bump never fired.
 describe.skipIf(!TEST_DB)('charge -> refund -> re-run (integration)', () => {
   const TENANT = '00000000-0000-0000-0000-0000000000e1';
   const TASK_ID = '00000000-0000-0000-0000-00000000ae71';
+  const USER_ID = '00000000-0000-0000-0000-00000000ae72';
+  // The document-refund case gets its OWN task, deliberately left at attempt 0.
+  // Sharing TASK_ID would have made that test pass for the wrong reason: by the
+  // time it ran, TASK_ID sat at attempt 1, so even a bump that fired would have
+  // matched no row and the assertion would have held regardless.
+  const DOC_TASK_ID = '00000000-0000-0000-0000-00000000ae73';
 
   let pg: typeof import('pg');
   let pool: import('pg').Pool;
@@ -808,9 +821,24 @@ describe.skipIf(!TEST_DB)('charge -> refund -> re-run (integration)', () => {
     await pool.query(`delete from credit_ledger where tenant_id = $1`, [TENANT]);
     await pool.query(`delete from credit_grants where tenant_id = $1`, [TENANT]);
     await pool.query(`delete from credit_accounts where tenant_id = $1`, [TENANT]);
+    await pool.query(`delete from agent_tasks where id = any($1)`, [[TASK_ID, DOC_TASK_ID]]);
     await pool.query(
       `insert into tenants (id, name, slug) values ($1, 'credits test', 'credits-test-e1') on conflict (id) do nothing`,
       [TENANT],
+    );
+    await pool.query(
+      `insert into users (id, cognito_id, email, name)
+       values ($1, $2, 'retry-billing@example.com', 'Retry Billing')
+       on conflict (id) do nothing`,
+      [USER_ID, `cognito-${USER_ID}`],
+    );
+    // A real task row, so credit_attempt has somewhere to live. Without it the
+    // bump inside refundTask matches no rows and the assertion below cannot
+    // tell a working bump from a missing one.
+    await pool.query(
+      `insert into agent_tasks (id, tenant_id, created_by, title)
+       values ($1, $2, $3, 'retry billing fixture'), ($4, $2, $3, 'document refund fixture')`,
+      [TASK_ID, TENANT, USER_ID, DOC_TASK_ID],
     );
 
     const { grantCredits } = await import('@serverless-saas/credits');
@@ -818,10 +846,12 @@ describe.skipIf(!TEST_DB)('charge -> refund -> re-run (integration)', () => {
   });
 
   afterAll(async () => {
+    await pool.query(`delete from agent_tasks where id = any($1)`, [[TASK_ID, DOC_TASK_ID]]);
     await pool.query(`delete from credit_ledger where tenant_id = $1`, [TENANT]);
     await pool.query(`delete from credit_grants where tenant_id = $1`, [TENANT]);
     await pool.query(`delete from credit_accounts where tenant_id = $1`, [TENANT]);
     await pool.query(`delete from tenants where id = $1`, [TENANT]);
+    await pool.query(`delete from users where id = $1`, [USER_ID]);
     await pool.end();
   });
 
@@ -843,19 +873,26 @@ describe.skipIf(!TEST_DB)('charge -> refund -> re-run (integration)', () => {
     // the tenant was made whole for the failed run, as intended.
     expect(balanceAfterFailedAttempt).toBe(balanceAtStart);
 
-    // This IS the fixed derivation's contract: count of prior refund rows
-    // for this task, tenant-scoped (see countTaskRefunds in
-    // products/agent-platform/packages/api/lib/credit-attempt.ts) — the same
-    // query, expressed directly in SQL since that function lives in a
-    // different package with its own drizzle client.
-    const refundCount = await pool.query<{ n: string }>(
-      `select count(*) as n from credit_ledger where tenant_id = $1 and job_id = $2 and kind = 'refund'`,
-      [TENANT, TASK_ID],
-    );
-    const attempt = Number(refundCount.rows[0].n);
+    // THE contract: the refund advanced the task's stored attempt. Reading the
+    // column rather than counting refund rows is the whole point — a count
+    // would read 1 here whether or not refundTask bumped anything, so it could
+    // not fail if the bump were deleted.
+    const attempt = Number((await pool.query<{ credit_attempt: number }>(
+      `select credit_attempt from agent_tasks where id = $1`, [TASK_ID],
+    )).rows[0].credit_attempt);
     expect(attempt).toBe(1);
 
-    // Re-run, keyed by the derived attempt — must be a genuine NEW charge.
+    // Idempotent under a replayed refund: the same charge key is refunded
+    // again (spend_credits no-ops on the refund key, and the bump's
+    // `credit_attempt = attempt` predicate matches nothing now), so the
+    // attempt must NOT advance to 2 and strand the run's real charge key.
+    await refundTask({ tenantId: TENANT, taskId: TASK_ID }, { pool });
+    const attemptAfterReplay = Number((await pool.query<{ credit_attempt: number }>(
+      `select credit_attempt from agent_tasks where id = $1`, [TASK_ID],
+    )).rows[0].credit_attempt);
+    expect(attemptAfterReplay).toBe(1);
+
+    // Re-run, keyed by the stored attempt — must be a genuine NEW charge.
     const chargeKey = taskChargeKey(TASK_ID, attempt);
     expect(chargeKey).toBe(`task:${TASK_ID}:attempt:1`); // not the bare, already-refunded key
     await chargeTaskEstimate({ tenantId: TENANT, taskId: TASK_ID, agentId: TENANT, estimateMicro: 100_000n, key: chargeKey });
@@ -876,6 +913,52 @@ describe.skipIf(!TEST_DB)('charge -> refund -> re-run (integration)', () => {
       `task:${TASK_ID}`,
       `task:${TASK_ID}:attempt:1`,
     ]);
+  });
+
+  // The defect this closes: the attempt used to be a COUNT of refund rows for
+  // a job_id, and the document routes write their refunds under
+  // job_id = taskId. So a task whose PRD planning failed silently started
+  // execution at attempt 1 — the charge, the settle and the refund all agreed
+  // with each other, but only because the same wrong number was threaded
+  // through all three. It stopped agreeing the moment anything re-derived it
+  // mid-flight, which handleWorkflowApprove did.
+  //
+  // Asserting on the ledger would prove nothing here: the refund row lands
+  // either way. Only the column can tell the two behaviours apart.
+  it('does not move the task attempt when a document charge is refunded', async () => {
+    const { chargeTaskEstimate, refundTask } = await import('../credits.js');
+
+    // Starts at 0 — the value a wrongly-permissive key parse would produce, so
+    // a bump that should not fire has something to visibly hit.
+    const attemptBefore = Number((await pool.query<{ credit_attempt: number }>(
+      `select credit_attempt from agent_tasks where id = $1`, [DOC_TASK_ID],
+    )).rows[0].credit_attempt);
+    expect(attemptBefore).toBe(0);
+
+    // A document-namespaced charge whose job_id IS the task id, then its
+    // refund — exactly what /api/tasks/:taskId/plan does when planning fails.
+    await chargeTaskEstimate({
+      tenantId: TENANT, taskId: DOC_TASK_ID, agentId: TENANT, estimateMicro: 50_000n,
+      key: `document:${DOC_TASK_ID}`, jobType: 'document',
+    });
+    await refundTask(
+      { tenantId: TENANT, taskId: DOC_TASK_ID, chargeKey: `document:${DOC_TASK_ID}`, jobType: 'document' },
+      { pool },
+    );
+
+    // The refund really happened...
+    const refundRows = await pool.query<{ n: string }>(
+      `select count(*) as n from credit_ledger
+        where tenant_id = $1 and idempotency_key = $2 and kind = 'refund'`,
+      [TENANT, `document:${DOC_TASK_ID}:refund`],
+    );
+    expect(Number(refundRows.rows[0].n)).toBe(1);
+
+    // ...and the task's attempt did not budge.
+    const attemptAfter = Number((await pool.query<{ credit_attempt: number }>(
+      `select credit_attempt from agent_tasks where id = $1`, [DOC_TASK_ID],
+    )).rows[0].credit_attempt);
+    expect(attemptAfter).toBe(0);
   });
 });
 

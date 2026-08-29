@@ -62,11 +62,10 @@ export async function handlePlanning(
             const reason = `Agent needs clarification:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n')}`;
             await db.update(agentTasks).set({ status: 'blocked', blockedReason: reason, updatedAt: new Date() }).where(eq(agentTasks.id, task.id));
             // No charge has happened yet for this run (charging starts at
-            // execute_task/handleExecution), so this clarification naturally
-            // never produces a refund row and correctly doesn't bump the
-            // credit charge-attempt counter, which is now derived from
-            // credit_ledger refunds (see countTaskRefunds) rather than from
-            // this event.
+            // execute_task/handleExecution), so this clarification abandons
+            // nothing and correctly leaves agent_tasks.credit_attempt alone —
+            // that column only moves inside refundTask, when a refund for a
+            // real charge actually lands.
             await db.insert(taskEvents).values({ taskId: task.id, tenantId: task.tenantId, actorType: 'agent', actorId: task.agentId ?? 'system', eventType: 'clarification_requested', payload: { questions } });
             await pushWebSocketEvent(task.tenantId, { type: 'task.status.changed', taskId: task.id, status: 'blocked' });
             return;

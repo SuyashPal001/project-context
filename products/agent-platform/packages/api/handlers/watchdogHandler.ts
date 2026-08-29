@@ -8,7 +8,9 @@ import { getCacheClient } from '@serverless-saas/cache';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '@serverless-saas/queue';
 import { initRuntimeSecrets } from '@serverless-saas/secrets';
+import { refundTask, taskChargeKey } from '@serverless-saas/agent-credits';
 import { taskHeartbeatKey } from '../lib/task-heartbeat';
+import { creditPool } from '../lib/credit-pool';
 
 const wlog = (level: 'info' | 'warn' | 'error', msg: string, data?: Record<string, unknown>) =>
   console.log(JSON.stringify({ level, msg, component: 'watchdog', ts: Date.now(), ...data }));
@@ -32,6 +34,7 @@ export const handler: ScheduledHandler = async () => {
       createdBy: agentTasks.createdBy,
       title: agentTasks.title,
       status: agentTasks.status,
+      creditAttempt: agentTasks.creditAttempt,
     })
     .from(agentTasks)
     .where(eq(agentTasks.status, 'in_progress'));
@@ -82,6 +85,29 @@ export const handler: ScheduledHandler = async () => {
         if (!updated) {
           wlog('info', 'Task no longer in_progress, skipping notification', { taskId: task.id });
           continue;
+        }
+
+        // A stall means the Redis heartbeat expired — the orchestrator crashed
+        // or timed out. That is our infrastructure failing, not the tenant's
+        // input, so the tenant pays nothing for a run that produced nothing and
+        // we absorb the tokens already burned.
+        //
+        // This refund is also what advances agent_tasks.credit_attempt. Before
+        // it existed the watchdog abandoned a charge silently: the attempt
+        // never moved, so the retry rebuilt the SAME charge key, spend_credits()
+        // saw a replay and charged nothing, and the first run's tokens were
+        // never billed at all. The refund and the bump have to travel together.
+        //
+        // Awaited but non-fatal: refundTask swallows and logs its own failures,
+        // and this outer guard covers a connection-level throw. A task that
+        // could not be refunded must not stop the sweep blocking the rest.
+        try {
+          await refundTask(
+            { tenantId: task.tenantId, taskId: task.id, chargeKey: taskChargeKey(task.id, task.creditAttempt) },
+            { pool: creditPool },
+          );
+        } catch (refundErr) {
+          wlog('error', 'Stalled-task refund failed', { taskId: task.id, tenantId: task.tenantId, error: (refundErr as Error).message });
         }
 
         await db.insert(taskEvents).values({
@@ -146,6 +172,26 @@ export const handler: ScheduledHandler = async () => {
 
     if (!updated) continue;
 
+    // Planning is charged under the `document:{taskId}` namespace by the
+    // orchestrator's /api/tasks/:taskId/plan route, not under a task charge
+    // key — task charging starts at execution. That route refunds its own
+    // failures, but a planning timeout is precisely the case where it never
+    // got to run: the relay is unresponsive.
+    //
+    // Not a task charge, so this deliberately does NOT advance
+    // credit_attempt — refundTask skips the bump for a non-agent_task job
+    // type, which is what keeps document refunds out of a task's attempt
+    // count. A no-op when the task never went through the document route
+    // (refundTask returns early once it sees no debit under the key).
+    try {
+      await refundTask(
+        { tenantId: task.tenantId, taskId: task.id, chargeKey: `document:${task.id}`, jobType: 'document' },
+        { pool: creditPool },
+      );
+    } catch (refundErr) {
+      wlog('error', 'Stale-planning refund failed', { taskId: task.id, tenantId: task.tenantId, error: (refundErr as Error).message });
+    }
+
     await db.insert(taskEvents).values({ taskId: task.id, tenantId: task.tenantId, actorType: 'system', actorId: 'system', eventType: 'status_changed', payload: { from: 'planning', to: 'blocked', reason: 'Planning timed out — relay may be unresponsive.' } });
     db.insert(auditLog).values({ tenantId: task.tenantId, actorId: 'system', actorType: 'system', action: 'task_timed_out', resource: 'agent_task', resourceId: task.id, metadata: { reason: 'Planning timed out — relay may be unresponsive.', from: 'planning', to: 'blocked' }, traceId: '' }).catch(() => {});
 
@@ -179,6 +225,12 @@ export const handler: ScheduledHandler = async () => {
   }
 
   // --- Sweep 3: Stale awaiting_approval tasks (> 7 days) ---
+  // No refund here, deliberately. Reaching awaiting_approval means planning
+  // SUCCEEDED, so the document route already ran settleTask and reconciled the
+  // `document:{taskId}` charge to real token usage. refundTask's settled-row
+  // guard would skip every one of these, and execution — the only other thing
+  // that charges — never started. Adding a call would be dead code that reads
+  // like a safety net.
   const staleApproval = await db
     .select({
       id: agentTasks.id,

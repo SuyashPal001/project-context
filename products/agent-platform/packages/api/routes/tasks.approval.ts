@@ -7,7 +7,6 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { pushWebSocketEvent } from '../lib/websocket';
 import { publishToQueue } from '@serverless-saas/queue';
-import { countTaskRefunds } from '../lib/credit-attempt';
 import type { Context } from 'hono';
 import type { AppEnv } from '@serverless-saas/types';
 
@@ -79,19 +78,19 @@ export async function handlePlanApprove(c: Context<AppEnv>) {
     });
     db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'task_plan_approved', resource: 'agent_task', resourceId: taskId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
-    // Computed ONCE here at enqueue time, not inside handleExecution on
-    // every delivery: the execution fetch in taskWorker.execution.ts can run
-    // up to 290s against a Lambda timeout around 300s, so an SQS redelivery
-    // of this exact execute_task message is plausible. If attempt were
-    // recomputed per delivery instead, a refund recorded on this task
-    // between two deliveries of the SAME message would make the redelivery
-    // compute a HIGHER attempt and charge a genuinely new key — a real
-    // double charge on a duplicate delivery, not the free replay the shared
-    // key gave before per-attempt keys existed. Same derivation as
-    // handleWorkflowApprove's (tasks.approval.ts) and the fallback inside
-    // handleExecution (taskWorker.execution.ts) — see countTaskRefunds and
-    // taskChargeKey() in apps/agent-orchestrator/src/credits.ts.
-    const attempt = await countTaskRefunds(db, tenantId, taskId);
+    // Read ONCE here at enqueue time, not inside handleExecution on every
+    // delivery: the execution fetch in taskWorker.execution.ts can run up to
+    // 290s against a Lambda timeout around 300s, so an SQS redelivery of this
+    // exact execute_task message is plausible. If attempt were re-read per
+    // delivery instead, a refund landing on this task between two deliveries
+    // of the SAME message would advance credit_attempt and make the redelivery
+    // charge a genuinely new key — a real double charge on a duplicate
+    // delivery, not the free replay the shared key gave before per-attempt
+    // keys existed.
+    //
+    // Taken from the row the status update just returned, so the value is the
+    // one that was current at the moment this task became 'ready'.
+    const attempt = updatedTask.creditAttempt;
 
     console.log('[SQS] Publishing execute_task for task', taskId);
     try {
@@ -199,7 +198,7 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
     }
 
     const taskId = c.req.param('taskId') as string;
-    const task = (await db.select({ id: agentTasks.id, status: agentTasks.status, tenantId: agentTasks.tenantId })
+    const task = (await db.select({ id: agentTasks.id, status: agentTasks.status, tenantId: agentTasks.tenantId, creditAttempt: agentTasks.creditAttempt })
         .from(agentTasks)
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
         .limit(1))[0];
@@ -211,15 +210,19 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
     if (!relayUrl) return c.json({ error: 'Relay not configured' }, 503);
 
     // The run being resumed was charged under taskChargeKey(taskId, attempt)
-    // (apps/agent-orchestrator/src/credits.ts) — attempt being the number of
-    // refunds already recorded against this task in credit_ledger, tenant-
-    // scoped (see countTaskRefunds). Resume's settle/refund must key off the
-    // SAME attempt or they silently miss the actual charge (see the relay's
-    // /api/tasks/:taskId/resume handler for the two failure shapes this
-    // produces). Identical derivation, same reasoning, as
-    // taskWorker.execution.ts's handleExecution, the other caller that
-    // charges/settles a task run.
-    const attempt = await countTaskRefunds(db, tenantId, taskId);
+    // (@serverless-saas/agent-credits). Resume's settle/refund must key off
+    // the SAME attempt or they silently miss the actual charge — see the
+    // relay's /api/tasks/:taskId/resume handler for the two failure shapes
+    // that produces.
+    //
+    // This is read from agent_tasks.credit_attempt rather than recomputed. It
+    // used to count refund rows in credit_ledger at approve time, which meant
+    // any refund landing between the charge and the approve handed resume a
+    // different key than the run was actually charged under — settle and
+    // refund would then both find no rows and silently no-op, leaving the
+    // charge unreconciled. The column only moves when a charge is abandoned,
+    // so the value read here is the one the suspended run is billed under.
+    const attempt = task.creditAttempt;
 
     const res = await fetch(`${relayUrl}/api/tasks/${taskId}/resume`, {
         method: 'POST',

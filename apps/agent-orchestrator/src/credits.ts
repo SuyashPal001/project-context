@@ -1,6 +1,12 @@
 import type pg from 'pg'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import type { PricingSchema } from '@serverless-saas/credits'
+import {
+  refundTask as sharedRefundTask,
+  shortestExpiresAt,
+  type RefundTaskArgs,
+  type RefundTaskDeps,
+} from '@serverless-saas/agent-credits'
 import { getPool } from './usage.js'
 
 export interface CreditBalanceResult {
@@ -151,38 +157,6 @@ const AVERAGE_STEP_TOKENS = { input: 4000, output: 1000 }
  * explicit model selection row yet — matches the '*' wildcard credit_rates subject. */
 export const DEFAULT_TASK_MODEL = 'gemini-2.5-flash'
 
-/**
- * Per-attempt task charge key. Attempt 0 (a task that has never been
- * refunded — the common case) keeps the exact original `task:{taskId}` key,
- * so existing behavior is unchanged for tasks that never pause or fail.
- * Each subsequent attempt (after refundTask ran — a clarify-and-resume
- * cycle, a plain step failure, or the workflow's own non-success branch, the
- * task then gets replanned/resumed and re-executed) gets its OWN key.
- *
- * Without this, a re-run's chargeTaskEstimate call would carry the same
- * `task:{taskId}` key as the original charge — already refunded by then —
- * and spend_credits()'s replay check (invariant 5) would find that original
- * debit's ledger row and return the current balance without charging
- * anything for the new run. A refund-then-retry is the ordinary product
- * flow, not an edge case, so that gap made every retried task run for free.
- *
- * `attempt` is the number of refunds already recorded against this task in
- * credit_ledger, tenant-scoped — see countTaskRefunds() in
- * products/agent-platform/packages/api/lib/credit-attempt.ts, called from
- * taskWorker.execution.ts (for a fresh execution) and
- * tasks.approval.ts's handlePlanApprove/handleWorkflowApprove (for a
- * replan/resume). Deriving from credit_ledger — the authority on what was
- * actually charged and returned — rather than from
- * `clarification_requested` events means every cause of a refund bumps the
- * counter the same way, not only the clarification-shaped one. A prior
- * revision derived this from clarification events tagged by phase, which
- * missed refunds triggered by a plain failure (onStepFail / the workflow's
- * non-success branch) — see the retry-billing fix report for the full
- * defect writeup. 0 for a first run, 1 after one refund, and so on.
- */
-export function taskChargeKey(taskId: string, attempt: number): string {
-  return attempt > 0 ? `task:${taskId}:attempt:${attempt}` : `task:${taskId}`
-}
 
 export interface EstimateTaskMicroDeps {
   resolveRate?: typeof resolveRate
@@ -272,27 +246,6 @@ export async function chargeTaskEstimate(
     jobId: args.taskId,
     jobType: args.jobType ?? 'agent_task',
   })
-}
-
-/**
- * Spec §4: "The refund lands in a new grant carrying the shortest expires_at
- * among the grants it came from, so a refund can never extend a credit's
- * life." `min()` over a set of timestamps where some are null (never
- * expires) is exactly the right operator for this: a null contributes
- * nothing (SQL aggregates and Array.reduce below both treat it as "no
- * constraint", i.e. effectively +Infinity), so the result is the earliest
- * REAL expiry among the drawn grants — or null only if every drawn grant was
- * itself permanent, in which case there is nothing to shorten and a
- * permanent refund is correct, not a bug.
- */
-function shortestExpiresAt(expiresAts: Array<Date | string | null>): Date | null {
-  let shortest: Date | null = null
-  for (const raw of expiresAts) {
-    if (raw == null) continue
-    const d = raw instanceof Date ? raw : new Date(raw)
-    if (shortest === null || d.getTime() < shortest.getTime()) shortest = d
-  }
-  return shortest
 }
 
 /**
@@ -452,99 +405,19 @@ export async function settleTask(args: SettleTaskArgs, deps: SettleTaskDeps = {}
   }
 }
 
-export interface RefundTaskArgs {
-  tenantId: string
-  taskId: string
-  /** Idempotency key of the ORIGINAL charge to refund. Defaults to `task:{taskId}`; Task 10 (documents) overrides this. */
-  chargeKey?: string
-  /** Idempotency key for the refund write itself. Defaults to `{chargeKey}:refund`. */
-  key?: string
-  /** credit_ledger.job_type. Defaults to 'agent_task'; Task 10 overrides with 'document'. */
-  jobType?: string
-}
+// refundTask now lives in @serverless-saas/agent-credits, because the watchdog
+// (which runs in the API Lambda) has to be able to refund a task it blocks, and
+// neither package can import the other. Re-exported here, pre-bound to this
+// process's pool, so every existing call site in the orchestrator keeps working
+// unchanged and no caller has to know where the pool comes from.
+export { taskChargeKey, attemptFromChargeKey, shortestExpiresAt } from '@serverless-saas/agent-credits'
+export type { RefundTaskArgs, RefundTaskDeps } from '@serverless-saas/agent-credits'
 
-export interface RefundTaskDeps {
-  isUnlimited?: typeof isUnlimited
-  spendCredits?: typeof spendCredits
-  pool?: pg.Pool
-}
-
-/**
- * Refunds a task's charge on terminal failure. Never un-spends the original
- * debit's grant — spend_credits() guarantees that already; this always
- * creates a NEW grant for whatever net amount the tenant is down.
- *
- * Sums only the original `task:{taskId}` debit row, scoped by tenant_id —
- * migration 0071 made the idempotency namespace per-tenant specifically
- * because an unscoped `idempotency_key` lookup let one tenant's key silently
- * affect another's; this query must never regress that.
- *
- * Skipped if a settle already ran for this task: the success path already
- * reconciled the charge, so a failure callback racing in after that must not
- * refund on top of it. Skipped for unlimited tenants (nothing was charged).
- * A second refundTask call for the same task is additionally guarded by
- * spend_credits()'s own idempotency on the `task:{taskId}:refund` key.
- */
-export async function refundTask(args: RefundTaskArgs, deps: RefundTaskDeps = {}): Promise<void> {
-  const isUnlimitedFn = deps.isUnlimited ?? isUnlimited
-  const spendCreditsFn = deps.spendCredits ?? spendCredits
-  const pool = deps.pool ?? getPool()
-  const chargeKey = args.chargeKey ?? `task:${args.taskId}`
-  const refundKey = args.key ?? `${chargeKey}:refund`
-  try {
-    if (await isUnlimitedFn(args.tenantId)) return
-
-    const settleKey = `${chargeKey}:settle`
-    const settled = await pool.query<{ exists: boolean }>(
-      `select exists(select 1 from credit_ledger where tenant_id = $1 and idempotency_key = $2) as exists`,
-      [args.tenantId, settleKey],
-    )
-    if (settled.rows[0]?.exists) return
-
-    const debitKey = chargeKey
-    const res = await pool.query<{ amount_micro: string; expires_at: string | null }>(
-      `select cl.amount_micro, cg.expires_at
-         from credit_ledger cl
-         left join credit_grants cg on cg.id = cl.grant_id
-        where cl.tenant_id = $1 and cl.idempotency_key = $2 and cl.kind = 'debit'`,
-      [args.tenantId, debitKey],
-    )
-    const net = res.rows.reduce((sum, row) => sum + BigInt(row.amount_micro), 0n) // negative if the tenant was charged; 0 if never charged
-    if (net >= 0n) return
-    // Spec §4: the refund grant can never outlive the shortest-lived grant
-    // the original debit drew from.
-    const originalGrantExpiresAt = shortestExpiresAt(res.rows.map(row => row.expires_at))
-
-    // A failure past this point means real money owed to the tenant gets
-    // stuck — unlike debitChatTurn's fire-and-forget (a dropped debit costs
-    // us revenue we chose not to chase), a dropped refund is money WE owe.
-    // The swallow below is intentional (a throwing refund must not break the
-    // failure path it runs on), but it must be loud and replay-ready: the
-    // refund key is idempotent per tenant, so a human can safely replay this
-    // exact spend_credits() call by hand once they see the log line.
-    try {
-      await spendCreditsFn({
-        tenantId: args.tenantId,
-        amountMicro: -net,
-        key: refundKey,
-        kind: 'refund',
-        grantType: 'refund',
-        jobId: args.taskId,
-        jobType: args.jobType ?? 'agent_task',
-        expiresAt: originalGrantExpiresAt,
-        reason: 'task failed',
-      })
-    } catch (spendErr) {
-      console.error(
-        `[credits] UNREFUNDED CHARGE: tenantId=${args.tenantId} taskId=${args.taskId} ` +
-        `key=${refundKey} amountMicro=${-net} — refund write failed and was swallowed; ` +
-        `tenant is still down ${-net} micro-credits for a task that did not complete. ` +
-        `Replay by hand: spend_credits('${args.tenantId}', ${-net}, '${refundKey}', 'refund', ...) ` +
-        `(idempotent per tenant on this key, safe to retry). Cause:`,
-        (spendErr as Error).message,
-      )
-    }
-  } catch (err) {
-    console.error(`[credits] refundTask failed tenantId=${args.tenantId} taskId=${args.taskId}:`, (err as Error).message)
-  }
+export function refundTask(
+  args: RefundTaskArgs,
+  deps: Partial<RefundTaskDeps> = {},
+): Promise<void> {
+  // getPool() only when the caller did not bring its own — a unit test that
+  // injects a fake pool must not cause a real one to be constructed.
+  return sharedRefundTask(args, { ...deps, pool: deps.pool ?? getPool() })
 }

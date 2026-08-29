@@ -142,6 +142,22 @@ export const agentTasks = pgTable('agent_tasks', {
   attachmentFileIds: jsonb('attachment_file_ids').$type<string[]>().notNull().default([]),
   sortOrder: integer('sort_order').default(0),
   mastraRunId: text('mastra_run_id'),
+  // Which credit charge key this task's current run is billed under:
+  // taskChargeKey(id, creditAttempt) in @serverless-saas/agent-credits, i.e.
+  // `task:{id}` at 0 and `task:{id}:attempt:{n}` after that. Advanced by
+  // exactly one every time a charge is abandoned and refunded, so a retry
+  // charges under a fresh key instead of replaying the refunded debit —
+  // spend_credits()'s replay check would otherwise see the original ledger
+  // row and charge the retry nothing.
+  //
+  // This was previously DERIVED, by counting refund rows in credit_ledger for
+  // this task (the deleted countTaskRefunds). That is only equal to the
+  // attempt number if every abandoned charge writes a refund and nothing else
+  // writes refunds under the same job_id, and neither held: the watchdog
+  // blocked stalled tasks without refunding, and the document routes write
+  // refunds under job_id = taskId. Storing it removes both failure modes by
+  // construction rather than by predicate.
+  creditAttempt: integer('credit_attempt').notNull().default(0),
   // PM hierarchy fields (added migration 0021)
   // milestoneId/planId are plain uuid — FK constraints in migration SQL to avoid circular imports with pm.ts
   sequenceId:   integer('sequence_id'),

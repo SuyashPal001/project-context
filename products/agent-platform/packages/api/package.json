@@ -36,6 +36,7 @@
     "@aws-sdk/client-secrets-manager": "^3.1011.0",
     "@aws-sdk/s3-request-presigner": "^3.1011.0",
     "@hono/zod-validator": "^0.2.2",
+    "@serverless-saas/agent-credits": "workspace:*",
     "@serverless-saas/agent-schema": "workspace:*",
     "@serverless-saas/ai": "workspace:*",
     "@serverless-saas/cache": "workspace:*",

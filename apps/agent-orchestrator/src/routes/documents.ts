@@ -273,6 +273,14 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
   const plan = extractPlanJson(agentOutput)
   if (!plan) {
     console.error(`[tasks/plan] tenantId=${tenantId} taskId=${taskId} JSON parse failed, raw: ${agentOutput.slice(0, 200)}`)
+    // Same treatment as the two failure branches above, which this one used to
+    // be missing: the caller gets a 502 and no plan, so the charge must not be
+    // left standing on the strength of this route having produced *text*.
+    // Usually a no-op in practice — settleTask was awaited above and will have
+    // written a settle row, which refundTask's settled-row guard honours as the
+    // final reconciliation. That makes this the unreconciled case only: the
+    // settle was skipped or failed and the estimate is still the live debit.
+    await refundTask({ tenantId, taskId, chargeKey: `document:${taskId}`, jobType: 'document' })
     return c.json({ error: 'Failed to parse agent plan', raw: agentOutput }, 502)
   }
 
