@@ -4,12 +4,11 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
-import { useQuery } from "@tanstack/react-query"
 import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor, Zap, HelpCircle } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
-import { api } from "@/lib/api"
+import { useCreditBalance, microToCredits } from "@/lib/hooks/useCredits"
 import { PLANS } from "@/components/platform/billing/PlanSelectorDialog"
 import {
     DropdownMenu,
@@ -57,17 +56,12 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
     const nextPlan = planIndex >= 0 && planIndex < PLANS.length - 1 ? PLANS[planIndex + 1] : null
     const currentPlanName = planIndex >= 0 ? PLANS[planIndex].name : (plan || "Free")
 
-    // Same query key as UsageBar.tsx — shares its cache, no extra request in practice.
-    interface EntitlementsResponse {
-        messages: { used: number; limit: number; unlimited: boolean }
-        [key: string]: unknown
-    }
-    const { data: entitlements } = useQuery({
-        queryKey: ['entitlements', tenantSlug],
-        queryFn: () => api.get<EntitlementsResponse>('/api/v1/entitlements'),
-        staleTime: 60_000,
-    })
-    const messages = entitlements?.messages
+    // Was a `messages` quota read off /entitlements. That feature was retired
+    // when credits replaced it, so the figure enforced nothing — it just sat
+    // under the plan name looking like a limit. Same hook the sidebar's
+    // CreditBalanceIndicator uses, so the two never disagree and it shares a
+    // cache rather than issuing its own request.
+    const { data: credits } = useCreditBalance()
 
     return (
         <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
@@ -145,11 +139,11 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                         )}
                     </p>
 
-                    {messages && (
+                    {credits && (
                         <p className="text-[11px] text-muted-foreground">
-                            {messages.unlimited
-                                ? <><span className="font-medium text-foreground">{messages.used.toLocaleString()}</span> messages this month</>
-                                : <><span className="font-medium text-foreground">{messages.used.toLocaleString()}</span> / {messages.limit.toLocaleString()} messages</>}
+                            {credits.unlimited
+                                ? <><span className="font-medium text-foreground">Unlimited</span> credits</>
+                                : <><span className="font-medium text-foreground">{microToCredits(credits.balanceMicro).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span> credits remaining</>}
                         </p>
                     )}
 

@@ -78,9 +78,23 @@ export async function handlePlanApprove(c: Context<AppEnv>) {
     });
     db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'task_plan_approved', resource: 'agent_task', resourceId: taskId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
 
+    // Read ONCE here at enqueue time, not inside handleExecution on every
+    // delivery: the execution fetch in taskWorker.execution.ts can run up to
+    // 290s against a Lambda timeout around 300s, so an SQS redelivery of this
+    // exact execute_task message is plausible. If attempt were re-read per
+    // delivery instead, a refund landing on this task between two deliveries
+    // of the SAME message would advance credit_attempt and make the redelivery
+    // charge a genuinely new key — a real double charge on a duplicate
+    // delivery, not the free replay the shared key gave before per-attempt
+    // keys existed.
+    //
+    // Taken from the row the status update just returned, so the value is the
+    // one that was current at the moment this task became 'ready'.
+    const attempt = updatedTask.creditAttempt;
+
     console.log('[SQS] Publishing execute_task for task', taskId);
     try {
-        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId, traceId: randomUUID() });
+        await publishToQueue(process.env.AGENT_TASK_QUEUE_URL!, { type: 'execute_task', taskId, traceId: randomUUID(), attempt });
     } catch (sqsErr) {
         console.error('[SQS] execute_task publish failed for task', taskId, sqsErr);
         await db.update(agentTasks)
@@ -184,7 +198,7 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
     }
 
     const taskId = c.req.param('taskId') as string;
-    const task = (await db.select({ id: agentTasks.id, status: agentTasks.status, tenantId: agentTasks.tenantId })
+    const task = (await db.select({ id: agentTasks.id, status: agentTasks.status, tenantId: agentTasks.tenantId, creditAttempt: agentTasks.creditAttempt })
         .from(agentTasks)
         .where(and(eq(agentTasks.id, taskId), eq(agentTasks.tenantId, tenantId)))
         .limit(1))[0];
@@ -195,6 +209,21 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
     const relayUrl = process.env.AGENT_ORCHESTRATOR_URL;
     if (!relayUrl) return c.json({ error: 'Relay not configured' }, 503);
 
+    // The run being resumed was charged under taskChargeKey(taskId, attempt)
+    // (@serverless-saas/agent-credits). Resume's settle/refund must key off
+    // the SAME attempt or they silently miss the actual charge — see the
+    // relay's /api/tasks/:taskId/resume handler for the two failure shapes
+    // that produces.
+    //
+    // This is read from agent_tasks.credit_attempt rather than recomputed. It
+    // used to count refund rows in credit_ledger at approve time, which meant
+    // any refund landing between the charge and the approve handed resume a
+    // different key than the run was actually charged under — settle and
+    // refund would then both find no rows and silently no-op, leaving the
+    // charge unreconciled. The column only moves when a charge is abandoned,
+    // so the value read here is the one the suspended run is billed under.
+    const attempt = task.creditAttempt;
+
     const res = await fetch(`${relayUrl}/api/tasks/${taskId}/resume`, {
         method: 'POST',
         headers: {
@@ -202,7 +231,7 @@ export async function handleWorkflowApprove(c: Context<AppEnv>) {
             'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '',
             'x-trace-id': c.get('traceId') ?? randomUUID(),
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ attempt }),
     });
 
     if (!res.ok) {

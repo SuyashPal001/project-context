@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
+import { InsufficientCreditsError } from '@serverless-saas/credits'
 import { INTERNAL_SERVICE_KEY } from '../types.js'
 import { createPlanFromPrd, type PrdData } from '../services/planService.js'
 import type { TaskStep, WorkflowStep } from '../types.js'
-import { checkMessageQuota, getPool, recordUsage } from '../usage.js'
+import { fetchAgentModelSelection, getPool, recordUsage } from '../usage.js'
+import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, refundTask, settleTask, taskChargeKey, DEFAULT_TASK_MODEL } from '../credits.js'
 import { filterPII } from '../pii-filter.js'
 import { runMastraTaskSteps } from './tasks.execution.js'
 import type { PlanResult } from './tasks.execution.js'
@@ -25,7 +27,7 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'Unauthorized' }, 401)
   }
 
-  let body: { taskId?: unknown; agentId?: unknown; tenantId?: unknown; steps?: unknown; taskTitle?: unknown; taskDescription?: unknown; agentName?: unknown; referenceText?: unknown; links?: unknown; attachmentContext?: unknown; acceptanceCriteria?: unknown }
+  let body: { taskId?: unknown; agentId?: unknown; tenantId?: unknown; steps?: unknown; taskTitle?: unknown; taskDescription?: unknown; agentName?: unknown; referenceText?: unknown; links?: unknown; attachmentContext?: unknown; acceptanceCriteria?: unknown; attempt?: unknown }
   try {
     body = await c.req.json()
   } catch {
@@ -62,10 +64,33 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
     return c.json({ error: 'taskId, tenantId, and steps are required' }, 400)
   }
 
-  const execQuota = await checkMessageQuota(tenantId)
-  if (!execQuota.allowed) {
-    console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${execQuota.used} limit=${execQuota.limit}`)
-    return c.json({ error: 'Message quota exceeded', used: execQuota.used, limit: execQuota.limit }, 429)
+  // `attempt` is agent_tasks.credit_attempt, read by the caller
+  // (taskWorker.execution.ts, which has Drizzle access to the task row) and
+  // threaded through untouched. attempt 0 (never refunded, or the field is
+  // simply absent — an older caller, or a direct test) keeps the original
+  // `task:{taskId}` key, so existing behavior is unchanged for the common
+  // case. See taskChargeKey().
+  const attempt = typeof body.attempt === 'number' && Number.isFinite(body.attempt) && body.attempt > 0
+    ? Math.floor(body.attempt)
+    : 0
+  const chargeKey = taskChargeKey(taskId, attempt)
+
+  const execModelSelection = await fetchAgentModelSelection(agentId)
+  const execModel = execModelSelection?.model ?? DEFAULT_TASK_MODEL
+  const execEstimateMicro = await estimateTaskMicro(steps.length, execModel)
+  const execRate = await resolveTaskRate(execModel)
+  try {
+    await chargeTaskEstimate({
+      tenantId, taskId, agentId, estimateMicro: execEstimateMicro,
+      rateId: execRate?.id ?? null, rateVersion: execRate?.version ?? null,
+      key: chargeKey,
+    })
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      console.warn(`[tasks] tenantId=${tenantId} taskId=${taskId} insufficient credits for estimate=${execEstimateMicro}`)
+      return c.json({ error: 'Insufficient credits' }, 402)
+    }
+    throw err
   }
 
   const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
@@ -74,12 +99,12 @@ tasksRouter.post('/api/tasks/execute', async (c) => {
   // Document workflow branch — PRD attached, no links: run synchronously to return planResult
   const isDocWorkflow = !!(attachmentContext) && (!links || links.length === 0)
   if (isDocWorkflow) {
-    const result = await runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId)
+    const result = await runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId, chargeKey)
     return c.json({ ok: true, taskId, planResult: result.planResult as PlanResult | undefined })
   }
 
   // Standard task execution — fire-and-forget
-  runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId).catch((err: Error) => {
+  runMastraTaskSteps(taskId, agentId, tenantId, steps, taskTitle, taskDescription, agentName, referenceText, links, attachmentContext, acceptanceCriteria, traceId, chargeKey).catch((err: Error) => {
     console.error(JSON.stringify({ level: 'error', msg: 'mastra unhandled error', traceId, taskId, tenantId, error: err.message, ts: Date.now() }))
   })
   return c.json({ ok: true, taskId })
@@ -96,6 +121,28 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
   const taskId = c.req.param('taskId')
   const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
   const p = getPool()
+
+  // `attempt` — computed by handleWorkflowApprove (products/agent-platform's
+  // API package, which owns task_events) and threaded through untouched —
+  // must match the SAME attempt the run being resumed was originally charged
+  // under. Without this, resume's settle/refund default to the unsuffixed
+  // task:{taskId} key regardless of which attempt is actually running:
+  // for a task that was clarified during PLANNING (no debit exists under
+  // task:{taskId} at all — chargeTaskEstimate ran once, under the attempt-1
+  // key), settleTask silently no-ops and refundTask sees net===0 and no-ops,
+  // leaving a terminal post-resume failure fully charged with no refund; for
+  // a task clarified MID-EXECUTION, task:{taskId} instead holds the
+  // attempt-0 debit that onTaskComment already refunded in full, so
+  // settleTask would settle real tokens against that dead, already-refunded
+  // estimate — an over-credit and an unsettled current charge at once.
+  // A missing/absent body (an older caller) defaults to attempt 0, matching
+  // pre-attempt-key behavior exactly for a task that was never clarified.
+  let resumeBody: { attempt?: unknown } = {}
+  try { resumeBody = await c.req.json() } catch { /* no body is fine — attempt defaults to 0 */ }
+  const attempt = typeof resumeBody.attempt === 'number' && Number.isFinite(resumeBody.attempt) && resumeBody.attempt > 0
+    ? Math.floor(resumeBody.attempt)
+    : 0
+  const chargeKey = taskChargeKey(taskId, attempt)
 
   const taskRes = await p.query<{ mastra_run_id: string | null; tenant_id: string; agent_id: string | null }>(
     `SELECT mastra_run_id, tenant_id, agent_id FROM agent_tasks WHERE id = $1 LIMIT 1`,
@@ -160,6 +207,7 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     console.error(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} resume error:`, message)
     await postTaskComment(taskId, `❌ Resume failed: ${message}`, agentId ?? 'system')
     await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+    await refundTask({ tenantId, taskId, chargeKey })
     return c.json({ error: message }, 500)
   }
 
@@ -186,6 +234,20 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     await postTaskComment(taskId, `✅ All steps completed.`, agentId ?? 'system')
     await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
     recordUsage({ tenantId, actorId: agentId ?? 'system', inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+    // Fire-and-forget, like recordUsage above — settleTask swallows its own
+    // errors and never rejects. settleTask reads the ORIGINAL charged amount
+    // back from credit_ledger itself (this resume call happens in a
+    // different request than the one that charged, possibly minutes later,
+    // so nothing here may be recomputed as a stand-in for what was charged).
+    // `model` is passed only as settleTask's unmetered-charge fallback.
+    void (async () => {
+      const settleModelSelection = await fetchAgentModelSelection(agentId ?? '')
+      const settleModel = settleModelSelection?.model ?? DEFAULT_TASK_MODEL
+      await settleTask({
+        tenantId, taskId, agentId: agentId ?? 'system', model: settleModel,
+        inputTokens: totalInputTokens, outputTokens: totalOutputTokens, chargeKey,
+      })
+    })()
   } else {
     const message = resumeResult.error?.message ?? 'Workflow failed after resume'
     console.error(`[mastra/resume] tenantId=${tenantId} taskId=${taskId} workflow failed:`, message)
@@ -194,6 +256,7 @@ tasksRouter.post('/api/tasks/:taskId/resume', async (c) => {
     }
     await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId ?? 'system')
     await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+    await refundTask({ tenantId, taskId, chargeKey })
     return c.json({ error: message }, 500)
   }
 
@@ -225,16 +288,27 @@ tasksRouter.post('/api/workflows/execute', async (c) => {
     return c.json({ error: 'workflowId, workflowRunId, tenantId, and agentId are required' }, 400)
   }
 
-  const quota = await checkMessageQuota(tenantId)
-  if (!quota.allowed) {
-    console.warn(`[workflows] tenantId=${tenantId} workflowId=${workflowId} quota exceeded used=${quota.used} limit=${quota.limit}`)
-    return c.json({ error: 'Message quota exceeded', used: quota.used, limit: quota.limit }, 429)
+  const wfModelSelection = await fetchAgentModelSelection(agentId)
+  const wfModel = wfModelSelection?.model ?? DEFAULT_TASK_MODEL
+  const wfEstimateMicro = await estimateTaskMicro(steps.length, wfModel)
+  const wfRate = await resolveTaskRate(wfModel)
+  try {
+    await chargeTaskEstimate({
+      tenantId, taskId: workflowRunId, agentId, estimateMicro: wfEstimateMicro,
+      rateId: wfRate?.id ?? null, rateVersion: wfRate?.version ?? null,
+    })
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      console.warn(`[workflows] tenantId=${tenantId} workflowId=${workflowId} insufficient credits for estimate=${wfEstimateMicro}`)
+      return c.json({ error: 'Insufficient credits' }, 402)
+    }
+    throw err
   }
 
   const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
   console.log(JSON.stringify({ level: 'info', msg: 'workflow execution started', traceId, workflowId, workflowRunId, tenantId, steps: steps.length, ts: Date.now() }))
 
-  runMastraWorkflowSteps(workflowId, workflowRunId, agentId, tenantId, steps, systemPrompt, requiresApproval, traceId).catch((err: Error) => {
+  runMastraWorkflowSteps(workflowId, workflowRunId, agentId, tenantId, steps, systemPrompt, requiresApproval, traceId, wfModel).catch((err: Error) => {
     console.error(JSON.stringify({ level: 'error', msg: 'workflow unhandled error', traceId, workflowId, workflowRunId, tenantId, error: err.message, ts: Date.now() }))
   })
   return c.json({ ok: true, workflowRunId })

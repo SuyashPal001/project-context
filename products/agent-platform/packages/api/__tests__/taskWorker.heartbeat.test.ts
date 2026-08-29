@@ -44,7 +44,7 @@ const db = {
 vi.mock('@serverless-saas/agent-schema', () => ({
   agentTasks: {}, taskSteps: {}, taskEvents: {}, agents: {},
 }))
-vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), asc: vi.fn() }))
+vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn(), asc: vi.fn(), count: vi.fn() }))
 vi.mock('../lib/websocket', () => ({ pushWebSocketEvent: vi.fn() }))
 vi.mock('@serverless-saas/cache', () => ({ getCacheClient: () => cache }))
 vi.mock('../workers/taskWorker.utils', () => ({

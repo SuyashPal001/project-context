@@ -22,14 +22,13 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         agents: { valueLimit: 1 },
         integrations: { valueLimit: 2 },
         api_calls: { valueLimit: 1_000 },
-        llm_tokens: { valueLimit: 10_000 },
         storage_gb: { valueLimit: 20 },
         evals: { enabled: false },
         branding: { enabled: false },
         api_keys: { valueLimit: 2 },
         webhooks: { enabled: false },
         api_keys_access: { enabled: false },
-        messages: { valueLimit: 500, unlimited: false },
+        credits: { valueLimit: 200 },       // $2.00 at 1 credit = 1 cent
     },
     starter: {
         sso: { enabled: false },
@@ -42,14 +41,13 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         agents: { valueLimit: 3 },
         integrations: { valueLimit: 5 },
         api_calls: { valueLimit: 10_000 },
-        llm_tokens: { valueLimit: 100_000 },
         storage_gb: { valueLimit: 200 },
         evals: { enabled: false },
         branding: { enabled: true },
         api_keys: { valueLimit: 5 },
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
-        messages: { valueLimit: 3000, unlimited: false },
+        credits: { valueLimit: 2_000 },     // $20
     },
     business: {
         sso: { enabled: true },
@@ -62,14 +60,13 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         agents: { valueLimit: 10 },
         integrations: { valueLimit: 20 },
         api_calls: { valueLimit: 100_000 },
-        llm_tokens: { valueLimit: 1_000_000 },
         storage_gb: { valueLimit: 1_000 },
         evals: { enabled: true },
         branding: { enabled: true },
         api_keys: { valueLimit: 20 },
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
-        messages: { valueLimit: 15000, unlimited: false },
+        credits: { valueLimit: 10_000 },    // $100
     },
     enterprise: {
         sso: { enabled: true },
@@ -82,14 +79,13 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         agents: { unlimited: true },
         integrations: { unlimited: true },
         api_calls: { unlimited: true },
-        llm_tokens: { unlimited: true },
         storage_gb: { unlimited: true },
         evals: { enabled: true },
         branding: { enabled: true },
         api_keys: { unlimited: true },
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
-        messages: { unlimited: true },
+        credits: { unlimited: true },
     },
 };
 

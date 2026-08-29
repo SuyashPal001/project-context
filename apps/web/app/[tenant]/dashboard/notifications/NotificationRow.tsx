@@ -1,25 +1,29 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import type { Notification } from "@/components/platform/notifications/types";
 import { relativeTime } from "./_helpers";
 
 interface NotificationRowProps {
     notification: Notification;
     canUpdate: boolean;
-    isApproving: boolean;
     onClick: (n: Notification) => void;
-    onApprove: (n: Notification) => void;
 }
 
-export function NotificationRow({ notification: n, canUpdate, isApproving, onClick, onApprove }: NotificationRowProps) {
-    const isApprovalTask =
-        n.messageType === "task.awaiting_approval" && typeof n.metadata?.taskId === "string";
+// `task.awaiting_approval` notifications used to render their own "Approve"
+// button here, wired directly to PUT /tasks/:taskId/plan/approve with no
+// cost estimate and no balance check — a bypass of the gated
+// `TaskExecutionCost` / `ApproveCost` card on the task detail page, which is
+// the only place a plan approval should be committed (see
+// docs/superpowers/specs/2026-08-28-credit-system-design.md). This row now
+// behaves like every other notification type: clicking it navigates to the
+// task detail page, where the gated card lives.
+export function NotificationRow({ notification: n, canUpdate, onClick }: NotificationRowProps) {
     const isClickable = (canUpdate && !n.read) || !!n.metadata?.taskId;
 
     return (
         <div
+            data-testid="notification-row"
             role="button"
             tabIndex={0}
             onClick={() => onClick(n)}
@@ -66,22 +70,7 @@ export function NotificationRow({ notification: n, canUpdate, isApproving, onCli
                 </div>
             </div>
 
-            {isApprovalTask && (
-                <div className="mt-2.5 flex justify-end">
-                    <Button
-                        size="sm"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onApprove(n);
-                        }}
-                        disabled={isApproving}
-                    >
-                        Approve
-                    </Button>
-                </div>
-            )}
-
-            {!isApprovalTask && !n.read && canUpdate && (
+            {!n.read && canUpdate && (
                 <div className="absolute right-4 bottom-3 opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-primary">
                         Click to mark read

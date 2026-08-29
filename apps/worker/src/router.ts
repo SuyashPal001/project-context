@@ -7,6 +7,7 @@ import { handleWebhookDelivery } from './handlers/webhookDelivery';
 import { handleUsageRecord } from './handlers/usageRecord';
 import { handleWorkflowFire } from './handlers/workflowFire';
 import { handleStoragePurge } from './handlers/storagePurge';
+import { handleCreditsExpire } from './handlers/creditsExpire';
 import { registerProductHandlers } from '@serverless-saas/agent-worker-handlers';
 
 type Handler = (body: Record<string, unknown>) => Promise<void>;
@@ -27,6 +28,7 @@ registerHandler('webhook.deliver', handleWebhookDelivery);
 registerHandler('usage.record', handleUsageRecord);
 registerHandler('workflow.fire', handleWorkflowFire);
 registerHandler('storage.purge', handleStoragePurge);
+registerHandler('credits.expire', handleCreditsExpire);
 
 // Product handlers (registered via product package — foundation never imports them directly)
 registerProductHandlers(registerHandler);

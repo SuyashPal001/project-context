@@ -5,13 +5,34 @@ import { getCacheClient } from '@serverless-saas/cache';
 import { db, AGENT_ORCHESTRATOR_URL, INTERNAL_SERVICE_KEY, sanitizeTaskInput, makeLog, extractAttachments } from './taskWorker.utils';
 import { startTaskHeartbeat, clearTaskHeartbeat } from '../lib/task-heartbeat';
 
-export async function handleExecution(taskId: string, traceId: string) {
+export async function handleExecution(taskId: string, traceId: string, attemptOverride?: number) {
     const log = makeLog(traceId, taskId);
     const task = await db.query.agentTasks.findFirst({ where: eq(agentTasks.id, taskId) });
     if (!task) throw new Error(`Task not found: ${taskId}`);
 
     const agent = task.agentId ? (await db.select({ name: agents.name }).from(agents).where(eq(agents.id, task.agentId)).limit(1))[0] : null;
     const steps = await db.select().from(taskSteps).where(eq(taskSteps.taskId, taskId)).orderBy(asc(taskSteps.stepNumber));
+
+    // Each abandoned charge needs the NEXT run to use its OWN credit charge
+    // key (task:{taskId}:attempt:{n} — see taskChargeKey() in
+    // @serverless-saas/agent-credits), or the retry's chargeTaskEstimate call
+    // replays the ORIGINAL (already-refunded) debit under the unsuffixed
+    // task:{taskId} key instead of actually charging. `attempt` is
+    // agent_tasks.credit_attempt, advanced by refundTask each time a charge is
+    // abandoned. 0 for a task that has never been refunded — the common case —
+    // keeps the exact original key.
+    //
+    // `attemptOverride` is supplied by the publisher (tasks.approval.ts's
+    // handlePlanApprove) at enqueue time, read ONCE there and carried in the
+    // SQS message body, precisely so an SQS redelivery of this exact message
+    // (the fetch below can run up to 290s against a Lambda timeout around
+    // 300s, so redelivery is plausible) reuses the SAME attempt rather than
+    // re-reading a higher one if a refund landed on this task in the gap
+    // between deliveries — which would otherwise charge the retry under a
+    // fresh key: a real double charge on a duplicate delivery. The column read
+    // below is kept only as a fallback for a message enqueued before that
+    // field existed.
+    const attempt = attemptOverride ?? task.creditAttempt;
     const pendingSteps = steps.filter((s: { status: string }) => s.status === 'pending');
 
     if (pendingSteps.length === 0 && steps.every((s: { status: string }) => s.status === 'done')) {
@@ -39,6 +60,7 @@ export async function handleExecution(taskId: string, traceId: string) {
                 links: (task.links ?? []).map((l: string) => `<user_input>${l}</user_input>`),
                 attachmentContext: attachmentContext ?? null,
                 steps: pendingSteps.map((s: typeof taskSteps.$inferSelect) => ({ id: s.id, stepNumber: s.stepNumber, title: sanitizeTaskInput(s.title), description: sanitizeTaskInput(s.description), toolName: s.toolName })),
+                attempt,
             }),
             signal: AbortSignal.timeout(290_000),
         });

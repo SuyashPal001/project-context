@@ -8,6 +8,7 @@ import { features, planEntitlements } from '@serverless-saas/database/schema/ent
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { getCacheClient, entitlementSetKey } from '@serverless-saas/cache';
+import { grantSubscriptionCycleCredits } from '../lib/creditsLifecycle';
 import type { AppEnv } from '../types';
 
 
@@ -109,6 +110,15 @@ const upgradeHandler = async (c: Context<AppEnv>) => {
     } catch (auditErr) {
         console.error('Audit log write failed:', auditErr);
     }
+
+    // Subscription-cycle credit grant (task 13; hardened after code review -
+    // see the design note on grantSubscriptionCycleCredits). Keyed per
+    // (tenant, plan, cycle), NOT per subscription row: this route cancels the
+    // active subscription and inserts a fresh-uuid row on every call, so a
+    // key built from that row would never repeat and a same-plan retry or a
+    // monthly<->annual toggle would each mint a brand new grant. Never
+    // throws - a grant failure must not roll back the subscription change.
+    await grantSubscriptionCycleCredits(tenantId, newSub.plan, newSub.billingCycle, newSub.startedAt);
 
     // Activate/deactivate agents based on new plan's agent limit
     try {

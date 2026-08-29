@@ -1,8 +1,10 @@
+import { InsufficientCreditsError } from '@serverless-saas/credits'
 import type { TaskStep } from '../types.js'
 import {
-  checkMessageQuota, checkTokenQuota, fetchAgentSkill,
+  fetchAgentSkill, fetchAgentModelSelection,
   fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage,
 } from '../usage.js'
+import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, settleTask, refundTask, taskChargeKey, DEFAULT_TASK_MODEL } from '../credits.js'
 import { taskExecutionWorkflow, documentWorkflow } from '../mastra/index.js'
 import type { WorkflowContext } from '../mastra/index.js'
 import { callInternalTaskApi, postTaskEval, logToolCall, postTaskComment } from './tasks.helpers.js'
@@ -25,22 +27,38 @@ export async function runMastraTaskSteps(
   links?: string[] | null,
   attachmentContext?: string | null,
   acceptanceCriteria?: string | null,
-  traceId: string = crypto.randomUUID()
+  traceId: string = crypto.randomUUID(),
+  // Computed once by the route handler (POST /api/tasks/execute) via
+  // taskChargeKey(taskId, attempt) and threaded through every
+  // chargeTaskEstimate/settleTask/refundTask call below, so a single run —
+  // whichever attempt it is — reads and writes under one consistent key.
+  // Defaults to attempt 0's key so any other caller (tests included) that
+  // omits it gets the original, unsuffixed `task:{taskId}` behavior.
+  chargeKey: string = taskChargeKey(taskId, 0)
 ): Promise<{ planResult?: PlanResult }> {
-  const quota = await checkMessageQuota(tenantId)
-  if (!quota.allowed) {
-    console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} quota exceeded used=${quota.used} limit=${quota.limit}`)
-    await postTaskComment(taskId, `❌ Message quota exceeded (${quota.used}/${quota.limit} messages used this month). Upgrade your plan to continue.`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Message quota exceeded' }, traceId)
-    return {}
-  }
-
-  const tokenQuota = await checkTokenQuota(tenantId)
-  if (!tokenQuota.allowed) {
-    console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} token quota exceeded used=${tokenQuota.used} limit=${tokenQuota.limit}`)
-    await postTaskComment(taskId, `❌ Token quota exceeded for your plan (${tokenQuota.used?.toLocaleString()}/${tokenQuota.limit?.toLocaleString()} tokens used this month). Upgrade to continue.`, agentId)
-    await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Token quota exceeded for your plan. Upgrade to continue.' }, traceId)
-    return {}
+  // Charging IS the balance check (see credits.ts) — do not add a separate
+  // checkCreditBalance pre-check in front of this. Idempotent by
+  // `chargeKey`: the route handler that dispatches to runMastraTaskSteps
+  // already charged this same estimate under this same key before calling
+  // in, so this call safely replays rather than double-charging.
+  const modelSelection = await fetchAgentModelSelection(agentId)
+  const model = modelSelection?.model ?? DEFAULT_TASK_MODEL
+  const estimateMicro = await estimateTaskMicro(steps.length, model)
+  try {
+    const rate = await resolveTaskRate(model)
+    await chargeTaskEstimate({
+      tenantId, taskId, agentId, estimateMicro,
+      rateId: rate?.id ?? null, rateVersion: rate?.version ?? null,
+      key: chargeKey,
+    })
+  } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      console.warn(`[mastra] tenantId=${tenantId} taskId=${taskId} insufficient credits for estimate=${estimateMicro}`)
+      await postTaskComment(taskId, `❌ Insufficient credits to run this task. Add credits to continue.`, agentId)
+      await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: 'Insufficient credits' }, traceId)
+      return {}
+    }
+    throw err
   }
 
   const skill = await fetchAgentSkill(agentId)
@@ -152,12 +170,23 @@ export async function runMastraTaskSteps(
       console.error(`[mastra/doc] tenantId=${tenantId} taskId=${taskId} error:`, message)
       await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId)
       await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+      await refundTask({ tenantId, taskId, chargeKey })
       return {}
     }
     if (!earlyTermination) {
       await postTaskComment(taskId, `✅ All steps completed.`, agentId)
       await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
       recordUsage({ tenantId, actorId: agentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+      void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, chargeKey })
+    } else {
+      // A workflow returning `status !== 'success'` (the ordinary failure
+      // shape) sets earlyTermination but throws nothing, so it never reaches
+      // either catch block below. Without this, the estimate charged at :42
+      // stands forever for work that never landed. refundTask is safe to
+      // call unconditionally: it no-ops for unlimited tenants, no-ops if a
+      // settle already ran for this task, and no-ops if net >= 0 (nothing
+      // was ever charged) — see tasks.workflow.ts for the same pattern.
+      await refundTask({ tenantId, taskId, chargeKey })
     }
     return { planResult: docPlanResult }
   }
@@ -215,6 +244,7 @@ export async function runMastraTaskSteps(
     console.error(`[mastra] tenantId=${tenantId} taskId=${taskId} workflow error:`, message)
     await postTaskComment(taskId, `❌ Task failed: ${message}`, agentId)
     await callInternalTaskApi(`/internal/tasks/${taskId}/fail`, { error: message }, traceId)
+    await refundTask({ tenantId, taskId, chargeKey })
     return {}
   }
 
@@ -223,6 +253,21 @@ export async function runMastraTaskSteps(
     await callInternalTaskApi(`/internal/tasks/${taskId}/complete`, { summary: 'All steps completed successfully.' }, traceId)
     await postTaskEval({ taskId, tenantId, taskTitle, taskDescription, finalOutput: stepOutputs.join('\n\n') || taskTitle })
     recordUsage({ tenantId, actorId: agentId, inputTokens: totalInputTokens, outputTokens: totalOutputTokens })
+    void settleTask({ tenantId, taskId, agentId, model, inputTokens: totalInputTokens, outputTokens: totalOutputTokens, chargeKey })
+  } else {
+    // Reachable from onStepFail, onTaskComment, or the workflow's own
+    // non-success result branch above — none of those throw, so none reach
+    // the catch block's refundTask call. Without this, the estimate charged
+    // at :42 stands forever for work that never landed. Safe unconditionally
+    // — see refundTask's settled-row and net>=0n guards.
+    //
+    // NOTE: onTaskComment (a clarification pause, not a terminal failure)
+    // also lands here and refunds. That's correct, not a bug: this refund
+    // advances agent_tasks.credit_attempt, so the resumed run gets its OWN
+    // chargeKey and its chargeTaskEstimate genuinely re-charges instead of
+    // replaying this now-refunded debit. See taskChargeKey() in
+    // @serverless-saas/agent-credits.
+    await refundTask({ tenantId, taskId, chargeKey })
   }
   return {}
 }

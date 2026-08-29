@@ -22,6 +22,7 @@ import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
 import { getMCPClientForTenant } from './mastra/tools.js'
 import { getThinkingBudget } from './mastra/thinking.js'
+import { loadRates } from './mastra/cost.js'
 
 // WebSocket server — noServer mode; upgrade events wired below
 const wss = new WebSocketServer({ noServer: true })
@@ -266,6 +267,12 @@ async function handleSession(
 }
 
 const port = Number(process.env.PORT ?? 3001)
+
+// A rate-table outage is a degraded state, not a boot failure — the
+// FALLBACK_PRICING map in cost.ts still prices correctly on its own.
+await loadRates().catch((err) => {
+  console.warn('[cost] loadRates() failed at startup, continuing with fallback pricing:', (err as Error).message)
+})
 
 const server = serve({ fetch: app.fetch, port }, () => {
   console.log(`agent-orchestrator listening on port ${port}`)

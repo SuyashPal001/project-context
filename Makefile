@@ -35,3 +35,8 @@ build-WatchdogFunction:
 	$(ESBUILD) $(REPO_ROOT)/products/agent-platform/packages/api/handlers/watchdogHandler.ts \
 	  --outfile=$(ARTIFACTS_DIR)/watchdogHandler.js \
 	  $(ESBUILD_FLAGS)
+
+build-CreditsExpireFunction:
+	$(ESBUILD) $(REPO_ROOT)/apps/worker/src/creditsExpireHandler.ts \
+	  --outfile=$(ARTIFACTS_DIR)/creditsExpireHandler.js \
+	  $(ESBUILD_FLAGS)

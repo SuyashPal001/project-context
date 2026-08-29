@@ -4,7 +4,6 @@ import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Inbox, AlertCircle, CheckCheck } from "lucide-react";
-import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { PermissionGate } from "@/components/platform/PermissionGate";
@@ -77,18 +76,6 @@ export default function NotificationsPage() {
         },
     });
 
-    const approveMutation = useMutation({
-        mutationFn: (taskId: string) =>
-            api.put(`/api/v1/tasks/${taskId}/plan/approve`, { approved: true }),
-        onSuccess: (_data, taskId) => {
-            queryClient.invalidateQueries({ queryKey: ["task", taskId] });
-            router.push(`/${tenantSlug}/dashboard/board/${taskId}`);
-        },
-        onError: () => {
-            toast.error("Failed to approve plan. Please try again.");
-        },
-    });
-
     const notifications = data?.items ?? [];
     const totalPages = Math.ceil((data?.total ?? 0) / (data?.limit ?? PAGE_SIZE)) || 1;
     const unreadCount = data?.unreadCount ?? 0;
@@ -98,12 +85,6 @@ export default function NotificationsPage() {
         if (n.metadata?.taskId) {
             router.push(`/${tenantSlug}/dashboard/board/${n.metadata.taskId}`);
         }
-    };
-
-    const handleApprove = (n: Notification) => {
-        if (!n.read && canUpdate) markReadMutation.mutate(n.id);
-        const taskId = n.metadata?.taskId;
-        if (typeof taskId === "string") approveMutation.mutate(taskId);
     };
 
     return (
@@ -166,9 +147,7 @@ export default function NotificationsPage() {
                                 key={n.id}
                                 notification={n}
                                 canUpdate={canUpdate}
-                                isApproving={approveMutation.isPending}
                                 onClick={handleRowClick}
-                                onApprove={handleApprove}
                             />
                         ))}
                     </div>

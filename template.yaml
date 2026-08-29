@@ -258,6 +258,37 @@ Resources:
     Metadata:
       BuildMethod: makefile
 
+  # ─────────────────────────────────────────────
+  # Credits Expiry Lambda — nightly sweep for tenants that never spend
+  # ─────────────────────────────────────────────
+  CreditsExpireFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-credits-expire-${EnvironmentName}"
+      Description: Credits Expiry Sweep — EventBridge schedule, zeroes expired unspent grants for dormant tenants
+      CodeUri: apps/worker/
+      Handler: creditsExpireHandler.handler
+      Timeout: 120
+      MemorySize: 256
+      Role: !Ref FoundationWorkerRoleArn
+      Environment:
+        Variables:
+          LAMBDA_TYPE: worker
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+      Events:
+        CreditsExpireSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Name: !Sub "${ProjectName}-credits-expire-${EnvironmentName}"
+            Description: Runs nightly credit expiry sweep for dormant tenants
+            Enabled: true
+            Input: '{"type":"credits.expire"}'
+    Metadata:
+      BuildMethod: makefile
+
 Outputs:
   FoundationApiLambdaArn:
     Value: !GetAtt FoundationApiFunction.Arn

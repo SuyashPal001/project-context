@@ -28,6 +28,7 @@
     "@serverless-saas/ai": "workspace:*",
     "@serverless-saas/auth": "workspace:*",
     "@serverless-saas/cache": "workspace:*",
+    "@serverless-saas/credits": "workspace:*",
     "@serverless-saas/database": "workspace:*",
     "@serverless-saas/entitlements": "workspace:*",
     "@serverless-saas/events": "workspace:*",

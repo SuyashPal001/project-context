@@ -42,3 +42,9 @@ const client = postgres(connectionString, {
 
 export const db = drizzle(client, { schema });
 export type DB = typeof db;
+
+// The raw postgres.js client behind Drizzle. Exported only so lib/credit-pool.ts
+// can wrap it in the node-pg-shaped interface @serverless-saas/agent-credits
+// expects — reusing this connection rather than opening a second one. Prefer
+// `db` for everything else.
+export const sqlClient = client;

@@ -9,7 +9,8 @@ import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRun } from '../usage.js'
+import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRun, recordUsage } from '../usage.js'
+import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
@@ -400,6 +401,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             : (process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
           costUsd = calculateCostUsd(modelName, inputTokens, outputTokens)
           persistCost({ tenantId, agentId: agentName ?? agentId, model: modelName, inputTokens, outputTokens })
+          debitChatTurn({ tenantId, agentId, messageId: sessionId, model: modelName, inputTokens, outputTokens })
+            .catch(err => console.error(`[credits:${sessionId}] debit failed:`, (err as Error).message))
+          recordUsage({ tenantId, actorId: agentId, inputTokens, outputTokens })   // the row chat never wrote
           console.log(`[tokens] model=${modelName} input=${inputTokens} output=${outputTokens} total=${totalTokens} cost=$${costUsd.toFixed(6)} fullTextLen=${fullText.length}`)
 
           const responseTimeMs = Date.now() - startTime

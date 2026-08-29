@@ -23,6 +23,7 @@ export const RESOURCES: Record<string, Action[]> = {
     entitlements: ['create', 'read', 'update', 'delete'],
     integrations: ['create', 'read', 'update', 'delete'],
     usage: ['read'],
+    credits: ['read', 'create'],
     webhooks: ['create', 'read', 'update', 'delete'],
     files: ['create', 'read', 'delete'],
     conversations: ['create', 'read', 'update', 'delete'],
