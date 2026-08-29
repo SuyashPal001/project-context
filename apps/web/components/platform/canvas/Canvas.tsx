@@ -7,7 +7,9 @@ import { ArtifactPanel } from './ArtifactPanel';
 import { FileCreatedCard } from './FileCreatedCard';
 import { AssetGallery } from './AssetGallery';
 import { AssetLightbox } from './AssetLightbox';
+import { FileTabContent } from './FileTabContent';
 import { CanvasTabStrip } from './CanvasTabStrip';
+import { X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type {
   CanvasState, CanvasEvent, CanvasOverlay, CanvasEventData,
@@ -20,6 +22,11 @@ interface CanvasProps {
   isExpanded?: boolean;
   onActivity?: () => void;
   onExpand?: () => void;
+  /** Fully closes the canvas panel (back to chat-only) — distinct from
+   * onExpand, which only toggles the split-view/full-width state. Without
+   * this, expanding the canvas hid the chat pane's own "Canvas" toggle
+   * (the only other way to close it), leaving no way back to chat. */
+  onCloseCanvas?: () => void;
   tenantSlug: string;
   flushPending: () => void;
   agentId?: string;
@@ -36,7 +43,7 @@ const initialState: CanvasState = {
 
 const OVERLAY_DURATION = 2000;
 
-export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, flushPending, agentId, conversationId }: CanvasProps) {
+export function Canvas({ isOpen, isExpanded, onActivity, onExpand, onCloseCanvas, tenantSlug, flushPending, agentId, conversationId }: CanvasProps) {
   const queryClient = useQueryClient();
   const [state, setState] = useState<CanvasState>(initialState);
   const [recentFiles, setRecentFiles] = useState<Array<{ path: string; type?: string }>>([]);
@@ -367,12 +374,26 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
       {/* Header */}
       <div className="flex-none flex items-center justify-between px-4 py-3 border-b border-border">
         <h3 className="font-semibold text-sm">Agent Canvas</h3>
-        {state.isActive && (
-          <span className="flex items-center gap-1.5 text-xs text-green-500">
-            <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
-            Live
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {state.isActive && (
+            <span className="flex items-center gap-1.5 text-xs text-green-500">
+              <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
+              Live
+            </span>
+          )}
+          {/* Always visible regardless of tab/expand state — the chat pane's
+              own "Canvas" toggle (the only other way to close this) gets
+              hidden once the canvas expands to full width. */}
+          {onCloseCanvas && (
+            <button
+              onClick={onCloseCanvas}
+              title="Close canvas"
+              className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab bar — always visible */}
@@ -429,7 +450,12 @@ export function Canvas({ isOpen, isExpanded, onActivity, onExpand, tenantSlug, f
         )}
 
         {activeTab.kind === 'file' && activeTab.asset && (
-          <AssetGallery conversationId={conversationId ?? ''} filterAssetId={activeTab.asset.id} fallbackAsset={activeTab.asset} onCardClick={(asset, allAssets) => setLightboxAsset({ asset, allAssets })} />
+          <FileTabContent
+            asset={activeTab.asset}
+            isExpanded={isExpanded}
+            onExpand={onExpand}
+            onClose={() => closeTab(activeTab.id)}
+          />
         )}
       </div>
       {lightboxAsset && (

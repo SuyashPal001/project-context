@@ -26,7 +26,7 @@ vi.mock('./useAudioRecorder', () => ({
 vi.mock('@/lib/pendingAttachments', () => ({ consumePendingAttachments: () => [] }));
 vi.mock('./SlashPalette', () => ({ SlashPalette: () => null }));
 vi.mock('./MentionPalette', () => ({ MentionPalette: () => null }));
-vi.mock('./DriveFilePicker', () => ({ DriveFilePicker: () => null }));
+vi.mock('./HashFilePalette', () => ({ HashFilePalette: () => null }));
 
 import { ChatInput } from './ChatInput';
 

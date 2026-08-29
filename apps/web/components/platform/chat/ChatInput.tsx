@@ -1,9 +1,8 @@
-import { ArrowUp, Loader2, Image as ImageIcon, Plus, Video, Mic, Square, Bot, Zap, Check, Sparkles, HardDrive } from "lucide-react";
+import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Puzzle, Check, Sparkles, FolderOpen } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -14,7 +13,6 @@ import { FileText } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { consumePendingAttachments } from "@/lib/pendingAttachments";
-import { DriveFilePicker } from "./DriveFilePicker";
 import { FolderScopeChip } from "./FolderScopeChip";
 import { MentionChip } from "./MentionChip";
 
@@ -25,6 +23,7 @@ import { RecordingBar } from "./RecordingBar";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { SlashPalette, PaletteHandle } from "./SlashPalette";
 import { MentionPalette } from "./MentionPalette";
+import { HashFilePalette } from "./HashFilePalette";
 import { ProviderIcon } from "./ProviderIcon";
 import { Agent } from "../agents/types";
 
@@ -93,7 +92,7 @@ interface ChatInputProps {
     onSend: (content: string, attachments?: Attachment[]) => void;
     onStop?: () => void;
     onVoiceClick?: () => void;
-    onMediaClick?: (type: 'image' | 'video' | 'audio' | 'document') => void;
+    onMediaClick?: (type: 'file' | 'video' | 'audio') => void;
     disabled?: boolean;
     isLoading?: boolean;
     isStreaming?: boolean;
@@ -123,7 +122,7 @@ export function ChatInput({
     isRevokingFolder,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
-    const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | null>(null);
+    const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | 'hash' | null>(null);
     const [paletteQuery, setPaletteQuery] = useState('');
     // Character range in `content` covered by the trigger (e.g. "/foo" or "@bar"),
     // captured at the moment it was typed. Used to splice the selection back into
@@ -144,8 +143,7 @@ export function ChatInput({
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [drivePickerOpen, setDrivePickerOpen] = useState(false);
-    const uploadTypeRef = useRef<'image' | 'video' | 'audio' | 'document' | null>(null);
+    const uploadTypeRef = useRef<'file' | 'video' | 'audio' | null>(null);
     const paletteRef = useRef<PaletteHandle>(null);
     // dragenter/dragleave fire on every child element as the pointer crosses them,
     // so a plain boolean flickers the overlay off while dragging over nested
@@ -197,7 +195,7 @@ export function ChatInput({
         setPaletteRange(null);
     };
 
-    const handleMediaClick = (type: 'image' | 'video' | 'audio' | 'document') => {
+    const handleMediaClick = (type: 'file' | 'video' | 'audio') => {
         if (uploader.isUploading) return;
         uploadTypeRef.current = type;
         fileInputRef.current?.click();
@@ -211,6 +209,16 @@ export function ChatInput({
         // silently no-ops.
         const cursor = textareaRef.current?.selectionStart ?? content.length;
         setPaletteMode('slash');
+        setPaletteQuery('');
+        setPaletteRange({ start: cursor, end: cursor });
+    };
+
+    // "From Drive" in the "+" menu — links to the same "#" picker rather than
+    // a separate dialog (the old DriveFilePicker.tsx was removed, merged into
+    // HashFilePalette). Same empty-range trick as handleUseEmployee above.
+    const handleOpenDrivePalette = () => {
+        const cursor = textareaRef.current?.selectionStart ?? content.length;
+        setPaletteMode('hash');
         setPaletteQuery('');
         setPaletteRange({ start: cursor, end: cursor });
     };
@@ -343,17 +351,9 @@ export function ChatInput({
                 accept={
                     uploadTypeRef.current === 'video' ? "video/*" :
                     uploadTypeRef.current === 'audio' ? "audio/*" :
-                    uploadTypeRef.current === 'document' ? DOCUMENT_ACCEPT :
                     `image/*,video/*,audio/*,${DOCUMENT_ACCEPT}`
                 }
                 onChange={handleFileChange}
-            />
-
-            <DriveFilePicker
-                open={drivePickerOpen}
-                onOpenChange={setDrivePickerOpen}
-                remainingSlots={Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - uploader.attachments.length)}
-                onConfirm={uploader.addAttachments}
             />
 
             <div className="relative max-w-3xl mx-auto w-full">
@@ -388,6 +388,34 @@ export function ChatInput({
                             setMentionedAgents(prev => prev.some(a => a.id === agent.id) ? prev : [...prev, agent]);
                             // The palette owns its own search input (focus lives there, not
                             // the textarea, while it's open) — hand focus back once a pick is made.
+                            textareaRef.current?.focus();
+                        }}
+                        onClose={() => {
+                            setPaletteMode(null);
+                            setPaletteQuery('');
+                            setPaletteRange(null);
+                            textareaRef.current?.focus();
+                        }}
+                    />
+                )}
+                {paletteMode === 'hash' && (
+                    <HashFilePalette
+                        ref={paletteRef}
+                        query={paletteQuery}
+                        remainingSlots={Math.max(0, MAX_ATTACHMENTS_PER_MESSAGE - uploader.attachments.length)}
+                        onConfirm={(files) => {
+                            // Same as the mention chip: strip the typed "#query" trigger
+                            // text, the picks show up in the attachment strip instead —
+                            // not as text inside the draft.
+                            setContent(c => {
+                                if (!paletteRange) return c;
+                                return c.slice(0, paletteRange.start) + c.slice(paletteRange.end);
+                            });
+                            // Reference by fileId, not a re-upload — dedupes against
+                            // anything already attached and renders in the same
+                            // AttachmentStrip. This is now the only Drive-attach path;
+                            // the old "+" -> "From Drive" checkbox dialog was merged in.
+                            uploader.addAttachments(files.map(file => ({ fileId: file.id, name: file.filename, type: file.contentType, size: file.size })));
                             textareaRef.current?.focus();
                         }}
                         onClose={() => {
@@ -506,6 +534,7 @@ export function ChatInput({
                                     const upToCursor = value.slice(0, cursor);
                                     const slashMatch = upToCursor.match(/(?:^|\s)\/(\w*)$/);
                                     const mentionMatch = upToCursor.match(/(?:^|\s)@(\w*)$/);
+                                    const hashMatch = upToCursor.match(/(?:^|\s)#(\w*)$/);
                                     if (slashMatch) {
                                         const query = slashMatch[1];
                                         setPaletteMode('slash');
@@ -520,6 +549,11 @@ export function ChatInput({
                                         setPaletteMode('mention');
                                         setPaletteQuery(query);
                                         setPaletteRange({ start: cursor - 1 - query.length, end: cursor });
+                                    } else if (hashMatch) {
+                                        const query = hashMatch[1];
+                                        setPaletteMode('hash');
+                                        setPaletteQuery(query);
+                                        setPaletteRange({ start: cursor - 1 - query.length, end: cursor });
                                     } else {
                                         setPaletteMode(null);
                                         setPaletteQuery('');
@@ -527,7 +561,7 @@ export function ChatInput({
                                     }
                                 }}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Ask anything, @ to mention, / for workflows..."
+                                placeholder="Ask anything, @ to mention, / for workflows, # for files..."
                                 className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50 caret-primary"
                                 disabled={disabled}
                             />
@@ -543,29 +577,24 @@ export function ChatInput({
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent side="top" align="start" className="w-52 p-2">
                                                 <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add context</div>
-                                                <DropdownMenuItem onClick={() => handleMediaClick('image')} className="gap-2 cursor-pointer py-2">
-                                                    <ImageIcon className="h-4 w-4" />
-                                                    <span>Media</span>
+                                                <DropdownMenuItem onClick={() => handleMediaClick('file')} className="gap-2 cursor-pointer py-2">
+                                                    <FileText className="h-4 w-4" />
+                                                    <span>Upload</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={() => handleMediaClick('video')} className="hidden gap-2 cursor-pointer py-2">
                                                     <Video className="h-4 w-4" />
                                                     <span>Video</span>
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleMediaClick('document')} className="gap-2 cursor-pointer py-2">
-                                                    <FileText className="h-4 w-4" />
-                                                    <span>Document (PDF, DOCX)</span>
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => setDrivePickerOpen(true)} className="gap-2 cursor-pointer py-2">
-                                                    <HardDrive className="h-4 w-4" />
+                                                <DropdownMenuItem onClick={handleOpenDrivePalette} className="gap-2 cursor-pointer py-2">
+                                                    <FolderOpen className="h-4 w-4" />
                                                     <span>From Drive</span>
                                                 </DropdownMenuItem>
-                                                <DropdownMenuSeparator />
                                                 <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
                                                     <Bot className="h-4 w-4" />
                                                     <span>Use employee</span>
                                                 </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
-                                                    <Zap className="h-4 w-4" />
+                                                    <Puzzle className="h-4 w-4" />
                                                     <span>Use skill</span>
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
