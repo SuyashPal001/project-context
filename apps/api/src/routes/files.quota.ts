@@ -10,6 +10,19 @@
 /** Binary gigabyte. Entitlements store GB; every byte comparison uses this. */
 export const GB_BYTES = 1024 ** 3;
 
+/**
+ * How long a presigned upload URL stays valid, and therefore how old a still
+ * `pending` row must be before its upload counts as abandoned. Lives here with
+ * the other policy constants so the reclamation sweep and the signer cannot
+ * drift apart — sweeping earlier than the expiry would kill an upload still
+ * legitimately in flight.
+ */
+export const PRESIGN_EXPIRY_MS = 3600 * 1000;
+
+export function abandonedBefore(now: Date): Date {
+  return new Date(now.getTime() - PRESIGN_EXPIRY_MS);
+}
+
 /** Per-file ceiling. Fits phone video and long audio, so real users never hit it. */
 export const MAX_FILE_BYTES = 500 * 1024 * 1024;
 

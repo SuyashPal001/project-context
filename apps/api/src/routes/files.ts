@@ -7,6 +7,7 @@ import { auditLog, files } from '@serverless-saas/database/schema';
 import { features } from '@serverless-saas/database/schema/entitlements';
 import { decideUpload, resolveStorageLimit } from './files.quota';
 import { sumTenantStorageBytes } from '../usage-counters';
+import { reclaimAbandonedUploads } from './files.reclaim';
 import { hasPermission } from '@serverless-saas/permissions';
 import { eq, and, ne, isNull } from 'drizzle-orm';
 import { publishToQueue } from '@serverless-saas/queue';
@@ -71,6 +72,16 @@ filesRoutes.post(
     const permissions = requestContext?.permissions || [];
     if (!hasPermission(permissions, 'files', 'create')) {
       return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
+    }
+
+    // Reclaim first: an abandoned upload's bytes should not count against the
+    // quota of the person trying to upload again. Failing here must not block
+    // the upload — the sweep is opportunistic housekeeping, not part of the
+    // request's contract.
+    try {
+      await reclaimAbandonedUploads(tenantId);
+    } catch (error) {
+      console.error('Abandoned-upload sweep failed — continuing with upload', { tenantId, error });
     }
 
     // Enforce before signing. A gate after the signature still hands out a

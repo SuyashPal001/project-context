@@ -14,7 +14,10 @@ export const personFolders = pgTable('person_folders', {
 }));
 
 // File status enum
-export const fileStatusEnum = pgEnum('file_status', ['pending', 'uploaded', 'deleted']);
+// `expired` is kept distinct from `deleted` so the two populations stay
+// separable: `deleted` means a user removed a real file, `expired` means an
+// upload was presigned but never confirmed and its bytes are being reclaimed.
+export const fileStatusEnum = pgEnum('file_status', ['pending', 'uploaded', 'deleted', 'expired']);
 export const ingestionStatusEnum = pgEnum('ingestion_status', ['pending', 'processing', 'done', 'failed']);
 
 // Files table - tracks uploaded files metadata
