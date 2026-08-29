@@ -26,8 +26,14 @@ describe('files upload route wiring', () => {
     expect(source).toMatch(/getUploadUrl\(\{[\s\S]*?size,[\s\S]*?\}\)/);
   });
 
-  it('accepts size as optional, so callers can be migrated after this ships', () => {
-    expect(source).toMatch(/size:\s*z\.number\(\)\.int\(\)\.positive\(\)\.optional\(\)/);
+  it('requires size, now that every caller sends it', () => {
+    expect(source).toMatch(/size:\s*z\.number\(\)\.int\(\)\.positive\(\)(?!\.optional)/);
+  });
+
+  it('has no unguarded path left that skips the gate', () => {
+    // The `if (size !== undefined)` wrapper existed only for the migration
+    // window. Leaving it means an omitted size silently skips enforcement.
+    expect(source).not.toMatch(/if\s*\(size\s*!==\s*undefined\)/);
   });
 
   it('rejects with 413, the status that means the payload is too large', () => {
