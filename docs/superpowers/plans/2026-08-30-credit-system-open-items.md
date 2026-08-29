@@ -1,7 +1,7 @@
 # Credit System — open items
 
-Written 2026-08-30, revised the same day after the money-bug pass shipped. **Start a new
-session from this file.**
+Written 2026-08-30, revised the same day after the money-bug pass and renewal grants
+shipped. **Start a new session from this file.**
 
 The credit system is built, reviewed, merged, pushed and fully deployed to dev. This lists
 what is left, ordered by what can cost money. Every item has a file:line so you can go
@@ -13,14 +13,21 @@ straight to it.
 
 | | |
 |---|---|
-| Branch | `origin/main` at `cf882f7c` — everything below is merged and pushed |
-| Dev database | migrations through **0073 applied** (74 total); seeds run; backfill run. `agent_tasks.credit_attempt` present, existing rows at 0 |
-| Backfill result | 4/4 tenants granted, second run granted 0, **invariant 3 verified holding** (re-checked after 0073) |
-| AWS dev | all Lambdas deployed as of `cf882f7c`; `project-context-credits-expire-dev` Active; EventBridge `rate(1 day)` ENABLED. Watchdog invoked post-deploy, clean against the new column |
-| GCP VM | deployed as of `cf882f7c` |
+| Branch | `origin/main` at `5106f039` — everything below is merged and pushed |
+| Dev database | migrations through **0075 applied** (76 total); seeds run; backfill run. `agent_tasks.credit_attempt` and `credit_packs` present |
+| Backfill result | 4/4 tenants granted, second run granted 0, **invariant 3 verified holding** (re-checked after every migration since) |
+| AWS dev | all Lambdas deployed as of `5106f039`. `project-context-credits-expire-dev` and `project-context-credits-renew-dev` both Active, EventBridge `rate(1 day)` ENABLED on each. Renewal invoked post-deploy: 4 candidates, 4 granted, repeat run granted 0 |
+| GCP VM | deployed as of `cf882f7c` — **renewal and packs are database/Lambda-only, so the VM needs no redeploy for them** |
 
-**Everything in sections 1 and 2 is shipped.** What remains starts at section 3.
-Sections 1 and 2 are kept as the record of what was wrong and why, because the
+> **Deploying concurrently with another session: push before you deploy.** On
+> 2026-08-30 `CreditsRenewFunction` was created by one `sam deploy` and deleted 76
+> seconds later by a second one running from a checkout that predated the commit —
+> CloudFormation correctly removed a resource its template no longer declared. The
+> stack is shared and last-writer-wins on resource existence, so an unpushed local
+> template silently loses whatever another session does not have.
+
+**Everything in sections 1, 2 and 5a is shipped.** What remains starts at section 3.
+Those are kept as the record of what was wrong and why, because the
 reasoning is what stops it coming back — not as a to-do list.
 
 **No path in the system produces a double credit.** That was verified as the closing
@@ -35,7 +42,7 @@ own plan at `docs/superpowers/plans/2026-08-30-credit-money-bugs.md`.
 
 ## 1. Do first — the browser checklist, the only thing never verified
 
-Deployment is done: migration, Lambdas, VM, in that order. The ordering rule is worth
+Deployment is done for everything shipped so far. The ordering rule is worth
 keeping for the next schema change — **a migration adding a column that handlers select
 unconditionally must land before the Lambdas**, or every task approval and every
 watchdog sweep throws until it does.
@@ -160,22 +167,46 @@ rule and costs one predicate.
 
 ---
 
-## 5. Phases already specced, not built
+## 5. The two specced phases
 
-- `docs/superpowers/specs/2026-08-29-subscription-renewal-grants.md` — the nightly job
-  that refills each cycle. **Until this ships, every metered tenant's balance reaches
-  zero at their first cycle end and never refills.** With the fail-closed pre-check
-  that is a hard stop, not a degradation. Decisions already taken: `trialing` excluded;
-  `grantSubscriptionCycleCredits` needs its `startedAt` split into an anchor and a
-  `now`, or a scheduled caller silently grants nothing forever.
-- `docs/superpowers/specs/2026-08-29-credit-purchase.md` — self-serve buying. **Until
-  this ships, a tenant at zero has no recourse at all** — not self-serve, and not
-  manual, since no reachable route holds `credits:create`. Decisions already taken: 2×
-  markup held in the *sale price* not `credit_rates`; purchased credits expire in 12
-  months so FIFO burns the monthly allowance first.
+### 5a. Renewal grants — SHIPPED 2026-08-30
+
+`docs/superpowers/specs/2026-08-29-subscription-renewal-grants.md`, built and deployed.
+`CreditsRenewFunction` runs `rate(1 day)`; verified on dev granting each tenant its own
+anniversary (Aug 3→Sep 3, Aug 11→Sep 11, Jul 28→Sep 28 — a broken anchor would have
+given them all one date), with repeat runs granting nothing and invariant 3 holding.
+
+The signature fix it required is worth remembering: `grantSubscriptionCycleCredits` had
+one `startedAt` argument serving as both the anniversary anchor and the already-granted
+clock, which is now `anchor` plus `now`. Never re-conflate them — a scheduled caller
+passing a real `started_at` for both grants nothing, silently, forever.
+
+### 5b. Credit purchase — HALF BUILT, blocked on a payment provider
+
+`docs/superpowers/specs/2026-08-29-credit-purchase.md`. Shipped: the `credit_packs`
+table, its seed (500/$10, 1,250/$25, 5,000/$100 at exactly 2¢ per credit), and the
+price arithmetic the webhook runs in reverse. Not built: checkout and the webhook.
+
+**Blocked, and not on code.** No payment provider SDK exists in this repo, and the
+webhook cannot be written honestly without a real signing secret — the spec is explicit
+that its signature check is the security boundary of the whole feature, a public
+endpoint that mints credits, so a stubbed verifier is not a smaller version of it.
+
+**Stripe has proved difficult to obtain for this entity.** The provider options,
+including why Google Pay and Link are not alternatives and why a Merchant of Record is
+the category that fits, are recorded in that spec's §5 under "Provider options".
+Paddle is the standing recommendation and is already in the `billing_provider` enum.
+**The decision is open — do not pick one unprompted.**
+
+**Until purchase ships, a tenant on the top plan who exhausts its cycle has no
+recourse** — not self-serve, and not manual, since no reachable route holds
+`credits:create`. Renewal closed the "zero forever" case, not this one.
 
 Ops-side granting — comping, trial extensions, correcting a billing mistake — is
-deferred to the mission control portal and is covered by neither spec.
+deferred to the mission control portal and covered by neither spec. It would also be
+the smallest thing that unblocks the case above, and is provider-independent; declined
+on 2026-08-29 in favour of self-serve buying, noted again only because the Stripe
+blocker changes that premise.
 
 ---
 
@@ -195,9 +226,11 @@ deferred to the mission control portal and is covered by neither spec.
 - **Local test database:** `postgresql://suyash@localhost:5432/credit_system_test` —
   Homebrew postgresql@18, pgvector 0.8.6 built from source. A test run reporting
   "skipped" is not a passing run.
-- **Suite baselines** after the money-bug pass: foundation credits 24, `apps/api` 86,
-  `apps/worker` 13, `apps/web` 196, agent-platform api 304, agent-orchestrator 200
-  (1 file fails to COLLECT for a pre-existing unbuilt-`dist` reason — do not chase it).
+- **Suite baselines** after renewal grants: foundation credits 24, foundation database
+  20, `apps/api` 119, `apps/worker` 23, `apps/web` 196, agent-platform api 304,
+  agent-orchestrator 200 (1 file fails to COLLECT for a pre-existing unbuilt-`dist`
+  reason — do not chase it). `apps/api` jumped from 86 because another session's
+  storage work added five test files, not because of anything here.
 - **`apps/api` needs `DATABASE_URL` as well as `TEST_DATABASE_URL`.** With only the
   latter, one file fails to import `packages/foundation/database` and the run reports
   73 instead of 86 — a partial pass that looks like a pass.

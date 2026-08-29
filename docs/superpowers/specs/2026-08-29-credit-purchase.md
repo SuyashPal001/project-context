@@ -216,6 +216,45 @@ chargebee. The flow above is provider-shaped but not provider-specific; picking 
 the implementation plan's first task, and Stripe is the assumption baked into the
 `amount_total` and session-metadata references.
 
+### Provider options — recorded 2026-08-30, decision still open
+
+**Stripe is blocked.** Obtaining a Stripe account has proved difficult for this entity.
+Everything below follows from that.
+
+**Google Pay is not an option, and neither is Link.** Both are payment *methods* — a
+wallet that hands over a card — not processors. They settle nothing, create no charges
+and fire no webhooks; they sit on top of a processor that does. Recorded explicitly
+because it is a natural assumption and costs a day to discover.
+
+**The category that solves this is a Merchant of Record (MoR).** An MoR becomes the
+legal seller: it takes the card, handles VAT/GST in every jurisdiction, absorbs the
+compliance, and pays the vendor. For an Indian entity selling software internationally
+that removes the need to be an approved merchant anywhere, and sidesteps per-transaction
+inward-remittance paperwork. It is the standard path for this shape of business.
+
+| Option | Notes |
+|---|---|
+| **Paddle** — the recommendation | MoR, accepts Indian sellers, well documented, and **already in the `billing_provider` enum**, so switching to it needs no migration. Fees ~5% against Stripe's ~3%; that difference is the price of not being the merchant, and it is affordable at a 50% margin. Paddle is selective about what it will sell, though a real B2B SaaS is their target. |
+| **Lemon Squeezy** | MoR with the simplest onboarding, but Stripe acquired them — onboarding may route back through Stripe and defeat the purpose. Verify before investing. |
+| **Dodo Payments / Polar** | Newer MoRs; Dodo is Indian-founded and built for exactly this problem. Less proven, and their webhook signature schemes would need to be read from current docs rather than assumed. |
+| **Razorpay** | Easiest to obtain, but **not** an MoR: the tenant's seller stays the merchant, international acceptance needs separate approval, and tax filing stays in-house. Sensible only if buyers are mostly Indian. |
+
+**Switching costs little.** The pack table, the pricing arithmetic, the grant path and
+the idempotency key are all provider-agnostic. Only two pieces are provider-specific —
+creating a checkout session, and verifying the webhook signature — roughly 150 lines.
+The contract in §2.2 (verify signature first; identity from metadata; value from the
+verified amount) holds for any provider.
+
+**Verify current terms before committing.** Payment-provider onboarding requirements
+change often, and this table reflects knowledge as of mid-2026.
+
+**A smaller unblock exists, if self-serve is not urgent.** An ops route holding
+`credits:create` would let a human top a tenant up after taking payment by any means —
+bank transfer, payment link, invoice. That is far less work than a payment integration
+and is provider-independent. It was declined on 2026-08-29 in favour of self-serve
+buying; recorded again here only because Stripe being unobtainable changes the premise
+that decision rested on. Still the user's call.
+
 **Test-mode money.** The webhook must distinguish live from test events, or a test
 purchase in a shared environment grants real credits. The provider flags this on the
 event; check it explicitly rather than relying on separate keys.
