@@ -4,6 +4,9 @@ import { zValidator } from '@hono/zod-validator';
 import { storageService } from '@serverless-saas/storage';
 import { db } from '@serverless-saas/database';
 import { auditLog, files } from '@serverless-saas/database/schema';
+import { features } from '@serverless-saas/database/schema/entitlements';
+import { decideUpload, resolveStorageLimit } from './files.quota';
+import { sumTenantStorageBytes } from '../usage-counters';
 import { hasPermission } from '@serverless-saas/permissions';
 import { eq, and, ne, isNull } from 'drizzle-orm';
 import { publishToQueue } from '@serverless-saas/queue';
@@ -50,12 +53,16 @@ filesRoutes.post(
     contentType: z.string().min(1).max(127),
     key: z.string().max(512).optional(),
     personFolderId: z.string().uuid().optional(),
+    // Optional for now: every caller must be shipped sending it before this can
+    // be required, or agent file generation breaks between the Lambda deploy and
+    // the orchestrator restart. See the plan's deployment order.
+    size: z.number().int().positive().optional(),
   })),
   async (c) => {
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const userId = c.get('userId');
-    const { filename, contentType, key: userKey, personFolderId } = c.req.valid('json');
+    const { filename, contentType, key: userKey, personFolderId, size } = c.req.valid('json');
 
     if (!userId) {
       return c.json({ error: 'Forbidden', message: 'Missing userId' }, 403);
@@ -66,12 +73,47 @@ filesRoutes.post(
       return c.json({ error: 'Forbidden', message: 'Missing permission: files:create' }, 403);
     }
 
+    // Enforce before signing. A gate after the signature still hands out a
+    // working upload URL, and the bytes land regardless of what we return.
+    if (size !== undefined) {
+      const [feature] = await db.select().from(features).where(eq(features.key, 'storage_gb')).limit(1);
+      if (!feature) {
+        return c.json({ error: 'Feature configuration missing', code: 'FEATURE_NOT_FOUND' }, 500);
+      }
+
+      const limit = resolveStorageLimit(requestContext?.entitlements, feature.id);
+      // Skipping the sum for unlimited tenants is safe: decideUpload returns
+      // early on the flag and never reads usedBytes. This is not the metering
+      // the deferred pay-as-you-go billing needs — that comes from periodic
+      // snapshots reading the same counter, not from the upload path.
+      const usedBytes = limit.unlimited ? 0 : await sumTenantStorageBytes(tenantId);
+      const decision = decideUpload({ size, usedBytes, limit });
+
+      if (!decision.allowed) {
+        // The numbers go in the payload, not the UI: this rejection is the only
+        // place in the product where a storage limit is ever named.
+        return c.json(
+          decision.code === 'file_too_large'
+            ? { error: 'File is too large', code: decision.code, maxBytes: decision.maxBytes, size: decision.size }
+            : {
+                error: 'Not enough storage remaining',
+                code: decision.code,
+                usedBytes: decision.usedBytes,
+                limitBytes: decision.limitBytes,
+                size: decision.size,
+              },
+          413,
+        );
+      }
+    }
+
     const result = await storageService.getUploadUrl({
       tenantId,
       filename,
       contentType,
       uploadedBy: userId,
       userKey,
+      size,
     });
 
     // Link to person folder if provided
