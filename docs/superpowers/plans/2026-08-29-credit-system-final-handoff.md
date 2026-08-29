@@ -140,3 +140,31 @@ The two rollout blockers the owner must decide on, both recorded there in full:
    holder of `billing:update` can self-serve one allowance per cycle. These two
    interact: upgrade is currently the *only* replenishment path, so closing the gate
    without building renewals leaves tenants no way to obtain credits at all.
+
+---
+
+## Phasing decided 2026-08-29
+
+Two follow-on specs were written during the handoff discussion and are **deliberately
+not built**. The credit system ships first; these are later phases.
+
+- `docs/superpowers/specs/2026-08-29-subscription-renewal-grants.md` — the nightly job
+  that refills a balance each cycle. Decisions taken: `trialing` subscriptions are
+  excluded (a trial is one-shot); the one real design problem is that
+  `grantSubscriptionCycleCredits` uses `startedAt` both as the anniversary anchor and
+  as the already-granted test, which works for the upgrade path and makes a scheduled
+  caller silently grant nothing forever.
+- `docs/superpowers/specs/2026-08-29-credit-purchase.md` — self-serve buying.
+  Decisions taken: 2x markup held in the **sale price**, not `credit_rates` (doubling
+  the rate table would silently halve what every plan allowance buys); purchased
+  credits expire in 12 months, so FIFO burns the monthly allowance before the paid
+  balance with no extra logic.
+
+Ops-side granting (comping, trial extensions, correcting a billing mistake) is
+deferred to the mission control portal and is not covered by either spec.
+
+**What this phasing means for the live system.** Until the renewal job ships, a
+metered tenant's balance reaches zero at the first cycle end and stays there; until
+purchasing ships, there is no recourse for a tenant at zero — not self-serve, and not
+manual, since `credits:create` is held by no role. Both are known and accepted for
+this phase. The immediate work is making the shipped logic correct, not extending it.
