@@ -22,6 +22,8 @@ import { useFileIngestion } from "./hooks/useFileIngestion";
 import { useFileSelection } from "./hooks/useFileSelection";
 import { useFileMutations } from "./hooks/useFileMutations";
 import { useFileFilters } from "./hooks/useFileFilters";
+import { useStorageUsage } from "./hooks/useStorageUsage";
+import { StorageMeter, shouldShowMeter } from "./components/StorageMeter";
 import type { FileRecord, FolderCard } from "./types";
 import type { ConversationsResponse } from "@/components/platform/chat/types";
 import { AddToChatMenu } from "./components/AddToChatMenu";
@@ -47,6 +49,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const ingestion = useFileIngestion({ prefix, onPrefixChange });
     const selection = useFileSelection();
     const mutations = useFileMutations();
+    const storageUsage = useStorageUsage();
 
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
@@ -167,6 +170,17 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     </div>
                 ))}
             </div>
+
+            {/* Outside the loading/empty branches below, and above the folder
+                contents: a tenant near their ceiling should see it whichever
+                folder they happen to be standing in, including an empty one. */}
+            {storageUsage && shouldShowMeter(storageUsage) && (
+                <StorageMeter
+                    percent={storageUsage.percent}
+                    usedBytes={storageUsage.usedBytes}
+                    limitBytes={storageUsage.limitBytes}
+                />
+            )}
 
             {isLoading ? (
                 <div className="flex justify-center py-12 flex-col items-center gap-4 text-muted-foreground border border-border rounded-lg bg-card">
