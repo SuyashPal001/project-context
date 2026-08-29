@@ -142,7 +142,7 @@ export function useTaskMutations(taskId: string, tenantSlug: string, task: Task 
         try {
             const { data: fileData } = await api.post<{ data: { fileId: string; uploadUrl: string } }>(
                 '/api/v1/files/upload',
-                { filename: file.name, contentType: file.type || 'application/octet-stream' }
+                { filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size }
             )
             await fetch(fileData.uploadUrl, {
                 method: 'PUT',

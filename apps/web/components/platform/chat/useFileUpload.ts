@@ -83,7 +83,7 @@ export async function uploadToS3(file: Blob, filename: string, contentType: stri
     const key = `chat-attachments/${crypto.randomUUID()}-${filename}`;
     const uploadRes = await api.post<{ data: { fileId: string; uploadUrl: string; key: string } }>(
         "/api/v1/files/upload",
-        { filename, contentType, key }
+        { filename, contentType, key, size }
     );
     const { fileId, uploadUrl } = uploadRes.data;
 

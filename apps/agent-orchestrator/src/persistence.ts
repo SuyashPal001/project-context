@@ -259,6 +259,10 @@ export async function uploadGeneratedFile(
         filename: name,
         contentType: type,
         key: generatedFileKey(conversationId, title),
+        // Byte length, not string length — the two differ for multi-byte
+        // content, and the size is signed into the URL so S3 rejects a
+        // mismatched body.
+        size,
       }),
     })
     if (!res.ok) {

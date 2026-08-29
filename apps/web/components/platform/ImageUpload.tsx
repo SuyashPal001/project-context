@@ -35,6 +35,7 @@ export function ImageUpload({ value, onChange, onFileIdChange, fallbackText, dis
             const { data } = await api.post<{ data: { fileId: string; uploadUrl: string } }>('/api/v1/files/upload', {
                 filename: file.name,
                 contentType: file.type,
+                size: file.size,
             });
 
             // 2. Upload to S3 (raw fetch to avoid JSON headers)

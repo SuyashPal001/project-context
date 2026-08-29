@@ -85,7 +85,7 @@ export function CreateTaskDialog({
         try {
             const { data } = await api.post<{ data: { fileId: string; uploadUrl: string } }>(
                 '/api/v1/files/upload',
-                { filename: file.name, contentType: file.type || 'application/octet-stream' }
+                { filename: file.name, contentType: file.type || 'application/octet-stream', size: file.size }
             )
             const uploadRes = await fetch(data.uploadUrl, {
                 method: 'PUT',

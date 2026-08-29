@@ -62,6 +62,27 @@ describe('uploadGeneratedFile', () => {
     expect(calls[2]).toBe('POST /api/v1/files/file-1/confirm')
   })
 
+  it('declares the byte size on the presign request', async () => {
+    // Byte length, not string length: the two differ for multi-byte content and
+    // the size is signed into the URL, so a wrong value makes S3 reject the PUT.
+    const bodies: string[] = []
+    global.fetch = vi.fn(async (url: any, init: any) => {
+      const u = String(url)
+      if (u.includes('/files/upload')) {
+        bodies.push(init?.body as string)
+        return jsonResponse({ data: { fileId: 'file-1', uploadUrl: 'https://s3.test/put' } }, 201)
+      }
+      if (u === 'https://s3.test/put') return jsonResponse({}, 200)
+      if (u.includes('/confirm')) return jsonResponse({ success: true, fileId: 'file-1' }, 200)
+      throw new Error(`unexpected fetch: ${u}`)
+    }) as any
+
+    const content = '# héllo'
+    await uploadGeneratedFile('tok', { conversationId: 'c1', title: 'T', content })
+
+    expect(JSON.parse(bodies[0]).size).toBe(Buffer.byteLength(content))
+  })
+
   it('returns null rather than throwing when the presigned PUT fails', async () => {
     global.fetch = vi.fn(async (url: any) => {
       const u = String(url)

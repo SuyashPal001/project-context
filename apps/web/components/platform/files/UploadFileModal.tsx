@@ -135,6 +135,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
           contentType: file.type || 'application/octet-stream',
           key: objectKey(file.name),
           personFolderId,
+          size: file.size,
         }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to get upload URL')

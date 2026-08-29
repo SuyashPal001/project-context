@@ -30,6 +30,23 @@ describe('saveAvatarAsset', () => {
         expect(fetchMock).toHaveBeenCalledTimes(4);
     });
 
+    it('declares the SVG byte size on the presign request', async () => {
+        // The size is signed into the upload URL, so omitting it means no quota
+        // enforcement for this path at all.
+        fetchMock
+            .mockResolvedValueOnce(res(200, { data: { fileId: 'file-1', uploadUrl: 'https://s3.example/put-url' } }))
+            .mockResolvedValueOnce(res(200))
+            .mockResolvedValueOnce(res(200, { success: true, fileId: 'file-1' }))
+            .mockResolvedValueOnce(res(200, { presignedUrl: 'https://s3.example/display-url' }));
+
+        const svg = '<svg></svg>';
+        const { saveAvatarAsset } = await import('./saveAvatarAsset');
+        await saveAvatarAsset(svg, 'agent-avatar.svg');
+
+        const presignBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+        expect(presignBody.size).toBe(new Blob([svg]).size);
+    });
+
     it('uploads the SVG to S3 with an image/svg+xml content type', async () => {
         fetchMock
             .mockResolvedValueOnce(res(200, { data: { fileId: 'file-1', uploadUrl: 'https://s3.example/put-url' } }))
@@ -58,7 +75,11 @@ describe('saveAvatarAsset', () => {
 
         const [, uploadOptions] = fetchMock.mock.calls[0];
         const body = JSON.parse(uploadOptions.body);
-        expect(body).toEqual({ filename: 'agent-avatar.svg', contentType: 'image/svg+xml' });
+        expect(body).toEqual({
+            filename: 'agent-avatar.svg',
+            contentType: 'image/svg+xml',
+            size: new Blob(['<svg></svg>']).size,
+        });
     });
 
     it('uses the confirm response fileId, not the upload response fileId, when the S3 key dedupes to an existing file', async () => {

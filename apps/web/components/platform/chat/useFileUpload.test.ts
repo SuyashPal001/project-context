@@ -80,6 +80,21 @@ describe('uploadToS3', () => {
     expect(firstKey).not.toBe(secondKey);
   });
 
+  it('declares the byte size on the presign request', async () => {
+    // The size is signed into the upload URL, so a caller that omits it gets no
+    // quota enforcement at all — every call site has to send it.
+    // Only the recorded call matters here, so the suite's shared default mock
+    // is left in place — replacing its resolved value would leak into whichever
+    // test runs next. Clearing the call log is enough.
+    vi.mocked(api.post).mockClear();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+
+    await uploadToS3(new Blob(['x']), 'a.png', 'image/png', 4321);
+
+    const [, body] = vi.mocked(api.post).mock.calls.find(([path]) => path === '/api/v1/files/upload')!;
+    expect(body).toMatchObject({ size: 4321 });
+  });
+
   it('retries the S3 PUT on a transient network failure and succeeds', async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
