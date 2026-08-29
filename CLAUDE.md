@@ -57,6 +57,7 @@ packages/foundation/
 
 products/agent-platform/packages/
   api               Agent routes, task handlers, watchdog — mounted onto foundation API
+  credits           Task charge keys + refundTask — shared by the API Lambda and the orchestrator
   schema            Drizzle schema for agent tables
   worker-handlers   SQS handlers for agent background jobs
 
@@ -79,6 +80,14 @@ bootstrap.sh        Creates S3 + DynamoDB resources before first deploy
 - **Imports between packages:** use `@serverless-saas/<pkg>` (workspace-resolved)
 - **Schema barrel:** all Drizzle tables exported from `packages/foundation/database/schema/index.ts`; relations from `relations.ts`
 - **Agent schema:** agent-platform tables exported from `products/agent-platform/packages/schema`
+- **Task credit code has two homes, deliberately.** `@serverless-saas/agent-credits`
+  (`products/agent-platform/packages/credits`) holds only what BOTH the API Lambda and the
+  orchestrator need — `taskChargeKey`, `attemptFromChargeKey`, `refundTask` — because the
+  watchdog refunds tasks and neither package can import the other. `settleTask`,
+  `chargeTaskEstimate` and `debitChatTurn` stay in `apps/agent-orchestrator/src/credits.ts`;
+  nothing else calls them. None of it belongs in `packages/foundation/*` — charge keys and
+  retry attempts are agent-platform concepts. A task's retry attempt is
+  `agent_tasks.credit_attempt`, advanced only inside `refundTask`; never re-derive it.
 - **Route registration:** every Hono route is `app.route('/path', routeModule)` in `apps/api/src/app.ts`
 - **Product mounting:** agent platform routes mount via `agentProduct.mountApiRoutes(api)`, `.mountPublicRoutes(publicApi)`, `.mountInternalRoutes(internalApi)`
 - **Worker handlers:** registered via `registerHandler(type, fn)` in `apps/worker/src/router.ts`; agent product handlers register via `registerProductHandlers(registerHandler)`
