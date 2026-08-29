@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { db, nextCycleEnd } from '@serverless-saas/database';
-import { grantTrialCredits, grantSubscriptionCycleCredits, planCreditAllowance } from '../../lib/creditsLifecycle';
+import { grantTrialCredits, grantSubscriptionCycleCredits, planCreditAllowance } from '@serverless-saas/credits';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 

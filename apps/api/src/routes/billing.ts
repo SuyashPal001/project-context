@@ -8,7 +8,7 @@ import { features, planEntitlements } from '@serverless-saas/database/schema/ent
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { getCacheClient, entitlementSetKey } from '@serverless-saas/cache';
-import { grantSubscriptionCycleCredits } from '../lib/creditsLifecycle';
+import { grantSubscriptionCycleCredits } from '@serverless-saas/credits';
 import type { AppEnv } from '../types';
 
 

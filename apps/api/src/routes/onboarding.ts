@@ -14,7 +14,7 @@ import { eq, isNull, and, desc } from 'drizzle-orm';
 
 import type { AppEnv } from '../types';
 import { buildResearchEngineerPrompt, withUploadGuidance } from '@serverless-saas/agent-api/lib/agentPrompts';
-import { grantTrialCredits } from '../lib/creditsLifecycle';
+import { grantTrialCredits } from '@serverless-saas/credits';
 
 const onboardingSchema = z.object({
     workspaceName: z.string().min(3).max(20),

@@ -19,7 +19,7 @@ export type LedgerRow = typeof creditLedger.$inferSelect;
  * tenant with no active subscription row, rather than throwing.
  *
  * Ordered `started_at desc nulls last, limit 1` to match
- * apps/api/src/lib/creditsLifecycle.ts's planCreditAllowance(), which runs
+ * ./lifecycle.ts's planCreditAllowance(), which runs
  * the same join. A tenant should never carry two rows in ('active',
  * 'trialing') at once, but if one ever slips through, a bare `limit 1` here
  * and an ordered `limit 1` there could each pick a different row and
