@@ -38,7 +38,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { getSidebarItems, getDeveloperPanelItems, getSettingsPanelItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
-import { UsageBar } from "./UsageBar"
 import { CreditBalanceIndicator } from "./credits/CreditBalanceIndicator"
 import { WorkspaceSwitcherPill } from "./WorkspaceSwitcherPill"
 import { AccountMenu } from "./AccountMenu"
@@ -301,8 +300,11 @@ export function Sidebar() {
                     )}
                 </nav>
 
-                {/* Messages usage — hidden when collapsed */}
-                {!isSidebarCollapsed && <UsageBar />}
+                {/* Credit balance — hidden when collapsed. The `messages`
+                    quota bar that used to sit above this was retired with the
+                    `messages` feature: it enforced nothing once spend_credits()
+                    became the real check, so showing it beside a live balance
+                    read as two competing limits. */}
                 {!isSidebarCollapsed && <CreditBalanceIndicator />}
 
                 {/* Footer Section */}
