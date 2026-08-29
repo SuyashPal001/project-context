@@ -2,34 +2,46 @@
 
 Written 2026-08-29. Resume point for a new session.
 
-## Where things stand
+## Where things stand — RESOLVED, updated 2026-08-29
 
 All 15 tasks of `docs/superpowers/plans/2026-08-28-credit-system.md` are implemented,
 reviewed, and committed on branch `worktree-credit-system` in the worktree
-`.claude/worktrees/credit-system`. 28 commits, base `cdf92197`, head `3f7b06b6`.
+`.claude/worktrees/credit-system`. ~40 commits, base `cdf92197`.
 
 Every task passed a scoped review plus a fix loop. The final whole-branch review
-(Opus) has run and returned **Not ready — two blockers**, both small and local.
-A fix agent was dispatched for them and may not have finished.
+(Opus) ran, returned **Not ready — two blockers**, and both were fixed and verified.
+Fixing them surfaced a chain of three further findings, each fixed and re-reviewed in
+turn. The last review returned **Ready with reservations**.
 
-**Nothing is deployed.** Migrations 0069–0071 exist only on the local test database.
+**The blockers described below are HISTORY, kept for the reasoning.** Their fixes are
+on the branch:
+- Blocker 1 → `6b13031e` (refund on a non-throwing failure)
+- Blocker 2 → `d5e4789d` (migration `0072`: the sweep persists, the debit rolls back
+  inside a savepoint, and the shortfall reports through OUT params instead of raising)
+- The `expiresAt` gap → same commits
+- The chain behind them → `46daa9c6`, `0f87ecc6`, `76b42ab1` (per-attempt charge keys
+  derived from refunds, plus the `settleTask` guard against settling a refunded charge)
 
-## First thing to check on resume
+**No path remains that produces a double credit.** All residual findings are
+undercharge-direction and recorded on the ledger.
 
-```bash
-cd .claude/worktrees/credit-system
-git log --oneline -3
-git status --short
-```
+**Nothing is deployed.** Migrations 0069–0072 exist only on the local test database,
+and the backfill script has never run anywhere.
 
-- If HEAD is past `3f7b06b6`, the fix agent committed — go to "Verifying the fixes".
-- If HEAD is `3f7b06b6` with uncommitted changes, the fix agent died mid-work.
-  Treat that work as untrusted draft: read it against the two blockers below and
-  decide what to keep. Do not assume it is correct or complete.
-- `apps/agent-orchestrator/src/routes/tasks.execution.ts` was modified and
-  uncommitted at the time of writing.
+## What is actually left
 
-## The two blockers
+1. **The browser checklist** — 7 steps in
+   `.superpowers/sdd/2026-08-28-credit-system/task-15-report.md`. No agent can see a
+   rendered page; a human has to run these. The two that matter: zero a balance and
+   confirm Approve disables on the plan-review screen, and kill the estimate request
+   and confirm Approve still works.
+2. **The notifications-page approve bypass** — `NotificationRow.tsx:69-81` calls
+   plan-approve directly with no cost card. Server-side still fails closed, so it is a
+   UX gap rather than a money leak, but it falsifies "the gated card is the only
+   approve path."
+3. **Merge, deploy, backfill** — in that order, per the deploy notes below.
+
+## The two blockers (history — both fixed)
 
 ### Blocker 1 — a charged task that fails mid-run is never refunded
 
