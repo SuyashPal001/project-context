@@ -49,12 +49,17 @@ import { agentProduct } from '@serverless-saas/agent-api';
 import { randomUUID } from 'crypto';
 import { initCognito } from '@serverless-saas/auth';
 import { getCacheClient } from '@serverless-saas/cache';
+import { registerFoundationCounters } from './usage-counters';
 
 initCognito({
     region:     process.env.AWS_REGION ?? 'ap-south-1',
     userPoolId: process.env.COGNITO_USER_POOL_ID!,
     clientId:   process.env.COGNITO_CLIENT_ID!,
 });
+
+// Foundation usage counters. The agent platform registers its own inside
+// mountApiRoutes; foundation has no equivalent hook, so it registers here.
+registerFoundationCounters();
 
 const app = new Hono<AppEnv>();
 
