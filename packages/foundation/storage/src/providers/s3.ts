@@ -16,11 +16,18 @@ export class S3StorageProvider implements StorageProvider {
     this.bucket = config.bucket;
   }
 
-  async getUploadUrl(key: string, contentType: string, expiresIn = 3600): Promise<{ url: string }> {
+  async getUploadUrl(key: string, contentType: string, expiresIn = 3600, size?: number): Promise<{ url: string }> {
+    // ContentLength is only included when known. Signing it binds the body
+    // length into the signature, so S3 rejects an upload of any other size and
+    // a client cannot under-declare its size to slip past the quota gate.
+    //
+    // Passing it as undefined is not the same as omitting it — the signer would
+    // still cover the header and every upload would 403.
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
       ContentType: contentType,
+      ...(size === undefined ? {} : { ContentLength: size }),
     });
     const url = await getSignedUrl(this.client, command, { expiresIn });
     return { url };

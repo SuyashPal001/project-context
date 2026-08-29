@@ -72,7 +72,7 @@ export class StorageService {
   }
 
   async getUploadUrl(request: UploadUrlRequest): Promise<UploadUrlResponse> {
-    const { tenantId, filename, contentType, uploadedBy, userKey } = request;
+    const { tenantId, filename, contentType, uploadedBy, userKey, size } = request;
 
     // User-space key (used for folder browsing): e.g. "documents/report.pdf"
     // Full S3 key: tenants/{tenantId}/{userSpaceKey}
@@ -94,7 +94,7 @@ export class StorageService {
 
     // Get presigned URL
     const provider = await this.resolveProvider(tenantId);
-    const { url } = await provider.getUploadUrl(s3Key, contentType);
+    const { url } = await provider.getUploadUrl(s3Key, contentType, 3600, size);
 
     return {
       fileId: file.id,
