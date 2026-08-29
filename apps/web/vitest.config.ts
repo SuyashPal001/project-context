@@ -15,6 +15,6 @@ export default defineConfig({
     // between tests.
     environment: 'node',
     globals: true,
-    include: ['{lib,components,hooks}/**/*.test.{ts,tsx}'],
+    include: ['{lib,components,hooks,app}/**/*.test.{ts,tsx}'],
   },
 })
