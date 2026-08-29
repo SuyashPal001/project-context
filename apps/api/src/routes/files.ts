@@ -5,7 +5,7 @@ import { storageService } from '@serverless-saas/storage';
 import { db } from '@serverless-saas/database';
 import { auditLog, files } from '@serverless-saas/database/schema';
 import { features } from '@serverless-saas/database/schema/entitlements';
-import { decideUpload, resolveStorageLimit } from './files.quota';
+import { decideUpload, resolveStorageLimit, storagePercent } from './files.quota';
 import { sumTenantStorageBytes } from '../usage-counters';
 import { reclaimAbandonedUploads } from './files.reclaim';
 import { hasPermission } from '@serverless-saas/permissions';
@@ -251,6 +251,33 @@ filesRoutes.post(
     return c.json({ success: true, fileId });
   }
 );
+
+// Storage usage for the current tenant. Feeds the meter Drive shows only above
+// 80% — storage is otherwise never surfaced anywhere in the product.
+//
+// Registered above the /:id routes: Hono matches in registration order, so a
+// bare /:id added later would otherwise swallow "usage" as an id.
+filesRoutes.get('/usage', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+
+  const [feature] = await db.select().from(features).where(eq(features.key, 'storage_gb')).limit(1);
+  if (!feature) {
+    return c.json({ error: 'Feature configuration missing', code: 'FEATURE_NOT_FOUND' }, 500);
+  }
+
+  const limit = resolveStorageLimit(requestContext?.entitlements, feature.id);
+  const usedBytes = await sumTenantStorageBytes(tenantId);
+
+  return c.json({
+    data: {
+      usedBytes,
+      limitBytes: limit.limitBytes,
+      unlimited: limit.unlimited,
+      percent: limit.unlimited ? 0 : storagePercent(usedBytes, limit.limitBytes),
+    },
+  });
+});
 
 // Get presigned GET URL for relay image fetch — short-lived, image attachments only
 filesRoutes.get('/:id/presigned-url', async (c) => {
