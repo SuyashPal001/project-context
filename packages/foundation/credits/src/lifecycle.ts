@@ -105,10 +105,33 @@ async function lastSubscriptionGrantExpiry(tenantId: string): Promise<Date | nul
 }
 
 /**
- * Subscription-cycle grant, called from the plan-change path
- * (apps/api/src/routes/billing.ts's upgradeHandler, the only place in this
- * codebase that creates a new active subscription today - there is no
- * recurring-charge billing engine yet, see the TODOs in billing.ts).
+ * Subscription-cycle grant. Two callers: the plan-change path
+ * (apps/api/src/routes/billing.ts's upgradeHandler) and the nightly renewal
+ * job (apps/worker/src/handlers/creditsRenew.ts).
+ *
+ * ---- Why `anchor` and `now` are separate parameters ----
+ * They used to be one `startedAt` argument doing two different jobs: the
+ * anniversary anchor for nextCycleEnd(), and the already-granted test
+ * (`startedAt < lastExpiry`). upgradeHandler passes a fresh `new Date()`, so
+ * for it the two coincide and the test reads "is now before the last grant's
+ * expiry?" — which is correct, and is why the conflation went unnoticed.
+ *
+ * A scheduled renewal cannot pass `new Date()` as the anchor: the anniversary
+ * has to be computed from the subscription's real started_at, or the billing
+ * date drifts forward by however late the job runs. But that value is ALWAYS
+ * earlier than the last grant's expiry once any grant exists, so
+ * `stillInPriorCycle` would be permanently true, the function would reuse the
+ * previous cycle's key, spend_credits() would replay it, and the job would
+ * grant nothing — silently, forever, with a successful-looking log line.
+ *
+ * So the two roles are separate arguments. The already-granted question is
+ * about *now*, not about when the subscription began. `now` defaults to the
+ * current time, which keeps upgradeHandler's four-argument call and every key
+ * it produces bit-identical to before the split — asserted by a test, because
+ * that is the path R25/R27 hardened against an unbounded credit mint.
+ *
+ * It also makes multi-cycle behavior testable without mocking the clock:
+ * pass successive dates.
  *
  * ---- Why this is keyed per (tenant, plan, cycle) and not per subscription row ----
  * upgradeHandler cancels the tenant's active subscription and inserts a
@@ -125,7 +148,7 @@ async function lastSubscriptionGrantExpiry(tenantId: string): Promise<Date | nul
  * `sub:{tenantId}:{plan}:{cycleEndISO}`, where `cycleEndISO` identifies the
  * billing period rather than the row that happened to represent it:
  *   - If the tenant's most recent subscription-type grant is still live
- *     (`startedAt` is before its `expires_at`), this call lands inside the
+ *     (`now` is before its `expires_at`), this call lands inside the
  *     SAME period that grant already covers. Reuse that `expires_at` as both
  *     the key's period identifier and this call's own `expiresAt` - so a
  *     same-plan retry, or a monthly<->annual toggle mid-period, produces the
@@ -134,7 +157,7 @@ async function lastSubscriptionGrantExpiry(tenantId: string): Promise<Date | nul
  *     quietly extending the credit window on every flip.
  *   - Otherwise (no prior subscription grant, or its cycle has genuinely
  *     ended) this is a fresh period: compute a new `expiresAt` via
- *     nextCycleEnd() from the new subscription's own start. A real plan
+ *     nextCycleEnd() from the `anchor`, relative to `now`. A real plan
  *     change lands here too - if it happens mid-cycle it still gets a full
  *     fresh allowance for the new plan (proration/clawback of the old grant
  *     is out of scope for v1; see the review notes), and if it happens in a
@@ -149,9 +172,10 @@ async function lastSubscriptionGrantExpiry(tenantId: string): Promise<Date | nul
  * an EARLIER call already exists to look up. On the very first call for a
  * cycle - a tenant's first-ever subscription grant, or the first call after
  * a genuine cycle boundary - there is nothing to reuse yet, so `expiresAt`
- * is computed fresh via nextCycleEnd(startedAt, ...), and nextCycleEnd()
- * preserves startedAt's hours/minutes/seconds/milliseconds. `startedAt` is a
- * fresh `new Date()` per request (billing.ts). A burst of N concurrent calls
+ * is computed fresh via nextCycleEnd(anchor, ...), and nextCycleEnd()
+ * preserves the anchor's hours/minutes/seconds/milliseconds. For
+ * upgradeHandler the anchor is a fresh `new Date()` per request
+ * (billing.ts), so it varies by milliseconds. A burst of N concurrent calls
  * that all read lastSubscriptionGrantExpiry() before any of their grants has
  * committed each compute a slightly different `expiresAt` (different
  * milliseconds), hence a different key - the account-row lock inside
@@ -171,7 +195,8 @@ export async function grantSubscriptionCycleCredits(
   tenantId: string,
   plan: string,
   billingCycle: 'monthly' | 'annual',
-  startedAt: Date,
+  anchor: Date,
+  now: Date = new Date(),
 ): Promise<void> {
   try {
     if (await isUnlimited(tenantId)) return;
@@ -183,8 +208,8 @@ export async function grantSubscriptionCycleCredits(
     }
 
     const lastExpiry = await lastSubscriptionGrantExpiry(tenantId);
-    const stillInPriorCycle = lastExpiry != null && startedAt < lastExpiry;
-    const expiresAt = stillInPriorCycle ? lastExpiry : nextCycleEnd(startedAt, billingCycle);
+    const stillInPriorCycle = lastExpiry != null && now < lastExpiry;
+    const expiresAt = stillInPriorCycle ? lastExpiry : nextCycleEnd(anchor, billingCycle, now);
 
     await grantCredits({
       tenantId,

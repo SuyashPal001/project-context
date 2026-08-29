@@ -226,12 +226,19 @@ describe.skipIf(!TEST_DB)('trial and subscription credit grants', () => {
     const first = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
     expect(first).toHaveLength(1);
 
-    // Don't touch the grant row - pass a `startedAt` far enough past the
-    // first grant's own cycle end (~1 month out) that the real elapsed-time
-    // check must be the thing deciding this is a fresh cycle, not a
+    // Don't touch the grant row - move the clock far enough past the first
+    // grant's own cycle end (~1 month out) that the real elapsed-time check
+    // must be the thing deciding this is a fresh cycle, not a
     // coincidentally-different key from mutating expires_at directly.
+    //
+    // This used to advance `startedAt` alone, which worked only because that
+    // one argument was also serving as the clock. With the two separated, the
+    // passage of time is `now` — and this mirrors upgradeHandler exactly,
+    // which passes a fresh `new Date()` as the anchor and lets `now` default
+    // to the same instant. Both move together for that caller, which is why
+    // its behavior is unchanged.
     const secondStart = new Date(firstStart.getTime() + 40 * 24 * 60 * 60 * 1000);
-    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', secondStart);
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', secondStart, secondStart);
     const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
     expect(rows).toHaveLength(2);
   });
@@ -240,5 +247,125 @@ describe.skipIf(!TEST_DB)('trial and subscription credit grants', () => {
     await seedUnlimitedOverride(UNLIMITED_TENANT);
     await grantSubscriptionCycleCredits(UNLIMITED_TENANT, 'starter', 'monthly', new Date());
     expect(await ledgerRows(UNLIMITED_TENANT, `sub:${UNLIMITED_TENANT}:`)).toHaveLength(0);
+  });
+
+  // ---- The anchor/now split, which is what makes a scheduled renewal possible ----
+  //
+  // `startedAt` used to do two jobs at once: the anniversary anchor for
+  // nextCycleEnd, and the already-granted test (`startedAt < lastExpiry`). The
+  // only caller passed a fresh `new Date()`, so the two coincided and the test
+  // read "is now before the last grant's expiry?" — correct for it.
+  //
+  // A renewal job cannot do that. It has to pass the subscription's real
+  // started_at as the anchor or the billing date drifts forward by however
+  // late the job runs, and that value is ALWAYS earlier than the last grant's
+  // expiry once any grant exists. So stillInPriorCycle was permanently true,
+  // the function reused the previous cycle's key, spend_credits() replayed it,
+  // and the job would have granted nothing, silently, forever.
+
+  it('grants the next cycle when called with a past anchor and a present clock', async () => {
+    // THE regression test for the bug above. Against the 4-argument signature
+    // this grants exactly once and then never again — the second call collapses
+    // onto the first key.
+    await seedTenantWithPlan(TENANT, 'starter');
+    const anchor = new Date('2026-01-15T10:30:00.000Z');
+
+    // Cycle 1, granted on the day the subscription started.
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', anchor, anchor);
+    expect(await ledgerRows(TENANT, `sub:${TENANT}:starter:`)).toHaveLength(1);
+
+    // Cycle 2: the renewal job runs a month later. Anchor unchanged — that is
+    // the whole point — but `now` has moved past the first grant's expiry.
+    const duringCycle2 = new Date('2026-02-16T03:00:00.000Z');
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', anchor, duringCycle2);
+
+    const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
+    expect(rows).toHaveLength(2);
+    // And the second grant is for the SECOND cycle, not a repeat of the first.
+    const keys = rows.map(r => r.idempotency_key as string).sort();
+    expect(keys).toEqual([`sub:${TENANT}:starter:2026-02-15`, `sub:${TENANT}:starter:2026-03-15`]);
+  });
+
+  it('does not drift: three consecutive cycles all land on the anniversary', async () => {
+    // Acceptance criterion 3. The anchor never moves, so a subscription started
+    // on the 15th expires on the 15th every month regardless of what day of the
+    // month the job happens to run.
+    await seedTenantWithPlan(TENANT, 'starter');
+    const anchor = new Date('2026-01-15T10:30:00.000Z');
+
+    for (const now of [
+      new Date('2026-01-15T10:30:00.000Z'),
+      new Date('2026-02-20T23:59:00.000Z'),  // late in the cycle
+      new Date('2026-03-16T00:01:00.000Z'),  // barely into the next
+    ]) {
+      await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', anchor, now);
+    }
+
+    const keys = (await ledgerRows(TENANT, `sub:${TENANT}:starter:`))
+      .map(r => r.idempotency_key as string).sort();
+    expect(keys).toEqual([
+      `sub:${TENANT}:starter:2026-02-15`,
+      `sub:${TENANT}:starter:2026-03-15`,
+      `sub:${TENANT}:starter:2026-04-15`,
+    ]);
+  });
+
+  it('clamps a 31st anchor to the short months without losing the anniversary', async () => {
+    // Jan 31 -> Feb 28 -> Mar 31 -> Apr 30. The clamp must not become sticky:
+    // February shortening the date must not drag March to the 28th.
+    await seedTenantWithPlan(TENANT, 'starter');
+    const anchor = new Date('2026-01-31T12:00:00.000Z');
+
+    for (const now of [
+      new Date('2026-01-31T12:00:00.000Z'),
+      new Date('2026-03-01T12:00:00.000Z'),
+      new Date('2026-04-01T12:00:00.000Z'),
+    ]) {
+      await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', anchor, now);
+    }
+
+    const keys = (await ledgerRows(TENANT, `sub:${TENANT}:starter:`))
+      .map(r => r.idempotency_key as string).sort();
+    expect(keys).toEqual([
+      `sub:${TENANT}:starter:2026-02-28`,
+      `sub:${TENANT}:starter:2026-03-31`,
+      `sub:${TENANT}:starter:2026-04-30`,
+    ]);
+  });
+
+  it('grants an annual subscription once a year, not once a month', async () => {
+    await seedTenantWithPlan(TENANT, 'starter');
+    const anchor = new Date('2026-01-15T10:30:00.000Z');
+
+    // Twelve monthly runs across the year must collapse to the one annual grant.
+    for (let month = 0; month < 12; month++) {
+      await grantSubscriptionCycleCredits(
+        TENANT, 'starter', 'annual', anchor,
+        new Date(Date.UTC(2026, month, 20)),
+      );
+    }
+
+    const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].idempotency_key).toBe(`sub:${TENANT}:starter:2027-01-15`);
+  });
+
+  it('keeps the upgrade path bit-identical: anchor defaults to now, same key', async () => {
+    // POST /billing/upgrade passes four arguments and omits `now`, so anchor
+    // === now and its behavior must be exactly what it was before the split.
+    // This is the path R25/R27 hardened against an unbounded credit mint —
+    // pinning the exact key string is what stops the split weakening it.
+    await seedTenantWithPlan(TENANT, 'starter');
+    const start = new Date();
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', start);
+
+    const rows = await ledgerRows(TENANT, `sub:${TENANT}:starter:`);
+    expect(rows).toHaveLength(1);
+    const expectedDate = nextCycleEnd(start, 'monthly').toISOString().slice(0, 10);
+    expect(rows[0].idempotency_key).toBe(`sub:${TENANT}:starter:${expectedDate}`);
+
+    // And a repeat call in the same cycle still collapses.
+    await grantSubscriptionCycleCredits(TENANT, 'starter', 'monthly', new Date());
+    expect(await ledgerRows(TENANT, `sub:${TENANT}:starter:`)).toHaveLength(1);
   });
 });
