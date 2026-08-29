@@ -308,7 +308,7 @@ tasksRouter.post('/api/workflows/execute', async (c) => {
   const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
   console.log(JSON.stringify({ level: 'info', msg: 'workflow execution started', traceId, workflowId, workflowRunId, tenantId, steps: steps.length, ts: Date.now() }))
 
-  runMastraWorkflowSteps(workflowId, workflowRunId, agentId, tenantId, steps, systemPrompt, requiresApproval, traceId).catch((err: Error) => {
+  runMastraWorkflowSteps(workflowId, workflowRunId, agentId, tenantId, steps, systemPrompt, requiresApproval, traceId, wfModel).catch((err: Error) => {
     console.error(JSON.stringify({ level: 'error', msg: 'workflow unhandled error', traceId, workflowId, workflowRunId, tenantId, error: err.message, ts: Date.now() }))
   })
   return c.json({ ok: true, workflowRunId })
