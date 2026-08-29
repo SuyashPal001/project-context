@@ -1,9 +1,9 @@
 # Credit System — open items
 
-Written 2026-08-30, revised the same day after the money-bug pass. **Start a new
+Written 2026-08-30, revised the same day after the money-bug pass shipped. **Start a new
 session from this file.**
 
-The credit system is built, reviewed, merged, pushed, and deployed to dev. This lists
+The credit system is built, reviewed, merged, pushed and fully deployed to dev. This lists
 what is left, ordered by what can cost money. Every item has a file:line so you can go
 straight to it.
 
@@ -13,11 +13,15 @@ straight to it.
 
 | | |
 |---|---|
-| Branch | merged to `main` — money-bug fixes at `eca7e674` |
-| Dev database | migrations 0069-0072 applied; seeds run; backfill run. **0073 NOT applied** |
-| Backfill result | 4/4 tenants granted, second run granted 0, **invariant 3 verified holding** |
-| AWS dev | all 7 Lambdas deployed as of `d78cf0c4`; `project-context-credits-expire-dev` Active; EventBridge `rate(1 day)` ENABLED. **Money-bug fixes NOT deployed** |
-| GCP VM | deployed as of `d78cf0c4`. **Money-bug fixes NOT deployed** |
+| Branch | `origin/main` at `cf882f7c` — everything below is merged and pushed |
+| Dev database | migrations through **0073 applied** (74 total); seeds run; backfill run. `agent_tasks.credit_attempt` present, existing rows at 0 |
+| Backfill result | 4/4 tenants granted, second run granted 0, **invariant 3 verified holding** (re-checked after 0073) |
+| AWS dev | all Lambdas deployed as of `cf882f7c`; `project-context-credits-expire-dev` Active; EventBridge `rate(1 day)` ENABLED. Watchdog invoked post-deploy, clean against the new column |
+| GCP VM | deployed as of `cf882f7c` |
+
+**Everything in sections 1 and 2 is shipped.** What remains starts at section 3.
+Sections 1 and 2 are kept as the record of what was wrong and why, because the
+reasoning is what stops it coming back — not as a to-do list.
 
 **No path in the system produces a double credit.** That was verified as the closing
 condition of the original review, and the money-bug pass did not open one: every fix
@@ -29,30 +33,16 @@ own plan at `docs/superpowers/plans/2026-08-30-credit-money-bugs.md`.
 
 ---
 
-## 1. Do first — ship the money-bug fixes
+## 1. Do first — the browser checklist, the only thing never verified
 
-Three things, in order. None of them are optional and the first two are coupled.
+Deployment is done: migration, Lambdas, VM, in that order. The ordering rule is worth
+keeping for the next schema change — **a migration adding a column that handlers select
+unconditionally must land before the Lambdas**, or every task approval and every
+watchdog sweep throws until it does.
 
-```bash
-# 1. Migration 0073 adds agent_tasks.credit_attempt. Session pooler (5432), never
-#    the transaction pooler the secret names.
-cd packages/foundation/database
-DATABASE_URL="<session-pooler URL, sslmode=no-verify>" pnpm exec drizzle-kit migrate
+What has still never happened is anyone looking at this feature in a browser.
 
-# 2. Lambdas — the watchdog, the approve handler and the task worker all read the
-#    new column. Rebuild product packages first or sam deploy ships stale dist/.
-pnpm --filter "@serverless-saas/*" --no-bail build
-sam build --config-file samconfig.dev.toml && sam deploy --config-file samconfig.dev.toml
-
-# 3. VM — the orchestrator owns refundTask and the new workflow settle.
-./deploy.sh && pm2 restart agent-orchestrator
-```
-
-**The migration must land before the Lambdas.** They select `credit_attempt`
-unconditionally; against a database without the column every task approval and every
-watchdog sweep throws.
-
-Then the **7-step browser checklist** at the end of
+The checklist lives at the end of
 `.superpowers/sdd/2026-08-28-credit-system/task-15-report.md` (git-ignored, lives in
 the `credit-system` worktree). Nobody has seen this UI render. The two steps that
 matter: zero a tenant's balance and confirm Approve disables on the plan-review
@@ -61,7 +51,7 @@ screen; then make the estimate request fail and confirm Approve still works — 
 
 ---
 
-## 2. Money bugs — all five fixed, not yet deployed
+## 2. Money bugs — all five fixed and deployed
 
 Fixed in `b5717054` (items 2a-2c, 2e) and `eca7e674` (item 2d). Kept here in short form
 because the reasoning is what stops them coming back.
