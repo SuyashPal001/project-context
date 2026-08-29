@@ -4,6 +4,7 @@ import { eq, and, isNull, like } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { S3StorageProvider } from './providers/s3';
+import { tenantS3Key } from './s3Key';
 import type { StorageProvider, UploadUrlRequest, UploadUrlResponse } from './types';
 
 const ssm = new SSMClient({ region: process.env.AWS_REGION || 'ap-south-1' });
@@ -77,7 +78,7 @@ export class StorageService {
     // User-space key (used for folder browsing): e.g. "documents/report.pdf"
     // Full S3 key: tenants/{tenantId}/{userSpaceKey}
     const userSpaceKey = userKey || filename;
-    const s3Key = `tenants/${tenantId}/${userSpaceKey}`;
+    const s3Key = tenantS3Key(tenantId, userSpaceKey);
 
     // Create file record with pending status
     const [file] = await db
@@ -133,7 +134,7 @@ export class StorageService {
     if (!file) throw new Error('File not found');
 
     const provider = await this.resolveProvider(tenantId);
-    const s3Key = `tenants/${tenantId}/${file.key}`;
+    const s3Key = tenantS3Key(tenantId, file.key);
     return provider.getDownloadUrl(s3Key);
   }
 
@@ -151,14 +152,36 @@ export class StorageService {
     if (!file) throw new Error(`File not found: ${fileId}`);
 
     const provider = await this.resolveProvider(tenantId) as S3StorageProvider;
-    const s3Key = `tenants/${tenantId}/${file.key}`;
+    const s3Key = tenantS3Key(tenantId, file.key);
     return provider.getObject(s3Key);
   }
 
-  async deleteFile(tenantId: string, fileId: string): Promise<void> {
-    await db
+  /**
+   * Removes the S3 object itself. The database row is the caller's business —
+   * deleteFile soft-deletes it and enqueues this via the worker.
+   */
+  async deleteObjectForTenant(tenantId: string, userSpaceKey: string): Promise<void> {
+    const provider = await this.resolveProvider(tenantId);
+    await provider.deleteObject(tenantS3Key(tenantId, userSpaceKey));
+  }
+
+  /**
+   * Soft-deletes the row and returns the key whose object should now be purged.
+   *
+   * The row is kept for audit and for the ingestion lineage that references it.
+   * The object must not be: leaving it in S3 meant a tenant could upload to
+   * their quota, delete, and repeat forever while the bill grew without limit,
+   * because the quota counts `uploaded` rows and the bill counts objects.
+   *
+   * The purge is enqueued by the caller rather than here, so this package stays
+   * a storage layer with no queue dependency. Returning null means nothing was
+   * deleted — the caller must not purge, since the id may belong to another
+   * tenant.
+   */
+  async deleteFile(tenantId: string, fileId: string): Promise<string | null> {
+    const [row] = await db
       .update(files)
-      .set({ 
+      .set({
         status: 'deleted',
         deletedAt: new Date(),
         updatedAt: new Date(),
@@ -166,7 +189,10 @@ export class StorageService {
       .where(and(
         eq(files.id, fileId),
         eq(files.tenantId, tenantId)
-      ));
+      ))
+      .returning({ key: files.key });
+
+    return row?.key ?? null;
   }
 
   async listFiles(tenantId: string, limit = 50, offset = 0, prefix?: string): Promise<InferSelectModel<typeof files>[]> {

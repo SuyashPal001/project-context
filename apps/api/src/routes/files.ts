@@ -338,7 +338,23 @@ filesRoutes.delete('/:id', async (c) => {
     return c.json({ error: 'Forbidden', message: 'Missing permission: files:delete' }, 403);
   }
 
-  await storageService.deleteFile(tenantId, fileId);
+  const deletedKey = await storageService.deleteFile(tenantId, fileId);
+
+  // Soft-deleting the row is not enough: the S3 object was previously left in
+  // place forever, so a tenant could fill their quota, delete, and repeat while
+  // the bill kept growing. A null key means nothing was deleted — the id may
+  // belong to another tenant, so there is nothing to purge.
+  if (deletedKey) {
+    const queueUrl = process.env.SQS_PROCESSING_QUEUE_URL;
+    if (queueUrl) {
+      await publishToQueue(queueUrl, {
+        type: 'storage.purge',
+        payload: { tenantId, key: deletedKey },
+      });
+    } else {
+      console.error('SQS_PROCESSING_QUEUE_URL unset — object not purged', { tenantId, key: deletedKey });
+    }
+  }
 
   await db.insert(auditLog).values({
     tenantId,
