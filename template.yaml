@@ -289,6 +289,38 @@ Resources:
     Metadata:
       BuildMethod: makefile
 
+  # Separate from CreditsExpireFunction rather than a second schedule on it:
+  # the expiry sweep's candidate set is "tenants with an unswept expired grant"
+  # and is usually small, while this one's is every active tenant and grows with
+  # the customer base — hence 300s here against the sweep's 120s.
+  CreditsRenewFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-credits-renew-${EnvironmentName}"
+      Description: Subscription Renewal — EventBridge schedule, grants each active tenant its plan allowance once per billing cycle
+      CodeUri: apps/worker/
+      Handler: creditsRenewHandler.handler
+      Timeout: 300
+      MemorySize: 256
+      Role: !Ref FoundationWorkerRoleArn
+      Environment:
+        Variables:
+          LAMBDA_TYPE: worker
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/database:SecretString:url}}"
+          UPSTASH_REDIS_URL: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:url}}"
+          UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
+      Events:
+        CreditsRenewSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+            Name: !Sub "${ProjectName}-credits-renew-${EnvironmentName}"
+            Description: Grants each active tenant its plan credit allowance once per billing cycle
+            Enabled: true
+            Input: '{"type":"credits.renew"}'
+    Metadata:
+      BuildMethod: makefile
+
 Outputs:
   FoundationApiLambdaArn:
     Value: !GetAtt FoundationApiFunction.Arn

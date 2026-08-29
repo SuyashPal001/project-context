@@ -40,3 +40,8 @@ build-CreditsExpireFunction:
 	$(ESBUILD) $(REPO_ROOT)/apps/worker/src/creditsExpireHandler.ts \
 	  --outfile=$(ARTIFACTS_DIR)/creditsExpireHandler.js \
 	  $(ESBUILD_FLAGS)
+
+build-CreditsRenewFunction:
+	$(ESBUILD) $(REPO_ROOT)/apps/worker/src/creditsRenewHandler.ts \
+	  --outfile=$(ARTIFACTS_DIR)/creditsRenewHandler.js \
+	  $(ESBUILD_FLAGS)
