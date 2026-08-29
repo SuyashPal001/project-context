@@ -121,7 +121,7 @@ second implementation of cycle arithmetic exists to drift from the first.
 select distinct on (s.tenant_id)
        s.tenant_id, s.plan, s.billing_cycle, s.started_at
   from subscriptions s
- where s.status in ('active', 'trialing')
+ where s.status = 'active'
    and (s.ended_at is null or s.ended_at > now())
  order by s.tenant_id, s.started_at desc
 ```
@@ -131,9 +131,14 @@ already uses against duplicate subscription rows — a real hazard here, since
 `upgradeHandler` cancels and re-inserts with no lock and can leave a tenant with
 several `active` rows (recorded on the credit-system ledger).
 
-Include `trialing` deliberately: a tenant in trial has a plan and an allowance, and
-excluding them recreates the day-15 cliff for exactly the tenants this exists to
-protect.
+**`trialing` is excluded deliberately** (product decision, 2026-08-29). A trial is
+one-shot: the trial grant at onboarding is the whole of it, and it expires at the
+trial's end. Renewals begin when a subscription becomes `active`. The consequence to
+be aware of is that a tenant who stays in `trialing` past their trial grant's expiry
+has a zero balance and, because the pre-check fails closed, no working chat or tasks
+until they convert — which is the intended funnel behavior, but it means the product
+copy around trial expiry has to be honest about it rather than leaving the tenant
+staring at a silent failure.
 
 ### Loop
 
@@ -146,6 +151,50 @@ silently drops the tail of the batch when the tenant count outgrows it.
 Unlimited tenants and tenants with no `credits` entitlement are skipped **inside**
 the grant function, which already handles both. The job does not filter for them —
 one place decides, and it is the place that already does.
+
+---
+
+## 2a. The out-of-credits message
+
+Whenever a tenant reaches zero — trial expired, cycle exhausted mid-month, or a plan
+with no entitlement — the pre-check fails closed and chat and tasks stop. The UI must
+say what to do about it. Today it does not.
+
+**What exists now.** `CreditBalanceIndicator.tsx:44` renders "Add credits →" and
+`ApproveCost.tsx:116` renders "Out of credits — add more →". Both link to
+`/{tenant}/dashboard/billing`. That page's only action is `POST /billing/upgrade`,
+which — for a tenant already on their plan for the current cycle — replays to the
+same idempotency key and grants nothing (R25/R27). **So both links are dead ends: the
+user is told to add credits, follows the link, and finds nothing that adds credits.**
+
+**Required copy: "Upgrade your plan or buy credits."** Both halves need honest
+backing, and only one has it:
+
+| Action | State today |
+|---|---|
+| **Upgrade plan** | Works — a genuine plan change grants that plan's allowance for the cycle. Only useful to a tenant not already on the top plan. |
+| **Buy credits** | **Does not exist.** `grant_type='purchase'` is in the schema; the payment webhook that would create such a grant is explicitly out of scope for v1 (credit-system spec §0). There is no top-up path for any tenant, on any plan. |
+
+So the message must be conditional, not a fixed string:
+
+- **Tenant below the top plan** → "Upgrade your plan for more credits", linking to
+  billing. True today.
+- **Tenant on the top metered plan, or already upgraded this cycle** → there is no
+  self-serve action. The honest message is that they are out of credits until their
+  cycle renews on `{date}` — the cycle end is known, so show it — with a contact
+  route for a top-up. Do not link to billing; it does nothing for them.
+- **Enterprise/unlimited** → unreachable; these tenants are never debited.
+
+**The gap this exposes.** For a tenant on the top plan mid-cycle, the product has no
+answer at all: no purchase path, and `POST /credits/grants` is unreachable because
+`credits:create` is withheld from owner and admin (R23, correctly) and no ops route
+exists that holds it. Until either the purchase webhook or an ops top-up route ships,
+that tenant's only recourse is a human. The copy should reflect that rather than
+implying a button exists.
+
+This is UI and copy work sitting outside the renewal job itself, but the job is what
+determines when tenants hit zero and the trial exclusion above creates one of the
+cases — so it is specified here rather than lost.
 
 ---
 
@@ -175,7 +224,7 @@ coordination between them.
    invariant 3).
 6. A tenant whose plan has no `credits` entitlement is skipped and reported, not
    granted zero.
-7. A cancelled or expired subscription is not granted.
+7. A cancelled, expired, or `trialing` subscription is not granted.
 8. `POST /billing/upgrade`'s behavior is bit-identical to before the signature
    change, including the exact idempotency key it produces.
 9. One tenant's failure does not abort the batch; the run reports candidates and
