@@ -69,3 +69,41 @@ export const creditLedger = pgTable('credit_ledger', {
   uniqueIndex('credit_ledger_tenant_key_seq_uq').on(t.tenantId, t.idempotencyKey, t.seq),
   index('credit_ledger_tenant_time_idx').on(t.tenantId, t.createdAt),
 ]);
+
+/**
+ * Purchasable credit packs. A tenant buys a pack, never a raw credit count —
+ * checkout takes a pack id, so a client cannot ask for ten million credits at
+ * a price it also supplies.
+ *
+ * ---- Why the markup lives here and not in credit_rates ----
+ * A credit costs 1 US cent of inference (credit_rates is seeded at cost) and
+ * sells for 2. Doubling credit_rates instead would silently halve what every
+ * plan allowance buys: 2,000 credits would stop being $20 of work. So credits
+ * stay an honest unit of consumption — 1 credit = 1 cent of inference, always
+ * — and the margin lives in `price_cents`, one visible number that can change
+ * without touching the metering path.
+ *
+ * `credits` and `price_cents` are therefore NOT redundant: their ratio is the
+ * margin, and nothing enforces 2x at the schema level because a promotion or a
+ * volume tier is a price change, not a code change.
+ */
+export const creditPacks = pgTable('credit_packs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // Stable string key ('starter', 'standard', 'bulk') — what checkout accepts
+  // and what a provider's session metadata carries, so the row's uuid never
+  // has to travel to a third party.
+  key: text('key').notNull(),
+  name: text('name').notNull(),
+  credits: integer('credits').notNull(),
+  priceCents: integer('price_cents').notNull(),
+  currency: text('currency').notNull().default('usd'),
+  // Retired packs stay for the payments that reference them; only active ones
+  // are offered. Deactivating rather than deleting keeps an old sale
+  // reconcilable to the price it was actually sold at.
+  isActive: boolean('is_active').notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('credit_packs_key_uq').on(t.key),
+  index('credit_packs_active_idx').on(t.isActive, t.sortOrder),
+]);

@@ -526,6 +526,13 @@
       "when": 1788032651225,
       "tag": "0074_cold_weapon_omega",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1788035922852,
+      "tag": "0075_lyrical_mongu",
+      "breakpoints": true
     }
   ]
 }
