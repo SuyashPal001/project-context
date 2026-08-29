@@ -1,6 +1,7 @@
-# Credit System — open items after the dev deploy
+# Credit System — open items
 
-Written 2026-08-30. **Start a new session from this file.**
+Written 2026-08-30, revised the same day after the money-bug pass. **Start a new
+session from this file.**
 
 The credit system is built, reviewed, merged, pushed, and deployed to dev. This lists
 what is left, ordered by what can cost money. Every item has a file:line so you can go
@@ -12,31 +13,44 @@ straight to it.
 
 | | |
 |---|---|
-| Branch | merged to `main`, pushed — `b53bc5bf` |
-| Dev database | migrations 0069–0072 applied (69 → 73); seeds run; backfill run |
+| Branch | merged to `main` — money-bug fixes at `eca7e674` |
+| Dev database | migrations 0069-0072 applied; seeds run; backfill run. **0073 NOT applied** |
 | Backfill result | 4/4 tenants granted, second run granted 0, **invariant 3 verified holding** |
-| AWS dev | all 7 Lambdas deployed; `project-context-credits-expire-dev` Active; EventBridge `rate(1 day)` ENABLED |
-| GCP VM | **NOT deployed** |
+| AWS dev | all 7 Lambdas deployed as of `d78cf0c4`; `project-context-credits-expire-dev` Active; EventBridge `rate(1 day)` ENABLED. **Money-bug fixes NOT deployed** |
+| GCP VM | deployed as of `d78cf0c4`. **Money-bug fixes NOT deployed** |
 
 **No path in the system produces a double credit.** That was verified as the closing
-condition of the final review. Every remaining money bug below is
-undercharge-direction — they cost revenue, they do not overcharge a customer.
+condition of the original review, and the money-bug pass did not open one: every fix
+below moves undercharges toward being charged, never the reverse.
 
-Full history, every ruling R1–R36, and every deferred finding:
-`docs/superpowers/plans/2026-08-29-credit-system-ledger.md`.
+Full history, every ruling R1-R36, and every deferred finding:
+`docs/superpowers/plans/2026-08-29-credit-system-ledger.md`. The money-bug pass has its
+own plan at `docs/superpowers/plans/2026-08-30-credit-money-bugs.md`.
 
 ---
 
-## 1. Do first — the VM is not deployed
+## 1. Do first — ship the money-bug fixes
+
+Three things, in order. None of them are optional and the first two are coupled.
 
 ```bash
-./deploy.sh                        # web + api PM2 processes
-pm2 restart agent-orchestrator     # deploy.sh does NOT restart this
+# 1. Migration 0073 adds agent_tasks.credit_attempt. Session pooler (5432), never
+#    the transaction pooler the secret names.
+cd packages/foundation/database
+DATABASE_URL="<session-pooler URL, sslmode=no-verify>" pnpm exec drizzle-kit migrate
+
+# 2. Lambdas — the watchdog, the approve handler and the task worker all read the
+#    new column. Rebuild product packages first or sam deploy ships stale dist/.
+pnpm --filter "@serverless-saas/*" --no-bail build
+sam build --config-file samconfig.dev.toml && sam deploy --config-file samconfig.dev.toml
+
+# 3. VM — the orchestrator owns refundTask and the new workflow settle.
+./deploy.sh && pm2 restart agent-orchestrator
 ```
 
-**The orchestrator restart is not optional.** The API Lambda is already running code
-that sends an `attempt` field in the resume payload; the orchestrator currently running
-on the VM does not know about it. Until it restarts, the two sides disagree.
+**The migration must land before the Lambdas.** They select `credit_attempt`
+unconditionally; against a database without the column every task approval and every
+watchdog sweep throws.
 
 Then the **7-step browser checklist** at the end of
 `.superpowers/sdd/2026-08-28-credit-system/task-15-report.md` (git-ignored, lives in
@@ -45,67 +59,46 @@ matter: zero a tenant's balance and confirm Approve disables on the plan-review
 screen; then make the estimate request fail and confirm Approve still works — a failed
 *preview* must never block approval, because `spend_credits()` is the real check.
 
-**Expect one cosmetic wrong thing on dev:** the sidebar still shows the old
-`messages` quota bar. The seed stopped *creating* those feature rows; it does not
-delete existing ones, so dev still has them. `UsageBar.tsx` will render a quota that
-enforces nothing, next to the live credit balance. Decide whether to delete the rows
-or fix `UsageBar`.
-
 ---
 
-## 2. Money bugs, all undercharge-direction
+## 2. Money bugs — all five fixed, not yet deployed
 
-### 2a. Watchdog blocks a stalled task without refunding — **the one to fix first**
+Fixed in `b5717054` (items 2a-2c, 2e) and `eca7e674` (item 2d). Kept here in short form
+because the reasoning is what stops them coming back.
 
-`apps/worker/src/handlers/watchdogHandler.ts:75,143` marks a stalled task `blocked`
-and never refunds its charge. The attempt counter is derived from refunds
-(`products/agent-platform/packages/api/lib/credit-attempt.ts`), so with no refund row
-the retry recomputes the *same* attempt, reuses the same charge key, and
-`spend_credits()` replays it — run 1's tokens are never billed.
+**The root cause behind 2a, 2b and 2c was one thing.** The retry attempt number was
+*derived*, by counting `credit_ledger` refund rows for a `job_id`. That equals the
+attempt only if every abandoned charge writes a refund and nothing else writes refunds
+under the same `job_id` — and neither held. It is now stored in
+`agent_tasks.credit_attempt`, advanced inside `refundTask` only when a refund actually
+lands, guarded on `credit_attempt = $n` so a replayed refund cannot skip a number.
 
-It is also the live producer of the settle-on-a-refunded-key shape that
-`settleTask`'s guard (`apps/agent-orchestrator/src/credits.ts:377-382`) exists to
-block, because the original run may still be alive and refund later.
+| Was | Now |
+|---|---|
+| **2a** The watchdog blocked stalled tasks without refunding, so the attempt froze, the retry rebuilt the same key, `spend_credits()` saw a replay and the first run went unbilled | Sweeps 1 and 2 refund what they block. A stall is our orchestrator crashing, not the tenant's doing, so the tenant pays nothing |
+| **2b** Document refunds wrote `job_id = taskId`, so a task whose PRD planning failed began execution at attempt 1 | The charge key alone decides whether a bump is meaningful; a `document:` key does not parse as a task attempt |
+| **2c** `handleWorkflowApprove` recounted at approve time, so a refund landing mid-flight desynced resume's key from the charge's and both settle and refund no-opped | Reads the stored column, which only moves when a charge is abandoned |
+| **2d** A *successful* workflow stayed charged at the estimate forever | Accumulates the per-step usage `runMastraWorkflow` already reported and settles |
+| **2e** `documents.ts` returned 502 on a JSON parse failure without refunding | Refunds, like its two sibling branches |
 
-Same shape as the bug that took four review rounds to close. Fix it the same way:
-decide whether a watchdog-blocked task should refund, and if so route it through
-`refundTask` with the run's own `chargeKey`.
+`refundTask`, `taskChargeKey` and `shortestExpiresAt` now live in
+`@serverless-saas/agent-credits` (`products/agent-platform/packages/credits`), because
+the watchdog runs in the API Lambda and neither it nor the orchestrator can import the
+other. `settleTask` and `chargeTaskEstimate` stayed in the orchestrator — no second
+consumer, no reason to move live money code.
 
-### 2b. Document refunds inflate a task's attempt count
+**Two tests in this pass passed for the wrong reason before mutation testing caught
+them.** One was shielded by test ordering; the other needed its own fixture row at
+attempt 0 to detect a permissive key parse at all. A third check — a
+`jobType === 'agent_task'` guard — was deleted once a mutation proved it could never
+fire. Keep the standard: an assertion that cannot fail is worse than none, because it
+reads like coverage.
 
-`credit-attempt.ts:30-42` counts `credit_ledger` rows by `job_id` alone. But
-`documents.ts:251,269` writes `job_id = taskId` with `kind='refund'` for a
-`document:{taskId}` charge. So a task whose PRD-planning failed starts execution at
-`attempt: 1`.
+### Still open here
 
-Harmless for money — charge, settle and refund all use the same threaded attempt — but
-it falsifies the "attempt 0 for a never-refunded task" claim in three comments, and it
-makes 2c below the common case rather than an edge. **One predicate from correct:**
-`and eq(creditLedger.jobType, 'agent_task')`.
-
-### 2c. `handleWorkflowApprove` recomputes the attempt live
-
-`products/agent-platform/packages/api/routes/tasks.approval.ts:222` re-derives the
-attempt at approve time instead of reading what the suspended run was charged under.
-Any refund landing between the charge and the approve desyncs resume's key from the
-charge's. The failure is a settle/refund that finds no rows and silently no-ops — an
-unsettled charge. The `settleTask` guard does not help, because the key holds nothing.
-
-Durable fix: persist the attempt on `agent_tasks` at charge time rather than
-re-deriving it.
-
-### 2d. `/api/workflows/execute` charges and never settles
-
-`apps/agent-orchestrator/src/routes/tasks.ts:297` debits an estimate; the only
-reconciliation is `tasks.workflow.ts:95`'s refund on failure. A *successful* workflow
-is charged the estimate forever, unlike a successful task. Documented as deliberate at
-`tasks.workflow.ts:34-38` — confirm that is still the intent.
-
-### 2e. `documents.ts` JSON-parse failure returns 502 with no refund
-
-`apps/agent-orchestrator/src/routes/documents.ts:274-277`, unlike its two sibling
-failure branches which do refund. In practice `settleTask` has usually written a row by
-then so `refundTask` would no-op, but the asymmetry is unstated.
+`runMastraWorkflowSteps` does not call `recordUsage`, so workflow token usage never
+reaches the usage metrics that `runMastraTaskSteps` feeds. Credits are correct; the
+metrics are blind to workflows. Left alone rather than guessed at.
 
 ---
 
@@ -117,6 +110,11 @@ No test reads the SQS body from `handlePlanApprove`, the relay body from
 `handleExecution`, or the resume body from `handleWorkflowApprove`. An edit dropping
 that field leaves every suite green while silently returning every retry to attempt 0
 and free. **Three cheap assertions close it.**
+
+Still true after the money-bug pass, and now slightly worse: all three sites read
+`agent_tasks.credit_attempt` directly, so the value they put on the wire is one field
+access away from being dropped with nothing to notice. The watchdog's own charge key IS
+asserted (`__tests__/watchdog.refund.test.ts`), which is the shape to copy.
 
 ### 3b. There is no CI in this repository
 
@@ -149,8 +147,10 @@ rates are edited by hand and the discipline is a human convention.
 `runMastraWorkflow` is the only caller of `ctx.onTaskComment` and it is invoked solely
 from `tasks.workflow.ts:82`, which just logs. Verified twice, independently.
 
-Note the coupling: if `onTaskComment` is ever wired up, a clarification landing between
-enqueue and approve reintroduces 2c.
+The coupling that used to make this dangerous is gone: wiring `onTaskComment` up would
+once have reintroduced 2c, because a clarification landing between enqueue and approve
+changed the recomputed attempt. With the attempt stored, it cannot. The code is still
+dead and still worth deleting, but it is no longer a loaded gun.
 
 ### 4c. `0072`'s `P0001` catch is broad
 
@@ -205,9 +205,12 @@ deferred to the mission control portal and is covered by neither spec.
 - **Local test database:** `postgresql://suyash@localhost:5432/credit_system_test` —
   Homebrew postgresql@18, pgvector 0.8.6 built from source. A test run reporting
   "skipped" is not a passing run.
-- **Suite baselines** with the variable set: credits 24, `apps/api` 86, `apps/worker`
-  13, `apps/web` 196, agent-orchestrator 196 (1 file fails to COLLECT for a
-  pre-existing unbuilt-`dist` reason — do not chase it).
+- **Suite baselines** after the money-bug pass: foundation credits 24, `apps/api` 86,
+  `apps/worker` 13, `apps/web` 196, agent-platform api 304, agent-orchestrator 200
+  (1 file fails to COLLECT for a pre-existing unbuilt-`dist` reason — do not chase it).
+- **`apps/api` needs `DATABASE_URL` as well as `TEST_DATABASE_URL`.** With only the
+  latter, one file fails to import `packages/foundation/database` and the run reports
+  73 instead of 86 — a partial pass that looks like a pass.
 - **`sam build` fails if any foundation package lacks `dist/`.** `pnpm --filter
   "@serverless-saas/*" build` bails at the first failure; use `--no-bail`. Several
   packages fail `tsc` on test-file type errors that do not affect emitted JS.
