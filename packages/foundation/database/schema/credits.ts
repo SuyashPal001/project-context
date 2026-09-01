@@ -15,7 +15,7 @@ export const creditAccounts = pgTable('credit_accounts', {
 export const creditRates = pgTable('credit_rates', {
   id: uuid('id').primaryKey().defaultRandom(),
   resourceType: text('resource_type', {
-    enum: ['llm_tokens', 'message', 'tool_call', 'skill_run'],
+    enum: ['llm_tokens', 'message', 'tool_call', 'skill_run', 'image_generation'],
   }).notNull(),
   subject: text('subject').notNull().default('*'),
   version: integer('version').notNull().default(1),
