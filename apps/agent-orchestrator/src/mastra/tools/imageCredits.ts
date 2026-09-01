@@ -29,16 +29,35 @@ export async function refundImageCharge(
     const net = res.rows.reduce((sum, row) => sum + BigInt(row.amount_micro), 0n) // negative — what was charged
     if (net >= 0n) return // nothing was actually charged
     const expiresAt = shortestExpiresAt(res.rows.map(row => row.expires_at))
-    await spendCredits({
-      tenantId, amountMicro: -net, key: `${chargeKey}:refund`, kind: 'refund',
-      actorId: agentId, actorType: 'agent', rateId, rateVersion, jobType: 'image_generation',
-      grantType: 'refund', expiresAt,
-    })
+    const refundKey = `${chargeKey}:refund`
+
+    // A failure past this point means real money owed to the tenant gets
+    // stuck. The swallow below is intentional (a throwing refund must not
+    // break the failure path it runs on), but it must be loud and
+    // replay-ready: the refund key is idempotent per tenant, so a human can
+    // safely replay this exact spend_credits() call by hand once they see the
+    // log line. Nesting the try here (rather than around the read-back query
+    // too) is what keeps `net`/`expiresAt` in scope for that log line.
+    try {
+      await spendCredits({
+        tenantId, amountMicro: -net, key: refundKey, kind: 'refund',
+        actorId: agentId, actorType: 'agent', rateId, rateVersion, jobType: 'image_generation',
+        grantType: 'refund', expiresAt,
+      })
+    } catch (err) {
+      console.error(
+        `[credits] UNREFUNDED IMAGE CHARGE: tenantId=${tenantId} chargeKey=${chargeKey} amountMicro=${-net} — ` +
+        `refund write failed and was swallowed; tenant is still down ${-net} micro-credits for a ` +
+        `generation that could not be saved. Replay by hand: ` +
+        `spend_credits('${tenantId}', ${-net}, '${refundKey}', 'refund', ...) ` +
+        `(idempotent per tenant on this key, safe to retry). Cause:`,
+        (err as Error).message,
+      )
+    }
   } catch (err) {
     console.error(
-      `[credits] UNREFUNDED IMAGE CHARGE: tenantId=${tenantId} chargeKey=${chargeKey} — ` +
-      `refund write failed and was swallowed; tenant is still down for a generation that ` +
-      `could not be saved. Cause:`, (err as Error).message,
+      `[credits] refundImageCharge failed tenantId=${tenantId} chargeKey=${chargeKey}:`,
+      (err as Error).message,
     )
   }
 }

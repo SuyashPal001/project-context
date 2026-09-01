@@ -108,7 +108,7 @@ export const editImage = createTool({
     }
 
     const buffer = Buffer.from(genResult.imageBase64, 'base64')
-    const extension = (genResult.mimeType ?? 'image/png').split('/')[1] ?? 'png'
+    const extension = (genResult.mimeType ?? 'image/png').split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png'
     const attachment = conversationId && idToken
       ? await uploadGeneratedFile(idToken, {
           conversationId, title: 'Edited Image', content: buffer,

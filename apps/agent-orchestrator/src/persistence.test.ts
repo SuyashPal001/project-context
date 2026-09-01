@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { generatedFileKey, uploadGeneratedFile } from './persistence'
+import { generatedFileKey, uploadGeneratedFile } from './persistence.js'
 
 describe('generatedFileKey', () => {
   it('uses the given extension instead of always .md', () => {
@@ -44,7 +44,10 @@ describe('uploadGeneratedFile — binary content', () => {
 
     expect(result).toEqual({ fileId: 'f1', name: 'Generated Image.jpg', type: 'image/jpeg', size: buf.length })
     const putCall = calls.find(c => c.url === 'https://s3.example/put')
-    expect(putCall?.init?.body).toBe(buf)
+    // body is wrapped as a Uint8Array (fetch's BodyInit type rejects Buffer
+    // directly under TS's lib.dom types) — same bytes, not the same instance.
+    expect(putCall?.init?.body).toBeInstanceOf(Uint8Array)
+    expect(Buffer.from(putCall?.init?.body as Uint8Array)).toEqual(buf)
     expect((putCall?.init?.headers as Record<string, string>)['Content-Type']).toBe('image/jpeg')
   })
 })

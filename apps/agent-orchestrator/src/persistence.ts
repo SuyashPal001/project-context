@@ -284,7 +284,7 @@ export async function uploadGeneratedFile(
     const put = await fetch(uploadUrl, {
       method: 'PUT',
       headers: { 'Content-Type': type },
-      body: content,
+      body: Buffer.isBuffer(content) ? new Uint8Array(content) : content,
     })
     if (!put.ok) {
       console.error('[persistence] uploadGeneratedFile PUT failed:', put.status)

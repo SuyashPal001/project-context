@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { GoogleAuth } from 'google-auth-library'
-import { vertexBreaker, geminiBreaker } from './router.js'
+import { vertexImageBreaker, geminiImageBreaker } from './router.js'
+import { requestsTotal, latency } from './metrics.js'
 
 const IMAGE_MODEL_ALLOWLIST = new Set(['gemini-3-pro-image-preview'])
 
@@ -88,20 +89,22 @@ async function callGeminiApiKeyImageModel(req: ImageGenerationRequest): Promise<
 // (router.ts:49-58) — Ollama cannot generate images. If both breakers are
 // open (or both calls fail), the caller gets a clean throw, handled by
 // handleImageGenerations below as a 503.
+export class UnsupportedImageModelError extends Error {}
+
 export async function generateImage(req: ImageGenerationRequest): Promise<ImageGenerationResult> {
   if (!IMAGE_MODEL_ALLOWLIST.has(req.model)) {
-    throw new Error(`Unsupported image model: ${req.model}`)
+    throw new UnsupportedImageModelError(`Unsupported image model: ${req.model}`)
   }
 
   let vertexFailureReason: string | null = null
 
-  if (vertexBreaker.isAvailable()) {
+  if (vertexImageBreaker.isAvailable()) {
     try {
       const result = await callVertexImageModel(req)
-      vertexBreaker.onSuccess()
+      vertexImageBreaker.onSuccess()
       return result
     } catch (vertexErr) {
-      vertexBreaker.onFailure()
+      vertexImageBreaker.onFailure()
       vertexFailureReason = (vertexErr as Error).message
       console.warn('[images] vertex failed, trying gemini API key fallback:', vertexFailureReason)
     }
@@ -113,16 +116,16 @@ export async function generateImage(req: ImageGenerationRequest): Promise<ImageG
   if (!process.env.GEMINI_API_KEY) {
     throw new Error(`Vertex image generation unavailable (${vertexFailureReason}) and no GEMINI_API_KEY fallback configured`)
   }
-  if (!geminiBreaker.isAvailable()) {
+  if (!geminiImageBreaker.isAvailable()) {
     throw new Error(`Vertex image generation unavailable (${vertexFailureReason}) and Gemini API key circuit is open`)
   }
 
   try {
     const result = await callGeminiApiKeyImageModel(req)
-    geminiBreaker.onSuccess()
+    geminiImageBreaker.onSuccess()
     return result
   } catch (geminiErr) {
-    geminiBreaker.onFailure()
+    geminiImageBreaker.onFailure()
     throw new Error(`Vertex image generation failed (${vertexFailureReason}); Gemini API key fallback also failed (${(geminiErr as Error).message})`)
   }
 }
@@ -141,11 +144,22 @@ export async function handleImageGenerations(req: IncomingMessage, res: ServerRe
     res.end(JSON.stringify({ error: { message: 'Invalid JSON' } }))
     return
   }
+  const t0 = Date.now()
   try {
     const result = await generateImage(payload)
+    latency.observe({ adapter: 'image' }, Date.now() - t0)
+    requestsTotal.inc({ adapter: 'image', status: 'success' })
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(result))
   } catch (err) {
+    latency.observe({ adapter: 'image' }, Date.now() - t0)
+    requestsTotal.inc({ adapter: 'image', status: 'failure' })
+    if (err instanceof UnsupportedImageModelError) {
+      console.warn('[images] rejected:', err.message)
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: err.message, type: 'invalid_request_error' } }))
+      return
+    }
     console.error('[images] generation failed:', (err as Error).message)
     res.writeHead(503, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: { message: (err as Error).message, type: 'api_error' } }))

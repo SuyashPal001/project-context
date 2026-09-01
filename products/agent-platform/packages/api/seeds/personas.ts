@@ -1,5 +1,5 @@
 /**
- * Seeds the 3 default personas as drafts. They cannot be published until a preview
+ * Seeds the 4 default personas as drafts. They cannot be published until a preview
  * image (exampleAssetUrl) is attached via PUT /ops/personas/:id — see
  * POST /ops/personas/:id/publish's INCOMPLETE_ASSETS gate.
  *

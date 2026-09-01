@@ -12,7 +12,7 @@ import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
-import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker } from './router';
+import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker, vertexImageBreaker, geminiImageBreaker } from './router';
 import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
 import { isAuthorizedCaller, extractServiceKey } from './auth';
 import { handleImageGenerations } from './images.js';
@@ -314,10 +314,12 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
       status: 'ok',
       model: DEFAULT_MODEL,
       circuits: {
-        vertex:     vertexBreaker.getStatus(),
-        anthropic:  anthropicBreaker.getStatus(),
-        ollama:     ollamaBreaker.getStatus(),
-        openrouter: openrouterBreaker.getStatus(),
+        vertex:       vertexBreaker.getStatus(),
+        anthropic:    anthropicBreaker.getStatus(),
+        ollama:       ollamaBreaker.getStatus(),
+        openrouter:   openrouterBreaker.getStatus(),
+        vertexImage:  vertexImageBreaker.getStatus(),
+        geminiImage:  geminiImageBreaker.getStatus(),
       },
     }));
     return;
@@ -341,10 +343,12 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Prometheus metrics scrape endpoint
   if (req.method === 'GET' && req.url === '/metrics') {
     const body = renderMetrics({
-      vertex:     vertexBreaker.getStatus(),
-      anthropic:  anthropicBreaker.getStatus(),
-      ollama:     ollamaBreaker.getStatus(),
-      openrouter: openrouterBreaker.getStatus(),
+      vertex:       vertexBreaker.getStatus(),
+      anthropic:    anthropicBreaker.getStatus(),
+      ollama:       ollamaBreaker.getStatus(),
+      openrouter:   openrouterBreaker.getStatus(),
+      vertexImage:  vertexImageBreaker.getStatus(),
+      geminiImage:  geminiImageBreaker.getStatus(),
     });
     res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
     res.end(body);

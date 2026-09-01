@@ -18,7 +18,7 @@ vi.mock('@serverless-saas/credits', () => ({
 vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 
-import { generateImage } from './generateImage'
+import { generateImage } from './generateImage.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {

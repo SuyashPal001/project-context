@@ -29,6 +29,13 @@ export const ollamaBreaker     = new CircuitBreaker('ollama',     { failureThres
 export const geminiBreaker     = new CircuitBreaker('gemini',     { failureThreshold: 5, resetTimeoutMs: 60_000 });
 export const openrouterBreaker = new CircuitBreaker('openrouter', { failureThreshold: 5, resetTimeoutMs: 60_000 });
 
+// Separate breakers for image generation (apps/inference-gateway/src/images.ts) — a
+// preview-tier model with a different failure profile than chat completions. Sharing
+// vertexBreaker/geminiBreaker with chat would let image-generation failures open the
+// chat-side breaker (and vice versa), degrading unrelated traffic.
+export const vertexImageBreaker = new CircuitBreaker('vertex-image', { failureThreshold: 10, resetTimeoutMs: 60_000 });
+export const geminiImageBreaker = new CircuitBreaker('gemini-image', { failureThreshold: 5, resetTimeoutMs: 60_000 });
+
 const vertexCB     = new CircuitBreakerAdapter(vertexAdapter,     vertexBreaker);
 const anthropicCB  = new CircuitBreakerAdapter(anthropicAdapter,  anthropicBreaker);
 const ollamaCB     = new CircuitBreakerAdapter(ollamaAdapter,     ollamaBreaker);

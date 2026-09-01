@@ -20,7 +20,7 @@ vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 vi.mock('../../media.js', () => ({ resolveSourceImage }))
 
-import { editImage } from './editImage'
+import { editImage } from './editImage.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {

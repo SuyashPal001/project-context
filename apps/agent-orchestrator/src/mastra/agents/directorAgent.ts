@@ -16,7 +16,11 @@ export const directorAgent = new Agent({
 ## Rules
 - Call generate_image for a new image from a text description.
 - Call edit_image when the user references an existing image in this conversation (by its fileId) and wants it changed.
-- If a generation is refused (returns refused: true), tell the user plainly what happened — do not retry automatically, do not describe the refusal as an error.
+- If a generation returns refused: true, check refusalReason:
+  - "SAFETY" or another content-policy reason from Gemini: tell the user their request was declined for content policy reasons — do not retry, do not describe it as a technical error.
+  - "GENERATION_FAILED": tell the user image generation failed due to a temporary issue — they can try again.
+  - "STORAGE_FAILED": tell the user the image WAS generated successfully but could not be saved (likely a storage limit) — this is not a content refusal.
+  - "SOURCE_IMAGE_UNAVAILABLE" or "SOURCE_IMAGE_TOO_LARGE": tell the user the source image for the edit couldn't be used, and why.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.
 - Never invent a fileId — only use one the user or an earlier tool result actually gave you.`
     const persona = requestContext?.get('personaPersonality') as string | undefined
