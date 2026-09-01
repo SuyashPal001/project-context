@@ -9,6 +9,7 @@ import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { agents, agentTemplates } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
+import { personas } from '@serverless-saas/agent-schema/personas';
 import { apiKeys } from '@serverless-saas/database/schema/access';
 import { eq, isNull, and, desc } from 'drizzle-orm';
 
@@ -346,6 +347,46 @@ onboardingRoutes.post('/complete', async (c) => {
         tenantId,
         name: 'default',
         systemPrompt: withUploadGuidance('You are the Architect. Always call retrieve_knowledge before answering any technical question about the codebase. Always cite the file. Say "I don\'t know" when the answer is not in the knowledge base.'),
+        tools: [],
+        status: 'active',
+    });
+
+    // Seed Director Agent
+    const [directorPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'director')).limit(1);
+    if (!directorPersona) {
+        console.warn('[onboarding] director persona not found — run the personas seed before onboarding tenants. Creating Director agent with personaId: null.');
+    }
+
+    const directorRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const directorKeyHash = createHash('sha256').update(directorRawKey).digest('hex');
+    const [directorKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Director API Key',
+        type: 'agent',
+        keyHash: directorKeyHash,
+        permissions: agentRolePermissionStrings,
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [directorAgentRow] = await db.insert(agents).values({
+        tenantId,
+        name: 'Director',
+        // agents.type is a Postgres enum (products/agent-platform/packages/schema/agents.ts:20:
+        // 'ops'|'support'|'billing'|'custom'|'product_manager'|'analyst'|'project_manager'|'tech_lead'|'architect').
+        // 'assistant' is NOT a member — it only appears in registry.ts's unrelated, unvalidated
+        // display list. 'custom' is what backfill-agents.ts already uses for every agent it seeds.
+        type: 'custom',
+        status: 'active',
+        description: 'Generates and edits images from a description.',
+        apiKeyId: directorKey.id,
+        personaId: directorPersona?.id ?? null,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: directorAgentRow.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are Director. Generate and edit images from a description.',
         tools: [],
         status: 'active',
     });

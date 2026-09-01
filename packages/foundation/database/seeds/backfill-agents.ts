@@ -77,6 +77,11 @@ const DEFAULT_AGENTS: { name: string; description: string; systemPrompt: string 
         description: 'Breaks approved milestones into concrete engineering tasks with acceptance criteria, priorities, and effort estimates.',
         systemPrompt: 'You are a task breakdown specialist. Decompose milestones into well-defined engineering tasks with clear acceptance criteria.',
     },
+    {
+        name: 'Director',
+        description: 'Generates and edits images from a description.',
+        systemPrompt: 'You are Director. Generate and edit images from a description.',
+    },
 ];
 
 async function run() {
