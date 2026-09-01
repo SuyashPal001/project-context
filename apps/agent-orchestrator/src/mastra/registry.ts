@@ -2,12 +2,14 @@ import type { Agent } from '@mastra/core/agent'
 import { platformAgent } from './agents/platformAgent.js'
 import { pmAgent } from './agents/pmAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
+import { directorAgent } from './agents/directorAgent.js'
 // Map of DB agent name (lowercased) → Mastra agent instance.
 // Exact-match keys are tried first; substring fallback uses the same keys.
 const AGENT_REGISTRY: Record<string, Agent> = {
   disco:      platformAgent as unknown as Agent,
   'pm agent': pmAgent as unknown as Agent,
   architect:  architectAgent as unknown as Agent,
+  director:   directorAgent as unknown as Agent,
 }
 
 /**
@@ -28,12 +30,14 @@ export function resolveAgent(agentName: string): Agent {
 export function resolveAgentLabel(agent: Agent): string {
   if (agent === (architectAgent as unknown as Agent)) return 'architectAgent'
   if (agent === (pmAgent as unknown as Agent)) return 'pmAgent'
+  if (agent === (directorAgent as unknown as Agent)) return 'directorAgent'
 
   return 'platformAgent'
 }
 
-// Canonical seed definitions for the agents auto-created per tenant.
-// Consumed by onboarding + backfill scripts.
+// Display-only default agent list. NOT what onboarding.ts seeds from — that
+// file hand-rolls its own agent rows (Lambda can't import this file). Keep
+// this list in sync with onboarding.ts and backfill-agents.ts by hand.
 export const DEFAULT_AGENTS = [
   {
     name: 'Disco',
@@ -59,6 +63,14 @@ export const DEFAULT_AGENTS = [
     status: 'active',
     is_internal: false,
     apiKeyName: 'Architect API Key',
+  },
+  {
+    name: 'Director',
+    description: 'Generates and edits images',
+    type: 'assistant',
+    status: 'active',
+    is_internal: false,
+    apiKeyName: 'Director API Key',
   },
 
 ] as const
