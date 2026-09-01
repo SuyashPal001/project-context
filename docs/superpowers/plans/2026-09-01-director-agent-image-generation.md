@@ -14,9 +14,11 @@
 
 - Image model: `gemini-3-pro-image-preview` — never fall back to Ollama for this model (§4 of spec).
 - Tool outputs never carry image bytes back into the Mastra message history — metadata only (`fileId`, `name`, `fileType`, `size`) (§3).
-- Every image generation/edit is charged via a dedicated `image_generation` credit rate, charged before the Gemini call and refunded on failure after charge — never routed through `debitChatTurn` (§6).
+- Every image generation/edit is charged via a dedicated `image_generation` credit rate, charged **after** a successful (non-refused) Gemini response and refunded if the subsequent upload fails — never routed through `debitChatTurn` (§6, spec's charge-after-success default).
 - A Gemini safety refusal is never charged and never retried (§3, §6).
-- Gateway fetch from the tool carries `AbortSignal.timeout(90_000)`, at most one retry on transient failure only (§3, §7).
+- A refund always reads back the original debit's grant(s) from `credit_ledger`/`credit_grants` and inherits their shortest `expires_at` (never a bare/permanent grant) — same pattern as `refundTask` (`products/agent-platform/packages/credits/refund.ts:109-169`).
+- Mastra tool keys (the property name in `tools: {...}`, not `createTool`'s `id`) must be `generate_image`/`edit_image` — `chatStream.ts` normalizes on the registered key, not the id (see Task 5, Task 6).
+- Gateway fetch from the tool carries `AbortSignal.timeout(90_000)`. No retry loop — a failure returns `GENERATION_FAILED` to the agent, which can re-invoke the tool itself if the user asks again (§3, §7 permit "at most one retry"; this plan ships zero rather than add a retry ladder for a first version).
 - Director is added to all four agent/persona definition sites: `personas.ts` seed, `onboarding.ts`, `backfill-agents.ts`, `registry.ts` (§1).
 
 ---
@@ -26,37 +28,17 @@
 **Files:**
 - Modify: `packages/foundation/database/schema/credits.ts:17-19`
 - Create: migration via `drizzle-kit generate` (output path assigned by the tool)
-- Test: `packages/foundation/credits/src/rate.test.ts` (create if it doesn't exist, else extend)
 
 **Interfaces:**
 - Produces: `creditRates.resourceType` now accepts `'image_generation'` as a valid enum value, usable by `resolveRate('image_generation', 'gemini-3-pro-image-preview')` (existing function, `packages/foundation/credits/src/read.ts:83`).
 
-- [ ] **Step 1: Write the failing test — `per_call_micro` schema resolves for the new resource type**
+- [ ] **Step 1: Confirm `costMicro`'s `per_call_micro` schema needs no change**
 
-```ts
-// packages/foundation/credits/src/rate.test.ts
-import { describe, it, expect } from 'vitest'
-import { costMicro } from './rate'
+The real test file is `packages/foundation/credits/src/__tests__/rate.test.ts` (not `rate.test.ts` at the package root) and it already asserts `costMicro({ per_call_micro: 0 }, { count: 7 })).toBe(0n)`, proving the `per_call_micro` branch (`rate.ts:24-28`) is already exercised. No new test needed here — this task only widens the `resourceType` enum, it doesn't touch pricing math.
 
-describe('costMicro — per_call_micro (image generation)', () => {
-  it('charges the flat per-call rate once, ignoring token usage fields', () => {
-    const schema = { per_call_micro: 50_000 } as const
-    expect(costMicro(schema, { count: 1 })).toBe(50_000n)
-  })
+Run: `pnpm --filter @serverless-saas/credits test` to confirm the existing suite passes before touching the schema.
 
-  it('returns 0 when count is 0 (e.g. a dry-run resolve)', () => {
-    const schema = { per_call_micro: 50_000 } as const
-    expect(costMicro(schema, { count: 0 })).toBe(0n)
-  })
-})
-```
-
-- [ ] **Step 2: Run test to verify it passes already**
-
-Run: `pnpm --filter @serverless-saas/credits test rate.test.ts`
-Expected: PASS — `costMicro`'s `per_call_micro` branch already exists (`rate.ts:24-28`); this step proves the pricing math needs no change, only the resource-type enum does.
-
-- [ ] **Step 3: Add `image_generation` to the schema enum**
+- [ ] **Step 2: Add `image_generation` to the schema enum**
 
 Edit `packages/foundation/database/schema/credits.ts:17-19`:
 
@@ -66,28 +48,28 @@ Edit `packages/foundation/database/schema/credits.ts:17-19`:
   }).notNull(),
 ```
 
-- [ ] **Step 4: Generate and review the migration**
+- [ ] **Step 3: Attempt to generate a migration**
 
 Run: `cd packages/foundation/database && pnpm exec drizzle-kit generate`
-Expected: a new migration file; since `resourceType` is a plain `text` column (not a Postgres `pgEnum`), this generates as effectively a no-op DDL — TypeScript-level typing only changes. Confirm no destructive DDL is in the generated file before committing it.
+Expected: since `resourceType` is a plain `text` column with a TS-level `enum` option (not a Postgres `pgEnum` type), this most likely reports "No schema changes" and writes no file — the widening is TypeScript-only. If it does emit a file, confirm it contains no destructive DDL before committing it; if it emits nothing, there is nothing to commit for this step and Step 4 is a no-op you can skip.
 
-- [ ] **Step 5: Apply the migration to the dev database**
+- [ ] **Step 4: Apply the migration to the dev database (only if Step 3 produced one)**
 
 Run: `cd packages/foundation/database && DATABASE_URL=<dev-url> pnpm exec drizzle-kit migrate`
 
-- [ ] **Step 6: Seed the dev rate row**
+- [ ] **Step 5: Seed the dev rate row**
 
-Run (adjust `<rate-owner-decision>` once pricing is decided — flagged open in the spec, §6):
+Run (adjust the rate value once pricing is decided — flagged open in the spec, §6):
 
 ```sql
 insert into credit_rates (resource_type, subject, version, pricing_schema, is_active)
 values ('image_generation', 'gemini-3-pro-image-preview', 1, '{"per_call_micro": 50000}'::jsonb, true);
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/foundation/database/schema/credits.ts packages/foundation/database/migrations packages/foundation/credits/src/rate.test.ts
+git add packages/foundation/database/schema/credits.ts packages/foundation/database/migrations
 git commit -m "feat(credits): add image_generation resource type for per-image charges"
 ```
 
@@ -107,7 +89,7 @@ git commit -m "feat(credits): add image_generation resource type for per-image c
 
 ```ts
 // apps/agent-orchestrator/src/persistence.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { generatedFileKey, uploadGeneratedFile } from './persistence'
 
 describe('generatedFileKey', () => {
@@ -265,8 +247,7 @@ git commit -m "feat(orchestrator): generalize uploadGeneratedFile for binary con
 
 **Files:**
 - Modify: `apps/inference-gateway/src/index.ts`
-- Modify: `apps/inference-gateway/src/router.ts:49-59`
-- Create: `apps/inference-gateway/src/images.ts`
+- Create: `apps/inference-gateway/src/images.ts` (imports `vertexBreaker`/`geminiBreaker` from `router.ts` — no `router.ts` edits needed, they're already exported)
 - Test: `apps/inference-gateway/src/images.test.ts`
 
 **Interfaces:**
@@ -274,8 +255,7 @@ git commit -m "feat(orchestrator): generalize uploadGeneratedFile for binary con
   `{ model: string, prompt: string, sourceImageBase64?: string, sourceMimeType?: string }`,
   response `{ imageBase64: string, mimeType: string } | { refused: true, reason: string }`
   on 200; `{ error: { message, type } }` on failure status.
-- Produces: `getImageAdapterChain(model): ('vertex' | 'gemini')[]` in `router.ts` — ordered adapter names to try, no Ollama.
-- Consumes: `_auth` (`GoogleAuth`) pattern already in `index.ts:23` for Vertex ADC.
+- Consumes: `_auth` (`GoogleAuth`) pattern already in `index.ts:23` for Vertex ADC; `vertexBreaker`/`geminiBreaker` (`router.ts:26,29`) — image generation goes through the same two breakers chat completions use, just never falls through to Ollama.
 
 - [ ] **Step 1: Write the failing test — refusal classification is a normal response, not a thrown error**
 
@@ -328,10 +308,14 @@ Expected: FAIL — `./images.ts` does not exist yet.
 // apps/inference-gateway/src/images.ts
 import type { IncomingMessage, ServerResponse } from 'http'
 import { GoogleAuth } from 'google-auth-library'
+import { vertexBreaker, geminiBreaker } from './router.js'
 
 const IMAGE_MODEL_ALLOWLIST = new Set(['gemini-3-pro-image-preview'])
 
-const PROJECT = process.env.VERTEX_PROJECT ?? ''
+// Same fallback order index.ts:42 uses for embeddings — VERTEX_PROJECT first,
+// GCLOUD_PROJECT second. images.ts previously used VERTEX_PROJECT only, which
+// would silently 503 with a malformed URL on a VM where only GCLOUD_PROJECT is set.
+const PROJECT = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
 const LOCATION = process.env.VERTEX_LOCATION ?? 'us-central1'
 const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' })
 
@@ -408,16 +392,38 @@ async function callGeminiApiKeyImageModel(req: ImageGenerationRequest): Promise<
   return classifyGeminiImageResponse(await res.json())
 }
 
+// No Ollama tail here, unlike getAdapterChain's chat-completions chain
+// (router.ts:49-58) — Ollama cannot generate images. If both breakers are
+// open (or both calls fail), the caller gets a clean throw, handled by
+// handleImageGenerations below as a 503.
 export async function generateImage(req: ImageGenerationRequest): Promise<ImageGenerationResult> {
   if (!IMAGE_MODEL_ALLOWLIST.has(req.model)) {
     throw new Error(`Unsupported image model: ${req.model}`)
   }
+
+  if (vertexBreaker.isAvailable()) {
+    try {
+      const result = await callVertexImageModel(req)
+      vertexBreaker.onSuccess()
+      return result
+    } catch (vertexErr) {
+      vertexBreaker.onFailure()
+      console.warn('[images] vertex failed, trying gemini API key fallback:', (vertexErr as Error).message)
+    }
+  } else {
+    console.warn('[images] vertex circuit open, trying gemini API key fallback')
+  }
+
+  if (!process.env.GEMINI_API_KEY) throw new Error('Vertex image generation unavailable and no GEMINI_API_KEY fallback configured')
+  if (!geminiBreaker.isAvailable()) throw new Error('Vertex and Gemini API key both unavailable for image generation')
+
   try {
-    return await callVertexImageModel(req)
-  } catch (vertexErr) {
-    console.warn('[images] vertex failed, trying gemini API key fallback:', (vertexErr as Error).message)
-    if (!process.env.GEMINI_API_KEY) throw vertexErr
-    return await callGeminiApiKeyImageModel(req)
+    const result = await callGeminiApiKeyImageModel(req)
+    geminiBreaker.onSuccess()
+    return result
+  } catch (geminiErr) {
+    geminiBreaker.onFailure()
+    throw geminiErr
   }
 }
 
@@ -489,36 +495,33 @@ And add the route, after the existing `/v1/chat/completions` block (`index.ts:34
   }
 ```
 
-`readBody`'s reject on oversize needs a 413 at each call site that doesn't already have one — `handleImageGenerations` and `handleChatCompletions` both call `readBody` inside a `try { } catch { res.writeHead(400, ...) }`; change both catches to check `err.message === 'PAYLOAD_TOO_LARGE'` and write 413 instead of 400 in that case.
+`readBody`'s reject on oversize needs handling at every call site, not just the two with an existing try/catch:
 
-- [ ] **Step 6: No-Ollama chain for image models**
-
-Edit `apps/inference-gateway/src/router.ts`, add alongside `getAdapterChain`:
+- `handleImageGenerations` and `handleChatCompletions` both already wrap `readBody` in `try { } catch { res.writeHead(400, ...) }` — change both catches to check `err.message === 'PAYLOAD_TOO_LARGE'` and write 413 instead of 400 in that case.
+- `handleEmbeddings` (`index.ts:27`) already has a catch too — same fix.
+- **`handleNativeGemini` (`index.ts:204`) calls `await readBody(req)` with no try/catch at all.** Today that's harmless because `readBody` never rejects except on a socket error; once it can reject on oversize, an unhandled rejection here means no response is ever written and the client hangs until timeout. Wrap it:
 
 ```ts
-const IMAGE_MODELS = new Set(['gemini-3-pro-image-preview']);
-
-/**
- * Image models never fall through to Ollama — Ollama cannot generate images
- * and doesn't recognize the model name. If both Vertex and the Gemini API
- * key fail, the caller gets a clean failure instead of a silent wrong answer.
- */
-export function isImageModel(model: string | undefined): boolean {
-  return IMAGE_MODELS.has(model ?? '');
-}
+  let body: string;
+  try {
+    body = await readBody(req);
+  } catch (err) {
+    const status = (err as Error).message === 'PAYLOAD_TOO_LARGE' ? 413 : 400;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Failed to read request body' } }));
+    return;
+  }
 ```
 
-(`images.ts`'s `generateImage` already implements the vertex→gemini-key-only fallback directly, per Step 3 — this export exists so any future caller of `getAdapterChain` can check before routing a request there instead of to `/v1/images/generations`.)
-
-- [ ] **Step 7: Run full gateway test suite**
+- [ ] **Step 6: Run full gateway test suite**
 
 Run: `pnpm --filter inference-gateway test`
 Expected: PASS, no regressions in existing adapter/router tests.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add apps/inference-gateway/src/images.ts apps/inference-gateway/src/images.test.ts apps/inference-gateway/src/index.ts apps/inference-gateway/src/router.ts
+git add apps/inference-gateway/src/images.ts apps/inference-gateway/src/images.test.ts apps/inference-gateway/src/index.ts
 git commit -m "feat(inference-gateway): add /v1/images/generations for Gemini 3 Pro Image"
 ```
 
@@ -539,11 +542,11 @@ git commit -m "feat(inference-gateway): add /v1/images/generations for Gemini 3 
 
 - [ ] **Step 1: Add `resolveSourceImage` to `media.ts`**
 
-`downloadMediaAttachment` (`media.ts:103`) takes a full `Attachment` object with a `presignedUrl` already resolved. `editImage`'s input is just a `fileId` from the conversation — resolve the presigned URL through the existing files route first:
+`downloadMediaAttachment` (`media.ts:103`) takes a full `Attachment` object with a `presignedUrl` already resolved. `editImage`'s input is just a `fileId` from the conversation. Reuse `fetchPresignedUrl` (`apps/agent-orchestrator/src/mastra/tools/mediaCache.ts:5-14`), which already does this exact lookup against `INTERNAL_API_URL` — don't hand-roll a second copy:
 
 ```ts
 // apps/agent-orchestrator/src/media.ts — add near downloadMediaAttachment
-const API_BASE = process.env.API_BASE_URL ?? ''
+import { fetchPresignedUrl } from './mastra/tools/mediaCache.js'
 
 export async function resolveSourceImage(
   idToken: string,
@@ -552,15 +555,7 @@ export async function resolveSourceImage(
   sessionId: string,
 ): Promise<{ base64: string; mimeType: string } | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/files/${fileId}/presigned-url`, {
-      headers: { Authorization: `Bearer ${idToken}` },
-    })
-    if (!res.ok) {
-      console.error(`[session:${sessionId}] resolveSourceImage presigned-url failed:`, res.status)
-      return null
-    }
-    const { presignedUrl } = await res.json() as { presignedUrl?: string }
-    if (!presignedUrl) return null
+    const presignedUrl = await fetchPresignedUrl(fileId, idToken)
     const downloaded = await downloadMediaAttachment(
       { fileId, presignedUrl, name: fileId, type: mimeType } as Attachment,
       sessionId,
@@ -576,29 +571,34 @@ export async function resolveSourceImage(
 }
 ```
 
-(`GET /api/v1/files/:id/presigned-url`, `apps/api/src/routes/files.ts:282`, already scopes to the caller's tenant — no separate tenancy check needed here.)
+(`GET /api/v1/files/:id/presigned-url`, `apps/api/src/routes/files.ts:282`, already scopes to the caller's tenant — no separate tenancy check needed here. Known limitation carried from the spec: `mimeType` comes from the agent's tool-call arguments, not from the file's stored metadata — a wrong guess round-trips into Gemini's `inlineData.mimeType` and surfaces as a generation failure, not a security issue. Fixing this properly needs a files-by-id metadata endpoint that doesn't exist yet; out of scope here.)
+
+**Charge ordering (per spec §6's stated default, resolving the earlier draft's contradiction): call the gateway first, charge only on a non-refused success, refund only if the subsequent upload fails.** This means a refusal is never charged (nothing to refund), and the only refund path is "generated successfully, paid for it, then couldn't save it."
 
 - [ ] **Step 2: Write the failing test for `generateImage`**
 
 ```ts
 // apps/agent-orchestrator/src/mastra/tools/generateImage.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { RequestContext } from '@mastra/core/request-context'
 
 const spendCredits = vi.fn()
 const resolveRate = vi.fn()
 const isUnlimited = vi.fn()
+const getPool = vi.fn()
 vi.mock('@serverless-saas/credits', () => ({ spendCredits, resolveRate, isUnlimited }))
+vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 
 import { generateImage } from './generateImage'
 import { uploadGeneratedFile } from '../../persistence.js'
 
-function fakeExecContext(overrides: Record<string, unknown> = {}) {
-  const map = new Map<string, unknown>({
-    tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok', ...overrides,
-  })
-  return { requestContext: { get: (k: string) => map.get(k) } }
+function ctx(values: Record<string, string>) {
+  const requestContext = new RequestContext()
+  for (const [k, v] of Object.entries(values)) requestContext.set(k, v)
+  return { requestContext } as never
 }
+const baseCtx = () => ctx({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok' })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -607,33 +607,51 @@ beforeEach(() => {
 })
 
 describe('generateImage tool', () => {
-  it('charges credits, calls the gateway, uploads the result, and returns metadata only', async () => {
+  it('calls the gateway, charges credits only after success, uploads the result, and returns metadata only', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
 
-    const result = await generateImage.execute({ prompt: 'a red bicycle' }, fakeExecContext())
+    const result = await generateImage.execute!({ prompt: 'a red bicycle' } as never, baseCtx())
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', amountMicro: -50_000n, kind: 'debit' }))
     expect(result).toEqual({ fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3 })
     expect(result).not.toHaveProperty('imageBase64')
   })
 
-  it('does not charge and returns a refusal when Gemini refuses', async () => {
+  it('does not call the gateway result into a charge and returns a refusal when Gemini refuses — no charge, nothing to refund', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ refused: true, reason: 'SAFETY' }), { status: 200 })) as unknown as typeof fetch
 
-    const result = await generateImage.execute({ prompt: 'anything' }, fakeExecContext())
+    const result = await generateImage.execute!({ prompt: 'anything' } as never, baseCtx())
 
     expect(spendCredits).not.toHaveBeenCalled()
     expect(result).toEqual({ refused: true, refusalReason: 'SAFETY' })
   })
 
-  it('returns insufficientCredits without generating when spendCredits throws', async () => {
+  it('refunds with the original grants\' shortest expiry when the post-charge upload fails', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ amount_micro: '-50000', expires_at: '2026-12-01T00:00:00.000Z' }],
+    })
+    getPool.mockReturnValue({ query })
+
+    const result = await generateImage.execute!({ prompt: 'anything' } as never, baseCtx())
+
+    expect(spendCredits).toHaveBeenCalledTimes(2)
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({
+      tenantId: 't1', amountMicro: 50_000n, kind: 'refund', grantType: 'refund',
+      expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+    }))
+    expect(result).toEqual({ refused: true, refusalReason: 'STORAGE_FAILED' })
+  })
+
+  it('returns insufficientCredits when spendCredits throws after a successful generation', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
     spendCredits.mockRejectedValue(Object.assign(new Error('insufficient'), { name: 'InsufficientCreditsError' }))
-    global.fetch = vi.fn()
 
-    const result = await generateImage.execute({ prompt: 'anything' }, fakeExecContext())
+    const result = await generateImage.execute!({ prompt: 'anything' } as never, baseCtx())
 
-    expect(global.fetch).not.toHaveBeenCalled()
+    expect(uploadGeneratedFile).not.toHaveBeenCalled()
     expect(result).toEqual({ insufficientCredits: true })
   })
 })
@@ -648,10 +666,12 @@ Expected: FAIL — `./generateImage.ts` does not exist.
 
 ```ts
 // apps/agent-orchestrator/src/mastra/tools/generateImage.ts
+import { randomUUID } from 'node:crypto'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
+import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
+import { getPool } from '../../usage.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -681,21 +701,42 @@ export const generateImage = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
 
-    const chargeKey = `image:${sessionId}:${Date.now()}`
+    let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
+    try {
+      const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+        body: JSON.stringify({ model: IMAGE_MODEL, prompt }),
+        signal: AbortSignal.timeout(90_000),
+      })
+      if (!res.ok) throw new Error(`gateway returned ${res.status}`)
+      genResult = await res.json()
+    } catch (err) {
+      console.error(`[session:${sessionId}] generateImage gateway call failed:`, (err as Error).message)
+      return { refused: true, refusalReason: 'GENERATION_FAILED' }
+    }
+
+    if (genResult.refused) {
+      return { refused: true, refusalReason: genResult.reason ?? 'unknown' }
+    }
+
+    // Success — charge now, before the (best-effort) upload.
+    const chargeKey = `image:${sessionId}:${randomUUID()}`
     let charged = false
     let rateId: string | null = null
     let rateVersion: number | null = null
-    let chargedMicro = 0n
 
     if (!(await isUnlimited(tenantId))) {
       const rate = await resolveRate('image_generation', IMAGE_MODEL)
-      if (rate) {
+      if (!rate) {
+        console.error(`[credits] UNBILLED IMAGE GENERATION: no active image_generation rate for model=${IMAGE_MODEL} tenantId=${tenantId} — generation was NOT charged`)
+      } else {
         rateId = rate.id
         rateVersion = rate.version
-        chargedMicro = rate.schema && 'per_call_micro' in rate.schema ? BigInt(rate.schema.per_call_micro) : 0n
+        const amountMicro = costMicro(rate.schema, { count: 1 })
         try {
           await spendCredits({
-            tenantId, amountMicro: -chargedMicro, key: chargeKey, kind: 'debit',
+            tenantId, amountMicro: -amountMicro, key: chargeKey, kind: 'debit',
             actorId: agentId, actorType: 'agent', rateId, rateVersion, jobType: 'image_generation',
           })
           charged = true
@@ -706,63 +747,62 @@ export const generateImage = createTool({
       }
     }
 
-    try {
-      const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: IMAGE_MODEL, prompt }),
-        signal: AbortSignal.timeout(90_000),
-      })
-      if (!res.ok) throw new Error(`gateway returned ${res.status}`)
-      const result = await res.json() as { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
+    const buffer = Buffer.from(genResult.imageBase64!, 'base64')
+    const extension = (genResult.mimeType ?? 'image/png').split('/')[1] ?? 'png'
+    const attachment = conversationId && idToken
+      ? await uploadGeneratedFile(idToken, {
+          conversationId, title: 'Generated Image', content: buffer,
+          contentType: genResult.mimeType, extension,
+        })
+      : null
 
-      if (result.refused) {
-        if (charged) await refundImageCharge(tenantId, agentId, chargeKey, chargedMicro, rateId, rateVersion)
-        return { refused: true, refusalReason: result.reason ?? 'unknown' }
-      }
-
-      const buffer = Buffer.from(result.imageBase64!, 'base64')
-      const extension = (result.mimeType ?? 'image/png').split('/')[1] ?? 'png'
-      const attachment = conversationId && idToken
-        ? await uploadGeneratedFile(idToken, {
-            conversationId, title: 'Generated Image', content: buffer,
-            contentType: result.mimeType, extension,
-          })
-        : null
-
-      if (!attachment && charged) {
-        // Generated and paid for, but couldn't be saved (upload/quota failure) —
-        // the user gets nothing back, so refund (spec §5/§6).
-        await refundImageCharge(tenantId, agentId, chargeKey, chargedMicro, rateId, rateVersion)
-        return { refused: true, refusalReason: 'STORAGE_FAILED' }
-      }
-
-      return attachment
-        ? { fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size }
-        : {}
-    } catch (err) {
-      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, chargedMicro, rateId, rateVersion)
-      console.error(`[session:${sessionId}] generateImage failed:`, (err as Error).message)
-      return { refused: true, refusalReason: 'GENERATION_FAILED' }
+    if (!attachment) {
+      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'STORAGE_FAILED' }
     }
+
+    return { fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size }
   },
 })
 
-// Mirrors settleTask's delta-write pattern (credits.ts:380-402): a positive
-// amountMicro credits the tenant back. Full refund of what was charged, keyed
-// off the original chargeKey so it's traceable to the debit it reverses.
+// Mirrors refundTask's read-back pattern (products/agent-platform/packages/credits/refund.ts:109-169):
+// the refund amount and expiry are read back from the ledger, never trusted
+// from in-memory state, and the refund grant inherits the SHORTEST expiry
+// among the grants the original debit drew from — a refund must never hand
+// back a permanent grant for what was an expiring one.
 async function refundImageCharge(
-  tenantId: string, agentId: string, chargeKey: string, chargedMicro: bigint,
+  tenantId: string, agentId: string, chargeKey: string,
   rateId: string | null, rateVersion: number | null,
 ): Promise<void> {
   try {
+    const pool = getPool()
+    const res = await pool.query<{ amount_micro: string; expires_at: string | null }>(
+      `select cl.amount_micro, cg.expires_at
+         from credit_ledger cl
+         left join credit_grants cg on cg.id = cl.grant_id
+        where cl.tenant_id = $1 and cl.idempotency_key = $2 and cl.kind = 'debit'`,
+      [tenantId, chargeKey],
+    )
+    const net = res.rows.reduce((sum, row) => sum + BigInt(row.amount_micro), 0n) // negative — what was charged
+    if (net >= 0n) return // nothing was actually charged
+    const expiresAts = res.rows.map(row => row.expires_at)
+    let expiresAt: Date | null = null
+    for (const raw of expiresAts) {
+      if (raw == null) continue
+      const d = new Date(raw)
+      if (expiresAt === null || d.getTime() < expiresAt.getTime()) expiresAt = d
+    }
     await spendCredits({
-      tenantId, amountMicro: chargedMicro, key: `${chargeKey}:refund`, kind: 'settle',
+      tenantId, amountMicro: -net, key: `${chargeKey}:refund`, kind: 'refund',
       actorId: agentId, actorType: 'agent', rateId, rateVersion, jobType: 'image_generation',
-      grantType: 'refund',
+      grantType: 'refund', expiresAt,
     })
   } catch (err) {
-    console.error(`[credits] refundImageCharge failed tenantId=${tenantId} chargeKey=${chargeKey}:`, (err as Error).message)
+    console.error(
+      `[credits] UNREFUNDED IMAGE CHARGE: tenantId=${tenantId} chargeKey=${chargeKey} — ` +
+      `refund write failed and was swallowed; tenant is still down for a generation that ` +
+      `could not be saved. Cause:`, (err as Error).message,
+    )
   }
 }
 ```
@@ -776,9 +816,11 @@ Expected: PASS
 
 Same structure as `generateImage`, with:
 - `inputSchema: z.object({ prompt: z.string(), sourceFileId: z.string(), sourceMimeType: z.string() })`
-- Before charging, call `resolveSourceImage(idToken, sourceFileId, sourceMimeType, sessionId)` (Step 1); if it returns `null`, return `{ refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }` without charging.
+- Before calling the gateway, call `resolveSourceImage(idToken, sourceFileId, sourceMimeType, sessionId)` (Step 1); if it returns `null`, return `{ refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }` — no charge involved, this happens before any generation attempt.
+- Cap the resolved source image's byte size in `editImage.ts` itself (spec §4's "cap the source image's byte size... before it's even sent" — it can't literally live in the Zod input schema since that only carries a `fileId`, so enforce it right after `resolveSourceImage` returns): if `Buffer.byteLength(base64, 'base64')` exceeds e.g. 20MB, return `{ refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' }` without calling the gateway.
 - Gateway call body includes `sourceImageBase64`/`sourceMimeType` alongside `prompt`.
-- Test file `editImage.test.ts` mirrors `generateImage.test.ts`'s three cases, plus one for `SOURCE_IMAGE_UNAVAILABLE`.
+- Same "no active rate" logging as `generateImage` (`console.error('[credits] UNBILLED IMAGE GENERATION: ...')`) — don't drop that branch when copying the structure over.
+- Test file `editImage.test.ts` mirrors `generateImage.test.ts`'s four cases, plus one for `SOURCE_IMAGE_UNAVAILABLE` and one for `SOURCE_IMAGE_TOO_LARGE`.
 
 - [ ] **Step 7: Commit**
 
@@ -794,27 +836,41 @@ git commit -m "feat(orchestrator): generateImage/editImage Mastra tools with per
 **Files:**
 - Create: `apps/agent-orchestrator/src/mastra/agents/directorAgent.ts`
 - Modify: `apps/agent-orchestrator/src/mastra/registry.ts`
-- Test: `apps/agent-orchestrator/src/mastra/registry.test.ts` (extend if it exists, else create)
+- Test: `apps/agent-orchestrator/src/mastra/__tests__/registry.test.ts` (create — note the `__tests__/` subdirectory, matching this codebase's convention, e.g. `mastra/tools/__tests__/readFile.test.ts`)
 
 **Interfaces:**
 - Consumes: `generateImage`, `editImage` (Task 4), `tenantContextSchema` (`../context.js`), `selectModel` (`./modelSelection.js`), `getMastraMemory` (`../memory.js`).
-- Produces: `directorAgent: Agent`. `resolveAgent('director')` → `directorAgent`.
+- Produces: `directorAgent: Agent`, registered in `AGENT_REGISTRY` with its **tool keys** `generate_image`/`edit_image` (not `generateImage`/`editImage` — see below). `resolveAgent('director')` → `directorAgent`.
+
+**Critical: the Mastra tool key, not `createTool`'s `id`, is what `chatStream.ts` sees.** `chatStream.ts` normalizes the tool name it receives from the model with `.toLowerCase().replace(/_/g, '-')` (see Task 6) — and what it receives is the **property name under `tools: {...}`** in the agent definition, not the `id` field inside `createTool()`. The existing precedent is `renderCanvas.ts` (`id: 'render-canvas'`) registered in `platformAgent.ts` as `render_canvas:` — the key, not the id, is what normalizes to `'render-canvas'`. Registering Director's tools as `tools: { generateImage, editImage }` (camelCase keys) would normalize to `'generateimage'`/`'editimage'`, which Task 6's gate does not match, and generated images would silently never reach the client — reintroducing the exact bug this plan exists to fix. Register as `tools: { generate_image: generateImage, edit_image: editImage }`.
 
 - [ ] **Step 1: Write the failing test**
 
+Real Mastra agents construct a `PostgresStore`/`PgVector`/embedder at import time via `getMastraMemory()` (`memory.ts:96-141`) — importing `registry.ts` unmocked pulls in `platformAgent.ts`, which does this at module load. Every existing test that touches this graph mocks it out first (see `mastra/agent.test.ts:5-12`). Mock the sibling agent modules and `directorAgent` itself so this test only exercises `resolveAgent`/`resolveAgentLabel`'s lookup logic:
+
 ```ts
-// apps/agent-orchestrator/src/mastra/registry.test.ts
-import { describe, it, expect } from 'vitest'
-import { resolveAgent, resolveAgentLabel } from './registry'
-import { directorAgent } from './agents/directorAgent.js'
+// apps/agent-orchestrator/src/mastra/__tests__/registry.test.ts
+import { describe, it, expect, vi } from 'vitest'
+
+const platformAgentStub = { id: 'platform-stub' }
+const pmAgentStub = { id: 'pm-stub' }
+const architectAgentStub = { id: 'architect-stub' }
+const directorAgentStub = { id: 'director-stub' }
+
+vi.mock('../agents/platformAgent.js', () => ({ platformAgent: platformAgentStub }))
+vi.mock('../agents/pmAgent.js', () => ({ pmAgent: pmAgentStub }))
+vi.mock('../agents/architectAgent.js', () => ({ architectAgent: architectAgentStub }))
+vi.mock('../agents/directorAgent.js', () => ({ directorAgent: directorAgentStub }))
+
+import { resolveAgent, resolveAgentLabel } from '../registry.js'
 
 describe('registry — director', () => {
   it('resolves the exact agent name "Director" (lowercased) to directorAgent', () => {
-    expect(resolveAgent('Director')).toBe(directorAgent)
+    expect(resolveAgent('Director')).toBe(directorAgentStub)
   })
 
   it('labels directorAgent correctly', () => {
-    expect(resolveAgentLabel(directorAgent as never)).toBe('directorAgent')
+    expect(resolveAgentLabel(directorAgentStub as never)).toBe('directorAgent')
   })
 })
 ```
@@ -843,8 +899,8 @@ export const directorAgent = new Agent({
     const base = `You are Director — an image generation specialist. You create and edit images from descriptions.
 
 ## Rules
-- Call generate-image for a new image from a text description.
-- Call edit-image when the user references an existing image in this conversation (by its fileId) and wants it changed.
+- Call generate_image for a new image from a text description.
+- Call edit_image when the user references an existing image in this conversation (by its fileId) and wants it changed.
 - If a generation is refused (returns refused: true), tell the user plainly what happened — do not retry automatically, do not describe the refusal as an error.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.
 - Never invent a fileId — only use one the user or an earlier tool result actually gave you.`
@@ -854,7 +910,9 @@ export const directorAgent = new Agent({
   requestContextSchema: tenantContextSchema,
   model: selectModel,
   memory: getMastraMemory(),
-  tools: { generateImage, editImage },
+  // Keys here (not createTool's `id`) are what the model calls and what
+  // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
+  tools: { generate_image: generateImage, edit_image: editImage },
 })
 ```
 
@@ -910,7 +968,7 @@ Expected: PASS
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/agents/directorAgent.ts apps/agent-orchestrator/src/mastra/registry.ts apps/agent-orchestrator/src/mastra/registry.test.ts
+git add apps/agent-orchestrator/src/mastra/agents/directorAgent.ts apps/agent-orchestrator/src/mastra/registry.ts apps/agent-orchestrator/src/mastra/__tests__/registry.test.ts
 git commit -m "feat(orchestrator): add directorAgent and wire into the agent registry"
 ```
 
@@ -920,7 +978,7 @@ git commit -m "feat(orchestrator): add directorAgent and wire into the agent reg
 
 **Files:**
 - Modify: `apps/agent-orchestrator/src/routes/chatStream.ts:129-141, 209`
-- Test: `apps/agent-orchestrator/src/routes/chatStream.test.ts` (extend existing tool-result handling tests)
+- Test: `apps/agent-orchestrator/src/routes/__tests__/chatStream.test.ts` (note the `__tests__/` subdirectory — the real file is not `routes/chatStream.test.ts`; that path doesn't exist)
 
 **Interfaces:**
 - Consumes: tool results from `generate-image`/`edit-image` (Task 4's output shape).
@@ -946,7 +1004,7 @@ export function attachmentFromCanvasToolResult(
 }
 ```
 
-Add to `chatStream.test.ts`:
+Add to `__tests__/chatStream.test.ts` — note the existing file mocks roughly 10 modules to make `chatStream.ts` importable at all (Postgres, Mastra memory, etc.); add these cases inside that file's existing mock setup rather than a fresh unmocked import:
 
 ```ts
 import { attachmentFromCanvasToolResult } from './chatStream'
@@ -985,14 +1043,13 @@ Edit `chatStream.ts:133`:
   if (!['render-canvas', 'generate-image', 'edit-image'].includes(normalizedToolName)) return null
 ```
 
-Edit `chatStream.ts:209`:
+Edit `chatStream.ts:209`. Only add `'generate-image'`/`'edit-image'` — the already-normalized form (`.toLowerCase().replace(/_/g, '-')`, applied before this set is checked) is what actually gets looked up, so a raw-underscore or no-dash variant here is dead weight (the existing `'rendercanvas'`/`'render_canvas'` entries are exactly this — pre-existing dead entries, not a pattern to copy):
 
 ```ts
   const SAVE_TOOL_NAMES = new Set([
     'saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks',
     'rendercanvas', 'render-canvas', 'render_canvas',
-    'generateimage', 'generate-image', 'generate_image',
-    'editimage', 'edit-image', 'edit_image',
+    'generate-image', 'edit-image',
   ])
 ```
 
@@ -1010,7 +1067,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/routes/chatStream.ts apps/agent-orchestrator/src/routes/chatStream.test.ts
+git add apps/agent-orchestrator/src/routes/chatStream.ts apps/agent-orchestrator/src/routes/__tests__/chatStream.test.ts
 git commit -m "feat(orchestrator): deliver generate-image/edit-image results as chat attachments"
 ```
 
@@ -1020,7 +1077,7 @@ git commit -m "feat(orchestrator): deliver generate-image/edit-image results as 
 
 **Files:**
 - Modify: `products/agent-platform/packages/api/seeds/personas.ts:10-32`
-- Modify: `apps/api/src/routes/onboarding.ts` (after the Architect block, ~line 339 onward)
+- Modify: `apps/api/src/routes/onboarding.ts` (after the Architect block, which runs through `onboarding.ts:351` — insert after that line, not mid-block)
 - Modify: `packages/foundation/database/seeds/backfill-agents.ts:53+`
 
 **Interfaces:**
@@ -1060,7 +1117,11 @@ Following the exact pattern at `onboarding.ts:170-192` (Research Engineer) — a
     const [directorAgentRow] = await db.insert(agents).values({
         tenantId,
         name: 'Director',
-        type: 'assistant',
+        // agents.type is a Postgres enum (products/agent-platform/packages/schema/agents.ts:20:
+        // 'ops'|'support'|'billing'|'custom'|'product_manager'|'analyst'|'project_manager'|'tech_lead'|'architect').
+        // 'assistant' is NOT a member — it only appears in registry.ts's unrelated, unvalidated
+        // display list. 'custom' is what backfill-agents.ts already uses for every agent it seeds.
+        type: 'custom',
         status: 'active',
         description: 'Generates and edits images from a description.',
         apiKeyId: directorKey.id,
@@ -1077,7 +1138,7 @@ Following the exact pattern at `onboarding.ts:170-192` (Research Engineer) — a
     });
 ```
 
-(Import `personas` from wherever `agents`/`agentSkills` are imported in this file — confirm the exact import path while implementing; it is the same schema package `onboarding.ts` already pulls `agents`/`apiKeys` from.) The `personas` seed (Step 1) must have already run against the target database before onboarding creates new tenants, or `directorPersona` resolves to `undefined` and the agent is created with `personaId: null` — acceptable as a non-fatal fallback (matches the existing gap this spec chose not to fix generally), but log a warning in that branch so it's visible in ops if the seed step is ever skipped.
+Import `personas` from `@serverless-saas/agent-schema/personas` (`products/agent-platform/packages/schema/personas.ts:8` — the package's `./*` export maps to `dist/*`, same package `onboarding.ts` already pulls `agents`/`apiKeys`-adjacent types from). The `personas` seed (Step 1) must have already run against the target database before onboarding creates new tenants, or `directorPersona` resolves to `undefined` and the agent is created with `personaId: null` — log a warning in that branch so a skipped seed step is visible in ops (this is why Task 8 runs the persona seed *before* deploying the Lambda that would otherwise start creating tenants against it).
 
 - [ ] **Step 3: Add Director to `backfill-agents.ts`**
 
@@ -1122,9 +1183,10 @@ git commit -m "feat(agent-platform): seed Director persona and agent across onbo
 
 Not code — operational steps, in order:
 
-- [ ] **Step 1:** Rebuild and deploy the Lambda: `sam build --config-file samconfig.dev.toml && sam deploy --config-file samconfig.dev.toml` (picks up the `onboarding.ts` change from Task 7 — rebuild `packages/foundation/*`/product `dist/` first per the known stale-`dist/` footgun).
-- [ ] **Step 2:** Restart the orchestrator: `pm2 restart agent-orchestrator` (picks up Tasks 2, 4, 5, 6).
-- [ ] **Step 3:** Restart the inference gateway: `pm2 restart inference-gateway` (picks up Task 3).
-- [ ] **Step 4:** Run the personas seed and backfill script against dev (Task 7, Step 4 commands) so existing tenants get Director too, not just new signups.
-- [ ] **Step 5:** Publish the Director persona: attach a real preview image via `PUT /ops/personas/:id` (ops portal), then `POST /ops/personas/:id/publish` — required before Director is selectable in the roster (spec §1; the `INCOMPLETE_ASSETS` gate rejects publish without a real `exampleAssetUrl`, `PersonaAvatar`'s generated SVG does not satisfy it).
-- [ ] **Step 6:** Manual smoke test: start a chat with Director, ask for an image, confirm it appears as an attachment and the `image_generation` credit charge lands in `credit_ledger`. Ask for an edit referencing the first image's `fileId`. Then send a prompt expected to trigger a safety refusal and confirm no charge lands.
+- [ ] **Step 1:** Run the personas seed against dev **first** (`pnpm --filter @serverless-saas/agent-api db:seed:personas`) — must land before the Lambda deploy in Step 2, otherwise every tenant onboarded between the two gets `personaId: null` on its Director row (Task 7, Step 2's fallback).
+- [ ] **Step 2:** Rebuild and deploy the Lambda: `sam build --config-file samconfig.dev.toml && sam deploy --config-file samconfig.dev.toml` (picks up the `onboarding.ts` change from Task 7 — rebuild `packages/foundation/*`/product `dist/` first per the known stale-`dist/` footgun).
+- [ ] **Step 3:** Restart the orchestrator: `pm2 restart agent-orchestrator` (picks up Tasks 2, 4, 5, 6).
+- [ ] **Step 4:** Restart the inference gateway: `pm2 restart inference-gateway` (picks up Task 3).
+- [ ] **Step 5:** Run the backfill script against dev (Task 7, Step 3's `backfill-agents.ts`) so existing tenants get Director too, not just new signups.
+- [ ] **Step 6:** Publish the Director persona: attach a real preview image via `PUT /ops/personas/:id` (ops portal), then `POST /ops/personas/:id/publish` — required before Director is selectable in the roster (spec §1; the `INCOMPLETE_ASSETS` gate rejects publish without a real `exampleAssetUrl`, `PersonaAvatar`'s generated SVG does not satisfy it).
+- [ ] **Step 7:** Manual smoke test: start a chat with Director, ask for an image, confirm it appears as an attachment and the `image_generation` credit charge lands in `credit_ledger`. Ask for an edit referencing the first image's `fileId`. Then send a prompt expected to trigger a safety refusal and confirm no charge lands.
