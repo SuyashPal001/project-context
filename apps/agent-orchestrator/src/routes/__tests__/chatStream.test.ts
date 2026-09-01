@@ -125,3 +125,23 @@ describe('attachmentFromCanvasToolResult', () => {
     expect(attachmentFromCanvasToolResult('render-canvas', { title: 'x' })).toBeNull()
   })
 })
+
+describe('attachmentFromCanvasToolResult — generate-image/edit-image', () => {
+  it('turns a generate-image tool result into an attachment, same as render-canvas', () => {
+    const result = { fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 100 }
+    expect(attachmentFromCanvasToolResult('generate-image', result)).toEqual({
+      fileId: 'f1', name: 'x.png', type: 'image/png', size: 100,
+    })
+  })
+
+  it('turns an edit-image tool result into an attachment', () => {
+    const result = { fileId: 'f2', name: 'y.png', fileType: 'image/png', size: 200 }
+    expect(attachmentFromCanvasToolResult('edit-image', result)).toEqual({
+      fileId: 'f2', name: 'y.png', type: 'image/png', size: 200,
+    })
+  })
+
+  it('still returns null for an unrelated tool name', () => {
+    expect(attachmentFromCanvasToolResult('fetch-agent-context', { fileId: 'f3' })).toBeNull()
+  })
+})
