@@ -93,6 +93,8 @@ export async function generateImage(req: ImageGenerationRequest): Promise<ImageG
     throw new Error(`Unsupported image model: ${req.model}`)
   }
 
+  let vertexFailureReason: string | null = null
+
   if (vertexBreaker.isAvailable()) {
     try {
       const result = await callVertexImageModel(req)
@@ -100,14 +102,20 @@ export async function generateImage(req: ImageGenerationRequest): Promise<ImageG
       return result
     } catch (vertexErr) {
       vertexBreaker.onFailure()
-      console.warn('[images] vertex failed, trying gemini API key fallback:', (vertexErr as Error).message)
+      vertexFailureReason = (vertexErr as Error).message
+      console.warn('[images] vertex failed, trying gemini API key fallback:', vertexFailureReason)
     }
   } else {
+    vertexFailureReason = 'circuit open'
     console.warn('[images] vertex circuit open, trying gemini API key fallback')
   }
 
-  if (!process.env.GEMINI_API_KEY) throw new Error('Vertex image generation unavailable and no GEMINI_API_KEY fallback configured')
-  if (!geminiBreaker.isAvailable()) throw new Error('Vertex and Gemini API key both unavailable for image generation')
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error(`Vertex image generation unavailable (${vertexFailureReason}) and no GEMINI_API_KEY fallback configured`)
+  }
+  if (!geminiBreaker.isAvailable()) {
+    throw new Error(`Vertex image generation unavailable (${vertexFailureReason}) and Gemini API key circuit is open`)
+  }
 
   try {
     const result = await callGeminiApiKeyImageModel(req)
@@ -115,7 +123,7 @@ export async function generateImage(req: ImageGenerationRequest): Promise<ImageG
     return result
   } catch (geminiErr) {
     geminiBreaker.onFailure()
-    throw geminiErr
+    throw new Error(`Vertex image generation failed (${vertexFailureReason}); Gemini API key fallback also failed (${(geminiErr as Error).message})`)
   }
 }
 
