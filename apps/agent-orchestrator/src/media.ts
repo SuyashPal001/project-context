@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { Attachment, DownloadedMedia } from './types.js'
 import { MEDIA_DIR } from './types.js'
+import { fetchPresignedUrl } from './mastra/tools/mediaCache.js'
 
 const execFile = promisify(execFileCb)
 
@@ -148,6 +149,38 @@ export async function downloadMediaAttachment(att: Attachment, sessionId: string
     return { filePath, base64, mimeType, name }
   } catch (err) {
     console.error(`[session:${sessionId}] media download error "${name}":`, (err as Error).message)
+    return null
+  }
+}
+
+// editImage's input is just a fileId from the conversation, not a resolved
+// Attachment with a presignedUrl already on it — resolve that lookup here
+// via the same fetchPresignedUrl mediaCache.ts already uses, then reuse
+// downloadMediaAttachment for the actual fetch/decode.
+//
+// Known limitation carried from the spec: mimeType comes from the agent's
+// tool-call arguments, not from the file's stored metadata — a wrong guess
+// round-trips into Gemini's inlineData.mimeType and surfaces as a generation
+// failure, not a security issue. Fixing this properly needs a files-by-id
+// metadata endpoint that doesn't exist yet; out of scope here.
+export async function resolveSourceImage(
+  idToken: string,
+  fileId: string,
+  mimeType: string,
+  sessionId: string,
+): Promise<{ base64: string; mimeType: string } | null> {
+  try {
+    const presignedUrl = await fetchPresignedUrl(fileId, idToken)
+    const downloaded = await downloadMediaAttachment(
+      { fileId, presignedUrl, name: fileId, type: mimeType } as Attachment,
+      sessionId,
+    )
+    if (!downloaded || Array.isArray(downloaded)) return null
+    const match = downloaded.base64.match(/^data:([^;]+);base64,(.+)$/)
+    if (!match) return null
+    return { base64: match[2], mimeType: match[1] }
+  } catch (err) {
+    console.error(`[session:${sessionId}] resolveSourceImage error:`, (err as Error).message)
     return null
   }
 }
