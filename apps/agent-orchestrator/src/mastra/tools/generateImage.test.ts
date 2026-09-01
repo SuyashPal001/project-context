@@ -29,7 +29,11 @@ function ctx(values: Record<string, string>) {
 const baseCtx = () => ctx({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok' })
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  // resetAllMocks (not clearAllMocks) — clearAllMocks only wipes call
+  // history, not implementations like mockRejectedValue/mockReturnValue set
+  // by an earlier test, so a later test in this file would otherwise
+  // silently inherit e.g. the insufficientCredits test's rejected spendCredits.
+  vi.resetAllMocks()
   isUnlimited.mockResolvedValue(false)
   resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 50_000 } })
 })
@@ -81,5 +85,51 @@ describe('generateImage tool', () => {
 
     expect(uploadGeneratedFile).not.toHaveBeenCalled()
     expect(result).toEqual({ insufficientCredits: true })
+  })
+
+  it('returns GENERATION_FAILED without charging when a non-refused gateway response is missing imageBase64', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+
+    const result = await generateImage.execute!({ prompt: 'anything' } as never, baseCtx())
+
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(uploadGeneratedFile).not.toHaveBeenCalled()
+    expect(result).toEqual({ refused: true, refusalReason: 'GENERATION_FAILED' })
+  })
+
+  it('refunds with the shortest expiry across multiple grants the debit drew from', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        { amount_micro: '-30000', expires_at: '2027-01-01T00:00:00.000Z' },
+        { amount_micro: '-20000', expires_at: '2026-12-01T00:00:00.000Z' },
+      ],
+    })
+    getPool.mockReturnValue({ query })
+
+    const result = await generateImage.execute!({ prompt: 'anything' } as never, baseCtx())
+
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({
+      tenantId: 't1', amountMicro: 50_000n, kind: 'refund', grantType: 'refund',
+      expiresAt: new Date('2026-12-01T00:00:00.000Z'),
+    }))
+    expect(result).toEqual({ refused: true, refusalReason: 'STORAGE_FAILED' })
+  })
+
+  it('refunds with a null (permanent) expiry only when every drawn grant was permanent', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ amount_micro: '-50000', expires_at: null }],
+    })
+    getPool.mockReturnValue({ query })
+
+    const result = await generateImage.execute!({ prompt: 'anything' } as never, baseCtx())
+
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({
+      tenantId: 't1', amountMicro: 50_000n, kind: 'refund', grantType: 'refund', expiresAt: null,
+    }))
+    expect(result).toEqual({ refused: true, refusalReason: 'STORAGE_FAILED' })
   })
 })

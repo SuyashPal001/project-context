@@ -33,7 +33,11 @@ const baseCtx = () => ctx({ tenantId: 't1', agentId: 'a1', conversationId: 'c1',
 const baseInput = { prompt: 'make it blue', sourceFileId: 'src1', sourceMimeType: 'image/png' }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  // resetAllMocks (not clearAllMocks) — clearAllMocks only wipes call
+  // history, not implementations like mockRejectedValue/mockReturnValue set
+  // by an earlier test, so a later test in this file would otherwise
+  // silently inherit e.g. the insufficientCredits test's rejected spendCredits.
+  vi.resetAllMocks()
   isUnlimited.mockResolvedValue(false)
   resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 50_000 } })
   resolveSourceImage.mockResolvedValue({ base64: 'c291cmNlLWJ5dGVz', mimeType: 'image/png' })
@@ -89,6 +93,16 @@ describe('editImage tool', () => {
 
     expect(uploadGeneratedFile).not.toHaveBeenCalled()
     expect(result).toEqual({ insufficientCredits: true })
+  })
+
+  it('returns GENERATION_FAILED without charging when a non-refused gateway response is missing imageBase64', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+
+    const result = await editImage.execute!(baseInput as never, baseCtx())
+
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(uploadGeneratedFile).not.toHaveBeenCalled()
+    expect(result).toEqual({ refused: true, refusalReason: 'GENERATION_FAILED' })
   })
 
   it('returns SOURCE_IMAGE_UNAVAILABLE without charging when resolveSourceImage returns null', async () => {
