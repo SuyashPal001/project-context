@@ -224,13 +224,13 @@ export interface AttachmentPayload {
  * soft-delete the second. So the caller always supplies its own key, and the uuid
  * — not the title — is what makes it unique.
  */
-export function generatedFileKey(conversationId: string, title: string): string {
+export function generatedFileKey(conversationId: string, title: string, extension = 'md'): string {
   const slug = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60)
-  return `generated/${conversationId}/${randomUUID()}-${slug || 'document'}.md`
+  return `generated/${conversationId}/${randomUUID()}-${slug || 'document'}.${extension}`
 }
 
 /**
@@ -244,12 +244,19 @@ export function generatedFileKey(conversationId: string, title: string): string 
  */
 export async function uploadGeneratedFile(
   idToken: string,
-  input: { conversationId: string; title: string; content: string },
+  input: {
+    conversationId: string
+    title: string
+    content: string | Buffer
+    contentType?: string
+    extension?: string
+  },
 ): Promise<AttachmentPayload | null> {
   const { conversationId, title, content } = input
-  const name = `${title}.md`
-  const type = 'text/markdown'
-  const size = Buffer.byteLength(content)
+  const type = input.contentType ?? 'text/markdown'
+  const extension = input.extension ?? 'md'
+  const name = `${title}.${extension}`
+  const size = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content)
 
   try {
     const res = await fetch(`${API_BASE}/api/v1/files/upload`, {
@@ -258,10 +265,7 @@ export async function uploadGeneratedFile(
       body: JSON.stringify({
         filename: name,
         contentType: type,
-        key: generatedFileKey(conversationId, title),
-        // Byte length, not string length — the two differ for multi-byte
-        // content, and the size is signed into the URL so S3 rejects a
-        // mismatched body.
+        key: generatedFileKey(conversationId, title, extension),
         size,
       }),
     })
@@ -283,9 +287,6 @@ export async function uploadGeneratedFile(
       body: content,
     })
     if (!put.ok) {
-      // The files row stays 'pending' and is never confirmed, so it cannot surface
-      // as an asset — a dangling row is preferable to an attachment pointing at
-      // bytes that were never written.
       console.error('[persistence] uploadGeneratedFile PUT failed:', put.status)
       return null
     }
