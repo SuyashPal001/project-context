@@ -15,6 +15,7 @@ import type { OpenAIRequest } from './types';
 import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker } from './router';
 import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
 import { isAuthorizedCaller, extractServiceKey } from './auth';
+import { handleImageGenerations } from './images.js';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -24,8 +25,9 @@ const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-pl
 
 async function handleEmbeddings(req: IncomingMessage, res: ServerResponse): Promise<void> {
   let body: string;
-  try { body = await readBody(req); } catch {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
+  try { body = await readBody(req); } catch (err) {
+    const status = (err as Error).message === 'PAYLOAD_TOO_LARGE' ? 413 : 400;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { message: 'Failed to read request body' } }));
     return;
   }
@@ -86,10 +88,21 @@ const DEFAULT_MODEL = process.env.VERTEX_MODEL ?? 'gemini-2.5-flash';
 // Request body reader
 // ---------------------------------------------------------------------------
 
+const MAX_BODY_BYTES = 40 * 1024 * 1024; // 40MB — covers a base64-inflated source image with headroom
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (chunk) => { data += chunk; });
+    let bytes = 0;
+    req.on('data', (chunk) => {
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        reject(new Error('PAYLOAD_TOO_LARGE'));
+        req.destroy();
+        return;
+      }
+      data += chunk;
+    });
     req.on('end', () => resolve(data));
     req.on('error', reject);
   });
@@ -104,7 +117,8 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse):
   try {
     body = await readBody(req);
   } catch (err) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
+    const status = (err as Error).message === 'PAYLOAD_TOO_LARGE' ? 413 : 400;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { message: 'Failed to read request body', type: 'invalid_request_error' } }));
     return;
   }
@@ -201,7 +215,15 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
   const LOCATION = process.env.VERTEX_LOCATION ?? 'us-central1';
   const vertexAI = new VertexAI({ project: PROJECT, location: LOCATION });
 
-  const body = await readBody(req);
+  let body: string;
+  try {
+    body = await readBody(req);
+  } catch (err) {
+    const status = (err as Error).message === 'PAYLOAD_TOO_LARGE' ? 413 : 400;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Failed to read request body' } }));
+    return;
+  }
   const modelMatch = req.url?.match(/models\/([^/:?]+)/);
   const nativeModelName = modelMatch?.[1] ?? DEFAULT_MODEL;
 
@@ -348,6 +370,12 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Chat completions (main path)
   if (req.method === 'POST' && req.url === '/v1/chat/completions') {
     await handleChatCompletions(req, res);
+    return;
+  }
+
+  // Image generation (Director agent)
+  if (req.method === 'POST' && req.url === '/v1/images/generations') {
+    await handleImageGenerations(req, res, readBody);
     return;
   }
 
