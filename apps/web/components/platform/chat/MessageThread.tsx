@@ -45,8 +45,17 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // scroll into/measure against blank space rather than the last message.
     const contentEndRef = useRef<HTMLDivElement>(null);
     const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
-    const failedUrlsRef = useRef<Set<string>>(new Set());
+    // Maps fileId -> the timestamp of its last failed fetch, not a permanent
+    // blacklist — a single transient network/proxy hiccup used to block that
+    // fileId's presigned URL for the rest of the browser session, which read
+    // as "the image never renders" even once the backend had it fine.
+    const failedUrlsRef = useRef<Map<string, number>>(new Map());
+    const FAILED_URL_RETRY_MS = 30_000;
     const isRefreshingUrlsRef = useRef(false);
+    // Set when `messages` changes again while a refresh is already in flight —
+    // that run's own `messages` snapshot is stale by the time it finishes, so
+    // rerun once more instead of just dropping the newer attachments on the floor.
+    const pendingRefreshRef = useRef(false);
     const [showScrollToBottom, setShowScrollToBottom] = useState(false);
     const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
     const [planErrors, setPlanErrors] = useState<Record<string, string>>({});
@@ -162,10 +171,16 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
 
     useEffect(() => {
         const refreshUrls = async () => {
-            if (isRefreshingUrlsRef.current) return;
+            if (isRefreshingUrlsRef.current) { pendingRefreshRef.current = true; return; }
+
+            const now = Date.now();
             const toRefresh = messages.flatMap(m => m.attachments || [])
                 .filter(att => att.fileId && (!att.previewUrl || att.previewUrl.startsWith('blob:')))
-                .filter(att => !freshUrls[att.fileId!] && !failedUrlsRef.current.has(att.fileId!));
+                .filter(att => {
+                    if (freshUrls[att.fileId!]) return false;
+                    const failedAt = failedUrlsRef.current.get(att.fileId!);
+                    return failedAt === undefined || now - failedAt >= FAILED_URL_RETRY_MS;
+                });
 
             if (toRefresh.length === 0) return;
 
@@ -177,10 +192,11 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             const { presignedUrl } = await api.get<{ presignedUrl: string }>(
                                 `/api/v1/files/${encodeURIComponent(att.fileId!)}/presigned-url`
                             );
+                            failedUrlsRef.current.delete(att.fileId!);
                             return { fileId: att.fileId!, url: presignedUrl };
                         } catch (err) {
                             console.error('Failed to refresh URL for', att.fileId, err);
-                            failedUrlsRef.current.add(att.fileId!);
+                            failedUrlsRef.current.set(att.fileId!, Date.now());
                             return null;
                         }
                     })
@@ -196,6 +212,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 }
             } finally {
                 isRefreshingUrlsRef.current = false;
+                if (pendingRefreshRef.current) {
+                    pendingRefreshRef.current = false;
+                    refreshUrls();
+                }
             }
         };
 

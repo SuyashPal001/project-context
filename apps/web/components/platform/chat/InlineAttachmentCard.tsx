@@ -47,7 +47,15 @@ export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
     return (
       <button
         onClick={handleClick}
-        className={`relative block w-full max-w-[240px] aspect-video rounded-xl border border-border/60 overflow-hidden text-left hover:border-border transition-colors ${typeStyle.bg}`}
+        // A definite width, not w-full: every child here is absolutely
+        // positioned (badge/img/caption), so the button has zero in-flow
+        // content. Its ancestor column is align-items:flex-start/flex-end
+        // (shrink-to-fit) with no width class of its own, so a percentage
+        // width resolved against that indefinite box collapsed to 0 — and
+        // aspect-video turned 0 width into 0 height, making the whole card
+        // occupy zero pixels. Generated images rendered nothing; the fixed
+        // h-20 w-20 non-media tile below was unaffected.
+        className={`relative block w-[240px] max-w-full aspect-video rounded-xl border border-border/60 overflow-hidden text-left hover:border-border transition-colors ${typeStyle.bg}`}
       >
         <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
           {TYPE_BADGES[type]}
