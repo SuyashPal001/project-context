@@ -182,7 +182,7 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
             ctx.fill();
             ctx.restore();
 
-            // 2b. orb body — warm cyan → deep ocean (dark theme) or amber → burnt
+            // 2b. orb body — theme rose → deep maroon (dark theme) or amber → burnt
             // orange (light theme, "orange and yellow mix"), highlight origin
             // above eye zone
             const grad = ctx.createRadialGradient(
@@ -196,11 +196,11 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
                 grad.addColorStop(0.85, '#7c2d12'); // orange-900 — burnt dark
                 grad.addColorStop(1,    '#1c0a00'); // near-black warm edge
             } else {
-                grad.addColorStop(0,    '#a5f3fc'); // cyan-200 — pearlescent top-left
-                grad.addColorStop(0.28, '#22d3ee'); // cyan-400 — vibrant mid
-                grad.addColorStop(0.62, '#0e7490'); // cyan-700 — rich deep teal
-                grad.addColorStop(0.85, '#083344'); // cyan-950 — ocean dark
-                grad.addColorStop(1,    '#020d11'); // near-black edge
+                grad.addColorStop(0,    '#fbe4ec'); // pearlescent top-left, tinted off --primary
+                grad.addColorStop(0.28, '#E69DB8'); // --primary — vibrant mid
+                grad.addColorStop(0.62, '#9d3b63'); // rich deep rose
+                grad.addColorStop(0.85, '#47182b'); // dark maroon
+                grad.addColorStop(1,    '#140609'); // near-black edge
             }
             ctx.save();
             ctx.beginPath();

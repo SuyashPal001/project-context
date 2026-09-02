@@ -42,7 +42,7 @@ export const TYPE_STYLES: Record<AssetType, { bg: string; icon: string }> = {
   pdf: { bg: 'bg-gradient-to-br from-red-500/20 via-orange-500/10 to-muted', icon: 'text-red-400' },
   docx: { bg: 'bg-gradient-to-br from-blue-500/20 via-sky-500/10 to-muted', icon: 'text-blue-400' },
   csv: { bg: 'bg-gradient-to-br from-teal-500/20 via-cyan-500/10 to-muted', icon: 'text-teal-400' },
-  image: { bg: 'bg-gradient-to-br from-emerald-500/20 via-teal-500/10 to-muted', icon: 'text-emerald-400' },
+  image: { bg: 'bg-gradient-to-br from-[#E69DB8]/20 via-[#E69DB8]/10 to-muted', icon: 'text-[#E69DB8]' },
   video: { bg: 'bg-gradient-to-br from-amber-500/20 via-orange-500/10 to-muted', icon: 'text-amber-400' },
   markdown: { bg: 'bg-gradient-to-br from-slate-500/20 via-slate-400/10 to-muted', icon: 'text-slate-400' },
   file: { bg: 'bg-gradient-to-br from-zinc-500/15 via-zinc-400/10 to-muted', icon: 'text-zinc-400' },

@@ -18,18 +18,25 @@ interface CanvasTabStripProps {
 }
 
 export function CanvasTabStrip({ tabs, activeTabId, onSelect, onClose, onOpenGallery }: CanvasTabStripProps) {
+  // Once a gallery tab is open, this button and that tab pill do the exact
+  // same thing with the exact same icon — clicking either jumps to gallery.
+  // Only show it as an entry point when there's no gallery tab to click yet.
+  const hasGalleryTab = tabs.some(tab => tab.kind === 'gallery');
+
   return (
     <div className="flex-none flex items-center gap-1.5 px-2 py-2 border-b border-border overflow-x-auto">
-      <button
-        onClick={onOpenGallery}
-        title="Open Chat History"
-        // Same icon as the "gallery" tab kind below (LayoutGrid) — this button
-        // jumps back to that tab, so it should read as "go to gallery," not a
-        // generic "+" that implies creating something new.
-        className="flex-none h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-      >
-        <LayoutGrid className="h-4 w-4" />
-      </button>
+      {!hasGalleryTab && (
+        <button
+          onClick={onOpenGallery}
+          title="Open Chat History"
+          // Same icon as the "gallery" tab kind below (LayoutGrid) — this button
+          // jumps back to that tab, so it should read as "go to gallery," not a
+          // generic "+" that implies creating something new.
+          className="flex-none h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          <LayoutGrid className="h-4 w-4" />
+        </button>
+      )}
       {tabs.map(tab => {
         const Icon = TAB_ICONS[tab.kind];
         const isActive = tab.id === activeTabId;
