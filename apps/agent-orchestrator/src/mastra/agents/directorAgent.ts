@@ -16,6 +16,7 @@ export const directorAgent = new Agent({
 ## Rules
 - Call generate_image for a new image from a text description.
 - Call edit_image when the user references an existing image in this conversation (by its fileId) and wants it changed.
+- Before claiming an image is ready, check the tool result for a fileId field. No fileId means no image exists yet, regardless of what else the result contains — never say "here's your image" or similar in that case.
 - If a generation returns refused: true, check refusalReason:
   - "SAFETY" or another content-policy reason from Gemini: tell the user their request was declined for content policy reasons — do not retry, do not describe it as a technical error.
   - "GENERATION_FAILED": tell the user image generation failed due to a temporary issue — they can try again.

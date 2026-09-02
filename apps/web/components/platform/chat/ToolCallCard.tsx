@@ -9,6 +9,7 @@ interface ToolCallCardProps {
   query: string;
   status: 'loading' | 'done';
   results?: ToolCallSearchResult[];
+  result?: Record<string, unknown>;
 }
 
 // Director's tools are registered under the underscore key (generate_image,
@@ -18,6 +19,22 @@ interface ToolCallCardProps {
 function isImageGenTool(toolName: string): boolean {
   return toolName === 'generate_image' || toolName === 'generate-image'
     || toolName === 'edit_image' || toolName === 'edit-image';
+}
+
+// generateImage.ts/editImage.ts return `refused: true, refusalReason` (or
+// `insufficientCredits: true`) on any failure, with no `fileId` — the model
+// doesn't reliably relay that in its reply text, so this component must not
+// take "a tool-result event arrived" as proof an image exists. Only a real
+// fileId means one does.
+function imageGenFailureReason(result: Record<string, unknown> | undefined): string | null {
+  if (!result) return null;
+  if (typeof result.fileId === 'string') return null;
+  if (result.insufficientCredits) return 'Out of credits';
+  const reason = typeof result.refusalReason === 'string' ? result.refusalReason : undefined;
+  if (reason === 'STORAGE_FAILED') return 'Generated, but could not be saved';
+  if (reason === 'SAFETY') return 'Declined for content policy reasons';
+  if (reason === 'SOURCE_IMAGE_UNAVAILABLE' || reason === 'SOURCE_IMAGE_TOO_LARGE') return 'Source image unavailable';
+  return 'Image generation failed';
 }
 
 function ToolIcon({ toolName }: { toolName: string }) {
@@ -145,10 +162,12 @@ function domainColor(domain: string): string {
   return DOMAIN_PALETTE[Math.abs(h) % DOMAIN_PALETTE.length];
 }
 
-export function ToolCallCard({ toolName, query, status, results }: ToolCallCardProps) {
+export function ToolCallCard({ toolName, query, status, results, result }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
-  const { prefix, highlight } = toolLabel(toolName, query, status);
+  const failureReason = status === 'done' && isImageGenTool(toolName) ? imageGenFailureReason(result) : null;
+  const { prefix: labelPrefix, highlight } = toolLabel(toolName, query, status);
+  const prefix = failureReason ?? labelPrefix;
   // Placeholder shaped like InlineAttachmentCard's own thumbnail chip, so the
   // real image swaps in without the layout jumping once it lands.
   const showImageSkeleton = status === 'loading' && isImageGenTool(toolName);
@@ -177,6 +196,12 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
             <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-60 animate-bounce [animation-delay:-0.15s]" />
             <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-30 animate-bounce" />
           </span>
+        ) : failureReason ? (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500">
+            <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M7 4v3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            <circle cx="7" cy="9.6" r="0.7" fill="currentColor"/>
+          </svg>
         ) : (
           <>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-green-500">

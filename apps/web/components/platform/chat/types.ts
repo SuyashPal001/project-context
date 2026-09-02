@@ -185,4 +185,5 @@ export interface CompletedToolCall {
     toolName: string;
     query: string;
     results?: ToolCallSearchResult[];
+    result?: Record<string, unknown>;
 }

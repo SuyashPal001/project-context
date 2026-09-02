@@ -218,6 +218,7 @@ export function LiveTrace({
                         query={tc.query}
                         status="done"
                         results={tc.results}
+                        result={tc.result}
                     />
                 ))}
                 {loadingTools.map(tool => (

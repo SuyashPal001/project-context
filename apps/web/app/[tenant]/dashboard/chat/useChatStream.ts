@@ -65,10 +65,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // by MessageThread the instant isStreaming flips false.
     const streamStartRef = useRef<number | null>(null);
 
-    const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
+    const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>, result?: Record<string, unknown>) => {
         const call = activeToolCalls.get(toolCallId);
         if (!call) return;
-        setCompletedToolCalls(prev => [...prev, { ...call, results }]);
+        setCompletedToolCalls(prev => [...prev, { ...call, results, result }]);
         setActiveToolCalls(prev => { const next = new Map(prev); next.delete(toolCallId); return next; });
     }, [activeToolCalls]);
 
@@ -246,7 +246,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
         onToolDone: useCallback((toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => {
             emitStreamEvent('tool_done');
-            handleToolDone(toolCallId, results);
+            handleToolDone(toolCallId, results, result);
             if (!SAVE_TOOL_NAMES.has(toolName.toLowerCase().replace(/_/g, '-')) || !artifactToolActiveRef.current) return;
 
             const content = typeof result.content === 'string' ? result.content : '';
