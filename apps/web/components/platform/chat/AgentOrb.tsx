@@ -166,24 +166,26 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
             ctx.globalAlpha = 0.42;
             ctx.beginPath();
             ctx.ellipse(cx, oCY, bodyW * 0.62, bodyH * 0.62, 0, 0, Math.PI * 2);
-            ctx.fillStyle = '#9d3b63';
+            ctx.fillStyle = '#E69DB8';
             ctx.shadowBlur = size * 1.0;
             ctx.shadowColor = 'rgba(230, 157, 184, 0.9)';
             ctx.fill();
             ctx.restore();
 
-            // 2b. orb body — theme rose (--primary, same hex in both themes) →
-            // deep maroon, highlight origin above eye zone. One palette for
-            // both themes — the near-black edge keeps it readable on either.
+            // 2b. orb body — matches SaarthiLogo.tsx's mark exactly: the same
+            // rose(#E69DB8) -> peach(#F2A679) diagonal the badge icon uses,
+            // not an invented palette. Deepened toward the edge for the
+            // sphere's own depth/readability, which the flat logo badge
+            // doesn't need.
             const grad = ctx.createRadialGradient(
                 cx - orbR * 0.28, oCY - orbR * 0.32, 0,
                 cx, oCY, Math.max(bodyW, bodyH),
             );
-            grad.addColorStop(0,    '#fbe4ec'); // pearlescent top-left, tinted off --primary
-            grad.addColorStop(0.28, '#E69DB8'); // --primary — vibrant mid
-            grad.addColorStop(0.62, '#9d3b63'); // rich deep rose
-            grad.addColorStop(0.85, '#47182b'); // dark maroon
-            grad.addColorStop(1,    '#140609'); // near-black edge
+            grad.addColorStop(0,    '#fceee5'); // pearlescent top-left, tinted off the peach end
+            grad.addColorStop(0.28, '#E69DB8'); // logo mark start — rose
+            grad.addColorStop(0.62, '#F2A679'); // logo mark end — peach
+            grad.addColorStop(0.85, '#8a4a2e'); // deepened peach, sphere depth
+            grad.addColorStop(1,    '#1a0d06'); // near-black edge
             ctx.save();
             ctx.beginPath();
             ctx.ellipse(cx, oCY, bodyW, bodyH, 0, 0, Math.PI * 2);
