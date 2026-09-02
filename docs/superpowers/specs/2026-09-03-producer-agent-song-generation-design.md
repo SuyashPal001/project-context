@@ -63,8 +63,9 @@ some paths and not others. Confirmed still current; replicate exactly:
 2. **`apps/api/src/routes/onboarding.ts`** — add a "Producer Agent" block
    mirroring the Director block at line 354 (persona lookup by slug, API key,
    `agents` row with `personaId` set to the seeded Producer persona's id,
-   `type: 'assistant'` — same reasoning as Director, no existing `type` value
-   fits "generates music" either).
+   `type: 'custom'` — matches what `onboarding.ts` actually uses for Director
+   (verified in code: `agents.type` is a Postgres enum without an `'assistant'`
+   member; `'custom'` is what every seeded agent, including Director, uses).
 3. **`packages/foundation/database/seeds/backfill-agents.ts`** — add a
    Producer entry (`name: 'Producer'`, `systemPrompt: 'You are Producer.
    Generate instrumental music from a description.'`,
