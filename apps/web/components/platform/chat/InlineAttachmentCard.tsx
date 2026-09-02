@@ -3,7 +3,8 @@
 import type { MessageAttachment } from './types';
 import type { Asset } from '@/types/assets';
 import { assetTypeForFile } from '@/lib/assetType';
-import { TYPE_ICONS, TYPE_STYLES } from '@/components/platform/canvas/assetTypeStyles';
+import { TYPE_ICONS, TYPE_STYLES, TYPE_BADGES } from '@/components/platform/canvas/assetTypeStyles';
+import { formatFileSize } from '@/components/platform/files/lib/fileIcons';
 
 interface InlineAttachmentCardProps {
   file: MessageAttachment;
@@ -35,22 +36,57 @@ export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
     (window as any).__canvasUpdate?.('asset_open', { asset });
   };
 
+  const isMedia = type === 'image' || type === 'video';
+
+  // Media (image/video) gets the big aspect-video card — same shape as
+  // ToolCallCard's loading skeleton so the result swaps in without resizing.
+  // Everything else (docx/pdf/csv/...) gets the same 80x80 tile the composer
+  // tray uses (AttachmentStrip's AttachmentTile) — a preview doesn't make
+  // sense for those, so match what the user already sees on the way in.
+  if (isMedia) {
+    return (
+      <button
+        onClick={handleClick}
+        className={`relative block w-full max-w-[240px] aspect-video rounded-xl border border-border/60 overflow-hidden text-left hover:border-border transition-colors ${typeStyle.bg}`}
+      >
+        <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
+          {TYPE_BADGES[type]}
+        </span>
+
+        {url ? (
+          type === 'image' ? (
+            <img src={url} alt={file.name} className="absolute inset-0 h-full w-full object-cover" />
+          ) : (
+            <video src={url} className="absolute inset-0 h-full w-full object-cover" muted />
+          )
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Icon className={`h-6 w-6 ${typeStyle.icon}`} />
+          </div>
+        )}
+
+        <div className="absolute inset-x-0 bottom-0 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
+          <p className="text-[11px] font-medium text-white truncate">{file.name}</p>
+          <p className="text-[9px] text-white/70 uppercase tracking-wide">
+            {type}{typeof file.size === 'number' ? ` · ${formatFileSize(file.size)}` : ''}
+          </p>
+        </div>
+      </button>
+    );
+  }
+
   return (
     <button
       onClick={handleClick}
-      className="flex items-center gap-2.5 px-2.5 py-2 bg-muted/40 border border-border/40 rounded-xl text-left hover:bg-muted/70 transition-colors min-w-[160px] max-w-[220px]"
+      className={`relative h-20 w-20 rounded-xl overflow-hidden border border-border/40 shadow-sm text-left hover:border-border transition-colors ${typeStyle.bg}`}
     >
-      <div className={`h-8 w-8 rounded-lg border border-border/40 flex items-center justify-center shrink-0 overflow-hidden ${typeStyle.bg}`}>
-        {(type === 'image') && url ? (
-          <img src={url} alt={file.name} className="h-full w-full object-cover" />
-        ) : (
-          <Icon className={`h-4 w-4 ${typeStyle.icon}`} />
-        )}
+      <div className="h-full w-full flex flex-col items-center justify-center gap-1 p-2">
+        <Icon className={`h-7 w-7 ${typeStyle.icon}`} />
+        <span className="text-[9px] font-medium line-clamp-2 text-center break-all leading-tight">{file.name}</span>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[11px] font-medium truncate">{file.name}</p>
-        <p className="text-[9px] text-muted-foreground uppercase tracking-wide">{type}</p>
-      </div>
+      <span className="absolute top-1 left-1 text-[8px] font-bold px-1 py-0.5 rounded bg-background/90 border border-border/60">
+        {TYPE_BADGES[type]}
+      </span>
     </button>
   );
 }

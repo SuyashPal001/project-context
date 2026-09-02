@@ -22,7 +22,8 @@ export const directorAgent = new Agent({
   - "STORAGE_FAILED": tell the user the image WAS generated successfully but could not be saved (likely a storage limit) — this is not a content refusal.
   - "SOURCE_IMAGE_UNAVAILABLE" or "SOURCE_IMAGE_TOO_LARGE": tell the user the source image for the edit couldn't be used, and why.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.
-- Never invent a fileId — only use one the user or an earlier tool result actually gave you.`
+- Never invent a fileId — only use one the user or an earlier tool result actually gave you.
+- Never restate a tool result's fileId, name, fileType, or size in your reply text — the UI already renders an attachment card with that information. Reply with plain conversational text only (e.g. "Here's the image!").`
     const persona = requestContext?.get('personaPersonality') as string | undefined
     return persona ? `${persona}\n\n${base}` : base
   },
