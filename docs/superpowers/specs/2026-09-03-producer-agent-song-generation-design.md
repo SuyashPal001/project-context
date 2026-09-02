@@ -189,6 +189,15 @@ New file `apps/inference-gateway/src/music.ts`, structurally identical to
 - **No cross-vendor substitution** — per the media-generation doc's settled
   rule. If Vertex Lyria is down, this is a clean 503, not a silent fallback
   to a different vendor's model.
+- **No Gemini-API-key fallback tier, unlike `images.ts`.** Verified against
+  `ai.google.dev`'s Gemini API docs 2026-09-03: the direct API-key surface
+  only exposes `lyria-3-clip-preview`/`lyria-3-pro-preview` (both preview,
+  both allowlist-gated) — `lyria-002` is Vertex-only, not available there at
+  any tier. `images.ts` has a working Vertex→Gemini-API-key fallback pair
+  because `gemini-3-pro-image-preview` is on both surfaces; `music.ts` cannot
+  replicate that shape for `lyria-002` — it is single-path by necessity. A
+  Vertex outage or open circuit breaker is a clean 503 with no backup, not a
+  gap to "fix" later.
 - Safety settings: reuse the same `SAFETY_SETTINGS` block `images.ts`
   defines, if Lyria's predict API accepts a `safetySettings` field — verify
   during implementation; if it doesn't, note that gap rather than silently
