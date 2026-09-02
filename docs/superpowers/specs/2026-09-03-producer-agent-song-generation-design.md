@@ -15,12 +15,18 @@ Director shipped as a dedicated `/v1/images/generations` route, so this
 follows that precedent (`/v1/music/generations`) rather than the doc's
 original, superseded design.
 
-**Scope correction from the initial ask.** Lyria on Vertex produces
-~30-second instrumental clips with no vocals and no song structure (verse/
-chorus/bridge) — it does not generate "a song" in the lyrics-and-structure
-sense. This spec ships that capability under an honest name and honest tool
-description. A vendor capable of full structured songs with vocals (e.g.
-Suno) is a separate, later spec if that gap matters later.
+**Scope correction from the initial ask.** Verified against Vertex AI docs
+2026-09-03: two Lyria tiers exist. `lyria-002` is GA, unrestricted, and
+produces ~30-second instrumental clips with no vocals and no song structure
+(verse/chorus/bridge). `lyria-3-pro-preview` (up to ~184s, with vocals, timed
+lyrics, and structure — an actual song) also exists on Vertex, but is preview
+and gated behind a manual Google allowlist request per GCP project, with no
+published approval timeline — confirmed via multiple open requests on
+Google's developer forum. This spec targets `lyria-002` so it ships without
+waiting on a third party's approval; `lyria-3-pro-preview` is a follow-up
+swap once/if the project is allowlisted (see §4's model-id note). Until then,
+this ships instrumental-only under an honest name and honest tool
+description, not a simulated "song."
 
 ## Goals
 
@@ -150,15 +156,25 @@ never on a refusal.
 New file `apps/inference-gateway/src/music.ts`, structurally identical to
 `images.ts`:
 
-- `MUSIC_MODEL_ALLOWLIST` — single entry to start. **Exact Lyria model id and
-  whether it is global-endpoint-only (like the image models) needs
-  verification against current Vertex docs before implementation** — the
-  media-generation doc flagged this exact class of risk for image models and
-  it applies here too; do not assume regional availability.
-- Lyria's Vertex API shape is `:predict`, not `:generateContent` — closer to
-  Imagen's contract than to Gemini's chat-style image gen. The adapter
-  (`callVertexMusicModel`) builds a predict-shaped request/response, not a
-  copy of `buildGeminiImageRequest`.
+- `MUSIC_MODEL_ALLOWLIST` — single entry: `lyria-002`. Confirmed GA, no
+  Google-side allowlist needed, region `us-central1` (regional, not
+  global-endpoint-only like the image models — no special-cased hostname
+  branch needed here, unlike `images.ts`'s `LOCATION` handling).
+- Lyria's Vertex API shape is `:predict`
+  (`https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/publishers/google/models/lyria-002:predict`),
+  not `:generateContent` — closer to Imagen's contract than to Gemini's
+  chat-style image gen. The adapter (`callVertexMusicModel`) builds a
+  predict-shaped request/response, not a copy of `buildGeminiImageRequest`.
+  Output: WAV, 48kHz, ~30s, per Google's docs — confirm exact response field
+  name during implementation.
+- **Future upgrade path, not this spec's scope:** `lyria-3-pro-preview`
+  supports real songs (vocals, timed lyrics, verse/chorus/bridge structure,
+  up to ~184s) but requires a manual Google allowlist request with no
+  published SLA, and uses a different wire shape entirely
+  (`generateContent` with `response_modalities: ["AUDIO", "TEXT"]`, vocals/
+  lyrics passed as plain prompt text — no dedicated parameters). If/when
+  allowlisted, swapping to it is a new adapter and a new model-allowlist
+  entry, not a parameter change to this one.
 - New route `POST /v1/music/generations` in `apps/inference-gateway/src/index.ts`,
   handled directly (same pattern as the existing images route). Request body:
   `{ model, prompt }`. Response body: `{ audioBase64, mimeType }` on success,
@@ -248,9 +264,13 @@ Same restart/deploy surface as Director, replicated:
   that spec) — the browser talks directly to the agent-orchestrator host, not
   through API Gateway's 29s limit. Lyria's clips are short and generation
   should be fast; revisit if real-world latency proves otherwise.
-- **Pricing and exact model id deferred to implementation-time
-  verification.** Both need an owner/check before merge, flagged rather than
-  guessed.
+- **Pricing deferred to implementation-time verification** (rate value is a
+  business decision). Model id (`lyria-002`, GA, `:predict`, `us-central1`)
+  is now confirmed — see §4.
+- **Instrumental-only is a real capability gap, not just this spec's
+  choice.** `lyria-3-pro-preview` (real songs, vocals) exists on Vertex today
+  but is allowlist-gated with no published approval timeline — out of this
+  spec's control, noted as a follow-up in §4.
 
 ## Testing
 
