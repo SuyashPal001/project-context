@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import type { ToolCallSearchResult } from './types';
 import { TYPE_STYLES, TYPE_BADGES } from '@/components/platform/canvas/assetTypeStyles';
 
@@ -201,7 +200,6 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
             {TYPE_BADGES.image}
           </span>
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
-          <Loader2 className={`h-6 w-6 animate-spin ${TYPE_STYLES.image.icon}`} />
         </div>
       )}
 

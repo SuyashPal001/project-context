@@ -176,9 +176,9 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
             ctx.globalAlpha = 0.42;
             ctx.beginPath();
             ctx.ellipse(cx, oCY, bodyW * 0.62, bodyH * 0.62, 0, 0, Math.PI * 2);
-            ctx.fillStyle = light ? '#ea580c' : '#0e7490';
+            ctx.fillStyle = light ? '#ea580c' : '#9d3b63';
             ctx.shadowBlur = size * 1.0;
-            ctx.shadowColor = light ? 'rgba(251, 191, 36, 0.9)' : 'rgba(6, 182, 212, 0.9)';
+            ctx.shadowColor = light ? 'rgba(251, 191, 36, 0.9)' : 'rgba(230, 157, 184, 0.9)';
             ctx.fill();
             ctx.restore();
 
@@ -397,7 +397,7 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
             ref={canvasRef}
             onClick={handleClick}
             className={cn(
-                "cursor-pointer transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+                "rounded-full cursor-pointer transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
                 (isJumping || isLoading) ? "-translate-y-8 scale-y-105 scale-x-95" : "translate-y-0 scale-100"
             )}
             style={{ display: 'block', width: size, height: size, touchAction: 'none' }}
