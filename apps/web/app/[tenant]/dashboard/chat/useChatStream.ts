@@ -201,6 +201,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
                 queryClient.invalidateQueries({ queryKey: ['conversations'] });
                 queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+                queryClient.invalidateQueries({ queryKey: ['conversation-assets', conversationId] });
             }, 2000);
         }, [queryClient, handleCanvasUpdate, completedToolCalls]),
 
