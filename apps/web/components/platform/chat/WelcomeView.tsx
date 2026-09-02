@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Map, ListChecks, Search, Lightbulb, PenLine, HelpCircle, type LucideIcon } from "lucide-react";
+import { FileText, Map, ListChecks, Search, Lightbulb, PenLine, HelpCircle, ImagePlus, Palette, Sparkles, LayoutTemplate, type LucideIcon } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
 import { Button } from "@/components/ui/button";
 import type { PillType } from "./WizardView";
@@ -12,6 +12,13 @@ const PM_PROMPTS: { icon: LucideIcon; label: string; pill: PillType }[] = [
     { icon: Map,        label: "Build a roadmap",  pill: "roadmap"  },
     { icon: ListChecks, label: "Break into tasks",  pill: "tasks"    },
     { icon: Search,     label: "Research a topic",  pill: "research" },
+];
+
+const DIRECTOR_PROMPTS: { icon: LucideIcon; label: string; text: string }[] = [
+    { icon: ImagePlus,      label: "Generate an image",  text: "Generate an image of " },
+    { icon: Palette,        label: "Create a logo",      text: "Design a logo for " },
+    { icon: LayoutTemplate, label: "Design a banner",    text: "Create a banner for " },
+    { icon: Sparkles,       label: "Illustrate an idea", text: "Create an illustration of " },
 ];
 
 const GENERAL_PROMPTS: { icon: LucideIcon; label: string; text: string }[] = [
@@ -36,8 +43,11 @@ interface WelcomeViewProps {
 export function WelcomeView({ agent, firstName, onSelectPill, onSend, children, avatarLiveState }: WelcomeViewProps) {
     const agentName = agent?.name ?? 'your assistant';
     const isPm = (agent?.name ?? '').toLowerCase().includes('pm');
+    const isDirector = (agent?.name ?? '').toLowerCase() === 'director';
     const tagline = agent?.description
-        ?? (isPm ? 'I can help you plan, design, and ship.' : 'How can I help you today?');
+        ?? (isPm ? 'I can help you plan, design, and ship.'
+            : isDirector ? 'I generate and edit images from a description.'
+            : 'How can I help you today?');
 
     return (
         <div className="flex flex-col h-full">
@@ -61,7 +71,7 @@ export function WelcomeView({ agent, firstName, onSelectPill, onSend, children, 
                                 <Icon className="h-4 w-4 text-muted-foreground" /> {label}
                             </Button>
                         ))
-                        : GENERAL_PROMPTS.map(({ icon: Icon, label, text }) => (
+                        : (isDirector ? DIRECTOR_PROMPTS : GENERAL_PROMPTS).map(({ icon: Icon, label, text }) => (
                             <Button key={label} variant="outline"
                                 className="gap-2 rounded-full px-5 py-2 h-auto text-sm font-medium bg-secondary/50 border-border/60 hover:bg-secondary hover:border-border transition-colors"
                                 onClick={() => onSend(text)}

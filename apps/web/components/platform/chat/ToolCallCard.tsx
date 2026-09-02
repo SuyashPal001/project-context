@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import type { ToolCallSearchResult } from './types';
+import { TYPE_STYLES, TYPE_BADGES } from '@/components/platform/canvas/assetTypeStyles';
 
 interface ToolCallCardProps {
   toolName: string;
@@ -194,12 +196,11 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
       </div>
 
       {showImageSkeleton && (
-        <div className="flex items-center gap-2.5 px-2.5 py-2 mt-1.5 bg-muted/40 border border-border/40 rounded-xl min-w-[160px] max-w-[220px]">
-          <div className="h-8 w-8 rounded-lg bg-muted-foreground/20 animate-pulse shrink-0" />
-          <div className="flex-1 min-w-0 space-y-1">
-            <div className="h-2 w-3/4 rounded bg-muted-foreground/20 animate-pulse" />
-            <div className="h-2 w-1/3 rounded bg-muted-foreground/20 animate-pulse" />
-          </div>
+        <div className={`relative mt-1.5 w-full max-w-[240px] aspect-video rounded-xl border border-border/60 overflow-hidden flex items-center justify-center ${TYPE_STYLES.image.bg}`}>
+          <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
+            {TYPE_BADGES.image}
+          </span>
+          <Loader2 className={`h-6 w-6 animate-spin ${TYPE_STYLES.image.icon}`} />
         </div>
       )}
 
