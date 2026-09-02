@@ -42,7 +42,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
             {!collapsed && (toolCalls.length > 0 || reasoningText) && (
                 <div className="ml-4 flex flex-col gap-1 normal-case">
                     {toolCalls.map(tc => (
-                        <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} />
+                        <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} />
                     ))}
                     {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
                 </div>

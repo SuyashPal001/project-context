@@ -45,6 +45,12 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
+    // Mirrors completedToolCalls synchronously — onDone is a useCallback that
+    // closes over completedToolCalls, but a 'tool_done' SSE event immediately
+    // followed by 'done' in the same stream tick can fire before React commits
+    // the setCompletedToolCalls update, leaving onDone reading the stale
+    // (pre-append) array and building a trace with an empty toolCalls list.
+    const completedToolCallsRef = useRef<CompletedToolCall[]>([]);
     // Extended-thinking trace for the live "thinking it through" row — never part of
     // the persisted message, reset per turn in sendMessage/onDone below.
     const [reasoningText, setReasoningText] = useState('');
@@ -68,7 +74,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>, result?: Record<string, unknown>) => {
         const call = activeToolCalls.get(toolCallId);
         if (!call) return;
-        setCompletedToolCalls(prev => [...prev, { ...call, results, result }]);
+        setCompletedToolCalls(prev => {
+            const next = [...prev, { ...call, results, result }];
+            completedToolCallsRef.current = next;
+            return next;
+        });
         setActiveToolCalls(prev => { const next = new Map(prev); next.delete(toolCallId); return next; });
     }, [activeToolCalls]);
 
@@ -138,8 +148,9 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 : undefined;
             reasoningStartRef.current = null;
             reasoningLastRef.current = null;
-            const hadTrace = completedToolCalls.length > 0 || elapsedSec >= 2 || !!reasoningTextAtDone;
-            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: completedToolCalls, reasoningText: reasoningTextAtDone || undefined, reasoningElapsedSec } } : {};
+            const toolCallsAtDone = completedToolCallsRef.current;
+            const hadTrace = toolCallsAtDone.length > 0 || elapsedSec >= 2 || !!reasoningTextAtDone;
+            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: toolCallsAtDone, reasoningText: reasoningTextAtDone || undefined, reasoningElapsedSec } } : {};
 
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
@@ -175,7 +186,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 }
                 return { data: [...data].sort(sortByDate) };
             });
-            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); setReasoningText(''); reasoningTextRef.current = ''; }, 1500);
+            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); completedToolCallsRef.current = []; setReasoningText(''); reasoningTextRef.current = ''; }, 1500);
             setTimeout(() => {
                 const conversationId = conversationIdRef.current;
                 if (!conversationId) return;
@@ -214,7 +225,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
                 queryClient.invalidateQueries({ queryKey: ['conversation-assets', conversationId] });
             }, 2000);
-        }, [queryClient, handleCanvasUpdate, completedToolCalls]),
+        }, [queryClient, handleCanvasUpdate]),
 
         onError: useCallback((code: string, message: string) => {
             emitStreamEvent('error');
