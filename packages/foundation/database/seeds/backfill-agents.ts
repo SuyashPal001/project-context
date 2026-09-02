@@ -35,6 +35,8 @@ import { agents } from '../../../../products/agent-platform/packages/schema/agen
 // @ts-ignore
 import { agentSkills } from '../../../../products/agent-platform/packages/schema/conversations';
 // @ts-ignore
+import { personas } from '../../../../products/agent-platform/packages/schema/personas';
+// @ts-ignore
 import { apiKeys } from '../schema/access';
 // @ts-ignore
 import { tenants, memberships } from '../schema/tenancy';
@@ -51,16 +53,18 @@ const generateKey = () => {
     return { raw, hash: createHash('sha256').update(raw).digest('hex') };
 };
 
-const DEFAULT_AGENTS: { name: string; description: string; systemPrompt: string }[] = [
+const DEFAULT_AGENTS: { name: string; description: string; systemPrompt: string; personaSlug?: string }[] = [
     {
         name: 'PM Agent',
         description: 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown.',
         systemPrompt: 'You are a PM Agent that helps with product planning, PRDs, roadmaps, and task breakdowns.',
+        personaSlug: 'pm',
     },
     {
         name: 'Architect',
         description: 'Technical architect that answers codebase and system design questions using your knowledge base.',
         systemPrompt: 'You are the technical architect. Always call retrieve_knowledge before answering any technical question about the codebase.',
+        personaSlug: 'architect',
     },
     {
         name: 'Saarthi PRD',
@@ -81,6 +85,7 @@ const DEFAULT_AGENTS: { name: string; description: string; systemPrompt: string 
         name: 'Director',
         description: 'Generates and edits images from a description.',
         systemPrompt: 'You are Director. Generate and edit images from a description.',
+        personaSlug: 'director',
     },
 ];
 
@@ -98,6 +103,10 @@ async function run() {
               .where(eq(rolePermissions.roleId, agentRole.id))
         : [];
     const agentRolePermissionStrings = agentRolePermissionRows.map((p: { resource: string; action: string }) => `${p.resource}:${p.action}`);
+
+    // Personas are global (not per-tenant) — resolve slug -> id once, same lookup onboarding.ts does.
+    const personaRows = await db.select({ id: personas.id, slug: personas.slug }).from(personas);
+    const personaIdBySlug = new Map(personaRows.map((p: { id: string; slug: string }) => [p.slug, p.id]));
 
     for (const tenant of allTenants) {
         console.log(`\nProcessing tenant: ${tenant.name} (${tenant.id})`);
@@ -139,6 +148,11 @@ async function run() {
                 createdBy: userId,
             }).returning();
 
+            const personaId = def.personaSlug ? personaIdBySlug.get(def.personaSlug) ?? null : null;
+            if (def.personaSlug && !personaId) {
+                console.warn(`  ${def.personaSlug} persona not found — creating ${def.name} with personaId: null. Run the personas seed first.`);
+            }
+
             const [agent] = await db.insert(agents).values({
                 tenantId: tenant.id,
                 name: def.name,
@@ -146,6 +160,7 @@ async function run() {
                 status: 'active',
                 description: def.description,
                 apiKeyId: key.id,
+                personaId,
                 createdBy: userId,
             }).returning();
 

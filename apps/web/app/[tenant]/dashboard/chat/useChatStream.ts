@@ -165,7 +165,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                     const zIdx = data.findIndex(m => m.isStreaming === true);
                     if (zIdx >= 0) {
                         data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
-                    } else if (fullText) {
+                    } else if (fullText || 'attachments' in atts) {
+                        // A tool-only turn (e.g. generate_image with no narrated text) still
+                        // has to land here — gating on fullText alone silently dropped the
+                        // whole message, attachments included, whenever the model replied
+                        // with zero text deltas.
                         data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts });
                     }
                 }

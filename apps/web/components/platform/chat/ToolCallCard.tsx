@@ -197,9 +197,10 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
 
       {showImageSkeleton && (
         <div className={`relative mt-1.5 w-full max-w-[240px] aspect-video rounded-xl border border-border/60 overflow-hidden flex items-center justify-center ${TYPE_STYLES.image.bg}`}>
-          <span className="absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
+          <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
             {TYPE_BADGES.image}
           </span>
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
           <Loader2 className={`h-6 w-6 animate-spin ${TYPE_STYLES.image.icon}`} />
         </div>
       )}
