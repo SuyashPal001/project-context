@@ -83,7 +83,13 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
         ctx.scale(dpr, dpr);
 
         const showExtras = size >= 48;
-        const orbR = size * 0.50; // Maximize size to entirely fill the container without artificial borders
+        // baseCY below shifts the circle's center down by size*0.08 when
+        // showExtras (room for the lightbulb/glasses above it) — at radius
+        // 0.50 that shift alone pushed the bottom edge to 1.08*size, past
+        // the canvas box, so it got clipped flat instead of staying
+        // circular. Shrinking the radius by the same amount keeps the
+        // bottom edge exactly at the box edge.
+        const orbR = size * (showExtras ? 0.42 : 0.50);
         const cx = size / 2;
         const baseCY = size / 2 + (showExtras ? size * 0.08 : 0);
 
@@ -184,8 +190,13 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
             grad.addColorStop(0,    '#fbe4ec'); // pearlescent top-left, tinted off the rose end
             grad.addColorStop(0.32, '#E69DB8'); // logo mark start — rose, the dominant hue
             grad.addColorStop(0.68, '#F2A679'); // logo mark end — peach, a thin accent band, not half the sphere
-            grad.addColorStop(0.8,  '#8a4a2e'); // deepened peach, sphere depth
-            grad.addColorStop(1,    '#1a0d06'); // near-black edge
+            // Near-black edge stops (an earlier revision) were tuned to blend
+            // into a dark page background and instead read as a harsh black
+            // ring against a light one — deep rose instead, matching the
+            // logo icon's own tinted-rose mark color (#5C2230) rather than
+            // going to black.
+            grad.addColorStop(0.8,  '#a8506b'); // deepened rose, sphere depth
+            grad.addColorStop(1,    '#5c2230'); // deep rose edge — same tint as the logo's brain glyph
             ctx.save();
             ctx.beginPath();
             ctx.ellipse(cx, oCY, bodyW, bodyH, 0, 0, Math.PI * 2);
