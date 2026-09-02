@@ -181,10 +181,10 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
                 cx - orbR * 0.28, oCY - orbR * 0.32, 0,
                 cx, oCY, Math.max(bodyW, bodyH),
             );
-            grad.addColorStop(0,    '#fceee5'); // pearlescent top-left, tinted off the peach end
-            grad.addColorStop(0.28, '#E69DB8'); // logo mark start — rose
-            grad.addColorStop(0.62, '#F2A679'); // logo mark end — peach
-            grad.addColorStop(0.85, '#8a4a2e'); // deepened peach, sphere depth
+            grad.addColorStop(0,    '#fbe4ec'); // pearlescent top-left, tinted off the rose end
+            grad.addColorStop(0.32, '#E69DB8'); // logo mark start — rose, the dominant hue
+            grad.addColorStop(0.68, '#F2A679'); // logo mark end — peach, a thin accent band, not half the sphere
+            grad.addColorStop(0.8,  '#8a4a2e'); // deepened peach, sphere depth
             grad.addColorStop(1,    '#1a0d06'); // near-black edge
             ctx.save();
             ctx.beginPath();
