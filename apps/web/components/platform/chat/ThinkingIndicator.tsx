@@ -127,6 +127,9 @@ export function LiveTrace({
     const isTasks = activeToolCalls.some(tc =>
         tc.toolName === 'save-tasks' || tc.toolName === 'saveTasks'
         || tc.toolName?.startsWith('agent-task'));
+    const isImageGen = activeToolCalls.some(tc =>
+        tc.toolName === 'generate_image' || tc.toolName === 'generate-image'
+        || tc.toolName === 'edit_image' || tc.toolName === 'edit-image');
 
     const THINKING_MESSAGES = [
         "Thinking...",
@@ -162,9 +165,16 @@ export function LiveTrace({
         "Almost done...",
     ];
 
+    const IMAGE_MESSAGES = [
+        "Generating image...",
+        "Rendering details...",
+        "Almost done...",
+    ];
+
     const thinkingMessages = isPRD ? PRD_MESSAGES
         : isRoadmap ? ROADMAP_MESSAGES
         : isTasks ? TASKS_MESSAGES
+        : isImageGen ? IMAGE_MESSAGES
         : isRAG ? RAG_MESSAGES
         : THINKING_MESSAGES;
 

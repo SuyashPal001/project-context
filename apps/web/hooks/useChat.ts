@@ -18,7 +18,7 @@ export interface UseChatOptions {
     folderPrefix?: string;
     onDelta?: (delta: string, messageId: string, conversationId?: string) => void;
     onReasoning?: (delta: string) => void;
-    onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown, citations?: unknown, suggestedFollowUps?: unknown) => void;
+    onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown, citations?: unknown, suggestedFollowUps?: unknown, attachments?: unknown) => void;
     onError?: (code: string, message: string) => void;
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
@@ -271,6 +271,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                             const artifactRef = payload.artifactRef;
                             const citations = payload.citations;
                             const suggestedFollowUps = payload.suggestedFollowUps;
+                            const attachments = payload.attachments;
                             clearRetry();
                             onDoneRef.current?.(
                                 finalText,
@@ -280,6 +281,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 artifactRef,
                                 citations,
                                 suggestedFollowUps,
+                                attachments,
                             );
                             currentMessageId = null;
                             accumulatedText = '';

@@ -10,6 +10,15 @@ interface ToolCallCardProps {
   results?: ToolCallSearchResult[];
 }
 
+// Director's tools are registered under the underscore key (generate_image,
+// edit_image) — that's the raw toolName this component receives (unnormalized,
+// unlike chatStream.ts's server-side gate). Matched loosely so a hyphenated
+// form works too if a future caller normalizes before this point.
+function isImageGenTool(toolName: string): boolean {
+  return toolName === 'generate_image' || toolName === 'generate-image'
+    || toolName === 'edit_image' || toolName === 'edit-image';
+}
+
 function ToolIcon({ toolName }: { toolName: string }) {
   const isSearch = toolName === 'web_search' || toolName === 'browser';
   const isDocs = toolName === 'retrieve_documents';
@@ -21,6 +30,15 @@ function ToolIcon({ toolName }: { toolName: string }) {
     || toolName === 'save-tasks' || toolName === 'saveTasks'
     || toolName?.startsWith('agent-prd') || toolName?.startsWith('agent-roadmap') || toolName?.startsWith('agent-task')
     || toolName?.startsWith('workflow-prd');
+  const isImage = isImageGenTool(toolName);
+
+  if (isImage) return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <rect x="1.5" y="2.5" width="11" height="9" rx="1" stroke="currentColor" strokeWidth="1"/>
+      <circle cx="5" cy="5.5" r="1" stroke="currentColor" strokeWidth="0.8"/>
+      <path d="M2 10l3-3 2.5 2.5L11 6l1 1.5" stroke="currentColor" strokeWidth="1" fill="none" strokeLinejoin="round"/>
+    </svg>
+  );
 
   if (isSearch) return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
@@ -91,6 +109,7 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
         if (toolName === 'save-prd' || toolName === 'savePRD' || toolName?.startsWith('agent-prd') || toolName?.startsWith('workflow-prd')) return { prefix: 'Writing PRD', highlight: query ? ` — ${q}` : '...' };
         if (toolName === 'save-plan' || toolName === 'savePlan' || toolName?.startsWith('agent-roadmap')) return { prefix: 'Building roadmap...', highlight: '' };
         if (toolName === 'save-tasks' || toolName === 'saveTasks' || toolName?.startsWith('agent-task')) return { prefix: 'Creating tasks...', highlight: '' };
+        if (isImageGenTool(toolName)) return { prefix: toolName.includes('edit') ? 'Editing image...' : 'Generating image...', highlight: '' };
     }
 
     if (toolName === 'web_search' || toolName === 'browser') return { prefix: 'Searched the web for ', highlight: q };
@@ -108,6 +127,7 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
     if (toolName === 'save-prd' || toolName === 'savePRD' || toolName?.startsWith('agent-prd') || toolName?.startsWith('workflow-prd')) return { prefix: 'PRD drafted', highlight: '' };
     if (toolName === 'save-plan' || toolName === 'savePlan' || toolName?.startsWith('agent-roadmap')) return { prefix: 'Roadmap built', highlight: '' };
     if (toolName === 'save-tasks' || toolName === 'saveTasks' || toolName?.startsWith('agent-task')) return { prefix: 'Tasks created', highlight: '' };
+    if (isImageGenTool(toolName)) return { prefix: toolName.includes('edit') ? 'Image edited' : 'Image generated', highlight: '' };
 
     const friendly = toolName.replace(/_/g, ' ').toLowerCase();
     return { prefix: done ? `Used ${friendly}` : `Using ${friendly}`, highlight: query ? ` — ${q}` : '' };
@@ -128,6 +148,9 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
   const { prefix, highlight } = toolLabel(toolName, query, status);
+  // Placeholder shaped like InlineAttachmentCard's own thumbnail chip, so the
+  // real image swaps in without the layout jumping once it lands.
+  const showImageSkeleton = status === 'loading' && isImageGenTool(toolName);
 
   return (
     <div className="my-1.5 text-foreground">
@@ -169,6 +192,16 @@ export function ToolCallCard({ toolName, query, status, results }: ToolCallCardP
           </>
         )}
       </div>
+
+      {showImageSkeleton && (
+        <div className="flex items-center gap-2.5 px-2.5 py-2 mt-1.5 bg-muted/40 border border-border/40 rounded-xl min-w-[160px] max-w-[220px]">
+          <div className="h-8 w-8 rounded-lg bg-muted-foreground/20 animate-pulse shrink-0" />
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="h-2 w-3/4 rounded bg-muted-foreground/20 animate-pulse" />
+            <div className="h-2 w-1/3 rounded bg-muted-foreground/20 animate-pulse" />
+          </div>
+        </div>
+      )}
 
       {hasResults && expanded && (
         <div className="flex gap-2.5 mt-1.5 pl-0.5">

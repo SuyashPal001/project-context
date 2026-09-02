@@ -435,7 +435,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             }
           }
 
-          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, suggestedFollowUps: suggestedFollowUps.length > 0 ? suggestedFollowUps : undefined })
+          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, suggestedFollowUps: suggestedFollowUps.length > 0 ? suggestedFollowUps : undefined, attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined })
 
           // Guard against ghost messages: if the client disconnected (Stop button
           // or navigation) before the agent finished, isStreamClosed() is already

@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useChat } from '@/hooks/useChat';
 import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
-import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef } from '@/components/platform/chat/types';
+import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef, MessageAttachment } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
 import type { ClarificationRequest, ClarificationQuestion } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
@@ -104,7 +104,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             });
         }, [queryClient, activeToolCalls, handleToolDone]),
 
-        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown, citationsRaw?: unknown, suggestedFollowUpsRaw?: unknown) => {
+        onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown, citationsRaw?: unknown, suggestedFollowUpsRaw?: unknown, attachmentsRaw?: unknown) => {
             emitStreamEvent('done');
             if (artifactToolActiveRef.current) {
                 const aref = artifactRefRef.current;
@@ -152,14 +152,21 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 const followUps = suggestedFollowUpsRaw && Array.isArray(suggestedFollowUpsRaw) && suggestedFollowUpsRaw.length > 0
                     ? { suggestedFollowUps: suggestedFollowUpsRaw as string[] }
                     : {};
+                // Orchestrator sends {fileId, name, type, size} per attachment (no local
+                // UI id) — synthesize one here, matching the shape reconcile()'s server
+                // refetch produces so the live and delayed paths converge on the same
+                // Message shape.
+                const atts = attachmentsRaw && Array.isArray(attachmentsRaw) && attachmentsRaw.length > 0
+                    ? { attachments: (attachmentsRaw as Array<{ fileId: string; name: string; type: string; size?: number }>).map(a => ({ id: crypto.randomUUID(), fileId: a.fileId, name: a.name, type: a.type, size: a.size } satisfies MessageAttachment)) }
+                    : {};
                 if (idx >= 0) {
-                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps };
+                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
                 } else {
                     const zIdx = data.findIndex(m => m.isStreaming === true);
                     if (zIdx >= 0) {
-                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref, ...trace, ...cites, ...followUps };
+                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
                     } else if (fullText) {
-                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps });
+                        data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: fullText, createdAt: new Date().toISOString(), isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts });
                     }
                 }
                 return { data: [...data].sort(sortByDate) };
