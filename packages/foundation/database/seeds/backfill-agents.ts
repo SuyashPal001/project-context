@@ -132,14 +132,28 @@ async function run() {
         }
         const userId = ownerMembership.userId;
 
-        // Get existing agent names for this tenant
-        const existing = await db.select({ name: agents.name }).from(agents)
+        // Get existing agents for this tenant (name + personaId, so a row created before
+        // persona-attachment landed can be repaired rather than silently skipped).
+        const existing = await db.select({ name: agents.name, personaId: agents.personaId }).from(agents)
             .where(eq(agents.tenantId, tenant.id));
-        const existingNames = new Set(existing.map(a => a.name));
+        const existingByName = new Map(existing.map(a => [a.name, a]));
 
         for (const def of DEFAULT_AGENTS) {
-            if (existingNames.has(def.name)) {
-                console.log(`  ✓ ${def.name} already exists`);
+            const existingAgent = existingByName.get(def.name);
+            if (existingAgent) {
+                if (def.personaSlug && !existingAgent.personaId) {
+                    const personaId = personaIdBySlug.get(def.personaSlug);
+                    if (personaId) {
+                        await db.update(agents)
+                            .set({ personaId })
+                            .where(and(eq(agents.tenantId, tenant.id), eq(agents.name, def.name)));
+                        console.log(`  ✓ ${def.name} already exists — repaired missing personaId (${def.personaSlug})`);
+                    } else {
+                        console.warn(`  ✓ ${def.name} already exists — personaId still missing, ${def.personaSlug} persona not found. Run the personas seed first.`);
+                    }
+                } else {
+                    console.log(`  ✓ ${def.name} already exists`);
+                }
                 continue;
             }
 
