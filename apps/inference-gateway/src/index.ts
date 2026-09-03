@@ -17,6 +17,7 @@ import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics
 import { isAuthorizedCaller, extractServiceKey } from './auth';
 import { handleImageGenerations } from './images.js';
 import { handleMusicGenerations } from './music.js';
+import { handleVideoGenerations } from './video.js';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -388,6 +389,12 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Music generation (Producer agent)
   if (req.method === 'POST' && req.url === '/v1/music/generations') {
     await handleMusicGenerations(req, res, readBody);
+    return;
+  }
+
+  // Video generation (Director agent)
+  if (req.method === 'POST' && req.url === '/v1/video/generations') {
+    await handleVideoGenerations(req, res, readBody);
     return;
   }
 
