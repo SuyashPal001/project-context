@@ -32,7 +32,7 @@ export function useCreditBalance() {
     });
 }
 
-export type CreditResourceType = 'llm_tokens' | 'message' | 'tool_call' | 'skill_run';
+export type CreditResourceType = 'llm_tokens' | 'message' | 'tool_call' | 'skill_run' | 'image_generation' | 'music_generation' | 'video_generation';
 
 export interface CreditEstimateParams {
     resourceType: CreditResourceType;
