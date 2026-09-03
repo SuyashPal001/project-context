@@ -243,6 +243,11 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         createdBy: userId,
     }).returning();
+    const [analystPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'analyst')).limit(1);
+    if (!analystPersona) {
+        console.warn('[onboarding] analyst persona not found — run the personas seed before onboarding tenants. Creating Analyst agent with personaId: null.');
+    }
+
     const [prdAgent] = await db.insert(agents).values({
         tenantId,
         name: 'Analyst',
@@ -250,6 +255,7 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         description: 'Drafts complete PRDs — problem, goals, user stories, functional and non-functional requirements, and success metrics. Edits surgically when you push back.',
         apiKeyId: prdKey.id,
+        personaId: analystPersona?.id ?? null,
         createdBy: userId,
     }).returning();
     await db.insert(agentSkills).values({
@@ -273,6 +279,11 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         createdBy: userId,
     }).returning();
+    const [pmPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'pm')).limit(1);
+    if (!pmPersona) {
+        console.warn('[onboarding] pm persona not found — run the personas seed before onboarding tenants. Creating Project Manager agent with personaId: null.');
+    }
+
     const [roadmapAgent] = await db.insert(agents).values({
         tenantId,
         name: 'Project Manager',
@@ -280,6 +291,7 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         description: 'Turns an approved PRD into 3–7 milestones with priorities, target dates, and dependencies. Refuses to plan from an unapproved spec.',
         apiKeyId: roadmapKey.id,
+        personaId: pmPersona?.id ?? null,
         createdBy: userId,
     }).returning();
     await db.insert(agentSkills).values({
@@ -303,6 +315,11 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         createdBy: userId,
     }).returning();
+    const [techLeadPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'tech-lead')).limit(1);
+    if (!techLeadPersona) {
+        console.warn('[onboarding] tech-lead persona not found — run the personas seed before onboarding tenants. Creating Tech Lead agent with personaId: null.');
+    }
+
     const [taskAgentRow] = await db.insert(agents).values({
         tenantId,
         name: 'Tech Lead',
@@ -310,6 +327,7 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         description: 'Decomposes each milestone into 3–7 concrete tasks with acceptance criteria, effort estimates, and priorities. Tasks land on your board, ready to assign.',
         apiKeyId: taskKey.id,
+        personaId: techLeadPersona?.id ?? null,
         createdBy: userId,
     }).returning();
     await db.insert(agentSkills).values({
@@ -333,6 +351,11 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         createdBy: userId,
     }).returning();
+    const [archPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'architect')).limit(1);
+    if (!archPersona) {
+        console.warn('[onboarding] architect persona not found — run the personas seed before onboarding tenants. Creating Architect agent with personaId: null.');
+    }
+
     const [archAgent] = await db.insert(agents).values({
         tenantId,
         name: 'Architect',
@@ -340,6 +363,7 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         description: 'Knows your migrations, routes, tests, and architectural decisions. Never answers without retrieving. Always cites the file.',
         apiKeyId: archKey.id,
+        personaId: archPersona?.id ?? null,
         createdBy: userId,
     }).returning();
     await db.insert(agentSkills).values({
