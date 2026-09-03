@@ -16,7 +16,7 @@
 - No new persona/agent roster entries — Director already exists everywhere; this only adds a tool and updates instructions/description text.
 - Charge-after-success only. `jobType: 'video_generation'`.
 - New sibling credit helper `videoCredits.ts`, not folded into `imageCredits.ts` — same convention as `musicCredits.ts`.
-- **The exact Vertex-side REST path for the Interactions API is unverified against a live account as of this plan's writing.** Task 2 includes an explicit verification step before this can be considered done — do not skip it or assume the documented shape is exactly right without testing it.
+- **CORRECTED (Task 2 finding, ruled during execution 2026-09-03):** the Interactions API does NOT exist on Vertex AI. Read directly from the bundled `@google/genai@1.52.0` SDK source (already a repo dependency): `client.interactions.create()` only exists on a Gemini-API-key client (`generativelanguage.googleapis.com`, `v1beta`) with no Vertex-auth branch anywhere in its construction; the separate Vertex-capable client instead exposes `models.generateVideos()`, which uses Veo's async `:predictLongRunning`/`:fetchPredictOperation` job shape — a different feature entirely, with no confirmation `gemini-omni-1.1-flash` even works through it. **`video.ts` is Gemini-API-key-only** (`?key=${GEMINI_API_KEY}` query param on `https://generativelanguage.googleapis.com/v1beta/interactions`, same auth convention `images.ts`'s `callGeminiApiKeyImageModel` already uses) — no Vertex tier, no `GoogleAuth`/service-account code. The request/response body shape researched below is unaffected (the SDK passes the body through near-verbatim) — only the transport changed. The response field paths (`steps[].content[].video.data`/`.mime_type`) are still SDK-source-derived, not live-call-confirmed (no `GEMINI_API_KEY` was available during implementation) — flagged with a code comment, verify against a real response before production use.
 - `apps/agent-orchestrator` and `apps/inference-gateway` changes require manual `pm2 restart` after deploy.
 
 ---
@@ -95,18 +95,23 @@ Keep the exact request path, request body shape, and response field names from S
 
 ---
 
-### Task 3: Inference gateway — `video.ts` adapter
+### Task 3: Inference gateway — `video.ts` adapter (CORRECTED — see Global Constraints)
+
+**STATUS: implemented during execution with the corrected design below — the
+Interactions API is Gemini-API-key-only, there is no Vertex path.** This
+section is kept as a historical record of the (wrong) original design;
+Task 3 as actually built matches the "CORRECTED" note in Global Constraints,
+not the `vertexVideoBreaker`/`GoogleAuth` code shown below.
 
 **Files:**
 - Create: `apps/inference-gateway/src/video.ts`
-- Modify: `apps/inference-gateway/src/router.ts` (add `vertexVideoBreaker`)
+- Optionally modify: `apps/inference-gateway/src/router.ts` (a `geminiVideoBreaker`, if the implementer judges one adds value against a single backend with no fallback — no longer `vertexVideoBreaker`, since there is no Vertex tier)
 - Test: `apps/inference-gateway/src/video.test.ts`
 
 **Interfaces:**
-- Consumes: `CircuitBreaker` from `./circuit-breaker` (same shape as Task 2 of the Producer plan).
 - Produces: `generateVideo(req: VideoGenerationRequest): Promise<VideoGenerationResult>` and `handleVideoGenerations(req, res, readBody)`, consumed by Task 4 (route) and `generateVideo.ts` tool (Task 6, via HTTP).
 
-**This task's implementation below uses the best-documented request/response shape found during spec research. Before writing the test in Step 1, substitute in whatever Task 2 actually observed if it differs — do not skip that reconciliation.**
+**Everything below this point (the original Vertex-service-account design) is superseded — kept for historical reference only. The actual implementation uses `?key=${process.env.GEMINI_API_KEY}` against `https://generativelanguage.googleapis.com/v1beta/interactions`, mirroring `music.ts`'s single-path-by-necessity shape and `images.ts`'s `callGeminiApiKeyImageModel` auth convention.**
 
 - [ ] **Step 1: Add the breaker to `router.ts`**
 
