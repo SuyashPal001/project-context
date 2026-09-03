@@ -1,8 +1,20 @@
 import type { IncomingMessage, ServerResponse } from 'http'
-import { geminiVideoBreaker } from './router.js'
+import { GoogleAuth } from 'google-auth-library'
+import { vertexVideoBreaker, geminiVideoBreaker } from './router.js'
 import { requestsTotal, latency } from './metrics.js'
 
 const VIDEO_MODEL_ALLOWLIST = new Set(['gemini-omni-1.1-flash'])
+
+const PROJECT  = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
+const LOCATION = process.env.VERTEX_LOCATION ?? 'us-central1'
+const _auth    = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' })
+
+// Veo 3 on Vertex AI — predictLongRunning + polling.
+// Must stay strictly less than the 240s gateway timeout so we can complete or
+// fail cleanly before the orchestrator's own AbortSignal fires.
+const VEO_MODEL            = 'veo-2.0-generate-001'
+const VERTEX_TIMEOUT_MS    = 200_000
+const POLL_INTERVAL_MS     = 5_000
 
 export interface VideoGenerationRequest {
   model: string
@@ -14,29 +26,16 @@ export type VideoGenerationResult =
   | { videoBase64: string; mimeType: string }
   | { refused: true; reason: string }
 
-// Design note: unlike music.ts and images.ts, this adapter has no Vertex tier at
-// all — an earlier draft of this task's brief assumed the Interactions API
-// (gemini-omni-1.1-flash) was reachable on Vertex via service-account auth, but
-// reading the bundled @google/genai SDK source directly showed the `interactions`
-// resource only exists on the Gemini-API-key client (base URL
-// generativelanguage.googleapis.com), not on the Vertex-auth client. The Vertex
-// client instead exposes models.generateVideos(), a completely different
-// predictLongRunning/fetchPredictOperation async job shape (Veo's pattern), which
-// this feature does not use. So this file is API-key-only, mirroring
-// images.ts's callGeminiApiKeyImageModel auth convention (?key=... query param)
-// but hitting /v1beta/interactions instead of /v1beta/models/*:generateContent.
-//
-// Response shape derived from the @google/genai SDK source and the Interactions
-// API's documented request/response format — NOT verified against a live
-// response (no GEMINI_API_KEY available during implementation). Verify these
-// field paths (steps[].content[].video.data / .mime_type) against a real
-// response before this ships to production.
+// ---------------------------------------------------------------------------
+// Gemini Interactions API path (gemini-omni-1.1-flash, API key auth)
+// ---------------------------------------------------------------------------
+
+// Response shape verified against a live response (Sep 2026):
+// steps[].content[] = [{ type: 'video', data: '<base64>', mime_type: 'video/mp4' }]
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function classifyInteractionsVideoResponse(interactionResponse: any): VideoGenerationResult {
   const steps: unknown[] = interactionResponse?.steps ?? []
   if (steps.length === 0) return { refused: true, reason: 'NO_STEPS' }
-  // Scan all steps' content blocks, not just steps[0] — the video block is not
-  // guaranteed to land in the first step (e.g. a text step could precede it).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const videoBlock = steps.flatMap((s: any) => s?.content ?? []).find((c: any) => c.type === 'video')
   if (!videoBlock?.data) return { refused: true, reason: 'NO_VIDEO_CONTENT' }
@@ -55,41 +54,144 @@ async function callGeminiApiKeyVideoModel(req: VideoGenerationRequest): Promise<
       response_format: { type: 'video', resolution: '720p', delivery: 'inline' },
       generation_config: { video_config: { task: req.task } },
     }),
-    // Video generation is slower than the image/music paths this timeout was
-    // copied from (90s) — 240s gives Gemini room to actually finish. Keep
-    // this strictly less than generateVideo.ts's client-side timeout (270s)
-    // so the gateway can complete or fail cleanly before the tool's own
-    // connection gives up on it.
     signal: AbortSignal.timeout(240_000),
   })
   if (!res.ok) throw new Error(`Gemini API video generation failed: ${res.status} ${await res.text()}`)
   return classifyInteractionsVideoResponse(await res.json())
 }
 
+// ---------------------------------------------------------------------------
+// Vertex AI Veo path (Veo 3, service account ADC auth)
+// ---------------------------------------------------------------------------
+
+async function getToken(): Promise<string> {
+  const client = await _auth.getClient()
+  const resp   = await client.getAccessToken()
+  return resp.token ?? ''
+}
+
+async function downloadGcsVideo(uri: string): Promise<Buffer> {
+  const match = uri.match(/^gs:\/\/([^/]+)\/(.+)$/)
+  if (!match) throw new Error(`unrecognised GCS URI: ${uri}`)
+  const [, bucket, filePath] = match
+  const token = await getToken()
+  const url = `https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(filePath)}?alt=media`
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(60_000),
+  })
+  if (!res.ok) throw new Error(`GCS download ${res.status}: ${await res.text()}`)
+  return Buffer.from(await res.arrayBuffer())
+}
+
+async function callVertexVeoModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
+  const token    = await getToken()
+  const startUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${VEO_MODEL}:predictLongRunning`
+
+  const startRes = await fetch(startUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      instances:  [{ prompt: req.prompt }],
+      parameters: { aspectRatio: '16:9', sampleCount: 1 },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!startRes.ok) throw new Error(`Veo predictLongRunning failed: ${startRes.status} ${await startRes.text()}`)
+
+  const { name: operationName } = await startRes.json() as { name?: string }
+  if (!operationName) throw new Error('Veo: no operation name in response')
+  console.log(`[video] Veo operation started: ${operationName}`)
+
+  const pollUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/${operationName}`
+  const deadline = Date.now() + VERTEX_TIMEOUT_MS
+
+  while (Date.now() < deadline) {
+    const freshToken = await getToken()
+    const pollRes = await fetch(pollUrl, {
+      headers: { Authorization: `Bearer ${freshToken}` },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!pollRes.ok) throw new Error(`Veo poll failed: ${pollRes.status} ${await pollRes.text()}`)
+
+    const op = await pollRes.json() as {
+      done?: boolean
+      error?: { message?: string }
+      response?: { videos?: Array<{ bytesBase64Encoded?: string; mimeType?: string; uri?: string }> }
+    }
+
+    if (op.done) {
+      if (op.error) throw new Error(`Veo operation error: ${op.error.message}`)
+      const video = op.response?.videos?.[0]
+      if (!video) return { refused: true, reason: 'NO_VIDEO_CONTENT' }
+      const mimeType = video.mimeType ?? 'video/mp4'
+      if (video.bytesBase64Encoded) {
+        console.log('[video] Veo complete — inline base64')
+        return { videoBase64: video.bytesBase64Encoded, mimeType }
+      }
+      if (video.uri) {
+        console.log(`[video] Veo complete — downloading from GCS: ${video.uri}`)
+        const buf = await downloadGcsVideo(video.uri)
+        return { videoBase64: buf.toString('base64'), mimeType }
+      }
+      return { refused: true, reason: 'NO_VIDEO_CONTENT' }
+    }
+
+    const wait = Math.min(POLL_INTERVAL_MS, deadline - Date.now())
+    if (wait > 0) await new Promise(r => setTimeout(r, wait))
+  }
+
+  throw new Error('Veo video generation timed out')
+}
+
+// ---------------------------------------------------------------------------
+// Unified generateVideo — Vertex Veo first, Gemini Interactions fallback
+// ---------------------------------------------------------------------------
+
 export class UnsupportedVideoModelError extends Error {}
 
-// No fallback tier — gemini-omni-1.1-flash's Interactions API has no Vertex-auth
-// equivalent (see header comment). A Gemini API-key failure or open circuit is a
-// clean throw; there is nothing to fall back to.
 export async function generateVideo(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
   if (!VIDEO_MODEL_ALLOWLIST.has(req.model)) {
     throw new UnsupportedVideoModelError(`Unsupported video model: ${req.model}`)
   }
+
+  let vertexFailureReason: string | null = null
+
+  if (vertexVideoBreaker.isAvailable() && PROJECT) {
+    try {
+      const result = await callVertexVeoModel(req)
+      vertexVideoBreaker.onSuccess()
+      return result
+    } catch (vertexErr) {
+      vertexVideoBreaker.onFailure()
+      vertexFailureReason = (vertexErr as Error).message
+      console.warn('[video] Vertex Veo failed, trying Gemini API key fallback:', vertexFailureReason)
+    }
+  } else {
+    vertexFailureReason = vertexVideoBreaker.isAvailable() ? 'no PROJECT configured' : 'circuit open'
+    console.warn('[video] Vertex Veo skipped, trying Gemini API key fallback:', vertexFailureReason)
+  }
+
   if (!process.env.GEMINI_API_KEY) {
-    throw new Error('Video generation unavailable: no GEMINI_API_KEY configured')
+    throw new Error(`Vertex Veo unavailable (${vertexFailureReason}) and no GEMINI_API_KEY fallback configured`)
   }
   if (!geminiVideoBreaker.isAvailable()) {
-    throw new Error('Gemini video generation unavailable (circuit open)')
+    throw new Error(`Vertex Veo unavailable (${vertexFailureReason}) and Gemini video circuit is open`)
   }
+
   try {
     const result = await callGeminiApiKeyVideoModel(req)
     geminiVideoBreaker.onSuccess()
     return result
-  } catch (err) {
+  } catch (geminiErr) {
     geminiVideoBreaker.onFailure()
-    throw err
+    throw new Error(`Vertex Veo failed (${vertexFailureReason}); Gemini API key fallback also failed (${(geminiErr as Error).message})`)
   }
 }
+
+// ---------------------------------------------------------------------------
+// HTTP handler
+// ---------------------------------------------------------------------------
 
 export async function handleVideoGenerations(req: IncomingMessage, res: ServerResponse, readBody: (r: IncomingMessage) => Promise<string>): Promise<void> {
   let body: string
