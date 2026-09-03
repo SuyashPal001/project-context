@@ -29,6 +29,10 @@ export interface EmployeeCardProps {
     action: ReactNode;
     skillTags?: string[];
     outcomes?: EmployeeOutcome[];
+    /** Render the outcome images themselves, not just the section. Mine (AgentCard)
+     * keeps outcomes wired through for data reasons but doesn't want the gallery
+     * shown on every roster card — Explore (PersonaCard) still shows it. Default true. */
+    showOutcomeImages?: boolean;
     mind?: string | null;
     dimmed?: boolean;
     className?: string;
@@ -51,6 +55,7 @@ export function EmployeeCard({
     action,
     skillTags = [],
     outcomes = [],
+    showOutcomeImages = true,
     mind,
     dimmed,
     className,
@@ -90,7 +95,7 @@ export function EmployeeCard({
 
             {description && <div className="text-sm text-muted-foreground">{description}</div>}
 
-            {(skillTags.length > 0 || outcomes.length > 0) && <hr className="border-border" />}
+            {(skillTags.length > 0 || (showOutcomeImages && outcomes.length > 0)) && <hr className="border-border" />}
 
             {skillTags.length > 0 && (
                 <div>
@@ -103,7 +108,7 @@ export function EmployeeCard({
                 </div>
             )}
 
-            {outcomes.length > 0 && (
+            {showOutcomeImages && outcomes.length > 0 && (
                 <div>
                     <span className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Outcomes</span>
                     <div className={outcomes.length > 1 ? "grid grid-cols-2 gap-2" : "grid grid-cols-1"}>

@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const FEEDBACK_ISSUE_OPTIONS = [
@@ -41,8 +42,14 @@ export function MessageFeedback({ messageId, conversationId, content }: { messag
                 ...(comment ? { comment } : {}),
             });
             setRating(r);
-        } catch {
-            // silent — optimistic state already shown
+        } catch (err) {
+            // Roll back the optimistic state — the click reacted but nothing saved,
+            // so the button shouldn't stay lit as if it had.
+            setRating(null);
+            const message = err instanceof ApiError
+                ? (err.data?.error ?? err.data?.message ?? `Feedback failed (${err.status})`)
+                : "Feedback failed to save";
+            toast.error(message);
         } finally {
             setSubmitting(false);
         }

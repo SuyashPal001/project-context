@@ -139,6 +139,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                 }
                 skillTags={agent.persona?.skillTags ?? []}
                 outcomes={outcomes}
+                showOutcomeImages={false}
             />
 
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>

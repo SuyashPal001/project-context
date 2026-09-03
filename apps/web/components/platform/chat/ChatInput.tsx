@@ -452,7 +452,7 @@ export function ChatInput({
                             aria-hidden
                             className={cn(
                                 "absolute inset-[-30%] opacity-60",
-                                isGenerating && "motion-safe:animate-[spin_2.5s_linear_infinite]",
+                                isGenerating && "motion-safe:animate-[spin_6s_linear_infinite]",
                             )}
                             style={{
                                 background: isGenerating

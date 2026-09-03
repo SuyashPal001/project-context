@@ -18,7 +18,11 @@ import type { PersonaSummary } from "../personas/types";
 // "Thought for Ns" in plain text-foreground, matching ToolCallCard's finished
 // rows — shimmer/color on a state that already ended reads as still-active.
 export function ReasoningRow({ text, completed = false, elapsedSec }: { text: string; completed?: boolean; elapsedSec?: number }) {
-    const [expanded, setExpanded] = useState(false);
+    // Live thinking opens itself — the point is to watch the agent reason in
+    // real time, not to hunt for a chevron. The completed/historical row (used
+    // by TraceSummary, a separate mount) keeps the original collapsed-by-default
+    // disclosure pattern.
+    const [expanded, setExpanded] = useState(!completed);
     if (!text) return null;
 
     return (
