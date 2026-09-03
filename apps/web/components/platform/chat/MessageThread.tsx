@@ -10,6 +10,8 @@ import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { MessageItem } from "./MessageItem";
 import { ClarificationCard } from "./ClarificationCard";
+import { ApproveCost } from "@/components/platform/credits/ApproveCost";
+import type { CreditResourceType } from "@/lib/hooks/useCredits";
 import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
 
 interface MessageThreadProps {
@@ -25,6 +27,8 @@ interface MessageThreadProps {
     warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
+    onGenerationConfirm?: (messageId: string, confirmationId: string) => void;
+    onGenerationDecline?: (messageId: string, confirmationId: string) => void;
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
     onFollowUpSelect?: (text: string) => void;
     onRegenerate?: (message: Message) => void;
@@ -35,7 +39,7 @@ interface MessageThreadProps {
     avatarLiveState?: PersonaAnimationState;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, avatarLiveState }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, avatarLiveState }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -74,6 +78,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // The pending clarification takes over the panel (see the overlay render below)
     // instead of rendering inline — MessageItem deliberately skips it while pending.
     const pendingClarificationMessage = lastMessage?.clarificationRequest?.status === 'pending' ? lastMessage : undefined;
+    const pendingGenerationConfirmMessage = lastMessage?.generationConfirmRequest?.status === 'pending' ? lastMessage : undefined;
     const awaitingReply = pendingClarificationMessage !== undefined;
     // Whether onDelta has already created a row for the turn currently in
     // progress. Before that (tool calls/reasoning firing with no text yet),
@@ -368,6 +373,24 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         allAnswered,
                     ) ?? Promise.resolve(true)}
                 />
+            </div>
+        )}
+        {pendingGenerationConfirmMessage && (
+            // Same "anchored toward the bottom" takeover wrapper as the clarification
+            // overlay above — ApproveCost is the only input surface while a generation
+            // confirm request is pending.
+            <div className="absolute inset-0 z-40 flex items-end justify-center pb-6 bg-background/90 backdrop-blur-sm px-4">
+                <div className="border border-border rounded-xl overflow-hidden bg-card shadow-card max-w-md w-full">
+                    <div className="px-4 py-3 border-b border-border bg-muted/30">
+                        <h4 className="text-sm font-semibold">{pendingGenerationConfirmMessage.generationConfirmRequest!.label}</h4>
+                    </div>
+                    <ApproveCost
+                        resourceType={pendingGenerationConfirmMessage.generationConfirmRequest!.resourceType as CreditResourceType}
+                        subject={pendingGenerationConfirmMessage.generationConfirmRequest!.subject}
+                        onApprove={() => onGenerationConfirm?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
+                        onCancel={() => onGenerationDecline?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
+                    />
+                </div>
             </div>
         )}
         {showScrollToBottom && (

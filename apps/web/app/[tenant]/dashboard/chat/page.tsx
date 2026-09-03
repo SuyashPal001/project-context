@@ -101,7 +101,7 @@ function ChatPage() {
         handleCanvasUpdate,
         openCanvas,
     });
-    const { sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
+    const { sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
 
     const { state: animationState, onStreamEvent } = usePersonaAnimationState();
     const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
@@ -127,6 +127,10 @@ function ChatPage() {
     // composer stays hidden so it doesn't sit directly underneath as a second,
     // redundant input, and so the overlay can expand into the freed space.
     const awaitingClarificationReply = messages[messages.length - 1]?.clarificationRequest?.status === 'pending';
+
+    // Mirrors awaitingClarificationReply: ApproveCost is the only input surface while a
+    // generation confirm request is pending, so the normal composer stays hidden.
+    const awaitingGenerationConfirmReply = messages[messages.length - 1]?.generationConfirmRequest?.status === 'pending';
 
     useEffect(() => {
         if (isLoadingMessages) return; // wait for messages to actually reflect `conversationId` before seeding or dispatching
@@ -199,6 +203,20 @@ function ChatPage() {
             old ? { data: old.data.map(m => m.id === messageId ? { ...m, approvalRequest: m.approvalRequest ? { ...m.approvalRequest, status: 'dismissed' as const, decisionAt: new Date().toISOString() } : undefined } : m) } : old
         );
     }, [conversationId, queryClient, sendApproval]);
+
+    const handleGenerationConfirm = useCallback(async (messageId: string, confirmationId: string) => {
+        const ok = await sendGenerationConfirm(confirmationId, 'approved');
+        if (ok) queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+            old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: 'approved' as const, decisionAt: new Date().toISOString() } : undefined } : m) } : old
+        );
+    }, [conversationId, queryClient, sendGenerationConfirm]);
+
+    const handleGenerationDecline = useCallback(async (messageId: string, confirmationId: string) => {
+        const ok = await sendGenerationConfirm(confirmationId, 'declined');
+        if (ok) queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+            old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: 'declined' as const, decisionAt: new Date().toISOString() } : undefined } : m) } : old
+        );
+    }, [conversationId, queryClient, sendGenerationConfirm]);
 
     // Tracks, per clarificationId, whether every answer submitted so far was a
     // skip — used to label the completed card "Skipped" only when the WHOLE
@@ -323,9 +341,9 @@ function ChatPage() {
                                     )
                                 ) : (
                                     <>
-                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onClarificationAnswer={handleClarificationAnswer} onFollowUpSelect={(text) => { if (!isStreaming) sendMessage(text); }} onRegenerate={regenerate} onEditAndResubmit={editAndResubmit} agentAvatarUrl={selectedConversation.agent?.avatarUrl} avatarLiveState={displayState} />
+                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onGenerationConfirm={handleGenerationConfirm} onGenerationDecline={handleGenerationDecline} onClarificationAnswer={handleClarificationAnswer} onFollowUpSelect={(text) => { if (!isStreaming) sendMessage(text); }} onRegenerate={regenerate} onEditAndResubmit={editAndResubmit} agentAvatarUrl={selectedConversation.agent?.avatarUrl} avatarLiveState={displayState} />
                                         <ChatTimelineNavigator messages={messages} />
-                                        {!awaitingClarificationReply && (
+                                        {!awaitingClarificationReply && !awaitingGenerationConfirmReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                                                 <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                             </div>
