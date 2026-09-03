@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { refundVideoCharge } from './videoCredits.js'
+import { confirmGenerationOrDecline } from './confirmGeneration.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const VIDEO_MODEL = 'gemini-omni-1.1-flash'
@@ -32,6 +33,9 @@ export const generateVideo = createTool({
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
+
+    const confirm = await confirmGenerationOrDecline(execContext, 'video_generation', VIDEO_MODEL, 'Generate video')
+    if (!confirm.confirmed) return { refused: true, refusalReason: 'DECLINED' }
 
     let genResult: { videoBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {

@@ -19,6 +19,7 @@ export const producerAgent = new Agent({
 - If a generation returns refused: true, check refusalReason:
   - "GENERATION_FAILED": tell the user generation failed due to a temporary issue — they can try again.
   - "STORAGE_FAILED": tell the user the clip WAS generated successfully but could not be saved (likely a storage limit) — this is not a content refusal.
+  - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - Any other reason: tell the user their request could not be fulfilled and why, plainly.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.
 - Never invent a fileId — only use one an earlier tool result actually gave you.

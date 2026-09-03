@@ -15,6 +15,11 @@ vi.mock('@serverless-saas/credits', () => ({
 vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 
+const { confirmGenerationOrDecline } = vi.hoisted(() => ({
+  confirmGenerationOrDecline: vi.fn(),
+}))
+vi.mock('./confirmGeneration.js', () => ({ confirmGenerationOrDecline }))
+
 import { generateVideo } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
@@ -29,6 +34,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   isUnlimited.mockResolvedValue(false)
   resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 100_000 } })
+  confirmGenerationOrDecline.mockResolvedValue({ confirmed: true })
 })
 
 describe('generateVideo tool', () => {
@@ -84,5 +90,17 @@ describe('generateVideo tool', () => {
 
     expect(spendCredits).not.toHaveBeenCalled()
     expect(result).toEqual({ refused: true, refusalReason: 'GENERATION_FAILED' })
+  })
+
+  it('short-circuits with DECLINED and never calls the gateway when the user declines', async () => {
+    confirmGenerationOrDecline.mockResolvedValue({ confirmed: false })
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const result = await generateVideo.execute!({ prompt: 'a marble rolling down a track' } as never, baseCtx())
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(result).toEqual({ refused: true, refusalReason: 'DECLINED' })
   })
 })
