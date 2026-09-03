@@ -24,6 +24,25 @@ import { FollowUpChips } from "./FollowUpChips";
 import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
 import type { PersonaSummary } from "../personas/types";
 
+// Whether this message renders anything at all — mirrors the same criteria
+// MessageItem uses internally (see hasDisplayedContent below), but exported
+// so MessageThread can skip empty placeholder messages (approval/
+// clarification/generation-confirm) when computing which message is
+// "first in sequence" for avatar purposes. Without that, a hidden
+// placeholder still eats the first-in-sequence slot and the real reply
+// right after it renders a spacer instead of its own avatar.
+export function messageHasDisplayedContent(message: Message): boolean {
+    const content = message.planResult ? message.planResult.summary : message.content;
+    return Boolean(
+        content.trim() ||
+        message.isStreaming ||
+        message.artifactRef ||
+        message.planResult ||
+        (message.toolCalls && message.toolCalls.length > 0) ||
+        (message.clarificationRequest && message.clarificationRequest.status !== 'pending')
+    );
+}
+
 interface MessageItemProps {
     message: Message;
     freshUrls: Record<string, string>;
@@ -106,22 +125,23 @@ export function MessageItem({
         ? message.planResult.summary
         : isUser ? displayedUserContent : message.content;
 
-    // Approval/clarification-required events push an empty-content placeholder
-    // message into history (see useChatStream's onApprovalRequired /
-    // onClarificationRequired) that never gets real text — ApprovalCard is
-    // disabled entirely and ClarificationCard only renders once resolved. That
-    // placeholder still shares its "ASSISTANT" label with the real reply
-    // stacked right below it (consecutive same-role messages don't get a
-    // second label), so without this guard its feedback+timestamp row reads
-    // as a duplicate of the real reply's own (correct) row further down.
-    const hasDisplayedContent = Boolean(
-        markdownContent.trim() ||
-        message.isStreaming ||
-        message.artifactRef ||
-        message.planResult ||
-        (message.toolCalls && message.toolCalls.length > 0) ||
-        (message.clarificationRequest && message.clarificationRequest.status !== 'pending')
-    );
+    // Approval/clarification/generation-confirm-required events each push an
+    // empty-content placeholder message into history (see useChatStream's
+    // onApprovalRequired / onClarificationRequired / onGenerationConfirmRequired)
+    // that never gets real text — ApprovalCard is disabled entirely,
+    // ClarificationCard only renders once resolved, and generationConfirmRequest
+    // never renders inline at all (its UI is MessageThread's overlay). Without
+    // this guard, that empty placeholder still renders its own full "ASSISTANT"
+    // label + avatar row with nothing under it, stacked above the real reply
+    // (or above ThinkingIndicator's own avatar while the real reply is still
+    // streaming) — two avatars for one turn.
+    const hasDisplayedContent = messageHasDisplayedContent(message);
+
+    // Nothing to show for this row at all — skip it entirely rather than
+    // rendering an empty avatar+label block. Only applies to assistant
+    // placeholders; a genuinely empty user message can't happen (the
+    // composer won't send one).
+    if (isAssistant && !hasDisplayedContent) return null;
 
     return (
         <div id={`message-${message.id}`} className={cn(

@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
-import { MessageItem } from "./MessageItem";
+import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
 import { ClarificationCard } from "./ClarificationCard";
 import { ApproveCost } from "@/components/platform/credits/ApproveCost";
 import type { CreditResourceType } from "@/lib/hooks/useCredits";
@@ -274,7 +274,14 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 )}
 
                 {messages.map((message, i) => {
-                    const prevRole = i > 0 ? messages[i - 1].role : null;
+                    // Walk back past any empty placeholder messages (approval/
+                    // clarification/generation-confirm) — MessageItem doesn't
+                    // render them at all, so they must not occupy the
+                    // "previous message" slot for sequencing either, or the
+                    // real reply right after one loses its own avatar.
+                    let prevIdx = i - 1;
+                    while (prevIdx >= 0 && !messageHasDisplayedContent(messages[prevIdx])) prevIdx--;
+                    const prevRole = prevIdx >= 0 ? messages[prevIdx].role : null;
                     const isLastMessage = i === messages.length - 1;
                     return (
                         <MessageItem
