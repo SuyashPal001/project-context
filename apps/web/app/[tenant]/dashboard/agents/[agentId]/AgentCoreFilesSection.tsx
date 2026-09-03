@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Lock, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { getCoreFiles, getAgentMemory, saveAgentMemory } from "@/components/platform/agents/coreFilesActions";
+import { getAgentMemory, saveAgentMemory } from "@/components/platform/agents/coreFilesActions";
 
 interface AgentCoreFilesSectionProps {
     agentId: string;
@@ -17,11 +17,6 @@ export function AgentCoreFilesSection({ agentId }: AgentCoreFilesSectionProps) {
     const queryClient = useQueryClient();
     const [draft, setDraft] = useState<string | undefined>(undefined);
     const [loadedAgentId, setLoadedAgentId] = useState<string | undefined>(undefined);
-
-    const { data: coreFiles } = useQuery({
-        queryKey: ["core-files", agentId],
-        queryFn: () => getCoreFiles(agentId),
-    });
 
     const { data: memory, isLoading: memoryLoading } = useQuery({
         queryKey: ["agent-memory", agentId],
@@ -50,29 +45,6 @@ export function AgentCoreFilesSection({ agentId }: AgentCoreFilesSectionProps) {
 
     return (
         <>
-            <Card>
-                <CardContent className="pt-6 space-y-3">
-                    <div>
-                        <h3 className="text-sm font-semibold">Core Files</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            The files that define this employee&apos;s behavior. Authored by project-context and
-                            composed into its runtime prompt — not editable.
-                        </p>
-                    </div>
-                    <div className="space-y-1.5">
-                        {(coreFiles ?? []).map((file) => (
-                            <div
-                                key={file.name}
-                                className="flex items-center gap-3 rounded-lg border border-border bg-muted/10 px-4 py-2.5"
-                            >
-                                <Lock className="h-4 w-4 text-muted-foreground shrink-0" />
-                                <span className="text-sm font-medium">{file.name}</span>
-                            </div>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
-
             <Card>
                 <CardContent className="pt-6 space-y-3">
                     <div className="flex items-start justify-between gap-4">
