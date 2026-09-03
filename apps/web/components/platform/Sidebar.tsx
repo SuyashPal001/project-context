@@ -54,6 +54,10 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick, badgeCount }: Sideba
     const pathname = usePathname()
     const isActive = pathname === item.href
     const Icon = item.icon
+    const { collapseSidebar } = useSidebar()
+    // Chat's own message list + pane need the room; every other nav
+    // destination keeps whatever collapse state the user already chose.
+    const isChatLink = item.label === "Chat"
 
     const content = (
         <div
@@ -69,7 +73,9 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick, badgeCount }: Sideba
                 if (item.locked) {
                     e.preventDefault()
                     onLockedClick?.()
+                    return
                 }
+                if (isChatLink) collapseSidebar()
             }}
         >
             <span className="relative shrink-0">

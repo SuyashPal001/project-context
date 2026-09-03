@@ -6,6 +6,7 @@ import { useHyperspace } from "@/components/hyperspace-provider"
 interface SidebarContextType {
     isSidebarCollapsed: boolean
     toggleSidebar: () => void
+    collapseSidebar: () => void
     isChatSidebarCollapsed: boolean
     toggleChatSidebar: () => void
 }
@@ -34,6 +35,16 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
         })
     }
 
+    // Idempotent collapse (unlike toggleSidebar) — safe to call on every Chat
+    // nav click without re-expanding an already-collapsed sidebar.
+    const collapseSidebar = () => {
+        setIsSidebarCollapsed(prev => {
+            if (prev) return prev
+            localStorage.setItem("sidebar-collapsed", "true")
+            return true
+        })
+    }
+
     const toggleChatSidebar = () => {
         setIsChatSidebarCollapsed(prev => {
             const next = !prev
@@ -46,6 +57,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
         <SidebarContext.Provider value={{
             isSidebarCollapsed,
             toggleSidebar,
+            collapseSidebar,
             isChatSidebarCollapsed,
             toggleChatSidebar
         }}>
