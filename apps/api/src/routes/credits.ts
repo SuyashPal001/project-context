@@ -13,7 +13,7 @@ import type { AppEnv } from '../types';
 
 export const creditsRoutes = new Hono<AppEnv>();
 
-const RESOURCE_TYPES = ['llm_tokens', 'message', 'tool_call', 'skill_run'] as const;
+const RESOURCE_TYPES = ['llm_tokens', 'message', 'tool_call', 'skill_run', 'image_generation', 'music_generation', 'video_generation'] as const;
 const LEDGER_KINDS = ['grant', 'debit', 'refund', 'settle', 'expiry', 'adjust'] as const;
 
 function forbidden(c: Context<AppEnv>) {

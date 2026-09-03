@@ -87,6 +87,12 @@ const DEFAULT_AGENTS: { name: string; description: string; systemPrompt: string;
         systemPrompt: 'You are Director. Generate and edit images from a description.',
         personaSlug: 'director',
     },
+    {
+        name: 'Producer',
+        description: 'Generates instrumental music clips from a description.',
+        systemPrompt: 'You are Producer. Generate instrumental music from a description.',
+        personaSlug: 'producer',
+    },
 ];
 
 async function run() {

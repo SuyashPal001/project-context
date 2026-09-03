@@ -13,9 +13,10 @@ import {
   getAllowedOrigin, INTERNAL_SERVICE_KEY, API_BASE_URL,
   sseApprovalChannels,
   sessionActiveClarification, pendingClarifications,
+  sessionActiveGenerationConfirmations, pendingGenerationConfirmations,
   checkRateLimit,
 } from '../types.js'
-import { updateClarificationRequest } from '../persistence.js'
+import { updateClarificationRequest, updateGenerationConfirmRequest } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -228,6 +229,28 @@ chatRouter.post('/api/chat', async (c) => {
             })
           }
         }
+      }
+
+      // Resolve every pending generation confirmation for this session
+      // immediately, same reasoning as the clarification block above — don't
+      // leave the agent blocked for up to 5 minutes after the client is gone.
+      const confirmIds = sessionActiveGenerationConfirmations.get(sessionId)
+      if (confirmIds) {
+        for (const confirmationId of Array.from(confirmIds)) {
+          const pending = pendingGenerationConfirmations.get(confirmationId)
+          if (pending) {
+            clearTimeout(pending.timer)
+            pendingGenerationConfirmations.delete(confirmationId)
+            pending.resolve(false)
+            if (pending.messageId && pending.conversationId && pending.idToken) {
+              updateGenerationConfirmRequest(pending.idToken, pending.conversationId, pending.messageId, {
+                status: 'declined',
+                decisionAt: new Date().toISOString(),
+              })
+            }
+          }
+        }
+        sessionActiveGenerationConfirmations.delete(sessionId)
       }
     },
   })

@@ -22,6 +22,15 @@ export interface ApprovalRequest {
     decisionAt?: string;
 }
 
+export interface GenerationConfirmRequest {
+    id: string;
+    resourceType: string;
+    subject: string;
+    label: string;
+    status: 'pending' | 'approved' | 'declined';
+    decisionAt?: string;
+}
+
 export interface ClarificationOption {
     label: string;
     rationale?: string;
@@ -126,6 +135,7 @@ export interface Message {
     createdAt: string;
     toolCalls?: ToolCall[];
     approvalRequest?: ApprovalRequest;
+    generationConfirmRequest?: GenerationConfirmRequest;
     clarificationRequest?: ClarificationRequest;
     isStreaming?: boolean;
     attachments?: MessageAttachment[];

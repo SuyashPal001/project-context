@@ -130,7 +130,7 @@ export function attachmentFromCanvasToolResult(
   normalizedToolName: string,
   result: Record<string, unknown>,
 ): AttachmentPayload | null {
-  if (!['render-canvas', 'generate-image', 'edit-image'].includes(normalizedToolName)) return null
+  if (!['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video'].includes(normalizedToolName)) return null
   if (typeof result.fileId !== 'string') return null
   return {
     fileId: result.fileId,
@@ -206,7 +206,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const assistantMessageId = crypto.randomUUID()
   let pendingArtifactRef: ArtifactRefPayload | null = null
   const pendingAttachments: AttachmentPayload[] = []
-  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image'])
+  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video'])
 
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
@@ -372,7 +372,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes.
           // render-canvas/generate-image/edit-image have no entityId (ephemeral display only) — skip pendingArtifactRef for them.
           const normName = resolvedToolName.toLowerCase().replace(/_/g, '-')
-          if (SAVE_TOOL_NAMES.has(normName) && !['render-canvas', 'generate-image', 'edit-image'].includes(normName)) {
+          if (SAVE_TOOL_NAMES.has(normName) && !['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video'].includes(normName)) {
             const entityId = (result.prdId ?? result.planId ?? result.taskBoardId) as string | undefined
             if (entityId) {
               const artifactType = normName.includes('prd') ? 'prd' : normName.includes('plan') ? 'roadmap' : 'tasks'

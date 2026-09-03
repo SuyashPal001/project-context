@@ -36,6 +36,18 @@ export const openrouterBreaker = new CircuitBreaker('openrouter', { failureThres
 export const vertexImageBreaker = new CircuitBreaker('vertex-image', { failureThreshold: 10, resetTimeoutMs: 60_000 });
 export const geminiImageBreaker = new CircuitBreaker('gemini-image', { failureThreshold: 5, resetTimeoutMs: 60_000 });
 
+// Music generation breaker for lyria-002 (apps/inference-gateway/src/music.ts) — no
+// Gemini-API-key fallback available. Isolated from chat/image breakers to prevent
+// unrelated traffic degradation.
+export const vertexMusicBreaker = new CircuitBreaker('vertex-music', { failureThreshold: 10, resetTimeoutMs: 60_000 });
+
+// Video generation breaker for gemini-omni-1.1-flash (apps/inference-gateway/src/video.ts) —
+// API-key-only, no Vertex tier (see video.ts's header comment for why). A breaker is
+// still worth it here even with a single path: it protects the Gemini API-key surface
+// from being hammered by repeated failed calls during an outage, the same way
+// vertexMusicBreaker protects Vertex for music despite also having no fallback.
+export const geminiVideoBreaker = new CircuitBreaker('gemini-video', { failureThreshold: 5, resetTimeoutMs: 60_000 });
+
 const vertexCB     = new CircuitBreakerAdapter(vertexAdapter,     vertexBreaker);
 const anthropicCB  = new CircuitBreakerAdapter(anthropicAdapter,  anthropicBreaker);
 const ollamaCB     = new CircuitBreakerAdapter(ollamaAdapter,     ollamaBreaker);

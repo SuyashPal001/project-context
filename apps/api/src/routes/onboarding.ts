@@ -391,6 +391,42 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
+    // Seed Producer Agent
+    const [producerPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'producer')).limit(1);
+    if (!producerPersona) {
+        console.warn('[onboarding] producer persona not found — run the personas seed before onboarding tenants. Creating Producer agent with personaId: null.');
+    }
+
+    const producerRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const producerKeyHash = createHash('sha256').update(producerRawKey).digest('hex');
+    const [producerKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Producer API Key',
+        type: 'agent',
+        keyHash: producerKeyHash,
+        permissions: agentRolePermissionStrings,
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [producerAgentRow] = await db.insert(agents).values({
+        tenantId,
+        name: 'Producer',
+        type: 'custom',
+        status: 'active',
+        description: 'Generates instrumental music clips from a description.',
+        apiKeyId: producerKey.id,
+        personaId: producerPersona?.id ?? null,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: producerAgentRow.id,
+        tenantId,
+        name: 'default',
+        systemPrompt: 'You are Producer. Generate instrumental music from a description.',
+        tools: [],
+        status: 'active',
+    });
+
     // Step 6: Provision notification workflows for new tenant (non-fatal)
     try {
         await provisionNotificationWorkflows(db, tenantId, userId);

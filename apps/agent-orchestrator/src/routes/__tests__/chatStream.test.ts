@@ -145,3 +145,27 @@ describe('attachmentFromCanvasToolResult — generate-image/edit-image', () => {
     expect(attachmentFromCanvasToolResult('fetch-agent-context', { fileId: 'f3' })).toBeNull()
   })
 })
+
+describe('attachmentFromCanvasToolResult — generate-song', () => {
+  it('returns an attachment payload for a generate-song result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('generate-song', { fileId: 'f1', name: 'song.wav', fileType: 'audio/wav', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'song.wav', type: 'audio/wav', size: 100 })
+  })
+
+  it('returns null for a generate-song result with no fileId (refusal)', () => {
+    const result = attachmentFromCanvasToolResult('generate-song', { refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(result).toBeNull()
+  })
+})
+
+describe('attachmentFromCanvasToolResult — generate-video', () => {
+  it('returns an attachment payload for a generate-video result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('generate-video', { fileId: 'f1', name: 'clip.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'clip.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns null for a generate-video result with no fileId (refusal)', () => {
+    const result = attachmentFromCanvasToolResult('generate-video', { refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(result).toBeNull()
+  })
+})

@@ -18,6 +18,12 @@ const RATES = [
   // Placeholder price — ops should set the real per-call cost before this ships broadly.
   { resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview',
     pricingSchema: { per_call_micro: 50_000 } },
+  // Placeholder price — ops should set the real per-call cost before this ships broadly.
+  { resourceType: 'music_generation', subject: 'lyria-002',
+    pricingSchema: { per_call_micro: 20_000 } },
+  // Placeholder price — ops should set the real per-call cost before this ships broadly.
+  { resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
+    pricingSchema: { per_call_micro: 150_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can
   // price them later without a deploy (spec section 3).
   { resourceType: 'message',   subject: '*', pricingSchema: { per_message_micro: 0 } },

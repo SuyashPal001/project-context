@@ -164,6 +164,21 @@ describe('GET /credits/estimate', () => {
         expect(resolveRate).not.toHaveBeenCalled();
     });
 
+    it('accepts image_generation as a valid resourceType', async () => {
+        vi.mocked(resolveRate).mockResolvedValue({
+            id: 'rate-1',
+            version: 1,
+            schema: { per_unit_micro: 100 },
+        });
+        vi.mocked(costMicro).mockReturnValue(100n);
+        vi.mocked(getBalance).mockResolvedValue({ balanceMicro: 1000n, unlimited: false, grants: [] });
+
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/estimate?resourceType=image_generation&subject=gemini-3-pro-image-preview&count=1');
+
+        expect(res.status).not.toBe(400);
+    });
+
     it('reports insufficient when cost exceeds balance', async () => {
         vi.mocked(resolveRate).mockResolvedValue({
             id: 'rate-1',

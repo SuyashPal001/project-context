@@ -1,5 +1,5 @@
 /**
- * Seeds the 4 default personas as drafts. They cannot be published until a preview
+ * Seeds the 5 default personas as drafts. They cannot be published until a preview
  * image (exampleAssetUrl) is attached via PUT /ops/personas/:id — see
  * POST /ops/personas/:id/publish's INCOMPLETE_ASSETS gate.
  *
@@ -35,6 +35,13 @@ const DEFAULT_PERSONAS = [
     tagline: 'Generates and edits images from a description.',
     basePersonality: 'You think visually: you turn a rough description into a concrete image brief, ask what changes when a result misses the mark, and never claim an image exists until the generation actually succeeds.',
     skillTags: ['image-generation', 'image-editing'],
+  },
+  {
+    slug: 'producer',
+    name: 'Producer',
+    tagline: 'Generates instrumental music clips from a description.',
+    basePersonality: 'You think in mood and texture: you turn a rough description into a concrete musical brief, and never claim a clip exists until the generation actually succeeds.',
+    skillTags: ['music-generation'],
   },
 ] as const;
 

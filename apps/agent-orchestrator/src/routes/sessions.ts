@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
-import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, type ClarificationAnswer } from '../types.js'
+import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, pendingGenerationConfirmations, sessionActiveGenerationConfirmations, type ClarificationAnswer } from '../types.js'
 import { validateToken } from '../auth.js'
-import { updateClarificationRequest, saveApprovalRequest, updateApprovalRequest } from '../persistence.js'
+import { updateClarificationRequest, saveApprovalRequest, updateApprovalRequest, updateGenerationConfirmRequest } from '../persistence.js'
 
 export const sessionsRouter = new Hono()
 
@@ -21,6 +21,20 @@ sessionsRouter.options('/api/chat/approval', (c) => {
 })
 
 sessionsRouter.options('/api/chat/clarification', (c) => {
+  const origin = getAllowedOrigin(c.req.header('Origin'))
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+      'Vary': 'Origin',
+    },
+  })
+})
+
+sessionsRouter.options('/api/chat/generation-confirm', (c) => {
   const origin = getAllowedOrigin(c.req.header('Origin'))
   return new Response(null, {
     status: 204,
@@ -256,4 +270,60 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   }
 
   return c.json({ ok: true, remaining: Math.max(0, pending.expectedCount - pending.collected.length) }, 200, corsHeaders)
+})
+
+// ─── Generation confirm decision — called by frontend after user confirms/declines ──
+sessionsRouter.post('/api/chat/generation-confirm', async (c) => {
+  const origin = getAllowedOrigin(c.req.header('Origin'))
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  }
+
+  const authHeader = c.req.header('Authorization') ?? ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+  if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
+
+  let callerTenantId = ''
+  try {
+    const payload = await validateToken(token)
+    callerTenantId = payload['custom:tenantId'] ?? ''
+  } catch {
+    return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
+  }
+
+  let body: { confirmationId?: unknown; decision?: unknown }
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid_body' }, 400, corsHeaders) }
+
+  const confirmationId = typeof body.confirmationId === 'string' ? body.confirmationId.trim() : ''
+  const decision        = typeof body.decision === 'string' ? body.decision.trim() : ''
+  if (!confirmationId) return c.json({ ok: false, error: 'confirmationId required' }, 400, corsHeaders)
+
+  const pending = pendingGenerationConfirmations.get(confirmationId)
+  if (!pending) return c.json({ ok: false, error: 'confirmation_not_found' }, 404, corsHeaders)
+  if (!callerTenantId || pending.tenantId !== callerTenantId) {
+    return c.json({ ok: false, error: 'confirmation_not_found' }, 404, corsHeaders)
+  }
+
+  clearTimeout(pending.timer)
+  pendingGenerationConfirmations.delete(confirmationId)
+  // Find which session this belongs to and clear it from the active-set index too.
+  for (const [sessionId, ids] of sessionActiveGenerationConfirmations.entries()) {
+    if (ids.delete(confirmationId) && ids.size === 0) {
+      sessionActiveGenerationConfirmations.delete(sessionId)
+    }
+  }
+
+  const wasApproved = decision === 'approved'
+  pending.resolve(wasApproved)
+
+  if (pending.messageId && pending.conversationId && pending.idToken) {
+    updateGenerationConfirmRequest(pending.idToken, pending.conversationId, pending.messageId, {
+      status: wasApproved ? 'approved' : 'declined',
+      decisionAt: new Date().toISOString(),
+    })
+  }
+
+  return c.json({ ok: true }, 200, corsHeaders)
 })

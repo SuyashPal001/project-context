@@ -3,6 +3,7 @@ import { platformAgent } from './agents/platformAgent.js'
 import { pmAgent } from './agents/pmAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
 import { directorAgent } from './agents/directorAgent.js'
+import { producerAgent } from './agents/producerAgent.js'
 // Map of DB agent name (lowercased) → Mastra agent instance.
 // Exact-match keys are tried first; substring fallback uses the same keys.
 const AGENT_REGISTRY: Record<string, Agent> = {
@@ -10,6 +11,7 @@ const AGENT_REGISTRY: Record<string, Agent> = {
   'pm agent': pmAgent as unknown as Agent,
   architect:  architectAgent as unknown as Agent,
   director:   directorAgent as unknown as Agent,
+  producer:   producerAgent as unknown as Agent,
 }
 
 /**
@@ -31,6 +33,7 @@ export function resolveAgentLabel(agent: Agent): string {
   if (agent === (architectAgent as unknown as Agent)) return 'architectAgent'
   if (agent === (pmAgent as unknown as Agent)) return 'pmAgent'
   if (agent === (directorAgent as unknown as Agent)) return 'directorAgent'
+  if (agent === (producerAgent as unknown as Agent)) return 'producerAgent'
 
   return 'platformAgent'
 }
@@ -71,6 +74,14 @@ export const DEFAULT_AGENTS = [
     status: 'active',
     is_internal: false,
     apiKeyName: 'Director API Key',
+  },
+  {
+    name: 'Producer',
+    description: 'Generates instrumental music',
+    type: 'assistant',
+    status: 'active',
+    is_internal: false,
+    apiKeyName: 'Producer API Key',
   },
 
 ] as const

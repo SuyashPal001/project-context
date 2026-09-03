@@ -12,10 +12,12 @@ import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
-import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker, vertexImageBreaker, geminiImageBreaker } from './router';
+import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker, vertexImageBreaker, geminiImageBreaker, vertexMusicBreaker, geminiVideoBreaker } from './router';
 import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
 import { isAuthorizedCaller, extractServiceKey } from './auth';
 import { handleImageGenerations } from './images.js';
+import { handleMusicGenerations } from './music.js';
+import { handleVideoGenerations } from './video.js';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -320,6 +322,8 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
         openrouter:   openrouterBreaker.getStatus(),
         vertexImage:  vertexImageBreaker.getStatus(),
         geminiImage:  geminiImageBreaker.getStatus(),
+        vertexMusic:  vertexMusicBreaker.getStatus(),
+        geminiVideo:  geminiVideoBreaker.getStatus(),
       },
     }));
     return;
@@ -349,6 +353,8 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
       openrouter:   openrouterBreaker.getStatus(),
       vertexImage:  vertexImageBreaker.getStatus(),
       geminiImage:  geminiImageBreaker.getStatus(),
+      vertexMusic:  vertexMusicBreaker.getStatus(),
+      geminiVideo:  geminiVideoBreaker.getStatus(),
     });
     res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
     res.end(body);
@@ -380,6 +386,18 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Image generation (Director agent)
   if (req.method === 'POST' && req.url === '/v1/images/generations') {
     await handleImageGenerations(req, res, readBody);
+    return;
+  }
+
+  // Music generation (Producer agent)
+  if (req.method === 'POST' && req.url === '/v1/music/generations') {
+    await handleMusicGenerations(req, res, readBody);
+    return;
+  }
+
+  // Video generation (Director agent)
+  if (req.method === 'POST' && req.url === '/v1/video/generations') {
+    await handleVideoGenerations(req, res, readBody);
     return;
   }
 

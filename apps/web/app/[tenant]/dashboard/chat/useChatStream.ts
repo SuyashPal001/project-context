@@ -82,7 +82,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         setActiveToolCalls(prev => { const next = new Map(prev); next.delete(toolCallId); return next; });
     }, [activeToolCalls]);
 
-    const { sendMessage: sendChatMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying } = useChat({
+    const { sendMessage: sendChatMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, cancel, isStreaming, isRetrying } = useChat({
         conversationId: conversationId || undefined,
         agentId,
         folderId,
@@ -297,6 +297,21 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             });
         }, [queryClient]),
 
+        onGenerationConfirmRequired: useCallback((confirmationId: string, resourceType: string, subject: string, label: string) => {
+            emitStreamEvent('generation_confirm_request');
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const msg: Message = {
+                    id: crypto.randomUUID(),
+                    conversationId: conversationIdRef.current!,
+                    role: 'assistant',
+                    content: '',
+                    createdAt: new Date().toISOString(),
+                    generationConfirmRequest: { id: confirmationId, resourceType, subject, label, status: 'pending' },
+                };
+                return old ? { data: [...old.data, msg] } : { data: [msg] };
+            });
+        }, [queryClient]),
+
         onClarificationRequired: useCallback((clarificationId: string, questions: ClarificationQuestion[]) => {
             // A malformed/empty payload would leave ClarificationCard indexing an empty
             // array (request.questions[pageIndex]) and crash — skip building the card.
@@ -404,7 +419,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     };
 
     return {
-        sendMessage, sendApproval, sendClarificationAnswer, cancel, isStreaming, isRetrying,
+        sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, cancel, isStreaming, isRetrying,
         activeToolCalls, completedToolCalls, reasoningText,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
         lastStreamEvent, regenerate, editAndResubmit,

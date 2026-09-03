@@ -119,6 +119,35 @@ export const pendingClarifications = new Map<string, {
   idToken?: string
 }>()
 
+// Generation confirm gate — mirrors the clarification-question pattern above,
+// generalized to a single pending yes/no decision per generation tool call
+// rather than an ordered array of question answers.
+export interface GenerationConfirmRequest {
+  id: string
+  resourceType: string
+  subject: string
+  label: string
+  status: 'pending' | 'approved' | 'declined'
+  decisionAt?: string
+}
+
+// Lets the stream cancel() handler find and resolve every live pending
+// confirmation for a given SSE session without scanning the entire
+// pendingGenerationConfirmations map. A Set, not a single value like
+// sessionActiveClarification, because the concurrency guard in
+// confirmGenerationOrDecline (Task 6) needs to check "is anything already
+// pending for this session" before adding a new one.
+export const sessionActiveGenerationConfirmations = new Map<string, Set<string>>()
+
+export const pendingGenerationConfirmations = new Map<string, {
+  resolve: (confirmed: boolean) => void
+  timer: ReturnType<typeof setTimeout>
+  tenantId: string
+  messageId?: string
+  conversationId?: string
+  idToken?: string
+}>()
+
 // ─── Rate limiter ─────────────────────────────────────────────────────────────
 
 export const rateLimitMap = new Map<string, { count: number; windowStart: number }>()

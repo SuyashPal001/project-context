@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { generatedFileKey, uploadGeneratedFile } from './persistence.js'
+import { generatedFileKey, uploadGeneratedFile, saveGenerationConfirmRequest, updateGenerationConfirmRequest } from './persistence.js'
 
 describe('generatedFileKey', () => {
   it('uses the given extension instead of always .md', () => {
@@ -49,5 +49,53 @@ describe('uploadGeneratedFile — binary content', () => {
     expect(putCall?.init?.body).toBeInstanceOf(Uint8Array)
     expect(Buffer.from(putCall?.init?.body as Uint8Array)).toEqual(buf)
     expect((putCall?.init?.headers as Record<string, string>)['Content-Type']).toBe('image/jpeg')
+  })
+})
+
+describe('saveGenerationConfirmRequest', () => {
+  const originalFetch = global.fetch
+  afterEach(() => { global.fetch = originalFetch })
+
+  it('POSTs to /messages/save with the generationConfirmRequest field', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 201 }))
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    saveGenerationConfirmRequest('tok', 'conv-1', 'msg-1', {
+      id: 'gc-1', resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview',
+      label: 'Generate image', status: 'pending',
+    })
+
+    // fire-and-forget — give the microtask queue a tick
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toContain('/conversations/conv-1/messages/save')
+    const body = JSON.parse((opts as RequestInit).body as string)
+    expect(body.generationConfirmRequest).toEqual({
+      id: 'gc-1', resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview',
+      label: 'Generate image', status: 'pending',
+    })
+  })
+})
+
+describe('updateGenerationConfirmRequest', () => {
+  const originalFetch = global.fetch
+  afterEach(() => { global.fetch = originalFetch })
+
+  it('PATCHes /messages/:messageId/generation-confirm with the status update', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    updateGenerationConfirmRequest('tok', 'conv-1', 'msg-1', { status: 'approved', decisionAt: '2026-09-03T00:00:00.000Z' })
+
+    await new Promise(r => setTimeout(r, 0))
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toContain('/conversations/conv-1/messages/msg-1/generation-confirm')
+    expect((opts as RequestInit).method).toBe('PATCH')
+    const body = JSON.parse((opts as RequestInit).body as string)
+    expect(body.generationConfirmRequest).toEqual({ status: 'approved', decisionAt: '2026-09-03T00:00:00.000Z' })
   })
 })

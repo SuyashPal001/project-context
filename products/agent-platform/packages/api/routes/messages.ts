@@ -174,6 +174,14 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             status: z.enum(['pending', 'approved', 'dismissed']),
             decisionAt: z.string().optional(),
         }).nullish(),
+        generationConfirmRequest: z.object({
+            id: z.string(),
+            resourceType: z.string(),
+            subject: z.string(),
+            label: z.string(),
+            status: z.enum(['pending', 'approved', 'declined']),
+            decisionAt: z.string().optional(),
+        }).nullish(),
         createdAt: z.string().datetime().optional(),
     });
 
@@ -232,6 +240,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             completedTrace: result.data.completedTrace ?? null,
             clarificationRequest: result.data.clarificationRequest ?? null,
             approvalRequest: result.data.approvalRequest ?? null,
+            generationConfirmRequest: result.data.generationConfirmRequest ?? null,
             createdAt: result.data.createdAt ? new Date(result.data.createdAt) : undefined,
         })
         .returning();
@@ -377,6 +386,52 @@ messagesRoutes.patch('/:conversationId/messages/:messageId/approval', async (c) 
     const [updated] = await db
         .update(messages)
         .set({ approvalRequest: merged })
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
+        .returning();
+
+    return c.json({ data: updated }, 200);
+});
+
+// PATCH /conversations/:conversationId/messages/:messageId/generation-confirm — update generation confirm status
+// Internal only: called by the orchestrator when the user confirms or declines a generation.
+messagesRoutes.patch('/:conversationId/messages/:messageId/generation-confirm', async (c) => {
+    if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) {
+        return c.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
+    }
+
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+
+    const conversationId = c.req.param('conversationId');
+    const messageId = c.req.param('messageId');
+
+    const schema = z.object({
+        generationConfirmRequest: z.object({
+            status: z.enum(['pending', 'approved', 'declined']),
+            decisionAt: z.string().optional(),
+        }),
+    });
+
+    const body = await c.req.json().catch(() => null);
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    const [existing] = await db
+        .select({ generationConfirmRequest: messages.generationConfirmRequest })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
+        .limit(1);
+
+    if (!existing) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404);
+
+    const merged = { ...(existing.generationConfirmRequest as object ?? {}), ...result.data.generationConfirmRequest };
+
+    const [updated] = await db
+        .update(messages)
+        .set({ generationConfirmRequest: merged })
         .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
         .returning();
 

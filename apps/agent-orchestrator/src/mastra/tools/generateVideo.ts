@@ -3,11 +3,11 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
-import { refundImageCharge } from './imageCredits.js'
+import { refundVideoCharge } from './videoCredits.js'
 import { confirmGenerationOrDecline } from './confirmGeneration.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
-const IMAGE_MODEL = 'gemini-3-pro-image-preview'
+const VIDEO_MODEL = 'gemini-omni-1.1-flash'
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
@@ -19,11 +19,11 @@ const outputSchema = z.object({
   insufficientCredits: z.boolean().optional(),
 })
 
-export const generateImage = createTool({
-  id: 'generate-image',
-  description: 'Generates a new image from a text prompt using Gemini 3 Pro Image. Use when the user asks Director to create, draw, or generate an image.',
+export const generateVideo = createTool({
+  id: 'generate-video',
+  description: 'Generates a short video clip from a text description using Gemini Omni Flash. Use when the user asks Director to create or generate a video.',
   inputSchema: z.object({
-    prompt: z.string().describe('Full description of the image to generate'),
+    prompt: z.string().describe('Description of the video to generate'),
   }),
   outputSchema,
   execute: async (inputData, execContext) => {
@@ -34,21 +34,26 @@ export const generateImage = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
 
-    const confirm = await confirmGenerationOrDecline(execContext, 'image_generation', IMAGE_MODEL, 'Generate image')
+    const confirm = await confirmGenerationOrDecline(execContext, 'video_generation', VIDEO_MODEL, 'Generate video')
     if (!confirm.confirmed) return { refused: true, refusalReason: confirm.reason ?? 'DECLINED' }
 
-    let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
+    let genResult: { videoBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {
-      const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
+      const res = await fetch(`${GATEWAY_URL}/v1/video/generations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: IMAGE_MODEL, prompt }),
-        signal: AbortSignal.timeout(90_000),
+        body: JSON.stringify({ model: VIDEO_MODEL, prompt, task: 'text_to_video' }),
+        // Must stay strictly larger than the gateway's own upstream timeout
+        // (240s in apps/inference-gateway/src/video.ts) — otherwise this
+        // clock, which starts first since the gateway call is nested inside
+        // it, can abort before the gateway's Gemini call even completes,
+        // discarding a response that might have succeeded.
+        signal: AbortSignal.timeout(270_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
       genResult = await res.json()
     } catch (err) {
-      console.error(`[session:${sessionId}] generateImage gateway call failed:`, (err as Error).message)
+      console.error(`[session:${sessionId}] generateVideo gateway call failed:`, (err as Error).message)
       return { refused: true, refusalReason: 'GENERATION_FAILED' }
     }
 
@@ -56,26 +61,20 @@ export const generateImage = createTool({
       return { refused: true, refusalReason: genResult.reason ?? 'unknown' }
     }
 
-    // Validate the success shape BEFORE any charge lands — a missing
-    // imageBase64 on a non-refused response must never leave the tenant
-    // charged for nothing. (Currently unreachable given the gateway's
-    // exhaustive response union, but this keeps the charged→throw window
-    // closed regardless.)
-    if (typeof genResult.imageBase64 !== 'string') {
-      console.error(`[session:${sessionId}] generateImage: gateway returned a non-refused response with no imageBase64`)
+    if (typeof genResult.videoBase64 !== 'string') {
+      console.error(`[session:${sessionId}] generateVideo: gateway returned a non-refused response with no videoBase64`)
       return { refused: true, refusalReason: 'GENERATION_FAILED' }
     }
 
-    // Success — charge now, before the (best-effort) upload.
-    const chargeKey = `image:${sessionId}:${randomUUID()}`
+    const chargeKey = `video:${sessionId}:${randomUUID()}`
     let charged = false
     let rateId: string | null = null
     let rateVersion: number | null = null
 
     if (!(await isUnlimited(tenantId))) {
-      const rate = await resolveRate('image_generation', IMAGE_MODEL)
+      const rate = await resolveRate('video_generation', VIDEO_MODEL)
       if (!rate) {
-        console.error(`[credits] UNBILLED IMAGE GENERATION: no active image_generation rate for model=${IMAGE_MODEL} tenantId=${tenantId} — generation was NOT charged`)
+        console.error(`[credits] UNBILLED VIDEO GENERATION: no active video_generation rate for model=${VIDEO_MODEL} tenantId=${tenantId} — generation was NOT charged`)
       } else {
         rateId = rate.id
         rateVersion = rate.version
@@ -83,7 +82,7 @@ export const generateImage = createTool({
         try {
           await spendCredits({
             tenantId, amountMicro: -amountMicro, key: chargeKey, kind: 'debit',
-            actorId: agentId, actorType: 'agent', rateId, rateVersion, jobType: 'image_generation',
+            actorId: agentId, actorType: 'agent', rateId, rateVersion, jobType: 'video_generation',
           })
           charged = true
         } catch (err) {
@@ -93,17 +92,17 @@ export const generateImage = createTool({
       }
     }
 
-    const buffer = Buffer.from(genResult.imageBase64, 'base64')
-    const extension = (genResult.mimeType ?? 'image/png').split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png'
+    const buffer = Buffer.from(genResult.videoBase64, 'base64')
+    const extension = (genResult.mimeType ?? 'video/mp4').split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'mp4'
     const attachment = conversationId && idToken
       ? await uploadGeneratedFile(idToken, {
-          conversationId, title: 'Generated Image', content: buffer,
+          conversationId, title: 'Generated Video', content: buffer,
           contentType: genResult.mimeType, extension,
         })
       : null
 
     if (!attachment) {
-      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      if (charged) await refundVideoCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
       return { refused: true, refusalReason: 'STORAGE_FAILED' }
     }
 

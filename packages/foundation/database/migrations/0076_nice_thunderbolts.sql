@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "generation_confirm_request" jsonb;
