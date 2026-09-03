@@ -55,7 +55,12 @@ async function callGeminiApiKeyVideoModel(req: VideoGenerationRequest): Promise<
       response_format: { type: 'video', resolution: '720p', delivery: 'base64' },
       generation_config: { video_config: { task: req.task } },
     }),
-    signal: AbortSignal.timeout(90_000),
+    // Video generation is slower than the image/music paths this timeout was
+    // copied from (90s) — 240s gives Gemini room to actually finish. Keep
+    // this strictly less than generateVideo.ts's client-side timeout (270s)
+    // so the gateway can complete or fail cleanly before the tool's own
+    // connection gives up on it.
+    signal: AbortSignal.timeout(240_000),
   })
   if (!res.ok) throw new Error(`Gemini API video generation failed: ${res.status} ${await res.text()}`)
   return classifyInteractionsVideoResponse(await res.json())

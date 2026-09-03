@@ -27,21 +27,30 @@ function isSongGenTool(toolName: string): boolean {
   return toolName === 'generate_song' || toolName === 'generate-song';
 }
 
+// Director's video tool follows the same unnormalized-key convention as its
+// image tools (registered as 'generate_video' in directorAgent.ts).
+function isVideoGenTool(toolName: string): boolean {
+  return toolName === 'generate_video' || toolName === 'generate-video';
+}
+
 // Anything this card must treat as "may render a media artifact, not proof
 // that one exists" — see the comment on mediaGenFailureReason below.
 function isMediaGenTool(toolName: string): boolean {
-  return isImageGenTool(toolName) || isSongGenTool(toolName);
+  return isImageGenTool(toolName) || isSongGenTool(toolName) || isVideoGenTool(toolName);
 }
 
-// generateImage.ts/editImage.ts/generateSong.ts return `refused: true,
-// refusalReason` (or `insufficientCredits: true`) on any failure, with no
-// `fileId` — the model doesn't reliably relay that in its reply text, so this
-// component must not take "a tool-result event arrived" as proof the artifact
-// exists. Only a real fileId means one does. Producer's failure vocabulary is
-// a subset of Director's — no SOURCE_IMAGE_* (it never uses a source image),
-// and no SAFETY today — but the gateway can pass through its own reason
-// strings (e.g. NO_PREDICTIONS, NO_AUDIO_BYTES) that fall through to the
-// generic message below.
+// generateImage.ts/editImage.ts/generateSong.ts/generateVideo.ts return
+// `refused: true, refusalReason` (or `insufficientCredits: true`) on any
+// failure, with no `fileId` — the model doesn't reliably relay that in its
+// reply text, so this component must not take "a tool-result event arrived"
+// as proof the artifact exists. Only a real fileId means one does. Producer's
+// failure vocabulary is a subset of Director's image path — no SOURCE_IMAGE_*
+// (it never uses a source image), and no SAFETY today. generateVideo.ts's own
+// vocabulary is narrower still — only GENERATION_FAILED, STORAGE_FAILED, or a
+// gateway passthrough `reason` string — no video-specific SAFETY-equivalent
+// yet. The gateway can also pass through its own reason strings (e.g.
+// NO_PREDICTIONS, NO_AUDIO_BYTES) that fall through to the generic message
+// below.
 function mediaGenFailureReason(toolName: string, result: Record<string, unknown> | undefined): string | null {
   if (!result) return null;
   if (typeof result.fileId === 'string') return null;
@@ -50,6 +59,7 @@ function mediaGenFailureReason(toolName: string, result: Record<string, unknown>
   if (reason === 'STORAGE_FAILED') return 'Generated, but could not be saved';
   if (reason === 'SAFETY') return 'Declined for content policy reasons';
   if (reason === 'SOURCE_IMAGE_UNAVAILABLE' || reason === 'SOURCE_IMAGE_TOO_LARGE') return 'Source image unavailable';
+  if (isVideoGenTool(toolName)) return 'Video generation failed';
   return isSongGenTool(toolName) ? 'Song generation failed' : 'Image generation failed';
 }
 
@@ -66,6 +76,15 @@ function ToolIcon({ toolName }: { toolName: string }) {
     || toolName?.startsWith('workflow-prd');
   const isImage = isImageGenTool(toolName);
   const isSong = isSongGenTool(toolName);
+  const isVideo = isVideoGenTool(toolName);
+
+  if (isVideo) return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
+      <rect x="1.5" y="3" width="8" height="8" rx="1" stroke="currentColor" strokeWidth="1"/>
+      <path d="M11 5.5l2-1.5v6l-2-1.5" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" fill="none"/>
+      <path d="M4.5 5.2l3 1.8-3 1.8z" fill="currentColor"/>
+    </svg>
+  );
 
   if (isImage) return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="opacity-60 shrink-0 text-current">
@@ -155,6 +174,7 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
         if (toolName === 'save-tasks' || toolName === 'saveTasks' || toolName?.startsWith('agent-task')) return { prefix: 'Creating tasks...', highlight: '' };
         if (isImageGenTool(toolName)) return { prefix: toolName.includes('edit') ? 'Editing image...' : 'Generating image...', highlight: '' };
         if (isSongGenTool(toolName)) return { prefix: 'Generating song...', highlight: '' };
+        if (isVideoGenTool(toolName)) return { prefix: 'Generating video...', highlight: '' };
     }
 
     if (toolName === 'web_search' || toolName === 'browser') return { prefix: 'Searched the web for ', highlight: q };
@@ -174,6 +194,7 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
     if (toolName === 'save-tasks' || toolName === 'saveTasks' || toolName?.startsWith('agent-task')) return { prefix: 'Tasks created', highlight: '' };
     if (isImageGenTool(toolName)) return { prefix: toolName.includes('edit') ? 'Image edited' : 'Image generated', highlight: '' };
     if (isSongGenTool(toolName)) return { prefix: 'Song generated', highlight: '' };
+    if (isVideoGenTool(toolName)) return { prefix: 'Video generated', highlight: '' };
 
     const friendly = toolName.replace(/_/g, ' ').toLowerCase();
     return { prefix: done ? `Used ${friendly}` : `Using ${friendly}`, highlight: query ? ` — ${q}` : '' };
@@ -197,10 +218,11 @@ export function ToolCallCard({ toolName, query, status, results, result }: ToolC
   const { prefix: labelPrefix, highlight } = toolLabel(toolName, query, status);
   const prefix = failureReason ?? labelPrefix;
   // Placeholder shaped like InlineAttachmentCard's own thumbnail chip, so the
-  // real image/song attachment swaps in without the layout jumping once it
-  // lands. 'image' vs 'audio' picks the tile styling (TYPE_STYLES/TYPE_BADGES
-  // already define both) — song results render as an audio attachment.
-  const mediaSkeletonType = isImageGenTool(toolName) ? 'image' : isSongGenTool(toolName) ? 'audio' : null;
+  // real image/song/video attachment swaps in without the layout jumping once
+  // it lands. 'image' / 'audio' / 'video' picks the tile styling
+  // (TYPE_STYLES/TYPE_BADGES already define all three) — song results render
+  // as an audio attachment, video results as a video attachment.
+  const mediaSkeletonType = isImageGenTool(toolName) ? 'image' : isSongGenTool(toolName) ? 'audio' : isVideoGenTool(toolName) ? 'video' : null;
   const showMediaSkeleton = status === 'loading' && mediaSkeletonType !== null;
 
   return (

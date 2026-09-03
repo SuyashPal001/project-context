@@ -39,7 +39,12 @@ export const generateVideo = createTool({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
         body: JSON.stringify({ model: VIDEO_MODEL, prompt, task: 'text_to_video' }),
-        signal: AbortSignal.timeout(90_000),
+        // Must stay strictly larger than the gateway's own upstream timeout
+        // (240s in apps/inference-gateway/src/video.ts) — otherwise this
+        // clock, which starts first since the gateway call is nested inside
+        // it, can abort before the gateway's Gemini call even completes,
+        // discarding a response that might have succeeded.
+        signal: AbortSignal.timeout(270_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
       genResult = await res.json()
