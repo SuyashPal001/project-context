@@ -35,8 +35,10 @@ export type VideoGenerationResult =
 export function classifyInteractionsVideoResponse(interactionResponse: any): VideoGenerationResult {
   const steps: unknown[] = interactionResponse?.steps ?? []
   if (steps.length === 0) return { refused: true, reason: 'NO_STEPS' }
+  // Scan all steps' content blocks, not just steps[0] — the video block is not
+  // guaranteed to land in the first step (e.g. a text step could precede it).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const videoBlock = (steps[0] as any)?.content?.find((c: any) => c.type === 'video')
+  const videoBlock = steps.flatMap((s: any) => s?.content ?? []).find((c: any) => c.type === 'video')
   if (!videoBlock?.video?.data) return { refused: true, reason: 'NO_VIDEO_CONTENT' }
   return { videoBase64: videoBlock.video.data, mimeType: videoBlock.video.mime_type ?? 'video/mp4' }
 }

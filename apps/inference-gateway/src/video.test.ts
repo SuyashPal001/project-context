@@ -41,6 +41,19 @@ describe('classifyInteractionsVideoResponse', () => {
       reason: 'NO_VIDEO_CONTENT',
     })
   })
+
+  it('finds the video block when it lands in a later step, not steps[0]', () => {
+    const interactionResponse = {
+      steps: [
+        { content: [{ type: 'text', text: 'thinking...' }] },
+        { content: [{ type: 'video', video: { data: 'ZGVm', mime_type: 'video/mp4' } }] },
+      ],
+    }
+    expect(classifyInteractionsVideoResponse(interactionResponse)).toEqual({
+      videoBase64: 'ZGVm',
+      mimeType: 'video/mp4',
+    })
+  })
 })
 
 describe('generateVideo — single-path invariant (API-key only, no Vertex tier)', () => {
@@ -77,6 +90,14 @@ describe('generateVideo — single-path invariant (API-key only, no Vertex tier)
     expect(fetchMock.mock.calls[0][0]).toContain('generativelanguage.googleapis.com/v1beta/interactions')
     expect(fetchMock.mock.calls[0][0]).not.toContain('aiplatform.googleapis.com')
     expect(geminiVideoBreaker.onSuccess).toHaveBeenCalledTimes(1)
+
+    const sentBody = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(sentBody).toEqual({
+      model: 'gemini-omni-1.1-flash',
+      input: 'a calm sunrise over mountains',
+      response_format: { type: 'video', resolution: '720p', delivery: 'base64' },
+      generation_config: { video_config: { task: 'text_to_video' } },
+    })
   })
 
   it('rejects a model not on the allowlist before making any call', async () => {
