@@ -69,6 +69,18 @@ describe('generateImage tool', () => {
     expect(result).toEqual({ refused: true, refusalReason: 'DECLINED' })
   })
 
+  it('short-circuits with CONFIRM_BUSY and never calls the gateway when a confirmation is already pending', async () => {
+    confirmGenerationOrDecline.mockResolvedValue({ confirmed: false, reason: 'CONFIRM_BUSY' })
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const result = await generateImage.execute!({ prompt: 'a red bicycle' } as never, baseCtx())
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(result).toEqual({ refused: true, refusalReason: 'CONFIRM_BUSY' })
+  })
+
   it('does not call the gateway result into a charge and returns a refusal when Gemini refuses — no charge, nothing to refund', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ refused: true, reason: 'SAFETY' }), { status: 200 })) as unknown as typeof fetch
 

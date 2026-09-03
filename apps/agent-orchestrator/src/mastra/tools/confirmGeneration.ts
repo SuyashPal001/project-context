@@ -11,7 +11,7 @@ export async function confirmGenerationOrDecline(
   resourceType: string,
   subject: string,
   label: string,
-): Promise<{ confirmed: boolean }> {
+): Promise<{ confirmed: boolean; reason?: 'CONFIRM_BUSY' }> {
   const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
   const sessionId = execContext?.requestContext?.get('sessionId') as string | undefined
   const userId = execContext?.requestContext?.get('userId') as string | undefined
@@ -43,7 +43,7 @@ export async function confirmGenerationOrDecline(
   // would have no UI to render into; see spec §5.
   const existing = sessionActiveGenerationConfirmations.get(sessionId)
   if (existing && existing.size > 0) {
-    return { confirmed: false }
+    return { confirmed: false, reason: 'CONFIRM_BUSY' }
   }
 
   const confirmationId = randomUUID()

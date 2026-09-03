@@ -35,7 +35,7 @@ export const generateVideo = createTool({
     const sessionId = conversationId ?? 'unknown'
 
     const confirm = await confirmGenerationOrDecline(execContext, 'video_generation', VIDEO_MODEL, 'Generate video')
-    if (!confirm.confirmed) return { refused: true, refusalReason: 'DECLINED' }
+    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.reason ?? 'DECLINED' }
 
     let genResult: { videoBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {

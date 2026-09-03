@@ -206,14 +206,30 @@ function ChatPage() {
 
     const handleGenerationConfirm = useCallback(async (messageId: string, confirmationId: string) => {
         const ok = await sendGenerationConfirm(confirmationId, 'approved');
-        if (ok) queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
-            old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: 'approved' as const, decisionAt: new Date().toISOString() } : undefined } : m) } : old
+        if (!ok) {
+            console.error(`generation-confirm POST failed for confirmationId=${confirmationId}`);
+            toast.error('Could not confirm generation. Please try again.');
+        }
+        // Mark the local card resolved even on failure — otherwise the overlay
+        // stays up and the composer stays hidden (awaitingGenerationConfirmReply
+        // reads this same status) with no way for the user to recover. A failed
+        // POST is treated as declined since the tool-side pending entry may
+        // already be gone (e.g. timed out, orchestrator restarted).
+        const resolvedStatus: 'approved' | 'declined' = ok ? 'approved' : 'declined';
+        queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+            old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: resolvedStatus, decisionAt: new Date().toISOString() } : undefined } : m) } : old
         );
     }, [conversationId, queryClient, sendGenerationConfirm]);
 
     const handleGenerationDecline = useCallback(async (messageId: string, confirmationId: string) => {
         const ok = await sendGenerationConfirm(confirmationId, 'declined');
-        if (ok) queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+        if (!ok) {
+            console.error(`generation-confirm POST failed for confirmationId=${confirmationId}`);
+            toast.error('Could not record your response. Please try again.');
+        }
+        // Same recovery as handleGenerationConfirm above: resolve the local card
+        // regardless of POST success so the composer becomes usable again.
+        queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
             old ? { data: old.data.map(m => m.id === messageId ? { ...m, generationConfirmRequest: m.generationConfirmRequest ? { ...m.generationConfirmRequest, status: 'declined' as const, decisionAt: new Date().toISOString() } : undefined } : m) } : old
         );
     }, [conversationId, queryClient, sendGenerationConfirm]);

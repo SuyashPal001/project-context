@@ -42,7 +42,7 @@ export const editImage = createTool({
     const sessionId = conversationId ?? 'unknown'
 
     const confirm = await confirmGenerationOrDecline(execContext, 'image_generation', IMAGE_MODEL, 'Edit image')
-    if (!confirm.confirmed) return { refused: true, refusalReason: 'DECLINED' }
+    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.reason ?? 'DECLINED' }
 
     const source = await resolveSourceImage(idToken ?? '', sourceFileId, sourceMimeType, sessionId)
     if (!source) {

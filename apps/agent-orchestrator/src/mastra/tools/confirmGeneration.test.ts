@@ -97,7 +97,7 @@ describe('confirmGenerationOrDecline', () => {
     await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledTimes(1))
 
     const second = await confirmGenerationOrDecline(baseCtx(), 'image_generation', 'model-x', 'Generate image')
-    expect(second).toEqual({ confirmed: false })
+    expect(second).toEqual({ confirmed: false, reason: 'CONFIRM_BUSY' })
     expect(sendEvent).toHaveBeenCalledTimes(1) // still just the first
 
     const confirmationId = Array.from(sessionActiveGenerationConfirmations.get('s1')!)[0]
