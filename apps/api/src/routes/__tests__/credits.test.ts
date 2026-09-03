@@ -66,7 +66,7 @@ describe('GET /credits/balance', () => {
 
         const app = appWith(readCtx);
         const res = await app.request('/credits/balance');
-        const body = await res.json();
+        const body = await res.json() as any;
 
         expect(res.status).toBe(200);
         expect(typeof body.balanceMicro).toBe('string');
@@ -89,7 +89,7 @@ describe('GET /credits/balance', () => {
 
         const app = appWith(readCtx);
         const res = await app.request('/credits/balance');
-        const body = await res.json();
+        const body = await res.json() as any;
 
         expect(body).toEqual({ unlimited: true });
         expect(body.balanceMicro).toBeUndefined();
@@ -114,7 +114,7 @@ describe('GET /credits/balance', () => {
 
         const app = appWith(readCtx);
         const res = await app.request('/credits/balance');
-        const body = await res.json();
+        const body = await res.json() as any;
 
         expect(body.grants[0].amountMicro).toBe('1000');
         expect(body.grants[0].spentMicro).toBe('500');
@@ -133,7 +133,7 @@ describe('GET /credits/estimate', () => {
 
         const app = appWith(readCtx);
         const res = await app.request('/credits/estimate?resourceType=message&subject=*&count=1');
-        const body = await res.json();
+        const body = await res.json() as any;
 
         expect(res.status).toBe(200);
         expect(body).toHaveProperty('costMicro', '100');
@@ -168,7 +168,7 @@ describe('GET /credits/estimate', () => {
         vi.mocked(resolveRate).mockResolvedValue({
             id: 'rate-1',
             version: 1,
-            schema: { per_unit_micro: 100 },
+            schema: { per_call_micro: 100 },
         });
         vi.mocked(costMicro).mockReturnValue(100n);
         vi.mocked(getBalance).mockResolvedValue({ balanceMicro: 1000n, unlimited: false, grants: [] });
@@ -190,7 +190,7 @@ describe('GET /credits/estimate', () => {
 
         const app = appWith(readCtx);
         const res = await app.request('/credits/estimate?resourceType=message&subject=*&count=1');
-        const body = await res.json();
+        const body = await res.json() as any;
 
         expect(body.sufficient).toBe(false);
     });
@@ -285,7 +285,7 @@ describe('GET /credits/ledger', () => {
 
         const app = appWith(readCtx);
         const res = await app.request('/credits/ledger');
-        const body = await res.json();
+        const body = await res.json() as any;
 
         expect(res.status).toBe(200);
         expect(body.data[0].amountMicro).toBe('-500');
@@ -368,7 +368,7 @@ describe('POST /credits/grants', () => {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(validBody),
         });
-        const body = await res.json();
+        const body = await res.json() as any;
 
         expect(res.status).toBe(200);
         expect(body.balanceMicro).toBe('1000000');

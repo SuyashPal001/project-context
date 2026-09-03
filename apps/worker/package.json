@@ -26,9 +26,11 @@
     "@serverless-saas/database": "workspace:*",
     "@serverless-saas/idempotency": "workspace:*",
     "@serverless-saas/notifications": "workspace:*",
+    "@serverless-saas/storage": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "mammoth": "^1.7.0",
     "pdf-parse": "^1.1.1",
+    "undici": "^7.24.5",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

@@ -129,7 +129,6 @@ export function getMastraMemory(): Memory {
     options: {
       lastMessages: 20,
       semanticRecall: {
-        enabled: true,
         topK: 3,
         messageRange: 2,
       },

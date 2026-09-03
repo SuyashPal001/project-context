@@ -3,6 +3,7 @@ import { z } from 'zod'
 import pg from 'pg'
 import { randomUUID } from 'crypto'
 import { makeAppPool } from '../../db.js'
+import { tenantContextSchema } from '../context.js'
 
 let _pool: pg.Pool | null = null
 
@@ -35,11 +36,6 @@ const taskDataSchema = z.object({
   milestones: z.array(milestoneTaskDataSchema),
 })
 
-const requestContextSchema = z.object({
-  tenantId: z.string(),
-  agentId: z.string().optional(),
-  userId: z.string().optional(),
-})
 
 function buildTasksMarkdown(milestones: z.infer<typeof milestoneTaskDataSchema>[]): string {
   const lines: string[] = []
@@ -64,7 +60,7 @@ function buildTasksMarkdown(milestones: z.infer<typeof milestoneTaskDataSchema>[
 export const saveTasks = createTool({
   id: 'save-tasks',
   description: 'Inserts agent_tasks rows for all milestones in the task generation output. Wraps all inserts in a single transaction.',
-  requestContextSchema,
+  requestContextSchema: tenantContextSchema,
   inputSchema: z.object({
     taskData: taskDataSchema,
   }),
@@ -100,7 +96,7 @@ export const saveTasks = createTool({
 
         for (const task of tasks) {
           // Convert string[] AC → { text, checked: false }[] before storing as JSONB
-          const ac = task.acceptanceCriteria.map((text) => ({ text, checked: false }))
+          const ac = task.acceptanceCriteria.map((text: string) => ({ text, checked: false }))
 
           placeholders.push(
             `($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++}::jsonb,$${p++},$${p++},'backlog',$${p++},$${p++},NOW(),NOW())`,

@@ -1,5 +1,7 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
+import { isValidationError } from '@mastra/core/tools'
 import { z } from 'zod'
+import { tenantContextSchema } from '../context.js'
 
 import { prdAgent } from '../agents/prdAgent.js'
 import { formatterAgent } from '../agents/formatterAgent.js'
@@ -207,6 +209,7 @@ export const formatStep = createStep({
 
 export const saveStep = createStep({
   id: 'save-prd',
+  requestContextSchema: tenantContextSchema,
   inputSchema: formatOutputSchema,
   outputSchema: saveOutputSchema,
   execute: async ({ inputData, requestContext }) => {
@@ -216,8 +219,9 @@ export const saveStep = createStep({
     try {
       const result = await savePRD.execute!(
         { title, content: prdText, contentType: 'markdown' as const },
-        { requestContext },
+        { requestContext } as any,
       )
+      if (!result || isValidationError(result)) throw new Error(`savePRD failed: ${isValidationError(result) ? result.message : 'no result'}`)
       console.log(`[saveStep:prd] saved prdId=${result.prdId}`)
       return { prdId: result.prdId, prdContent: prdText }
     } catch (err) {

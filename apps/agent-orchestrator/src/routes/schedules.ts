@@ -54,7 +54,7 @@ schedulesRouter.post('/schedules', async (c) => {
     return c.json({ error: 'templatePrompt and cron are required' }, 400, hdrs)
   }
 
-  const schedulesStore = (mastra.storage as any)?.stores?.schedules
+  const schedulesStore = (mastra.getStorage() as any)?.stores?.schedules
   if (!schedulesStore) {
     return c.json({ error: 'Scheduler storage not available' }, 503, hdrs)
   }
@@ -97,7 +97,7 @@ schedulesRouter.get('/schedules', async (c) => {
   const user = await auth(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
 
-  const schedulesStore = (mastra.storage as any)?.stores?.schedules
+  const schedulesStore = (mastra.getStorage() as any)?.stores?.schedules
   if (!schedulesStore) return c.json({ schedules: [] }, 200, hdrs)
 
   try {
@@ -121,7 +121,7 @@ schedulesRouter.delete('/schedules/:id', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
 
   const scheduleId = c.req.param('id')
-  const schedulesStore = (mastra.storage as any)?.stores?.schedules
+  const schedulesStore = (mastra.getStorage() as any)?.stores?.schedules
   if (!schedulesStore) return c.json({ error: 'Scheduler storage not available' }, 503, hdrs)
 
   try {

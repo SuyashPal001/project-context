@@ -28,7 +28,10 @@
   },
   "pnpm": {
     "overrides": {
-      "protobufjs": ">=7.5.8"
+      "protobufjs": ">=7.5.8",
+      "pg": "8.23.0",
+      "ai": "6.0.276",
+      "@ai-sdk/provider": "3.0.15"
     },
     "peerDependencyRules": {
       "allowedVersions": {

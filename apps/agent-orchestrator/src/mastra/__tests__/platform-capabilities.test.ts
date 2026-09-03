@@ -35,7 +35,7 @@ describe('platform-capabilities Mastra tools', () => {
 
     const { platformCapabilityTools } = await import('../tools/platform-capabilities.js')
     const requestContext = new Map([['tenantId', 'tenant-1'], ['userId', 'user-1']])
-    const result = await platformCapabilityTools.start_task.execute(
+    const result = await platformCapabilityTools.start_task.execute!(
       { taskId: 't1' },
       { requestContext: { get: (k: string) => requestContext.get(k) } } as any,
     )
@@ -56,12 +56,12 @@ describe('platform-capabilities Mastra tools', () => {
 
     const { platformCapabilityTools } = await import('../tools/platform-capabilities.js')
     const requestContext = new Map([['tenantId', 'tenant-1'], ['userId', 'user-1']])
-    const result = await platformCapabilityTools.start_task.execute(
+    const result = await platformCapabilityTools.start_task.execute!(
       { taskId: 't1' },
       { requestContext: { get: (k: string) => requestContext.get(k) } } as any,
     )
 
-    expect(result.content[0].text).toBe('Permission denied for tool: start_task')
+    expect((result as any).content[0].text).toBe('Permission denied for tool: start_task')
   })
 
   it('degrades gracefully when resolveUserPermissions rejects, instead of throwing out of execute()', async () => {
@@ -75,7 +75,7 @@ describe('platform-capabilities Mastra tools', () => {
     const requestContext = new Map([['tenantId', 'tenant-1'], ['userId', 'user-1']])
 
     await expect(
-      platformCapabilityTools.start_task.execute(
+      platformCapabilityTools.start_task.execute!(
         { taskId: 't1' },
         { requestContext: { get: (k: string) => requestContext.get(k) } } as any,
       ),
@@ -94,7 +94,7 @@ describe('platform-capabilities Mastra tools', () => {
 
     const { platformCapabilityTools } = await import('../tools/platform-capabilities.js')
     const requestContext = new Map([['tenantId', 'tenant-1'], ['userId', 'user-1']])
-    const result = await platformCapabilityTools.start_task.execute(
+    const result = await platformCapabilityTools.start_task.execute!(
       { taskId: 't1' },
       { requestContext: { get: (k: string) => requestContext.get(k) } } as any,
     )

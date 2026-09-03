@@ -71,13 +71,13 @@ async function runWorkflow(body: IngestBody): Promise<void> {
           classification:  body.classification ?? 'Internal',
           updatedAt:       new Date(),
         })
-        .where(and(eq(files.id, body.fileId), eq(files.tenantId, body.tenantId)))
+        .where(and(eq(files.id as any, body.fileId), eq(files.tenantId as any, body.tenantId)) as any)
       console.log(`[ingest] done fileId=${body.fileId} chunks=${out.chunkCount}`)
     } else {
       await db
         .update(files)
         .set({ ingestionStatus: 'failed', updatedAt: new Date() })
-        .where(and(eq(files.id, body.fileId), eq(files.tenantId, body.tenantId)))
+        .where(and(eq(files.id as any, body.fileId), eq(files.tenantId as any, body.tenantId)) as any)
       console.error(`[ingest] workflow status=${result.status} fileId=${body.fileId}`)
     }
   } catch (err) {
@@ -86,7 +86,7 @@ async function runWorkflow(body: IngestBody): Promise<void> {
     await db
       .update(files)
       .set({ ingestionStatus: 'failed', updatedAt: new Date() })
-      .where(and(eq(files.id, body.fileId), eq(files.tenantId, body.tenantId)))
+      .where(and(eq(files.id as any, body.fileId), eq(files.tenantId as any, body.tenantId)) as any)
       .catch(() => {})
   }
 }

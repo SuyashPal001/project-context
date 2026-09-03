@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
 
-import { tenantContextSchema } from '../context.js'
+import { tenantContextSchema, type TenantContext } from '../context.js'
 import { selectModel } from './modelSelection.js'
 import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
@@ -10,7 +10,7 @@ export const architectAgent = new Agent({
   id: 'pc-architect',
   name: 'Architect',
 
-  instructions: async ({ requestContext }: { requestContext?: RequestContext }) => {
+  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
     const base = `You are the technical architect for this engineering team.
 You have deep knowledge of this codebase through indexed
 migrations, routes, tests, and architectural patterns.

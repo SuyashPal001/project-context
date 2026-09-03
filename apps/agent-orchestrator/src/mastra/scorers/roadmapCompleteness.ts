@@ -1,4 +1,5 @@
 import { createScorer } from '@mastra/core/evals'
+import { generateText } from 'ai'
 
 import { platformModel } from '../model.js'
 
@@ -26,21 +27,9 @@ export const roadmapCompletenessScorer = createScorer({
     const lower = output.toLowerCase()
     const present = REQUIRED_ELEMENTS.filter(e => lower.includes(e))
     const missing = REQUIRED_ELEMENTS.filter(e => !lower.includes(e))
-    const result = await platformModel.doGenerate({
-      inputFormat: 'messages',
-      mode: { type: 'regular' },
-      prompt: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `You are a roadmap quality reviewer. Score: ${score.toFixed(2)}\n\nPresent elements: ${present.join(', ') || 'none'}. Missing elements: ${missing.join(', ') || 'none'}.\n\nIn one sentence, explain which required roadmap elements (milestones, priority, target dates, acceptance criteria) were present and which were missing.\n\nOutput excerpt:\n${output.slice(0, 2000)}`,
-            },
-          ],
-        },
-      ],
+    const result = await generateText({
+      model: platformModel,
+      prompt: `You are a roadmap quality reviewer. Score: ${score.toFixed(2)}\n\nPresent elements: ${present.join(', ') || 'none'}. Missing elements: ${missing.join(', ') || 'none'}.\n\nIn one sentence, explain which required roadmap elements (milestones, priority, target dates, acceptance criteria) were present and which were missing.\n\nOutput excerpt:\n${output.slice(0, 2000)}`,
     })
-    const text = result.text ?? result.rawCall?.rawPrompt ?? 'No reason generated'
-    return typeof text === 'string' ? text : JSON.stringify(text)
+    return result.text || 'No reason generated'
   })

@@ -1,4 +1,4 @@
-import { generateText, type CoreMessage, type CoreToolMessage } from 'ai';
+import { generateText, type ModelMessage, type ToolModelMessage } from 'ai';
 import { createVertex } from '@ai-sdk/google-vertex';
 import type { AgentRuntime } from '../runtime/interface';
 import type { AgentRunRequest, AgentRunResponse, AgentMessage } from '../runtime/types';
@@ -30,15 +30,15 @@ async function buildProvider() {
 }
 
 /**
- * Map AgentMessage[] to AI SDK CoreMessage[].
+ * Map AgentMessage[] to AI SDK ModelMessage[].
  * System messages are extracted separately and passed as the `system` param.
  * Tool result messages require toolName in the AI SDK — we default to '' since
  * our ToolResult type does not carry toolName (it's an orchestration-layer concern).
  */
-function toCoreMesages(messages: AgentMessage[]): CoreMessage[] {
+function toCoreMesages(messages: AgentMessage[]): ModelMessage[] {
     return messages
         .filter((m) => m.role !== 'system')
-        .map((m): CoreMessage => {
+        .map((m): ModelMessage => {
             // Assistant message with tool calls
             if (m.role === 'assistant' && m.toolCalls?.length) {
                 return {
@@ -49,7 +49,7 @@ function toCoreMesages(messages: AgentMessage[]): CoreMessage[] {
                             type: 'tool-call' as const,
                             toolCallId: tc.id,
                             toolName: tc.name,
-                            args: tc.arguments,
+                            input: tc.arguments,
                         })),
                     ],
                 };
@@ -57,14 +57,15 @@ function toCoreMesages(messages: AgentMessage[]): CoreMessage[] {
 
             // Tool result message
             if (m.role === 'tool' && m.toolResults?.length) {
-                const toolMessage: CoreToolMessage = {
+                const toolMessage: ToolModelMessage = {
                     role: 'tool',
                     content: m.toolResults.map((tr) => ({
                         type: 'tool-result' as const,
                         toolCallId: tr.toolCallId,
                         toolName: '', // ToolResult type doesn't carry toolName — relay fills this
-                        result: tr.result,
-                        isError: !!tr.error,
+                        output: tr.error
+                            ? { type: 'error-json' as const, value: tr.error as any }
+                            : { type: 'json' as const, value: tr.result as any },
                     })),
                 };
                 return toolMessage;
@@ -120,14 +121,14 @@ export class VertexAdapter implements AgentRuntime {
             system,
             messages: coreMessages,
             temperature: skill.config.temperature,
-            maxTokens: policy.maxTokensPerMessage ?? skill.config.maxTokens,
+            maxOutputTokens: policy.maxTokensPerMessage ?? skill.config.maxTokens,
             topP: skill.config.topP,
         });
 
         const toolCalls = result.toolCalls?.map((tc) => ({
             id: tc.toolCallId,
             name: tc.toolName,
-            arguments: tc.args as Record<string, unknown>,
+            arguments: tc.input as Record<string, unknown>,
         }));
 
         return {
@@ -137,9 +138,9 @@ export class VertexAdapter implements AgentRuntime {
                 toolCalls: toolCalls?.length ? toolCalls : undefined,
             },
             tokenCount: {
-                input: result.usage.promptTokens,
-                output: result.usage.completionTokens,
-                total: result.usage.totalTokens,
+                input: result.usage.inputTokens ?? 0,
+                output: result.usage.outputTokens ?? 0,
+                total: result.usage.totalTokens ?? 0,
             },
             model: modelId,
             finishReason: mapFinishReason(result.finishReason),
