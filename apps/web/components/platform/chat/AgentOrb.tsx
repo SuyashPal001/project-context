@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { buildAvatarSvg } from "@/components/platform/agents/avatar-builder/buildAvatarSvg";
+import { randomizeAvatarParams } from "@/components/platform/agents/avatar-builder/avatarParams";
+import { seededRng } from "../personas/PersonaAvatar";
+import type { PersonaSummary } from "../personas/types";
 import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
 
 // NOTE: this canvas + its 3-state system (idle/thinking/searching, eye
-// tracking, lightbulb, detective glasses) only renders when `avatarUrl` is
-// falsy. Every real agent has an auto-generated avatarUrl from creation, so
-// in practice this canvas path never runs today — the `avatarUrl` branch
-// below (a static img, now with optional `liveState`-driven CSS motion) is
-// what actually renders. Left in place rather than removed; flagging so it
-// doesn't read as "the animation system" to the next person touching this file.
+// tracking, lightbulb, detective glasses) only renders when neither
+// `avatarUrl` nor `persona` is set — a fresh agent with no custom avatar and
+// no persona attached. Personas without an uploaded avatarUrl are common
+// (see PersonaAvatar.tsx's own generated-SVG fallback), so this canvas path
+// is a genuine last resort, not dead code — don't assume it "never runs".
 export type OrbState = 'idle' | 'thinking' | 'searching';
 
 interface AgentOrbProps {
@@ -18,6 +21,10 @@ interface AgentOrbProps {
     size?: number;
     isLoading?: boolean;
     avatarUrl?: string | null;
+    /** When set and `avatarUrl` is absent, renders the same deterministic
+     * generated face PersonaAvatar shows elsewhere (sidebar, header) instead
+     * of falling through to the generic canvas orb below. */
+    persona?: PersonaSummary | null;
     /** Drives CSS motion on the static-image branch (avatarUrl set) — kept
      * separate from `state` (the canvas's own 3-state system) so existing
      * callers passing state="idle"/"thinking" don't unexpectedly start
@@ -48,7 +55,7 @@ interface Vars {
 
 function randomBlink() { return 3000 + Math.random() * 5000; }
 
-export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarUrl = null, liveState }: AgentOrbProps) {
+export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarUrl = null, persona = null, liveState }: AgentOrbProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isJumping, setIsJumping] = useState(false);
     const stateRef = useRef<OrbState>(state);
@@ -60,6 +67,11 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
         isHappy: false, happyTimer: 0
     });
     const rafId = useRef(0);
+
+    const generatedSvg = useMemo(() => {
+        if (avatarUrl || !persona) return null;
+        return buildAvatarSvg(randomizeAvatarParams(seededRng(persona.id)));
+    }, [avatarUrl, persona]);
 
     useEffect(() => { stateRef.current = state; }, [state]);
 
@@ -384,6 +396,24 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
                     className="h-full w-full rounded-full object-cover"
                 />
             </div>
+        );
+    }
+
+    // No uploaded avatar but a persona is attached: render the same
+    // deterministic generated face PersonaAvatar shows everywhere else,
+    // instead of the generic canvas orb below.
+    if (generatedSvg) {
+        return (
+            <div
+                data-persona-state={liveState}
+                className="persona-avatar-motion shrink-0 rounded-full overflow-hidden [&>svg]:h-full [&>svg]:w-full"
+                style={{ width: size, height: size }}
+                // buildAvatarSvg only ever interpolates AvatarParams' closed enum
+                // values and hex color strings — never free text — so this is not
+                // an injection surface. See PersonaAvatar.tsx / avatar-builder's
+                // design spec.
+                dangerouslySetInnerHTML={{ __html: generatedSvg }}
+            />
         );
     }
 

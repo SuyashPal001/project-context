@@ -13,6 +13,7 @@ import { ClarificationCard } from "./ClarificationCard";
 import { ApproveCost } from "@/components/platform/credits/ApproveCost";
 import type { CreditResourceType } from "@/lib/hooks/useCredits";
 import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
+import type { PersonaSummary } from "../personas/types";
 
 interface MessageThreadProps {
     messages: Message[];
@@ -34,12 +35,13 @@ interface MessageThreadProps {
     onRegenerate?: (message: Message) => void;
     onEditAndResubmit?: (message: Message, newContent: string) => void;
     agentAvatarUrl?: string | null;
+    agentPersona?: PersonaSummary | null;
     /** Live chat-stream state, applied only to the last assistant message's
      * avatar — every other row stays static. See AgentOrb's `liveState` prop. */
     avatarLiveState?: PersonaAnimationState;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, avatarLiveState }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, avatarLiveState }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -296,13 +298,14 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
                             liveReasoningText={message.isStreaming ? reasoningText : undefined}
                             agentAvatarUrl={agentAvatarUrl}
+                            agentPersona={agentPersona}
                             avatarLiveState={message.role === 'assistant' && isLastMessage ? avatarLiveState : undefined}
                         />
                     );
                 })}
 
                 {awaitingReply ? (
-                    <WaitingForReplyIndicator avatarUrl={agentAvatarUrl} />
+                    <WaitingForReplyIndicator avatarUrl={agentAvatarUrl} persona={agentPersona} />
                 ) : (isStreaming || isRetrying) && !hasStreamingMessage ? (
                     <ThinkingIndicator
                         isRetrying={isRetrying ?? false}
@@ -311,9 +314,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         completedToolCalls={completedToolCalls ?? []}
                         reasoningText={reasoningText ?? ''}
                         agentAvatarUrl={agentAvatarUrl}
+                        agentPersona={agentPersona}
                     />
                 ) : isTyping && !hasStreamingMessage ? (
-                    <ThinkingDots label="Thinking..." avatarUrl={agentAvatarUrl} />
+                    <ThinkingDots label="Thinking..." avatarUrl={agentAvatarUrl} persona={agentPersona} />
                 ) : null}
 
                 {error && (
@@ -408,10 +412,10 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     );
 }
 
-function ThinkingDots({ label = 'Thinking...', avatarUrl }: { label?: string; avatarUrl?: string | null }) {
+function ThinkingDots({ label = 'Thinking...', avatarUrl, persona }: { label?: string; avatarUrl?: string | null; persona?: PersonaSummary | null }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={60} liveState="thinking" avatarUrl={avatarUrl} />
+            <AgentOrb size={60} liveState="thinking" avatarUrl={avatarUrl} persona={persona} />
             <div className="flex items-center gap-2 pt-1.5">
                 <span className="flex gap-[3px] items-center">
                     <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.3s]" />
@@ -427,10 +431,10 @@ function ThinkingDots({ label = 'Thinking...', avatarUrl }: { label?: string; av
 // Static, un-animated counterpart to ThinkingIndicator/ThinkingDots — rendered instead of
 // either whenever the last message is blocking on a pending clarificationRequest. No timer,
 // no shimmer: the agent isn't doing anything, so nothing here should look like it's working.
-function WaitingForReplyIndicator({ avatarUrl }: { avatarUrl?: string | null }) {
+function WaitingForReplyIndicator({ avatarUrl, persona }: { avatarUrl?: string | null; persona?: PersonaSummary | null }) {
     return (
         <div className="flex items-start gap-4 animate-in fade-in duration-300">
-            <AgentOrb size={60} state="idle" avatarUrl={avatarUrl} />
+            <AgentOrb size={60} state="idle" avatarUrl={avatarUrl} persona={persona} />
             <div className="flex items-center gap-2 pt-1.5 text-muted-foreground">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="shrink-0">
                     <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />

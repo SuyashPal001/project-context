@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall } from "./types";
 import { ToolCallCard } from "./ToolCallCard";
+import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
 // useChatStream's onReasoning). Collapsed by default — same disclosure pattern
@@ -264,6 +265,7 @@ export interface ThinkingIndicatorProps {
     completedToolCalls: CompletedToolCall[];
     reasoningText?: string;
     agentAvatarUrl?: string | null;
+    agentPersona?: PersonaSummary | null;
 }
 
 export function ThinkingIndicator({
@@ -273,6 +275,7 @@ export function ThinkingIndicator({
     completedToolCalls,
     reasoningText = '',
     agentAvatarUrl,
+    agentPersona,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
 
@@ -291,7 +294,7 @@ export function ThinkingIndicator({
     if (isRetrying) {
         return (
             <div className="flex items-center gap-4 animate-in fade-in duration-300 pt-1">
-                <AgentOrb size={60} liveState="thinking" isLoading avatarUrl={agentAvatarUrl} />
+                <AgentOrb size={60} liveState="thinking" isLoading avatarUrl={agentAvatarUrl} persona={agentPersona} />
                 <div className="h-6 overflow-hidden">
                     <div
                         className="transition-transform duration-500 ease-in-out"
@@ -317,7 +320,7 @@ export function ThinkingIndicator({
 
     return (
         <div className="flex items-start gap-4">
-            <AgentOrb size={60} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity} avatarUrl={agentAvatarUrl} />
+            <AgentOrb size={60} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity} avatarUrl={agentAvatarUrl} persona={agentPersona} />
             <div className={hasToolActivity ? "flex-1 pt-1" : "flex-1 pt-1.5"}>
                 <LiveTrace
                     isStreaming={isStreaming}

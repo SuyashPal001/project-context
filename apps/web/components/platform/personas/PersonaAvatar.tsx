@@ -10,7 +10,9 @@ import type { PersonaAnimationState } from "./usePersonaAnimationState";
 
 // Deterministic string -> PRNG (xmur3 + mulberry32), so the same persona
 // always rolls the same generated face instead of a new one every render.
-function seededRng(seed: string): () => number {
+// Exported so AgentOrb can generate the identical face when it has a persona
+// but no avatarUrl, instead of falling to its generic canvas orb.
+export function seededRng(seed: string): () => number {
     let h = 1779033703 ^ seed.length;
     for (let i = 0; i < seed.length; i++) {
         h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
