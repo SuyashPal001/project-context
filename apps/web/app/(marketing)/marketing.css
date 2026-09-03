@@ -1,19 +1,23 @@
 /* Scoped to the marketing route group only. Applied via <div class="marketing-root">. */
-/* Design language: Mastra Studio — pure black surfaces, green primary accent, Geist Mono + TASA Explorer */
+/* Design language: warm humanist, built entirely on this app's own theme tokens
+   (globals.css --background/--foreground/--primary/etc.) — no parallel palette.
+   Dark mode is inherited for free: those tokens already flip under the app's
+   .dark class (next-themes), so nothing here needs its own dark-mode block. */
 
 .marketing-root {
-  --mk-bg:          oklch(0%    0 0);                        /* surface1 — pure black */
-  --mk-bg-elev:     oklch(17%   0 0);                        /* surface2 — panel bg */
-  --mk-bg-card:     oklch(19%   0 0);                        /* surface3 — card bg */
-  --mk-fg:          oklch(98.5% 0 0);                        /* neutral6 — primary text */
-  --mk-muted:       oklch(55.3% 0 0);                        /* neutral2 — secondary text */
-  --mk-line:        oklch(100%  0 0 / 6%);                   /* border1 — very subtle */
-  --mk-line-strong: oklch(72.3% .219 149.579 / 25%);         /* green-tinted border */
-  --mk-accent:      oklch(72.3% .219 149.579);               /* accent1 = positive1 — green-500 */
-  --mk-accent-dim:  oklch(72.3% .219 149.579 / 40%);
-  --mk-accent-soft: oklch(87.1% .15 154.449);                /* green-300 */
-  --mk-accent-deep: oklch(39.3% .095 152.535);               /* green-900 */
-  --mk-ink:         oklch(92%   0 0);                        /* neutral5 */
+  --mk-bg:          var(--background);
+  --mk-bg-elev:     var(--card);
+  --mk-bg-card:     var(--secondary);
+  --mk-fg:          var(--foreground);
+  --mk-muted:       var(--muted-foreground);
+  --mk-line:        var(--border);
+  --mk-line-strong: color-mix(in oklab, var(--primary) 34%, transparent);
+  --mk-accent:      var(--primary);
+  --mk-accent-dim:  color-mix(in oklab, var(--primary) 42%, transparent);
+  --mk-accent-soft: color-mix(in oklab, var(--primary) 30%, var(--background));
+  --mk-accent-deep: var(--shimmer-accent); /* theme's own readable-on-both-themes rose */
+  --mk-accent-fg:   var(--primary-foreground);
+  --mk-ink:         var(--foreground);
 
   background: var(--mk-bg);
   color: var(--mk-fg);
@@ -21,10 +25,10 @@
 }
 
 .marketing-root .font-display {
-  font-family: var(--font-instrument-serif), ui-serif, Georgia, serif;
-  font-weight: 400;
-  letter-spacing: -0.02em;
-  font-feature-settings: "liga", "dlig";
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 560;
+  letter-spacing: -0.025em;
+  font-feature-settings: "ss01", "cv11";
 }
 
 .marketing-root .font-mono-mk {
@@ -32,36 +36,15 @@
   font-feature-settings: "ss01", "cv02", "cv11";
 }
 
-/* Layered atmosphere: very restrained green halo + dot grid + grain */
+/* Layered atmosphere: soft rose glow off the theme's own --primary, no grain, no dot grid */
 .marketing-bg {
   position: absolute;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 65% 38% at 50% -6%,  oklch(72.3% .219 149.579 / 8%),  transparent 52%),
-    radial-gradient(ellipse 38% 28% at 92% 88%,  oklch(39.3% .095 152.535 / 12%), transparent 58%);
-}
-
-.marketing-dots {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image: radial-gradient(oklch(72.3% .219 149.579 / 10%) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: linear-gradient(to bottom, black, transparent 60%);
-  -webkit-mask-image: linear-gradient(to bottom, black, transparent 60%);
-}
-
-.marketing-grain {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.06;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.7'/></svg>");
+    radial-gradient(ellipse 60% 42% at 18% -8%, color-mix(in oklab, var(--primary) 16%, transparent), transparent 55%),
+    radial-gradient(ellipse 46% 34% at 96% 6%,  color-mix(in oklab, var(--primary) 10%, transparent), transparent 60%);
 }
 
 .marketing-rule {
@@ -80,24 +63,25 @@
   animation: mk-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .marketing-root .mk-rise {
+    animation: none;
+  }
+}
+
 .marketing-root .mk-d-1 { animation-delay: 80ms; }
 .marketing-root .mk-d-2 { animation-delay: 180ms; }
 .marketing-root .mk-d-3 { animation-delay: 320ms; }
 .marketing-root .mk-d-4 { animation-delay: 460ms; }
 .marketing-root .mk-d-5 { animation-delay: 600ms; }
 
-/* Editorial eyebrow */
+/* Editorial eyebrow — rationed to a few sections, plain words not code-comment style */
 .marketing-root .eyebrow {
-  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--mk-accent-dim);
-}
-
-.marketing-root .eyebrow::before {
-  content: "// ";
-  color: var(--mk-muted);
+  font-family: var(--font-geist-sans), ui-sans-serif, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 560;
+  letter-spacing: 0.01em;
+  color: var(--mk-accent);
 }
 
 /* Section rhythm */

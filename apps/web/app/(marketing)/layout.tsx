@@ -81,8 +81,6 @@ export default function MarketingLayout({
   return (
     <div className="marketing-root relative min-h-screen">
       <div className="marketing-bg" />
-      <div className="marketing-dots" />
-      <div className="marketing-grain" />
       <MarketingNav />
       <main className="pt-16">{children}</main>
       <MarketingFooter />

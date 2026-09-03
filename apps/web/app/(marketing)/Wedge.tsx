@@ -10,13 +10,12 @@ const ours = ["PRD", "Roadmap", "Milestones", "Tasks", "Codebase context", "Appr
 export function Wedge() {
   return (
     <section className="marketing-section relative mx-auto max-w-6xl px-6">
-      <div className="marketing-rule mb-16" />
       <div className="max-w-3xl">
-        <span className="eyebrow">why now</span>
-        <h2 className="mt-6 font-display text-5xl leading-[0.95] tracking-tight sm:text-7xl">
+        <span className="eyebrow">Why now</span>
+        <h2 className="mt-4 font-display text-4xl leading-[1.05] tracking-tight sm:text-6xl">
           Every AI tool covers
           <br />
-          <em className="italic text-[var(--mk-muted)]">one slice.</em>
+          <span className="font-semibold text-[var(--mk-muted)]">one slice.</span>
         </h2>
         <p className="mt-6 max-w-xl text-lg leading-relaxed text-[var(--mk-muted)]">
           You can ship a PRD here, a roadmap there, tasks in another app, and
@@ -25,12 +24,12 @@ export function Wedge() {
         </p>
       </div>
 
-      <div className="mt-20 grid gap-px overflow-hidden border border-[var(--mk-line)] bg-[var(--mk-line)] sm:grid-cols-2">
+      <div className="mt-16 grid gap-4 sm:grid-cols-2">
         {alternatives.map((a) => (
-          <div key={a.name} className="bg-[var(--mk-bg)] p-8 transition-colors hover:bg-[var(--mk-bg-elev)]">
+          <div key={a.name} className="rounded-2xl border border-[var(--mk-line)] bg-[var(--mk-bg-elev)] p-8 transition-colors hover:border-[var(--mk-line-strong)]">
             <div className="flex items-baseline justify-between gap-4">
               <div className="font-display text-2xl">{a.name}</div>
-              <div className="font-mono-mk text-[10px] uppercase tracking-[0.2em] text-[var(--mk-muted)]">
+              <div className="text-xs font-medium text-[var(--mk-muted)]">
                 {a.covers}
               </div>
             </div>
@@ -39,22 +38,22 @@ export function Wedge() {
         ))}
       </div>
 
-      <div className="relative mt-16">
-        <div className="border border-[var(--mk-accent)]/40 bg-gradient-to-br from-[var(--mk-bg-elev)] to-[var(--mk-bg)] p-10 sm:p-14">
-          <span className="eyebrow">what we ship</span>
-          <h3 className="mt-6 font-display text-4xl leading-[0.95] tracking-tight sm:text-6xl">
+      <div className="relative mt-8">
+        <div className="rounded-2xl border border-[var(--mk-accent)]/30 bg-gradient-to-br from-[var(--mk-bg-elev)] to-[var(--mk-bg)] p-10 sm:p-14">
+          <span className="eyebrow">What we ship</span>
+          <h3 className="mt-4 font-display text-3xl leading-[1.05] tracking-tight sm:text-5xl">
             One workspace.
             <br />
-            <em className="italic text-[var(--mk-accent)]">The whole arc.</em>
+            <span className="font-semibold text-[var(--mk-accent)]">The whole arc.</span>
           </h3>
 
           <div className="mt-10 flex flex-wrap gap-2">
             {ours.map((o, i) => (
               <div
                 key={o}
-                className="flex items-center gap-2 border border-[var(--mk-line-strong)] bg-[var(--mk-bg)] px-4 py-2"
+                className="flex items-center gap-2 rounded-full border border-[var(--mk-line-strong)] bg-[var(--mk-bg)] px-4 py-2"
               >
-                <span className="font-mono-mk text-[10px] text-[var(--mk-accent)]">
+                <span className="text-xs font-medium text-[var(--mk-accent)]">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <span className="text-sm">{o}</span>
@@ -63,11 +62,11 @@ export function Wedge() {
           </div>
 
           <p className="mt-10 max-w-2xl text-base leading-relaxed text-[var(--mk-muted)]">
-            A full AI engineering team — product manager, analyst, project
-            manager, tech lead, and codebase architect — working in{" "}
-            <em className="italic text-[var(--mk-fg)]">your</em> PRDs,{" "}
-            <em className="italic text-[var(--mk-fg)]">your</em> plans,{" "}
-            <em className="italic text-[var(--mk-fg)]">your</em> board. You
+            A full AI engineering team, product manager, analyst, project
+            manager, tech lead, and codebase architect, working in{" "}
+            <span className="font-semibold text-[var(--mk-fg)]">your</span> PRDs,{" "}
+            <span className="font-semibold text-[var(--mk-fg)]">your</span> plans,{" "}
+            <span className="font-semibold text-[var(--mk-fg)]">your</span> board. You
             approve every gate.
           </p>
         </div>
