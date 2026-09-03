@@ -61,6 +61,7 @@ export const messages = pgTable('messages', {
   // { id, toolName, arguments, description, status, decisionAt } — persisted MCP
   // write-tool approval card so the pending/approved/dismissed state survives a reload.
   approvalRequest: jsonb('approval_request'),
+  generationConfirmRequest: jsonb('generation_confirm_request'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => ({
   // Postgres does not index foreign keys on its own, and this table had no index
