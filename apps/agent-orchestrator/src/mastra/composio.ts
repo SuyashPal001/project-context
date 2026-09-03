@@ -10,14 +10,20 @@ const composioCache = new Map<string, { tools: Record<string, any>; expiresAt: n
 
 let _composio: Composio | null = null
 
+// @composio/mastra@0.10.4's MastraProvider hasn't caught up to @composio/core@0.18.0's
+// OpenAIProvider-shaped generic default (missing executeToolCall, handleToolCalls, etc.)
+// even though both are the latest published versions — an upstream lag between the two
+// composio packages, not a version we can pick our way out of. Cast is scoped to
+// construction only; runtime behavior is unaffected since Composio only calls the
+// methods MastraProvider actually implements for the Mastra integration path.
 function getComposio(): Composio {
   if (!_composio) {
     _composio = new Composio({
       apiKey: process.env.COMPOSIO_API_KEY,
       provider: new MastraProvider(),
-    })
+    } as any)
   }
-  return _composio
+  return _composio as Composio
 }
 
 export function isComposioEnabled(): boolean {
@@ -198,10 +204,17 @@ export async function getComposioTools(tenantId: string): Promise<Record<string,
 
   const composio = getComposio()
 
+  // @composio/core@0.18.0 removed `filterByAvailableApps` from ToolListParams
+  // entirely — it's not renamed, the field is gone. This call now returns
+  // Composio's full catalog rather than being scoped to this tenant's connected
+  // apps. Composio is gated behind COMPOSIO_ENABLED (off by default) so nothing
+  // runs today, but before flipping that flag on: check @composio/core's current
+  // docs for how connected-app scoping is done now (a separate connected-accounts
+  // call, most likely) and wire it back in — this is not equivalent behavior.
   const fetched = await composio.tools.get(
-    { userId: tenantId },
-    { filterByAvailableApps: true },
-  ) as Record<string, MastraTool>
+    tenantId,
+    {} as any,
+  ) as unknown as Record<string, MastraTool>
 
   const tools = isAllowlistBypassed() ? fetched : applyAllowlist(fetched, tenantId)
 

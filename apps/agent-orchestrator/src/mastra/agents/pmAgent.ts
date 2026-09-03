@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
-import { tenantContextSchema } from '../context.js'
+import { tenantContextSchema, type TenantContext } from '../context.js'
 import { selectModel } from './modelSelection.js'
 import { getMastraMemory } from '../memory.js'
 import { fetchAgentContext } from '../tools/fetchAgentContext.js'
@@ -14,7 +14,7 @@ export const pmAgent = new Agent({
   id: 'pc-pm',
   name: 'Saarthi PM',
   description: 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.',
-  instructions: async ({ requestContext }: { requestContext?: RequestContext }) => {
+  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
     const base = `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
 
 ## Your specialist agents

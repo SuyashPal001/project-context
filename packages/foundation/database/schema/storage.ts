@@ -2,10 +2,20 @@ import { pgTable, uuid, varchar, integer, timestamp, pgEnum, jsonb, text, index,
 import { tenants } from './tenancy';
 import { users } from './auth';
 
+// pending: created, awaiting an admin's verify action before ingestion is allowed.
+// verified: admin has confirmed the folder's identity — files can be ingested.
+export const personFolderStatusEnum = pgEnum('person_folder_status', ['pending', 'verified']);
+
 export const personFolders = pgTable('person_folders', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   identifier: text('identifier').notNull(),
+  displayName: text('display_name'),
+  status: personFolderStatusEnum('status').notNull().default('pending'),
+  // Nullable, not required — this column is new on an existing table (see
+  // integrations.ts for the same pattern) and can't assume zero pre-existing
+  // rows, unlike status which has a safe default to backfill against.
+  createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({

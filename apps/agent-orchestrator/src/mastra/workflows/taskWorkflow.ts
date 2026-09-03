@@ -1,7 +1,9 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
+import { isValidationError } from '@mastra/core/tools'
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { z } from 'zod'
+import { tenantContextSchema } from '../context.js'
 
 import { formatterAgent } from '../agents/formatterAgent.js'
 import { saveTasks } from '../tools/saveTasks.js'
@@ -264,6 +266,7 @@ export const formatStep = createStep({
 
 export const saveStep = createStep({
   id: 'save-tasks',
+  requestContextSchema: tenantContextSchema,
   inputSchema: formatOutputSchema,
   outputSchema: saveOutputSchema,
   execute: async ({ inputData, requestContext }) => {
@@ -271,8 +274,9 @@ export const saveStep = createStep({
     try {
       const result = await saveTasks.execute!(
         { taskData },
-        { requestContext },
+        { requestContext } as any,
       )
+      if (!result || isValidationError(result)) throw new Error(`saveTasks failed: ${isValidationError(result) ? result.message : 'no result'}`)
       console.log(`[saveStep:tasks] saved tasksCreated=${result.tasksCreated} planId=${taskData.planId}`)
       return { planId: taskData.planId, taskCount: result.tasksCreated }
     } catch (err) {

@@ -24,7 +24,6 @@ export const architectMemory = new Memory({
       }),
     },
     semanticRecall: {
-      enabled: true,
       topK: 3,
       messageRange: 2,
     },

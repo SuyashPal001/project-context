@@ -1,4 +1,5 @@
 import type { RequestContext } from '@mastra/core/request-context'
+import type { TenantContext } from '../context.js'
 import { platformModel, liteModel, privateModel, resolveModel } from '../model.js'
 
 // Dynamic model selection, in precedence order:
@@ -11,7 +12,7 @@ import { platformModel, liteModel, privateModel, resolveModel } from '../model.j
 // Typed with a required `requestContext` to match platformAgent.ts's original inline
 // function (and Mastra's DynamicArgument signature) — but still reached defensively
 // via `?.` below, since the original code did too despite the non-optional type.
-export function selectModel({ requestContext }: { requestContext: RequestContext }) {
+export function selectModel({ requestContext }: { requestContext: RequestContext<TenantContext> }) {
   const sensitivity = requestContext?.get('maxDataSensitivity') as string | undefined
   if (sensitivity === 'restricted') return privateModel
 

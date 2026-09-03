@@ -202,7 +202,7 @@ export async function runMastraTaskSteps(
         taskTitle: ctx.taskTitle, taskDescription: ctx.taskDescription ?? '',
         acceptanceCriteria: ctx.acceptanceCriteria ?? '', tenantId: ctx.tenantId,
         attachmentContext: ctx.attachmentContext ?? '', referenceText: ctx.referenceText ?? '',
-        links: ctx.links ?? [],
+        links: ctx.links ?? [], autoApprove: true,
       },
     })
 

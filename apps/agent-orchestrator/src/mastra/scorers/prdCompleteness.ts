@@ -1,4 +1,5 @@
 import { createScorer } from '@mastra/core/evals'
+import { generateText } from 'ai'
 
 import { platformModel } from '../model.js'
 
@@ -30,21 +31,9 @@ export const prdCompletenessScorer = createScorer({
   .generateReason(async ({ run, score }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const output = (run.output as any)?.text ?? JSON.stringify(run.output)
-    const result = await platformModel.doGenerate({
-      inputFormat: 'messages',
-      mode: { type: 'regular' },
-      prompt: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `You are a PRD quality reviewer. Score: ${score.toFixed(2)}\n\nReview this PRD output and explain in one sentence which required sections are present and which are missing. Required sections: Problem Statement, Goals, User Stories, Functional Requirements, Non-Functional Requirements, Success Metrics.\n\nPRD output:\n${output.slice(0, 2000)}`,
-            },
-          ],
-        },
-      ],
+    const result = await generateText({
+      model: platformModel,
+      prompt: `You are a PRD quality reviewer. Score: ${score.toFixed(2)}\n\nReview this PRD output and explain in one sentence which required sections are present and which are missing. Required sections: Problem Statement, Goals, User Stories, Functional Requirements, Non-Functional Requirements, Success Metrics.\n\nPRD output:\n${output.slice(0, 2000)}`,
     })
-    const text = result.text ?? result.rawCall?.rawPrompt ?? 'No reason generated'
-    return typeof text === 'string' ? text : JSON.stringify(text)
+    return result.text || 'No reason generated'
   })

@@ -1,6 +1,6 @@
 import { Agent } from '@mastra/core/agent'
 import type { RequestContext } from '@mastra/core/request-context'
-import { tenantContextSchema } from '../context.js'
+import { tenantContextSchema, type TenantContext } from '../context.js'
 import { selectModel } from './modelSelection.js'
 import { getMastraMemory } from '../memory.js'
 import { generateSong } from '../tools/generateSong.js'
@@ -9,7 +9,7 @@ export const producerAgent = new Agent({
   id: 'pc-producer',
   name: 'Producer',
   description: 'Generates instrumental music clips from a text description.',
-  instructions: async ({ requestContext }: { requestContext?: RequestContext }) => {
+  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
     const base = `You are Producer — an instrumental music generation specialist.
 
 ## Rules

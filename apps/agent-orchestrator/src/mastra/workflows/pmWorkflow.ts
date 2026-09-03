@@ -1,9 +1,11 @@
 import { createStep, createWorkflow } from '@mastra/core/workflows'
+import { isValidationError } from '@mastra/core/tools'
 import { z } from 'zod'
 import pg from 'pg'
 import { fetchPRD } from '../tools/fetchPRD.js'
 import { fetchPlan } from '../tools/fetchPlan.js'
 import { makeAppPool } from '../../db.js'
+import { tenantContextSchema } from '../context.js'
 
 // ─── Shared DB pool (plan activation only) ───────────────────────────────────
 
@@ -37,13 +39,14 @@ const workflowInputSchema = z.object({
 
 export const prdStep = createStep({
   id: 'prd-step',
+  requestContextSchema: tenantContextSchema,
   inputSchema: workflowInputSchema,
   outputSchema: z.object({ prdId: z.string(), prdContent: z.string() }),
   resumeSchema: z.object({ approved: z.boolean().optional(), revise: z.string().optional() }),
   suspendSchema: z.object({ phase: z.literal('prd'), prdId: z.string(), title: z.string() }),
   execute: async ({ inputData, resumeData, suspend, suspendData, mastra, requestContext }) => {
     const runPrdWorkflow = async (userMessage: string) => {
-      const run = mastra!.getWorkflow('prd-workflow').createRun()
+      const run = await mastra!.getWorkflow('prd-workflow').createRun()
       const result = await (run as any).execute({ inputData: { userMessage, conversationHistory: '' }, requestContext })
       return (result?.result ?? result) as { prdId: string; prdContent: string }
     }
@@ -70,7 +73,12 @@ export const prdStep = createStep({
     if (!resumeData?.approved) throw new Error('PRD approval declined')
 
     // Approved — fetch content (draft status allowed) to pass to roadmapStep
-    const { prd } = await fetchPRD.execute!({ prdId: suspendData.prdId, allowDraft: true }, { requestContext })
+    // Benign Mastra quirk: createStep resolves defaulted schema fields as required
+    // strings, createTool keeps them optional — runtime values always match since
+    // defaults guarantee presence, hence the cast rather than a real type mismatch.
+    const prdResult = await fetchPRD.execute!({ prdId: suspendData.prdId, allowDraft: true }, { requestContext } as any)
+    if (!prdResult || isValidationError(prdResult)) throw new Error(`PRD ${suspendData.prdId} fetch failed: ${isValidationError(prdResult) ? prdResult.message : 'no result'}`)
+    const { prd } = prdResult
     if (!prd) throw new Error(`PRD ${suspendData.prdId} not found after approval`)
     return { prdId: prd.id, prdContent: prd.content }
   },
@@ -82,13 +90,14 @@ export const prdStep = createStep({
 
 export const roadmapStep = createStep({
   id: 'roadmap-step',
+  requestContextSchema: tenantContextSchema,
   inputSchema: z.object({ prdId: z.string(), prdContent: z.string() }),
   outputSchema: z.object({ planId: z.string(), title: z.string() }),
   resumeSchema: z.object({ approved: z.boolean() }),
   suspendSchema: z.object({ phase: z.literal('roadmap'), planId: z.string(), title: z.string() }),
   execute: async ({ inputData, resumeData, suspend, suspendData, mastra, requestContext }) => {
     if (!suspendData?.planId) {
-      const run = mastra!.getWorkflow('roadmap-workflow').createRun()
+      const run = await mastra!.getWorkflow('roadmap-workflow').createRun()
       const result = await (run as any).execute({ inputData: { prdContent: inputData.prdContent }, requestContext })
       const { planId, title } = (result?.result ?? result) as { planId: string; title: string }
 
@@ -110,13 +119,16 @@ export const roadmapStep = createStep({
 
 export const taskStep = createStep({
   id: 'task-step',
+  requestContextSchema: tenantContextSchema,
   inputSchema: z.object({ planId: z.string(), title: z.string() }),
   outputSchema: z.object({ planId: z.string(), taskCount: z.number() }),
   execute: async ({ inputData, mastra, requestContext }) => {
-    const { plan, reason } = await fetchPlan.execute!({ planId: inputData.planId }, { requestContext })
+    const planResult = await fetchPlan.execute!({ planId: inputData.planId }, { requestContext } as any)
+    if (!planResult || isValidationError(planResult)) throw new Error(`Cannot fetch plan for tasks: ${isValidationError(planResult) ? planResult.message : 'no result'}`)
+    const { plan, reason } = planResult
     if (!plan) throw new Error(`Cannot fetch plan for tasks: ${reason}`)
 
-    const run = mastra!.getWorkflow('task-workflow').createRun()
+    const run = await mastra!.getWorkflow('task-workflow').createRun()
     const result = await (run as any).execute({
       inputData: { planData: JSON.stringify(plan) },
       requestContext,

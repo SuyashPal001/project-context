@@ -11,6 +11,7 @@ const requestContextSchema = z.object({
   tenantId: z.string(),
   agentId: z.string().optional(),
   userId: z.string().optional(),
+  maxDataSensitivity: z.string().optional(),
 })
 
 export const fetchAgentContext = createTool({

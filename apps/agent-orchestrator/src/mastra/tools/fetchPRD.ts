@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import pg from 'pg'
 import { makeAppPool } from '../../db.js'
+import { tenantContextSchema } from '../context.js'
 
 let _pool: pg.Pool | null = null
 
@@ -23,16 +24,10 @@ const prdRowSchema = z.object({
   status: z.string(),
 })
 
-const requestContextSchema = z.object({
-  tenantId: z.string(),
-  agentId: z.string().optional(),
-  userId: z.string().optional(),
-})
-
 export const fetchPRD = createTool({
   id: 'fetch-prd',
   description: 'Reads an agent_prds record by id. By default requires approved status; set allowDraft=true to read drafts too. Returns null with a reason if not found.',
-  requestContextSchema,
+  requestContextSchema: tenantContextSchema,
   inputSchema: z.object({
     prdId: z.string(),
     allowDraft: z.boolean().optional().describe('Set true to read draft PRDs (for editing). Defaults to false (approved only).'),

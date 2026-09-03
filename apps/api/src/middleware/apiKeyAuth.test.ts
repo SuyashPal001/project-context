@@ -59,7 +59,7 @@ describe('apiKeyAuthMiddleware', () => {
     const res = await app.request('/test', {
       headers: { Authorization: 'Bearer ak_testkey' },
     })
-    const body = await res.json()
+    const body = await res.json() as any
 
     // Key only grants agent_tasks:create — role also has agent_tasks:delete and
     // billing:read, but those must NOT leak through despite the role permitting them.

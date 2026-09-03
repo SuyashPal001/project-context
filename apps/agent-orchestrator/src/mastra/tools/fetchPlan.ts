@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import pg from 'pg'
 import { makeAppPool } from '../../db.js'
+import { tenantContextSchema } from '../context.js'
 
 let _pool: pg.Pool | null = null
 
@@ -33,16 +34,11 @@ const planRowSchema = z.object({
   milestones: z.array(milestoneSchema),
 })
 
-const requestContextSchema = z.object({
-  tenantId: z.string(),
-  agentId: z.string().optional(),
-  userId: z.string().optional(),
-})
 
 export const fetchPlan = createTool({
   id: 'fetch-plan',
   description: 'Reads a project_plans record with its milestones by planId. Returns null with a reason if not found.',
-  requestContextSchema,
+  requestContextSchema: tenantContextSchema,
   inputSchema: z.object({
     planId: z.string(),
   }),

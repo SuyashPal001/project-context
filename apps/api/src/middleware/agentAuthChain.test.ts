@@ -73,7 +73,7 @@ describe('agent request through the real middleware chain', () => {
     })
 
     const res = await app.request('/test', { headers: { Authorization: 'Bearer ak_testkey' } })
-    const body = await res.json()
+    const body = await res.json() as any
 
     expect(res.status).toBe(200)
     expect(body.tenant).toEqual({ id: 'tenant-1', slug: 'acme', status: 'active' })

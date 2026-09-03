@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import pg from 'pg'
 import { makeAppPool } from '../../db.js'
+import { tenantContextSchema } from '../context.js'
 
 let _pool: pg.Pool | null = null
 
@@ -15,16 +16,11 @@ function getPool(): pg.Pool {
   return _pool
 }
 
-const requestContextSchema = z.object({
-  tenantId: z.string(),
-  agentId: z.string().optional(),
-  userId: z.string().optional(),
-})
 
 export const savePRD = createTool({
   id: 'save-prd',
   description: 'Saves or updates a PRD draft in agent_prds. Pass existingPrdId to update an existing draft.',
-  requestContextSchema,
+  requestContextSchema: tenantContextSchema,
   inputSchema: z.object({
     title: z.string(),
     content: z.string(),

@@ -9,6 +9,7 @@ import pg from 'pg'
 
 import { platformModel, liteModel, privateModel } from '../model.js'
 import { selectModel } from './modelSelection.js'
+import type { TenantContext } from '../context.js'
 import { getMastraMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
@@ -257,7 +258,7 @@ export const platformAgent = new Agent({
   id: 'disco',
   name: 'Disco',
 
-  instructions: async ({ requestContext }: { requestContext?: RequestContext }) => {
+  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
     // Per-agent override takes precedence over the global agent_templates prompt.
     // Set by chatStream.ts from agentSkills.systemPrompt before calling stream().
     // PRD generation is handled by prdWorkflow (gatherStep → writeStep → formatStep).
@@ -292,7 +293,7 @@ NEVER claim to have called render_canvas unless you actually called it in this r
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT
   },
 
-  tools: async ({ requestContext }: { requestContext: RequestContext }) => {
+  tools: async ({ requestContext }: { requestContext: RequestContext<TenantContext> }) => {
     const tenantId = requestContext.get('tenantId') as string | undefined
 
     if (!tenantId) {

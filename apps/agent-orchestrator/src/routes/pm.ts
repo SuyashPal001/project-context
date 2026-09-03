@@ -108,7 +108,7 @@ pmRouter.post('/pm/resume', async (c) => {
 
   try {
     const wf  = mastra.getWorkflow('pm-workflow')
-    const run = wf.createRun({ runId })
+    const run = await wf.createRun({ runId })
     const result = await run.resume({ resumeData, step: stepId, requestContext })
 
     if (result.status === 'suspended') {

@@ -45,7 +45,7 @@ describe('tenantResolutionMiddleware', () => {
     })
 
     const res = await app.request('/test')
-    const body = await res.json()
+    const body = await res.json() as any
 
     expect(res.status).toBe(200)
     expect(body.tenant).toEqual({ id: 'tenant-1', slug: 'acme', status: 'active' })
@@ -66,7 +66,7 @@ describe('tenantResolutionMiddleware', () => {
     })
 
     const res = await app.request('/test')
-    const body = await res.json()
+    const body = await res.json() as any
 
     expect(res.status).toBe(200)
     expect(body.tenant).toEqual({ id: 'tenant-1', slug: 'acme', status: 'active' })
@@ -78,7 +78,7 @@ describe('tenantResolutionMiddleware', () => {
     app.get('/api/v1/some-protected-route', (c) => c.json({ ok: true }))
 
     const res = await app.request('/api/v1/some-protected-route')
-    const body = await res.json()
+    const body = await res.json() as any
 
     expect(res.status).toBe(403)
     expect(body.code).toBe('ONBOARDING_REQUIRED')

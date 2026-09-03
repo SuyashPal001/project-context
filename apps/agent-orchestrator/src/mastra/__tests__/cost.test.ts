@@ -30,10 +30,10 @@ describe.skipIf(!TEST_DB)('calculateCostUsd via credit_rates cache', () => {
   afterEach(async () => {
     // Belt-and-suspenders cleanup in case the `it` block's own finally didn't
     // run - always leave exactly the seeded version-1 row active.
-    await db.execute(sql`
+    await (db.execute as any)(sql`
       delete from credit_rates where resource_type = 'llm_tokens' and subject = 'gemini-2.5-flash' and version = 999
     `)
-    await db.execute(sql`
+    await (db.execute as any)(sql`
       update credit_rates set is_active = true
       where resource_type = 'llm_tokens' and subject = 'gemini-2.5-flash' and version = 1
     `)
@@ -43,14 +43,14 @@ describe.skipIf(!TEST_DB)('calculateCostUsd via credit_rates cache', () => {
   it('prices from an active credit_rates row that differs from the fallback map', async () => {
     // Only one row may be active per (resource_type, subject) at a time -
     // deactivate the seeded version so the overridden version is unambiguous.
-    await db.execute(sql`
+    await (db.execute as any)(sql`
       update credit_rates set is_active = false
       where resource_type = 'llm_tokens' and subject = 'gemini-2.5-flash' and version = 1
     `)
     // Distinct from FALLBACK_PRICING's flash entry (15,000,000 / 60,000,000
     // micro per million tokens) so a pass can only mean the cache was
     // actually consulted.
-    await db.execute(sql`
+    await (db.execute as any)(sql`
       insert into credit_rates (resource_type, subject, version, pricing_schema, is_active)
       values ('llm_tokens', 'gemini-2.5-flash', 999,
               '{"per_million_tokens_micro": {"input": 1000000, "output": 2000000}}'::jsonb, true)
