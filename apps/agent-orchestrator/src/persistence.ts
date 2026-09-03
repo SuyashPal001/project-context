@@ -208,6 +208,66 @@ export function updateApprovalRequest(
 }
 
 
+export interface GenerationConfirmRequestPayload {
+  id: string
+  resourceType: string
+  subject: string
+  label: string
+  status: 'pending' | 'approved' | 'declined'
+  decisionAt?: string
+}
+
+export function saveGenerationConfirmRequest(
+  idToken: string,
+  conversationId: string,
+  messageId: string,
+  generationConfirmRequest: GenerationConfirmRequestPayload,
+): void {
+  const payload = {
+    id: messageId,
+    role: 'assistant',
+    content: '',
+    generationConfirmRequest,
+    createdAt: new Date().toISOString(),
+  }
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
+    method: 'POST',
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+    body: JSON.stringify(payload),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] saveGenerationConfirmRequest status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] saveGenerationConfirmRequest status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] saveGenerationConfirmRequest error:', err.message)
+  })
+}
+
+export function updateGenerationConfirmRequest(
+  idToken: string,
+  conversationId: string,
+  messageId: string,
+  update: Pick<GenerationConfirmRequestPayload, 'status' | 'decisionAt'>,
+): void {
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/${messageId}/generation-confirm`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+    body: JSON.stringify({ generationConfirmRequest: update }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] updateGenerationConfirmRequest status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] updateGenerationConfirmRequest status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] updateGenerationConfirmRequest error:', err.message)
+  })
+}
+
 export interface AttachmentPayload {
   fileId: string
   name: string
