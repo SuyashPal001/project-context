@@ -83,6 +83,93 @@ async function handleEmbeddings(req: IncomingMessage, res: ServerResponse): Prom
   }
 }
 
+// ---------------------------------------------------------------------------
+// Gemini-native embedContent / batchEmbedContents handler
+// The @ai-sdk/google provider calls POST /v1/models/:model:embedContent
+// (not /v1/embeddings). Mastra 1.64 probes embedder dimension at startup
+// via this endpoint — a 404 here causes every session to fail immediately.
+// ---------------------------------------------------------------------------
+
+async function handleGeminiEmbedContent(req: IncomingMessage, res: ServerResponse, isBatch: boolean): Promise<void> {
+  let body: string;
+  try { body = await readBody(req); } catch (err) {
+    const status = (err as Error).message === 'PAYLOAD_TOO_LARGE' ? 413 : 400;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Failed to read request body' } }));
+    return;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let payload: any;
+  try { payload = JSON.parse(body); } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Invalid JSON' } }));
+    return;
+  }
+
+  // Extract model name from URL: /v1/models/gemini-embedding-001:embedContent
+  const modelMatch = req.url?.match(/\/v1\/models\/([^/:?]+)/);
+  const embModel = modelMatch?.[1] ?? 'text-embedding-004';
+
+  // Normalise to Vertex-compatible model name — gemini-embedding-001 is
+  // available on Vertex under the same name; text-embedding-004 is the
+  // fallback for older model IDs.
+  const vertexModel = embModel.startsWith('gemini-embedding') ? embModel : 'text-embedding-004';
+
+  // Extract text inputs from Gemini-native request format
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function extractText(content: any): string {
+    if (typeof content === 'string') return content;
+    const parts: Array<{ text?: string }> = content?.parts ?? [];
+    return parts.map(p => p.text ?? '').join(' ');
+  }
+
+  const texts: string[] = isBatch
+    ? (payload.requests ?? []).map((r: { content: unknown }) => extractText(r.content))
+    : [extractText(payload.content)];
+
+  const PROJECT  = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? '';
+  const LOCATION = process.env.VERTEX_LOCATION ?? process.env.GCLOUD_LOCATION ?? 'us-central1';
+  const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${vertexModel}:predict`;
+
+  try {
+    const client = await _auth.getClient();
+    const tokenResp = await client.getAccessToken();
+
+    const vertexResp = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenResp.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instances: texts.map(content => ({ content })) }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!vertexResp.ok) {
+      const errText = await vertexResp.text();
+      console.error('[inference-gateway] gemini-embed error:', vertexResp.status, errText);
+      res.writeHead(vertexResp.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: errText } }));
+      return;
+    }
+
+    const vertexData = await vertexResp.json() as { predictions: Array<{ embeddings: { values: number[] } }> };
+    const values = vertexData.predictions.map(p => p.embeddings.values);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    if (isBatch) {
+      // batchEmbedContents response: { embeddings: [{ values: [...] }] }
+      res.end(JSON.stringify({ embeddings: values.map(v => ({ values: v })) }));
+    } else {
+      // embedContent response: { embedding: { values: [...] } }
+      res.end(JSON.stringify({ embedding: { values: values[0] ?? [] } }));
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    console.error('[inference-gateway] gemini-embed exception:', message);
+    if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: { message } }));
+  }
+}
+
 const PORT = parseInt(process.env.PORT ?? '4001', 10);
 const DEFAULT_MODEL = process.env.VERTEX_MODEL ?? 'gemini-2.5-flash';
 
@@ -398,6 +485,16 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Video generation (Director agent)
   if (req.method === 'POST' && req.url === '/v1/video/generations') {
     await handleVideoGenerations(req, res, readBody);
+    return;
+  }
+
+  // Gemini-native embedding endpoints (@ai-sdk/google provider format)
+  if (req.method === 'POST' && req.url?.includes(':embedContent')) {
+    await handleGeminiEmbedContent(req, res, false);
+    return;
+  }
+  if (req.method === 'POST' && req.url?.includes(':batchEmbedContents')) {
+    await handleGeminiEmbedContent(req, res, true);
     return;
   }
 
