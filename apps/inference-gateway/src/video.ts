@@ -39,8 +39,8 @@ export function classifyInteractionsVideoResponse(interactionResponse: any): Vid
   // guaranteed to land in the first step (e.g. a text step could precede it).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const videoBlock = steps.flatMap((s: any) => s?.content ?? []).find((c: any) => c.type === 'video')
-  if (!videoBlock?.video?.data) return { refused: true, reason: 'NO_VIDEO_CONTENT' }
-  return { videoBase64: videoBlock.video.data, mimeType: videoBlock.video.mime_type ?? 'video/mp4' }
+  if (!videoBlock?.data) return { refused: true, reason: 'NO_VIDEO_CONTENT' }
+  return { videoBase64: videoBlock.data, mimeType: videoBlock.mime_type ?? 'video/mp4' }
 }
 
 async function callGeminiApiKeyVideoModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
@@ -52,7 +52,7 @@ async function callGeminiApiKeyVideoModel(req: VideoGenerationRequest): Promise<
     body: JSON.stringify({
       model: req.model,
       input: req.prompt,
-      response_format: { type: 'video', resolution: '720p', delivery: 'base64' },
+      response_format: { type: 'video', resolution: '720p', delivery: 'inline' },
       generation_config: { video_config: { task: req.task } },
     }),
     // Video generation is slower than the image/music paths this timeout was
