@@ -128,8 +128,13 @@ export function AgentsView() {
             queryClient.invalidateQueries({ queryKey: ["agents"] });
             toast.success(`${persona.name} hired.`);
             setSelectedPersona(null);
-        } catch {
-            toast.error("Failed to hire employee.");
+        } catch (err) {
+            if (err instanceof ApiError && err.data?.code === "AGENT_LIMIT_REACHED") {
+                toast.error(`Agent limit reached (${err.data.used}/${err.data.limit} on your plan).`);
+                return;
+            }
+            const message = err instanceof ApiError ? (err.data?.error ?? err.data?.message) : undefined;
+            toast.error(message || "Failed to hire employee.");
         }
     };
 
