@@ -36,6 +36,11 @@ export const openrouterBreaker = new CircuitBreaker('openrouter', { failureThres
 export const vertexImageBreaker = new CircuitBreaker('vertex-image', { failureThreshold: 10, resetTimeoutMs: 60_000 });
 export const geminiImageBreaker = new CircuitBreaker('gemini-image', { failureThreshold: 5, resetTimeoutMs: 60_000 });
 
+// Music generation breaker for lyria-002 (apps/inference-gateway/src/music.ts) — no
+// Gemini-API-key fallback available. Isolated from chat/image breakers to prevent
+// unrelated traffic degradation.
+export const vertexMusicBreaker = new CircuitBreaker('vertex-music', { failureThreshold: 10, resetTimeoutMs: 60_000 });
+
 const vertexCB     = new CircuitBreakerAdapter(vertexAdapter,     vertexBreaker);
 const anthropicCB  = new CircuitBreakerAdapter(anthropicAdapter,  anthropicBreaker);
 const ollamaCB     = new CircuitBreakerAdapter(ollamaAdapter,     ollamaBreaker);
