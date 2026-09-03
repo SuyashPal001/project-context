@@ -12,7 +12,7 @@ import http from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GoogleAuth } from 'google-auth-library';
 import type { OpenAIRequest } from './types';
-import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker, vertexImageBreaker, geminiImageBreaker } from './router';
+import { getAdapterChain, getPrivateOnlyChain, vertexBreaker, anthropicBreaker, ollamaBreaker, openrouterBreaker, vertexImageBreaker, geminiImageBreaker, vertexMusicBreaker } from './router';
 import { requestsTotal, fallbacksTotal, latency, renderMetrics } from './metrics';
 import { isAuthorizedCaller, extractServiceKey } from './auth';
 import { handleImageGenerations } from './images.js';
@@ -350,6 +350,7 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
       openrouter:   openrouterBreaker.getStatus(),
       vertexImage:  vertexImageBreaker.getStatus(),
       geminiImage:  geminiImageBreaker.getStatus(),
+      vertexMusic:  vertexMusicBreaker.getStatus(),
     });
     res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
     res.end(body);
