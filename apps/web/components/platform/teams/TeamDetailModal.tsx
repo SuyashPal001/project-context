@@ -123,6 +123,7 @@ export function TeamDetailModal({
                                 placeholder="Search employees..."
                                 value={memberSearch}
                                 onChange={(e) => setMemberSearch(e.target.value)}
+                                className="focus-visible:border-foreground/30 focus-visible:ring-foreground/10"
                             />
                             <div className="max-h-48 space-y-1 overflow-y-auto">
                                 {available.length > 0 ? (

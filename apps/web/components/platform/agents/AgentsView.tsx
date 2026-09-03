@@ -255,7 +255,7 @@ export function AgentsView() {
                             placeholder="Search employees..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            className="pl-9"
+                            className="pl-9 focus-visible:border-foreground/30 focus-visible:ring-foreground/10"
                         />
                     </div>
                 )}
