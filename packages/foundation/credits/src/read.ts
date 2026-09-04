@@ -113,7 +113,7 @@ export async function getUsageByType(tenantId: string): Promise<UsageByType> {
   const rows = await db.execute(sql`
     select job_type, sum(-amount_micro) as spent
       from credit_ledger
-     where tenant_id = ${tenantId} and kind = 'debit'
+     where tenant_id = ${tenantId} and kind in ('debit', 'refund', 'settle')
      group by job_type
   `) as unknown as { job_type: string | null; spent: string | null }[];
 
@@ -134,13 +134,22 @@ export interface LastGrantSummary {
   grantType: string;
 }
 
-/** The tenant's most recently created grant, regardless of expiry or
- * remaining balance — used only to compute a "percent since last top-up"
- * indicator, not for spend-eligibility (that's getBalance's job). */
+/** The grant currently being drawn from — i.e. the oldest still-live grant,
+ * matching spend_credits()'s own FIFO order (`expires_at nulls last,
+ * created_at asc`) and its live-grant filter (not expired, not fully spent).
+ * This is what feeds "percent consumed since last top-up": a newer grant
+ * that spend hasn't touched yet would misreport 0% consumed while an older
+ * grant is still being drawn down. Uses the same live-grant `where` as
+ * getBalance's `grants` query above — reused, not reinvented. */
 export async function getLastGrant(tenantId: string): Promise<LastGrantSummary | null> {
   const [row] = await db.select().from(creditGrants)
-    .where(eq(creditGrants.tenantId, tenantId))
-    .orderBy(desc(creditGrants.createdAt)).limit(1);
+    .where(and(
+      eq(creditGrants.tenantId, tenantId),
+      or(isNull(creditGrants.expiresAt), gt(creditGrants.expiresAt, new Date())),
+      sql`${creditGrants.spentMicro} < ${creditGrants.amountMicro}`,
+    ))
+    .orderBy(sql`${creditGrants.expiresAt} asc nulls last`, creditGrants.createdAt)
+    .limit(1);
   if (!row) return null;
   return { amountMicro: row.amountMicro, spentMicro: row.spentMicro, grantType: row.grantType };
 }

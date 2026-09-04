@@ -45,18 +45,18 @@ export function CreditBalanceIndicator() {
                         </span>
                         {' credits'}
                     </p>
-
-                    {isLow && (
-                        <Link
-                            href={`/${tenantSlug}/dashboard/billing`}
-                            className="text-[11px] text-red-500 hover:text-red-400 font-medium transition-colors"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            Add credits →
-                        </Link>
-                    )}
                 </button>
             </PopoverTrigger>
+
+            {isLow && (
+                <Link
+                    href={`/${tenantSlug}/dashboard/billing`}
+                    className="block px-3 -mt-1 mb-2 text-[11px] text-red-500 hover:text-red-400 font-medium transition-colors"
+                >
+                    Add credits →
+                </Link>
+            )}
+
             <PopoverContent side="right" align="start" className="p-0">
                 <CreditsPanel />
             </PopoverContent>

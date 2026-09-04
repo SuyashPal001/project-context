@@ -68,8 +68,10 @@ creditsRoutes.get('/usage-by-type', async (c) => {
     const balance = await getBalance(tenantId);
     if (balance.unlimited) return c.json({ unlimited: true });
 
-    const usage = await getUsageByType(tenantId);
-    const lastGrant = await getLastGrant(tenantId);
+    const [usage, lastGrant] = await Promise.all([
+        getUsageByType(tenantId),
+        getLastGrant(tenantId),
+    ]);
     const totalMicro = usage.text + usage.image + usage.video + usage.audio;
 
     return c.json({

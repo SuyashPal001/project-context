@@ -74,7 +74,7 @@ describe.skipIf(!TEST_DB)('credits wrappers', () => {
     expect(usage.audio).toBe(400_000n);
   });
 
-  it('ignores grant/refund rows — only debits count as spend', async () => {
+  it('ignores grant rows — a grant with no debit/refund/settle activity contributes no spend', async () => {
     await grantCredits({ tenantId: TENANT, amountMicro: 5_000_000n, key: 'g:ignore-me', grantType: 'admin' });
     const usage = await getUsageByType(TENANT);
     expect(usage.text).toBe(0n);
@@ -83,18 +83,39 @@ describe.skipIf(!TEST_DB)('credits wrappers', () => {
     expect(usage.audio).toBe(0n);
   });
 
-  it('reports the most recently created grant, regardless of which grant a debit actually drew from', async () => {
+  it('reports the grant a debit actually drew from (oldest live grant, FIFO), not the newest created', async () => {
     await grantCredits({ tenantId: TENANT, amountMicro: 1_000_000n, key: 'g:old', grantType: 'admin' });
     await grantCredits({ tenantId: TENANT, amountMicro: 5_000_000n, key: 'g:new', grantType: 'purchase' });
+    // spend_credits() draws FIFO (expires_at nulls last, created_at asc), so
+    // this debit is drawn entirely from the older 'admin' grant, leaving the
+    // newer 'purchase' grant untouched.
     await spendCredits({ tenantId: TENANT, amountMicro: -500_000n, key: 'd:against-fifo', kind: 'debit' });
 
     const lastGrant = await getLastGrant(TENANT);
-    expect(lastGrant?.grantType).toBe('purchase');
-    expect(lastGrant?.amountMicro).toBe(5_000_000n);
+    expect(lastGrant?.grantType).toBe('admin');
+    expect(lastGrant?.amountMicro).toBe(1_000_000n);
+    expect(lastGrant?.spentMicro).toBe(500_000n);
   });
 
   it('returns null for getLastGrant when the tenant has no grants', async () => {
     const lastGrant = await getLastGrant(TENANT);
     expect(lastGrant).toBeNull();
+  });
+
+  it('returns null for getLastGrant when every grant is fully spent or expired', async () => {
+    await grantCredits({ tenantId: TENANT, amountMicro: 500_000n, key: 'g:exhausted', grantType: 'admin' });
+    await spendCredits({ tenantId: TENANT, amountMicro: -500_000n, key: 'd:exhaust-it', kind: 'debit' });
+
+    const lastGrant = await getLastGrant(TENANT);
+    expect(lastGrant).toBeNull();
+  });
+
+  it('nets refunds against their original debit in the usage-by-type bucket', async () => {
+    await grantCredits({ tenantId: TENANT, amountMicro: 5_000_000n, key: 'g:refund-scenario', grantType: 'admin' });
+    await spendCredits({ tenantId: TENANT, amountMicro: -1_000_000n, key: 'd:refund-me', kind: 'debit', jobType: 'chat_message' });
+    await spendCredits({ tenantId: TENANT, amountMicro: 1_000_000n, key: 'r:refund-me', kind: 'refund', jobType: 'chat_message' });
+
+    const usage = await getUsageByType(TENANT);
+    expect(usage.text).toBe(0n);
   });
 });
