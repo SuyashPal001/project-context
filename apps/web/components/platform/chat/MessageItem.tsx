@@ -18,7 +18,7 @@ import { StreamingMessage } from "./StreamingMessage";
 import { MessageFeedback } from "./MessageFeedback";
 import { PlanCard } from "./PlanCard";
 import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
-import { InlineAttachmentCard } from "./InlineAttachmentCard";
+import { GeneratedAssetCard } from "./GeneratedAssetCard";
 import { CitationStrip } from "./CitationStrip";
 import { FollowUpChips } from "./FollowUpChips";
 import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
@@ -299,7 +299,7 @@ export function MessageItem({
                     )}>
                         {message.attachments.map((file, index) => {
                             const url = (file.fileId ? freshUrls[file.fileId] : null) || file.previewUrl || null;
-                            return <InlineAttachmentCard key={file.id ?? `att-${index}`} file={file} url={url} />;
+                            return <GeneratedAssetCard key={file.id ?? `att-${index}`} file={file} url={url} createdAt={message.createdAt} />;
                         })}
                     </div>
                 )}

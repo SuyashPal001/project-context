@@ -67,6 +67,7 @@ export interface MessageAttachment {
     type: string;
     size?: number;
     previewUrl?: string;
+    generation?: { creditsUsedMicro: string; model: string };
 }
 
 export interface PrdTask {
