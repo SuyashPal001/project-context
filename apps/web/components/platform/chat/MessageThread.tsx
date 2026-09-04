@@ -391,20 +391,13 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             // overlay above — ApproveCost is the only input surface while a generation
             // confirm request is pending.
             <div className="absolute inset-0 z-40 flex items-end justify-center pb-6 bg-background/90 backdrop-blur-sm px-4">
-                <div className="border border-border rounded-xl overflow-hidden bg-card shadow-elevated max-w-lg w-full">
-                    <div className="px-4 pt-4">
-                        <h4 className="text-base font-semibold text-foreground">{pendingGenerationConfirmMessage.generationConfirmRequest!.label}</h4>
-                    </div>
-                    <ApproveCost
-                        resourceType={pendingGenerationConfirmMessage.generationConfirmRequest!.resourceType as CreditResourceType}
-                        subject={pendingGenerationConfirmMessage.generationConfirmRequest!.subject}
-                        onApprove={() => onGenerationConfirm?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
-                        onCancel={() => onGenerationDecline?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
-                    />
-                    <p className="border-t border-border px-4 py-2.5 text-center text-[11px] text-muted-foreground">
-                        This spends real credits — check the balance before approving.
-                    </p>
-                </div>
+                <ApproveCost
+                    label={pendingGenerationConfirmMessage.generationConfirmRequest!.label}
+                    resourceType={pendingGenerationConfirmMessage.generationConfirmRequest!.resourceType as CreditResourceType}
+                    subject={pendingGenerationConfirmMessage.generationConfirmRequest!.subject}
+                    onApprove={() => onGenerationConfirm?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
+                    onCancel={() => onGenerationDecline?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
+                />
             </div>
         )}
         {showScrollToBottom && (

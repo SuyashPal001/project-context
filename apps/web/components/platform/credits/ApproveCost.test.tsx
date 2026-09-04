@@ -29,7 +29,7 @@ function render(ui: ReactElement): RenderResult {
 describe('ApproveCost', () => {
     it('shows a loading state before the estimate resolves', () => {
         apiGetMock.mockReturnValue(new Promise(() => {})); // never resolves
-        render(<ApproveCost resourceType="tool_call" onApprove={vi.fn()} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} />);
         expect(screen.getByTestId('approve-cost-loading')).not.toBeNull();
     });
 
@@ -42,7 +42,7 @@ describe('ApproveCost', () => {
             rateVersion: 1,
             unlimited: false,
         });
-        render(<ApproveCost resourceType="tool_call" subject="task.create" onApprove={vi.fn()} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" subject="task.create" onApprove={vi.fn()} />);
 
         const el = await screen.findByTestId('approve-cost');
         expect(el.textContent).toContain('~2 credits');
@@ -57,7 +57,7 @@ describe('ApproveCost', () => {
             rateVersion: 1,
             unlimited: true,
         });
-        render(<ApproveCost resourceType="tool_call" onApprove={vi.fn()} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} />);
 
         const el = await screen.findByTestId('approve-cost-unlimited');
         expect(el.textContent).toContain('Unlimited plan');
@@ -75,7 +75,7 @@ describe('ApproveCost', () => {
             rateVersion: 1,
             unlimited: false,
         });
-        render(<ApproveCost resourceType="tool_call" onApprove={vi.fn()} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} />);
 
         await screen.findByTestId('approve-cost');
         const approveBtn = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
@@ -94,7 +94,7 @@ describe('ApproveCost', () => {
             unlimited: false,
         });
         const onApprove = vi.fn();
-        render(<ApproveCost resourceType="tool_call" onApprove={onApprove} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} />);
 
         await screen.findByTestId('approve-cost');
         await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
@@ -112,7 +112,7 @@ describe('ApproveCost', () => {
             unlimited: false,
         });
         const onCancel = vi.fn();
-        render(<ApproveCost resourceType="tool_call" onApprove={vi.fn()} onCancel={onCancel} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={onCancel} />);
 
         await screen.findByTestId('approve-cost');
         await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -123,7 +123,7 @@ describe('ApproveCost', () => {
     it('still offers an enabled Approve when the estimate call fails — a preview failure must never block approval', async () => {
         apiGetMock.mockRejectedValue(new Error('network error'));
         const onApprove = vi.fn();
-        render(<ApproveCost resourceType="tool_call" onApprove={onApprove} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} />);
 
         await waitFor(() => expect(screen.getByTestId('approve-cost-error')).not.toBeNull());
         const approveBtn = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;

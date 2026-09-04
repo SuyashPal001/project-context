@@ -73,6 +73,7 @@ export function TaskExecutionCost({ agentId, stepCount, onApprove }: TaskExecuti
 
     return (
         <ApproveCost
+            variant="inline"
             resourceType="llm_tokens"
             subject={subject}
             params={{
