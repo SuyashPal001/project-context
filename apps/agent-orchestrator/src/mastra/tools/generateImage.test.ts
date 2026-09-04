@@ -53,8 +53,35 @@ describe('generateImage tool', () => {
 
     expect(confirmGenerationOrDecline).toHaveBeenCalledWith(expect.anything(), 'image_generation', 'gemini-3-pro-image-preview', 'Generate image')
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', amountMicro: -50_000n, kind: 'debit' }))
-    expect(result).toEqual({ fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3 })
+    expect(result).toEqual({
+      fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3,
+      creditsUsedMicro: '50000', model: 'gemini-3-pro-image-preview',
+    })
     expect(result).not.toHaveProperty('imageBase64')
+  })
+
+  it('includes creditsUsedMicro and model in the result when the generation was charged', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    const result = await generateImage.execute!({ prompt: 'a red bicycle' } as never, baseCtx())
+
+    expect(result).toEqual({
+      fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3,
+      creditsUsedMicro: '50000', model: 'gemini-3-pro-image-preview',
+    })
+  })
+
+  it('omits creditsUsedMicro when the tenant is unlimited (never charged)', async () => {
+    isUnlimited.mockResolvedValue(true)
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    const result = await generateImage.execute!({ prompt: 'a red bicycle' } as never, baseCtx())
+
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(result).toEqual({ fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3, model: 'gemini-3-pro-image-preview' })
+    expect(result).not.toHaveProperty('creditsUsedMicro')
   })
 
   it('short-circuits with DECLINED and never calls the gateway when the user declines', async () => {

@@ -17,6 +17,8 @@ const outputSchema = z.object({
   refused: z.boolean().optional(),
   refusalReason: z.string().optional(),
   insufficientCredits: z.boolean().optional(),
+  creditsUsedMicro: z.string().optional(),
+  model: z.string().optional(),
 })
 
 export const generateImage = createTool({
@@ -71,6 +73,7 @@ export const generateImage = createTool({
     let charged = false
     let rateId: string | null = null
     let rateVersion: number | null = null
+    let amountMicro = 0n
 
     if (!(await isUnlimited(tenantId))) {
       const rate = await resolveRate('image_generation', IMAGE_MODEL)
@@ -79,7 +82,7 @@ export const generateImage = createTool({
       } else {
         rateId = rate.id
         rateVersion = rate.version
-        const amountMicro = costMicro(rate.schema, { count: 1 })
+        amountMicro = costMicro(rate.schema, { count: 1 })
         try {
           await spendCredits({
             tenantId, amountMicro: -amountMicro, key: chargeKey, kind: 'debit',
@@ -107,6 +110,10 @@ export const generateImage = createTool({
       return { refused: true, refusalReason: 'STORAGE_FAILED' }
     }
 
-    return { fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size }
+    return {
+      fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
+      ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
+      model: IMAGE_MODEL,
+    }
   },
 })

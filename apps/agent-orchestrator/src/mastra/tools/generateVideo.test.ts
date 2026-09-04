@@ -45,8 +45,35 @@ describe('generateVideo tool', () => {
     const result = await generateVideo.execute!({ prompt: 'a marble rolling down a track' } as never, baseCtx())
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', amountMicro: -100_000n, kind: 'debit', jobType: 'video_generation' }))
-    expect(result).toEqual({ fileId: 'f1', name: 'clip.mp4', fileType: 'video/mp4', size: 3 })
+    expect(result).toEqual({
+      fileId: 'f1', name: 'clip.mp4', fileType: 'video/mp4', size: 3,
+      creditsUsedMicro: '100000', model: 'gemini-omni-1.1-flash',
+    })
     expect(result).not.toHaveProperty('videoBase64')
+  })
+
+  it('includes creditsUsedMicro and model in the result when the generation was charged', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+
+    const result = await generateVideo.execute!({ prompt: 'a car driving' } as never, baseCtx())
+
+    expect(result).toEqual({
+      fileId: 'f1', name: 'x.mp4', fileType: 'video/mp4', size: 3,
+      creditsUsedMicro: '100000', model: 'gemini-omni-1.1-flash',
+    })
+  })
+
+  it('omits creditsUsedMicro when the tenant is unlimited (never charged)', async () => {
+    isUnlimited.mockResolvedValue(true)
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+
+    const result = await generateVideo.execute!({ prompt: 'a car driving' } as never, baseCtx())
+
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(result).toEqual({ fileId: 'f1', name: 'x.mp4', fileType: 'video/mp4', size: 3, model: 'gemini-omni-1.1-flash' })
+    expect(result).not.toHaveProperty('creditsUsedMicro')
   })
 
   it('does not charge when the gateway refuses', async () => {
