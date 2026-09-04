@@ -168,7 +168,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 // refetch produces so the live and delayed paths converge on the same
                 // Message shape.
                 const atts = attachmentsRaw && Array.isArray(attachmentsRaw) && attachmentsRaw.length > 0
-                    ? { attachments: (attachmentsRaw as Array<{ fileId: string; name: string; type: string; size?: number }>).map(a => ({ id: crypto.randomUUID(), fileId: a.fileId, name: a.name, type: a.type, size: a.size } satisfies MessageAttachment)) }
+                    ? { attachments: (attachmentsRaw as Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation'] }>).map(a => ({ id: crypto.randomUUID(), fileId: a.fileId, name: a.name, type: a.type, size: a.size, generation: a.generation } satisfies MessageAttachment)) }
                     : {};
                 if (idx >= 0) {
                     data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
