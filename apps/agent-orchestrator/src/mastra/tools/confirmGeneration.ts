@@ -11,7 +11,7 @@ export async function confirmGenerationOrDecline(
   resourceType: string,
   subject: string,
   label: string,
-): Promise<{ confirmed: boolean; reason?: 'CONFIRM_BUSY' }> {
+): Promise<{ confirmed: boolean; reason?: 'CONFIRM_BUSY'; declineReason?: string }> {
   const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
   const sessionId = execContext?.requestContext?.get('sessionId') as string | undefined
   const userId = execContext?.requestContext?.get('userId') as string | undefined
@@ -63,12 +63,12 @@ export async function confirmGenerationOrDecline(
   }
   sessionSet.add(confirmationId)
 
-  const confirmed = await new Promise<boolean>((resolve) => {
+  const { confirmed, declineReason } = await new Promise<{ confirmed: boolean; declineReason?: string }>((resolve) => {
     const timer = setTimeout(() => {
       const pending = pendingGenerationConfirmations.get(confirmationId)
       pendingGenerationConfirmations.delete(confirmationId)
       sessionActiveGenerationConfirmations.get(sessionId)?.delete(confirmationId)
-      resolve(false)
+      resolve({ confirmed: false })
 
       if (pending?.messageId && pending?.conversationId && pending?.idToken) {
         updateGenerationConfirmRequest(pending.idToken, pending.conversationId, pending.messageId, {
@@ -85,5 +85,5 @@ export async function confirmGenerationOrDecline(
     })
   })
 
-  return { confirmed }
+  return declineReason ? { confirmed, declineReason } : { confirmed }
 }

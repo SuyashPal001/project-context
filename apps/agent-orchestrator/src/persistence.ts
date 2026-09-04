@@ -215,6 +215,7 @@ export interface GenerationConfirmRequestPayload {
   label: string
   status: 'pending' | 'approved' | 'declined'
   decisionAt?: string
+  declineReason?: string
 }
 
 export function saveGenerationConfirmRequest(
@@ -250,7 +251,7 @@ export function updateGenerationConfirmRequest(
   idToken: string,
   conversationId: string,
   messageId: string,
-  update: Pick<GenerationConfirmRequestPayload, 'status' | 'decisionAt'>,
+  update: Pick<GenerationConfirmRequestPayload, 'status' | 'decisionAt' | 'declineReason'>,
 ): void {
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/${messageId}/generation-confirm`, {
     method: 'PATCH',

@@ -29,7 +29,7 @@ function render(ui: ReactElement): RenderResult {
 describe('ApproveCost', () => {
     it('shows a loading state before the estimate resolves', () => {
         apiGetMock.mockReturnValue(new Promise(() => {})); // never resolves
-        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={vi.fn()} />);
         expect(screen.getByTestId('approve-cost-loading')).not.toBeNull();
     });
 
@@ -42,7 +42,7 @@ describe('ApproveCost', () => {
             rateVersion: 1,
             unlimited: false,
         });
-        render(<ApproveCost label="Generate song" resourceType="tool_call" subject="task.create" onApprove={vi.fn()} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" subject="task.create" onApprove={vi.fn()} onCancel={vi.fn()} />);
 
         const el = await screen.findByTestId('approve-cost');
         expect(el.textContent).toContain('~2 credits');
@@ -57,16 +57,16 @@ describe('ApproveCost', () => {
             rateVersion: 1,
             unlimited: true,
         });
-        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={vi.fn()} />);
 
         const el = await screen.findByTestId('approve-cost-unlimited');
         expect(el.textContent).toContain('Unlimited plan');
-        expect(el.textContent).not.toContain('credits');
+        expect(el.textContent).not.toContain('~');
         const approveBtn = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
         expect(approveBtn.disabled).toBe(false);
     });
 
-    it('disables Approve and shows a billing link when sufficient is false', async () => {
+    it('disables the numbered Approve option and shows a billing link when sufficient is false', async () => {
         apiGetMock.mockResolvedValue({
             costMicro: '2000000',
             balanceMicro: '500000',
@@ -75,16 +75,19 @@ describe('ApproveCost', () => {
             rateVersion: 1,
             unlimited: false,
         });
-        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={vi.fn()} />);
 
-        await screen.findByTestId('approve-cost');
-        const approveBtn = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
-        expect(approveBtn.disabled).toBe(true);
+        const el = await screen.findByTestId('approve-cost');
+        const approveOption = screen.getByRole('button', { name: /1\. Approve/ }) as HTMLButtonElement;
+        expect(approveOption.disabled).toBe(true);
+        // Insufficient hides the footer's own Approve shortcut too — only the
+        // disabled numbered option and Skip remain.
+        expect(el.querySelector('kbd')?.textContent).toBe('ESC');
         const link = screen.getByRole('link', { name: /add more/i }) as HTMLAnchorElement;
         expect(link.getAttribute('href')).toBe('/acme/dashboard/billing');
     });
 
-    it('calls onApprove when Approve is clicked and the estimate is sufficient', async () => {
+    it('calls onApprove when the numbered Approve option is clicked', async () => {
         apiGetMock.mockResolvedValue({
             costMicro: '2000000',
             balanceMicro: '10000000',
@@ -94,7 +97,25 @@ describe('ApproveCost', () => {
             unlimited: false,
         });
         const onApprove = vi.fn();
-        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} onCancel={vi.fn()} />);
+
+        await screen.findByTestId('approve-cost');
+        await userEvent.click(screen.getByRole('button', { name: /1\. Approve/ }));
+
+        expect(onApprove).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls onApprove when the footer Approve shortcut is clicked', async () => {
+        apiGetMock.mockResolvedValue({
+            costMicro: '2000000',
+            balanceMicro: '10000000',
+            sufficient: true,
+            rateId: 'rate-1',
+            rateVersion: 1,
+            unlimited: false,
+        });
+        const onApprove = vi.fn();
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} onCancel={vi.fn()} />);
 
         await screen.findByTestId('approve-cost');
         await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
@@ -102,7 +123,7 @@ describe('ApproveCost', () => {
         expect(onApprove).toHaveBeenCalledTimes(1);
     });
 
-    it('calls onCancel when Cancel is clicked', async () => {
+    it('calls onCancel with no reason when Skip is clicked', async () => {
         apiGetMock.mockResolvedValue({
             costMicro: '2000000',
             balanceMicro: '10000000',
@@ -115,15 +136,53 @@ describe('ApproveCost', () => {
         render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={onCancel} />);
 
         await screen.findByTestId('approve-cost');
-        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+        await userEvent.click(screen.getByRole('button', { name: /Skip/ }));
 
         expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(onCancel).toHaveBeenCalledWith();
+    });
+
+    it('calls onCancel with no reason when the numbered "Hold off" option is clicked', async () => {
+        apiGetMock.mockResolvedValue({
+            costMicro: '2000000',
+            balanceMicro: '10000000',
+            sufficient: true,
+            rateId: 'rate-1',
+            rateVersion: 1,
+            unlimited: false,
+        });
+        const onCancel = vi.fn();
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={onCancel} />);
+
+        await screen.findByTestId('approve-cost');
+        await userEvent.click(screen.getByRole('button', { name: /2\. Hold off/ }));
+
+        expect(onCancel).toHaveBeenCalledWith();
+    });
+
+    it('calls onCancel with the typed reason when the free-text field is submitted', async () => {
+        apiGetMock.mockResolvedValue({
+            costMicro: '2000000',
+            balanceMicro: '10000000',
+            sufficient: true,
+            rateId: 'rate-1',
+            rateVersion: 1,
+            unlimited: false,
+        });
+        const onCancel = vi.fn();
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={onCancel} />);
+
+        await screen.findByTestId('approve-cost');
+        await userEvent.type(screen.getByPlaceholderText(/tell me what to change/i), 'Make it slower');
+        await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+        expect(onCancel).toHaveBeenCalledWith('Make it slower');
     });
 
     it('still offers an enabled Approve when the estimate call fails — a preview failure must never block approval', async () => {
         apiGetMock.mockRejectedValue(new Error('network error'));
         const onApprove = vi.fn();
-        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} />);
+        render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} onCancel={vi.fn()} />);
 
         await waitFor(() => expect(screen.getByTestId('approve-cost-error')).not.toBeNull());
         const approveBtn = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;

@@ -68,20 +68,30 @@ describe('confirmGenerationOrDecline', () => {
       ? [Array.from(sessionActiveGenerationConfirmations.get('s1')!)]
       : [[]]
     const pending = pendingGenerationConfirmations.get(confirmationId)
-    pending!.resolve(true)
+    pending!.resolve({ confirmed: true })
 
     const result = await promise
     expect(result).toEqual({ confirmed: true })
   })
 
-  it('resolves declined when the pending map is resolved with false', async () => {
+  it('resolves declined when the pending map is resolved with confirmed: false', async () => {
     const promise = confirmGenerationOrDecline(baseCtx(), 'image_generation', 'model-x', 'Generate image')
     await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledTimes(1))
     const confirmationId = Array.from(sessionActiveGenerationConfirmations.get('s1')!)[0]
-    pendingGenerationConfirmations.get(confirmationId)!.resolve(false)
+    pendingGenerationConfirmations.get(confirmationId)!.resolve({ confirmed: false })
 
     const result = await promise
     expect(result).toEqual({ confirmed: false })
+  })
+
+  it('forwards declineReason through to the tool result', async () => {
+    const promise = confirmGenerationOrDecline(baseCtx(), 'image_generation', 'model-x', 'Generate image')
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledTimes(1))
+    const confirmationId = Array.from(sessionActiveGenerationConfirmations.get('s1')!)[0]
+    pendingGenerationConfirmations.get(confirmationId)!.resolve({ confirmed: false, declineReason: 'Make it slower' })
+
+    const result = await promise
+    expect(result).toEqual({ confirmed: false, declineReason: 'Make it slower' })
   })
 
   it('auto-declines after the 5-minute timeout', async () => {
@@ -101,7 +111,7 @@ describe('confirmGenerationOrDecline', () => {
     expect(sendEvent).toHaveBeenCalledTimes(1) // still just the first
 
     const confirmationId = Array.from(sessionActiveGenerationConfirmations.get('s1')!)[0]
-    pendingGenerationConfirmations.get(confirmationId)!.resolve(true)
+    pendingGenerationConfirmations.get(confirmationId)!.resolve({ confirmed: true })
     await first
   })
 })

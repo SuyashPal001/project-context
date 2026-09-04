@@ -241,7 +241,7 @@ chatRouter.post('/api/chat', async (c) => {
           if (pending) {
             clearTimeout(pending.timer)
             pendingGenerationConfirmations.delete(confirmationId)
-            pending.resolve(false)
+            pending.resolve({ confirmed: false })
             if (pending.messageId && pending.conversationId && pending.idToken) {
               updateGenerationConfirmRequest(pending.idToken, pending.conversationId, pending.messageId, {
                 status: 'declined',

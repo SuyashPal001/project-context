@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Loader2 } from 'lucide-react';
+import { ArrowUp, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { useTenant } from '@/app/[tenant]/tenant-provider';
 import {
@@ -24,10 +25,11 @@ export interface ApproveCostProps {
      * for 'inline' (that surface already has its own heading/context). */
     label?: string;
     /** 'card' (default): the composer-anchored decision card, matching
-     * ClarificationCard's rounded-4xl shell + numbered option + Skip[ESC]/Submit
-     * footer. 'inline': the original compact one-line treatment, for surfaces
-     * that embed this inside their own panel (e.g. TaskExecutionCost inside
-     * PlanReviewPhase) where a second nested card shell would double up. */
+     * ClarificationCard's rounded-4xl shell, numbered option row, and
+     * free-text/Skip[ESC]/Submit footer. 'inline': the original compact
+     * one-line treatment, for surfaces that embed this inside their own panel
+     * (e.g. TaskExecutionCost inside PlanReviewPhase) where a second nested
+     * card shell would double up. */
     variant?: 'card' | 'inline';
     resourceType: CreditResourceType;
     subject?: string;
@@ -37,7 +39,11 @@ export interface ApproveCostProps {
         outputTokens?: number;
     };
     onApprove: () => void;
-    onCancel?: () => void;
+    /** Declining. `reason` carries whatever the user typed in the free-text
+     * field — forwarded all the way to the agent's tool result (same channel
+     * ClarificationCard's freeText already uses), so the agent reads it on
+     * its next turn and decides what to do. Undefined for a plain Skip/Hold off. */
+    onCancel?: (reason?: string) => void;
 }
 
 export function ApproveCost({ label, variant = 'card', resourceType, subject, params, onApprove, onCancel }: ApproveCostProps) {
@@ -83,7 +89,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
         ) : (
             <Shell label={label} testId="approve-cost-error" onApprove={onApprove} onCancel={onCancel}>
                 <Option number={1} label="Approve — generate it" detail={detail} onClick={onApprove} tone="primary" />
-                {onCancel && <Option number={2} label="Reject" detail="Don't generate — dismiss this." onClick={onCancel} />}
+                {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
             </Shell>
         );
     }
@@ -95,7 +101,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
         ) : (
             <Shell label={label} testId="approve-cost-unlimited" onApprove={onApprove} onCancel={onCancel}>
                 <Option number={1} label="Approve — generate it" detail="Unlimited plan — this won't touch your balance." onClick={onApprove} tone="primary" />
-                {onCancel && <Option number={2} label="Reject" detail="Don't generate — dismiss this." onClick={onCancel} />}
+                {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
             </Shell>
         );
     }
@@ -114,9 +120,9 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
     return variant === 'inline' ? (
         <InlineRow testId="approve-cost" detail={`This costs ${costCredits} credits`} insufficient={insufficient} extra={billingLink} onApprove={onApprove} onCancel={onCancel} />
     ) : (
-        <Shell label={label} testId="approve-cost" onApprove={onApprove} onCancel={onCancel} insufficient={insufficient}>
+        <Shell label={label} testId="approve-cost" onApprove={insufficient ? undefined : onApprove} onCancel={onCancel}>
             <Option number={1} label="Approve — generate it" detail={`~${costCredits} credits`} onClick={onApprove} disabled={insufficient} tone="primary" />
-            {onCancel && <Option number={2} label="Reject" detail="Don't generate — dismiss this." onClick={onCancel} />}
+            {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
             {billingLink}
         </Shell>
     );
@@ -138,7 +144,7 @@ function InlineRow({
     insufficient?: boolean;
     extra?: ReactNode;
     onApprove: () => void;
-    onCancel?: () => void;
+    onCancel?: (reason?: string) => void;
 }) {
     return (
         <div className="flex flex-col gap-1.5 px-3 py-2 text-xs" data-testid={testId}>
@@ -146,7 +152,7 @@ function InlineRow({
                 <span className="text-muted-foreground">{detail}</span>
                 <div className="flex gap-2">
                     {onCancel && (
-                        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => onCancel()}>
                             Cancel
                         </Button>
                     )}
@@ -194,44 +200,91 @@ function Option({
 function Shell({
     label,
     testId,
-    insufficient,
     onApprove,
     onCancel,
     children,
 }: {
     label?: string;
     testId: string;
-    insufficient?: boolean;
+    /** Fires on Enter when the free-text field is empty — option 1 (Approve)
+     * is the default/pre-selected choice, same as ClarificationCard defaulting
+     * Enter to whatever's selected. Omit (or pass undefined, e.g. when
+     * insufficient) to make Enter a no-op instead. */
     onApprove?: () => void;
-    onCancel?: () => void;
+    onCancel?: (reason?: string) => void;
     children: ReactNode;
 }) {
+    const [freeText, setFreeText] = useState('');
+    const freeTextRef = useRef<HTMLTextAreaElement>(null);
+
+    // Auto-grow to fit content (up to a cap), same as ClarificationCard's field.
+    useEffect(() => {
+        if (freeTextRef.current) {
+            freeTextRef.current.style.height = 'inherit';
+            freeTextRef.current.style.height = `${Math.min(freeTextRef.current.scrollHeight, 160)}px`;
+        }
+    }, [freeText]);
+
     return (
         <div className="flex w-full justify-center my-5" data-testid={testId}>
             <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-card shadow-elevated p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {label && <h4 className="text-sm font-medium px-1">{label}</h4>}
                 <div className="flex flex-col gap-1.5">{children}</div>
-                {onApprove && (
-                    <div className="border-t border-border/40 pt-4 flex items-center justify-end gap-3">
-                        {onCancel && (
-                            <button
-                                type="button"
-                                onClick={onCancel}
-                                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                            >
-                                <span>Cancel</span>
-                                <kbd aria-hidden="true" className="text-[10px] leading-none px-1.5 py-1 rounded bg-accent text-muted-foreground/70 font-mono">ESC</kbd>
-                            </button>
-                        )}
-                        <button
-                            type="button"
-                            onClick={onApprove}
-                            disabled={insufficient}
-                            className="h-8 px-4 rounded-full text-xs font-medium bg-primary text-primary-foreground disabled:opacity-40 flex items-center gap-1.5"
-                        >
-                            <span>Approve</span>
-                            <kbd aria-hidden="true" className="text-[10px] leading-none px-1.5 py-1 rounded bg-primary-foreground/10 text-primary-foreground/70 font-mono">↵</kbd>
-                        </button>
+                {onCancel && (
+                    <div className="border-t border-border/40 pt-4 flex items-end gap-2">
+                        <Textarea
+                            ref={freeTextRef}
+                            value={freeText}
+                            onChange={(e) => setFreeText(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    if (freeText.trim()) onCancel(freeText.trim());
+                                    else onApprove?.();
+                                    return;
+                                }
+                                if (e.key === 'Escape' && !freeText.trim()) {
+                                    e.preventDefault();
+                                    onCancel();
+                                }
+                            }}
+                            placeholder="No, and tell me what to change"
+                            rows={1}
+                            className="flex-1 min-h-0 max-h-[160px] py-1.5 px-0 resize-none border-0 bg-transparent dark:bg-transparent rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/60"
+                        />
+                        <div className="flex items-center gap-3 shrink-0 pb-1.5">
+                            {freeText.trim() ? (
+                                <button
+                                    type="button"
+                                    onClick={() => onCancel(freeText.trim())}
+                                    aria-label="Send"
+                                    className="h-8 w-8 rounded-full shrink-0 bg-primary text-primary-foreground flex items-center justify-center"
+                                >
+                                    <ArrowUp className="h-4 w-4" />
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => onCancel()}
+                                        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                                    >
+                                        <span>Skip</span>
+                                        <kbd aria-hidden="true" className="text-[10px] leading-none px-1.5 py-1 rounded bg-accent text-muted-foreground/70 font-mono">ESC</kbd>
+                                    </button>
+                                    {onApprove && (
+                                        <button
+                                            type="button"
+                                            onClick={onApprove}
+                                            className="h-8 px-4 rounded-full text-xs font-medium bg-primary text-primary-foreground flex items-center gap-1.5"
+                                        >
+                                            <span>Approve</span>
+                                            <kbd aria-hidden="true" className="text-[10px] leading-none px-1.5 py-1 rounded bg-primary-foreground/10 text-primary-foreground/70 font-mono">↵</kbd>
+                                        </button>
+                                    )}
+                                </>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>

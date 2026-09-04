@@ -181,6 +181,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             label: z.string(),
             status: z.enum(['pending', 'approved', 'declined']),
             decisionAt: z.string().optional(),
+            declineReason: z.string().max(500).optional(),
         }).nullish(),
         createdAt: z.string().datetime().optional(),
     });
@@ -410,6 +411,7 @@ messagesRoutes.patch('/:conversationId/messages/:messageId/generation-confirm', 
         generationConfirmRequest: z.object({
             status: z.enum(['pending', 'approved', 'declined']),
             decisionAt: z.string().optional(),
+            declineReason: z.string().max(500).optional(),
         }),
     });
 

@@ -29,7 +29,7 @@ interface MessageThreadProps {
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
     onGenerationConfirm?: (messageId: string, confirmationId: string) => void;
-    onGenerationDecline?: (messageId: string, confirmationId: string) => void;
+    onGenerationDecline?: (messageId: string, confirmationId: string, reason?: string) => void;
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
     onFollowUpSelect?: (text: string) => void;
     onRegenerate?: (message: Message) => void;
@@ -396,7 +396,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     resourceType={pendingGenerationConfirmMessage.generationConfirmRequest!.resourceType as CreditResourceType}
                     subject={pendingGenerationConfirmMessage.generationConfirmRequest!.subject}
                     onApprove={() => onGenerationConfirm?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
-                    onCancel={() => onGenerationDecline?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
+                    onCancel={(reason) => onGenerationDecline?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id, reason)}
                 />
             </div>
         )}

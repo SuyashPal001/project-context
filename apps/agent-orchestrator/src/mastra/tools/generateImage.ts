@@ -35,7 +35,7 @@ export const generateImage = createTool({
     const sessionId = conversationId ?? 'unknown'
 
     const confirm = await confirmGenerationOrDecline(execContext, 'image_generation', IMAGE_MODEL, 'Generate image')
-    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.reason ?? 'DECLINED' }
+    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.declineReason ?? confirm.reason ?? 'DECLINED' }
 
     let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {

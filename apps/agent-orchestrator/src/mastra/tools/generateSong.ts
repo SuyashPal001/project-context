@@ -35,7 +35,7 @@ export const generateSong = createTool({
     const sessionId = conversationId ?? 'unknown'
 
     const confirm = await confirmGenerationOrDecline(execContext, 'music_generation', MUSIC_MODEL, 'Generate song')
-    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.reason ?? 'DECLINED' }
+    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.declineReason ?? confirm.reason ?? 'DECLINED' }
 
     let genResult: { audioBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {

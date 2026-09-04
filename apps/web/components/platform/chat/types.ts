@@ -29,6 +29,7 @@ export interface GenerationConfirmRequest {
     label: string;
     status: 'pending' | 'approved' | 'declined';
     decisionAt?: string;
+    declineReason?: string;
 }
 
 export interface ClarificationOption {

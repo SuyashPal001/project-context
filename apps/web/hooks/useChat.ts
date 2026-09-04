@@ -30,7 +30,7 @@ export interface UseChatOptions {
 export interface UseChatReturn {
     sendMessage: (text: string, attachments?: Attachment[]) => Promise<void>;
     sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
-    sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined') => Promise<boolean>;
+    sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined', reason?: string) => Promise<boolean>;
     sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     cancel: () => void;
     isStreaming: boolean;
@@ -427,6 +427,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const sendGenerationConfirm = useCallback(async (
         confirmationId: string,
         decision: 'approved' | 'declined',
+        reason?: string,
     ): Promise<boolean> => {
         const { accessToken } = getAuthTokens();
         if (!accessToken) return false;
@@ -438,7 +439,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${accessToken}`,
                 },
-                body: JSON.stringify({ confirmationId, decision }),
+                body: JSON.stringify({ confirmationId, decision, ...(reason ? { reason } : {}) }),
             });
             return res.ok;
         } catch {

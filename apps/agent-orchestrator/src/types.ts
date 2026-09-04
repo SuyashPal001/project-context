@@ -129,6 +129,7 @@ export interface GenerationConfirmRequest {
   label: string
   status: 'pending' | 'approved' | 'declined'
   decisionAt?: string
+  declineReason?: string
 }
 
 // Lets the stream cancel() handler find and resolve every live pending
@@ -140,7 +141,11 @@ export interface GenerationConfirmRequest {
 export const sessionActiveGenerationConfirmations = new Map<string, Set<string>>()
 
 export const pendingGenerationConfirmations = new Map<string, {
-  resolve: (confirmed: boolean) => void
+  // declineReason carries the user's free-text note when they decline instead
+  // of approving — same channel ClarificationAnswer.freeText already uses so
+  // the agent reads it on its next turn and decides what to do. No new
+  // decision logic needed on our side, just forwarding a string.
+  resolve: (result: { confirmed: boolean; declineReason?: string }) => void
   timer: ReturnType<typeof setTimeout>
   tenantId: string
   messageId?: string

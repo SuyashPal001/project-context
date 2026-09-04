@@ -293,12 +293,17 @@ sessionsRouter.post('/api/chat/generation-confirm', async (c) => {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
 
-  let body: { confirmationId?: unknown; decision?: unknown }
+  let body: { confirmationId?: unknown; decision?: unknown; reason?: unknown }
   try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid_body' }, 400, corsHeaders) }
 
   const confirmationId = typeof body.confirmationId === 'string' ? body.confirmationId.trim() : ''
   const decision        = typeof body.decision === 'string' ? body.decision.trim() : ''
   if (!confirmationId) return c.json({ ok: false, error: 'confirmationId required' }, 400, corsHeaders)
+
+  const MAX_REASON_LEN = 500
+  if (typeof body.reason === 'string' && body.reason.length > MAX_REASON_LEN) {
+    return c.json({ ok: false, error: 'reason too long' }, 400, corsHeaders)
+  }
 
   const pending = pendingGenerationConfirmations.get(confirmationId)
   if (!pending) return c.json({ ok: false, error: 'confirmation_not_found' }, 404, corsHeaders)
@@ -316,12 +321,16 @@ sessionsRouter.post('/api/chat/generation-confirm', async (c) => {
   }
 
   const wasApproved = decision === 'approved'
-  pending.resolve(wasApproved)
+  const declineReason = !wasApproved && typeof body.reason === 'string' && body.reason.trim()
+    ? body.reason.trim()
+    : undefined
+  pending.resolve({ confirmed: wasApproved, declineReason })
 
   if (pending.messageId && pending.conversationId && pending.idToken) {
     updateGenerationConfirmRequest(pending.idToken, pending.conversationId, pending.messageId, {
       status: wasApproved ? 'approved' : 'declined',
       decisionAt: new Date().toISOString(),
+      ...(declineReason ? { declineReason } : {}),
     })
   }
 
