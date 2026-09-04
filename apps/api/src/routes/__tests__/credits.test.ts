@@ -12,6 +12,8 @@ vi.mock('@serverless-saas/credits', () => {
     return {
         getBalance: vi.fn(),
         getLedger: vi.fn(),
+        getUsageByType: vi.fn(),
+        getLastGrant: vi.fn(),
         resolveRate: vi.fn(),
         costMicro: vi.fn(),
         grantCredits: vi.fn(),
@@ -23,6 +25,8 @@ import { creditsRoutes } from '../credits';
 import {
     getBalance,
     getLedger,
+    getUsageByType,
+    getLastGrant,
     resolveRate,
     costMicro,
     grantCredits,
@@ -51,6 +55,8 @@ const noPermsCtx = { tenant: { id: TENANT }, permissions: [] };
 beforeEach(() => {
     vi.mocked(getBalance).mockReset();
     vi.mocked(getLedger).mockReset();
+    vi.mocked(getUsageByType).mockReset();
+    vi.mocked(getLastGrant).mockReset();
     vi.mocked(resolveRate).mockReset();
     vi.mocked(costMicro).mockReset();
     vi.mocked(grantCredits).mockReset();
@@ -431,5 +437,66 @@ describe('POST /credits/grants', () => {
 
         expect(grantCredits).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }));
         expect(grantCredits).not.toHaveBeenCalledWith(expect.objectContaining({ tenantId: OTHER_TENANT }));
+    });
+});
+
+describe('GET /credits/usage-by-type', () => {
+    it('serializes the breakdown, total, and last grant as strings', async () => {
+        vi.mocked(getBalance).mockResolvedValue({ balanceMicro: 5_000_000n, unlimited: false, grants: [] });
+        vi.mocked(getUsageByType).mockResolvedValue({ text: 1_000_000n, image: 2_000_000n, video: 1_500_000n, audio: 500_000n });
+        vi.mocked(getLastGrant).mockResolvedValue({ amountMicro: 10_000_000n, spentMicro: 5_000_000n, grantType: 'purchase' });
+
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/usage-by-type');
+        const body = await res.json() as any;
+
+        expect(res.status).toBe(200);
+        expect(body.unlimited).toBe(false);
+        expect(body.balanceMicro).toBe('5000000');
+        expect(body.byType).toEqual({ text: '1000000', image: '2000000', video: '1500000', audio: '500000' });
+        expect(body.totalMicro).toBe('5000000');
+        expect(body.lastGrant).toEqual({ amountMicro: '10000000', spentMicro: '5000000', grantType: 'purchase' });
+    });
+
+    it('reports unlimited: true with no breakdown for unlimited tenants', async () => {
+        vi.mocked(getBalance).mockResolvedValue({ balanceMicro: 0n, unlimited: true, grants: [] });
+
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/usage-by-type');
+        const body = await res.json() as any;
+
+        expect(body).toEqual({ unlimited: true });
+        expect(getUsageByType).not.toHaveBeenCalled();
+    });
+
+    it('returns lastGrant: null when the tenant has never been granted credits', async () => {
+        vi.mocked(getBalance).mockResolvedValue({ balanceMicro: 0n, unlimited: false, grants: [] });
+        vi.mocked(getUsageByType).mockResolvedValue({ text: 0n, image: 0n, video: 0n, audio: 0n });
+        vi.mocked(getLastGrant).mockResolvedValue(null);
+
+        const app = appWith(readCtx);
+        const res = await app.request('/credits/usage-by-type');
+        const body = await res.json() as any;
+
+        expect(body.lastGrant).toBeNull();
+    });
+
+    it('returns 403 without credits:read', async () => {
+        const app = appWith(noPermsCtx);
+        const res = await app.request('/credits/usage-by-type');
+        expect(res.status).toBe(403);
+        expect(getUsageByType).not.toHaveBeenCalled();
+    });
+
+    it('scopes the lookup to the caller tenant, ignoring a user-supplied tenantId', async () => {
+        vi.mocked(getBalance).mockResolvedValue({ balanceMicro: 0n, unlimited: false, grants: [] });
+        vi.mocked(getUsageByType).mockResolvedValue({ text: 0n, image: 0n, video: 0n, audio: 0n });
+        vi.mocked(getLastGrant).mockResolvedValue(null);
+
+        const app = appWith(readCtx);
+        await app.request(`/credits/usage-by-type?tenantId=${OTHER_TENANT}`);
+
+        expect(getUsageByType).toHaveBeenCalledWith(TENANT);
+        expect(getUsageByType).not.toHaveBeenCalledWith(OTHER_TENANT);
     });
 });
