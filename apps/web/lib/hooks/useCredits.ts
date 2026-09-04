@@ -32,6 +32,22 @@ export function useCreditBalance() {
     });
 }
 
+export interface CreditUsageByType {
+    unlimited: boolean;
+    balanceMicro?: string;
+    byType?: { text: string; image: string; video: string; audio: string };
+    totalMicro?: string;
+    lastGrant?: { amountMicro: string; spentMicro: string; grantType: string } | null;
+}
+
+export function useCreditUsageByType() {
+    return useQuery<CreditUsageByType>({
+        queryKey: ['credits', 'usage-by-type'],
+        queryFn: () => api.get<CreditUsageByType>('/api/v1/credits/usage-by-type'),
+        staleTime: 30_000,
+    });
+}
+
 export type CreditResourceType = 'llm_tokens' | 'message' | 'tool_call' | 'skill_run' | 'image_generation' | 'music_generation' | 'video_generation';
 
 export interface CreditEstimateParams {
