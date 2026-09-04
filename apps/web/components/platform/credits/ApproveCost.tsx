@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -46,8 +46,8 @@ export function ApproveCost({ resourceType, subject, params, onApprove, onCancel
 
     if (isLoading) {
         return (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground" data-testid="approve-cost-loading">
-                <Loader2 className="h-3 w-3 animate-spin" />
+            <div className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground" data-testid="approve-cost-loading">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Estimating cost…
             </div>
         );
@@ -59,38 +59,26 @@ export function ApproveCost({ resourceType, subject, params, onApprove, onCancel
     // control can't tell the user a number in advance.
     if (isError || !data) {
         return (
-            <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs" data-testid="approve-cost-error">
-                <span className="text-muted-foreground">Couldn&apos;t estimate cost — balance will be checked when this runs.</span>
-                <div className="flex gap-2">
-                    {onCancel && (
-                        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-                            Cancel
-                        </Button>
-                    )}
-                    <Button type="button" size="sm" onClick={onApprove}>
-                        Approve
-                    </Button>
-                </div>
-            </div>
+            <ApproveCostShell
+                testId="approve-cost-error"
+                optionLabel="Approve — generate it"
+                optionDetail="Couldn't estimate cost — balance will be checked when this runs."
+                onApprove={onApprove}
+                onCancel={onCancel}
+            />
         );
     }
 
     // Unlimited tenants are never debited — no figure, no cost, no approve-gate.
     if (data.unlimited) {
         return (
-            <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs" data-testid="approve-cost-unlimited">
-                <span className="text-muted-foreground">Unlimited</span>
-                <div className="flex gap-2">
-                    {onCancel && (
-                        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-                            Cancel
-                        </Button>
-                    )}
-                    <Button type="button" size="sm" onClick={onApprove}>
-                        Approve
-                    </Button>
-                </div>
-            </div>
+            <ApproveCostShell
+                testId="approve-cost-unlimited"
+                optionLabel="Approve — generate it"
+                optionDetail="Unlimited plan — this won't touch your balance."
+                onApprove={onApprove}
+                onCancel={onCancel}
+            />
         );
     }
 
@@ -99,32 +87,76 @@ export function ApproveCost({ resourceType, subject, params, onApprove, onCancel
     const balanceCredits = formatCredits(microToCredits(data.balanceMicro));
 
     return (
-        <div className="flex flex-col gap-1.5 px-3 py-2 text-xs" data-testid="approve-cost">
-            <p className="text-muted-foreground">
-                This costs <span className="font-medium text-foreground">{costCredits}</span> credits
-                {' — Balance '}
-                <span className={insufficient ? 'font-medium text-red-500' : 'font-medium text-foreground'}>
-                    {balanceCredits}
-                </span>
-            </p>
-
-            {insufficient && (
+        <ApproveCostShell
+            optionLabel="Approve — generate it"
+            optionDetail={`~${costCredits} credits · Balance ${balanceCredits}`}
+            insufficient={insufficient}
+            footer={insufficient && (
                 <Link
                     href={`/${tenantSlug}/dashboard/billing`}
-                    className="text-red-500 hover:text-red-400 font-medium transition-colors"
+                    className="text-sm font-medium text-destructive transition-colors hover:text-destructive/80"
                 >
                     Out of credits — add more →
                 </Link>
             )}
+            onApprove={onApprove}
+            onCancel={onCancel}
+        />
+    );
+}
 
-            <div className="flex justify-end gap-2">
-                {onCancel && (
-                    <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+// Shared visual shell for all four estimate states (loading handled separately
+// above) — one numbered "option" row for Approve, plus a footer with Cancel /
+// Approve and their keyboard hints. Only one real choice exists today (visual
+// polish only, no new decision branches) but the option-row treatment reads
+// far clearer than a plain sentence + two buttons.
+function ApproveCostShell({
+    testId = 'approve-cost',
+    optionLabel,
+    optionDetail,
+    insufficient,
+    footer,
+    onApprove,
+    onCancel,
+}: {
+    testId?: string;
+    optionLabel: string;
+    optionDetail: string;
+    insufficient?: boolean;
+    footer?: ReactNode;
+    onApprove: () => void;
+    onCancel?: () => void;
+}) {
+    return (
+        <div className="flex flex-col gap-3 px-4 py-4" data-testid={testId}>
+            <button
+                type="button"
+                onClick={insufficient ? undefined : onApprove}
+                disabled={insufficient}
+                className="w-full rounded-lg bg-muted/60 px-3.5 py-3 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+            >
+                <div className="text-sm font-semibold text-foreground">{optionLabel}</div>
+                <div className={insufficient ? 'mt-0.5 text-sm text-destructive' : 'mt-0.5 text-sm text-muted-foreground'}>
+                    {optionDetail}
+                </div>
+            </button>
+
+            {footer}
+
+            <div className="flex items-center justify-between border-t border-border pt-3">
+                {onCancel ? (
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    >
                         Cancel
-                    </Button>
-                )}
-                <Button type="button" size="sm" disabled={insufficient} onClick={onApprove}>
+                        <kbd aria-hidden="true" className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">ESC</kbd>
+                    </button>
+                ) : <span />}
+                <Button type="button" size="sm" disabled={insufficient} onClick={onApprove} className="gap-1.5">
                     Approve
+                    <kbd aria-hidden="true" className="rounded border border-primary-foreground/25 bg-primary-foreground/10 px-1.5 py-0.5 text-[10px] font-medium">↵</kbd>
                 </Button>
             </div>
         </div>

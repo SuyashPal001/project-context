@@ -45,9 +45,8 @@ describe('ApproveCost', () => {
         render(<ApproveCost resourceType="tool_call" subject="task.create" onApprove={vi.fn()} />);
 
         const el = await screen.findByTestId('approve-cost');
-        expect(el.textContent).toContain('This costs');
-        expect(screen.getByText('2')).not.toBeNull(); // cost credits
-        expect(screen.getByText('10')).not.toBeNull(); // balance credits
+        expect(el.textContent).toContain('~2 credits');
+        expect(el.textContent).toContain('Balance 10');
     });
 
     it('renders "Unlimited" with no cost figure when the tenant is unlimited, and Approve stays enabled', async () => {
@@ -60,9 +59,9 @@ describe('ApproveCost', () => {
         });
         render(<ApproveCost resourceType="tool_call" onApprove={vi.fn()} />);
 
-        await screen.findByTestId('approve-cost-unlimited');
-        expect(screen.getByText('Unlimited')).not.toBeNull();
-        expect(screen.queryByText('2')).toBeNull();
+        const el = await screen.findByTestId('approve-cost-unlimited');
+        expect(el.textContent).toContain('Unlimited plan');
+        expect(el.textContent).not.toContain('credits');
         const approveBtn = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
         expect(approveBtn.disabled).toBe(false);
     });
