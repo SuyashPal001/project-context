@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
-import { spendCredits, grantCredits, getBalance, getLedger, InsufficientCreditsError } from '../index';
+import { spendCredits, grantCredits, getBalance, getLedger, InsufficientCreditsError, getUsageByType, getLastGrant } from '../index';
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 const TENANT = '00000000-0000-0000-0000-0000000000a2';
@@ -57,5 +57,44 @@ describe.skipIf(!TEST_DB)('credits wrappers', () => {
     const balance = await getBalance(TENANT);
     expect(balance.grants).toHaveLength(1);
     expect(balance.grants[0].expiresAt?.getTime()).toBe(expiresAt.getTime());
+  });
+
+  it('buckets ledger debits by job type, defaulting unrecognized/null job types to text', async () => {
+    await grantCredits({ tenantId: TENANT, amountMicro: 10_000_000n, key: 'g:bucket', grantType: 'admin' });
+    await spendCredits({ tenantId: TENANT, amountMicro: -1_000_000n, key: 'd:text', kind: 'debit', jobType: 'chat_message' });
+    await spendCredits({ tenantId: TENANT, amountMicro: -2_000_000n, key: 'd:image', kind: 'debit', jobType: 'image_generation' });
+    await spendCredits({ tenantId: TENANT, amountMicro: -3_000_000n, key: 'd:video', kind: 'debit', jobType: 'video_generation' });
+    await spendCredits({ tenantId: TENANT, amountMicro: -400_000n, key: 'd:audio', kind: 'debit', jobType: 'music_generation' });
+    await spendCredits({ tenantId: TENANT, amountMicro: -100_000n, key: 'd:unknown', kind: 'debit', jobType: null });
+
+    const usage = await getUsageByType(TENANT);
+    expect(usage.text).toBe(1_100_000n); // chat_message (1,000,000) + null (100,000)
+    expect(usage.image).toBe(2_000_000n);
+    expect(usage.video).toBe(3_000_000n);
+    expect(usage.audio).toBe(400_000n);
+  });
+
+  it('ignores grant/refund rows — only debits count as spend', async () => {
+    await grantCredits({ tenantId: TENANT, amountMicro: 5_000_000n, key: 'g:ignore-me', grantType: 'admin' });
+    const usage = await getUsageByType(TENANT);
+    expect(usage.text).toBe(0n);
+    expect(usage.image).toBe(0n);
+    expect(usage.video).toBe(0n);
+    expect(usage.audio).toBe(0n);
+  });
+
+  it('reports the most recently created grant, regardless of which grant a debit actually drew from', async () => {
+    await grantCredits({ tenantId: TENANT, amountMicro: 1_000_000n, key: 'g:old', grantType: 'admin' });
+    await grantCredits({ tenantId: TENANT, amountMicro: 5_000_000n, key: 'g:new', grantType: 'purchase' });
+    await spendCredits({ tenantId: TENANT, amountMicro: -500_000n, key: 'd:against-fifo', kind: 'debit' });
+
+    const lastGrant = await getLastGrant(TENANT);
+    expect(lastGrant?.grantType).toBe('purchase');
+    expect(lastGrant?.amountMicro).toBe(5_000_000n);
+  });
+
+  it('returns null for getLastGrant when the tenant has no grants', async () => {
+    const lastGrant = await getLastGrant(TENANT);
+    expect(lastGrant).toBeNull();
   });
 });
