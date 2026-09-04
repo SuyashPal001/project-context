@@ -178,11 +178,18 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                             </span>
                         )}
                     </div>
-                    {recent?.lastMessage && (
+                    {recent?.lastMessage ? (
                         <p className="text-[12px] text-muted-foreground/65 truncate text-left">
                             {recent.lastMessage.content}
                         </p>
-                    )}
+                    ) : agent.description ? (
+                        // No real message yet (agent has no conversations, or its
+                        // conversations only contain placeholders) — show what the
+                        // agent can do instead of leaving the row blank.
+                        <p className="text-[12px] text-muted-foreground/50 italic truncate text-left">
+                            {agent.description}
+                        </p>
+                    ) : null}
                 </div>
                 <ChevronRight
                     className={cn(
