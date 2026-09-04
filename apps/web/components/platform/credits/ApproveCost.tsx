@@ -12,8 +12,15 @@ import {
     type CreditResourceType,
 } from '@/lib/hooks/useCredits';
 
+// Cost is often a small fraction (0.02, 0.0001) — needs enough precision to
+// not just show as "0". Balance is a running total in the thousands, where
+// 6 decimal places is noise, not precision — 2 is plenty.
 function formatCredits(n: number): string {
     return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
+
+function formatBalance(n: number): string {
+    return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 export interface ApproveCostProps {
@@ -84,7 +91,7 @@ export function ApproveCost({ resourceType, subject, params, onApprove, onCancel
 
     const insufficient = !data.sufficient;
     const costCredits = formatCredits(microToCredits(data.costMicro));
-    const balanceCredits = formatCredits(microToCredits(data.balanceMicro));
+    const balanceCredits = formatBalance(microToCredits(data.balanceMicro));
 
     return (
         <ApproveCostShell
