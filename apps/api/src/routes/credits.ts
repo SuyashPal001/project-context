@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
     getBalance,
     getLedger,
+    getUsageByType,
+    getLastGrant,
     resolveRate,
     costMicro,
     grantCredits,
@@ -53,6 +55,40 @@ creditsRoutes.get('/balance', async (c) => {
             spentMicro: String(g.spentMicro),
             expiresAt: g.expiresAt ? g.expiresAt.toISOString() : null,
         })),
+    });
+});
+
+// GET /credits/usage-by-type
+creditsRoutes.get('/usage-by-type', async (c) => {
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    const permissions = requestContext?.permissions ?? [];
+    if (!hasPermission(permissions, 'credits', 'read')) return forbidden(c);
+
+    const balance = await getBalance(tenantId);
+    if (balance.unlimited) return c.json({ unlimited: true });
+
+    const [usage, lastGrant] = await Promise.all([
+        getUsageByType(tenantId),
+        getLastGrant(tenantId),
+    ]);
+    const totalMicro = usage.text + usage.image + usage.video + usage.audio;
+
+    return c.json({
+        unlimited: false,
+        balanceMicro: String(balance.balanceMicro),
+        byType: {
+            text: String(usage.text),
+            image: String(usage.image),
+            video: String(usage.video),
+            audio: String(usage.audio),
+        },
+        totalMicro: String(totalMicro),
+        lastGrant: lastGrant ? {
+            amountMicro: String(lastGrant.amountMicro),
+            spentMicro: String(lastGrant.spentMicro),
+            grantType: lastGrant.grantType,
+        } : null,
     });
 });
 

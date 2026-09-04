@@ -93,3 +93,63 @@ export async function resolveRate(
   const row = rows.find(r => r.subject === subject) ?? rows.find(r => r.subject === '*');
   return row ? { id: row.id, version: row.version, schema: row.pricingSchema as PricingSchema } : null;
 }
+
+export interface UsageByType {
+  text: bigint;
+  image: bigint;
+  video: bigint;
+  audio: bigint;
+}
+
+/** credit_ledger.jobType values that bucket into "text" spend. Anything not
+ * listed here and not one of the media job types below also falls into
+ * text — a new/unrecognized jobType must never silently disappear from the
+ * total. */
+const IMAGE_JOB_TYPE = 'image_generation';
+const VIDEO_JOB_TYPE = 'video_generation';
+const AUDIO_JOB_TYPE = 'music_generation';
+
+export async function getUsageByType(tenantId: string): Promise<UsageByType> {
+  const rows = await db.execute(sql`
+    select job_type, sum(-amount_micro) as spent
+      from credit_ledger
+     where tenant_id = ${tenantId} and kind in ('debit', 'refund', 'settle')
+     group by job_type
+  `) as unknown as { job_type: string | null; spent: string | null }[];
+
+  const usage: UsageByType = { text: 0n, image: 0n, video: 0n, audio: 0n };
+  for (const row of rows) {
+    const spent = BigInt(row.spent ?? '0');
+    if (row.job_type === IMAGE_JOB_TYPE) usage.image += spent;
+    else if (row.job_type === VIDEO_JOB_TYPE) usage.video += spent;
+    else if (row.job_type === AUDIO_JOB_TYPE) usage.audio += spent;
+    else usage.text += spent;
+  }
+  return usage;
+}
+
+export interface LastGrantSummary {
+  amountMicro: bigint;
+  spentMicro: bigint;
+  grantType: string;
+}
+
+/** The grant currently being drawn from — i.e. the oldest still-live grant,
+ * matching spend_credits()'s own FIFO order (`expires_at nulls last,
+ * created_at asc`) and its live-grant filter (not expired, not fully spent).
+ * This is what feeds "percent consumed since last top-up": a newer grant
+ * that spend hasn't touched yet would misreport 0% consumed while an older
+ * grant is still being drawn down. Uses the same live-grant `where` as
+ * getBalance's `grants` query above — reused, not reinvented. */
+export async function getLastGrant(tenantId: string): Promise<LastGrantSummary | null> {
+  const [row] = await db.select().from(creditGrants)
+    .where(and(
+      eq(creditGrants.tenantId, tenantId),
+      or(isNull(creditGrants.expiresAt), gt(creditGrants.expiresAt, new Date())),
+      sql`${creditGrants.spentMicro} < ${creditGrants.amountMicro}`,
+    ))
+    .orderBy(sql`${creditGrants.expiresAt} asc nulls last`, creditGrants.createdAt)
+    .limit(1);
+  if (!row) return null;
+  return { amountMicro: row.amountMicro, spentMicro: row.spentMicro, grantType: row.grantType };
+}
