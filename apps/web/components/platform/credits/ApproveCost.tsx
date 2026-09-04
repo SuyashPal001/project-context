@@ -4,6 +4,7 @@ import { useMemo, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useTenant } from '@/app/[tenant]/tenant-provider';
 import {
     useCreditEstimate,
@@ -81,19 +82,20 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
             <InlineRow testId="approve-cost-error" detail={detail} onApprove={onApprove} onCancel={onCancel} />
         ) : (
             <Shell label={label} testId="approve-cost-error" onApprove={onApprove} onCancel={onCancel}>
-                <Option detail={detail} onApprove={onApprove} />
+                <Option number={1} label="Approve — generate it" detail={detail} onClick={onApprove} tone="primary" />
+                {onCancel && <Option number={2} label="Reject" detail="Don't generate — dismiss this." onClick={onCancel} />}
             </Shell>
         );
     }
 
     // Unlimited tenants are never debited — no figure, no cost, no approve-gate.
     if (data.unlimited) {
-        const detail = 'Unlimited';
         return variant === 'inline' ? (
-            <InlineRow testId="approve-cost-unlimited" detail={detail} onApprove={onApprove} onCancel={onCancel} />
+            <InlineRow testId="approve-cost-unlimited" detail="Unlimited" onApprove={onApprove} onCancel={onCancel} />
         ) : (
             <Shell label={label} testId="approve-cost-unlimited" onApprove={onApprove} onCancel={onCancel}>
-                <Option detail="Unlimited plan — this won't touch your balance." onApprove={onApprove} />
+                <Option number={1} label="Approve — generate it" detail="Unlimited plan — this won't touch your balance." onClick={onApprove} tone="primary" />
+                {onCancel && <Option number={2} label="Reject" detail="Don't generate — dismiss this." onClick={onCancel} />}
             </Shell>
         );
     }
@@ -113,7 +115,8 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
         <InlineRow testId="approve-cost" detail={`This costs ${costCredits} credits`} insufficient={insufficient} extra={billingLink} onApprove={onApprove} onCancel={onCancel} />
     ) : (
         <Shell label={label} testId="approve-cost" onApprove={onApprove} onCancel={onCancel} insufficient={insufficient}>
-            <Option detail={`~${costCredits} credits`} insufficient={insufficient} onApprove={onApprove} />
+            <Option number={1} label="Approve — generate it" detail={`~${costCredits} credits`} onClick={onApprove} disabled={insufficient} tone="primary" />
+            {onCancel && <Option number={2} label="Reject" detail="Don't generate — dismiss this." onClick={onCancel} />}
             {billingLink}
         </Shell>
     );
@@ -157,16 +160,33 @@ function InlineRow({
     );
 }
 
-function Option({ detail, insufficient, onApprove }: { detail: string; insufficient?: boolean; onApprove: () => void }) {
+function Option({
+    number,
+    label,
+    detail,
+    disabled,
+    tone = 'default',
+    onClick,
+}: {
+    number: number;
+    label: string;
+    detail: string;
+    disabled?: boolean;
+    tone?: 'primary' | 'default';
+    onClick: () => void;
+}) {
     return (
         <button
             type="button"
-            onClick={insufficient ? undefined : onApprove}
-            disabled={insufficient}
-            className="w-full text-left rounded-xl px-3 py-2.5 border border-transparent bg-accent/60 transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            className={cn(
+                "w-full text-left rounded-xl px-3 py-2.5 border border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                tone === 'primary' ? "bg-accent/60 hover:bg-accent" : "hover:bg-accent/60",
+            )}
         >
-            <div className="text-sm font-medium">1. Approve — generate it</div>
-            <div className={insufficient ? 'text-xs text-destructive mt-0.5' : 'text-xs text-muted-foreground mt-0.5'}>{detail}</div>
+            <div className="text-sm font-medium">{number}. {label}</div>
+            <div className={disabled ? 'text-xs text-destructive mt-0.5' : 'text-xs text-muted-foreground mt-0.5'}>{detail}</div>
         </button>
     );
 }
