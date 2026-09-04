@@ -82,4 +82,51 @@ describe('POST /conversations/:id/messages/save', () => {
     const res = await post({ 'x-internal-service-key': SERVICE_KEY })
     expect(res.status).not.toBe(401)
   })
+
+  it('persists a generation object on attachments instead of stripping it', async () => {
+    // F-13 regression guard: the inner attachments Zod object used to omit
+    // `generation`, so Zod silently dropped it before the insert — every
+    // reloaded conversation showed no credit pill. Assert the parsed value
+    // that reaches db.insert(...).values(...) still carries `generation`.
+    const valuesMock = vi.fn((vals: any) => ({
+      returning: () => Promise.resolve([{ id: 'msg-1', ...vals }]),
+    }))
+    const insertMock = vi.fn(() => ({ values: valuesMock }))
+    const selectMock = vi.fn(() => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve([{ id: 'conv-1', tenantId: 'tenant-1', userId: 'user-1' }]),
+        }),
+      }),
+    }))
+    vi.doMock('../db', () => ({ db: { select: selectMock, insert: insertMock } }))
+
+    const { messagesRoutes } = await import('../routes/messages')
+    const app = new Hono<any>()
+    app.use('*', async (c, next) => {
+      c.set('requestContext', { tenant: { id: 'tenant-1' }, permissions: [] })
+      c.set('userId', 'user-1')
+      await next()
+    })
+    app.route('/conversations', messagesRoutes)
+
+    const attachments = [{
+      fileId: 'file-1',
+      name: 'image.png',
+      type: 'image/png',
+      generation: { creditsUsedMicro: '1500000', model: 'gemini-image' },
+    }]
+
+    const res = await app.request('/conversations/conv-1/messages/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-service-key': SERVICE_KEY },
+      body: JSON.stringify({ role: 'assistant', content: 'here is an image', attachments }),
+    })
+
+    expect(res.status).toBe(201)
+    expect(valuesMock).toHaveBeenCalledTimes(1)
+    const insertedAttachments = valuesMock.mock.calls[0][0].attachments
+    expect(insertedAttachments).toEqual(attachments)
+    expect(insertedAttachments[0].generation).toEqual({ creditsUsedMicro: '1500000', model: 'gemini-image' })
+  })
 })

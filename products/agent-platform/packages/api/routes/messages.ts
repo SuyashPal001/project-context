@@ -147,6 +147,10 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             name: z.string(),
             type: z.string(),
             size: z.number().optional(),
+            generation: z.object({
+                creditsUsedMicro: z.string(),
+                model: z.string(),
+            }).optional(),
         })).nullish(),
         artifactRef: z.object({
             type: z.enum(['prd', 'roadmap', 'tasks']),
