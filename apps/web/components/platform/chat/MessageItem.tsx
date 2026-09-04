@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from "react";
-import { Terminal, Info, Image as ImageIcon, RotateCcw, Pencil, Check, X } from "lucide-react";
+import { Terminal, Info, Image as ImageIcon, RotateCcw, Pencil, Check, X, User } from "lucide-react";
 import { AgentOrb } from "./AgentOrb";
 import { Message, PlanResult, ToolCall, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
@@ -158,13 +158,29 @@ export function MessageItem({
                     : <div className="w-[60px] shrink-0" />
             )}
 
+            {isUser && (
+                isFirstInSequence
+                    ? (
+                        <div className="h-[60px] w-[60px] shrink-0 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+                            <User className="h-6 w-6 text-primary/70" />
+                        </div>
+                    )
+                    // Mirrors the assistant's same-width spacer for a consecutive
+                    // user message, so the bubble column still lines up under the
+                    // first message's avatar.
+                    : <div className="w-[60px] shrink-0" />
+            )}
+
             <div className={cn(
                 "flex flex-col gap-1 flex-1 min-w-0",
                 isUser ? "items-end max-w-[75%]" : "items-start w-full"
             )}>
-                {isAssistant && isFirstInSequence && (
-                    <span className="text-[10px] font-mono tracking-[0.08em] text-muted-foreground/50 uppercase select-none mb-1 block">
-                        Assistant
+                {isFirstInSequence && (
+                    <span className="flex items-center gap-2 text-[10px] font-mono tracking-[0.08em] text-muted-foreground/50 uppercase select-none mb-1">
+                        {isUser ? 'You' : 'Assistant'}
+                        <span className="normal-case tracking-normal text-muted-foreground/40">
+                            {format(new Date(message.createdAt), 'h:mm a')}
+                        </span>
                     </span>
                 )}
 
@@ -242,12 +258,12 @@ export function MessageItem({
                 ) : (markdownContent.trim() || (isAssistant && message.isStreaming)) && (
                     <div
                         className={cn(
-                            "text-sm relative min-w-0 break-words",
+                            "text-sm relative min-w-0 break-words px-5 py-4 border",
                             isUser
-                                ? "px-5 py-4 bg-muted border border-border/50 text-foreground leading-[1.55]"
-                                : "text-foreground/90 leading-[1.75] w-full"
+                                ? "bg-primary/10 border-primary/20 text-foreground leading-[1.55]"
+                                : "bg-muted border-border/50 text-foreground/90 leading-[1.75] w-full"
                         )}
-                        style={isUser ? { borderRadius: '18px 18px 4px 18px' } : undefined}
+                        style={{ borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px' }}
                     >
                         {isAssistant && message.isStreaming ? (
                             <StreamingMessage
@@ -345,22 +361,17 @@ export function MessageItem({
                     <MessageFeedback messageId={message.id} conversationId={message.conversationId} content={message.content} />
                 )}
 
-                {isAssistant && hasDisplayedContent && (
+                {isAssistant && hasDisplayedContent && isLastMessage && !message.isStreaming && !isStreaming && onRegenerate && (
                     <div className="flex items-center gap-2 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-                        <span className="text-[11px] text-muted-foreground/60 px-1 mt-1">
-                            {format(new Date(message.createdAt), 'h:mm a')}
-                        </span>
-                        {isLastMessage && !message.isStreaming && !isStreaming && onRegenerate && (
-                            <button
-                                type="button"
-                                onClick={() => onRegenerate(message)}
-                                className="flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
-                                title="Regenerate response"
-                            >
-                                <RotateCcw className="h-3 w-3" />
-                                <span>Regenerate</span>
-                            </button>
-                        )}
+                        <button
+                            type="button"
+                            onClick={() => onRegenerate(message)}
+                            className="flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
+                            title="Regenerate response"
+                        >
+                            <RotateCcw className="h-3 w-3" />
+                            <span>Regenerate</span>
+                        </button>
                     </div>
                 )}
             </div>
