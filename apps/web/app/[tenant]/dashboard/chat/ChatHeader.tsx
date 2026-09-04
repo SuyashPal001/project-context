@@ -1,5 +1,5 @@
 'use client';
-import { MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive } from 'lucide-react';
+import { MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive, Calculator } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -7,10 +7,12 @@ import {
     DropdownMenu, DropdownMenuContent,
     DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { Conversation } from '@/components/platform/chat/types';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
 import { PersonaAvatar } from '@/components/platform/personas/PersonaAvatar';
 import { getAgentTypeIcon } from '@/components/platform/agents/agentTypeIcon';
+import { CreditsPanel } from '@/components/platform/credits/CreditsPanel';
 
 interface Props {
     selectedConversation: Conversation;
@@ -77,6 +79,21 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
                         )}
                     </button>
                 )}
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <button
+                            type="button"
+                            data-testid="chat-header-usage"
+                            className="h-8 px-3 flex items-center gap-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                        >
+                            <Calculator className="h-3.5 w-3.5" />
+                            Usage
+                        </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="bottom" align="end" className="p-0">
+                        <CreditsPanel />
+                    </PopoverContent>
+                </Popover>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/50">
