@@ -14,6 +14,27 @@ import type { ChatStreamEventType } from '@/components/platform/personas/usePers
 // Relay emits tool names using the JS variable name as key (e.g. savePRD, not save-prd)
 // normTool lowercases and replaces _ with - so savePRD → saveprd, save-prd → save-prd
 const SAVE_TOOL_NAMES = new Set(['save-prd', 'save-plan', 'save-tasks', 'saveprd', 'saveplan', 'savetasks', 'render-canvas', 'rendercanvas', 'render_canvas']);
+
+// Orchestrator sends {fileId, name, type, size, generation?} per attachment (no
+// local UI id) — synthesize one here, matching the shape reconcile()'s server
+// refetch produces so the live and delayed paths converge on the same Message
+// shape. Extracted as a named export (rather than inlined in onDone) so the
+// field list — generation included — has one place to go stale, and so it's
+// testable without mounting the hook: a prior fix here (2abec5ad/b43e03d9)
+// dropped `generation` from this same map, and only surfaced when the API's
+// own Zod schema was independently caught stripping it too.
+export function mapStreamAttachments(
+    attachmentsRaw: Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation'] }>,
+): MessageAttachment[] {
+    return attachmentsRaw.map(a => ({
+        id: crypto.randomUUID(),
+        fileId: a.fileId,
+        name: a.name,
+        type: a.type,
+        size: a.size,
+        generation: a.generation,
+    } satisfies MessageAttachment));
+}
 const sortByDate = (a: Message, b: Message) =>
     new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
 
@@ -163,12 +184,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 const followUps = suggestedFollowUpsRaw && Array.isArray(suggestedFollowUpsRaw) && suggestedFollowUpsRaw.length > 0
                     ? { suggestedFollowUps: suggestedFollowUpsRaw as string[] }
                     : {};
-                // Orchestrator sends {fileId, name, type, size} per attachment (no local
-                // UI id) — synthesize one here, matching the shape reconcile()'s server
-                // refetch produces so the live and delayed paths converge on the same
-                // Message shape.
                 const atts = attachmentsRaw && Array.isArray(attachmentsRaw) && attachmentsRaw.length > 0
-                    ? { attachments: (attachmentsRaw as Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation'] }>).map(a => ({ id: crypto.randomUUID(), fileId: a.fileId, name: a.name, type: a.type, size: a.size, generation: a.generation } satisfies MessageAttachment)) }
+                    ? { attachments: mapStreamAttachments(attachmentsRaw as Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation'] }>) }
                     : {};
                 if (idx >= 0) {
                     data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
