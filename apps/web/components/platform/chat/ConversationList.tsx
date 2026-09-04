@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight } from "lucide-react";
+import { format, isToday, isThisWeek } from "date-fns";
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
@@ -94,6 +95,26 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
 // dump every single one into the sidebar at once.
 const CONVERSATIONS_PAGE_SIZE = 5;
 
+// "3:45 PM" for today, weekday name within the last 7 days, else "Mar 4" —
+// matches the reference inbox pattern (today's time, otherwise a day/date).
+function formatConversationTimestamp(iso: string): string {
+    const d = new Date(iso);
+    if (isToday(d)) return format(d, 'h:mm a');
+    if (isThisWeek(d, { weekStartsOn: 1 })) return format(d, 'EEEE');
+    return format(d, 'MMM d');
+}
+
+// The agent's most recently active conversation — drives the timestamp +
+// preview snippet shown on the collapsed row, same as picking the newest
+// thread in an inbox list.
+function mostRecentConversation(conversations: Conversation[]): Conversation | null {
+    return conversations.reduce<Conversation | null>((latest, c) => {
+        const ts = c.lastMessage?.createdAt ?? c.createdAt;
+        const latestTs = latest ? (latest.lastMessage?.createdAt ?? latest.createdAt) : null;
+        return !latest || new Date(ts) > new Date(latestTs!) ? c : latest;
+    }, null);
+}
+
 function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, onSelect, onNewChat, onArchive, onDelete, hasSelectedConversation }: {
     agent: Agent;
     conversations: Conversation[];
@@ -123,6 +144,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
 
     const visibleConversations = conversations.slice(0, visibleCount);
     const remainingCount = conversations.length - visibleConversations.length;
+    const recent = mostRecentConversation(conversations);
 
     return (
         <div className="mb-1.5">
@@ -142,17 +164,26 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                     iconClassName="text-foreground/50"
                     icon={getAgentTypeIcon(agent.type)}
                 />
-                <span className={cn(
-                    "text-[15px] truncate flex-1",
-                    hasSelectedConversation ? "font-semibold text-foreground" : "font-medium text-foreground/80"
-                )}>
-                    {agent.name}
-                </span>
-                {conversations.length > 0 && (
-                    <span className="text-[11px] text-muted-foreground/50 tabular-nums shrink-0">
-                        {conversations.length}
-                    </span>
-                )}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                        <span className={cn(
+                            "text-[15px] truncate",
+                            hasSelectedConversation ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                        )}>
+                            {agent.name}
+                        </span>
+                        {recent && (
+                            <span className="text-[10px] text-muted-foreground/50 tabular-nums shrink-0">
+                                {formatConversationTimestamp(recent.lastMessage?.createdAt ?? recent.createdAt)}
+                            </span>
+                        )}
+                    </div>
+                    {recent?.lastMessage && (
+                        <p className="text-[12px] text-muted-foreground/50 truncate text-left">
+                            {recent.lastMessage.content}
+                        </p>
+                    )}
+                </div>
                 <ChevronRight
                     className={cn(
                         "h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform",

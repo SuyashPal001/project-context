@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useRef } from "react";
-import { Terminal, Info, Image as ImageIcon, RotateCcw, Pencil, Check, X } from "lucide-react";
-import { AgentOrb } from "./AgentOrb";
+import { Terminal, Info, RotateCcw, Pencil, Check, X } from "lucide-react";
 import { Message, PlanResult, ToolCall, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -21,8 +20,6 @@ import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
 import { GeneratedAssetCard } from "./GeneratedAssetCard";
 import { CitationStrip } from "./CitationStrip";
 import { FollowUpChips } from "./FollowUpChips";
-import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
-import type { PersonaSummary } from "../personas/types";
 
 // Whether this message renders anything at all — mirrors the same criteria
 // MessageItem uses internally (see hasDisplayedContent below), but exported
@@ -66,11 +63,6 @@ interface MessageItemProps {
     onEditAndResubmit?: (message: Message, newContent: string) => void;
     isLastMessage?: boolean;
     isStreaming?: boolean;
-    agentAvatarUrl?: string | null;
-    agentPersona?: PersonaSummary | null;
-    /** Live chat-stream state for this row's avatar — only ever set on the
-     * last assistant message by MessageThread; undefined everywhere else. */
-    avatarLiveState?: PersonaAnimationState;
 }
 
 export function MessageItem({
@@ -92,9 +84,6 @@ export function MessageItem({
     onEditAndResubmit,
     isLastMessage,
     isStreaming,
-    agentAvatarUrl,
-    agentPersona,
-    avatarLiveState,
 }: MessageItemProps) {
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
@@ -145,26 +134,16 @@ export function MessageItem({
 
     return (
         <div id={`message-${message.id}`} className={cn(
-            "flex items-start gap-4 group/msg min-w-0",
-            isUser ? "flex-row-reverse" : "flex-row",
+            "flex flex-col gap-1 group/msg min-w-0",
+            isUser ? "items-end max-w-[75%] ml-auto" : "items-start w-full",
             isNewExchange && "mt-6"
         )}>
-            {isAssistant && (
-                isFirstInSequence
-                    ? <AgentOrb size={60} state="idle" avatarUrl={agentAvatarUrl} persona={agentPersona} liveState={avatarLiveState} />
-                    // Same-width empty spacer for a consecutive assistant reply, so
-                    // the text column still lines up under the first message's avatar
-                    // instead of every reply in the run re-rendering its own icon.
-                    : <div className="w-[60px] shrink-0" />
-            )}
-
-            <div className={cn(
-                "flex flex-col gap-1 flex-1 min-w-0",
-                isUser ? "items-end max-w-[75%]" : "items-start w-full"
-            )}>
-                {isAssistant && isFirstInSequence && (
-                    <span className="text-[10px] font-mono tracking-[0.08em] text-muted-foreground/50 uppercase select-none mb-1 block">
-                        Assistant
+                {isFirstInSequence && (
+                    <span className="flex items-center gap-2 text-[10px] font-mono tracking-[0.08em] text-muted-foreground/50 uppercase select-none mb-1">
+                        {isUser ? 'You' : 'Assistant'}
+                        <span className="normal-case tracking-normal text-muted-foreground/40">
+                            {format(new Date(message.createdAt), 'h:mm a')}
+                        </span>
                     </span>
                 )}
 
@@ -345,25 +324,19 @@ export function MessageItem({
                     <MessageFeedback messageId={message.id} conversationId={message.conversationId} content={message.content} />
                 )}
 
-                {isAssistant && hasDisplayedContent && (
+                {isAssistant && hasDisplayedContent && isLastMessage && !message.isStreaming && !isStreaming && onRegenerate && (
                     <div className="flex items-center gap-2 opacity-0 group-hover/msg:opacity-100 transition-opacity">
-                        <span className="text-[11px] text-muted-foreground/60 px-1 mt-1">
-                            {format(new Date(message.createdAt), 'h:mm a')}
-                        </span>
-                        {isLastMessage && !message.isStreaming && !isStreaming && onRegenerate && (
-                            <button
-                                type="button"
-                                onClick={() => onRegenerate(message)}
-                                className="flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
-                                title="Regenerate response"
-                            >
-                                <RotateCcw className="h-3 w-3" />
-                                <span>Regenerate</span>
-                            </button>
-                        )}
+                        <button
+                            type="button"
+                            onClick={() => onRegenerate(message)}
+                            className="flex items-center gap-1 text-[11px] text-muted-foreground/70 hover:text-foreground px-1 mt-1"
+                            title="Regenerate response"
+                        >
+                            <RotateCcw className="h-3 w-3" />
+                            <span>Regenerate</span>
+                        </button>
                     </div>
                 )}
-            </div>
         </div>
     );
 }

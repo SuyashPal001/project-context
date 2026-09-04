@@ -41,7 +41,7 @@ interface MessageThreadProps {
     avatarLiveState?: PersonaAnimationState;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, avatarLiveState }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -304,9 +304,6 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             activeToolCalls={message.isStreaming ? activeToolCalls : undefined}
                             completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
                             liveReasoningText={message.isStreaming ? reasoningText : undefined}
-                            agentAvatarUrl={agentAvatarUrl}
-                            agentPersona={agentPersona}
-                            avatarLiveState={message.role === 'assistant' && isLastMessage ? avatarLiveState : undefined}
                         />
                     );
                 })}
