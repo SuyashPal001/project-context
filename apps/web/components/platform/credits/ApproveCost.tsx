@@ -1,5 +1,12 @@
 'use client';
 
+// The 'card' variant here deliberately matches ClarificationCard.tsx's shell —
+// same rounded-4xl card, numbered option row, free-text field, Skip[ESC]/
+// Submit footer. That's the established pattern for any "agent needs a
+// decision, anchored to the bottom of the composer" surface in this codebase.
+// Don't invent a new visual language for the next one — extend one of these
+// two, or read ClarificationCard.tsx's header comment first.
+
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowUp, Loader2 } from 'lucide-react';

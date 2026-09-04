@@ -1,5 +1,15 @@
 'use client';
 
+// This is the canonical shell for "agent needs a decision from you, anchored
+// to the bottom of the composer" — rounded-4xl card, numbered option row(s),
+// a free-text field with auto-grow/Enter-to-submit/Escape-to-skip, and a
+// Skip[ESC]/Submit(arrow) footer. @/components/platform/credits/ApproveCost.tsx
+// (the 'card' variant) reuses this exact shell for the credits-approval
+// decision. If you're building a new "agent is asking the user something"
+// surface, extend one of these two rather than inventing a third visual
+// pattern — see MessageThread.tsx for how both get mounted as the same kind
+// of bottom-anchored overlay.
+
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
