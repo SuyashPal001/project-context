@@ -173,13 +173,13 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                             {agent.name}
                         </span>
                         {recent && (
-                            <span className="text-[10px] text-muted-foreground/50 tabular-nums shrink-0">
+                            <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0">
                                 {formatConversationTimestamp(recent.lastMessage?.createdAt ?? recent.createdAt)}
                             </span>
                         )}
                     </div>
                     {recent?.lastMessage && (
-                        <p className="text-[12px] text-muted-foreground/50 truncate text-left">
+                        <p className="text-[12px] text-muted-foreground/65 truncate text-left">
                             {recent.lastMessage.content}
                         </p>
                     )}
