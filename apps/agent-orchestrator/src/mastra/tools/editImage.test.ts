@@ -60,8 +60,35 @@ describe('editImage tool', () => {
     const [, options] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
     const body = JSON.parse(options.body)
     expect(body).toMatchObject({ prompt: 'make it blue', sourceImageBase64: 'c291cmNlLWJ5dGVz', sourceMimeType: 'image/png' })
-    expect(result).toEqual({ fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3 })
+    expect(result).toEqual({
+      fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3,
+      creditsUsedMicro: '50000', model: 'gemini-3-pro-image-preview',
+    })
     expect(result).not.toHaveProperty('imageBase64')
+  })
+
+  it('includes creditsUsedMicro and model in the result when the generation was charged', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    const result = await editImage.execute!(baseInput as never, baseCtx())
+
+    expect(result).toEqual({
+      fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3,
+      creditsUsedMicro: '50000', model: 'gemini-3-pro-image-preview',
+    })
+  })
+
+  it('omits creditsUsedMicro when the tenant is unlimited (never charged)', async () => {
+    isUnlimited.mockResolvedValue(true)
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    const result = await editImage.execute!(baseInput as never, baseCtx())
+
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(result).toEqual({ fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 3, model: 'gemini-3-pro-image-preview' })
+    expect(result).not.toHaveProperty('creditsUsedMicro')
   })
 
   it('does not call the gateway result into a charge and returns a refusal when Gemini refuses — no charge, nothing to refund', async () => {
