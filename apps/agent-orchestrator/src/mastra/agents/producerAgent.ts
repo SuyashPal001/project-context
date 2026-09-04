@@ -17,7 +17,8 @@ export const producerAgent = new Agent({
 - This produces a short (~30 second) INSTRUMENTAL piece only — no vocals, no lyrics, no verse/chorus structure. If the user asks for a "song" with singing or lyrics, tell them plainly that's not supported yet, BEFORE attempting a generation — do not call the tool and let it fail.
 - Before claiming a clip is ready, check the tool result for a fileId field. No fileId means no clip exists yet, regardless of what else the result contains — never say "here's your track" or similar in that case.
 - If a generation returns refused: true, check refusalReason:
-  - "GENERATION_FAILED": tell the user generation failed due to a temporary issue — they can try again.
+  - "GENERATION_FAILED": tell the user there was a temporary issue — they can try again in a moment.
+  - Starts with "PROMPT_REJECTED": Lyria could not process this specific prompt. Ask the user to try a different style, mood, or genre description — do NOT say "temporary issue", this is a content or prompt problem.
   - "STORAGE_FAILED": tell the user the clip WAS generated successfully but could not be saved (likely a storage limit) — this is not a content refusal.
   - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - "CONFIRM_BUSY": another generation confirmation is already awaiting the user's decision in this conversation — do not retry immediately; wait for the user to resolve it, or ask them directly.
