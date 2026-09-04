@@ -16,7 +16,7 @@ import {
   sessionActiveGenerationConfirmations, pendingGenerationConfirmations,
   checkRateLimit,
 } from '../types.js'
-import { updateClarificationRequest, updateGenerationConfirmRequest } from '../persistence.js'
+import { updateClarificationRequest, updateGenerationConfirmRequest, fetchConversationAllowMode } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -90,6 +90,7 @@ chatRouter.post('/api/chat', async (c) => {
     ? (body as Record<string, unknown>).folderId as string
     : undefined
   const folderPrefix = resolveFolderPrefix(body)
+  const bodyAllowMode: 'ask' | 'auto' = (body as Record<string, unknown>).allowMode === 'auto' ? 'auto' : 'ask'
 
   if (!conversationId || (!rawMessage && attachments.length === 0)) {
     return c.json({ error: 'conversationId and message or attachments are required' }, 400)
@@ -116,7 +117,7 @@ chatRouter.post('/api/chat', async (c) => {
   // Per-agent memory (MEMORY.md), not per-tenant — each hired employee keeps
   // its own working notes rather than sharing one blob across a tenant's agents.
   const workingMemoryPromise = fetchAgentMemory(agentId)
-  const [, creditCheck] = await Promise.all([
+  const [, creditCheck, , allowMode] = await Promise.all([
     // auth/me — resolve Cognito sub → internal UUID
     !isInternalCall
       ? fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${idToken}` } })
@@ -138,6 +139,11 @@ chatRouter.post('/api/chat', async (c) => {
       : Promise.resolve({ allowed: true, balanceMicro: 0n, unlimited: true } as const),
     // working memory runs concurrently; awaited inside the async handler below
     workingMemoryPromise,
+    // allowMode: fetched from the conversation row, not trusted off the wire —
+    // an internal service call (watchdog etc.) has no per-user conversation
+    // ownership to check against, so it keeps trusting its own body like
+    // bodyTenantId already does above.
+    isInternalCall ? Promise.resolve(bodyAllowMode) : fetchConversationAllowMode(idToken, conversationId),
   ])
 
   // Credit guard — checked before ReadableStream setup so we can return plain 402, not SSE error.
@@ -261,7 +267,7 @@ chatRouter.post('/api/chat', async (c) => {
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream,
     isStreamClosed: () => streamClosed,
-    folderId, folderPrefix,
+    folderId, folderPrefix, allowMode,
   })
 
   const origin = getAllowedOrigin(c.req.header('Origin'))

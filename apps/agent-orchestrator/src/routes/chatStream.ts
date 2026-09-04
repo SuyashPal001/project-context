@@ -61,6 +61,7 @@ export interface ChatStreamOpts {
   isStreamClosed: () => boolean
   folderId?: string
   folderPrefix?: string
+  allowMode?: 'ask' | 'auto'
 }
 
 type ContentPart =
@@ -166,7 +167,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed,
-    folderId, folderPrefix,
+    folderId, folderPrefix, allowMode,
   } = opts
 
   // Heartbeat while any tool call is in flight — see sendHeartbeat's doc
@@ -242,6 +243,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('idToken', idToken)
     if (folderId) requestContext.set('folderId', folderId)
     applyFolderScope(requestContext, folderPrefix)
+    if (allowMode) requestContext.set('allowMode', allowMode)
 
     const mcpClient = getMCPClientForTenant(tenantId, agentId, sessionId)
     requestContext.set('__mcpClient', mcpClient as any)

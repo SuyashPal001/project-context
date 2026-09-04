@@ -104,6 +104,9 @@ interface ChatInputProps {
     folderPrefix?: string;
     onRevokeFolder?: () => void;
     isRevokingFolder?: boolean;
+    /** Whether generation (image/video/etc) asks for cost confirmation first, or runs unattended. */
+    allowMode?: 'ask' | 'auto';
+    onAllowModeChange?: (mode: 'ask' | 'auto') => void;
 }
 
 export function ChatInput({
@@ -120,6 +123,8 @@ export function ChatInput({
     folderPrefix,
     onRevokeFolder,
     isRevokingFolder,
+    allowMode,
+    onAllowModeChange,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
     const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | 'hash' | null>(null);
@@ -682,6 +687,41 @@ export function ChatInput({
                                                         );
                                                     });
                                                 })()}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    )}
+
+                                    {onAllowModeChange && (
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="h-8 px-2 flex items-center gap-1.5 rounded-full text-xs font-medium text-foreground/90 hover:text-foreground transition-colors"
+                                                >
+                                                    {allowMode === 'auto' ? 'Auto' : 'Ask'}
+                                                </button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent side="top" align="start" className="w-64 p-2">
+                                                <DropdownMenuItem
+                                                    onClick={() => onAllowModeChange('ask')}
+                                                    className="flex items-start gap-2 cursor-pointer py-2"
+                                                >
+                                                    <span className="flex-1 min-w-0 flex flex-col">
+                                                        <span className="text-sm font-medium">Ask</span>
+                                                        <span className="text-xs text-muted-foreground">Ask before generating (images, video, etc.)</span>
+                                                    </span>
+                                                    {(allowMode ?? 'ask') === 'ask' && <Check className="h-4 w-4 shrink-0 mt-0.5" />}
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                    onClick={() => onAllowModeChange('auto')}
+                                                    className="flex items-start gap-2 cursor-pointer py-2"
+                                                >
+                                                    <span className="flex-1 min-w-0 flex flex-col">
+                                                        <span className="text-sm font-medium">Auto</span>
+                                                        <span className="text-xs text-muted-foreground">Generate without asking</span>
+                                                    </span>
+                                                    {allowMode === 'auto' && <Check className="h-4 w-4 shrink-0 mt-0.5" />}
+                                                </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     )}

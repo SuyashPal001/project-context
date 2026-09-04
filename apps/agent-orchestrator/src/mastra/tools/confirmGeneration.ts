@@ -32,6 +32,11 @@ export async function confirmGenerationOrDecline(
     return { confirmed: true }
   }
 
+  const allowMode = execContext?.requestContext?.get('allowMode') as string | undefined
+  if (allowMode === 'auto') {
+    return { confirmed: true }
+  }
+
   const rate = await resolveRate(resourceType, subject)
   if (!rate) {
     return { confirmed: true }

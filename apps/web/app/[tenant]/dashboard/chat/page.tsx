@@ -69,6 +69,7 @@ function ChatPage() {
     // The grant lives on the conversation, so it survives a reload and is not
     // something the client can talk itself into — the server decides what it says.
     const folderPrefix = selectedConversation?.metadata?.folderScope?.prefix;
+    const allowMode = selectedConversation?.metadata?.allowMode;
 
     // Revoking is a server-side clear, not a UI toggle: the grant is what the
     // orchestrator enforces against, so the chip must not be able to lie about it.
@@ -90,12 +91,30 @@ function ChatPage() {
         isRevokingFolder: revokeFolderScope.isPending,
     };
 
+    // Stored on the conversation (not client state) so it survives a reload
+    // and the orchestrator enforces the same value the composer shows — same
+    // reasoning as folderScope above.
+    const setAllowMode = useMutation({
+        mutationFn: (mode: 'ask' | 'auto') => api.patch(`/api/v1/conversations/${conversationId}`, { allowMode: mode }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+            queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        },
+        onError: () => toast.error('Could not change allow mode'),
+    });
+
+    const allowModeProps = {
+        allowMode: allowMode ?? 'ask' as const,
+        onAllowModeChange: (mode: 'ask' | 'auto') => setAllowMode.mutate(mode),
+    };
+
     const stream = useChatStream({
         conversationId,
         conversationIdRef,
         agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id ?? activeAgents[0]?.id,
         folderId,
         folderPrefix,
+        allowMode,
         selectedConversation,
         messages,
         handleCanvasUpdate,
@@ -348,11 +367,11 @@ function ChatPage() {
                                 {!hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
                                     activePill !== null ? (
                                         <WizardView pill={activePill} onBack={() => setActivePill(null)} onSubmit={(prompt) => sendMessage(prompt)}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} />
                                         </WizardView>
                                     ) : (
                                         <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={(text) => setInputPrefill(text)} avatarLiveState={displayState}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} />
                                         </WelcomeView>
                                     )
                                 ) : (
@@ -361,7 +380,7 @@ function ChatPage() {
                                         <ChatTimelineNavigator messages={messages} />
                                         {!awaitingClarificationReply && !awaitingGenerationConfirmReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                                <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
+                                                <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...allowModeProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                             </div>
                                         )}
                                     </>

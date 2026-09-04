@@ -258,6 +258,10 @@ conversationsRoutes.patch('/:id', async (c) => {
             status: z.enum(['active', 'archived', 'escalated']).optional(),
             needsHuman: z.boolean().optional(),
             folderScope: z.object({ prefix: folderPrefix }).nullable().optional(),
+            // 'ask' (default): the composer's ApproveCost card gates every generation
+            // tool call. 'auto': confirmGenerationOrDecline skips the card entirely and
+            // runs — see apps/agent-orchestrator/src/mastra/tools/confirmGeneration.ts.
+            allowMode: z.enum(['ask', 'auto']).nullable().optional(),
         });
 
         const result = schema.safeParse(await c.req.json());
@@ -268,14 +272,20 @@ conversationsRoutes.patch('/:id', async (c) => {
             return c.json({ error: 'No fields provided for update', code: 'VALIDATION_ERROR' }, 400);
         }
 
-        const { folderScope, ...rest } = result.data;
+        const { folderScope, allowMode, ...rest } = result.data;
         const patch: Record<string, unknown> = { ...rest };
-        if (folderScope !== undefined) {
+        if (folderScope !== undefined || allowMode !== undefined) {
             // Merge, never overwrite: metadata is shared with whatever else the
             // product stores on a conversation.
             const current = { ...((existing.metadata ?? {}) as Record<string, unknown>) };
-            if (folderScope === null) delete current.folderScope;
-            else current.folderScope = folderScope;
+            if (folderScope !== undefined) {
+                if (folderScope === null) delete current.folderScope;
+                else current.folderScope = folderScope;
+            }
+            if (allowMode !== undefined) {
+                if (allowMode === null) delete current.allowMode;
+                else current.allowMode = allowMode;
+            }
             patch.metadata = current;
         }
 

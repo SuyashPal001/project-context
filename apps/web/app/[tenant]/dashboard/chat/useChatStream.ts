@@ -44,13 +44,14 @@ interface Params {
     agentId: string | undefined;
     folderId?: string;
     folderPrefix?: string;
+    allowMode?: 'ask' | 'auto';
     selectedConversation: Conversation | undefined;
     messages: Message[];
     handleCanvasUpdate: (action: CanvasAction, data: CanvasEventData) => void;
     openCanvas: () => void;
 }
 
-export function useChatStream({ conversationId, conversationIdRef, agentId, folderId, folderPrefix, selectedConversation, messages, handleCanvasUpdate, openCanvas }: Params) {
+export function useChatStream({ conversationId, conversationIdRef, agentId, folderId, folderPrefix, allowMode, selectedConversation, messages, handleCanvasUpdate, openCanvas }: Params) {
     const queryClient = useQueryClient();
     const [eventError, setEventError] = useState<string | null>(null);
     // Carries a seq alongside the event type so a repeated identical event (e.g. a second
@@ -108,6 +109,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         agentId,
         folderId,
         folderPrefix,
+        allowMode,
 
         onReasoning: useCallback((delta: string) => {
             emitStreamEvent('reasoning');

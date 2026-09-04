@@ -34,6 +34,27 @@ export async function createConversation(idToken: string, agentId: string): Prom
   }
 }
 
+// Server-held grant, not a client-asserted one: allowMode gates whether paid
+// generation skips the cost-confirmation card (see confirmGeneration.ts), so
+// the value enforced here must come from the conversation row — a client
+// sending `allowMode: 'auto'` on the wire must never be enough on its own.
+// GET /conversations/:id is already scoped to (tenantId, userId) server-side,
+// so this doubles as an ownership check: a stranger's conversationId 404s and
+// falls back to 'ask' rather than ever reading someone else's grant.
+export async function fetchConversationAllowMode(idToken: string, conversationId: string): Promise<'ask' | 'auto'> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/conversations/${conversationId}`, {
+      headers: { 'Authorization': `Bearer ${idToken}` },
+    })
+    if (!res.ok) return 'ask'
+    const json = await res.json() as { data?: { metadata?: { allowMode?: string } } }
+    return json.data?.metadata?.allowMode === 'auto' ? 'auto' : 'ask'
+  } catch (err) {
+    console.error('[persistence] fetchConversationAllowMode error:', (err as Error).message)
+    return 'ask'
+  }
+}
+
 export function saveUserMessage(
   idToken: string,
   conversationId: string,

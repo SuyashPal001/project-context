@@ -165,8 +165,11 @@ export interface Conversation {
      *  Null for a conversation with nothing but placeholders in it. */
     lastMessage?: { role: string; content: string; createdAt: string } | null;
     /** Server-side grant: which Drive folder this conversation's agent may read.
-     *  Enforcement lives in the orchestrator's tools — this is display only. */
-    metadata?: { folderScope?: { prefix: string } } | null;
+     *  Enforcement lives in the orchestrator's tools — this is display only.
+     *  allowMode: 'ask' (default) shows the ApproveCost card before every
+     *  generation tool call; 'auto' skips it — enforced in
+     *  confirmGenerationOrDecline, not just hidden client-side. */
+    metadata?: { folderScope?: { prefix: string }; allowMode?: 'ask' | 'auto' } | null;
 }
 
 export interface ConversationsResponse {

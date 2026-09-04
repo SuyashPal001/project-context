@@ -43,6 +43,15 @@ describe('confirmGenerationOrDecline', () => {
     expect(sendEvent).not.toHaveBeenCalled()
   })
 
+  it('skips the gate when allowMode is auto — no sendEvent', async () => {
+    const result = await confirmGenerationOrDecline(
+      ctx({ tenantId: 't1', sessionId: 's1', userId: 'u1', conversationId: 'c1', idToken: 'tok', sendEvent, allowMode: 'auto' }),
+      'image_generation', 'model-x', 'Generate image',
+    )
+    expect(result).toEqual({ confirmed: true })
+    expect(sendEvent).not.toHaveBeenCalled()
+  })
+
   it('skips the gate when no active rate resolves — no sendEvent', async () => {
     resolveRate.mockResolvedValue(null)
     const result = await confirmGenerationOrDecline(baseCtx(), 'image_generation', 'model-x', 'Generate image')

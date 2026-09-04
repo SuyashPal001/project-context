@@ -16,6 +16,9 @@ export interface UseChatOptions {
     agentId?: string;
     folderId?: string;
     folderPrefix?: string;
+    /** 'auto': confirmGenerationOrDecline skips ApproveCost entirely and runs.
+     * 'ask' (default/undefined): unchanged, card gates every generation call. */
+    allowMode?: 'ask' | 'auto';
     onDelta?: (delta: string, messageId: string, conversationId?: string) => void;
     onReasoning?: (delta: string) => void;
     onDone?: (fullText: string, messageId: string, conversationId?: string, planResult?: unknown, artifactRef?: unknown, citations?: unknown, suggestedFollowUps?: unknown, attachments?: unknown) => void;
@@ -44,6 +47,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         agentId,
         folderId,
         folderPrefix,
+        allowMode,
         onDelta,
         onReasoning,
         onDone,
@@ -81,11 +85,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const agentIdRef = useRef(agentId);
     const folderIdRef = useRef(folderId);
     const folderPrefixRef = useRef(folderPrefix);
+    const allowModeRef = useRef(allowMode);
 
     onDeltaRef.current = onDelta;
     onReasoningRef.current = onReasoning;
     folderIdRef.current = folderId;
     folderPrefixRef.current = folderPrefix;
+    allowModeRef.current = allowMode;
     onDoneRef.current = onDone;
     onErrorRef.current = onError;
     onToolCallRef.current = onToolCall;
@@ -174,6 +180,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 attachments,
                 ...(folderIdRef.current ? { folderId: folderIdRef.current } : {}),
                 ...(folderPrefixRef.current ? { folderPrefix: folderPrefixRef.current } : {}),
+                ...(allowModeRef.current ? { allowMode: allowModeRef.current } : {}),
             }),
             signal: controller.signal,
         });
