@@ -33,7 +33,7 @@ describe('ApproveCost', () => {
         expect(screen.getByTestId('approve-cost-loading')).not.toBeNull();
     });
 
-    it('divides costMicro and balanceMicro by 1,000,000 for display', async () => {
+    it('divides costMicro by 1,000,000 for display and does not show the balance', async () => {
         apiGetMock.mockResolvedValue({
             costMicro: '2000000',
             balanceMicro: '10000000',
@@ -46,7 +46,7 @@ describe('ApproveCost', () => {
 
         const el = await screen.findByTestId('approve-cost');
         expect(el.textContent).toContain('~2 credits');
-        expect(el.textContent).toContain('Balance 10');
+        expect(el.textContent).not.toContain('Balance');
     });
 
     it('renders "Unlimited" with no cost figure when the tenant is unlimited, and Approve stays enabled', async () => {
