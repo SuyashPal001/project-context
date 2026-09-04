@@ -36,12 +36,15 @@ interface MessageThreadProps {
     onEditAndResubmit?: (message: Message, newContent: string) => void;
     agentAvatarUrl?: string | null;
     agentPersona?: PersonaSummary | null;
+    /** Shown as the sender label on assistant message rows instead of the
+     * generic "Assistant" fallback — e.g. "Producer", "Analyst". */
+    agentName?: string | null;
     /** Live chat-stream state, applied only to the last assistant message's
      * avatar — every other row stays static. See AgentOrb's `liveState` prop. */
     avatarLiveState?: PersonaAnimationState;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, agentName }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -290,6 +293,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             isFirstInSequence={prevRole === null || prevRole !== message.role}
                             isNewExchange={prevRole !== null && prevRole !== message.role}
                             isLastMessage={isLastMessage}
+                            agentName={agentName}
                             freshUrls={freshUrls}
                             onApprove={onApprove}
                             onDismiss={onDismiss}

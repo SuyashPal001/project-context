@@ -63,6 +63,8 @@ interface MessageItemProps {
     onEditAndResubmit?: (message: Message, newContent: string) => void;
     isLastMessage?: boolean;
     isStreaming?: boolean;
+    /** Shown in place of the generic "Assistant" label — e.g. "Producer". */
+    agentName?: string | null;
 }
 
 export function MessageItem({
@@ -84,6 +86,7 @@ export function MessageItem({
     onEditAndResubmit,
     isLastMessage,
     isStreaming,
+    agentName,
 }: MessageItemProps) {
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
@@ -140,7 +143,7 @@ export function MessageItem({
         )}>
                 {isFirstInSequence && (
                     <span className="flex items-center gap-2 text-[10px] font-mono tracking-[0.08em] text-muted-foreground/50 uppercase select-none mb-1">
-                        {isUser ? 'You' : 'Assistant'}
+                        {isUser ? 'You' : (agentName || 'Assistant')}
                         <span className="normal-case tracking-normal text-muted-foreground/40">
                             {format(new Date(message.createdAt), 'h:mm a')}
                         </span>
