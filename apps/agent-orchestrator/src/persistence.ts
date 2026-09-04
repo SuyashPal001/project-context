@@ -274,6 +274,7 @@ export interface AttachmentPayload {
   name: string
   type: string
   size: number
+  generation?: { creditsUsedMicro: string; model: string }
 }
 
 /**

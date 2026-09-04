@@ -124,6 +124,11 @@ describe('attachmentFromCanvasToolResult', () => {
   it('returns null when the canvas tool result has no fileId (upload failed)', () => {
     expect(attachmentFromCanvasToolResult('render-canvas', { title: 'x' })).toBeNull()
   })
+
+  it('never adds a generation field for render-canvas results', () => {
+    const attachment = attachmentFromCanvasToolResult('render-canvas', { fileId: 'file-1', name: 'doc.md', fileType: 'text/markdown', size: 10 })
+    expect(attachment).not.toHaveProperty('generation')
+  })
 })
 
 describe('attachmentFromCanvasToolResult — generate-image/edit-image', () => {
@@ -143,6 +148,20 @@ describe('attachmentFromCanvasToolResult — generate-image/edit-image', () => {
 
   it('still returns null for an unrelated tool name', () => {
     expect(attachmentFromCanvasToolResult('fetch-agent-context', { fileId: 'f3' })).toBeNull()
+  })
+
+  it('carries creditsUsedMicro and model into a generation field when present', () => {
+    const result = { fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 100, creditsUsedMicro: '50000', model: 'gemini-3-pro-image-preview' }
+    expect(attachmentFromCanvasToolResult('generate-image', result)).toEqual({
+      fileId: 'f1', name: 'x.png', type: 'image/png', size: 100,
+      generation: { creditsUsedMicro: '50000', model: 'gemini-3-pro-image-preview' },
+    })
+  })
+
+  it('omits generation when the tool result has no creditsUsedMicro (unlimited-plan tenant)', () => {
+    const result = { fileId: 'f1', name: 'x.png', fileType: 'image/png', size: 100, model: 'gemini-3-pro-image-preview' }
+    const attachment = attachmentFromCanvasToolResult('generate-image', result)
+    expect(attachment).not.toHaveProperty('generation')
   })
 })
 
@@ -167,5 +186,13 @@ describe('attachmentFromCanvasToolResult — generate-video', () => {
   it('returns null for a generate-video result with no fileId (refusal)', () => {
     const result = attachmentFromCanvasToolResult('generate-video', { refused: true, refusalReason: 'GENERATION_FAILED' })
     expect(result).toBeNull()
+  })
+
+  it('carries creditsUsedMicro and model into a generation field when present', () => {
+    const result = { fileId: 'f1', name: 'clip.mp4', fileType: 'video/mp4', size: 100, creditsUsedMicro: '50000', model: 'gemini-omni-1.1-flash' }
+    expect(attachmentFromCanvasToolResult('generate-video', result)).toEqual({
+      fileId: 'f1', name: 'clip.mp4', type: 'video/mp4', size: 100,
+      generation: { creditsUsedMicro: '50000', model: 'gemini-omni-1.1-flash' },
+    })
   })
 })

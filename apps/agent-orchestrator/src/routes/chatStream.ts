@@ -132,12 +132,16 @@ export function attachmentFromCanvasToolResult(
 ): AttachmentPayload | null {
   if (!['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video'].includes(normalizedToolName)) return null
   if (typeof result.fileId !== 'string') return null
-  return {
+  const attachment: AttachmentPayload = {
     fileId: result.fileId,
     name: String(result.name ?? 'document.md'),
     type: String(result.fileType ?? 'text/markdown'),
     size: typeof result.size === 'number' ? result.size : 0,
   }
+  if (typeof result.creditsUsedMicro === 'string' && typeof result.model === 'string') {
+    attachment.generation = { creditsUsedMicro: result.creditsUsedMicro, model: result.model }
+  }
+  return attachment
 }
 
 function extractPlanJson(text: string): Record<string, unknown> | null {
