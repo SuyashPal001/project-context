@@ -41,6 +41,34 @@ async function callVertexMusicModel(req: MusicGenerationRequest): Promise<MusicG
 }
 
 export class UnsupportedMusicModelError extends Error {}
+// Thrown when Lyria rejects the prompt (500 "Could not generate audio") after
+// retries — agent should ask the user to rephrase rather than call it transient.
+export class LyriaPromptRejectedError extends Error {}
+
+async function callVertexMusicModelWithRetry(req: MusicGenerationRequest): Promise<MusicGenerationResult> {
+  try {
+    return await callVertexMusicModel(req)
+  } catch (err) {
+    const msg = (err as Error).message ?? ''
+    // Lyria's transient 500 — retry once after a short delay
+    if (msg.includes('500') && msg.includes('Could not generate audio')) {
+      console.warn('[music] Lyria 500, retrying once…')
+      await new Promise(r => setTimeout(r, 2_000))
+      try {
+        return await callVertexMusicModel(req)
+      } catch (retryErr) {
+        const retryMsg = (retryErr as Error).message ?? ''
+        if (retryMsg.includes('500') && retryMsg.includes('Could not generate audio')) {
+          throw new LyriaPromptRejectedError(
+            'Lyria could not generate audio for this prompt. Ask the user to try a different style or description.'
+          )
+        }
+        throw retryErr
+      }
+    }
+    throw err
+  }
+}
 
 // No fallback tier — lyria-002 has no Gemini-API-key equivalent (see spec's
 // "No Gemini-API-key fallback tier" note). A Vertex failure or open circuit
@@ -53,10 +81,12 @@ export async function generateMusic(req: MusicGenerationRequest): Promise<MusicG
     throw new Error('Vertex music generation unavailable (circuit open)')
   }
   try {
-    const result = await callVertexMusicModel(req)
+    const result = await callVertexMusicModelWithRetry(req)
     vertexMusicBreaker.onSuccess()
     return result
   } catch (err) {
+    // Don't penalise the breaker for prompt rejections — those are user errors, not infra failures
+    if (err instanceof LyriaPromptRejectedError) throw err
     vertexMusicBreaker.onFailure()
     throw err
   }
@@ -89,6 +119,11 @@ export async function handleMusicGenerations(req: IncomingMessage, res: ServerRe
     if (err instanceof UnsupportedMusicModelError) {
       res.writeHead(400, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ error: { message: err.message, type: 'invalid_request_error' } }))
+      return
+    }
+    if (err instanceof LyriaPromptRejectedError) {
+      res.writeHead(422, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: err.message, type: 'prompt_rejected' } }))
       return
     }
     console.error('[music] generation failed:', (err as Error).message)

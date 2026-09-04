@@ -43,9 +43,18 @@ export const generateSong = createTool({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
         body: JSON.stringify({ model: MUSIC_MODEL, prompt }),
-        signal: AbortSignal.timeout(90_000),
+        signal: AbortSignal.timeout(120_000),
       })
-      if (!res.ok) throw new Error(`gateway returned ${res.status}`)
+      if (!res.ok) {
+        // 422 = Lyria rejected this specific prompt — tell the agent to ask for a different description
+        if (res.status === 422) {
+          const body = await res.json().catch(() => ({})) as { error?: { message?: string } }
+          const reason = body?.error?.message ?? 'Lyria could not generate audio for this prompt.'
+          console.warn(`[session:${sessionId}] generateSong prompt rejected by Lyria:`, reason)
+          return { refused: true, refusalReason: `PROMPT_REJECTED: ${reason}` }
+        }
+        throw new Error(`gateway returned ${res.status}`)
+      }
       genResult = await res.json()
     } catch (err) {
       console.error(`[session:${sessionId}] generateSong gateway call failed:`, (err as Error).message)
