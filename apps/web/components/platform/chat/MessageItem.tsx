@@ -142,9 +142,9 @@ export function MessageItem({
             isNewExchange && "mt-6"
         )}>
                 {isFirstInSequence && (
-                    <span className="flex items-center gap-2 text-[10px] font-mono tracking-[0.08em] text-muted-foreground/50 uppercase select-none mb-1">
+                    <span className="flex items-center gap-2 text-[10px] font-mono tracking-[0.08em] text-muted-foreground/80 uppercase select-none mb-1">
                         {isUser ? 'You' : (agentName || 'Assistant')}
-                        <span className="normal-case tracking-normal text-muted-foreground/40">
+                        <span className="normal-case tracking-normal text-muted-foreground/60">
                             {format(new Date(message.createdAt), 'h:mm a')}
                         </span>
                     </span>
@@ -226,7 +226,7 @@ export function MessageItem({
                         className={cn(
                             "text-sm relative min-w-0 break-words",
                             isUser
-                                ? "px-5 py-4 bg-muted border border-border/50 text-foreground leading-[1.55]"
+                                ? "px-4 py-2.5 bg-muted border border-border/50 text-foreground leading-[1.55]"
                                 : "text-foreground/90 leading-[1.75] w-full"
                         )}
                         style={isUser ? { borderRadius: '18px 18px 4px 18px' } : undefined}
