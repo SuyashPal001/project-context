@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 import { useCreditBalance, microToCredits } from "@/lib/hooks/useCredits"
 import { PLANS } from "@/components/platform/billing/PlanSelectorDialog"
 import { NotificationsBell } from "@/components/platform/notifications/NotificationsBell"
+import { CreditsPanel } from "@/components/platform/credits/CreditsPanel"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -35,8 +36,10 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
     const { tenantSlug, plan, email, name, role } = useTenant()
     const { theme, setTheme } = useTheme()
     const [isOpen, setIsOpen] = React.useState(false)
+    const [showCreditsDetail, setShowCreditsDetail] = React.useState(false)
     const [mounted, setMounted] = React.useState(false)
     React.useEffect(() => setMounted(true), [])
+    React.useEffect(() => { if (!isOpen) setShowCreditsDetail(false) }, [isOpen])
 
     const getInitials = () => {
         if (name) return name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
@@ -162,14 +165,28 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     </div>
 
                     {credits && (
-                        <div className="flex items-center justify-between gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setShowCreditsDetail((v) => !v)}
+                            className="flex w-full items-center justify-between gap-2 rounded-md -mx-1.5 px-1.5 py-0.5 text-left hover:bg-accent/50 transition-colors"
+                        >
                             <span className="text-[12px] text-muted-foreground">Credits</span>
                             <span className="text-[12px] font-medium text-foreground">
                                 {credits.unlimited
                                     ? "Unlimited"
                                     : microToCredits(credits.balanceMicro).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                             </span>
-                        </div>
+                        </button>
+                    )}
+
+                    {/* Usage breakdown — hidden until the Credits row above is
+                        clicked. Same CreditsPanel the sidebar's standalone
+                        CreditBalanceIndicator opens in a popover; embedded
+                        inline here instead, since nesting a Radix Popover
+                        inside this DropdownMenuContent risks the outer menu's
+                        outside-click handling closing both at once. */}
+                    {showCreditsDetail && credits && !credits.unlimited && (
+                        <CreditsPanel className="w-full p-0 pt-2 border-t border-border/60" />
                     )}
                 </div>
 
