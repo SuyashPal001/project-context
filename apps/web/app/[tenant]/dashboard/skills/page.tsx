@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SkillCard, skillImportState } from "@/components/platform/skills/SkillCard";
 import { SkillDetailModal } from "@/components/platform/skills/SkillDetailModal";
-import { ImportSkillDialog } from "@/components/platform/skills/ImportSkillDialog";
+import { CreateSkillDialog } from "@/components/platform/skills/CreateSkillDialog";
 import { installSkill, listSkills } from "@/components/platform/skills/actions";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
@@ -39,7 +39,7 @@ export default function SkillsPage() {
     const queryClient = useQueryClient();
     const { tenantId } = useTenant();
     const [tab, setTab] = useState<"mine" | "explore">("mine");
-    const [importOpen, setImportOpen] = useState(false);
+    const [createOpen, setCreateOpen] = useState(false);
     const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
     // Last known dead/stuck state per skill, so we only toast on a live
     // transition into that state (not for a skill that was already dead
@@ -116,9 +116,9 @@ export default function SkillsPage() {
             <div className="flex items-start justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Skills</h1>
-                    <p className="text-muted-foreground mt-2">Import, install, and share reusable skill packages</p>
+                    <p className="text-muted-foreground mt-2">Create, install, and share reusable skill packages</p>
                 </div>
-                <Button onClick={() => setImportOpen(true)}>+ Import skill</Button>
+                <Button onClick={() => setCreateOpen(true)}>+ Create skill</Button>
             </div>
 
             <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
@@ -142,7 +142,7 @@ export default function SkillsPage() {
                     isLoading={mineLoading}
                     onSelect={setSelectedSkillId}
                     onInstall={handleInstall}
-                    emptyMessage="No skills yet — import one to get started."
+                    emptyMessage="No skills yet — create one to get started."
                 />
             ) : (
                 <div className="space-y-8">
@@ -169,10 +169,10 @@ export default function SkillsPage() {
                 </div>
             )}
 
-            <ImportSkillDialog
-                open={importOpen}
-                onOpenChange={setImportOpen}
-                onImported={() => queryClient.invalidateQueries({ queryKey: ["skills"] })}
+            <CreateSkillDialog
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+                onCreated={() => queryClient.invalidateQueries({ queryKey: ["skills"] })}
             />
 
             <SkillDetailModal

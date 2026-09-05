@@ -1,3 +1,8 @@
+// Parked, deliberately: nothing renders this. Importing a pre-built skill
+// package is a developer action and belongs in the dev studio, which doesn't
+// exist yet — the tenant Skills page offers Create instead. The backend it
+// calls (POST /skills/upload-url, the zip/github/url sources, the skill.import
+// worker) is all live and tested. Delete this only if that decision is reversed.
 "use client";
 
 import { useRef, useState } from "react";
