@@ -24,6 +24,7 @@ import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
 import { renderCanvas } from '../tools/renderCanvas.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
+import { createSkillTool } from '../tools/createSkill.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -167,6 +168,10 @@ export const SERVER_TOOLS = {
   render_canvas: renderCanvas,
   analyze_audio: analyzeAudioTool,
   analyze_video: analyzeVideoTool,
+  // User-triggered only — the tool description tells the model never to call
+  // this on its own initiative. See createSkill.ts for the confirm-gate and
+  // tenantId/userId/agentId/conversationId provenance rules.
+  create_skill: createSkillTool,
   // Folder scope: the agent is granted a handle to a folder, not its contents.
   // list_folder is the manifest — names and types only, no bytes read.
   list_folder: listFolderTool,

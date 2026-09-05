@@ -47,6 +47,7 @@ describe('SERVER_TOOLS', () => {
       'analyze_audio',
       'analyze_video',
       'ask_clarifying_questions',
+      'create_skill',
       'find_in_folder',
       'get_task_thread',
       'internet_search',
