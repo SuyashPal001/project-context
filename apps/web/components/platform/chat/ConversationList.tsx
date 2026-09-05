@@ -344,8 +344,24 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                         <Button variant="outline" size="sm" onClick={() => refetch()} className="mx-auto">Retry</Button>
                     </div>
                 ) : isLoading ? (
-                    <div className="space-y-3 p-2">
-                        {[1, 2].map(i => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}
+                    // Mirrors an actual collapsed agent row (avatar, name +
+                    // timestamp, one subtitle line, chevron) rather than a
+                    // generic block, so the list doesn't resize once agents
+                    // load in.
+                    <div className="space-y-1">
+                        {[1, 2, 3, 4].map(i => (
+                            <div key={i} className="flex items-center gap-3 px-2.5 py-2">
+                                <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+                                <div className="flex-1 min-w-0 space-y-1.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <Skeleton className="h-3.5 w-24" />
+                                        <Skeleton className="h-2.5 w-8" />
+                                    </div>
+                                    <Skeleton className="h-3 w-36" />
+                                </div>
+                                <Skeleton className="h-4 w-4 rounded-sm shrink-0" />
+                            </div>
+                        ))}
                     </div>
                 ) : activeAgents.length > 0 ? (
                     <>

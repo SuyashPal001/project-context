@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,7 +18,8 @@ import type { PersonaSummary, PersonasResponse } from "@/components/platform/per
 import { CreateAgentDialog } from "./CreateAgentDialog";
 import { AgentCard } from "./AgentCard";
 import type { AgentsResponse } from "./types";
-import { TeamCard } from "@/components/platform/teams/TeamCard";
+import { TeamCard, TeamCardSkeleton } from "@/components/platform/teams/TeamCard";
+import { EmployeeCardSkeleton } from "@/components/platform/shared/EmployeeCard";
 import { TeamDetailModal } from "@/components/platform/teams/TeamDetailModal";
 import { CreateTeamDialog } from "@/components/platform/teams/CreateTeamDialog";
 import {
@@ -294,7 +294,7 @@ export function AgentsView() {
                 teamsLoading ? (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                         {Array.from({ length: 4 }).map((_, i) => (
-                            <Skeleton key={i} className="h-[180px] w-full rounded-xl" />
+                            <TeamCardSkeleton key={i} />
                         ))}
                     </div>
                 ) : (
@@ -329,7 +329,7 @@ export function AgentsView() {
                 ) : agentsLoading ? (
                     <div className="grid gap-4 md:grid-cols-2">
                         {Array.from({ length: 4 }).map((_, i) => (
-                            <Skeleton key={i} className="h-[220px] w-full rounded-xl" />
+                            <EmployeeCardSkeleton key={i} />
                         ))}
                     </div>
                 ) : hiredAgents.length > 0 ? (
@@ -356,7 +356,7 @@ export function AgentsView() {
             ) : personasLoading ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {Array.from({ length: 4 }).map((_, i) => (
-                        <Skeleton key={i} className="h-[320px] w-full rounded-xl" />
+                        <EmployeeCardSkeleton key={i} withOutcomes />
                     ))}
                 </div>
             ) : explorePersonas.length > 0 ? (

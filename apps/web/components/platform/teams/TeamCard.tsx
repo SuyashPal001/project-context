@@ -2,6 +2,7 @@
 
 import { Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import type { Agent } from "@/components/platform/agents/types";
 import type { Team } from "./types";
@@ -45,6 +46,23 @@ export function TeamCard({ team, members, onClick }: TeamCardProps) {
                     )}
                 </div>
             )}
+        </Card>
+    );
+}
+
+// Mirrors TeamCard's actual structure (icon square, name, member-count line,
+// stacked avatar row) instead of a flat rectangle.
+export function TeamCardSkeleton() {
+    return (
+        <Card className="overflow-hidden p-4">
+            <Skeleton className="h-14 w-14 rounded-2xl" />
+            <Skeleton className="mt-3 h-5 w-24" />
+            <Skeleton className="mt-1.5 h-3.5 w-16" />
+            <div className="mt-3 flex -space-x-2">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <Skeleton key={i} className="h-7 w-7 rounded-full ring-2 ring-background" />
+                ))}
+            </div>
         </Card>
     );
 }

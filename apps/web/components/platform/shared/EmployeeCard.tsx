@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Brain } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export interface EmployeeOutcome {
@@ -146,4 +147,51 @@ export function EmployeeCard({
         );
     }
     return body;
+}
+
+// Mirrors EmployeeCard's actual structure (avatar, name + badge, subtitle,
+// description, skill-tag row, optional outcomes gallery) instead of a flat
+// rectangle, so AgentCard/PersonaCard grids don't jump in size once real
+// content replaces the skeleton.
+export function EmployeeCardSkeleton({ withOutcomes }: { withOutcomes?: boolean }) {
+    return (
+        <Card className="gap-4 overflow-hidden p-5">
+            <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                    <Skeleton className="h-11 w-11 shrink-0 rounded-2xl" />
+                    <div className="min-w-0 space-y-1.5 pt-0.5">
+                        <Skeleton className="h-4 w-28" />
+                        <Skeleton className="h-3.5 w-20" />
+                    </div>
+                </div>
+                <Skeleton className="h-6 w-16 shrink-0 rounded-full" />
+            </div>
+
+            <div className="space-y-1.5">
+                <Skeleton className="h-3.5 w-full" />
+                <Skeleton className="h-3.5 w-2/3" />
+            </div>
+
+            <hr className="border-border" />
+
+            <div>
+                <Skeleton className="mb-2 h-2.5 w-10" />
+                <div className="flex flex-wrap gap-1.5">
+                    <Skeleton className="h-5 w-14 rounded-full" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                    <Skeleton className="h-5 w-12 rounded-full" />
+                </div>
+            </div>
+
+            {withOutcomes && (
+                <div>
+                    <Skeleton className="mb-2 h-2.5 w-14" />
+                    <div className="grid grid-cols-2 gap-2">
+                        <Skeleton className="aspect-video w-full rounded-lg" />
+                        <Skeleton className="aspect-video w-full rounded-lg" />
+                    </div>
+                </div>
+            )}
+        </Card>
+    );
 }

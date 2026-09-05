@@ -389,11 +389,17 @@ function ChatPage() {
                                 )}
                             </>
                         ) : isLoadingConversations ? (
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background h-full relative">
+                            // Mirrors the "Select a conversation" empty state below
+                            // (icon square, heading, two-line paragraph, pill button)
+                            // rather than three unrelated block sizes — the eventual
+                            // state, not a generic loading shape.
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative">
                                 {sidebarToggleButton}
-                                <div className="space-y-4 w-full max-w-sm">
-                                    <Skeleton className="h-12 w-full" /><Skeleton className="h-40 w-full" /><Skeleton className="h-10 w-32 mx-auto rounded-full" />
-                                </div>
+                                <Skeleton className="h-16 w-16 rounded-2xl mb-6" />
+                                <Skeleton className="h-5 w-40 mb-2" />
+                                <Skeleton className="h-4 w-64 mb-1.5" />
+                                <Skeleton className="h-4 w-48 mb-8" />
+                                <Skeleton className="h-12 w-52 rounded-full" />
                             </div>
                         ) : isErrorConversations ? (
                             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative">
