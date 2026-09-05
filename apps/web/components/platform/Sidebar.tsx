@@ -236,13 +236,13 @@ export function Sidebar() {
                                 <svg
                                     viewBox="179 32 642 630"
                                     className="shrink-0"
-                                    style={{ height: 24, width: "auto" }}
+                                    style={{ height: 28, width: "auto" }}
                                     aria-label={brandName}
                                 >
                                     <defs>
                                         <linearGradient id="sidebarMarkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                            <stop offset="0%" stopColor="#E69DB8" />
-                                            <stop offset="100%" stopColor="#F2A679" />
+                                            <stop offset="0%" stopColor="#DC7CA0" />
+                                            <stop offset="100%" stopColor="#EB9257" />
                                         </linearGradient>
                                     </defs>
                                     <path
