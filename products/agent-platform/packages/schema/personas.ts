@@ -12,6 +12,12 @@ export const personas = pgTable('personas', {
   tagline: text('tagline').notNull(),
   basePersonality: text('base_personality').notNull(),
   skillTags: jsonb('skill_tags').$type<string[]>().notNull().default([]),
+  // Hand-authored per official persona (no LLM generation) — see
+  // docs/superpowers/specs/2026-09-05-agent-welcome-pills-design.md.
+  // null = not yet authored; WelcomeView falls through to a per-type or
+  // generic fallback in that case, so this column is safe to add before
+  // every persona has a value.
+  suggestedPrompts: jsonb('suggested_prompts').$type<Array<{ icon: string; label: string; promptText: string }> | null>(),
   exampleAssetUrl: text('example_asset_url'),
   exampleCaption: text('example_caption'),
   exampleAssetUrl2: text('example_asset_url_2'),

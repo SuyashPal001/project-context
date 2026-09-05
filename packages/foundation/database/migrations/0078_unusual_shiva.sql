@@ -1,0 +1,1 @@
+ALTER TABLE "personas" ADD COLUMN "suggested_prompts" jsonb;
