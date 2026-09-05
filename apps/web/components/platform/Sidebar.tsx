@@ -38,7 +38,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { getSidebarItems, getDeveloperPanelItems, getSettingsPanelItems, type SidebarItem as SidebarItemType } from "@/lib/sidebar-items"
 import { signOut } from "@/lib/auth"
-import { CreditBalanceIndicator } from "./credits/CreditBalanceIndicator"
 import { WorkspaceSwitcherPill } from "./WorkspaceSwitcherPill"
 import { AccountMenu } from "./AccountMenu"
 
@@ -305,12 +304,10 @@ export function Sidebar() {
                     )}
                 </nav>
 
-                {/* Credit balance — hidden when collapsed. The `messages`
-                    quota bar that used to sit above this was retired with the
-                    `messages` feature: it enforced nothing once spend_credits()
-                    became the real check, so showing it beside a live balance
-                    read as two competing limits. */}
-                {!isSidebarCollapsed && <CreditBalanceIndicator />}
+                {/* Credit balance used to render here as its own row. Removed —
+                    the account dropdown's Credits row (AccountMenu.tsx) already
+                    covers it, and reveals the same usage breakdown on click, so
+                    this was a redundant second reading of the same balance. */}
 
                 {/* Footer Section — account (opens a menu) and notifications
                     (opens a feed) are different objects, so they get

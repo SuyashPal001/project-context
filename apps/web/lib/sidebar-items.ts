@@ -57,9 +57,9 @@ export function getSidebarItems(
 
     // Notifications moved out too: it's a glance-and-dismiss flyout in the
     // sidebar's bottom utility cluster now (NotificationsBell.tsx, rendered
-    // in Sidebar.tsx next to CreditBalanceIndicator/AccountMenu), not a full
-    // nav row that navigates away from whatever the user was doing. The
-    // /notifications page still exists as the paginated archive.
+    // in Sidebar.tsx next to AccountMenu), not a full nav row that navigates
+    // away from whatever the user was doing. The /notifications page still
+    // exists as the paginated archive.
 
     // Audit log and Developers both moved out: Audit log is now a section
     // inside Workspace settings (getSettingsPanelItems), Developer settings
