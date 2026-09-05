@@ -91,6 +91,10 @@ export async function generateSkill(
         }
     }
 
+    // Flush any bytes the decoder held back for a multi-byte character split
+    // across the final chunk boundary, so it isn't silently dropped.
+    buffer += decoder.decode();
+
     if (streamError) throw streamError;
     return draft;
 }

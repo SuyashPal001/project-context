@@ -15,6 +15,13 @@ const MAX_BRIEF = 4_000
 const MAX_DRAFT = 65_536
 const GENERATOR_AGENT_ID = 'skill-generator'
 
+// Synthetic actor id for the skill generator. `credit_ledger.actor_id` and
+// `usage_records.actor_id` are plain `uuid` columns with no foreign key, so a
+// stable synthetic id inserts cleanly — they do not reference a real agent or
+// user row. This is a fixed literal (not crypto.randomUUID()) so it stays the
+// same across restarts and lines up with any ledger/usage rows already written.
+const SKILL_GENERATOR_ACTOR_ID = 'a3f1d9c2-6e4b-4a8d-9c3f-2b7e5d1a9f60'
+
 skillsRouter.options('/api/skills/generate', (c) => {
   const origin = getAllowedOrigin(c.req.header('Origin'))
   return new Response(null, {
@@ -96,15 +103,15 @@ skillsRouter.post('/api/skills/generate', async (c) => {
         // and the debit. All three are fire-and-forget by contract — a metering
         // failure must never take down a draft the user already has.
         persistCost({ tenantId, agentId: GENERATOR_AGENT_ID, model: modelName, inputTokens, outputTokens })
-        recordUsage({ tenantId, actorId: GENERATOR_AGENT_ID, inputTokens, outputTokens })
-        Promise.resolve(debitChatTurn({
+        recordUsage({ tenantId, actorId: SKILL_GENERATOR_ACTOR_ID, inputTokens, outputTokens })
+        debitChatTurn({
           tenantId,
-          agentId: GENERATOR_AGENT_ID,
+          agentId: SKILL_GENERATOR_ACTOR_ID,
           messageId: `skillgen:${generationId}`,
           model: modelName,
           inputTokens,
           outputTokens,
-        })).catch(err => console.error(`[skillgen:${generationId}] debit failed:`, (err as Error).message))
+        }).catch(err => console.error(`[skillgen:${generationId}] debit failed:`, (err as Error).message))
 
         send('done', { model: modelName })
       } catch (err) {

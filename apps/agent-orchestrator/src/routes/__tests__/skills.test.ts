@@ -34,6 +34,7 @@ async function readSSE(res: Response): Promise<string> {
 
 const VALID_CLAIMS = { sub: 'user-1', 'custom:tenantId': 'tenant-1' }
 const BODY = { name: 'Bid Writer', brief: 'Help write RFP responses' }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 async function request(body: unknown, headers: Record<string, string> = { Authorization: 'Bearer token' }) {
   const { skillsRouter } = await import('../skills.js')
@@ -52,6 +53,7 @@ describe('POST /api/skills/generate', () => {
     vi.clearAllMocks()
     validateTokenMock.mockResolvedValue(VALID_CLAIMS)
     checkCreditBalanceMock.mockResolvedValue({ allowed: true, balanceMicro: 100n, unlimited: false })
+    debitChatTurnMock.mockResolvedValue(undefined)
     streamTextMock.mockReturnValue(streamOf(['---\nname: bid-writer\n', 'description: d\n---\n\nBody.']))
   })
 
@@ -100,19 +102,26 @@ describe('POST /api/skills/generate', () => {
     expect(debitChatTurnMock).toHaveBeenCalledTimes(1)
     expect(debitChatTurnMock.mock.calls[0][0]).toMatchObject({
       tenantId: 'tenant-1',
-      agentId: 'skill-generator',
       model: 'gemini-2.5-flash',
       inputTokens: 900,
       outputTokens: 1_800,
     })
     expect(debitChatTurnMock.mock.calls[0][0].messageId).toMatch(/^skillgen:/)
+    // agentId flows into a `uuid` column (credit_ledger.actor_id) under the
+    // hood — the human-readable 'skill-generator' string would fail the cast
+    // and get silently swallowed. This regex is what would have caught it.
+    expect(debitChatTurnMock.mock.calls[0][0].agentId).toMatch(UUID_RE)
   })
 
   it('records usage and cost alongside the debit', async () => {
     const res = await request(BODY)
     await readSSE(res)
     expect(persistCostMock).toHaveBeenCalledTimes(1)
+    expect(persistCostMock.mock.calls[0][0]).toMatchObject({ agentId: 'skill-generator' })
     expect(recordUsageMock).toHaveBeenCalledTimes(1)
+    // recordUsage inserts into usage_records.actor_id, also a `uuid NOT NULL`
+    // column — same cast hazard as the debit above.
+    expect(recordUsageMock.mock.calls[0][0].actorId).toMatch(UUID_RE)
   })
 
   it('emits an error event and no debit when the model stream throws', async () => {

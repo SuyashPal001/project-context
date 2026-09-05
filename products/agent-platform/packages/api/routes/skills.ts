@@ -19,8 +19,10 @@ const sourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('github'), owner: z.string().min(1).max(100), repo: z.string().min(1).max(100), ref: z.string().min(1).max(100) }),
   z.object({ type: z.literal('url'), url: z.string().url().max(2048) }),
   // Written in-app rather than imported: the SKILL.md body travels in the
-  // request and on to the import worker, which is why it's capped at 64KB —
-  // an SQS message body maxes out at 256KB and this has to fit inside one.
+  // request and on to the import worker, which is why it's capped here.
+  // z.string().max() counts UTF-16 code units, not bytes, so 65,536 is a
+  // worst-case ~196KB in UTF-8 (3 bytes/char for the densest scripts, e.g.
+  // CJK) — still comfortably inside SQS's 256KB message body limit.
   z.object({ type: z.literal('authored'), body: z.string().min(1).max(65_536) }),
 ]);
 
