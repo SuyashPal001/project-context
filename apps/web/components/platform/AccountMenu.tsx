@@ -10,6 +10,7 @@ import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import { useCreditBalance, microToCredits } from "@/lib/hooks/useCredits"
 import { PLANS } from "@/components/platform/billing/PlanSelectorDialog"
+import { NotificationsBell } from "@/components/platform/notifications/NotificationsBell"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -78,8 +79,9 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     Upgrade to {nextPlan.name}
                 </Link>
             )}
+        <div className="flex items-center gap-1">
         <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
-            <DropdownMenuTrigger className="focus:outline-none w-full">
+            <DropdownMenuTrigger className={cn("focus:outline-none", collapsed ? "w-full" : "flex-1 min-w-0")}>
                 <div className={cn(
                     "flex items-center gap-3 rounded-lg transition-all hover:bg-accent/50 group w-full",
                     collapsed ? "justify-center px-2 py-2" : "px-2.5 py-2"
@@ -247,6 +249,8 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                 </div>
             </DropdownMenuContent>
         </DropdownMenu>
+        {!collapsed && <NotificationsBell compact />}
+        </div>
         </div>
     )
 }

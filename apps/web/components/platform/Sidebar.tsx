@@ -314,22 +314,14 @@ export function Sidebar() {
 
                 {/* Footer Section — account (opens a menu) and notifications
                     (opens a feed) are different objects, so they get
-                    different triggers on the same row rather than one
-                    absorbing the other. Collapsed: stacked, both icon-only. */}
+                    different triggers rather than one absorbing the other.
+                    AccountMenu renders the bell itself (beside its trigger
+                    row, not beside the Upgrade CTA above it) so the two stay
+                    vertically aligned regardless of whether that CTA shows.
+                    Collapsed: stacked, both icon-only. */}
                 <div className="mt-auto pt-4 border-t border-border">
-                    {isSidebarCollapsed ? (
-                        <div className="flex flex-col items-center gap-1">
-                            <NotificationsBell collapsed />
-                            <AccountMenu collapsed />
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-1">
-                            <div className="flex-1 min-w-0">
-                                <AccountMenu />
-                            </div>
-                            <NotificationsBell compact />
-                        </div>
-                    )}
+                    {isSidebarCollapsed && <NotificationsBell collapsed />}
+                    <AccountMenu collapsed={isSidebarCollapsed} />
                 </div>
             </aside>
 
