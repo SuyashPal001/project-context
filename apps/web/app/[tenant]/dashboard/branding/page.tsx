@@ -29,9 +29,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Settings } from "lucide-react";
 import { ImageUpload } from "@/components/platform/ImageUpload";
 
+const hexColorSchema = z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "Invalid hex color");
+
 const brandingFormSchema = z.object({
     brandName: z.string().max(100).optional().nullable(),
     logoUrl: z.string().url().or(z.string().length(0)).optional().nullable(),
+    brandColor: hexColorSchema.or(z.string().length(0)).optional().nullable(),
+    agentDisplayName: z.string().max(100).optional().nullable(),
 });
 
 type BrandingFormValues = z.infer<typeof brandingFormSchema>;
@@ -52,6 +56,8 @@ export default function BrandingPage() {
         defaultValues: {
             brandName: "",
             logoUrl: "",
+            brandColor: "",
+            agentDisplayName: "",
         },
     });
 
@@ -60,6 +66,8 @@ export default function BrandingPage() {
             form.reset({
                 brandName: brandingData.brandName || "",
                 logoUrl: brandingData.logoUrl || "",
+                brandColor: brandingData.brandColor || "",
+                agentDisplayName: brandingData.agentDisplayName || "",
             });
         }
     }, [brandingData, form]);
@@ -69,6 +77,8 @@ export default function BrandingPage() {
             const payload = {
                 brandName: values.brandName || null,
                 logoUrl: values.logoUrl || null,
+                brandColor: values.brandColor || null,
+                agentDisplayName: values.agentDisplayName || null,
             };
             return api.patch("/api/v1/branding", payload);
         },
@@ -158,6 +168,53 @@ export default function BrandingPage() {
                                         </FormControl>
                                         <FormDescription>
                                             Your workspace logo. We recommend a square image.
+                                        </FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="brandColor"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Brand Color</FormLabel>
+                                        <FormControl>
+                                            <div className="flex items-center gap-3">
+                                                <input
+                                                    type="color"
+                                                    value={/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(field.value || "") ? field.value! : "#000000"}
+                                                    onChange={(e) => field.onChange(e.target.value)}
+                                                    className="h-10 w-10 rounded border border-input cursor-pointer bg-transparent p-0.5"
+                                                />
+                                                <Input
+                                                    placeholder="#000000"
+                                                    {...field}
+                                                    value={field.value || ""}
+                                                    className="max-w-[160px]"
+                                                />
+                                            </div>
+                                        </FormControl>
+                                        <FormDescription>
+                                            Accent color used across your workspace.
+                                        </FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="agentDisplayName"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Agent Display Name</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="e.g. Acme Assistant" {...field} value={field.value || ""} />
+                                        </FormControl>
+                                        <FormDescription>
+                                            Name shown to users when your agents respond.
                                         </FormDescription>
                                         <FormMessage />
                                     </FormItem>
