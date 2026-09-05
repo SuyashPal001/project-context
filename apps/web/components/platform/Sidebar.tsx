@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
+import { PLANS } from "./billing/PlanSelectorDialog"
 import { NotificationsBell } from "./notifications/NotificationsBell"
 import { useSidebar } from "./SidebarContext"
 import {
@@ -189,8 +190,8 @@ export function Sidebar() {
             detail: {
                 feature: item.planGateFeature || '',
                 requiredPlan: item.planRequired
-                    ? item.planRequired.charAt(0).toUpperCase() + item.planRequired.slice(1)
-                    : 'Starter',
+                    ? (PLANS.find(p => p.id === item.planRequired)?.name ?? item.planRequired)
+                    : PLANS.find(p => p.id === 'starter')!.name,
             }
         }))
     }
