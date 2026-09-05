@@ -32,7 +32,7 @@ type SkillTab = (typeof SKILL_TABS)[number];
 
 const INTERNAL_ERROR = { error: 'Internal error', code: 'INTERNAL_ERROR' } as const;
 
-function slugify(name: string): string {
+export function slugify(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'skill';
 }
 
@@ -67,11 +67,12 @@ async function resolveOwners(userIds: string[]): Promise<Map<string, { name: str
   return byId;
 }
 
-async function createVersionAndEnqueue(params: {
+export async function createVersionAndEnqueue(params: {
   tenantId: string;
   skillId: string;
   version: number;
   source: z.infer<typeof sourceSchema>;
+  attachToAgentId?: string;
 }) {
   const { tenantId, skillId, version, source } = params;
   const [versionRow] = await db.insert(skillVersions).values({
@@ -88,7 +89,10 @@ async function createVersionAndEnqueue(params: {
 
   const queueUrl = process.env.SQS_PROCESSING_QUEUE_URL;
   if (queueUrl) {
-    await publishToQueue(queueUrl, { type: 'skill.import', tenantId, skillId, skillVersionId: versionRow.id, version, source });
+    await publishToQueue(queueUrl, {
+      type: 'skill.import', tenantId, skillId, skillVersionId: versionRow.id, version, source,
+      ...(params.attachToAgentId ? { attachToAgentId: params.attachToAgentId } : {}),
+    });
   }
   return versionRow;
 }
