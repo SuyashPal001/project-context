@@ -119,7 +119,7 @@ function LoginPageContent() {
             <StarfieldCanvas speedMode="idle" />
             <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-card">
                 <div className="flex flex-col items-center space-y-3">
-                    <ProjectContextLogo variant="full" iconSize={28} />
+                    <ProjectContextLogo variant="full" iconSize={36} />
                     <p className="text-sm text-muted-foreground">
                         {step === 'email' ? 'Sign in to your account' : step === 'google' ? 'Continue with Google' : 'Enter your password'}
                     </p>
