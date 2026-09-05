@@ -18,9 +18,11 @@ import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useVoice } from "@/hooks/useVoice";
-import { MessageSquare, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { MessageSquare, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CreditsPanel } from "@/components/platform/credits/CreditsPanel";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -404,6 +406,21 @@ function ChatPage() {
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative">
                                 {sidebarToggleButton}
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <button
+                                            type="button"
+                                            data-testid="chat-empty-usage"
+                                            className="absolute top-4 right-4 h-8 px-3 flex items-center gap-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                        >
+                                            <Calculator className="h-3.5 w-3.5" />
+                                            Usage
+                                        </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent side="bottom" align="end" className="p-0">
+                                        <CreditsPanel />
+                                    </PopoverContent>
+                                </Popover>
                                 <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 border border-border"><MessageSquare className="h-8 w-8 text-muted-foreground" /></div>
                                 <h2 className="text-lg font-bold tracking-tight mb-2">Select a conversation</h2>
                                 <p className="text-muted-foreground max-w-sm mb-8">Select an existing conversation from the list or start a new one.</p>
