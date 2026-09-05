@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
-import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor, Zap, HelpCircle } from "lucide-react"
+import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor, Zap, HelpCircle, Settings } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
@@ -188,6 +188,14 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     >
                         <User className="mr-2.5 h-4 w-4 opacity-70" />
                         <span>Profile settings</span>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                        className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-2xl focus:bg-accent/50 focus:text-accent-foreground"
+                        onClick={() => router.push(`/${tenantSlug}/dashboard/settings/workspace`)}
+                    >
+                        <Settings className="mr-2.5 h-4 w-4 opacity-70" />
+                        <span>Workspace settings</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuSub>

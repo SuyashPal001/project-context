@@ -17,7 +17,6 @@ import {
     KanbanSquare,
     LayoutList,
     Code2,
-    Settings,
     Bell,
 
 } from "lucide-react";
@@ -76,10 +75,10 @@ export function getSidebarItems(
         });
     }
 
-    // 2. SETTINGS — collapses into a nested panel (see getSettingsPanelItems).
-    // Profile deliberately omitted: it is reachable from the avatar menu in
-    // Topbar.tsx, which targets the same /settings/profile route.
-    items.push({ label: "Settings", href: `${base}/settings/workspace`, icon: Settings, sectionLabel: "Settings" });
+    // 2. SETTINGS — moved into the account dropdown (AccountMenu.tsx) as
+    // "Workspace settings", next to Profile settings. No sidebar row for it
+    // anymore; the nested settings panel is still reachable by route (see
+    // settingsRoutePrefixes in Sidebar.tsx) once a settings page is open.
 
     // 3. DEVELOPER SECTION — admin/owner only
     if (isAdminOrOwner) {
