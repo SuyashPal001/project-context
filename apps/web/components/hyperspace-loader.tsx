@@ -73,8 +73,12 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
             <StarfieldCanvas speedMode="warp" active={active} />
 
             <div className={`relative z-10 flex flex-col items-center justify-center transition-opacity duration-500 delay-100 ${arrival ? 'opacity-0' : 'opacity-100'}`}>
-                <div className="absolute -top-32 font-sans tracking-[0.22em] text-[12px] uppercase opacity-40 whitespace-nowrap">
-                    OlmoWorks
+                <div className="absolute -top-32 flex flex-col items-center gap-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/brand/olmoworks-mark.svg" alt="" className="shrink-0 object-contain opacity-70" style={{ height: 28, width: "auto" }} />
+                    <div className="font-sans tracking-[0.22em] text-[12px] uppercase opacity-40 whitespace-nowrap">
+                        OlmoWorks
+                    </div>
                 </div>
 
                 <div className="flex flex-col gap-6 items-start w-[240px]">
