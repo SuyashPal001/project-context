@@ -11,6 +11,7 @@ export async function confirmGenerationOrDecline(
   resourceType: string,
   subject: string,
   label: string,
+  opts: { alwaysAsk?: boolean } = {},
 ): Promise<{ confirmed: boolean; reason?: 'CONFIRM_BUSY'; declineReason?: string }> {
   const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
   const sessionId = execContext?.requestContext?.get('sessionId') as string | undefined
@@ -28,7 +29,14 @@ export async function confirmGenerationOrDecline(
     return { confirmed: true }
   }
 
-  if (await isUnlimited(tenantId)) {
+  // Both early returns below exist because this is a *spend* gate: an unlimited
+  // tenant has nothing to approve, and an unpriced resource costs nothing.
+  // alwaysAsk is for writes that are free but still need a human — creating a
+  // skill costs a fraction of a cent and changes what the agent does forever.
+  // Seeding a ¢0 credit_rates row to force the card would put a non-price in a
+  // pricing table, where someone would later tidy it away and silently disable
+  // the gate.
+  if (!opts.alwaysAsk && await isUnlimited(tenantId)) {
     return { confirmed: true }
   }
 
@@ -37,9 +45,11 @@ export async function confirmGenerationOrDecline(
     return { confirmed: true }
   }
 
-  const rate = await resolveRate(resourceType, subject)
-  if (!rate) {
-    return { confirmed: true }
+  if (!opts.alwaysAsk) {
+    const rate = await resolveRate(resourceType, subject)
+    if (!rate) {
+      return { confirmed: true }
+    }
   }
 
   // At most one pending confirm per session — a second concurrent request

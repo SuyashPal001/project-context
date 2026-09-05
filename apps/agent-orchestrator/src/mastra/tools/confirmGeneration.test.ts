@@ -123,4 +123,41 @@ describe('confirmGenerationOrDecline', () => {
     pendingGenerationConfirmations.get(confirmationId)!.resolve({ confirmed: true })
     await first
   })
+
+  it('asks an unlimited tenant when alwaysAsk is set', async () => {
+    isUnlimited.mockResolvedValue(true)
+    const promise = confirmGenerationOrDecline(baseCtx(), 'skill_creation', 'create', 'Create skill', { alwaysAsk: true })
+    // The card was sent rather than auto-approved.
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({ resourceType: 'skill_creation' })))
+    const confirmationId = Array.from(sessionActiveGenerationConfirmations.get('s1')!)[0]
+    pendingGenerationConfirmations.get(confirmationId)!.resolve({ confirmed: true })
+    await expect(promise).resolves.toMatchObject({ confirmed: true })
+  })
+
+  it('asks when no credit rate matches and alwaysAsk is set', async () => {
+    isUnlimited.mockResolvedValue(false)
+    resolveRate.mockResolvedValue(null)
+    const promise = confirmGenerationOrDecline(baseCtx(), 'skill_creation', 'create', 'Create skill', { alwaysAsk: true })
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalled())
+    const confirmationId = Array.from(sessionActiveGenerationConfirmations.get('s1')!)[0]
+    pendingGenerationConfirmations.get(confirmationId)!.resolve({ confirmed: false })
+    await expect(promise).resolves.toMatchObject({ confirmed: false })
+  })
+
+  // Auto-allow is an explicit user setting, and alwaysAsk does not override it.
+  it('still honours allowMode auto when alwaysAsk is set', async () => {
+    const promise = confirmGenerationOrDecline(
+      ctx({ tenantId: 't1', sessionId: 's1', userId: 'u1', conversationId: 'c1', idToken: 'tok', sendEvent, allowMode: 'auto' }),
+      'skill_creation', 'create', 'Create skill', { alwaysAsk: true })
+    await expect(promise).resolves.toEqual({ confirmed: true })
+    expect(sendEvent).not.toHaveBeenCalled()
+  })
+
+  // Without the flag, nothing about the existing spend-gate behaviour moves.
+  it('still auto-approves an unlimited tenant without alwaysAsk', async () => {
+    isUnlimited.mockResolvedValue(true)
+    const result = await confirmGenerationOrDecline(baseCtx(), 'image_generation', 'x', 'y')
+    expect(result).toEqual({ confirmed: true })
+    expect(sendEvent).not.toHaveBeenCalled()
+  })
 })
