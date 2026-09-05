@@ -11,16 +11,19 @@ export function SidebarContent({ children }: { children: React.ReactNode }) {
     const isChatPage = pathname?.includes('/dashboard/chat');
 
     return (
-        <div className="flex h-screen bg-background text-foreground overflow-hidden">
+        <div className={cn(
+            "flex bg-background text-foreground",
+            isChatPage ? "h-screen overflow-hidden" : "min-h-screen"
+        )}>
             <Sidebar />
 
             <div className={cn(
-                "flex-1 flex flex-col min-w-0 min-h-0 transition-all duration-300",
+                "flex-1 flex flex-col min-w-0 transition-all duration-300",
+                isChatPage && "min-h-0",
                 isSidebarCollapsed ? "ml-16" : "ml-[17rem]"
             )}>
                 <main className={cn(
-                    "flex-1 min-h-0",
-                    isChatPage ? "overflow-hidden" : "overflow-y-auto custom-scrollbar",
+                    isChatPage ? "flex-1 min-h-0 overflow-hidden" : "overflow-visible",
                     !isChatPage && "p-8"
                 )}>
                     <div className={cn(
