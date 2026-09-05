@@ -85,18 +85,22 @@ internalSkillsRoute.post('/', async (c) => {
       visibility: 'private', isOfficial: false, latestVersion: 0, createdBy: userId,
     }).returning();
 
+    // Installed here rather than by a second user action: a skill created
+    // mid-conversation is meant to be in use, and the worker's attach step
+    // needs an install row to point agent_skills.install_id at. This insert
+    // must land *before* the SQS message is published below — the authored
+    // path does no download, so the worker can reach the attach step fast
+    // enough to race a publish-then-insert ordering, finding no active
+    // install row and silently attaching nothing.
+    const [install] = await db.insert(skillInstalls).values({
+      tenantId, skillId: skill.id, installedVersion: 1, status: 'active',
+    }).returning();
+
     await createVersionAndEnqueue({
       tenantId, skillId: skill.id, version: 1,
       source: { type: 'authored', body },
       attachToAgentId: agentId,
     });
-
-    // Installed here rather than by a second user action: a skill created
-    // mid-conversation is meant to be in use, and the worker's attach step
-    // needs an install row to point agent_skills.install_id at.
-    const [install] = await db.insert(skillInstalls).values({
-      tenantId, skillId: skill.id, installedVersion: 1, status: 'active',
-    }).returning();
 
     db.insert(auditLog).values({
       tenantId, actorId: userId, actorType: 'human', action: 'skill_created',

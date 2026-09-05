@@ -137,40 +137,64 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
     // agent_skills is unique on (agent_id, tenant_id, name, version) — the
     // version must be the one just imported, or a legitimate re-attach of a
     // later version collides with this row.
+    // Given its own try/catch: the import above already fully succeeded (S3
+    // writes done, version 'ready', skills.latest_version bumped,
+    // skill_import_completed audited). A malformed attachToAgentId (not
+    // validated as a UUID before this point) or a deleted/foreign agent id
+    // can throw here (22P02, FK violation) — that must not fall into the
+    // outer catch and flip an already-successful import to 'failed' with
+    // contradictory audit rows. An attach failure is logged and swallowed;
+    // the import's own success stands regardless.
     if (attachToAgentId) {
-      // Same budget check as the API's attach route (see MAX_ATTACHED_SKILLS
-      // comment above). This raw insert has no route in front of it, so the
-      // check has to happen here or the cap has no enforcement on this path.
-      const existing = ((await db.execute(sql`
-        SELECT name, system_prompt AS "systemPrompt", version
-        FROM agent_skills
-        WHERE agent_id = ${attachToAgentId}::uuid AND tenant_id = ${tenantId}::uuid AND status = 'active'
-      `)) ?? []) as { name: string; systemPrompt: string | null; version: number | null }[];
+      try {
+        // Same budget check as the API's attach route (see MAX_ATTACHED_SKILLS
+        // comment above). This raw insert has no route in front of it, so the
+        // check has to happen here or the cap has no enforcement on this path.
+        const existing = ((await db.execute(sql`
+          SELECT name, system_prompt AS "systemPrompt", version
+          FROM agent_skills
+          WHERE agent_id = ${attachToAgentId}::uuid AND tenant_id = ${tenantId}::uuid AND status = 'active'
+        `)) ?? []) as { name: string; systemPrompt: string | null; version: number | null }[];
 
-      // Exclude only the row(s) this attach supersedes — same name, version
-      // <= the incoming version — mirroring the route's exclusion. A
-      // same-name row at a higher version still composes regardless of this
-      // attach and must stay counted.
-      const others = existing.filter((s) => s.name !== manifest.name || (s.version ?? 1) > version);
+        // Exclude only the row(s) this attach supersedes — same name, version
+        // <= the incoming version — mirroring the route's exclusion. A
+        // same-name row at a higher version still composes regardless of this
+        // attach and must stay counted.
+        const others = existing.filter((s) => s.name !== manifest.name || (s.version ?? 1) > version);
 
-      // Mirrors the orchestrator's per-skill cost: the composed prompt wraps
-      // each skill's trimmed body in a "## Skill: <name>\n\n" header, so the
-      // raw body length under-counts by name.length + 15.
-      const cost = (p: string, n: string) => (p?.trim().length ?? 0) + n.length + 15;
-      const composedChars = others.reduce((n, s) => n + cost(s.systemPrompt ?? '', s.name), 0);
-      const newCost = cost(manifestWithBody.body, manifest.name);
+        // Mirrors the orchestrator's per-skill cost: the composed prompt wraps
+        // each skill's trimmed body in a "## Skill: <name>\n\n" header, so the
+        // raw body length under-counts by name.length + 15.
+        const cost = (p: string, n: string) => (p?.trim().length ?? 0) + n.length + 15;
+        const composedChars = others.reduce((n, s) => n + cost(s.systemPrompt ?? '', s.name), 0);
+        const newCost = cost(manifestWithBody.body, manifest.name);
 
-      if (others.length >= MAX_ATTACHED_SKILLS || composedChars + newCost > MAX_COMPOSED_SKILL_CHARS) {
-        console.log(`[skillImport] attach skipped: budget exceeded agentId=${attachToAgentId} skillId=${skillId} version=${version}`);
-      } else {
-        await db.execute(sql`
-          INSERT INTO agent_skills (agent_id, tenant_id, name, system_prompt, tools, version, status, install_id)
-          SELECT ${attachToAgentId}::uuid, ${tenantId}::uuid, ${manifest.name}, ${manifestWithBody.body}, '{}', ${version},
-                 'active', si.id
-          FROM skill_installs si
-          WHERE si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
-          ON CONFLICT (agent_id, tenant_id, name, version) DO NOTHING
-        `);
+        if (others.length >= MAX_ATTACHED_SKILLS || composedChars + newCost > MAX_COMPOSED_SKILL_CHARS) {
+          console.log(`[skillImport] attach skipped: budget exceeded agentId=${attachToAgentId} skillId=${skillId} version=${version}`);
+        } else {
+          const result = await db.execute(sql`
+            INSERT INTO agent_skills (agent_id, tenant_id, name, system_prompt, tools, version, status, install_id)
+            SELECT ${attachToAgentId}::uuid, ${tenantId}::uuid, ${manifest.name}, ${manifestWithBody.body}, '{}', ${version},
+                   'active', si.id
+            FROM skill_installs si
+            WHERE si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+            ON CONFLICT (agent_id, tenant_id, name, version) DO NOTHING
+          `);
+          // Zero rows affected means either the ON CONFLICT no-op (a benign
+          // redelivery) or — because the SELECT's FROM skill_installs finds
+          // nothing — that no active install row exists yet for this skill
+          // (the API can enqueue the import before the install row commits).
+          // Either way this is a silent no-attach unless logged.
+          const affected = (result as unknown as { count?: number; length?: number })?.count
+            ?? (result as unknown as { length?: number })?.length
+            ?? 0;
+          if (affected === 0) {
+            console.warn(`[skillImport] attach affected 0 rows (no matching active skill_installs row, or already attached): agentId=${attachToAgentId} skillId=${skillId} version=${version}`);
+          }
+        }
+      } catch (attachErr) {
+        const attachMessage = attachErr instanceof Error ? attachErr.message : String(attachErr);
+        console.error(`[skillImport] attach failed: agentId=${attachToAgentId} skillId=${skillId} version=${version} error=${attachMessage}`);
       }
     }
   } catch (err) {

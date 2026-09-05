@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const dbMock = vi.hoisted(() => ({ execute: vi.fn(), insert: vi.fn() }));
 vi.mock('../db', () => ({ db: dbMock }));
@@ -54,6 +54,13 @@ describe('handleSkillImport', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dbMock.insert.mockReturnValue({ values: () => ({ catch: () => {} }) });
+  });
+
+  // A test-set mockImplementation on dbMock.execute survives vi.clearAllMocks()
+  // (that clears call history, not implementations), so any test that
+  // overrides it must not leak that override into tests that run after it.
+  afterEach(() => {
+    dbMock.execute.mockReset();
   });
 
   it('marks the version ready and bumps skills.latestVersion on a valid zip', async () => {
@@ -245,5 +252,76 @@ describe('handleSkillImport', () => {
     const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
     expect(executed).toContain("status = 'failed'");
     expect(executed).not.toContain('agent_skills');
+  });
+
+  it('does not attach when the agent already has the maximum attached skills, but the import still succeeds', async () => {
+    // Simulate 8 already-attached skills (MAX_ATTACHED_SKILLS) so the cap
+    // check trips on count alone, independent of composed-char cost.
+    dbMock.execute.mockImplementation(async (q: unknown) => {
+      const text = sqlText(q);
+      if (text.includes('SELECT name, system_prompt')) {
+        return Array.from({ length: 8 }, (_, i) => ({ name: `existing-${i}`, systemPrompt: 'x', version: 1 }));
+      }
+      return undefined;
+    });
+
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: new-skill\ndescription: d\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    // The guard would pass identically if deleted unless this also proves
+    // the INSERT never ran while the import itself still completed.
+    expect(executed).toContain("status = 'ready'");
+    expect(executed).not.toContain('INSERT INTO agent_skills');
+  });
+
+  it('logs when the attach insert affects zero rows (e.g. no active skill_installs row exists yet)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    dbMock.execute.mockImplementation(async (q: unknown) => {
+      const text = sqlText(q);
+      if (text.includes('SELECT name, system_prompt')) return [];
+      if (text.includes('INSERT INTO agent_skills')) return { count: 0 };
+      return undefined;
+    });
+
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('attach affected 0 rows'));
+    warnSpy.mockRestore();
+  });
+
+  it('does not let an attach failure flip an already-successful import to failed', async () => {
+    // A malformed attachToAgentId (not validated as a UUID upstream) or a
+    // deleted/foreign agent id raises inside the attach's own SELECT/INSERT.
+    // That must not land in the outer catch, which would overwrite the
+    // version's already-committed 'ready' status with 'failed'.
+    dbMock.execute.mockImplementation(async (q: unknown) => {
+      const text = sqlText(q);
+      if (text.includes('SELECT name, system_prompt')) throw new Error('invalid input syntax for type uuid: "not-a-uuid"');
+      return undefined;
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+      attachToAgentId: 'not-a-uuid',
+    });
+
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    expect(executed).toContain("status = 'ready'");
+    expect(executed).not.toContain("status = 'failed'");
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('attach failed'));
+    errorSpy.mockRestore();
   });
 });
