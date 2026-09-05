@@ -69,8 +69,8 @@ export default function SignupPage() {
         <div className="relative flex items-center justify-center min-h-screen bg-background overflow-hidden">
             <StarfieldCanvas speedMode="idle" />
             <div className="relative z-10 w-full max-w-md p-8 space-y-6 rounded-xl border border-border bg-card shadow-card">
-                <div className="flex flex-col items-center space-y-3">
-                    <ProjectContextLogo variant="full" iconSize={36} />
+                <div className="flex flex-col items-center space-y-4">
+                    <ProjectContextLogo variant="full" iconSize={32} />
                     <p className="text-sm text-muted-foreground">Create your account to get started</p>
                 </div>
 
