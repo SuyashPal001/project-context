@@ -153,9 +153,9 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                         {nextPlan && (
                             <Link
                                 href={`/${tenantSlug}/dashboard/billing`}
-                                className="flex items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-accent transition-colors whitespace-nowrap"
+                                className="flex items-center gap-1 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-2.5 py-1 text-[11px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap"
                             >
-                                <Zap className="h-3 w-3 shrink-0" />
+                                <Zap className="h-3 w-3 fill-black shrink-0" />
                                 Upgrade
                             </Link>
                         )}
@@ -208,7 +208,7 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                             <CurrentThemeIcon className="mr-2.5 h-4 w-4 opacity-70" />
                             <span>Appearance</span>
                         </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent className="w-36 rounded-2xl">
+                        <DropdownMenuSubContent sideOffset={-8} className="w-36 rounded-2xl">
                             <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={setTheme}>
                                 {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
                                     <DropdownMenuRadioItem key={value} value={value} className="gap-2 cursor-pointer text-[13px] rounded-xl">

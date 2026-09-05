@@ -16,13 +16,6 @@ import { NotificationIcon } from "@/components/platform/notifications/notificati
 
 const FLYOUT_LIMIT = 20
 
-// Must match Sidebar.tsx's w-16 / w-[17rem]. The panel is pinned to this
-// x-offset instead of positioned relative to the bell (a small icon nested
-// several flex rows deep, whose own padding made Radix's trigger-relative
-// popover float with a visible gap before the sidebar's actual edge).
-const SIDEBAR_WIDTH_COLLAPSED = 64
-const SIDEBAR_WIDTH_EXPANDED = 272
-
 function relativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime()
     const m = Math.floor(diff / 60000)
@@ -53,8 +46,19 @@ function dayBucket(iso: string): string {
 export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean; compact?: boolean }) {
     const [isOpen, setIsOpen] = React.useState(false)
     const [tab, setTab] = React.useState<"all" | "unread">("all")
+    const [panelLeft, setPanelLeft] = React.useState<number | null>(null)
     const panelRef = React.useRef<HTMLDivElement>(null)
     const triggerRef = React.useRef<HTMLButtonElement>(null)
+
+    // Measured from the actual sidebar element rather than a hardcoded
+    // px constant — a fixed number drifts against browser zoom/DPI and any
+    // future sidebar width change, which is exactly what kept leaving a
+    // visible gap no matter how the offset was tuned.
+    const openPanel = () => {
+        const sidebarRight = document.getElementById("app-sidebar")?.getBoundingClientRect().right
+        setPanelLeft(sidebarRight ?? null)
+        setIsOpen(true)
+    }
 
     React.useEffect(() => {
         if (!isOpen) return
@@ -132,7 +136,7 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                 type="button"
                 data-testid="notifications-bell"
                 aria-label="Notifications"
-                onClick={() => setIsOpen((v) => !v)}
+                onClick={() => (isOpen ? setIsOpen(false) : openPanel())}
                 className={cn(
                     "flex items-center rounded-lg transition-all hover:bg-accent/50 shrink-0",
                     compact ? "p-1.5" : cn("gap-3 w-full text-left", collapsed ? "justify-center px-2 py-2" : "px-2.5 py-2 mb-2")
@@ -154,7 +158,7 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
             {isOpen && (
                 <div
                     ref={panelRef}
-                    style={{ left: collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED }}
+                    style={{ left: panelLeft ?? (collapsed ? 64 : 272) }}
                     className="fixed bottom-4 z-50 w-80 rounded-xl border border-border bg-popover text-popover-foreground shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45)] overflow-hidden"
                 >
                 <div className="flex items-center justify-between px-3.5 py-3">

@@ -198,7 +198,7 @@ export function Sidebar() {
 
     return (
         <TooltipProvider>
-            <aside className={cn(
+            <aside id="app-sidebar" className={cn(
                 "fixed left-0 top-0 bottom-0 flex flex-col bg-card border-r border-border py-6 z-50 transition-all duration-300 ease-in-out",
                 isSidebarCollapsed ? "w-16 px-2" : "w-[17rem] px-4"
             )}>
