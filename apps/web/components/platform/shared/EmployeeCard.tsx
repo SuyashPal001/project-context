@@ -81,10 +81,10 @@ export function EmployeeCard({
             <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-3">
                     {avatar}
-                    <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            <h3 className="text-base font-bold text-foreground">{name}</h3>
-                            {headerBadge}
+                    <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                            <h3 className="min-w-0 truncate text-base font-bold text-foreground">{name}</h3>
+                            {headerBadge && <span className="shrink-0">{headerBadge}</span>}
                         </div>
                         {subtitle && <div className="mt-0.5 text-sm text-muted-foreground">{subtitle}</div>}
                     </div>

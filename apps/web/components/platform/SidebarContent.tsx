@@ -24,7 +24,7 @@ export function SidebarContent({ children }: { children: React.ReactNode }) {
                     !isChatPage && "p-8"
                 )}>
                     <div className={cn(
-                        "h-full",
+                        isChatPage && "h-full",
                         !isChatPage && "max-w-7xl mx-auto"
                     )}>
                         {children}
