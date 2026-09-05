@@ -21,11 +21,15 @@ import { useFileUpload, MAX_ATTACHMENTS_PER_MESSAGE } from "./useFileUpload";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { RecordingBar } from "./RecordingBar";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
-import { SlashPalette, PaletteHandle } from "./SlashPalette";
+import { SlashPalette } from "./SlashPalette";
+import type { PaletteHandle } from "./paletteHandle";
 import { MentionPalette } from "./MentionPalette";
 import { HashFilePalette } from "./HashFilePalette";
 import { ProviderIcon } from "./ProviderIcon";
 import { Agent } from "../agents/types";
+import { attachSkillToAgent } from "@/components/platform/skills/actions";
+import type { Skill } from "@/components/platform/skills/types";
+import { ApiError } from "@/lib/api";
 
 interface LLMProvider {
     id: string;
@@ -107,6 +111,10 @@ interface ChatInputProps {
     /** Whether generation (image/video/etc) asks for cost confirmation first, or runs unattended. */
     allowMode?: 'ask' | 'auto';
     onAllowModeChange?: (mode: 'ask' | 'auto') => void;
+    /** Agent a "/" skill pick attaches to. Skills attach per-agent, not
+     *  per-message, so without this the "/" palette has nothing to attach to
+     *  and says so rather than silently no-opping. */
+    agentId?: string;
 }
 
 export function ChatInput({
@@ -125,6 +133,7 @@ export function ChatInput({
     isRevokingFolder,
     allowMode,
     onAllowModeChange,
+    agentId,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
     const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | 'hash' | null>(null);
@@ -207,26 +216,86 @@ export function ChatInput({
         onMediaClick?.(type);
     };
 
-    const handleUseEmployee = () => {
-        // No typed trigger to anchor to here, so the insertion point is an empty
-        // range at the current cursor (or end of content if we can't read a
-        // selection) — onSelect below still needs a non-null paletteRange or it
-        // silently no-ops.
-        const cursor = textareaRef.current?.selectionStart ?? content.length;
-        setPaletteMode('slash');
+    // Opens a palette with no typed trigger behind it — the "+" menu, or another
+    // palette's cross-hint. `replace` is the range the caller wants gone first
+    // (the trigger text belonging to the palette being left); everything after
+    // it anchors at that same spot.
+    //
+    // "/" gets its trigger character written into the draft rather than an empty
+    // range. Unlike the other two, SlashPalette has no search input of its own —
+    // it filters off `paletteQuery`, which only the textarea's trigger regex
+    // ever sets. Without a literal "/" in the draft the first keystroke fails
+    // that regex and closes the palette the user just opened.
+    const openPalette = (mode: 'slash' | 'mention' | 'hash', replace?: { start: number; end: number }) => {
+        // The public widget renders this same composer with no agentId. Every
+        // door to the skill palette is gated here, in one place, so a new caller
+        // can't reopen the hole the way the cross-hint did.
+        if (mode === 'slash' && !agentId) return;
+
+        const base = replace
+            ? content.slice(0, replace.start) + content.slice(replace.end)
+            : content;
+        const cursor = replace?.start ?? textareaRef.current?.selectionStart ?? content.length;
+
+        if (mode === 'slash') {
+            // The regex needs start-of-string or whitespace before the "/", so
+            // mid-word insertions carry their own separator.
+            const prefix = cursor === 0 || /\s$/.test(base.slice(0, cursor)) ? '/' : ' /';
+            setContent(base.slice(0, cursor) + prefix + base.slice(cursor));
+            setPaletteRange({ start: cursor + prefix.length - 1, end: cursor + prefix.length });
+        } else {
+            if (replace) setContent(base);
+            setPaletteRange({ start: cursor, end: cursor });
+        }
+
+        setPaletteMode(mode);
         setPaletteQuery('');
-        setPaletteRange({ start: cursor, end: cursor });
+        // Arrow/Enter for the "/" palette live on the textarea's onKeyDown, so
+        // it has to keep focus; the other two own their own input and take it.
+        textareaRef.current?.focus();
+    };
+
+    const handleUseEmployee = () => openPalette('mention');
+    const handleUseSkill = () => openPalette('slash');
+
+    // Cross-hint between palettes ("no skills match — press @"). The trigger the
+    // user already typed belongs to the palette being left, so it is dropped
+    // rather than carried over.
+    const switchPalette = (mode: 'slash' | 'mention' | 'hash') =>
+        openPalette(mode, paletteRange ?? undefined);
+
+    // "/" attaches an installed skill to this conversation's agent — the same
+    // agent-level attach the agent page's picker performs, not a per-message
+    // flag (no such thing exists). So the confirmation is a toast rather than a
+    // composer chip: a removable chip next to the draft would imply the skill
+    // only applies to this one message.
+    const handleAttachSkill = async (skill: Skill) => {
+        // Unreachable via the UI — openPalette gates every door to this palette
+        // on agentId — but the narrowing is needed and a silent no-op would be
+        // worse than a message if a door ever bypasses it.
+        if (!agentId) {
+            toast.error("Open a conversation first — skills attach to its agent.");
+            return;
+        }
+        try {
+            await attachSkillToAgent(agentId, skill);
+            toast.success(`${skill.name} attached to this agent.`);
+        } catch (err) {
+            if (err instanceof Error && err.message === "NO_INSTALL_ID") {
+                toast.error("This skill has no install record — reinstall it from the Skills page first.");
+            } else if (err instanceof ApiError && (err.data as { code?: string } | undefined)?.code === "NOT_READY") {
+                toast.error("This skill's content isn't ready yet — try again in a moment.");
+            } else {
+                toast.error("Failed to attach skill.");
+            }
+        }
     };
 
     // "From Drive" in the "+" menu — links to the same "#" picker rather than
     // a separate dialog (the old DriveFilePicker.tsx was removed, merged into
-    // HashFilePalette). Same empty-range trick as handleUseEmployee above.
-    const handleOpenDrivePalette = () => {
-        const cursor = textareaRef.current?.selectionStart ?? content.length;
-        setPaletteMode('hash');
-        setPaletteQuery('');
-        setPaletteRange({ start: cursor, end: cursor });
-    };
+    // HashFilePalette). This is the discoverable door for files; "#" is the
+    // unadvertised accelerator for the same picker.
+    const handleOpenDrivePalette = () => openPalette('hash');
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         await uploader.handleFileChange(e, fileInputRef);
@@ -366,12 +435,17 @@ export function ChatInput({
                     <SlashPalette
                         ref={paletteRef}
                         query={paletteQuery}
-                        onSelect={(agent: Agent) => {
+                        onSelect={(skill: Skill) => {
+                            // Strip the typed "/query" trigger text — the attach
+                            // is confirmed by toast, not by text in the draft.
                             setContent(c => {
                                 if (!paletteRange) return c;
-                                return c.slice(0, paletteRange.start) + `@${agent.name} ` + c.slice(paletteRange.end);
+                                return c.slice(0, paletteRange.start) + c.slice(paletteRange.end);
                             });
+                            void handleAttachSkill(skill);
+                            textareaRef.current?.focus();
                         }}
+                        onSwitchToMention={() => switchPalette('mention')}
                         onClose={() => {
                             setPaletteMode(null);
                             setPaletteQuery('');
@@ -395,6 +469,7 @@ export function ChatInput({
                             // the textarea, while it's open) — hand focus back once a pick is made.
                             textareaRef.current?.focus();
                         }}
+                        onSwitchToSlash={agentId ? () => switchPalette('slash') : undefined}
                         onClose={() => {
                             setPaletteMode(null);
                             setPaletteQuery('');
@@ -540,7 +615,13 @@ export function ChatInput({
                                     const slashMatch = upToCursor.match(/(?:^|\s)\/(\w*)$/);
                                     const mentionMatch = upToCursor.match(/(?:^|\s)@(\w*)$/);
                                     const hashMatch = upToCursor.match(/(?:^|\s)#(\w*)$/);
-                                    if (slashMatch) {
+                                    // "/" is gated on agentId, not just handled
+                                    // as a failed attach afterwards: the public
+                                    // widget renders this same composer, and
+                                    // opening the palette there would list the
+                                    // tenant's skill library to an embedded
+                                    // visitor. No agent to attach to, no palette.
+                                    if (slashMatch && agentId) {
                                         const query = slashMatch[1];
                                         setPaletteMode('slash');
                                         setPaletteQuery(query);
@@ -566,7 +647,13 @@ export function ChatInput({
                                     }
                                 }}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Ask anything, @ to mention, / for workflows, # for files..."
+                                // "#" is deliberately absent: files have a
+                                // visible door ("+" -> From Drive, drag, paste),
+                                // and the hint line only has room to teach the
+                                // two keys that have no other affordance.
+                                placeholder={agentId
+                                    ? "Ask anything, / for skills, @ for AI employees..."
+                                    : "Ask anything, @ for AI employees..."}
                                 className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50 caret-primary"
                                 disabled={disabled}
                             />
@@ -576,7 +663,11 @@ export function ChatInput({
                                     {FEATURE_FLAGS.chatUpload && (
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
-                                                <button className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                                                <button
+                                                    type="button"
+                                                    aria-label="Add context"
+                                                    className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                                >
                                                     <Plus className="h-4 w-4" />
                                                 </button>
                                             </DropdownMenuTrigger>
@@ -598,10 +689,12 @@ export function ChatInput({
                                                     <Bot className="h-4 w-4" />
                                                     <span>Use employee</span>
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={handleUseEmployee} className="gap-2 cursor-pointer py-2">
-                                                    <Puzzle className="h-4 w-4" />
-                                                    <span>Use skill</span>
-                                                </DropdownMenuItem>
+                                                {agentId && (
+                                                    <DropdownMenuItem onClick={handleUseSkill} className="gap-2 cursor-pointer py-2">
+                                                        <Puzzle className="h-4 w-4" />
+                                                        <span>Use skill</span>
+                                                    </DropdownMenuItem>
+                                                )}
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     )}

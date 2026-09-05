@@ -3,19 +3,24 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Search } from "lucide-react";
+import { Search, Slash } from "lucide-react";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import { Agent, AgentsResponse } from "../agents/types";
 import { getAgentTypeIcon } from "../agents/agentTypeIcon";
-import type { PaletteHandle } from "./SlashPalette";
+import type { PaletteHandle } from "./paletteHandle";
 
 interface MentionPaletteProps {
     query: string;
     onSelect: (agent: Agent) => void;
     onClose: () => void;
+    /** Switches the composer to the "/" palette from the empty-state hint.
+     *  Omitted where "/" cannot be opened at all (the public widget composer),
+     *  so the hint never advertises a key that does nothing there. */
+    onSwitchToSlash?: () => void;
 }
 
-// Typing "@" opens this to mention/tag a specific agent. Unlike SlashPalette
+// Typing "@" opens this to mention/tag a specific AI employee — employees only,
+// never skills ("/") or files ("#"). Unlike SlashPalette
 // (which stays anchored to the textarea and filters off what's typed there),
 // this owns its own real search input — autofocused on open — so it behaves
 // like the reference's standalone "Search expert or team" field rather than
@@ -24,7 +29,7 @@ interface MentionPaletteProps {
 // trigger relies on; the handle is still exposed for interface parity with
 // SlashPalette but mouse hover/click is the primary path once this owns focus.
 export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(function MentionPalette(
-    { query: initialQuery, onSelect, onClose },
+    { query: initialQuery, onSelect, onClose, onSwitchToSlash },
     ref,
 ) {
     const [searchValue, setSearchValue] = useState(initialQuery);
@@ -81,16 +86,30 @@ export const MentionPalette = forwardRef<PaletteHandle, MentionPaletteProps>(fun
                         if (e.key === "Enter") { e.preventDefault(); if (!selectActive()) onClose(); return; }
                         if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
                     }}
-                    placeholder="Search expert or team"
+                    placeholder="Search AI employees"
                     className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
                 />
             </div>
             {isLoading ? (
                 <div className="px-3 py-3 text-xs text-muted-foreground">Loading…</div>
             ) : filtered.length === 0 ? (
-                <div className="px-3 py-3 text-xs text-muted-foreground">
-                    No experts match &quot;{searchValue}&quot;
-                </div>
+                <>
+                    <div className="px-3 py-3 text-xs text-muted-foreground">
+                        No AI employees match &quot;{searchValue}&quot;
+                    </div>
+                    {/* Mirror of SlashPalette's hint — a dead end on one key is
+                        what makes people expect the other key's contents here. */}
+                    {onSwitchToSlash && (
+                    <button
+                        type="button"
+                        onClick={onSwitchToSlash}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-xs text-muted-foreground hover:bg-muted/60 transition-colors"
+                    >
+                        <Slash className="h-3.5 w-3.5 shrink-0" />
+                        <span>Looking for a skill? Press <kbd className="px-1 py-0.5 rounded bg-muted font-mono">/</kbd></span>
+                    </button>
+                    )}
+                </>
             ) : (
                 filtered.map((agent: Agent, i: number) => (
                     <button

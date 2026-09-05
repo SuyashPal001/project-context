@@ -108,6 +108,10 @@ function ChatPage() {
     const allowModeProps = {
         allowMode: allowMode ?? 'ask' as const,
         onAllowModeChange: (mode: 'ask' | 'auto') => setAllowMode.mutate(mode),
+        // Same "spread into every branch" reason as folderScopeProps: "/" in the
+        // composer attaches a skill to this conversation's agent, and the
+        // composer renders in three places.
+        agentId: selectedConversation?.agentId ?? selectedConversation?.agent?.id,
     };
 
     const stream = useChatStream({

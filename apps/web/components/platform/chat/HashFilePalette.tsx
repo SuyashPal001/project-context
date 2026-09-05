@@ -10,7 +10,7 @@ import { TYPE_ICONS, TYPE_STYLES } from "@/components/platform/canvas/assetTypeS
 import { useVideoFrameThumbnail } from "@/components/platform/canvas/videoFrameThumbnail";
 import { useLazyThumbnail, useThumbnailUrl } from "@/hooks/useAssetThumbnail";
 import type { FileRecord } from "@/components/platform/files/types";
-import type { PaletteHandle } from "./SlashPalette";
+import type { PaletteHandle } from "./paletteHandle";
 
 interface HashFilePaletteProps {
     query: string;
@@ -113,8 +113,11 @@ function AssetGridCard({ file, isActive, isPicked, isBlocked, onToggle, onHover 
 // Typing "#" opens this to reference existing Drive file(s) inline — same data
 // and same reference-not-copy attach behavior the old "+" -> "From Drive"
 // dialog had, merged into one picker instead of keeping two separate ones for
-// the same job. Deliberately a separate trigger from "@" (agent mentions) and
-// "/" (workflows) rather than folded into either — keeps each single-purpose.
+// the same job. Deliberately a separate trigger from "@" (AI employees) and
+// "/" (skills) rather than folded into either — keeps each single-purpose.
+// "#" is the unadvertised accelerator for people who'd rather type a filename;
+// "+" -> "From Drive" is the discoverable door to this same picker, since files
+// are something people attach rather than name.
 export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(function HashFilePalette(
     { query: initialQuery, onConfirm, onClose, remainingSlots },
     ref,
