@@ -16,7 +16,6 @@ import {
     Palette,
     KanbanSquare,
     LayoutList,
-    Bell,
 
 } from "lucide-react";
 import React from 'react';
@@ -55,7 +54,12 @@ export function getSidebarItems(
     if (FEATURE_FLAGS.plans) items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
     items.push({ label: "Drive", href: `${base}/drive`, icon: FolderOpen });
     items.push({ label: "Skills", href: `${base}/skills`, icon: Puzzle });
-    items.push({ label: "Notifications", href: `${base}/notifications`, icon: Bell });
+
+    // Notifications moved out too: it's a glance-and-dismiss flyout in the
+    // sidebar's bottom utility cluster now (NotificationsBell.tsx, rendered
+    // in Sidebar.tsx next to CreditBalanceIndicator/AccountMenu), not a full
+    // nav row that navigates away from whatever the user was doing. The
+    // /notifications page still exists as the paginated archive.
 
     // Audit log and Developers both moved out: Audit log is now a section
     // inside Workspace settings (getSettingsPanelItems), Developer settings

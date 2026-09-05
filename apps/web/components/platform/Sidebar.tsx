@@ -27,7 +27,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
-import { useNotifications } from "@/lib/notifications-context"
+import { NotificationsBell } from "./notifications/NotificationsBell"
 import { useSidebar } from "./SidebarContext"
 import {
     Tooltip,
@@ -142,7 +142,6 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick, badgeCount }: Sideba
 export function Sidebar() {
     const { tenantSlug, role, plan, entitlementFeatures = {} } = useTenant()
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
-    const { unreadCount } = useNotifications()
     const pathname = usePathname()
 
     const entitlements = Object.fromEntries(
@@ -299,7 +298,6 @@ export function Sidebar() {
                                         item={item}
                                         isCollapsed={isSidebarCollapsed}
                                         onLockedClick={() => handleLockedClick(item)}
-                                        badgeCount={item.label === "Notifications" ? unreadCount : undefined}
                                     />
                                 </React.Fragment>
                             )
@@ -313,6 +311,12 @@ export function Sidebar() {
                     became the real check, so showing it beside a live balance
                     read as two competing limits. */}
                 {!isSidebarCollapsed && <CreditBalanceIndicator />}
+
+                {/* Notifications — a glance-and-dismiss flyout, not a nav row.
+                    Lives in the bottom utility cluster beside credits/account
+                    so checking it never navigates away from an open chat or
+                    Drive selection. Visible collapsed or expanded. */}
+                <NotificationsBell collapsed={isSidebarCollapsed} />
 
                 {/* Footer Section */}
                 <div className="mt-auto pt-4 border-t border-border">
