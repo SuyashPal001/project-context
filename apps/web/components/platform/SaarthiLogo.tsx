@@ -13,7 +13,7 @@ export function ProjectContextLogo({ variant = "full", className, iconSize = 32 
         <div className={cn("flex items-center gap-2.5 select-none", className)}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-                src="/brand/olmoworks-mark-sm.png"
+                src="/brand/olmoworks-mark.svg"
                 alt="OlmoWorks"
                 className="shrink-0 object-contain"
                 style={{ width: iconSize, height: iconSize }}

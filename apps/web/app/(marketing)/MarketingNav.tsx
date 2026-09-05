@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { Sparkle } from "lucide-react";
 
 export function MarketingNav() {
   return (
     <header className="fixed top-0 z-50 w-full border-b border-[var(--mk-line)] bg-[var(--mk-bg)]/85 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--mk-accent)]">
-            <Sparkle className="h-3.5 w-3.5 text-[var(--mk-accent-fg)]" strokeWidth={2} fill="currentColor" />
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/olmoworks-mark.svg" alt="" className="h-7 w-7 shrink-0 object-contain" />
           <span className="font-display text-lg leading-none">OlmoWorks</span>
         </Link>
         <div className="hidden items-center gap-8 sm:flex">
