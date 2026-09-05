@@ -65,26 +65,49 @@ export interface ComposedAgentSkills {
  */
 export async function fetchAgentSkills(agentId: string): Promise<ComposedAgentSkills> {
   const p = getPool()
-  const res = await p.query<{ name: string; system_prompt: string | null; install_id: string | null }>(
-    `SELECT name, system_prompt, install_id FROM agent_skills
+  const res = await p.query<{ name: string; system_prompt: string | null; install_id: string | null; version: number }>(
+    `SELECT name, system_prompt, install_id, version FROM agent_skills
      WHERE agent_id = $1 AND status = 'active'
      ORDER BY created_at ASC`,
     [agentId],
   )
+
+  // agent_skills is unique on (agent_id, tenant_id, name, version), and the
+  // attach route lets a caller re-attach the same skill name at a new version
+  // without deactivating the old row — so two active rows can share a name.
+  // Dedupe to the highest version per name, before caps are applied, or a
+  // superseded version and its replacement both land in the prompt and
+  // contradict each other. A Map preserves the key's first-insertion
+  // position when its value is overwritten, so this keeps attachment order.
+  const byName = new Map<string, (typeof res.rows)[number]>()
+  for (const row of res.rows) {
+    const existing = byName.get(row.name)
+    if (!existing || row.version > existing.version) {
+      byName.set(row.name, row)
+    }
+  }
 
   const parts: string[] = []
   const installIds: string[] = []
   const droppedNames: string[] = []
   let budget = MAX_COMPOSED_SKILL_CHARS
 
-  for (const row of res.rows) {
+  for (const row of byName.values()) {
     const body = row.system_prompt?.trim()
     if (!body) continue
-    if (installIds.length >= MAX_ATTACHED_SKILLS || body.length > budget) {
+    // The composed cost is the body plus its "## Skill: <name>\n\n" header —
+    // budgeting body.length alone lets the joined output exceed the cap it's
+    // meant to enforce.
+    const cost = body.length + row.name.length + 15
+    // Gate on how many skills actually compose, not on how many carry an
+    // install id — agent_skills.install_id is nullable for hand-authored
+    // skills, so keying the cap off installIds.length would let an agent
+    // with only hand-authored rows bypass the count cap entirely.
+    if (parts.length >= MAX_ATTACHED_SKILLS || cost > budget) {
       droppedNames.push(row.name)
       continue
     }
-    budget -= body.length
+    budget -= cost
     parts.push(`## Skill: ${row.name}\n\n${body}`)
     if (row.install_id) installIds.push(row.install_id)
   }

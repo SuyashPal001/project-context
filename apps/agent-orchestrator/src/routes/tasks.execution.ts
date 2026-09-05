@@ -76,8 +76,10 @@ export async function runMastraTaskSteps(
   const ctx: WorkflowContext = {
     taskId, tenantId, agentId, agentSlug: agentId, instructions, taskTitle, taskDescription,
     steps: steps.map(s => ({ id: s.id, stepNumber: s.stepOrder, title: s.title, description: s.description, toolName: s.toolName })),
-    // See tasks.workflow.ts: per-skill tool gating no longer applies once the
-    // prompt composes several skills, so this defaults open.
+    // enabledTools has had no reader since platformAgent's tools resolver
+    // (Composio/MCP + SERVER_TOOL_NAMES gate on tenantId, not this field) —
+    // it's vestigial. This was one of its three producers; all three now
+    // hardcode null, so the field is permanently null.
     connectedProviders, enabledTools: null,
     highStakeTools: toolGovernance.highStakeTools, requiresApprovalTools: mergedRequiresApproval,
     blockedTools: policy.blockedActions, allowedTools: policy.allowedActions,

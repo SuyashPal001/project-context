@@ -163,6 +163,42 @@ describe('fetchAgentSkills', () => {
     expect(composed.systemPrompt).not.toContain('body 8')
   })
 
+  // agent_skills.install_id is nullable for hand-authored skills, so the cap
+  // must count every composed skill — not just those with an install id — or
+  // an agent with only hand-authored skills bypasses the count cap entirely.
+  it('counts hand-authored skills (null install_id) against the cap', async () => {
+    const installed = Array.from({ length: 8 }, (_, i) => ({
+      name: `skill-${i}`, system_prompt: `body ${i}`, tools: null, config: null, install_id: `install-${i}`, version: 1,
+    }))
+    const rows = [
+      ...installed,
+      { name: 'hand-authored', system_prompt: 'no install row', tools: null, config: null, install_id: null, version: 1 },
+    ]
+    mockPoolQuery.mockResolvedValueOnce({ rows })
+
+    const composed = await fetchAgentSkills('agent-1')
+
+    expect(composed.installIds).toHaveLength(8)
+    expect(composed.droppedNames).toEqual(['hand-authored'])
+    expect(composed.systemPrompt).not.toContain('no install row')
+  })
+
+  // agent_skills is unique on (agent_id, tenant_id, name, version) — the
+  // attach route can write a new version for a skill name without
+  // deactivating the old row, so two active rows can share a name.
+  it('dedupes by name, keeping the highest version, before caps are applied', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'bid-writer', system_prompt: 'Old body v1.', tools: null, config: null, install_id: 'install-1', version: 1 },
+      { name: 'bid-writer', system_prompt: 'New body v2.', tools: null, config: null, install_id: 'install-2', version: 2 },
+    ] })
+
+    const composed = await fetchAgentSkills('agent-1')
+
+    expect(composed.systemPrompt).toContain('New body v2.')
+    expect(composed.systemPrompt).not.toContain('Old body v1.')
+    expect(composed.installIds).toEqual(['install-2'])
+  })
+
   it('drops skills past the character budget', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [
       { name: 'huge', system_prompt: 'x'.repeat(23_900), tools: null, config: null, install_id: 'install-1' },

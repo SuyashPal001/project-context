@@ -55,11 +55,10 @@ export async function runMastraWorkflowSteps(
       id: s.id ?? `step-${i}`, stepNumber: s.stepNumber ?? i + 1,
       title: s.title, description: s.description, toolName: s.toolName,
     })),
-    // Per-skill tool gating is retired now that a background task can compose
-    // several skills' bodies into one prompt — there is no longer a single
-    // skill row whose `tools` column names the gate. Default-open (null)
-    // matches the existing behavior for any agent that never had a `tools`
-    // list configured.
+    // enabledTools has had no reader since platformAgent's tools resolver
+    // (Composio/MCP + SERVER_TOOL_NAMES gate on tenantId, not this field) —
+    // it's vestigial. This was one of its three producers; all three now
+    // hardcode null, so the field is permanently null.
     connectedProviders, enabledTools: null,
     highStakeTools: toolGovernance.highStakeTools, requiresApprovalTools: mergedRequiresApproval,
     blockedTools: policy.blockedActions, allowedTools: policy.allowedActions,
