@@ -64,6 +64,18 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
     const { data: credits } = useCreditBalance()
 
     return (
+        <div className="w-full">
+            {/* Standalone CTA above the profile row, not just inside the dropdown —
+                hidden once collapsed (no room) or already on the top plan. */}
+            {!collapsed && nextPlan && (
+                <Link
+                    href={`/${tenantSlug}/dashboard/billing`}
+                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-3 py-2 text-[13px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity"
+                >
+                    <Zap className="h-3.5 w-3.5 fill-black shrink-0" />
+                    Upgrade to {nextPlan.name}
+                </Link>
+            )}
         <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
             <DropdownMenuTrigger className="focus:outline-none w-full">
                 <div className={cn(
@@ -215,5 +227,6 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                 </div>
             </DropdownMenuContent>
         </DropdownMenu>
+        </div>
     )
 }
