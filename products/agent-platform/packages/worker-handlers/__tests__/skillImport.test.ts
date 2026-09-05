@@ -203,4 +203,47 @@ describe('handleSkillImport', () => {
     const failCall = dbMock.execute.mock.calls.find((c) => sqlText(c[0]).includes("status = 'failed'"));
     expect(failCall).toBeDefined();
   });
+
+  it('attaches the skill to the agent after the version is ready', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: d\n---\n\nOpen with the client name.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    expect(executed).toContain('agent_skills');
+    const params = dbMock.execute.mock.calls.flatMap(([q]) => sqlParams(q));
+    expect(params).toContain('agent-1');
+    // The body the agent runs on is the parsed manifest body, not the raw file.
+    expect(params.some((p) => String(p).includes('Open with the client name.'))).toBe(true);
+  });
+
+  it('does not attach when the payload carries no attachToAgentId', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+    });
+
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    expect(executed).not.toContain('agent_skills');
+  });
+
+  it('does not attach when the import fails', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: 'no frontmatter here' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    expect(executed).toContain("status = 'failed'");
+    expect(executed).not.toContain('agent_skills');
+  });
 });

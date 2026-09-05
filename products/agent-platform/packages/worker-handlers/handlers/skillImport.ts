@@ -31,7 +31,19 @@ export interface SkillImportPayload {
   skillVersionId: string;
   version: number;
   source: SkillImportSource;
+  /** Set only by the in-conversation create path: attach the skill to this
+   *  agent once the version is ready. */
+  attachToAgentId?: string;
 }
+
+// Mirrors MAX_ATTACHED_SKILLS / MAX_COMPOSED_SKILL_CHARS in
+// products/agent-platform/packages/api/routes/agent-skills.ts (which itself
+// mirrors the orchestrator's usage.ts). This raw-SQL insert bypasses that
+// route's guard entirely, so it has to re-enforce the same caps or it becomes
+// the one attach path that can push an agent past them. Deliberately
+// duplicated rather than shared — see the route file's comment.
+const MAX_ATTACHED_SKILLS = 8;
+const MAX_COMPOSED_SKILL_CHARS = 24_000;
 
 interface ExtractedPackage {
   entries: SafeSkillEntry[];
@@ -82,7 +94,7 @@ async function extractForSource(source: SkillImportSource): Promise<ExtractedPac
 
 export async function handleSkillImport(body: Record<string, unknown>): Promise<void> {
   const payload = body as unknown as SkillImportPayload;
-  const { tenantId, skillId, skillVersionId, version, source } = payload;
+  const { tenantId, skillId, skillVersionId, version, source, attachToAgentId } = payload;
   const s3Prefix = `skill-packages/${skillId}/${version}`;
 
   try {
@@ -117,6 +129,50 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
       traceId: '',
     }).catch(() => {});
     console.log(`[skillImport] ready: skillId=${skillId} version=${version} files=${entries.length} skipped=${skipped.length}`);
+
+    // Attaching here rather than polling from the caller: this is the moment
+    // the version becomes usable, the parsed body is already in hand, and the
+    // attach survives the user closing the tab.
+    //
+    // agent_skills is unique on (agent_id, tenant_id, name, version) — the
+    // version must be the one just imported, or a legitimate re-attach of a
+    // later version collides with this row.
+    if (attachToAgentId) {
+      // Same budget check as the API's attach route (see MAX_ATTACHED_SKILLS
+      // comment above). This raw insert has no route in front of it, so the
+      // check has to happen here or the cap has no enforcement on this path.
+      const existing = ((await db.execute(sql`
+        SELECT name, system_prompt AS "systemPrompt", version
+        FROM agent_skills
+        WHERE agent_id = ${attachToAgentId}::uuid AND tenant_id = ${tenantId}::uuid AND status = 'active'
+      `)) ?? []) as { name: string; systemPrompt: string | null; version: number | null }[];
+
+      // Exclude only the row(s) this attach supersedes — same name, version
+      // <= the incoming version — mirroring the route's exclusion. A
+      // same-name row at a higher version still composes regardless of this
+      // attach and must stay counted.
+      const others = existing.filter((s) => s.name !== manifest.name || (s.version ?? 1) > version);
+
+      // Mirrors the orchestrator's per-skill cost: the composed prompt wraps
+      // each skill's trimmed body in a "## Skill: <name>\n\n" header, so the
+      // raw body length under-counts by name.length + 15.
+      const cost = (p: string, n: string) => (p?.trim().length ?? 0) + n.length + 15;
+      const composedChars = others.reduce((n, s) => n + cost(s.systemPrompt ?? '', s.name), 0);
+      const newCost = cost(manifestWithBody.body, manifest.name);
+
+      if (others.length >= MAX_ATTACHED_SKILLS || composedChars + newCost > MAX_COMPOSED_SKILL_CHARS) {
+        console.log(`[skillImport] attach skipped: budget exceeded agentId=${attachToAgentId} skillId=${skillId} version=${version}`);
+      } else {
+        await db.execute(sql`
+          INSERT INTO agent_skills (agent_id, tenant_id, name, system_prompt, tools, version, status, install_id)
+          SELECT ${attachToAgentId}::uuid, ${tenantId}::uuid, ${manifest.name}, ${manifestWithBody.body}, '{}', ${version},
+                 'active', si.id
+          FROM skill_installs si
+          WHERE si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+          ON CONFLICT (agent_id, tenant_id, name, version) DO NOTHING
+        `);
+      }
+    }
   } catch (err) {
     // Safety rejections (zip bomb, path traversal, SSRF, missing manifest,
     // invalid/missing SKILL.md frontmatter) already carry a tenant-safe
