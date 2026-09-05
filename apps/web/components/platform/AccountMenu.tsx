@@ -143,44 +143,32 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     </div>
                 </div>
 
-                {/* Plan card */}
-                <div className="rounded-xl border border-border/60 bg-muted/30 p-3.5 space-y-3">
-                    <p className="text-[11px] text-muted-foreground truncate leading-none">
-                        {tenantSlug}
-                    </p>
-
-                    <p className="text-[13px] leading-snug">
-                        <span className="font-semibold text-foreground">{currentPlanName} plan.</span>
+                {/* Plan card — compact two-row layout: plan name + Upgrade pill
+                    on one line, Credits label + value on the next. Replaces
+                    the previous sentence-style blurb + separate Details
+                    button, which took 4-5 lines to say the same thing. */}
+                <div className="rounded-xl border border-border/60 bg-muted/30 px-3.5 py-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="text-[13px] font-semibold text-foreground">{currentPlanName}</span>
                         {nextPlan && (
-                            <span className="text-muted-foreground">
-                                {" "}Upgrade to {nextPlan.name}{nextPlan.price === "Custom" ? " for custom pricing." : ` for ${nextPlan.price}.`}
-                            </span>
+                            <Link
+                                href={`/${tenantSlug}/dashboard/billing`}
+                                className="flex items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-accent transition-colors whitespace-nowrap"
+                            >
+                                <Zap className="h-3 w-3 shrink-0" />
+                                Upgrade
+                            </Link>
                         )}
-                    </p>
+                    </div>
 
                     {credits && (
-                        <p className="text-[11px] text-muted-foreground">
-                            {credits.unlimited
-                                ? <><span className="font-medium text-foreground">Unlimited</span> credits</>
-                                : <><span className="font-medium text-foreground">{microToCredits(credits.balanceMicro).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span> credits remaining</>}
-                        </p>
-                    )}
-
-                    {nextPlan && (
-                        <div className="flex flex-wrap items-center gap-2">
-                            <Link
-                                href={`/${tenantSlug}/dashboard/billing`}
-                                className="flex items-center gap-1 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-3 py-1.5 text-[11px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity whitespace-nowrap"
-                            >
-                                <Zap className="h-3 w-3 fill-black shrink-0" />
-                                {nextPlan.price === "Custom" ? "Upgrade" : `Upgrade · ${nextPlan.price}`}
-                            </Link>
-                            <Link
-                                href={`/${tenantSlug}/dashboard/billing`}
-                                className="rounded-full border border-border/60 bg-background px-3 py-1.5 text-[11px] font-medium text-foreground hover:bg-accent transition-colors whitespace-nowrap"
-                            >
-                                Details
-                            </Link>
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-[12px] text-muted-foreground">Credits</span>
+                            <span className="text-[12px] font-medium text-foreground">
+                                {credits.unlimited
+                                    ? "Unlimited"
+                                    : microToCredits(credits.balanceMicro).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </span>
                         </div>
                     )}
                 </div>
@@ -194,7 +182,7 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                         onClick={() => router.push(`/${tenantSlug}/dashboard/settings/profile`)}
                     >
                         <User className="mr-2.5 h-4 w-4 opacity-70" />
-                        <span>Profile settings</span>
+                        <span>Account</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
@@ -218,7 +206,7 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                     <DropdownMenuSub>
                         <DropdownMenuSubTrigger className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-2xl focus:bg-accent/50 focus:text-accent-foreground data-[state=open]:bg-accent/50">
                             <CurrentThemeIcon className="mr-2.5 h-4 w-4 opacity-70" />
-                            <span>Theme</span>
+                            <span>Appearance</span>
                         </DropdownMenuSubTrigger>
                         <DropdownMenuSubContent className="w-36 rounded-2xl">
                             <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={setTheme}>
