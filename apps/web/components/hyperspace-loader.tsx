@@ -81,7 +81,7 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
                     </div>
                 </div>
 
-                <div className="flex flex-col gap-6 items-start w-[240px]">
+                <div className="flex flex-col gap-6 items-center w-[240px]">
                     {checkpoints.map((cp, i) => {
                         const isActive = activeIndex === i;
                         const isCompleted = completedIndex >= i;
