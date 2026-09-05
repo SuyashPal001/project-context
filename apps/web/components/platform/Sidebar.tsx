@@ -312,15 +312,24 @@ export function Sidebar() {
                     read as two competing limits. */}
                 {!isSidebarCollapsed && <CreditBalanceIndicator />}
 
-                {/* Notifications — a glance-and-dismiss flyout, not a nav row.
-                    Lives in the bottom utility cluster beside credits/account
-                    so checking it never navigates away from an open chat or
-                    Drive selection. Visible collapsed or expanded. */}
-                <NotificationsBell collapsed={isSidebarCollapsed} />
-
-                {/* Footer Section */}
+                {/* Footer Section — account (opens a menu) and notifications
+                    (opens a feed) are different objects, so they get
+                    different triggers on the same row rather than one
+                    absorbing the other. Collapsed: stacked, both icon-only. */}
                 <div className="mt-auto pt-4 border-t border-border">
-                    <AccountMenu collapsed={isSidebarCollapsed} />
+                    {isSidebarCollapsed ? (
+                        <div className="flex flex-col items-center gap-1">
+                            <NotificationsBell collapsed />
+                            <AccountMenu collapsed />
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-1">
+                            <div className="flex-1 min-w-0">
+                                <AccountMenu />
+                            </div>
+                            <NotificationsBell compact />
+                        </div>
+                    )}
                 </div>
             </aside>
 

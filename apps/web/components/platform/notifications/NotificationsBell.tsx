@@ -43,7 +43,7 @@ function dayBucket(iso: string): string {
 // /notifications page still exists as the paginated archive ("View all"
 // below, plus the deep-link target for emails/pushes) — this panel just
 // shows the most recent items inline.
-export function NotificationsBell({ collapsed }: { collapsed?: boolean }) {
+export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean; compact?: boolean }) {
     const [isOpen, setIsOpen] = React.useState(false)
     const { tenantSlug, permissions = [] } = useTenant()
     const router = useRouter()
@@ -102,9 +102,10 @@ export function NotificationsBell({ collapsed }: { collapsed?: boolean }) {
                 <button
                     type="button"
                     data-testid="notifications-bell"
+                    aria-label="Notifications"
                     className={cn(
-                        "flex items-center gap-3 rounded-lg transition-all hover:bg-accent/50 w-full text-left",
-                        collapsed ? "justify-center px-2 py-2" : "px-2.5 py-2 mb-2"
+                        "flex items-center rounded-lg transition-all hover:bg-accent/50 shrink-0",
+                        compact ? "p-1.5" : cn("gap-3 w-full text-left", collapsed ? "justify-center px-2 py-2" : "px-2.5 py-2 mb-2")
                     )}
                 >
                     <span className="relative shrink-0">
@@ -115,7 +116,7 @@ export function NotificationsBell({ collapsed }: { collapsed?: boolean }) {
                             </Badge>
                         )}
                     </span>
-                    {!collapsed && (
+                    {!collapsed && !compact && (
                         <span className="text-[13px] text-muted-foreground">Notifications</span>
                     )}
                 </button>
