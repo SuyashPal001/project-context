@@ -1,6 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { OlmoMark } from "@/components/platform/OlmoMark"
 
 interface ProjectContextLogoProps {
     variant?: "full" | "icon"
@@ -11,13 +12,7 @@ interface ProjectContextLogoProps {
 export function ProjectContextLogo({ variant = "full", className, iconSize = 32 }: ProjectContextLogoProps) {
     return (
         <div className={cn("flex items-center gap-2.5 select-none", className)}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-                src="/brand/olmoworks-mark.svg"
-                alt="OlmoWorks"
-                className="shrink-0 object-contain"
-                style={{ height: iconSize, width: "auto" }}
-            />
+            <OlmoMark height={iconSize} />
             {variant === "full" && (
                 <span
                     className="font-bold tracking-tight text-foreground leading-none"

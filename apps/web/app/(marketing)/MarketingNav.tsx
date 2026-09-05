@@ -1,12 +1,12 @@
 import Link from "next/link";
+import { OlmoMark } from "@/components/platform/OlmoMark";
 
 export function MarketingNav() {
   return (
     <header className="fixed top-0 z-50 w-full border-b border-[var(--mk-line)] bg-[var(--mk-bg)]/85 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/olmoworks-mark.svg" alt="" className="shrink-0 object-contain" style={{ height: 28, width: "auto" }} />
+          <OlmoMark height={28} />
           <span className="font-display text-lg leading-none">OlmoWorks</span>
         </Link>
         <div className="hidden items-center gap-8 sm:flex">
