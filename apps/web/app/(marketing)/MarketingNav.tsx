@@ -6,7 +6,7 @@ export function MarketingNav() {
     <header className="fixed top-0 z-50 w-full border-b border-[var(--mk-line)] bg-[var(--mk-bg)]/85 backdrop-blur-xl">
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
-          <OlmoMark height={28} />
+          <OlmoMark height={27} />
           <span className="font-display text-lg leading-none">OlmoWorks</span>
         </Link>
         <div className="hidden items-center gap-8 sm:flex">
