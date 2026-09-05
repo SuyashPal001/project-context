@@ -158,7 +158,7 @@ export function WidgetChat({ tenantId, agentId, externalUserId }: WidgetChatProp
                         className="font-bold flex items-center gap-0.5 hover:text-foreground transition-colors"
                     >
                         <Bot className="h-2.5 w-2.5" />
-                        Indie Mates
+                        OlmoWorks
                     </a>
                 </div>
             </div>

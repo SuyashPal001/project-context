@@ -32,7 +32,7 @@ export function ProjectContextLogo({ variant = "full", className, iconSize = 32 
             </span>
             {variant === "full" && (
                 <span className="text-[15px] font-bold tracking-tight text-foreground leading-none">
-                    Indie Mates
+                    OlmoWorks
                 </span>
             )}
         </div>

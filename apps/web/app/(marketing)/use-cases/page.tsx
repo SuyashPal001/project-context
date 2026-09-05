@@ -4,12 +4,12 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Use Cases — AI engineering team for every workflow",
   description:
-    "See how Indie Mates's AI engineering team helps with PRD writing, project planning, roadmap generation, and codebase-grounded architecture decisions.",
+    "See how OlmoWorks's AI engineering team helps with PRD writing, project planning, roadmap generation, and codebase-grounded architecture decisions.",
   alternates: { canonical: "/use-cases" },
   openGraph: {
-    title: "Use Cases — Indie Mates",
+    title: "Use Cases — OlmoWorks",
     description:
-      "AI PRD generator, AI project planning, AI engineering team. See every use case for Indie Mates.",
+      "AI PRD generator, AI project planning, AI engineering team. See every use case for OlmoWorks.",
     url: "https://projectcontext.co/use-cases",
   },
 };
@@ -49,7 +49,7 @@ export default function UseCasesIndex() {
           <em className="italic text-[var(--mk-accent)]">Every workflow.</em>
         </h1>
         <p className="mt-8 max-w-xl text-lg leading-relaxed text-[var(--mk-muted)]">
-          Indie Mates's AI specialists cover every stage of the engineering
+          OlmoWorks's AI specialists cover every stage of the engineering
           process — from the first idea to a board full of tasks, all grounded
           in your actual codebase and knowledge base.
         </p>

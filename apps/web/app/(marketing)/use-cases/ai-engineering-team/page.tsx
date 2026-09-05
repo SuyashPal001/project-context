@@ -5,7 +5,7 @@ const BASE_URL = "https://projectcontext.co";
 const CANONICAL = "/use-cases/ai-engineering-team";
 const TITLE = "AI Engineering Team — Multi-Agent AI for Software Development";
 const DESCRIPTION =
-  "Indie Mates gives your team a coordinated AI engineering team: Product Manager, Analyst, Project Manager, Tech Lead, and Architect — five specialists that plan, write, and execute alongside your engineers.";
+  "OlmoWorks gives your team a coordinated AI engineering team: Product Manager, Analyst, Project Manager, Tech Lead, and Architect — five specialists that plan, write, and execute alongside your engineers.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -75,23 +75,23 @@ const differentiators = [
 const faqs = [
   {
     q: "What is an AI engineering team?",
-    a: "An AI engineering team is a set of coordinated AI agents, each with a distinct role, that works alongside your human engineers to handle product planning, requirements writing, project management, and architecture decisions. Indie Mates provides five specialists: Product Manager, Analyst, Project Manager, Tech Lead, and Architect.",
+    a: "An AI engineering team is a set of coordinated AI agents, each with a distinct role, that works alongside your human engineers to handle product planning, requirements writing, project management, and architecture decisions. OlmoWorks provides five specialists: Product Manager, Analyst, Project Manager, Tech Lead, and Architect.",
   },
   {
-    q: "How is Indie Mates different from a single AI assistant like ChatGPT or GitHub Copilot?",
-    a: "Indie Mates is a multi-agent team, not a single assistant. Each specialist runs a deterministic workflow tailored to its role. Outputs are artifacts — PRDs, roadmaps, task boards — not chat transcripts. Agents are grounded in your actual knowledge base and codebase. Human approval gates control every phase transition. And outputs are scored for quality, so the team improves over time.",
+    q: "How is OlmoWorks different from a single AI assistant like ChatGPT or GitHub Copilot?",
+    a: "OlmoWorks is a multi-agent team, not a single assistant. Each specialist runs a deterministic workflow tailored to its role. Outputs are artifacts — PRDs, roadmaps, task boards — not chat transcripts. Agents are grounded in your actual knowledge base and codebase. Human approval gates control every phase transition. And outputs are scored for quality, so the team improves over time.",
   },
   {
     q: "Does the AI engineering team integrate with my existing tools?",
-    a: "Indie Mates has MCP integrations with GitHub, Jira, Gmail, Google Workspace, and Zoho. The task board is built in. The codebase indexer connects to your repositories. Additional integrations can be added via the MCP server.",
+    a: "OlmoWorks has MCP integrations with GitHub, Jira, Gmail, Google Workspace, and Zoho. The task board is built in. The codebase indexer connects to your repositories. Additional integrations can be added via the MCP server.",
   },
   {
-    q: "Is Indie Mates suitable for small engineering teams?",
-    a: "Yes. Indie Mates is designed for engineering teams of any size. A solo founder gets a full planning and architecture team. A 5-person team gets the bandwidth of a much larger org without the coordination overhead. Agents are available immediately, with no onboarding or ramp-up.",
+    q: "Is OlmoWorks suitable for small engineering teams?",
+    a: "Yes. OlmoWorks is designed for engineering teams of any size. A solo founder gets a full planning and architecture team. A 5-person team gets the bandwidth of a much larger org without the coordination overhead. Agents are available immediately, with no onboarding or ramp-up.",
   },
   {
-    q: "Which AI models power Indie Mates?",
-    a: "Indie Mates routes to the appropriate model for each task. Fast, lightweight models handle real-time chat and quick lookups. Extended-thinking models handle PRD writing, milestone sequencing, and complex architecture questions. The routing is automatic — you don't configure it.",
+    q: "Which AI models power OlmoWorks?",
+    a: "OlmoWorks routes to the appropriate model for each task. Fast, lightweight models handle real-time chat and quick lookups. Extended-thinking models handle PRD writing, milestone sequencing, and complex architecture questions. The routing is automatic — you don't configure it.",
   },
   {
     q: "How does the AI Architect agent work?",
@@ -139,7 +139,7 @@ export default function AIEngineeringTeamPage() {
             <em className="italic text-[var(--mk-accent)]">One coordinated team.</em>
           </h1>
           <p className="mt-8 max-w-xl text-lg leading-relaxed text-[var(--mk-muted)]">
-            Indie Mates gives your engineering team a built-in AI crew — a
+            OlmoWorks gives your engineering team a built-in AI crew — a
             Product Manager, Analyst, Project Manager, Tech Lead, and Architect
             — that plan, write, and execute alongside you. Not a chatbot. A team.
           </p>

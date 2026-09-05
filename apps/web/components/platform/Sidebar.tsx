@@ -152,7 +152,7 @@ export function Sidebar() {
         },
         staleTime: 5 * 60 * 1000,
     })
-    const brandName = branding?.brandName || "Indie Mates"
+    const brandName = branding?.brandName || "OlmoWorks"
     const brandLogoUrl = branding?.logoUrl
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
     const pathname = usePathname()
