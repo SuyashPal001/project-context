@@ -76,7 +76,7 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
             {!collapsed && nextPlan && (
                 <Link
                     href={`/${tenantSlug}/dashboard/billing`}
-                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-full bg-[#E69DB8] px-3 py-2 text-[13px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity"
+                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] px-3 py-2 text-[13px] font-semibold text-black shadow-sm hover:opacity-90 transition-opacity"
                 >
                     <Zap className="h-3.5 w-3.5 fill-black shrink-0" />
                     Upgrade to {nextPlan.name}
