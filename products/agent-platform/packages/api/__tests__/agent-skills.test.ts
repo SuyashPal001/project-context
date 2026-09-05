@@ -292,6 +292,22 @@ describe('POST /agents/:agentId/skills — prompt budget caps', () => {
 
         expect(res.status).toBe(201);
     });
+
+    it('refuses a set that fits the raw body-length sum but exceeds budget once the orchestrator\'s per-skill header cost is counted', async () => {
+        // The orchestrator composes each skill as "## Skill: <name>\n\n<body>",
+        // costing body.trim().length + name.length + 15 per skill (usage.ts:101).
+        // 8 active skills at 2975 chars each (raw sum 23,800) plus a 100-char
+        // attach sums to 23,900 raw — under the 24,000 cap by the old,
+        // header-blind math. Once every one of the 9 skills' 2-char name +
+        // 15-char header overhead (17 each, 153 total) is added, the true
+        // composed cost is 24,053 — over budget, and this must be refused.
+        mockActiveSkills(Array.from({ length: 8 }, (_, i) => ({ name: `s${i}`, systemPrompt: 'x'.repeat(2975) })));
+
+        const res = await postAttach({ name: 's8', systemPrompt: 'y'.repeat(100) });
+
+        expect(res.status).toBe(409);
+        expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
+    });
 });
 
 describe('POST /agents/:agentId/skills — reconcile stale prompt on 23505 re-attach conflict', () => {
@@ -376,6 +392,59 @@ describe('POST /agents/:agentId/skills — reconcile stale prompt on 23505 re-at
             eq(agentSkills.version, 1),
         );
         expect(whereSpy).toHaveBeenCalledWith(expectedWhere);
+    });
+
+    it("excludes the re-attached skill's own current row from both caps so a re-attach at the count cap still reconciles instead of being refused", async () => {
+        // 8 active rows total, one of which is the very row this attach is
+        // re-attaching ('PDF Tools'). Before excluding the row being
+        // replaced, active.length (8) >= MAX_ATTACHED_SKILLS (8) would wrongly
+        // refuse this — a re-attach isn't a new attachment, and the previous
+        // implementation never reached the 23505 -> UPDATE reconcile path at
+        // all for a same-size or larger re-attach at the cap.
+        const activeRows = [
+            ...Array.from({ length: 7 }, (_, i) => ({ name: `other-${i}`, systemPrompt: 'short body' })),
+            { name: 'PDF Tools', systemPrompt: 'the stale body being replaced' },
+        ];
+        dbMock.select.mockImplementation(() => ({
+            from: (table: unknown) => {
+                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
+                if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 3 }] }) };
+                if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: NEW_BODY } }] }) };
+                if (table === agentSkills) return { where: async () => activeRows };
+                throw new Error('unexpected select target');
+            },
+        }));
+        conflictingInsert();
+
+        const updatedRow = {
+            id: 'existing-skill-1',
+            agentId: 'agent-1',
+            tenantId: 'tenant-1',
+            name: 'PDF Tools',
+            version: 1,
+            systemPrompt: NEW_BODY,
+            tools: [],
+            config: null,
+            installId: INSTALL_ID,
+        };
+        dbMock.update.mockImplementation((table: unknown) => {
+            if (table === agentSkills) return { set: () => ({ where: () => ({ returning: async () => [updatedRow] }) }) };
+            throw new Error('unexpected update target');
+        });
+
+        const { agentSkillsRoutes } = await import('../routes/agent-skills');
+        const app = appWithContext();
+        app.route('/agents', agentSkillsRoutes);
+
+        const res = await app.request('/agents/agent-1/skills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'PDF Tools', installId: INSTALL_ID }),
+        });
+
+        expect(res.status).toBe(200);
+        const body = await res.json();
+        expect(body.data.systemPrompt).toBe(NEW_BODY);
     });
 
     it('falls back to 409 CONFLICT unchanged when the conflicting attach has no installId (hand-authored skill)', async () => {

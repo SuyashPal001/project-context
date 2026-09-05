@@ -155,17 +155,30 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
             .from(agentSkills)
             .where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.tenantId, tenantId), eq(agentSkills.status, 'active')));
 
-        // Refused rather than truncated: the prompt budget is real, and half a
-        // skill in the prompt is worse than none. Failing here makes it visible
-        // to whoever is attaching instead of surfacing later as bad output.
-        const composedChars = active.reduce((n, s) => n + (s.systemPrompt?.length ?? 0), 0);
-        if (active.length >= MAX_ATTACHED_SKILLS) {
+        // Exclude the row this attach would replace: a re-attach (same name,
+        // e.g. after a server-side install-version upgrade) isn't a new
+        // attachment, and its existing row would otherwise double-count
+        // against both caps and could push a same-size re-attach over budget
+        // or into the count cap it was already inside of. Matches the
+        // orchestrator, which dedupes composed skills by name (usage.ts:82-87).
+        const others = active.filter((s) => s.name !== result.data.name);
+
+        // Mirrors the orchestrator's per-skill cost (usage.ts:101): the
+        // composed prompt wraps each skill's trimmed body in a
+        // "## Skill: <name>\n\n" header, so the raw body length under-counts
+        // by name.length + 15. Refused rather than truncated: the prompt
+        // budget is real, and half a skill in the prompt is worse than none.
+        // Failing here makes it visible to whoever is attaching instead of
+        // surfacing later as bad output.
+        const cost = (p: string, n: string) => (p?.trim().length ?? 0) + n.length + 15;
+        const composedChars = others.reduce((n, s) => n + cost(s.systemPrompt ?? '', s.name), 0);
+        if (others.length >= MAX_ATTACHED_SKILLS) {
             return c.json({
                 error: `This agent already has the maximum of ${MAX_ATTACHED_SKILLS} skills attached. Detach one first.`,
                 code: 'SKILL_BUDGET_EXCEEDED',
             }, 409);
         }
-        if (composedChars + systemPrompt.length > MAX_COMPOSED_SKILL_CHARS) {
+        if (composedChars + cost(systemPrompt, result.data.name) > MAX_COMPOSED_SKILL_CHARS) {
             return c.json({
                 error: `Attaching this skill would exceed the agent's prompt budget of ${MAX_COMPOSED_SKILL_CHARS} characters. Detach a skill first.`,
                 code: 'SKILL_BUDGET_EXCEEDED',
