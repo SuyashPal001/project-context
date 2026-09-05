@@ -16,7 +16,7 @@ import { API_BASE_URL, sessions } from './types.js'
 import { downloadMediaAttachment, buildAttachmentNote } from './media.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 import { validateToken } from './auth.js'
-import { createConversation, saveUserMessage, saveAssistantMessage } from './persistence.js'
+import { createConversation, saveUserMessage, saveAssistantMessage, fetchConversationAllowMode } from './persistence.js'
 import { fetchAgentMemory } from './usage.js'
 import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
@@ -109,6 +109,15 @@ async function handleSession(
         }
         streamingActive = true
 
+        // allowMode was wired on the SSE path (routes/chatStream.ts) but not
+        // here — this path fell back to confirmGeneration's ask-by-default,
+        // silently ignoring the per-conversation Auto grant for WebSocket
+        // (mobile) callers. Same server-held-grant fetch as chat.ts: never
+        // trust allowMode off the wire, always re-read the conversation row.
+        const allowMode = conversationId
+          ? await fetchConversationAllowMode(idToken, conversationId)
+          : 'ask' as const
+
         const workingMemory = await fetchAgentMemory(agentId)
         const memPreamble = workingMemory
           ? `[AGENT MEMORY]\nYou have remembered the following about this agent from previous sessions:\n${workingMemory}\n\n`
@@ -188,6 +197,7 @@ async function handleSession(
         requestContext.set('idToken', idToken)
         if (folderId) requestContext.set('folderId', folderId)
         applyFolderScope(requestContext, folderPrefix)
+        requestContext.set('allowMode', allowMode)
         mcpClient = getMCPClientForTenant(tenantId, agentId)
         requestContext.set('__mcpClient', mcpClient as any)
 
