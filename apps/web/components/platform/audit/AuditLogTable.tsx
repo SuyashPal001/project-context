@@ -34,8 +34,8 @@ export const truncate = (str: string | null, length = 8) => {
 };
 
 const actorColors: Record<string, string> = {
-    human: "bg-blue-500/10 text-blue-500",
-    agent: "bg-secondary text-muted-foreground",
+    human: "bg-secondary text-muted-foreground",
+    agent: "bg-primary/10 text-primary",
     system: "bg-gray-500/10 text-gray-500",
 };
 
