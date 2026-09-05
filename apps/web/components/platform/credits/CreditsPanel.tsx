@@ -4,12 +4,41 @@ import Link from 'next/link';
 import { useTenant } from '@/app/[tenant]/tenant-provider';
 import { useCreditUsageByType, microToCredits } from '@/lib/hooks/useCredits';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 function Row({ label, credits }: { label: string; credits: number }) {
     return (
         <div className="flex items-center justify-between py-1.5 text-sm">
             <span className="text-muted-foreground">{label}</span>
             <span className="font-mono">{credits.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+        </div>
+    );
+}
+
+// Mirrors the loaded layout's exact structure (title, percent line, 4 rows,
+// total row, button) rather than a generic spinner or unrelated placeholder
+// shape — so nothing shifts or resizes once the real data lands.
+function CreditsPanelSkeleton({ className }: { className?: string }) {
+    return (
+        <div data-testid="credits-panel-loading" className={cn('w-64 p-3', className)}>
+            <Skeleton className="h-3 w-20 mb-2.5" />
+            <Skeleton className="h-6 w-28 mb-2.5" />
+
+            <div className="border-t border-border/60">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5">
+                        <Skeleton className="h-3.5 w-20" />
+                        <Skeleton className="h-3.5 w-10" />
+                    </div>
+                ))}
+            </div>
+
+            <div className="border-t border-border/60 pt-1.5 mt-1.5 flex items-center justify-between">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-10" />
+            </div>
+
+            <Skeleton className="mt-3 h-8 w-full rounded-md" />
         </div>
     );
 }
@@ -22,7 +51,7 @@ export function CreditsPanel({ className }: { className?: string } = {}) {
     const { data, isLoading } = useCreditUsageByType();
 
     if (isLoading || !data) {
-        return <div data-testid="credits-panel-loading" className={cn('p-3 text-sm text-muted-foreground', className)}>Loading…</div>;
+        return <CreditsPanelSkeleton className={className} />;
     }
 
     if (data.unlimited) {
