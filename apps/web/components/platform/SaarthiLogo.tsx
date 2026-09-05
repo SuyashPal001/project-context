@@ -21,7 +21,7 @@ export function ProjectContextLogo({ variant = "full", className, iconSize = 32 
             {variant === "full" && (
                 <span
                     className="font-bold tracking-tight text-foreground leading-none"
-                    style={{ fontSize: Math.round(iconSize * 0.5) }}
+                    style={{ fontSize: Math.round(iconSize * 0.82) }}
                 >
                     OlmoWorks
                 </span>
