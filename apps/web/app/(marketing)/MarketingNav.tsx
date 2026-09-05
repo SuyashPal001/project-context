@@ -9,7 +9,7 @@ export function MarketingNav() {
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--mk-accent)]">
             <Sparkle className="h-3.5 w-3.5 text-[var(--mk-accent-fg)]" strokeWidth={2} fill="currentColor" />
           </span>
-          <span className="font-display text-lg leading-none">Saarthi Workflow</span>
+          <span className="font-display text-lg leading-none">Indie Mates</span>
         </Link>
         <div className="hidden items-center gap-8 sm:flex">
           <Link href="#agents" className="text-sm font-medium text-[var(--mk-muted)] transition-colors hover:text-[var(--mk-fg)]">Agents</Link>

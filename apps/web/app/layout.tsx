@@ -38,11 +38,11 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "Saarthi Workflow — your AI engineering team",
-    template: "%s | Saarthi Workflow",
+    default: "Indie Mates — your AI engineering team",
+    template: "%s | Indie Mates",
   },
   description:
-    "Saarthi Workflow gives your team a coordinated AI engineering team — PM, Analyst, Project Manager, Tech Lead, and Architect — that turns ideas into PRDs, roadmaps, and task boards. Free to start.",
+    "Indie Mates gives your team a coordinated AI engineering team — PM, Analyst, Project Manager, Tech Lead, and Architect — that turns ideas into PRDs, roadmaps, and task boards. Free to start.",
   metadataBase: new URL("https://projectcontext.co"),
   icons: {
     icon: [

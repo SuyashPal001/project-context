@@ -74,7 +74,7 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
 
             <div className={`relative z-10 flex flex-col items-center justify-center transition-opacity duration-500 delay-100 ${arrival ? 'opacity-0' : 'opacity-100'}`}>
                 <div className="absolute -top-32 font-sans tracking-[0.22em] text-[12px] uppercase opacity-40 whitespace-nowrap">
-                    Saarthi Workflow
+                    Indie Mates
                 </div>
 
                 <div className="flex flex-col gap-6 items-start w-[240px]">

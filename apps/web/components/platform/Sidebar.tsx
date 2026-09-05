@@ -152,7 +152,7 @@ export function Sidebar() {
         },
         staleTime: 5 * 60 * 1000,
     })
-    const brandName = branding?.brandName || "Saarthi Workflow"
+    const brandName = branding?.brandName || "Indie Mates"
     const brandLogoUrl = branding?.logoUrl
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
     const pathname = usePathname()

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Saarthi Workflow",
-  description: "How Saarthi Workflow collects, uses, and protects your data.",
+  title: "Privacy Policy — Indie Mates",
+  description: "How Indie Mates collects, uses, and protects your data.",
   alternates: { canonical: "/privacy" },
 };
 
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
         <section>
           <h2 className="text-[var(--mk-fg)] text-lg font-semibold mb-3">2. How we use it</h2>
           <p>
-            Your data is used solely to provide and improve Saarthi Workflow. We do not sell your
+            Your data is used solely to provide and improve Indie Mates. We do not sell your
             data to third parties. Usage analytics help us understand which features are most
             valuable and where users get stuck.
           </p>

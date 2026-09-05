@@ -8,7 +8,7 @@ export function MarketingFooter() {
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--mk-accent)]">
             <Sparkle className="h-3.5 w-3.5 text-[var(--mk-accent-fg)]" strokeWidth={2} fill="currentColor" />
           </span>
-          <span className="font-display text-lg">Saarthi Workflow</span>
+          <span className="font-display text-lg">Indie Mates</span>
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[var(--mk-muted)]">
           <span>© {new Date().getFullYear()}</span>
