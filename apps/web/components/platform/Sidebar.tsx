@@ -235,12 +235,12 @@ export function Sidebar() {
                             ) : (
                                 <svg
                                     viewBox="179 32 642 630"
-                                    className="shrink-0 text-foreground"
+                                    className="shrink-0"
                                     style={{ height: 24, width: "auto" }}
                                     aria-label={brandName}
                                 >
                                     <path
-                                        fill="currentColor"
+                                        fill="#E69DB8"
                                         d="
                                             M 500, 42
                                             C 536, 42  554, 70  553, 118
