@@ -15,15 +15,22 @@ const RATES = [
     pricingSchema: { per_million_tokens_micro: { input: 0, output: 0 } } },
   { resourceType: 'llm_tokens', subject: '*',                 // matches today's flash fallback
     pricingSchema: { per_million_tokens_micro: { input: 15_000_000, output: 60_000_000 } } },
-  // Placeholder price — ops should set the real per-call cost before this ships broadly.
+  // Nano Banana Pro costs $0.134/image at Vertex AI list price; priced at cost + ~27% margin.
+  // Replaces the old 50_000 placeholder, which was billing below cost on every image.
   { resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview',
-    pricingSchema: { per_call_micro: 50_000 } },
-  // Placeholder price — ops should set the real per-call cost before this ships broadly.
+    pricingSchema: { per_call_micro: 170_000 } },
+  // Lyria-002 costs $0.04-0.08/track at Vertex AI list price; priced above the top of that
+  // range for margin. Replaces the old 20_000 placeholder, which was billing below cost.
   { resourceType: 'music_generation', subject: 'lyria-002',
-    pricingSchema: { per_call_micro: 20_000 } },
-  // Placeholder price — ops should set the real per-call cost before this ships broadly.
+    pricingSchema: { per_call_micro: 60_000 } },
+  // Veo-family models bill per SECOND ($0.03-$0.75/sec depending on tier/audio) but this tool
+  // charges a flat per-call rate because generateVideo.ts never receives clip duration back
+  // from the inference gateway to meter against. 400_000 assumes a worst-case ~8s clip at the
+  // cheapest (lite, no-audio) tier plus margin — it is NOT true per-second metering, and a
+  // longer or audio-bearing clip can still cost more than this charges. Fixing that requires
+  // the gateway to report duration; flag before enabling longer or audio-bearing video output.
   { resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
-    pricingSchema: { per_call_micro: 150_000 } },
+    pricingSchema: { per_call_micro: 400_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can
   // price them later without a deploy (spec section 3).
   { resourceType: 'message',   subject: '*', pricingSchema: { per_message_micro: 0 } },

@@ -25,8 +25,11 @@ import {
     LogOut,
     Brain
 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
+import { api } from "@/lib/api"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
+import { PLANS } from "./billing/PlanSelectorDialog"
 import { NotificationsBell } from "./notifications/NotificationsBell"
 import { useSidebar } from "./SidebarContext"
 import {
@@ -140,6 +143,17 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick, badgeCount }: Sideba
 
 export function Sidebar() {
     const { tenantSlug, role, plan, entitlementFeatures = {} } = useTenant()
+
+    const { data: branding } = useQuery({
+        queryKey: ["branding"],
+        queryFn: async () => {
+            const res = await api.get<{ data: { brandName: string | null; logoUrl: string | null } }>("/api/v1/branding")
+            return res.data
+        },
+        staleTime: 5 * 60 * 1000,
+    })
+    const brandName = branding?.brandName || "Saarthi Workflow"
+    const brandLogoUrl = branding?.logoUrl
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
     const pathname = usePathname()
 
@@ -189,8 +203,8 @@ export function Sidebar() {
             detail: {
                 feature: item.planGateFeature || '',
                 requiredPlan: item.planRequired
-                    ? item.planRequired.charAt(0).toUpperCase() + item.planRequired.slice(1)
-                    : 'Starter',
+                    ? (PLANS.find(p => p.id === item.planRequired)?.name ?? item.planRequired)
+                    : PLANS.find(p => p.id === 'starter')!.name,
             }
         }))
     }
@@ -211,10 +225,19 @@ export function Sidebar() {
                             href={`/${tenantSlug || ''}/dashboard/chat`}
                             className="flex items-center gap-2 min-w-0 rounded-md hover:bg-accent/50 transition-colors -mx-1 px-1 py-0.5"
                         >
-                            <span className="shrink-0 h-7 w-7 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)]">
-                                <Brain className="h-4 w-4 text-primary-foreground" strokeWidth={2} />
-                            </span>
-                            <span className="text-base font-semibold text-foreground tracking-tight truncate">Saarthi Workflow</span>
+                            {brandLogoUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={brandLogoUrl}
+                                    alt={brandName}
+                                    className="shrink-0 h-7 w-7 rounded-lg object-cover"
+                                />
+                            ) : (
+                                <span className="shrink-0 h-7 w-7 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)]">
+                                    <Brain className="h-4 w-4 text-primary-foreground" strokeWidth={2} />
+                                </span>
+                            )}
+                            <span className="text-base font-semibold text-foreground tracking-tight truncate">{brandName}</span>
                         </Link>
                     )}
                     <Tooltip delayDuration={0}>

@@ -28,7 +28,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_keys: { valueLimit: 2 },
         webhooks: { enabled: false },
         api_keys_access: { enabled: false },
-        credits: { valueLimit: 200 },       // $2.00 at 1 credit = 1 cent
+        credits: { valueLimit: 300 },       // $3.00 at 1 credit = 1 cent
     },
     starter: {
         sso: { enabled: false },
@@ -47,7 +47,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_keys: { valueLimit: 5 },
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
-        credits: { valueLimit: 2_000 },     // $20
+        credits: { valueLimit: 3_000 },     // $30 — plan priced at market anchor $20/mo
     },
     business: {
         sso: { enabled: true },
@@ -66,7 +66,7 @@ const PLAN_ENTITLEMENTS: Record<Plan, Record<string, Entitlement>> = {
         api_keys: { valueLimit: 20 },
         webhooks: { enabled: true },
         api_keys_access: { enabled: true },
-        credits: { valueLimit: 10_000 },    // $100
+        credits: { valueLimit: 9_000 },     // $90 — 3x starter's price ($60) at the same ratio
     },
     enterprise: {
         sso: { enabled: true },
