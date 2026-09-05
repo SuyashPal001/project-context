@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Bell, CheckCheck, Inbox } from "lucide-react"
+import { Bell, CheckCheck, Inbox, X } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { useNotifications } from "@/lib/notifications-context"
 import { can } from "@/lib/permissions"
@@ -46,6 +46,7 @@ function dayBucket(iso: string): string {
 // shows the most recent items inline.
 export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean; compact?: boolean }) {
     const [isOpen, setIsOpen] = React.useState(false)
+    const [tab, setTab] = React.useState<"all" | "unread">("all")
     const { tenantSlug, permissions = [] } = useTenant()
     const router = useRouter()
     const queryClient = useQueryClient()
@@ -94,7 +95,8 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
         }
     }
 
-    const items = data?.items ?? []
+    const allItems = data?.items ?? []
+    const items = tab === "unread" ? allItems.filter((n) => !n.read) : allItems
     let lastBucket = ""
 
     return (
@@ -123,15 +125,41 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                 </button>
             </PopoverTrigger>
 
-            <PopoverContent side={collapsed ? "right" : "top"} align="start" className="w-80 p-0 overflow-hidden">
-                <div className="flex items-center justify-between px-3.5 py-3 border-b border-border/60">
+            <PopoverContent side="right" align="end" sideOffset={12} className="w-80 p-0 overflow-hidden">
+                <div className="flex items-center justify-between px-3.5 py-3">
                     <p className="text-[13px] font-semibold text-foreground">Notifications</p>
+                    <button
+                        type="button"
+                        aria-label="Close"
+                        onClick={() => setIsOpen(false)}
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
+                    >
+                        <X className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 px-3.5 pb-2.5 border-b border-border/60">
+                    <div className="flex items-center gap-1 rounded-full bg-muted/50 p-0.5">
+                        {(["all", "unread"] as const).map((t) => (
+                            <button
+                                key={t}
+                                type="button"
+                                onClick={() => setTab(t)}
+                                className={cn(
+                                    "rounded-full px-2.5 py-1 text-[11px] font-medium capitalize transition-colors",
+                                    tab === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                                )}
+                            >
+                                {t === "unread" ? `Unread (${unreadCount})` : "All"}
+                            </button>
+                        ))}
+                    </div>
                     {unreadCount > 0 && canUpdate && (
                         <button
                             type="button"
                             onClick={() => markAllMutation.mutate()}
                             disabled={markAllMutation.isPending}
-                            className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                            className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
                         >
                             <CheckCheck className="h-3 w-3" />
                             Mark all read
@@ -147,7 +175,9 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                     {!isLoading && items.length === 0 && (
                         <div className="flex flex-col items-center gap-2 px-3.5 py-10 text-muted-foreground">
                             <Inbox className="h-6 w-6 opacity-40" />
-                            <p className="text-[12px]">You&apos;re all caught up.</p>
+                            <p className="text-[12px]">
+                                {tab === "unread" ? "No unread notifications." : "You're all caught up."}
+                            </p>
                         </div>
                     )}
 
