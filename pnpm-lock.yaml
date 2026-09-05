@@ -978,6 +978,9 @@ importers:
       '@serverless-saas/events':
         specifier: workspace:*
         version: link:../../../../packages/foundation/events
+      '@serverless-saas/idempotency':
+        specifier: workspace:*
+        version: link:../../../../packages/foundation/idempotency
       '@serverless-saas/logger':
         specifier: workspace:*
         version: link:../../../../packages/foundation/logger

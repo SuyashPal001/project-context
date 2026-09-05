@@ -19,11 +19,19 @@ vi.mock('@serverless-saas/permissions', async () => {
 const acquireMock = vi.hoisted(() => vi.fn());
 const completeMock = vi.hoisted(() => vi.fn());
 const releaseMock = vi.hoisted(() => vi.fn());
-vi.mock('@serverless-saas/idempotency', () => ({
-  IdempotencyStore: vi.fn().mockImplementation(function StoreMock() {
-    return { acquire: acquireMock, complete: completeMock, release: releaseMock };
-  }),
-}));
+// vi.importActual forces this to actually resolve the real
+// @serverless-saas/idempotency package (unlike a bare factory mock, which
+// never touches the real module) — so a missing workspace dependency fails
+// the test suite here too, not only `pnpm build`.
+vi.mock('@serverless-saas/idempotency', async () => {
+  const actual = await vi.importActual<typeof import('@serverless-saas/idempotency')>('@serverless-saas/idempotency');
+  return {
+    ...actual,
+    IdempotencyStore: vi.fn().mockImplementation(function StoreMock() {
+      return { acquire: acquireMock, complete: completeMock, release: releaseMock };
+    }),
+  };
+});
 
 // IdempotencyStore is mocked above and ignores its constructor argument, but
 // the route still calls the real getCacheClient() to produce that argument —

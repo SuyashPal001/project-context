@@ -43,6 +43,7 @@
     "@serverless-saas/database": "workspace:*",
     "@serverless-saas/entitlements": "workspace:*",
     "@serverless-saas/events": "workspace:*",
+    "@serverless-saas/idempotency": "workspace:*",
     "@serverless-saas/logger": "workspace:*",
     "@serverless-saas/notifications": "workspace:*",
     "@serverless-saas/permissions": "workspace:*",

@@ -9,7 +9,7 @@ import { IdempotencyStore } from '@serverless-saas/idempotency';
 import { getCacheClient } from '@serverless-saas/cache';
 import { isAuthorized } from './tasks.auth';
 import { slugify, createVersionAndEnqueue } from '../skills';
-import type { AppEnv } from '@serverless-saas/types';
+import type { AppEnv, PermissionSet } from '@serverless-saas/types';
 
 export const internalSkillsRoute = new Hono<AppEnv>();
 
@@ -44,7 +44,15 @@ internalSkillsRoute.post('/', async (c) => {
   }
   const { tenantId, userId, agentId, conversationId, messageId, name, description, body } = parsed.data;
 
-  const permissions = await resolveUserPermissions(db, tenantId, userId);
+  // resolveUserPermissions's declared return type (packages/foundation/permissions/
+  // src/resolve.ts) is loosely `{ resource: string; action: string }[]`, not the
+  // `PermissionSet` (`action: PermissionAction`) that hasPermission expects — even
+  // though the `action` values it returns come straight from the `permissions.action`
+  // column, itself seeded only from the same PermissionAction enum. Narrowed here
+  // rather than widening hasPermission's signature or resolveUserPermissions's return
+  // type, since apps/api/src/middleware/permissions.ts's callers read this same
+  // shape off an `any`-typed requestContext and never hit the mismatch.
+  const permissions = (await resolveUserPermissions(db, tenantId, userId)) as PermissionSet | null;
   if (!permissions || !hasPermission(permissions, 'skills', 'create')) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
