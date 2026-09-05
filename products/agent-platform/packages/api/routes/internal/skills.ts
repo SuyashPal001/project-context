@@ -107,7 +107,10 @@ internalSkillsRoute.post('/', async (c) => {
 
     // Durably mark this message done so a post-TTL redelivery still can't
     // create a second skill once the 15-minute processing claim has expired.
-    await store.complete(idempotencyKey);
+    // Fire-and-forget like the audit write above: every write this request
+    // needed has already succeeded by this point, so a Redis blip here must
+    // not turn a completed creation into a 500 whose retry makes a duplicate.
+    await store.complete(idempotencyKey).catch(() => {});
 
     return c.json({ data: { skillId: skill.id, installId: install.id } }, 202);
   } catch (err) {

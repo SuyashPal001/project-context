@@ -83,6 +83,8 @@ describe('POST /internal/skills', () => {
     process.env.SQS_PROCESSING_QUEUE_URL = 'https://sqs.test/queue';
     resolveUserPermissionsMock.mockResolvedValue([{ resource: 'skills', action: 'create' }]);
     acquireMock.mockResolvedValue(true);
+    completeMock.mockResolvedValue(undefined);
+    releaseMock.mockResolvedValue(undefined);
     // Quota query returns a low count by default.
     mockQuotaQuery([{ count: 0 }]);
     dbMock.insert.mockImplementation(() => ({
@@ -132,6 +134,19 @@ describe('POST /internal/skills', () => {
     // Success durably marks the message done so a redelivery after the
     // 15-minute processing claim expires still can't create a second skill.
     expect(completeMock).toHaveBeenCalledWith(EXPECTED_KEY);
+    expect(releaseMock).not.toHaveBeenCalled();
+  });
+
+  it('still returns 202 with the skill and install ids when the completion write fails', async () => {
+    // Every write this request needed has already succeeded by the time
+    // complete() runs — a Redis blip there must not turn a finished creation
+    // into a 500 whose retry creates a genuine second skill.
+    completeMock.mockRejectedValue(new Error('redis blip'));
+    const res = await post(payload());
+    expect(res.status).toBe(202);
+    const body = await res.json();
+    expect(body.data.skillId).toBeDefined();
+    expect(body.data.installId).toBeDefined();
     expect(releaseMock).not.toHaveBeenCalled();
   });
 
