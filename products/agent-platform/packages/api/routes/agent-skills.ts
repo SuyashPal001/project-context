@@ -151,17 +151,25 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
             systemPrompt = result.data.systemPrompt;
         }
 
-        const active = await db.select({ name: agentSkills.name, systemPrompt: agentSkills.systemPrompt })
+        const active = await db.select({ name: agentSkills.name, systemPrompt: agentSkills.systemPrompt, version: agentSkills.version })
             .from(agentSkills)
             .where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.tenantId, tenantId), eq(agentSkills.status, 'active')));
 
-        // Exclude the row this attach would replace: a re-attach (same name,
-        // e.g. after a server-side install-version upgrade) isn't a new
-        // attachment, and its existing row would otherwise double-count
-        // against both caps and could push a same-size re-attach over budget
-        // or into the count cap it was already inside of. Matches the
-        // orchestrator, which dedupes composed skills by name (usage.ts:82-87).
-        const others = active.filter((s) => s.name !== result.data.name);
+        // Exclude only the row(s) this attach actually supersedes — same name,
+        // version <= the incoming version. Two active rows can share a name at
+        // different versions (agent_skills is unique on
+        // [agentId, tenantId, name, version], and a re-attach at a new version
+        // doesn't deactivate the old one); the orchestrator dedupes to the
+        // *highest* version per name when composing (usage.ts:82-87), so a
+        // same-name row at a version higher than this attach's will still
+        // compose regardless of what this attach does, and must stay counted.
+        // Only a same-name row at <= this version is what this attach
+        // replaces (via the 23505 -> UPDATE reconcile, or a stale lower
+        // version that no longer matters). Excluding anything more would let
+        // a low-version re-attach hide an existing high-version row's real
+        // composed cost.
+        const incomingVersion = result.data.version ?? 1;
+        const others = active.filter((s) => s.name !== result.data.name || (s.version ?? 1) > incomingVersion);
 
         // Mirrors the orchestrator's per-skill cost (usage.ts:101): the
         // composed prompt wraps each skill's trimmed body in a

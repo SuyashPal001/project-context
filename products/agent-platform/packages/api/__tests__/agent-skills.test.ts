@@ -296,14 +296,35 @@ describe('POST /agents/:agentId/skills — prompt budget caps', () => {
     it('refuses a set that fits the raw body-length sum but exceeds budget once the orchestrator\'s per-skill header cost is counted', async () => {
         // The orchestrator composes each skill as "## Skill: <name>\n\n<body>",
         // costing body.trim().length + name.length + 15 per skill (usage.ts:101).
-        // 8 active skills at 2975 chars each (raw sum 23,800) plus a 100-char
-        // attach sums to 23,900 raw — under the 24,000 cap by the old,
-        // header-blind math. Once every one of the 9 skills' 2-char name +
-        // 15-char header overhead (17 each, 153 total) is added, the true
-        // composed cost is 24,053 — over budget, and this must be refused.
-        mockActiveSkills(Array.from({ length: 8 }, (_, i) => ({ name: `s${i}`, systemPrompt: 'x'.repeat(2975) })));
+        // Only 7 skills are already active — under MAX_ATTACHED_SKILLS (8) — so
+        // the *count* cap cannot fire and it's the character math alone that
+        // decides. 7 active skills at 3,400 chars each (raw sum 23,800) plus a
+        // 100-char attach sums to 23,900 raw — under the 24,000 cap by the old,
+        // header-blind math, so pre-fix code accepts. Once every one of the 8
+        // skills' 2-char name + 15-char header overhead (17 each, 136 total)
+        // is added, the true composed cost is 24,036 — over budget, and
+        // post-fix code must refuse.
+        mockActiveSkills(Array.from({ length: 7 }, (_, i) => ({ name: `s${i}`, systemPrompt: 'x'.repeat(3400) })));
 
-        const res = await postAttach({ name: 's8', systemPrompt: 'y'.repeat(100) });
+        const res = await postAttach({ name: 's7', systemPrompt: 'y'.repeat(100) });
+
+        expect(res.status).toBe(409);
+        expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
+    });
+
+    it('counts an existing higher-version same-name row against the budget even when the incoming attach is a lower version', async () => {
+        // agent_skills is unique on [agentId, tenantId, name, version], so a
+        // client-supplied version lower than an existing same-name row's
+        // version does not collide with it and would insert a second active
+        // row — it does not replace or supersede the higher-version row. The
+        // orchestrator dedupes composed skills to the *highest* version per
+        // name (usage.ts:82-87), so that existing v3 row still composes
+        // regardless of what this v1 attach does, and must stay counted.
+        // Excluding it (as a same-name-only filter would) hides its real
+        // composed cost and falsely accepts.
+        mockActiveSkills([{ name: 'X', version: 3, systemPrompt: 'a'.repeat(23_950) }]);
+
+        const res = await postAttach({ name: 'X', version: 1, systemPrompt: 'b'.repeat(100) });
 
         expect(res.status).toBe(409);
         expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
