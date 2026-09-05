@@ -1,14 +1,11 @@
-import { Sparkle } from "lucide-react";
-
 export function MarketingFooter() {
   return (
     <footer className="border-t border-[var(--mk-line)]">
       <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-12 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2.5">
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[var(--mk-accent)]">
-            <Sparkle className="h-3.5 w-3.5 text-[var(--mk-accent-fg)]" strokeWidth={2} fill="currentColor" />
-          </span>
-          <span className="font-display text-lg">Saarthi Workflow</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/olmoworks-mark.svg" alt="" className="shrink-0 object-contain" style={{ height: 28, width: "auto" }} />
+          <span className="font-display text-lg">OlmoWorks</span>
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[var(--mk-muted)]">
           <span>© {new Date().getFullYear()}</span>

@@ -152,7 +152,7 @@ export function Sidebar() {
         },
         staleTime: 5 * 60 * 1000,
     })
-    const brandName = branding?.brandName || "Saarthi Workflow"
+    const brandName = branding?.brandName || "OlmoWorks"
     const brandLogoUrl = branding?.logoUrl
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
     const pathname = usePathname()
@@ -233,9 +233,13 @@ export function Sidebar() {
                                     className="shrink-0 h-7 w-7 rounded-lg object-cover"
                                 />
                             ) : (
-                                <span className="shrink-0 h-7 w-7 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_8px_color-mix(in_oklch,var(--primary)_55%,transparent)]">
-                                    <Brain className="h-4 w-4 text-primary-foreground" strokeWidth={2} />
-                                </span>
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src="/brand/olmoworks-mark.svg"
+                                    alt={brandName}
+                                    className="shrink-0 object-contain"
+                                    style={{ height: 28, width: "auto" }}
+                                />
                             )}
                             <span className="text-base font-semibold text-foreground tracking-tight truncate">{brandName}</span>
                         </Link>
