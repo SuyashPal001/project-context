@@ -144,6 +144,54 @@ describe('handleSkillImport', () => {
     expect(sqlParams(failCall![0]).some((p) => p === 'Import failed — see server logs for details')).toBe(true);
   });
 
+  it('writes a single SKILL.md and reaches ready for an authored source', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    const body = '---\nname: bid-writer\ndescription: Writes bids for RFPs\n---\n\nAlways open with the client name.';
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body },
+    });
+
+    // Exactly one object written, at the version's prefix, and it is SKILL.md.
+    const puts = s3SendMock.mock.calls
+      .map(([command]) => (command as { input?: { Key?: string; Body?: unknown } }).input)
+      .filter((input) => typeof input?.Key === 'string' && input.Key.includes('skill-packages/'));
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.Key).toBe('skill-packages/skill-1/1/SKILL.md');
+    expect(String(puts[0]!.Body)).toBe(body);
+
+    // The version row is marked ready, with the parsed manifest.
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    expect(executed).toContain("status = 'ready'");
+  });
+
+  it('never calls S3 GetObject or the network for an authored source', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+    });
+
+    expect(safeExtractSkillZipMock).not.toHaveBeenCalled();
+  });
+
+  it('fails an authored version whose body has no frontmatter', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: 'Just some prose with no frontmatter block.' },
+    });
+
+    const failCall = dbMock.execute.mock.calls.find((c) => sqlText(c[0]).includes("status = 'failed'"));
+    expect(failCall).toBeDefined();
+    const params = sqlParams(failCall![0]);
+    expect(params.some((p) => typeof p === 'string' && p.includes('SKILL.md must start with a --- YAML frontmatter block'))).toBe(true);
+    expect(params.some((p) => typeof p === 'string' && p.includes('Import failed'))).toBe(false);
+  });
+
   it('rejects a github source with an unsafe owner/repo/ref before fetching anything', async () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
     await handleSkillImport({

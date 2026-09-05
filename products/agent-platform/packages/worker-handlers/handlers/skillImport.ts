@@ -22,7 +22,8 @@ function truncateForAudit(message: string): string {
 export type SkillImportSource =
   | { type: 'zip'; fileKey: string }
   | { type: 'github'; owner: string; repo: string; ref: string }
-  | { type: 'url'; url: string };
+  | { type: 'url'; url: string }
+  | { type: 'authored'; body: string };
 
 export interface SkillImportPayload {
   tenantId: string;
@@ -39,6 +40,20 @@ interface ExtractedPackage {
 }
 
 async function extractForSource(source: SkillImportSource): Promise<ExtractedPackage> {
+  // Authored skills arrive with their SKILL.md inline — nothing to download,
+  // unpack, or defend against. They deliberately still flow through this
+  // handler rather than being written straight from the API route: manifest
+  // parsing, the S3 layout, and the pending→ready/failed transitions all live
+  // here, and a second copy of that in the Lambda could drift from the one
+  // the runtime actually trusts.
+  if (source.type === 'authored') {
+    return {
+      entries: [{ fileName: 'SKILL.md', buffer: Buffer.from(source.body, 'utf8') }],
+      manifestSource: source.body,
+      skipped: [],
+    };
+  }
+
   if (source.type === 'zip') {
     const obj = await s3.send(new GetObjectCommand({ Bucket: DOCUMENTS_BUCKET, Key: source.fileKey }));
     const chunks: Uint8Array[] = [];
