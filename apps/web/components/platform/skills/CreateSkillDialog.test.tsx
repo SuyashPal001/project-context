@@ -78,6 +78,40 @@ describe("CreateSkillDialog", () => {
         expect(generateSkillMock.mock.calls[1][0]).toMatchObject({ previousDraft: DRAFT, feedback: "Make it shorter" });
     });
 
+    // A failed regenerate must leave the user where they were with the previous
+    // draft still intact — not collapsed back to the empty first-generation
+    // state, which would silently drop the salvaged draft and typed feedback.
+    it("keeps the previous draft and controls when a regenerate fails", async () => {
+        const { SkillGenerationError } = await import("./generateSkill");
+        renderDialog();
+        await userEvent.type(screen.getByPlaceholderText(/skill name/i), "Bid Writer");
+        await userEvent.type(screen.getByPlaceholderText(/what should this skill/i), "Help write RFP responses");
+        await userEvent.click(screen.getByRole("button", { name: /generate/i }));
+        await waitFor(() => screen.getByRole("button", { name: /regenerate/i }));
+
+        const regenerateButton = screen.getByRole("button", { name: /regenerate/i });
+        await userEvent.click(regenerateButton);
+        await userEvent.type(screen.getByPlaceholderText(/what should change/i), "Make it shorter");
+
+        generateSkillMock.mockRejectedValueOnce(new SkillGenerationError("Generation failed. Try again.", "FAILED"));
+        await userEvent.click(regenerateButton);
+
+        await waitFor(() => expect(screen.getByText(/generation failed/i)).toBeTruthy());
+        // The previous draft is still on screen and the Regenerate/Save controls
+        // are still there — the dialog did not collapse back to the single
+        // "Generate" first-run state.
+        expect(screen.getByText(/always open with the client name/i)).toBeTruthy();
+        expect(screen.getByRole("button", { name: /save skill/i })).toBeTruthy();
+        const stillThereRegenerate = screen.getByRole("button", { name: /regenerate/i });
+        expect((stillThereRegenerate as HTMLButtonElement).disabled).toBe(false);
+
+        // A follow-up regenerate must still carry the previous draft and the
+        // feedback the user already typed, not start a fresh first-generation.
+        await userEvent.click(stillThereRegenerate);
+        await waitFor(() => expect(generateSkillMock).toHaveBeenCalledTimes(3));
+        expect(generateSkillMock.mock.calls[2][0]).toMatchObject({ previousDraft: DRAFT, feedback: "Make it shorter" });
+    });
+
     // A failed generation must leave the user where they were, with their brief
     // intact — not on an empty preview with nothing to retry from.
     it("shows the error and keeps the draft retryable when generation fails", async () => {

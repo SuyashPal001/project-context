@@ -70,6 +70,14 @@ export function CreateSkillDialog({ open, onOpenChange, onCreated }: CreateSkill
             setFeedback("");
         } catch (err) {
             setError(err instanceof SkillGenerationError ? err.message : "Generation failed. Try again.");
+            // A failed regenerate must leave the user where they were, not on an
+            // empty preview with nothing to retry from — restore the draft that
+            // was salvaged into `previousDraft` above (feedback text is left
+            // alone: it's still in state since we only clear it on success).
+            if (revision && previousDraft) {
+                draftRef.current = previousDraft;
+                setDraft(previousDraft);
+            }
         } finally {
             setGenerating(false);
         }
