@@ -11,6 +11,13 @@ import type { AppEnv } from '@serverless-saas/types';
 
 export const agentSkillsRoutes = new Hono<AppEnv>();
 
+// Mirrors MAX_ATTACHED_SKILLS / MAX_COMPOSED_SKILL_CHARS in the orchestrator's
+// usage.ts. Deliberately duplicated rather than shared: the orchestrator is not
+// a dependency of this Lambda, and a shared package for two integers would cost
+// more than it saves. If either number changes, change both.
+const MAX_ATTACHED_SKILLS = 8;
+const MAX_COMPOSED_SKILL_CHARS = 24_000;
+
 // Verify agent belongs to tenant — used before every operation
 async function resolveAgent(agentId: string, tenantId: string) {
     const [agent] = await db
@@ -142,6 +149,27 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
                 return c.json({ error: 'systemPrompt is required when installId is omitted', code: 'VALIDATION_ERROR' }, 400);
             }
             systemPrompt = result.data.systemPrompt;
+        }
+
+        const active = await db.select({ name: agentSkills.name, systemPrompt: agentSkills.systemPrompt })
+            .from(agentSkills)
+            .where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.tenantId, tenantId), eq(agentSkills.status, 'active')));
+
+        // Refused rather than truncated: the prompt budget is real, and half a
+        // skill in the prompt is worse than none. Failing here makes it visible
+        // to whoever is attaching instead of surfacing later as bad output.
+        const composedChars = active.reduce((n, s) => n + (s.systemPrompt?.length ?? 0), 0);
+        if (active.length >= MAX_ATTACHED_SKILLS) {
+            return c.json({
+                error: `This agent already has the maximum of ${MAX_ATTACHED_SKILLS} skills attached. Detach one first.`,
+                code: 'SKILL_BUDGET_EXCEEDED',
+            }, 409);
+        }
+        if (composedChars + systemPrompt.length > MAX_COMPOSED_SKILL_CHARS) {
+            return c.json({
+                error: `Attaching this skill would exceed the agent's prompt budget of ${MAX_COMPOSED_SKILL_CHARS} characters. Detach a skill first.`,
+                code: 'SKILL_BUDGET_EXCEEDED',
+            }, 409);
         }
 
         const [created] = await db.insert(agentSkills).values({

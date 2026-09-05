@@ -27,6 +27,8 @@ function mockResolveAgent(installRows: Record<string, unknown>[] = []) {
         from: (table: unknown) => {
             if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
             if (table === skillInstalls) return { where: () => ({ limit: async () => installRows }) };
+            // Prompt-budget cap check — no active skills attached yet in these tests.
+            if (table === agentSkills) return { where: async () => [] };
             throw new Error('unexpected select target');
         },
     }));
@@ -67,6 +69,7 @@ describe('POST /agents/:agentId/skills', () => {
                 if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
                 if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: installId, skillId: 'skill-1', installedVersion: 1 }] }) };
                 if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: '# Body' } }] }) };
+                if (table === agentSkills) return { where: async () => [] };
                 throw new Error('unexpected select target');
             },
         }));
@@ -160,6 +163,7 @@ describe('POST /agents/:agentId/skills — server-derived system prompt', () => 
                 if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
                 if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 2 }] }) };
                 if (table === skillVersions) return { where: () => ({ limit: async () => versionRows }) };
+                if (table === agentSkills) return { where: async () => [] };
                 throw new Error('unexpected select target');
             },
         }));
@@ -226,6 +230,70 @@ describe('POST /agents/:agentId/skills — server-derived system prompt', () => 
     });
 });
 
+describe('POST /agents/:agentId/skills — prompt budget caps', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    // Models the cap-check's select: table === agents resolves the agent,
+    // table === agentSkills (queried without installId/skillInstalls
+    // involvement here) resolves to the tenant's currently-active rows. The
+    // cap-check query has no `.limit()` in the handler, so `.where()` itself
+    // resolves directly to the row array.
+    function mockActiveSkills(rows: Record<string, unknown>[]) {
+        dbMock.select.mockImplementation(() => ({
+            from: (table: unknown) => {
+                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
+                if (table === agentSkills) return { where: async () => rows };
+                throw new Error('unexpected select target');
+            },
+        }));
+        dbMock.insert.mockImplementation((table: unknown) => ({
+            values: (data: Record<string, unknown>) => ({
+                returning: async () => (table === agentSkills ? [{ id: 'new-skill', ...data }] : [{ id: 'audit-1' }]),
+                catch: () => {},
+            }),
+        }));
+    }
+
+    async function postAttach(body: Record<string, unknown>) {
+        const { agentSkillsRoutes } = await import('../routes/agent-skills');
+        const app = appWithContext();
+        app.route('/agents', agentSkillsRoutes);
+
+        return app.request('/agents/agent-1/skills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+    }
+
+    it('refuses an attach that would exceed the attached-skill count cap', async () => {
+        // 8 skills already attached — the 9th must be refused, not truncated later.
+        mockActiveSkills(Array.from({ length: 8 }, (_, i) => ({ name: `skill-${i}`, systemPrompt: 'body' })));
+
+        const res = await postAttach({ name: 'ninth', systemPrompt: 'body' });
+
+        expect(res.status).toBe(409);
+        expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
+    });
+
+    it('refuses an attach that would exceed the composed character budget', async () => {
+        mockActiveSkills([{ name: 'huge', systemPrompt: 'x'.repeat(23_900) }]);
+
+        const res = await postAttach({ name: 'small', systemPrompt: 'y'.repeat(500) });
+
+        expect(res.status).toBe(409);
+        expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
+    });
+
+    it('allows an attach that fits inside both caps', async () => {
+        mockActiveSkills([{ name: 'one', systemPrompt: 'short' }]);
+
+        const res = await postAttach({ name: 'two', systemPrompt: 'also short' });
+
+        expect(res.status).toBe(201);
+    });
+});
+
 describe('POST /agents/:agentId/skills — reconcile stale prompt on 23505 re-attach conflict', () => {
     beforeEach(() => vi.clearAllMocks());
 
@@ -254,6 +322,7 @@ describe('POST /agents/:agentId/skills — reconcile stale prompt on 23505 re-at
                 if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
                 if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 3 }] }) };
                 if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: NEW_BODY } }] }) };
+                if (table === agentSkills) return { where: async () => [] };
                 throw new Error('unexpected select target');
             },
         }));
@@ -313,6 +382,7 @@ describe('POST /agents/:agentId/skills — reconcile stale prompt on 23505 re-at
         dbMock.select.mockImplementation(() => ({
             from: (table: unknown) => {
                 if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
+                if (table === agentSkills) return { where: async () => [] };
                 throw new Error('unexpected select target');
             },
         }));
@@ -342,6 +412,7 @@ describe('POST /agents/:agentId/skills — reconcile stale prompt on 23505 re-at
                 if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
                 if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 3 }] }) };
                 if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: NEW_BODY } }] }) };
+                if (table === agentSkills) return { where: async () => [] };
                 throw new Error('unexpected select target');
             },
         }));
