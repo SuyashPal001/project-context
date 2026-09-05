@@ -16,7 +16,7 @@ export function ProjectContextLogo({ variant = "full", className, iconSize = 32 
                 src="/brand/olmoworks-mark.svg"
                 alt="OlmoWorks"
                 className="shrink-0 object-contain"
-                style={{ width: iconSize, height: iconSize }}
+                style={{ height: iconSize, width: "auto" }}
             />
             {variant === "full" && (
                 <span className="text-[15px] font-bold tracking-tight text-foreground leading-none">
