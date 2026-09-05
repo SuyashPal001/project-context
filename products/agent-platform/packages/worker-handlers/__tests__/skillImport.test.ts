@@ -228,6 +228,60 @@ describe('handleSkillImport', () => {
     expect(params.some((p) => String(p).includes('Open with the client name.'))).toBe(true);
   });
 
+  // The cross-tenant hole this closes: agent_skills.agent_id and
+  // agent_skills.tenant_id are two independent foreign keys, so the previous
+  // INSERT — which took both values straight from the queue payload — would
+  // happily write a row pairing this tenant with another tenant's agent. On
+  // that agent's next turn, fetchAgentSkills composed the row into its owner's
+  // system prompt. The agents join makes the pair unrepresentable.
+  it('constrains the attach INSERT to an agent in the same tenant', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: d\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const insert = dbMock.execute.mock.calls
+      .map(([q]) => sqlText(q))
+      .find((t) => t.includes('INSERT INTO agent_skills'));
+    expect(insert).toBeDefined();
+    // The row's agent_id and tenant_id come from the agents row itself, not
+    // from the two payload values, and the agent is filtered by tenant.
+    expect(insert).toContain('FROM agents a');
+    expect(insert).toMatch(/a\.tenant_id\s*=/);
+    expect(insert).toContain('SELECT a.id, a.tenant_id');
+  });
+
+  it('writes zero rows and logs when the agent belongs to a different tenant', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // The mismatch is refused inside the database by the join, so from here it
+    // is indistinguishable from any other zero-row outcome: no row is written.
+    dbMock.execute.mockImplementation(async (q: unknown) => {
+      const text = sqlText(q);
+      if (text.includes('SELECT name, system_prompt')) return [];
+      if (text.includes('INSERT INTO agent_skills')) return { count: 0 };
+      return undefined;
+    });
+
+    const { handleSkillImport } = await import('../handlers/skillImport');
+    await handleSkillImport({
+      tenantId: 'attacker-tenant', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+      attachToAgentId: 'victim-tenant-agent',
+    });
+
+    // The import itself still succeeds — a refused attach must never flip an
+    // already-completed import to 'failed'.
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    expect(executed).toContain("status = 'ready'");
+    expect(executed).not.toContain("status = 'failed'");
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('attach affected 0 rows'));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('agent not in tenant'));
+    warnSpy.mockRestore();
+  });
+
   it('does not attach when the payload carries no attachToAgentId', async () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
 

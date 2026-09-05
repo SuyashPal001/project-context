@@ -191,4 +191,61 @@ describe('ApproveCost', () => {
         await userEvent.click(approveBtn);
         expect(onApprove).toHaveBeenCalledTimes(1);
     });
+
+    // 'skill_creation' is not a CreditResourceType. Casting it to one made the
+    // estimate query fire against a resource that has no rate, so the card fell
+    // into its isError branch and told the user "Couldn't estimate cost" for a
+    // write that costs nothing. resourceType={null} is the unpriced branch.
+    describe('unpriced confirmations (resourceType={null})', () => {
+        it('never fetches an estimate and never shows the estimate-failed copy', async () => {
+            render(<ApproveCost label='Create skill "Bid Writer"' resourceType={null} onApprove={vi.fn()} onCancel={vi.fn()} />);
+
+            const el = await screen.findByTestId('approve-cost-unpriced');
+            expect(apiGetMock).not.toHaveBeenCalled();
+            expect(el.textContent).not.toContain("Couldn't estimate cost");
+            expect(el.textContent).toContain("doesn't use credits");
+        });
+
+        it('offers an enabled Approve', async () => {
+            const onApprove = vi.fn();
+            render(<ApproveCost label='Create skill "Bid Writer"' resourceType={null} onApprove={onApprove} onCancel={vi.fn()} />);
+
+            await screen.findByTestId('approve-cost-unpriced');
+            const approveBtn = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
+            expect(approveBtn.disabled).toBe(false);
+            await userEvent.click(approveBtn);
+            expect(onApprove).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    // The spec rests the credential/PII defence on this card being "the real
+    // control". A card that shows only a name is asking the user to approve text
+    // they cannot see.
+    describe('preview', () => {
+        it('renders the body being approved, verbatim', async () => {
+            render(
+                <ApproveCost
+                    label='Create skill "Bid Writer"'
+                    resourceType={null}
+                    preview={'---\nname: bid-writer\n---\n\nOpen with the client name.'}
+                    onApprove={vi.fn()}
+                    onCancel={vi.fn()}
+                />,
+            );
+
+            const preview = await screen.findByTestId('approve-cost-preview');
+            expect(preview.textContent).toContain('name: bid-writer');
+            expect(preview.textContent).toContain('Open with the client name.');
+        });
+
+        it('renders no preview block when the caller passes none', async () => {
+            apiGetMock.mockResolvedValue({
+                costMicro: '2000000', sufficient: true, rateId: 'rate-1', rateVersion: 1, unlimited: false,
+            });
+            render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={vi.fn()} />);
+
+            await screen.findByTestId('approve-cost');
+            expect(screen.queryByTestId('approve-cost-preview')).toBeNull();
+        });
+    });
 });
