@@ -10,12 +10,18 @@ import { useNotifications } from "@/lib/notifications-context"
 import { can } from "@/lib/permissions"
 import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import type { Notification, NotificationsInboxResponse } from "@/components/platform/notifications/types"
 import { NotificationIcon } from "@/components/platform/notifications/notificationVisuals"
 
 const FLYOUT_LIMIT = 20
+
+// Must match Sidebar.tsx's w-16 / w-[17rem]. The panel is pinned to this
+// x-offset instead of positioned relative to the bell (a small icon nested
+// several flex rows deep, whose own padding made Radix's trigger-relative
+// popover float with a visible gap before the sidebar's actual edge).
+const SIDEBAR_WIDTH_COLLAPSED = 64
+const SIDEBAR_WIDTH_EXPANDED = 272
 
 function relativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime()
@@ -47,6 +53,26 @@ function dayBucket(iso: string): string {
 export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean; compact?: boolean }) {
     const [isOpen, setIsOpen] = React.useState(false)
     const [tab, setTab] = React.useState<"all" | "unread">("all")
+    const panelRef = React.useRef<HTMLDivElement>(null)
+    const triggerRef = React.useRef<HTMLButtonElement>(null)
+
+    React.useEffect(() => {
+        if (!isOpen) return
+        const handlePointerDown = (e: PointerEvent) => {
+            const target = e.target as Node
+            if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+            setIsOpen(false)
+        }
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setIsOpen(false)
+        }
+        document.addEventListener("pointerdown", handlePointerDown)
+        document.addEventListener("keydown", handleKeyDown)
+        return () => {
+            document.removeEventListener("pointerdown", handlePointerDown)
+            document.removeEventListener("keydown", handleKeyDown)
+        }
+    }, [isOpen])
     const { tenantSlug, permissions = [] } = useTenant()
     const router = useRouter()
     const queryClient = useQueryClient()
@@ -100,32 +126,37 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
     let lastBucket = ""
 
     return (
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
-            <PopoverTrigger asChild>
-                <button
-                    type="button"
-                    data-testid="notifications-bell"
-                    aria-label="Notifications"
-                    className={cn(
-                        "flex items-center rounded-lg transition-all hover:bg-accent/50 shrink-0",
-                        compact ? "p-1.5" : cn("gap-3 w-full text-left", collapsed ? "justify-center px-2 py-2" : "px-2.5 py-2 mb-2")
+        <>
+            <button
+                ref={triggerRef}
+                type="button"
+                data-testid="notifications-bell"
+                aria-label="Notifications"
+                onClick={() => setIsOpen((v) => !v)}
+                className={cn(
+                    "flex items-center rounded-lg transition-all hover:bg-accent/50 shrink-0",
+                    compact ? "p-1.5" : cn("gap-3 w-full text-left", collapsed ? "justify-center px-2 py-2" : "px-2.5 py-2 mb-2")
+                )}
+            >
+                <span className="relative shrink-0">
+                    <Bell className="h-4 w-4 text-muted-foreground" />
+                    {unreadCount > 0 && (
+                        <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[9px] font-bold bg-primary text-primary-foreground border-transparent">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                        </Badge>
                     )}
-                >
-                    <span className="relative shrink-0">
-                        <Bell className="h-4 w-4 text-muted-foreground" />
-                        {unreadCount > 0 && (
-                            <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[9px] font-bold bg-primary text-primary-foreground border-transparent">
-                                {unreadCount > 99 ? "99+" : unreadCount}
-                            </Badge>
-                        )}
-                    </span>
-                    {!collapsed && !compact && (
-                        <span className="text-[13px] text-muted-foreground">Notifications</span>
-                    )}
-                </button>
-            </PopoverTrigger>
+                </span>
+                {!collapsed && !compact && (
+                    <span className="text-[13px] text-muted-foreground">Notifications</span>
+                )}
+            </button>
 
-            <PopoverContent side="right" align="end" sideOffset={12} className="w-80 p-0 overflow-hidden">
+            {isOpen && (
+                <div
+                    ref={panelRef}
+                    style={{ left: collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED }}
+                    className="fixed bottom-4 z-50 w-80 rounded-xl border border-border bg-popover text-popover-foreground shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45)] overflow-hidden"
+                >
                 <div className="flex items-center justify-between px-3.5 py-3">
                     <p className="text-[13px] font-semibold text-foreground">Notifications</p>
                     <button
@@ -225,7 +256,8 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                 >
                     View all
                 </Link>
-            </PopoverContent>
-        </Popover>
+                </div>
+            )}
+        </>
     )
 }

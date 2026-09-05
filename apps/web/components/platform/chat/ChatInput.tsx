@@ -1,4 +1,4 @@
-import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Puzzle, Check, Sparkles, FolderOpen } from "lucide-react";
+import { ArrowUp, Loader2, Plus, Video, Mic, Square, Bot, Puzzle, Check, Sparkles, FolderOpen, ChevronsRight, Hand, ChevronDown } from "lucide-react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -696,31 +696,38 @@ export function ChatInput({
                                             <DropdownMenuTrigger asChild>
                                                 <button
                                                     type="button"
-                                                    className="h-8 px-2 flex items-center gap-1.5 rounded-full text-xs font-medium text-foreground/90 hover:text-foreground transition-colors"
+                                                    className="h-8 px-2 flex items-center gap-1 rounded-full text-xs font-medium text-foreground/90 hover:text-foreground transition-colors"
                                                 >
                                                     {allowMode === 'auto' ? 'Auto' : 'Ask'}
+                                                    <ChevronDown className="h-3 w-3 opacity-60" />
                                                 </button>
                                             </DropdownMenuTrigger>
-                                            <DropdownMenuContent side="top" align="start" className="w-64 p-2">
-                                                <DropdownMenuItem
-                                                    onClick={() => onAllowModeChange('ask')}
-                                                    className="flex items-start gap-2 cursor-pointer py-2"
-                                                >
-                                                    <span className="flex-1 min-w-0 flex flex-col">
-                                                        <span className="text-sm font-medium">Ask</span>
-                                                        <span className="text-xs text-muted-foreground">Ask before generating (images, video, etc.)</span>
-                                                    </span>
-                                                    {(allowMode ?? 'ask') === 'ask' && <Check className="h-4 w-4 shrink-0 mt-0.5" />}
-                                                </DropdownMenuItem>
+                                            <DropdownMenuContent side="top" align="start" className="w-72 p-2">
                                                 <DropdownMenuItem
                                                     onClick={() => onAllowModeChange('auto')}
-                                                    className="flex items-start gap-2 cursor-pointer py-2"
+                                                    className="flex items-start gap-2.5 cursor-pointer py-2"
                                                 >
-                                                    <span className="flex-1 min-w-0 flex flex-col">
-                                                        <span className="text-sm font-medium">Auto</span>
-                                                        <span className="text-xs text-muted-foreground">Generate without asking</span>
+                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                                        <ChevronsRight className="h-4 w-4" />
                                                     </span>
-                                                    {allowMode === 'auto' && <Check className="h-4 w-4 shrink-0 mt-0.5" />}
+                                                    <span className="flex-1 min-w-0 flex flex-col pt-0.5">
+                                                        <span className="text-sm font-medium">Generate without asking</span>
+                                                        <span className="text-xs text-muted-foreground">The agent runs without confirmation</span>
+                                                    </span>
+                                                    {allowMode === 'auto' && <Check className="h-4 w-4 shrink-0 mt-1.5" />}
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                    onClick={() => onAllowModeChange('ask')}
+                                                    className="flex items-start gap-2.5 cursor-pointer py-2"
+                                                >
+                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                                        <Hand className="h-4 w-4" />
+                                                    </span>
+                                                    <span className="flex-1 min-w-0 flex flex-col pt-0.5">
+                                                        <span className="text-sm font-medium">Ask before generating</span>
+                                                        <span className="text-xs text-muted-foreground">The agent asks before each generation</span>
+                                                    </span>
+                                                    {(allowMode ?? 'ask') === 'ask' && <Check className="h-4 w-4 shrink-0 mt-1.5" />}
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>
