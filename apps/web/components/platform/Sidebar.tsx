@@ -239,8 +239,14 @@ export function Sidebar() {
                                     style={{ height: 24, width: "auto" }}
                                     aria-label={brandName}
                                 >
+                                    <defs>
+                                        <linearGradient id="sidebarMarkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stopColor="#E69DB8" />
+                                            <stop offset="100%" stopColor="#F2A679" />
+                                        </linearGradient>
+                                    </defs>
                                     <path
-                                        fill="#E69DB8"
+                                        fill="url(#sidebarMarkGradient)"
                                         d="
                                             M 500, 42
                                             C 536, 42  554, 70  553, 118
