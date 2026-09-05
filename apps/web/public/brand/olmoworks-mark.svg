@@ -1,25 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="179 32 642 630" width="100%" height="100%">
   <defs>
     <linearGradient id="bodyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#FFA679" />
-      <stop offset="28%" stop-color="#FF8664" />
-      <stop offset="60%" stop-color="#E0466F" />
-      <stop offset="100%" stop-color="#AC1F55" />
+      <stop offset="0%" stop-color="#F5C29E" />
+      <stop offset="28%" stop-color="#EEA189" />
+      <stop offset="60%" stop-color="#D96682" />
+      <stop offset="100%" stop-color="#A83A5E" />
     </linearGradient>
     <radialGradient id="knobShine" cx="45%" cy="30%" r="50%">
-      <stop offset="0%" stop-color="#FFE8D6" stop-opacity="0.9" />
-      <stop offset="55%" stop-color="#FFB388" stop-opacity="0.4" />
-      <stop offset="100%" stop-color="#FF9E79" stop-opacity="0" />
+      <stop offset="0%" stop-color="#FCEDE0" stop-opacity="0.9" />
+      <stop offset="55%" stop-color="#EEA189" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#EEA189" stop-opacity="0" />
     </radialGradient>
     <radialGradient id="rightShoulderGlow" cx="68%" cy="42%" r="35%">
-      <stop offset="0%" stop-color="#FFCBB0" stop-opacity="0.7" />
-      <stop offset="60%" stop-color="#FF9E79" stop-opacity="0.2" />
-      <stop offset="100%" stop-color="#E5637C" stop-opacity="0" />
+      <stop offset="0%" stop-color="#F5C29E" stop-opacity="0.7" />
+      <stop offset="60%" stop-color="#EEA189" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#D96682" stop-opacity="0" />
     </radialGradient>
     <radialGradient id="midShadow" cx="50%" cy="58%" r="42%">
-      <stop offset="0%" stop-color="#A81D4E" stop-opacity="0.45" />
-      <stop offset="70%" stop-color="#A81D4E" stop-opacity="0.1" />
-      <stop offset="100%" stop-color="#A81D4E" stop-opacity="0" />
+      <stop offset="0%" stop-color="#7A2745" stop-opacity="0.45" />
+      <stop offset="70%" stop-color="#7A2745" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#7A2745" stop-opacity="0" />
     </radialGradient>
   </defs>
   <path d="
