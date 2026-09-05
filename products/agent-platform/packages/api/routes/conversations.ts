@@ -73,6 +73,7 @@ const conversationSelect = {
         // get type-checked.
         persona: {
             id: personas.id, name: personas.name, tagline: personas.tagline,
+            slug: personas.slug, suggestedPrompts: personas.suggestedPrompts,
         } as any,
     },
 };
@@ -137,6 +138,7 @@ conversationsRoutes.get('/', async (c) => {
                     // (id, name, type, ...) still get type-checked.
                     persona: {
                         id: personas.id, name: personas.name, tagline: personas.tagline,
+                        slug: personas.slug, suggestedPrompts: personas.suggestedPrompts,
                     } as any,
                 },
             })

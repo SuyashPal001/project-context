@@ -15,7 +15,7 @@ import { Hono } from 'hono';
 vi.mock('@serverless-saas/database/client', () => ({ db: { select: vi.fn() } }));
 vi.mock('@serverless-saas/agent-schema/conversations', () => ({ conversations: {} }));
 vi.mock('@serverless-saas/agent-schema/agents', () => ({ agents: {} }));
-vi.mock('@serverless-saas/agent-schema/personas', () => ({ personas: {} }));
+vi.mock('@serverless-saas/agent-schema/personas', () => ({ personas: { id: 'p.id', name: 'p.name', tagline: 'p.tagline', slug: 'p.slug', suggestedPrompts: 'p.suggestedPrompts' } }));
 vi.mock('@serverless-saas/permissions', () => ({ hasPermission: () => true }));
 
 function appWithContext() {
@@ -105,5 +105,52 @@ describe('GET /conversations/:id — persona null-collapsing', () => {
         expect(res.status).toBe(200);
         const body = await res.json();
         expect(body.data.agent.persona).toEqual({ id: 'persona-1', name: 'Saarthi', tagline: 'Your PM copilot' });
+    });
+
+    it('includes persona slug and suggestedPrompts so the frontend can resolve welcome pills', async () => {
+        const { db } = await import('@serverless-saas/database/client');
+        mockSelectChain(db, [{
+            id: 'conv-3',
+            tenantId: 'tenant-1',
+            agentId: 'agent-3',
+            userId: 'user-1',
+            title: null,
+            status: 'active',
+            needsHuman: false,
+            metadata: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            agent: {
+                id: 'agent-3',
+                name: 'Producer',
+                type: 'custom',
+                persona: {
+                    id: 'persona-3',
+                    name: 'Producer',
+                    tagline: 'I make music',
+                    slug: 'producer',
+                    suggestedPrompts: [{ icon: 'music', label: 'Make a beat', promptText: 'Make a lofi beat about ' }],
+                },
+            },
+        }]);
+
+        const { conversationsRoutes } = await import('../routes/conversations');
+        const app = appWithContext();
+        app.route('/conversations', conversationsRoutes);
+
+        const res = await app.request('/conversations/conv-3');
+        expect(res.status).toBe(200);
+
+        // Verify that db.select was called with a select object that includes slug and suggestedPrompts
+        expect((db.select as any).mock.calls[0][0].agent.persona).toMatchObject({
+            slug: 'p.slug',
+            suggestedPrompts: 'p.suggestedPrompts',
+        });
+
+        const body = await res.json();
+        expect(body.data.agent.persona.slug).toBe('producer');
+        expect(body.data.agent.persona.suggestedPrompts).toEqual([
+            { icon: 'music', label: 'Make a beat', promptText: 'Make a lofi beat about ' },
+        ]);
     });
 });
