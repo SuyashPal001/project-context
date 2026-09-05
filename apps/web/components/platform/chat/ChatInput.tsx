@@ -699,6 +699,50 @@ export function ChatInput({
                                         </DropdownMenu>
                                     )}
 
+                                    {onAllowModeChange && (
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="h-8 px-2 flex items-center gap-1 rounded-full text-xs font-medium text-foreground/90 hover:text-foreground transition-colors"
+                                                >
+                                                    {allowMode === 'auto' ? 'Auto' : 'Ask'}
+                                                    <ChevronDown className="h-3 w-3 opacity-60" />
+                                                </button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent side="top" align="start" className="w-72 p-2">
+                                                <DropdownMenuItem
+                                                    onClick={() => onAllowModeChange('auto')}
+                                                    className="flex items-start gap-2.5 cursor-pointer py-2"
+                                                >
+                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                                        <ChevronsRight className="h-4 w-4" />
+                                                    </span>
+                                                    <span className="flex-1 min-w-0 flex flex-col pt-0.5">
+                                                        <span className="text-sm font-medium">Generate without asking</span>
+                                                        <span className="text-xs text-muted-foreground">The agent runs without confirmation</span>
+                                                    </span>
+                                                    {allowMode === 'auto' && <Check className="h-4 w-4 shrink-0 mt-1.5" />}
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem
+                                                    onClick={() => onAllowModeChange('ask')}
+                                                    className="flex items-start gap-2.5 cursor-pointer py-2"
+                                                >
+                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                                        <Hand className="h-4 w-4" />
+                                                    </span>
+                                                    <span className="flex-1 min-w-0 flex flex-col pt-0.5">
+                                                        <span className="text-sm font-medium">Ask before generating</span>
+                                                        <span className="text-xs text-muted-foreground">The agent asks before each generation</span>
+                                                    </span>
+                                                    {(allowMode ?? 'ask') === 'ask' && <Check className="h-4 w-4 shrink-0 mt-1.5" />}
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
                                     {providers && providers.length > 0 && (
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
@@ -712,7 +756,7 @@ export function ChatInput({
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent
                                                 side="top"
-                                                align="start"
+                                                align="end"
                                                 className="w-80 p-2.5 rounded-2xl border-border/50 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)]"
                                             >
                                                 <div className="px-2 pb-2 pt-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
@@ -784,50 +828,6 @@ export function ChatInput({
                                         </DropdownMenu>
                                     )}
 
-                                    {onAllowModeChange && (
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <button
-                                                    type="button"
-                                                    className="h-8 px-2 flex items-center gap-1 rounded-full text-xs font-medium text-foreground/90 hover:text-foreground transition-colors"
-                                                >
-                                                    {allowMode === 'auto' ? 'Auto' : 'Ask'}
-                                                    <ChevronDown className="h-3 w-3 opacity-60" />
-                                                </button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent side="top" align="start" className="w-72 p-2">
-                                                <DropdownMenuItem
-                                                    onClick={() => onAllowModeChange('auto')}
-                                                    className="flex items-start gap-2.5 cursor-pointer py-2"
-                                                >
-                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                        <ChevronsRight className="h-4 w-4" />
-                                                    </span>
-                                                    <span className="flex-1 min-w-0 flex flex-col pt-0.5">
-                                                        <span className="text-sm font-medium">Generate without asking</span>
-                                                        <span className="text-xs text-muted-foreground">The agent runs without confirmation</span>
-                                                    </span>
-                                                    {allowMode === 'auto' && <Check className="h-4 w-4 shrink-0 mt-1.5" />}
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem
-                                                    onClick={() => onAllowModeChange('ask')}
-                                                    className="flex items-start gap-2.5 cursor-pointer py-2"
-                                                >
-                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                        <Hand className="h-4 w-4" />
-                                                    </span>
-                                                    <span className="flex-1 min-w-0 flex flex-col pt-0.5">
-                                                        <span className="text-sm font-medium">Ask before generating</span>
-                                                        <span className="text-xs text-muted-foreground">The agent asks before each generation</span>
-                                                    </span>
-                                                    {(allowMode ?? 'ask') === 'ask' && <Check className="h-4 w-4 shrink-0 mt-1.5" />}
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    )}
-                                </div>
-
-                                <div className="flex items-center gap-1.5">
                                     {FEATURE_FLAGS.chatVoice && !content.trim() && !isStreaming && !isLoading && (
                                         <button
                                             type="button"
