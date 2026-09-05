@@ -235,7 +235,7 @@ export function Sidebar() {
                             ) : (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
-                                    src="/brand/olmoworks-mark.svg"
+                                    src="/brand/olmoworks-mark-dark.svg"
                                     alt={brandName}
                                     className="shrink-0 object-contain"
                                     style={{ height: 24, width: "auto" }}
