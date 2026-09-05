@@ -16,7 +16,7 @@ export function SidebarContent({ children }: { children: React.ReactNode }) {
 
             <div className={cn(
                 "flex-1 flex flex-col min-w-0 min-h-0 transition-all duration-300",
-                isSidebarCollapsed ? "ml-16" : "ml-72"
+                isSidebarCollapsed ? "ml-16" : "ml-[17rem]"
             )}>
                 <main className={cn(
                     "flex-1 min-h-0",
