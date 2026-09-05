@@ -49,7 +49,7 @@ export function PermissionPicker({ selected, onChange, disabled }: Props) {
 
     return (
         <div className="space-y-3">
-            <p className="text-sm font-semibold text-muted-foreground">
+            <p className="text-base font-medium text-foreground/80">
                 {categoriesWithAccess} of {resources.length} categories have access
             </p>
             <div className="flex flex-col">
