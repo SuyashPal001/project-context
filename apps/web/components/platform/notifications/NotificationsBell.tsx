@@ -159,7 +159,7 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                 <div
                     ref={panelRef}
                     style={{ left: panelLeft ?? (collapsed ? 64 : 272) }}
-                    className="fixed bottom-4 z-50 w-80 rounded-xl border border-border bg-popover text-popover-foreground shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45)] overflow-hidden"
+                    className="fixed bottom-0 z-50 w-80 rounded-t-xl border border-border bg-muted text-popover-foreground shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45)] overflow-hidden"
                 >
                 <div className="flex items-center justify-between px-3.5 py-3">
                     <p className="text-[13px] font-semibold text-foreground">Notifications</p>
@@ -174,7 +174,7 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                 </div>
 
                 <div className="flex items-center justify-between gap-2 px-3.5 pb-2.5 border-b border-border/60">
-                    <div className="flex items-center gap-1 rounded-full bg-muted p-0.5">
+                    <div className="flex items-center gap-1 rounded-full bg-background p-0.5">
                         {(["all", "unread"] as const).map((t) => (
                             <button
                                 key={t}
@@ -182,7 +182,7 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                                 onClick={() => setTab(t)}
                                 className={cn(
                                     "rounded-full px-2.5 py-1 text-[11px] font-medium capitalize transition-colors",
-                                    tab === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                                    tab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                                 )}
                             >
                                 {t === "unread" ? `Unread (${unreadCount})` : "All"}
