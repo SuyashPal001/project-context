@@ -1,6 +1,6 @@
 import { INTERNAL_SERVICE_KEY, INTERNAL_API_URL } from '../types.js'
 import type { WorkflowStep } from '../types.js'
-import { fetchAgentSkill, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from '../usage.js'
+import { fetchAgentSkills, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from '../usage.js'
 import { refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
 import { runMastraWorkflow } from '../mastra/index.js'
 import type { WorkflowContext } from '../mastra/index.js'
@@ -21,8 +21,8 @@ export async function runMastraWorkflowSteps(
   // unmetered.
   model: string = DEFAULT_TASK_MODEL,
 ): Promise<void> {
-  const skill = await fetchAgentSkill(agentId)
-  const instructions = systemPrompt ?? skill?.systemPrompt ?? 'You are a helpful AI assistant.'
+  const skill = await fetchAgentSkills(agentId)
+  const instructions = systemPrompt ?? skill.systemPrompt ?? 'You are a helpful AI assistant.'
   const connectedProviders = await fetchConnectedProviders(tenantId)
   const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)
   const policy = await fetchAgentPolicy(agentId, tenantId)
@@ -55,7 +55,12 @@ export async function runMastraWorkflowSteps(
       id: s.id ?? `step-${i}`, stepNumber: s.stepNumber ?? i + 1,
       title: s.title, description: s.description, toolName: s.toolName,
     })),
-    connectedProviders, enabledTools: skill?.tools ?? null,
+    // Per-skill tool gating is retired now that a background task can compose
+    // several skills' bodies into one prompt — there is no longer a single
+    // skill row whose `tools` column names the gate. Default-open (null)
+    // matches the existing behavior for any agent that never had a `tools`
+    // list configured.
+    connectedProviders, enabledTools: null,
     highStakeTools: toolGovernance.highStakeTools, requiresApprovalTools: mergedRequiresApproval,
     blockedTools: policy.blockedActions, allowedTools: policy.allowedActions,
     maxTokensPerMessage: policy.maxTokensPerMessage,

@@ -1,7 +1,7 @@
 import { InsufficientCreditsError } from '@serverless-saas/credits'
 import type { TaskStep } from '../types.js'
 import {
-  fetchAgentSkill, fetchAgentModelSelection,
+  fetchAgentSkills, fetchAgentModelSelection,
   fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage,
 } from '../usage.js'
 import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, settleTask, refundTask, taskChargeKey, DEFAULT_TASK_MODEL } from '../credits.js'
@@ -61,8 +61,8 @@ export async function runMastraTaskSteps(
     throw err
   }
 
-  const skill = await fetchAgentSkill(agentId)
-  const instructions = skill?.systemPrompt ?? `You are ${agentName}, a helpful AI assistant.`
+  const skill = await fetchAgentSkills(agentId)
+  const instructions = skill.systemPrompt ?? `You are ${agentName}, a helpful AI assistant.`
   const connectedProviders = await fetchConnectedProviders(tenantId)
   const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)
   const policy = await fetchAgentPolicy(agentId, tenantId)
@@ -76,7 +76,9 @@ export async function runMastraTaskSteps(
   const ctx: WorkflowContext = {
     taskId, tenantId, agentId, agentSlug: agentId, instructions, taskTitle, taskDescription,
     steps: steps.map(s => ({ id: s.id, stepNumber: s.stepOrder, title: s.title, description: s.description, toolName: s.toolName })),
-    connectedProviders, enabledTools: skill?.tools ?? null,
+    // See tasks.workflow.ts: per-skill tool gating no longer applies once the
+    // prompt composes several skills, so this defaults open.
+    connectedProviders, enabledTools: null,
     highStakeTools: toolGovernance.highStakeTools, requiresApprovalTools: mergedRequiresApproval,
     blockedTools: policy.blockedActions, allowedTools: policy.allowedActions,
     maxTokensPerMessage: policy.maxTokensPerMessage,

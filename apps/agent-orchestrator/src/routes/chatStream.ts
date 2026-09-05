@@ -9,7 +9,7 @@ import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentSkill, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRun, recordUsage } from '../usage.js'
+import { fetchAgentSkills, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRuns, recordUsage } from '../usage.js'
 import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
@@ -248,8 +248,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const mcpClient = getMCPClientForTenant(tenantId, agentId, sessionId)
     requestContext.set('__mcpClient', mcpClient as any)
 
-    const [agentSkill, agentName, personaPersonality, agentModelSelection] = await Promise.all([
-      fetchAgentSkill(agentId),
+    const [agentSkills, agentName, personaPersonality, agentModelSelection] = await Promise.all([
+      fetchAgentSkills(agentId),
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
       fetchAgentModelSelection(agentId).catch((err) => {
@@ -257,14 +257,14 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         return null
       }),
     ])
-    if (agentSkill?.systemPrompt) {
-      requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
+    if (agentSkills.systemPrompt) {
+      requestContext.set('agentSystemPrompt', agentSkills.systemPrompt)
     }
-    // One run per chat message sent while a skill is attached. Fire-and-forget:
-    // a counter write must never break or delay the stream.
-    if (agentSkill?.installId) {
-      recordSkillRun(agentSkill.installId, tenantId)
-        .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRun failed:`, (err as Error).message))
+    // One run per composed install per chat message. Fire-and-forget: a counter
+    // write must never break or delay the stream.
+    if (agentSkills.installIds.length > 0) {
+      recordSkillRuns(agentSkills.installIds, tenantId)
+        .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRuns failed:`, (err as Error).message))
     }
     if (personaPersonality) {
       requestContext.set('personaPersonality', personaPersonality)

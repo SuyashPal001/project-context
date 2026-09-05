@@ -3,7 +3,7 @@ import { RequestContext, MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-con
 import type { MCPClient } from '@mastra/mcp'
 import { getMCPClientForTenant } from './tools.js'
 import { platformAgent } from './index.js'
-import { fetchAgentPersonality, fetchAgentSkill } from '../usage.js'
+import { fetchAgentPersonality, fetchAgentSkills } from '../usage.js'
 
 // TenantAgentConfig — unchanged signature for backward compatibility.
 // Instructions are now resolved dynamically from agentTemplates (via platformAgent)
@@ -60,10 +60,10 @@ export async function createTenantAgent(
   // scheduled Shift, not just when a human is watching.
   const [personaPersonality, agentSkill] = await Promise.all([
     fetchAgentPersonality(config.agentId),
-    fetchAgentSkill(config.agentId),
+    fetchAgentSkills(config.agentId),
   ])
   if (personaPersonality) requestContext.set('personaPersonality', personaPersonality)
-  if (agentSkill?.systemPrompt) requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
+  if (agentSkill.systemPrompt) requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
 
   // Create per-tenant MCPClient — scoped to this tenant via x-tenant-id header.
   // Stored in requestContext so platformAgent's tools resolver reuses the same

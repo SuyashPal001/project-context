@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { InsufficientCreditsError } from '@serverless-saas/credits'
 import { TaskComment, INTERNAL_SERVICE_KEY } from '../types.js'
-import { fetchAgentModelSelection, fetchAgentSkill, fetchConnectedProviders } from '../usage.js'
+import { fetchAgentModelSelection, fetchAgentSkills, fetchConnectedProviders } from '../usage.js'
 import { chargeTaskEstimate, DEFAULT_TASK_MODEL, estimateTaskMicro, refundTask, resolveTaskRate, settleTask } from '../credits.js'
 import { createTenantAgent } from '../mastra/index.js'
 import { filterPII } from '../pii-filter.js'
@@ -199,8 +199,8 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
   const prompt = buildPlanningPrompt(agentName, title, description, acceptanceCriteria, comments, extraContext, planReferenceText, planLinks, planAttachmentContext)
 
   // Fetch agent config — same pattern as execution path
-  const planSkill = await fetchAgentSkill(agentId)
-  const planInstructions = planSkill?.systemPrompt
+  const planSkill = await fetchAgentSkills(agentId)
+  const planInstructions = planSkill.systemPrompt
     ?? `You are ${agentName}, a helpful AI assistant.`
   const planConnectedProviders = await fetchConnectedProviders(tenantId)
 
@@ -210,7 +210,9 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
     agentSlug: agentId,
     instructions: planInstructions,
     connectedProviders: planConnectedProviders,
-    enabledTools: planSkill?.tools ?? null,
+    // See tasks.workflow.ts: per-skill tool gating no longer applies once the
+    // prompt composes several skills, so this defaults open.
+    enabledTools: null,
   })
 
   // threadId must never be undefined — Mastra memory requires both threadId and resourceId.

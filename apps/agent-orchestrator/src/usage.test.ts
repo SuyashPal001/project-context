@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockPoolQuery = vi.fn()
 vi.mock('@serverless-saas/database', () => ({ db: {} }))
@@ -6,7 +6,11 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentSkill, recordSkillRun } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentSkills, recordSkillRuns } from './usage.js'
+
+beforeEach(() => {
+  mockPoolQuery.mockReset()
+})
 
 describe('fetchToolGovernance', () => {
   it('maps getAgentTools output into the ToolGovernance shape', async () => {
@@ -112,38 +116,90 @@ describe('fetchAgentMemory', () => {
   })
 })
 
-describe('fetchAgentSkill', () => {
-  it('returns the install id so the caller can attribute the run to a tenant install', async () => {
-    mockPoolQuery.mockResolvedValueOnce({
-      rows: [{ system_prompt: '# PDF Tools', tools: ['pdftotext'], config: null, install_id: 'install-1' }],
-    })
-    const result = await fetchAgentSkill('agent-1')
-    expect(result).toEqual({ systemPrompt: '# PDF Tools', tools: ['pdftotext'], config: null, installId: 'install-1' })
-    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('install_id'), ['agent-1'])
+describe('fetchAgentSkills', () => {
+  it('composes every active skill in attachment order', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'bid-writer', system_prompt: 'Open with the client name.', tools: null, config: null, install_id: 'install-1' },
+      { name: 'tone-guide', system_prompt: 'Never promise a date.', tools: null, config: null, install_id: 'install-2' },
+    ] })
+
+    const composed = await fetchAgentSkills('agent-1')
+
+    // Both bodies present, first-attached first.
+    expect(composed.systemPrompt).toContain('Open with the client name.')
+    expect(composed.systemPrompt).toContain('Never promise a date.')
+    expect(composed.systemPrompt!.indexOf('Open with')).toBeLessThan(composed.systemPrompt!.indexOf('Never promise'))
+    expect(composed.installIds).toEqual(['install-1', 'install-2'])
+    expect(composed.droppedNames).toEqual([])
   })
 
-  it('returns null when the agent has no active skill', async () => {
+  it('orders by created_at ascending so the prompt is stable between turns', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
-    expect(await fetchAgentSkill('agent-2')).toBeNull()
+    await fetchAgentSkills('agent-1')
+    const sql = mockPoolQuery.mock.calls[0][0] as string
+    expect(sql).toContain('ORDER BY created_at ASC')
+    expect(sql).not.toContain('LIMIT 1')
   })
 
-  it('breaks ties on created_at so the most-recently-attached skill wins when versions are equal', async () => {
-    mockPoolQuery.mockResolvedValueOnce({
-      rows: [{ system_prompt: '# PDF Tools', tools: ['pdftotext'], config: null, install_id: 'install-1' }],
-    })
-    await fetchAgentSkill('agent-1')
-    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('created_at DESC'), ['agent-1'])
+  it('returns a null prompt when the agent has no active skills', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    const composed = await fetchAgentSkills('agent-1')
+    expect(composed).toEqual({ systemPrompt: null, installIds: [], droppedNames: [] })
+  })
+
+  // Legacy agents can already hold more rows than the cap allows — those rows
+  // were being ignored entirely before this change, so dropping the overflow
+  // is strictly better than today, but it must be loud rather than silent.
+  it('drops skills past the count cap and names them', async () => {
+    const rows = Array.from({ length: 10 }, (_, i) => ({
+      name: `skill-${i}`, system_prompt: `body ${i}`, tools: null, config: null, install_id: `install-${i}`,
+    }))
+    mockPoolQuery.mockResolvedValueOnce({ rows })
+
+    const composed = await fetchAgentSkills('agent-1')
+
+    expect(composed.installIds).toHaveLength(8)
+    expect(composed.droppedNames).toEqual(['skill-8', 'skill-9'])
+    expect(composed.systemPrompt).not.toContain('body 8')
+  })
+
+  it('drops skills past the character budget', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'huge', system_prompt: 'x'.repeat(23_900), tools: null, config: null, install_id: 'install-1' },
+      { name: 'small', system_prompt: 'y'.repeat(500), tools: null, config: null, install_id: 'install-2' },
+    ] })
+
+    const composed = await fetchAgentSkills('agent-1')
+
+    expect(composed.installIds).toEqual(['install-1'])
+    expect(composed.droppedNames).toEqual(['small'])
+    expect(composed.systemPrompt!.length).toBeLessThanOrEqual(24_000 + 200) // bodies plus per-skill headers
+  })
+
+  it('skips rows with a null system_prompt without dropping the rest', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'empty', system_prompt: null, tools: null, config: null, install_id: 'install-1' },
+      { name: 'real', system_prompt: 'Do the thing.', tools: null, config: null, install_id: 'install-2' },
+    ] })
+
+    const composed = await fetchAgentSkills('agent-1')
+
+    expect(composed.systemPrompt).toContain('Do the thing.')
+    expect(composed.installIds).toEqual(['install-2'])
   })
 })
 
-describe('recordSkillRun', () => {
-  it('increments run_count on the tenant-scoped install row', async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
-    await recordSkillRun('install-1', 'tenant-1')
-    expect(mockPoolQuery).toHaveBeenCalledWith(
-      expect.stringContaining('run_count = run_count + 1'),
-      ['install-1', 'tenant-1'],
-    )
-    expect(mockPoolQuery).toHaveBeenCalledWith(expect.stringContaining('tenant_id = $2'), ['install-1', 'tenant-1'])
+describe('recordSkillRuns', () => {
+  it('increments every composed install, not just the first', async () => {
+    mockPoolQuery.mockResolvedValue({ rows: [] })
+    await recordSkillRuns(['install-1', 'install-2'], 'tenant-1')
+    expect(mockPoolQuery).toHaveBeenCalledTimes(2)
+    expect(mockPoolQuery.mock.calls[0][1]).toEqual(['install-1', 'tenant-1'])
+    expect(mockPoolQuery.mock.calls[1][1]).toEqual(['install-2', 'tenant-1'])
+  })
+
+  it('does nothing when there are no installs', async () => {
+    await recordSkillRuns([], 'tenant-1')
+    expect(mockPoolQuery).not.toHaveBeenCalled()
   })
 })
