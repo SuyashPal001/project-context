@@ -91,9 +91,15 @@ describe('create_skill', () => {
 
   // The reply that creates a skill cannot be shaped by it: skills load once at
   // stream start. Saying so is the difference between "working" and "broken".
-  it('tells the user the skill applies from their next message', async () => {
+  //
+  // A 202 means created and queued, not attached — attachment happens later
+  // in the import worker, which can legitimately skip it (cap overflow,
+  // zero-row race) with no chat-visible signal. The success copy must not
+  // claim the attach already happened.
+  it('tells the user the skill applies from their next message, without claiming it is already attached', async () => {
     const result = await run({ name: 'Bid Writer', body: VALID_BODY })
     expect(result.message).toMatch(/next message/i)
+    expect(result.message).not.toMatch(/\battached\b/i)
   })
 
   it('returns a terminal result when the user declines', async () => {

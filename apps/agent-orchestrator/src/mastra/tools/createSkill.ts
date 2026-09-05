@@ -142,7 +142,7 @@ The user is shown the draft and must approve it. The skill applies from their ne
         success: true,
         skillId: data.skillId,
         // Skills load once at stream start, so this reply cannot use it.
-        message: `Saved "${name}" as a skill and attached it to this agent. It takes effect from your next message.`,
+        message: `Saved "${name}" as a skill. It will attach to this agent once processing finishes, and takes effect from your next message.`,
       }
     } catch (err) {
       console.error('[create_skill] failed:', (err as Error).message)
