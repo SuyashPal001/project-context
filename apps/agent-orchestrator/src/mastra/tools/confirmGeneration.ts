@@ -11,7 +11,10 @@ export async function confirmGenerationOrDecline(
   resourceType: string,
   subject: string,
   label: string,
-  opts: { alwaysAsk?: boolean } = {},
+  // `preview` is the body of what is being approved (e.g. the opening of a
+  // drafted SKILL.md), rendered inside the card. Optional: cost-only gates have
+  // nothing to show beyond their label.
+  opts: { alwaysAsk?: boolean; preview?: string } = {},
 ): Promise<{ confirmed: boolean; reason?: 'CONFIRM_BUSY'; declineReason?: string }> {
   const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
   const sessionId = execContext?.requestContext?.get('sessionId') as string | undefined
@@ -63,11 +66,13 @@ export async function confirmGenerationOrDecline(
 
   const confirmationId = randomUUID()
   const confirmMessageId = randomUUID()
-  sendEvent('generation_confirm_request', { confirmationId, resourceType, subject, label })
+  const preview = opts.preview
+  sendEvent('generation_confirm_request', { confirmationId, resourceType, subject, label, ...(preview ? { preview } : {}) })
 
   if (conversationId && idToken) {
     saveGenerationConfirmRequest(idToken, conversationId, confirmMessageId, {
       id: confirmationId, resourceType, subject, label, status: 'pending',
+      ...(preview ? { preview } : {}),
     })
   }
 

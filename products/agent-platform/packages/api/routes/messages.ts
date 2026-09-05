@@ -183,6 +183,10 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             resourceType: z.string(),
             subject: z.string(),
             label: z.string(),
+            // What the card is asking the user to approve (e.g. the opening of
+            // a drafted SKILL.md). Capped well under the tool's own preview
+            // budget — this is a display string, not the stored artifact.
+            preview: z.string().max(2000).optional(),
             status: z.enum(['pending', 'approved', 'declined']),
             decisionAt: z.string().optional(),
             declineReason: z.string().max(500).optional(),

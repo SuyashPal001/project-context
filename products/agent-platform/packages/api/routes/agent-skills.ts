@@ -18,8 +18,11 @@ export const agentSkillsRoutes = new Hono<AppEnv>();
 const MAX_ATTACHED_SKILLS = 8;
 const MAX_COMPOSED_SKILL_CHARS = 24_000;
 
-// Verify agent belongs to tenant — used before every operation
-async function resolveAgent(agentId: string, tenantId: string) {
+// Verify agent belongs to tenant — used before every operation.
+// Exported so the in-conversation create path (routes/internal/skills.ts) runs
+// the same check: agent_skills' agent_id and tenant_id are independent foreign
+// keys, so an unvalidated pair is a cross-tenant write.
+export async function resolveAgent(agentId: string, tenantId: string) {
     const [agent] = await db
         .select({ id: agents.id })
         .from(agents)

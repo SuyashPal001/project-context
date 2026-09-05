@@ -38,8 +38,17 @@ export interface ApproveCostProps {
      * (e.g. TaskExecutionCost inside PlanReviewPhase) where a second nested
      * card shell would double up. */
     variant?: 'card' | 'inline';
-    resourceType: CreditResourceType;
+    /** `null` means this confirmation is not a spend gate — nothing is priced,
+     * so no estimate is fetched and no cost figure is shown. Used by writes
+     * that are free but still need a human (creating a skill from chat).
+     * Passing a non-CreditResourceType string here instead would fetch an
+     * estimate that always 404s and render the "couldn't estimate cost" error
+     * for something that costs nothing. */
+    resourceType: CreditResourceType | null;
     subject?: string;
+    /** Body of what is being approved, shown verbatim (monospace, scrollable)
+     * above the options. Without it the user approves a title, not content. */
+    preview?: string;
     params?: {
         count?: number;
         inputTokens?: number;
@@ -53,11 +62,11 @@ export interface ApproveCostProps {
     onCancel?: (reason?: string) => void;
 }
 
-export function ApproveCost({ label, variant = 'card', resourceType, subject, params, onApprove, onCancel }: ApproveCostProps) {
+export function ApproveCost({ label, variant = 'card', resourceType, subject, preview, params, onApprove, onCancel }: ApproveCostProps) {
     const { tenantSlug } = useTenant();
 
-    const estimateParams: CreditEstimateParams = useMemo(
-        () => ({
+    const estimateParams: CreditEstimateParams | null = useMemo(
+        () => resourceType === null ? null : ({
             resourceType,
             subject,
             count: params?.count,
@@ -67,7 +76,21 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
         [resourceType, subject, params?.count, params?.inputTokens, params?.outputTokens],
     );
 
+    // null params skip the fetch entirely — see useCreditEstimate.
     const { data, isLoading, isError } = useCreditEstimate(estimateParams);
+
+    // Unpriced write: there is nothing to estimate, so there is nothing to fail
+    // to estimate either. Approve/hold-off only.
+    if (resourceType === null) {
+        return variant === 'inline' ? (
+            <InlineRow testId="approve-cost-unpriced" detail="No credit cost" onApprove={onApprove} onCancel={onCancel} />
+        ) : (
+            <Shell label={label} preview={preview} testId="approve-cost-unpriced" onApprove={onApprove} onCancel={onCancel}>
+                <Option number={1} label="Approve" detail="This doesn't use credits." onClick={onApprove} tone="primary" />
+                {onCancel && <Option number={2} label="Hold off" detail="Don't do it — dismiss this." onClick={() => onCancel()} />}
+            </Shell>
+        );
+    }
 
     if (isLoading) {
         return variant === 'inline' ? (
@@ -76,7 +99,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
                 Estimating cost…
             </div>
         ) : (
-            <Shell label={label} testId="approve-cost-loading">
+            <Shell label={label} preview={preview} testId="approve-cost-loading">
                 <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Estimating cost…
@@ -94,7 +117,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
         return variant === 'inline' ? (
             <InlineRow testId="approve-cost-error" detail={detail} onApprove={onApprove} onCancel={onCancel} />
         ) : (
-            <Shell label={label} testId="approve-cost-error" onApprove={onApprove} onCancel={onCancel}>
+            <Shell label={label} preview={preview} testId="approve-cost-error" onApprove={onApprove} onCancel={onCancel}>
                 <Option number={1} label="Approve — generate it" detail={detail} onClick={onApprove} tone="primary" />
                 {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
             </Shell>
@@ -106,7 +129,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
         return variant === 'inline' ? (
             <InlineRow testId="approve-cost-unlimited" detail="Unlimited" onApprove={onApprove} onCancel={onCancel} />
         ) : (
-            <Shell label={label} testId="approve-cost-unlimited" onApprove={onApprove} onCancel={onCancel}>
+            <Shell label={label} preview={preview} testId="approve-cost-unlimited" onApprove={onApprove} onCancel={onCancel}>
                 <Option number={1} label="Approve — generate it" detail="Unlimited plan — this won't touch your balance." onClick={onApprove} tone="primary" />
                 {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
             </Shell>
@@ -127,7 +150,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pa
     return variant === 'inline' ? (
         <InlineRow testId="approve-cost" detail={`This costs ${costCredits} credits`} insufficient={insufficient} extra={billingLink} onApprove={onApprove} onCancel={onCancel} />
     ) : (
-        <Shell label={label} testId="approve-cost" onApprove={insufficient ? undefined : onApprove} onCancel={onCancel}>
+        <Shell label={label} preview={preview} testId="approve-cost" onApprove={insufficient ? undefined : onApprove} onCancel={onCancel}>
             <Option number={1} label="Approve — generate it" detail={`~${costCredits} credits`} onClick={onApprove} disabled={insufficient} tone="primary" />
             {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
             {billingLink}
@@ -206,12 +229,14 @@ function Option({
 
 function Shell({
     label,
+    preview,
     testId,
     onApprove,
     onCancel,
     children,
 }: {
     label?: string;
+    preview?: string;
     testId: string;
     /** Fires on Enter when the free-text field is empty — option 1 (Approve)
      * is the default/pre-selected choice, same as ClarificationCard defaulting
@@ -236,6 +261,12 @@ function Shell({
         <div className="flex w-full justify-center my-5" data-testid={testId}>
             <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-card shadow-elevated p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {label && <h4 className="text-sm font-medium px-1">{label}</h4>}
+                {preview && (
+                    <pre
+                        data-testid="approve-cost-preview"
+                        className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-accent/40 px-3 py-2.5 text-xs font-mono text-muted-foreground"
+                    >{preview}</pre>
+                )}
                 <div className="flex flex-col gap-1.5">{children}</div>
                 {onCancel && (
                     <div className="border-t border-border/40 pt-4 flex items-end gap-2">

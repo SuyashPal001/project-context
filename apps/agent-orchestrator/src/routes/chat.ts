@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { resolveFolderPrefix } from '../folderScopeContext.js'
 import type { AuthPayload } from '../auth.js'
 import { validateToken } from '../auth.js'
-import { fetchAgentMemory } from '../usage.js'
+import { agentBelongsToTenant, fetchAgentMemory } from '../usage.js'
 import { checkCreditBalance } from '../credits.js'
 import { filterPII } from '../pii-filter.js'
 import { runChatStream } from './chatStream.js'
@@ -111,6 +111,19 @@ chatRouter.post('/api/chat', async (c) => {
 
   if (isInternalCall && !tenantId) {
     return c.json({ error: 'tenantId required for internal service calls' }, 400)
+  }
+
+  // agentId is client-supplied; tenantId is not. Compared here rather than in
+  // each consumer, because this closes the whole class: everything downstream
+  // (skills, persona, memory, model selection, MCP scoping, and create_skill's
+  // write into agent_skills) trusts the pair it is handed. Without this check a
+  // user authenticated in tenant A can name tenant B's agent and — by asking it
+  // to save a skill — get their own text composed into B's system prompt.
+  // 404, not 403: a foreign agent id must not be distinguishable from a
+  // nonexistent one.
+  if (agentId && !(await agentBelongsToTenant(agentId, tenantId))) {
+    console.warn(`[sse] agent/tenant mismatch tenantId=${tenantId} agentId=${agentId} userId=${payload.sub}`)
+    return c.json({ error: 'Agent not found' }, 404)
   }
 
   // Parallel pre-stream fetches — auth/me, credit pre-check, working memory run concurrently.

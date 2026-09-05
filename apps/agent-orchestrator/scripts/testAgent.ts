@@ -71,7 +71,7 @@ async function main() {
   const mcpClient = getMCPClientForTenant(TEST_TENANT_ID)
   requestContext.set('__mcpClient', mcpClient as any)
 
-  const agentSkill = await fetchAgentSkills(TEST_AGENT_ID)
+  const agentSkill = await fetchAgentSkills(TEST_AGENT_ID, TEST_TENANT_ID)
   if (agentSkill.systemPrompt) {
     requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
   }

@@ -249,7 +249,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('__mcpClient', mcpClient as any)
 
     const [agentSkills, agentName, personaPersonality, agentModelSelection] = await Promise.all([
-      fetchAgentSkills(agentId),
+      fetchAgentSkills(agentId, tenantId),
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
       fetchAgentModelSelection(agentId).catch((err) => {

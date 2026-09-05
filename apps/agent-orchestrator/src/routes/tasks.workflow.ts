@@ -21,7 +21,7 @@ export async function runMastraWorkflowSteps(
   // unmetered.
   model: string = DEFAULT_TASK_MODEL,
 ): Promise<void> {
-  const skill = await fetchAgentSkills(agentId)
+  const skill = await fetchAgentSkills(agentId, tenantId)
   const instructions = systemPrompt ?? skill.systemPrompt ?? 'You are a helpful AI assistant.'
   const connectedProviders = await fetchConnectedProviders(tenantId)
   const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)

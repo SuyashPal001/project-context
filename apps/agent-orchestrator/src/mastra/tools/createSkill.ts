@@ -2,8 +2,28 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { confirmGenerationOrDecline } from './confirmGeneration.js'
 import { filterPII } from '../../pii-filter.js'
+import { API_BASE_URL } from '../../types.js'
 
 const MAX_BODY_BYTES = 65_536
+
+// Mirrors MAX_COMPOSED_SKILL_CHARS in ../../usage.ts (itself mirrored by the
+// API's attach route and the import worker). Duplicated rather than imported:
+// usage.ts opens a pg pool and pulls in the database/ai packages at module
+// load, which this tool has no other reason to touch. If that number changes,
+// change it in all four places.
+const MAX_COMPOSED_SKILL_CHARS = 24_000
+
+/** How much of the draft the confirmation card shows. Enough to read what the
+ *  agent actually wrote; short enough that the card stays a card. */
+const PREVIEW_MAX_CHARS = 800
+const PREVIEW_MAX_LINES = 16
+
+function buildPreview(body: string): string {
+  const lines = body.split(/\r?\n/)
+  let preview = lines.slice(0, PREVIEW_MAX_LINES).join('\n')
+  if (preview.length > PREVIEW_MAX_CHARS) preview = preview.slice(0, PREVIEW_MAX_CHARS)
+  return preview.length < body.length ? `${preview.trimEnd()}\n…` : preview
+}
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/
 
 interface CreateSkillResult {
@@ -29,8 +49,17 @@ interface CreateSkillResult {
 // quote, etc.) passes this check and still fails at import time in the
 // worker, which does parse it for real and requires non-empty trimmed
 // strings for both fields.
-function validateSkillBody(body: string): string | null {
+function validateSkillBody(body: string, name: string): string | null {
   if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) return `SKILL.md must be under ${MAX_BODY_BYTES} bytes`
+  // The composition budget, checked here rather than discovered later. A body
+  // over this never attaches: the import worker's budget check drops the attach
+  // with a log only, after this tool has already told the user the skill will
+  // attach. Rejecting up front makes it a retryable error the agent can fix by
+  // writing something shorter. The cost formula mirrors fetchAgentSkills' —
+  // body plus the "## Skill: <name>\n\n" header it is wrapped in.
+  if (body.length + name.length + 15 > MAX_COMPOSED_SKILL_CHARS) {
+    return `SKILL.md is too long to attach — the body must be under ${MAX_COMPOSED_SKILL_CHARS - name.length - 15} characters. Write a shorter, tighter skill.`
+  }
   const match = FRONTMATTER_RE.exec(body)
   if (!match) return 'SKILL.md must start with a --- YAML frontmatter block'
   const frontmatter = match[1]
@@ -67,7 +96,7 @@ The user is shown the draft and must approve it. The skill applies from their ne
   execute: async (inputData, execContext) => {
     const { name, description, body } = inputData as { name: string; description?: string; body: string }
 
-    const invalid = validateSkillBody(body)
+    const invalid = validateSkillBody(body, name)
     if (invalid) return { success: false, error: invalid, retryable: true }
 
     const ctx = execContext?.requestContext
@@ -101,12 +130,16 @@ The user is shown the draft and must approve it. The skill applies from their ne
       ? ` — personal data detected: ${[...new Set(pii.detections.map((d) => d.type))].join(', ')}`
       : ''
 
+    // The card is the actual control (see the filterPII note above), so it has
+    // to show what is being approved — the name, the opening of the body, and
+    // any PII detections. Approving a label alone is approving text the user
+    // cannot see.
     const confirmation = await confirmGenerationOrDecline(
       execContext,
       'skill_creation',
       'create',
       `Create skill "${name}"${piiNote}`,
-      { alwaysAsk: true },
+      { alwaysAsk: true, preview: buildPreview(body) },
     )
     if (!confirmation.confirmed) {
       return {
@@ -121,7 +154,7 @@ The user is shown the draft and must approve it. The skill applies from their ne
     const messageId = sessionId ?? conversationId
 
     try {
-      const res = await fetch(`${process.env.API_BASE_URL}/api/v1/internal/skills`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/internal/skills`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
         body: JSON.stringify({ tenantId, userId, agentId, conversationId, messageId, name, description, body }),
@@ -133,6 +166,7 @@ The user is shown the draft and must approve it. The skill applies from their ne
           code === 'QUOTA_EXCEEDED' ? "This workspace has reached today's limit for creating skills."
           : code === 'INSUFFICIENT_PERMISSIONS' ? 'Your role does not allow creating skills.'
           : code === 'DUPLICATE_REQUEST' ? 'That skill was already created.'
+          : code === 'AGENT_NOT_FOUND' ? 'That agent is not part of this workspace.'
           : 'The skill could not be saved.'
         return { success: false, error, retryable: false }
       }

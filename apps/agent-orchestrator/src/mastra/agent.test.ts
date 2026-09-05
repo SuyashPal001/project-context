@@ -29,7 +29,7 @@ describe('createTenantAgent — background-task path persona/skill parity with c
     await agent.generate('run the scheduled shift')
 
     expect(fetchAgentPersonality).toHaveBeenCalledWith('agent-1')
-    expect(fetchAgentSkills).toHaveBeenCalledWith('agent-1')
+    expect(fetchAgentSkills).toHaveBeenCalledWith('agent-1', 'tenant-1')
 
     const [, options] = mockGenerate.mock.calls[0]
     expect(options.requestContext.get('personaPersonality')).toBe('You are the Visual Design Director.')

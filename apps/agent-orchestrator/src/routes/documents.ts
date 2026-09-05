@@ -199,7 +199,7 @@ documentsRouter.post('/api/tasks/plan', async (c) => {
   const prompt = buildPlanningPrompt(agentName, title, description, acceptanceCriteria, comments, extraContext, planReferenceText, planLinks, planAttachmentContext)
 
   // Fetch agent config — same pattern as execution path
-  const planSkill = await fetchAgentSkills(agentId)
+  const planSkill = await fetchAgentSkills(agentId, tenantId)
   const planInstructions = planSkill.systemPrompt
     ?? `You are ${agentName}, a helpful AI assistant.`
   const planConnectedProviders = await fetchConnectedProviders(tenantId)

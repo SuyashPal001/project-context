@@ -60,16 +60,22 @@ export interface ComposedAgentSkills {
  *
  * This used to be `LIMIT 1`, which meant only the newest attached skill ever
  * reached the model and attaching a second one silently switched the first
- * off. Ordering is `created_at ASC` — attachment order — so the composed
- * prompt is stable from turn to turn rather than reshuffling under the model.
+ * off. Ordering is `created_at ASC, id ASC` — attachment order, with the id as
+ * a tiebreaker so two rows sharing a timestamp cannot reorder between turns —
+ * so the composed prompt is stable rather than reshuffling under the model.
+ *
+ * `tenantId` is required and filtered on, not just passed for logging:
+ * agent_skills carries agent_id and tenant_id as two independent foreign keys,
+ * so a row whose agent belongs to another tenant is representable. Composing by
+ * agent_id alone would inject that row into this tenant's system prompt.
  */
-export async function fetchAgentSkills(agentId: string): Promise<ComposedAgentSkills> {
+export async function fetchAgentSkills(agentId: string, tenantId: string): Promise<ComposedAgentSkills> {
   const p = getPool()
   const res = await p.query<{ name: string; system_prompt: string | null; install_id: string | null; version: number }>(
     `SELECT name, system_prompt, install_id, version FROM agent_skills
-     WHERE agent_id = $1 AND status = 'active'
-     ORDER BY created_at ASC`,
-    [agentId],
+     WHERE agent_id = $1 AND tenant_id = $2 AND status = 'active'
+     ORDER BY created_at ASC, id ASC`,
+    [agentId, tenantId],
   )
 
   // agent_skills is unique on (agent_id, tenant_id, name, version), and the
@@ -116,13 +122,35 @@ export async function fetchAgentSkills(agentId: string): Promise<ComposedAgentSk
     // Loud on purpose: these skills are attached but not running, and nothing
     // in the UI says so. Attach-time rejection prevents new cases; this only
     // fires for agents that were over the cap before the caps existed.
-    console.error(`[skills] agent=${agentId} dropped ${droppedNames.length} skill(s) over cap: ${droppedNames.join(', ')}`)
+    console.error(`[skills] tenant=${tenantId} agent=${agentId} dropped ${droppedNames.length} skill(s) over cap: ${droppedNames.join(', ')}`)
   }
 
   return {
     systemPrompt: parts.length > 0 ? parts.join('\n\n') : null,
     installIds,
     droppedNames,
+  }
+}
+
+/**
+ * Does this agent belong to this tenant? The chat route takes `agentId` off the
+ * request body while `tenantId` comes from the verified JWT, so without this the
+ * two are never compared and a user in tenant A can drive tenant B's agent —
+ * and, via create_skill, write a skill row pointed at it. Fails closed: a query
+ * error is treated as "no", because the only caller is a security gate.
+ */
+export async function agentBelongsToTenant(agentId: string, tenantId: string): Promise<boolean> {
+  if (!agentId || !tenantId) return false
+  const p = getPool()
+  try {
+    const res = await p.query<{ id: string }>(
+      'SELECT id FROM agents WHERE id = $1 AND tenant_id = $2 LIMIT 1',
+      [agentId, tenantId],
+    )
+    return res.rows.length > 0
+  } catch (err) {
+    console.error('[usage] agentBelongsToTenant error:', (err as Error).message)
+    return false
   }
 }
 

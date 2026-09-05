@@ -60,7 +60,7 @@ export async function createTenantAgent(
   // scheduled Shift, not just when a human is watching.
   const [personaPersonality, agentSkill] = await Promise.all([
     fetchAgentPersonality(config.agentId),
-    fetchAgentSkills(config.agentId),
+    fetchAgentSkills(config.agentId, config.tenantId),
   ])
   if (personaPersonality) requestContext.set('personaPersonality', personaPersonality)
   if (agentSkill.systemPrompt) requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)

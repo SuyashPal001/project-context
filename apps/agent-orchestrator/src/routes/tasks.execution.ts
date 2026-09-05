@@ -61,7 +61,7 @@ export async function runMastraTaskSteps(
     throw err
   }
 
-  const skill = await fetchAgentSkills(agentId)
+  const skill = await fetchAgentSkills(agentId, tenantId)
   const instructions = skill.systemPrompt ?? `You are ${agentName}, a helpful AI assistant.`
   const connectedProviders = await fetchConnectedProviders(tenantId)
   const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)

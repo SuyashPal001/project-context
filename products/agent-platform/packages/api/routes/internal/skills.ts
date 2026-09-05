@@ -9,6 +9,7 @@ import { IdempotencyStore } from '@serverless-saas/idempotency';
 import { getCacheClient } from '@serverless-saas/cache';
 import { isAuthorized } from './tasks.auth';
 import { slugify, createVersionAndEnqueue } from '../skills';
+import { resolveAgent } from '../agent-skills';
 import type { AppEnv, PermissionSet } from '@serverless-saas/types';
 
 export const internalSkillsRoute = new Hono<AppEnv>();
@@ -16,6 +17,9 @@ export const internalSkillsRoute = new Hono<AppEnv>();
 /** Chat makes skill creation cheap; nothing else bounds it. There is no
  *  `skills` entitlement in the features seed, so this is the only ceiling. */
 const DAILY_TENANT_LIMIT = 20;
+
+/** Mirrors MAX_BODY_BYTES in the orchestrator's createSkill tool. */
+const MAX_BODY_BYTES = 65_536;
 
 const schema = z.object({
   tenantId: z.string().uuid(),
@@ -25,7 +29,16 @@ const schema = z.object({
   messageId: z.string().min(1).max(200),
   name: z.string().min(1).max(100),
   description: z.string().max(2000).optional(),
-  body: z.string().min(1).max(65_536),
+  // Bytes, not characters. The tool caps the draft at 65,536 *bytes*; a plain
+  // .max() here counts UTF-16 code units, so a multibyte body could pass this
+  // route at up to ~256KB and then blow the 256KB SQS limit inside
+  // createVersionAndEnqueue — after the skills and skill_installs rows have
+  // already committed. The .max() stays as a cheap pre-filter (bytes >= chars,
+  // so it can never reject something the byte check would accept).
+  body: z.string().min(1).max(65_536).refine(
+    (v) => Buffer.byteLength(v, 'utf8') <= MAX_BODY_BYTES,
+    { message: `body must be at most ${MAX_BODY_BYTES} bytes` },
+  ),
 });
 
 // Creating a skill from inside a conversation. The service key authenticates
@@ -55,6 +68,18 @@ internalSkillsRoute.post('/', async (c) => {
   const permissions = (await resolveUserPermissions(db, tenantId, userId)) as PermissionSet | null;
   if (!permissions || !hasPermission(permissions, 'skills', 'create')) {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+
+  // The agent this skill will be attached to must belong to the calling tenant.
+  // agentId arrives in the request body (ultimately from the orchestrator's own
+  // chat request body), tenantId from the authenticated session — nothing else
+  // on this path compares them, and the worker's attach writes agent_skills
+  // rows whose agent_id and tenant_id foreign keys are independent. 404 rather
+  // than 403 so a foreign agent id is indistinguishable from a missing one.
+  const agent = await resolveAgent(agentId, tenantId);
+  if (!agent) {
+    console.warn(`[internal/skills] agent/tenant mismatch tenantId=${tenantId} agentId=${agentId}`);
+    return c.json({ error: 'Agent not found', code: 'AGENT_NOT_FOUND' }, 404);
   }
 
   const store = new IdempotencyStore(getCacheClient());

@@ -44,6 +44,23 @@ interface MessageThreadProps {
     avatarLiveState?: PersonaAnimationState;
 }
 
+// The wire carries resourceType as a plain string, and not every confirmation
+// is a spend gate: 'skill_creation' is a free write that still needs a human.
+// Casting it to CreditResourceType made ApproveCost fetch an estimate that
+// could never resolve, so the card rendered "Couldn't estimate cost" for
+// something that costs nothing. Anything not in the priced set gets `null`,
+// which is ApproveCost's unpriced branch.
+const PRICED_RESOURCE_TYPES: readonly CreditResourceType[] = [
+    'llm_tokens', 'message', 'tool_call', 'skill_run',
+    'image_generation', 'music_generation', 'video_generation',
+];
+
+function toCreditResourceType(resourceType: string): CreditResourceType | null {
+    return (PRICED_RESOURCE_TYPES as readonly string[]).includes(resourceType)
+        ? (resourceType as CreditResourceType)
+        : null;
+}
+
 export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, agentName }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
@@ -394,8 +411,9 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             <div className="absolute inset-0 z-40 flex items-end justify-center pb-6 bg-background/90 backdrop-blur-sm px-4">
                 <ApproveCost
                     label={pendingGenerationConfirmMessage.generationConfirmRequest!.label}
-                    resourceType={pendingGenerationConfirmMessage.generationConfirmRequest!.resourceType as CreditResourceType}
+                    resourceType={toCreditResourceType(pendingGenerationConfirmMessage.generationConfirmRequest!.resourceType)}
                     subject={pendingGenerationConfirmMessage.generationConfirmRequest!.subject}
+                    preview={pendingGenerationConfirmMessage.generationConfirmRequest!.preview}
                     onApprove={() => onGenerationConfirm?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
                     onCancel={(reason) => onGenerationDecline?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id, reason)}
                 />

@@ -83,6 +83,32 @@ describe('confirmGenerationOrDecline', () => {
     expect(result).toEqual({ confirmed: true })
   })
 
+  // The card is the control the spec's credential defence rests on, so what is
+  // being approved has to reach the card, not just its title.
+  it('carries the preview through to both the SSE event and the persisted row', async () => {
+    const promise = confirmGenerationOrDecline(
+      baseCtx(), 'skill_creation', 'create', 'Create skill "Bid Writer"',
+      { alwaysAsk: true, preview: '---\nname: bid-writer\n---\n\nOpen with the client name.' },
+    )
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledTimes(1))
+    expect(sendEvent.mock.calls[0][1]).toMatchObject({ preview: expect.stringContaining('Open with the client name.') })
+    expect(saveGenerationConfirmRequest.mock.calls[0][3]).toMatchObject({ preview: expect.stringContaining('bid-writer') })
+
+    const confirmationId = Array.from(sessionActiveGenerationConfirmations.get('s1')!)[0]
+    pendingGenerationConfirmations.get(confirmationId)!.resolve({ confirmed: false })
+    await promise
+  })
+
+  it('omits preview entirely when the caller has nothing to show', async () => {
+    const promise = confirmGenerationOrDecline(baseCtx(), 'image_generation', 'model-x', 'Generate image')
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledTimes(1))
+    expect(sendEvent.mock.calls[0][1]).not.toHaveProperty('preview')
+
+    const confirmationId = Array.from(sessionActiveGenerationConfirmations.get('s1')!)[0]
+    pendingGenerationConfirmations.get(confirmationId)!.resolve({ confirmed: false })
+    await promise
+  })
+
   it('resolves declined when the pending map is resolved with confirmed: false', async () => {
     const promise = confirmGenerationOrDecline(baseCtx(), 'image_generation', 'model-x', 'Generate image')
     await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledTimes(1))

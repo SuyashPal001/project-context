@@ -27,6 +27,9 @@ export interface GenerationConfirmRequest {
     resourceType: string;
     subject: string;
     label: string;
+    /** What is being approved — rendered inside the card so the user reads the
+     *  content, not just its title. Absent for cost-only confirmations. */
+    preview?: string;
     status: 'pending' | 'approved' | 'declined';
     decisionAt?: string;
     declineReason?: string;

@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentSkills, recordSkillRuns } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentSkills, agentBelongsToTenant, recordSkillRuns } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -123,7 +123,7 @@ describe('fetchAgentSkills', () => {
       { name: 'tone-guide', system_prompt: 'Never promise a date.', tools: null, config: null, install_id: 'install-2' },
     ] })
 
-    const composed = await fetchAgentSkills('agent-1')
+    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
 
     // Both bodies present, first-attached first.
     expect(composed.systemPrompt).toContain('Open with the client name.')
@@ -133,17 +133,39 @@ describe('fetchAgentSkills', () => {
     expect(composed.droppedNames).toEqual([])
   })
 
-  it('orders by created_at ascending so the prompt is stable between turns', async () => {
+  it('orders by created_at then id so the prompt is stable between turns', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
-    await fetchAgentSkills('agent-1')
+    await fetchAgentSkills('agent-1', 'tenant-1')
     const sql = mockPoolQuery.mock.calls[0][0] as string
-    expect(sql).toContain('ORDER BY created_at ASC')
+    // The id tiebreaker matters: two rows attached in the same transaction can
+    // share created_at, and without it their order can flip between turns.
+    expect(sql).toContain('ORDER BY created_at ASC, id ASC')
     expect(sql).not.toContain('LIMIT 1')
+  })
+
+  // agent_skills.agent_id and agent_skills.tenant_id are independent foreign
+  // keys, so a row pairing this tenant with another tenant's agent (or the
+  // reverse) is representable. Composing by agent_id alone meant an attacker
+  // who got such a row written could inject text into the victim tenant's
+  // system prompt on every turn.
+  it('scopes the query to the tenant, not just the agent', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await fetchAgentSkills('agent-1', 'tenant-1')
+    const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('tenant_id = $2')
+    expect(params).toEqual(['agent-1', 'tenant-1'])
+  })
+
+  it('composes nothing when the rows belong to another tenant', async () => {
+    // The filter lives in SQL, so a mismatched tenant returns no rows at all.
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    const composed = await fetchAgentSkills('agent-1', 'attacker-tenant')
+    expect(composed).toEqual({ systemPrompt: null, installIds: [], droppedNames: [] })
   })
 
   it('returns a null prompt when the agent has no active skills', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
-    const composed = await fetchAgentSkills('agent-1')
+    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
     expect(composed).toEqual({ systemPrompt: null, installIds: [], droppedNames: [] })
   })
 
@@ -156,7 +178,7 @@ describe('fetchAgentSkills', () => {
     }))
     mockPoolQuery.mockResolvedValueOnce({ rows })
 
-    const composed = await fetchAgentSkills('agent-1')
+    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
 
     expect(composed.installIds).toHaveLength(8)
     expect(composed.droppedNames).toEqual(['skill-8', 'skill-9'])
@@ -176,7 +198,7 @@ describe('fetchAgentSkills', () => {
     }))
     mockPoolQuery.mockResolvedValueOnce({ rows })
 
-    const composed = await fetchAgentSkills('agent-1')
+    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
 
     expect(composed.installIds).toHaveLength(0)
     expect(composed.droppedNames).toEqual(['hand-authored-8'])
@@ -192,7 +214,7 @@ describe('fetchAgentSkills', () => {
       { name: 'bid-writer', system_prompt: 'New body v2.', tools: null, config: null, install_id: 'install-2', version: 2 },
     ] })
 
-    const composed = await fetchAgentSkills('agent-1')
+    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
 
     expect(composed.systemPrompt).toContain('New body v2.')
     expect(composed.systemPrompt).not.toContain('Old body v1.')
@@ -205,7 +227,7 @@ describe('fetchAgentSkills', () => {
       { name: 'small', system_prompt: 'y'.repeat(500), tools: null, config: null, install_id: 'install-2' },
     ] })
 
-    const composed = await fetchAgentSkills('agent-1')
+    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
 
     expect(composed.installIds).toEqual(['install-1'])
     expect(composed.droppedNames).toEqual(['small'])
@@ -218,10 +240,36 @@ describe('fetchAgentSkills', () => {
       { name: 'real', system_prompt: 'Do the thing.', tools: null, config: null, install_id: 'install-2' },
     ] })
 
-    const composed = await fetchAgentSkills('agent-1')
+    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
 
     expect(composed.systemPrompt).toContain('Do the thing.')
     expect(composed.installIds).toEqual(['install-2'])
+  })
+})
+
+describe('agentBelongsToTenant', () => {
+  it('is true only when the agent row matches both id and tenant', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ id: 'agent-1' }] })
+    await expect(agentBelongsToTenant('agent-1', 'tenant-1')).resolves.toBe(true)
+    const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('tenant_id = $2')
+    expect(params).toEqual(['agent-1', 'tenant-1'])
+  })
+
+  it('is false for another tenant\'s agent', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await expect(agentBelongsToTenant('victim-agent', 'attacker-tenant')).resolves.toBe(false)
+  })
+
+  it('fails closed when the query throws', async () => {
+    mockPoolQuery.mockRejectedValueOnce(new Error('connection reset'))
+    await expect(agentBelongsToTenant('agent-1', 'tenant-1')).resolves.toBe(false)
+  })
+
+  it('is false for an empty agent or tenant id without querying', async () => {
+    await expect(agentBelongsToTenant('', 'tenant-1')).resolves.toBe(false)
+    await expect(agentBelongsToTenant('agent-1', '')).resolves.toBe(false)
+    expect(mockPoolQuery).not.toHaveBeenCalled()
   })
 })
 

@@ -225,9 +225,9 @@ explicitly — otherwise the next answer looks broken.
 | `CONFIRM_BUSY` (one pending confirm per session) | Terminal error the agent reports; never a retry loop |
 | Caller lacks `skills:create` | 403 from the internal route; agent tells the user their role can't create skills |
 | Daily quota reached | 429; agent reports the cap |
-| Duplicate (idempotency hit) | Returns the original skill; no second row |
+| Duplicate (idempotency hit) | 409 `DUPLICATE_REQUEST`; no second row is created, and the agent tells the user the skill was already created. (The route deliberately does not return the original skill — replaying a success would require storing and re-reading the first response, and a claim it cannot verify is worse than a plain refusal.) |
 | Import worker fails | Skill shows `failed` on the Skills page with the existing toast; no attach row is written |
-| Attach would exceed 8 skills or 24,000 chars | Skill is still created and installed; attach is refused with a specific message naming the cap |
+| Attach would exceed 8 skills or 24,000 chars | A body that alone exceeds the 24,000-char composition budget is refused by the tool up front, as a retryable error, so the agent can write a shorter one. Past that, the skill is still created and installed; the worker's attach is refused and logged |
 
 ## Testing
 

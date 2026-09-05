@@ -235,6 +235,8 @@ export interface GenerationConfirmRequestPayload {
   subject: string
   label: string
   status: 'pending' | 'approved' | 'declined'
+  /** What is being approved — shown in the card body. */
+  preview?: string
   decisionAt?: string
   declineReason?: string
 }

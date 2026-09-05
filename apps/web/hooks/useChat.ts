@@ -26,7 +26,7 @@ export interface UseChatOptions {
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
-    onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string) => void;
+    onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string) => void;
     onClarificationRequired?: (clarificationId: string, questions: ClarificationQuestion[]) => void;
 }
 
@@ -352,6 +352,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 payload.resourceType as string,
                                 payload.subject as string,
                                 payload.label as string,
+                                typeof payload.preview === 'string' ? payload.preview : undefined,
                             );
                             break;
                         }

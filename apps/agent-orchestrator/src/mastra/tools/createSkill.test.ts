@@ -7,6 +7,9 @@ const fetchMock = vi.hoisted(() => vi.fn())
 
 const VALID_BODY = '---\nname: bid-writer\ndescription: Writes bids\n---\n\nOpen with the client name.'
 
+/** Mirrors the tool's own copy — see its comment for why it isn't imported. */
+const MAX_COMPOSED_SKILL_CHARS = 24_000
+
 function execContext(over: Record<string, unknown> = {}) {
   const values: Record<string, unknown> = {
     tenantId: 'tenant-1', userId: 'user-1', agentId: 'agent-1',
@@ -53,6 +56,46 @@ describe('create_skill', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  // A body over the 24,000-char composition budget is guaranteed to be dropped
+  // by the import worker's budget check — with a log only, after this tool has
+  // already told the user the skill will attach. Rejecting it here makes it a
+  // retryable error the agent can fix by writing something shorter.
+  it('rejects a body that could never fit the composition budget, retryably', async () => {
+    const body = `---\nname: a\ndescription: b\n---\n\n${'x'.repeat(24_000)}`
+    const result = await run({ name: 'Bid Writer', body })
+    expect(result.success).toBe(false)
+    expect(result.retryable).toBe(true)
+    expect(result.error).toMatch(/too long|shorter/i)
+    expect(confirmMock).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts a body sitting exactly on the composition budget', async () => {
+    const frontmatter = '---\nname: a\ndescription: b\n---\n\n'
+    // body.length + name.length + 15 === MAX_COMPOSED_SKILL_CHARS — the last
+    // size that composes, so the boundary is inclusive rather than off by one.
+    const filler = MAX_COMPOSED_SKILL_CHARS - 'Bid Writer'.length - 15 - frontmatter.length
+    const result = await run({ name: 'Bid Writer', body: frontmatter + 'x'.repeat(filler) })
+    expect(result.success).toBe(true)
+  })
+
+  // The card is the credential/PII defence the spec rests on, so it has to show
+  // the body — approving a label alone is approving text the user cannot see.
+  it('sends a preview of the drafted body to the confirmation card', async () => {
+    await run({ name: 'Bid Writer', body: VALID_BODY })
+    const opts = confirmMock.mock.calls[0][4] as { preview?: string }
+    expect(opts.preview).toContain('name: bid-writer')
+    expect(opts.preview).toContain('Open with the client name.')
+  })
+
+  it('truncates a long preview rather than sending the whole body', async () => {
+    const long = `---\nname: a\ndescription: b\n---\n\n${'line\n'.repeat(400)}`
+    await run({ name: 'Bid Writer', body: long })
+    const opts = confirmMock.mock.calls[0][4] as { preview?: string }
+    expect(opts.preview!.length).toBeLessThan(long.length)
+    expect(opts.preview).toMatch(/…$/)
+  })
+
   // Without a live SSE session the confirm gate auto-approves, which would mean
   // unattended writes into the tenant's library.
   it('refuses when there is no live session', async () => {
@@ -79,7 +122,7 @@ describe('create_skill', () => {
 
     expect(confirmMock).toHaveBeenCalledWith(
       expect.anything(), 'skill_creation', 'create', expect.stringContaining('Bid Writer'),
-      { alwaysAsk: true },
+      { alwaysAsk: true, preview: expect.stringContaining('Open with the client name.') },
     )
     expect(result.success).toBe(true)
     const [url, init] = fetchMock.mock.calls[0]

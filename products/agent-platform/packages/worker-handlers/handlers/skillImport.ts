@@ -172,24 +172,36 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
         if (others.length >= MAX_ATTACHED_SKILLS || composedChars + newCost > MAX_COMPOSED_SKILL_CHARS) {
           console.log(`[skillImport] attach skipped: budget exceeded agentId=${attachToAgentId} skillId=${skillId} version=${version}`);
         } else {
+          // The agents join is a security constraint, not a convenience:
+          // agent_skills.agent_id and agent_skills.tenant_id are independent
+          // foreign keys, so nothing in the schema stops a row pairing tenant
+          // A with tenant B's agent — which would compose A's text into B's
+          // system prompt on B's next turn. Selecting a.id FROM agents WHERE
+          // a.tenant_id = tenantId makes a mismatched pair write zero rows
+          // instead. The route ahead of this checks the same thing; this is
+          // the last line, because this raw insert has no route in front of it
+          // on a queue redelivery.
           const result = await db.execute(sql`
             INSERT INTO agent_skills (agent_id, tenant_id, name, system_prompt, tools, version, status, install_id)
-            SELECT ${attachToAgentId}::uuid, ${tenantId}::uuid, ${manifest.name}, ${manifestWithBody.body}, '{}', ${version},
+            SELECT a.id, a.tenant_id, ${manifest.name}, ${manifestWithBody.body}, '{}', ${version},
                    'active', si.id
-            FROM skill_installs si
-            WHERE si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+            FROM agents a
+            JOIN skill_installs si
+              ON si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+            WHERE a.id = ${attachToAgentId}::uuid AND a.tenant_id = ${tenantId}::uuid
             ON CONFLICT (agent_id, tenant_id, name, version) DO NOTHING
           `);
-          // Zero rows affected means either the ON CONFLICT no-op (a benign
-          // redelivery) or — because the SELECT's FROM skill_installs finds
-          // nothing — that no active install row exists yet for this skill
-          // (the API can enqueue the import before the install row commits).
-          // Either way this is a silent no-attach unless logged.
+          // Zero rows affected means one of three things: the ON CONFLICT
+          // no-op (a benign redelivery); no active skill_installs row yet for
+          // this skill (the API can enqueue the import before the install row
+          // commits); or the agent does not belong to this tenant, which is
+          // the cross-tenant case the join above refuses. All three are a
+          // silent no-attach unless logged.
           const affected = (result as unknown as { count?: number; length?: number })?.count
             ?? (result as unknown as { length?: number })?.length
             ?? 0;
           if (affected === 0) {
-            console.warn(`[skillImport] attach affected 0 rows (no matching active skill_installs row, or already attached): agentId=${attachToAgentId} skillId=${skillId} version=${version}`);
+            console.warn(`[skillImport] attach affected 0 rows (agent not in tenant, no matching active skill_installs row, or already attached): agentId=${attachToAgentId} tenantId=${tenantId} skillId=${skillId} version=${version}`);
           }
         }
       } catch (attachErr) {

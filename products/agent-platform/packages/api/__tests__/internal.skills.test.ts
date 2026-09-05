@@ -41,6 +41,8 @@ vi.mock('@serverless-saas/cache', () => ({ getCacheClient: vi.fn() }));
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const USER = '22222222-2222-4222-8222-222222222222';
 const AGENT = '33333333-3333-4333-8333-333333333333';
+/** A well-formed UUID that is not this tenant's agent — passes zod, fails the lookup. */
+const FOREIGN_AGENT = '44444444-4444-4444-8444-444444444444';
 const BODY = '---\nname: bid-writer\ndescription: Writes bids\n---\n\nOpen with the client name.';
 const CONVERSATION_ID = 'conv-1';
 const MESSAGE_ID = 'msg-1';
@@ -74,6 +76,35 @@ async function post(body: unknown, key = 'test-key') {
 // Builds the quota select's mock chain — .from(skills).innerJoin(...).where(...) —
 // and returns spies for the join and where calls so a test can assert the
 // query is actually scoped to this tenant's authored (chat-created) skills.
+// The agent/tenant lookup the route runs before any write. Held in a mutable
+// so a test can empty it (simulating another tenant's agent) without having to
+// re-queue the whole db.select mock chain.
+let agentRows: unknown[] = [];
+
+function mockAgentLookup() {
+  const limitSpy = vi.fn(() => Promise.resolve(agentRows));
+  const whereSpy = vi.fn(() => ({ limit: limitSpy }));
+  const fromSpy = vi.fn(() => ({ where: whereSpy }));
+  // Once, not a permanent return: this is the route's *first* select, and the
+  // quota query that follows needs the innerJoin chain instead.
+  dbMock.select.mockReturnValueOnce({ from: fromSpy });
+  return { fromSpy, whereSpy };
+}
+
+// Drizzle SQL objects are circular (every column points back at its table), so
+// the bound literals are collected by walking queryChunks rather than by
+// stringifying. Returns just the parameter values in a comparison predicate.
+function boundValues(node: unknown, out: unknown[] = []): unknown[] {
+  if (!node || typeof node !== 'object') return out;
+  const n = node as { queryChunks?: unknown[]; value?: unknown };
+  if (Array.isArray(n.queryChunks)) {
+    for (const chunk of n.queryChunks) boundValues(chunk, out);
+  } else if ('value' in n) {
+    out.push(n.value);
+  }
+  return out;
+}
+
 function mockQuotaQuery(rows: unknown[]) {
   const whereSpy = vi.fn(() => Promise.resolve(rows));
   const innerJoinSpy = vi.fn(() => ({ where: whereSpy }));
@@ -83,8 +114,14 @@ function mockQuotaQuery(rows: unknown[]) {
 }
 
 describe('POST /internal/skills', () => {
+  let agentLookup: ReturnType<typeof mockAgentLookup>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks only clears recorded calls — the mockReturnValueOnce queue
+    // survives it, so a test that returns early (401/403/404) would otherwise
+    // leak its unconsumed agent-lookup chain into the next test's first select.
+    dbMock.select.mockReset();
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     process.env.INTERNAL_SERVICE_KEY = 'test-key';
@@ -95,6 +132,8 @@ describe('POST /internal/skills', () => {
     releaseMock.mockResolvedValue(undefined);
     // Quota query returns a low count by default.
     mockQuotaQuery([{ count: 0 }]);
+    agentRows = [{ id: AGENT }];
+    agentLookup = mockAgentLookup();
     dbMock.insert.mockImplementation(() => ({
       values: (data: Record<string, unknown>) => ({
         returning: async () => [{ id: 'row-1', ...data }],
@@ -217,6 +256,59 @@ describe('POST /internal/skills', () => {
     const res = await post(payload({ body: 'x'.repeat(65_537) }));
     expect(res.status).toBe(400);
     expect(publishToQueueMock).not.toHaveBeenCalled();
+  });
+
+  // The cap has to be measured in bytes, not UTF-16 code units. 30,000 emoji is
+  // 30,000 "characters" — under a plain .max(65_536) — but 120KB of UTF-8, and
+  // three of those would blow SQS's 256KB limit inside createVersionAndEnqueue,
+  // throwing after the skills and skill_installs rows had already committed.
+  it('rejects a multibyte body that is under the char cap but over 64KB of UTF-8', async () => {
+    const body = '🙂'.repeat(30_000);
+    expect(body.length).toBeLessThan(65_536);
+    expect(Buffer.byteLength(body, 'utf8')).toBeGreaterThan(65_536);
+    const res = await post(payload({ body }));
+    expect(res.status).toBe(400);
+    expect(publishToQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a multibyte body that fits inside 64KB of UTF-8', async () => {
+    const body = '🙂'.repeat(16_000); // 64,000 bytes
+    expect(Buffer.byteLength(body, 'utf8')).toBeLessThanOrEqual(65_536);
+    const res = await post(payload({ body }));
+    expect(res.status).toBe(202);
+  });
+
+  // The cross-tenant hole. agent_skills.agent_id and agent_skills.tenant_id are
+  // independent foreign keys, so nothing downstream stops a row that pairs this
+  // tenant with another tenant's agent — and fetchAgentSkills would then compose
+  // this tenant's text into that agent's system prompt on its owner's next turn.
+  describe('agent/tenant binding', () => {
+    it('resolves the agent against the calling tenant before any write', async () => {
+      await post(payload());
+      expect(agentLookup.whereSpy).toHaveBeenCalledTimes(1);
+      // Both the agent id and the tenant id must be bound into that one
+      // predicate — filtering on the agent id alone is the bug.
+      const bound = boundValues(agentLookup.whereSpy.mock.calls[0][0]);
+      expect(bound).toContain(AGENT);
+      expect(bound).toContain(TENANT);
+    });
+
+    it("404s on another tenant's agent and writes nothing", async () => {
+      agentRows = [];
+      const res = await post(payload({ agentId: FOREIGN_AGENT }));
+      expect(res.status).toBe(404);
+      expect((await res.json()).code).toBe('AGENT_NOT_FOUND');
+      expect(dbMock.insert).not.toHaveBeenCalled();
+      expect(publishToQueueMock).not.toHaveBeenCalled();
+    });
+
+    it('does not consume an idempotency claim when the agent is rejected', async () => {
+      agentRows = [];
+      const res = await post(payload({ agentId: FOREIGN_AGENT }));
+      expect(res.status).toBe(404);
+      expect(acquireMock).not.toHaveBeenCalled();
+      expect(releaseMock).not.toHaveBeenCalled();
+    });
   });
 
   it('rejects a payload missing tenantId', async () => {
