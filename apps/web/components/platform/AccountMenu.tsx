@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
-import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor, Zap, HelpCircle, Settings } from "lucide-react"
+import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor, Zap, HelpCircle, Settings, Code2 } from "lucide-react"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
 import { cn } from "@/lib/utils"
@@ -51,6 +51,8 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
 
     const currentThemeIcon = mounted ? (THEME_OPTIONS.find(o => o.value === theme)?.icon ?? Monitor) : Monitor
     const CurrentThemeIcon = currentThemeIcon
+
+    const isAdminOrOwner = role === 'admin' || role === 'owner' || role === 'platform_admin'
 
     const planIndex = PLANS.findIndex(p => p.id === (plan?.toLowerCase() || 'free'))
     const nextPlan = planIndex >= 0 && planIndex < PLANS.length - 1 ? PLANS[planIndex + 1] : null
@@ -197,6 +199,16 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                         <Settings className="mr-2.5 h-4 w-4 opacity-70" />
                         <span>Workspace settings</span>
                     </DropdownMenuItem>
+
+                    {isAdminOrOwner && (
+                        <DropdownMenuItem
+                            className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-2xl focus:bg-accent/50 focus:text-accent-foreground"
+                            onClick={() => router.push(`/${tenantSlug}/dashboard/developer`)}
+                        >
+                            <Code2 className="mr-2.5 h-4 w-4 opacity-70" />
+                            <span>Developer settings</span>
+                        </DropdownMenuItem>
+                    )}
 
                     <DropdownMenuSub>
                         <DropdownMenuSubTrigger className="flex items-center px-2 py-2.5 cursor-pointer text-[13px] rounded-2xl focus:bg-accent/50 focus:text-accent-foreground data-[state=open]:bg-accent/50">

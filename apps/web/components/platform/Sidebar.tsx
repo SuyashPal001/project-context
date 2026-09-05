@@ -173,6 +173,7 @@ export function Sidebar() {
         `/${tenantSlug || ''}/dashboard/integrations`,
         `/${tenantSlug || ''}/dashboard/billing`,
         `/${tenantSlug || ''}/dashboard/branding`,
+        `/${tenantSlug || ''}/dashboard/audit`,
     ]
     const isSettingsPanelActive = !isDeveloperPanelActive && settingsRoutePrefixes.some(
         (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)

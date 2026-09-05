@@ -16,7 +16,6 @@ import {
     Palette,
     KanbanSquare,
     LayoutList,
-    Code2,
     Bell,
 
 } from "lucide-react";
@@ -47,8 +46,6 @@ export function getSidebarItems(
     const isPlatformAdmin = role === 'platform_admin';
     const isAdminOrOwner = role === 'admin' || role === 'owner' || isPlatformAdmin;
 
-    const auditLocked        = entitlements['audit_log']?.enabled === false;
-
     const items: SidebarItem[] = [];
 
     // 1. MAIN SECTION — all users
@@ -60,37 +57,12 @@ export function getSidebarItems(
     items.push({ label: "Skills", href: `${base}/skills`, icon: Puzzle });
     items.push({ label: "Notifications", href: `${base}/notifications`, icon: Bell });
 
+    // Audit log and Developers both moved out: Audit log is now a section
+    // inside Workspace settings (getSettingsPanelItems), Developer settings
+    // lives in the account dropdown (AccountMenu.tsx), both admin-gated the
+    // same way they were here. No sidebar rows or dividers left for either.
 
-    items.push({ isDivider: true, href: '', icon: () => null, label: '' });
-
-    // Audit log — admin/owner only (platform management)
-    if (isAdminOrOwner) {
-        items.push({
-            label: "Audit log",
-            href: `${base}/audit`,
-            icon: FileText,
-            planRequired: 'business',
-            planGateFeature: 'audit_log',
-            locked: auditLocked,
-        });
-    }
-
-    // 2. SETTINGS — moved into the account dropdown (AccountMenu.tsx) as
-    // "Workspace settings", next to Profile settings. No sidebar row for it
-    // anymore; the nested settings panel is still reachable by route (see
-    // settingsRoutePrefixes in Sidebar.tsx) once a settings page is open.
-
-    // 3. DEVELOPER SECTION — admin/owner only
-    if (isAdminOrOwner) {
-        items.push({
-            label: "Developers",
-            href: `${base}/developer`,
-            icon: Code2,
-            sectionLabel: "Developer settings",
-        });
-    }
-
-    // 4. OPS PORTAL (Platform Admin Only) — standalone route, no tenant slug
+    // 2. OPS PORTAL (Platform Admin Only) — standalone route, no tenant slug
     if (isPlatformAdmin) {
         items.push({
             label: "Ops Portal",
@@ -112,6 +84,7 @@ export function getSettingsPanelItems(
     const isAdminOrOwner = role === 'admin' || role === 'owner' || role === 'platform_admin';
 
     const brandingLocked = entitlements['branding']?.enabled === false;
+    const auditLocked = entitlements['audit_log']?.enabled === false;
 
     // Workspace is visible to every role — matches the pre-panel behaviour.
     const items: SidebarItem[] = [
@@ -124,6 +97,14 @@ export function getSettingsPanelItems(
         items.push({ label: "Connectors", href: `${base}/integrations`, icon: Plug });
         items.push({ label: "Members", href: `${base}/settings/members`, icon: Users });
         items.push({ label: "Roles", href: `${base}/settings/roles`, icon: Shield });
+        items.push({
+            label: "Audit log",
+            href: `${base}/audit`,
+            icon: FileText,
+            planRequired: 'business',
+            planGateFeature: 'audit_log',
+            locked: auditLocked,
+        });
         items.push({ label: "Billing", href: `${base}/billing`, icon: CreditCard });
         items.push({
             label: "Branding",
