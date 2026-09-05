@@ -174,7 +174,7 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                 </div>
 
                 <div className="flex items-center justify-between gap-2 px-3.5 pb-2.5 border-b border-border/60">
-                    <div className="flex items-center gap-1 rounded-full bg-muted/50 p-0.5">
+                    <div className="flex items-center gap-1 rounded-full bg-muted p-0.5">
                         {(["all", "unread"] as const).map((t) => (
                             <button
                                 key={t}
