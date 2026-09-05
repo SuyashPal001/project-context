@@ -238,7 +238,7 @@ export function Sidebar() {
                                     src="/brand/olmoworks-mark.svg"
                                     alt={brandName}
                                     className="shrink-0 object-contain"
-                                    style={{ height: 34, width: "auto" }}
+                                    style={{ height: 24, width: "auto" }}
                                 />
                             )}
                             <span className="text-base font-semibold text-foreground tracking-tight truncate">{brandName}</span>
