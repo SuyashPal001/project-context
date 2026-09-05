@@ -103,15 +103,28 @@ export function ImageUpload({ value, onChange, onFileIdChange, fallbackText, dis
                         onChange={handleFileChange}
                         disabled={disabled || isUploading}
                     />
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={disabled || isUploading}
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        {isUploading ? "Uploading..." : "Upload image"}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={disabled || isUploading}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            {isUploading ? "Uploading..." : "Upload image"}
+                        </Button>
+                        {value && (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={disabled || isUploading}
+                                onClick={() => onChange("")}
+                            >
+                                Remove
+                            </Button>
+                        )}
+                    </div>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
                         Square images recommended
                     </p>
