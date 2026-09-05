@@ -18,6 +18,10 @@ const sourceSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('zip'), fileKey: z.string().min(1).max(512) }),
   z.object({ type: z.literal('github'), owner: z.string().min(1).max(100), repo: z.string().min(1).max(100), ref: z.string().min(1).max(100) }),
   z.object({ type: z.literal('url'), url: z.string().url().max(2048) }),
+  // Written in-app rather than imported: the SKILL.md body travels in the
+  // request and on to the import worker, which is why it's capped at 64KB —
+  // an SQS message body maxes out at 256KB and this has to fit inside one.
+  z.object({ type: z.literal('authored'), body: z.string().min(1).max(65_536) }),
 ]);
 
 const uuidSchema = z.string().uuid();
@@ -73,7 +77,10 @@ async function createVersionAndEnqueue(params: {
     version,
     s3Prefix: `skill-packages/${skillId}/${version}`,
     sourceType: source.type,
-    sourceRef: source.type === 'zip' ? source.fileKey : source.type === 'url' ? source.url : `${source.owner}/${source.repo}@${source.ref}`,
+    sourceRef: source.type === 'zip' ? source.fileKey
+      : source.type === 'url' ? source.url
+      : source.type === 'github' ? `${source.owner}/${source.repo}@${source.ref}`
+      : null,
     status: 'pending',
   }).returning();
 

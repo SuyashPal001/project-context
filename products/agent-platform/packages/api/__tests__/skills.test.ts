@@ -122,6 +122,108 @@ describe('POST /skills', () => {
 
     expect(res.status).toBe(403);
   });
+
+  it('accepts an authored source and enqueues it with sourceType authored', async () => {
+    dbMock.insert.mockImplementation((table: unknown) => ({
+      values: (data: Record<string, unknown>) => ({
+        returning: async () => {
+          if (table === skills) return [{ id: SKILL_ID, ...data }];
+          if (table === skillVersions) return [{ id: 'version-1', ...data }];
+          return [{ id: 'audit-1' }];
+        },
+        catch: () => {},
+      }),
+    }));
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Bid Writer',
+        source: { type: 'authored', body: '---\nname: bid-writer\ndescription: Writes bids\n---\n\nDo the thing.' },
+      }),
+    });
+
+    expect(res.status).toBe(202);
+    expect(publishToQueueMock).toHaveBeenCalledTimes(1);
+    const [, message] = publishToQueueMock.mock.calls[0];
+    expect(message.type).toBe('skill.import');
+    expect(message.source).toEqual({
+      type: 'authored',
+      body: '---\nname: bid-writer\ndescription: Writes bids\n---\n\nDo the thing.',
+    });
+  });
+
+  // An authored version has no external source to point back at — unlike a zip
+  // (fileKey), a URL, or owner/repo@ref — so sourceRef stays null rather than
+  // duplicating the body into a text column the UI never reads.
+  it('stores a null sourceRef for an authored version', async () => {
+    const inserted: Record<string, unknown>[] = [];
+    dbMock.insert.mockImplementation((table: unknown) => ({
+      values: (data: Record<string, unknown>) => {
+        if (table === skillVersions) inserted.push(data);
+        return {
+          returning: async () => {
+            if (table === skills) return [{ id: SKILL_ID, ...data }];
+            if (table === skillVersions) return [{ id: 'version-1', ...data }];
+            return [{ id: 'audit-1' }];
+          },
+          catch: () => {},
+        };
+      },
+    }));
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    await app.request('/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Bid Writer',
+        source: { type: 'authored', body: '---\nname: bid-writer\ndescription: d\n---\n\nBody.' },
+      }),
+    });
+
+    expect(inserted[0].sourceType).toBe('authored');
+    expect(inserted[0].sourceRef).toBeNull();
+  });
+
+  it('rejects an authored body over 64KB', async () => {
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Huge', source: { type: 'authored', body: 'x'.repeat(65_537) } }),
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('VALIDATION_ERROR');
+    expect(publishToQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty authored body', async () => {
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext();
+    app.route('/skills', skillsRoutes);
+
+    const res = await app.request('/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Empty', source: { type: 'authored', body: '' } }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(publishToQueueMock).not.toHaveBeenCalled();
+  });
 });
 
 function mockList(

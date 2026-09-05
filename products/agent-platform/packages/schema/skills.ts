@@ -4,7 +4,10 @@ import { users } from '@serverless-saas/database/schema/auth';
 
 export const skillVisibilityEnum = pgEnum('skill_visibility', ['private', 'public']);
 export const skillVersionStatusEnum = pgEnum('skill_version_status', ['pending', 'ready', 'failed']);
-export const skillSourceTypeEnum = pgEnum('skill_source_type', ['zip', 'github', 'url']);
+// 'authored' is a skill written in the app (agent-generated SKILL.md), not
+// imported from a package — it carries its content in the queue message and
+// has no external source to point back at, so its sourceRef is null.
+export const skillSourceTypeEnum = pgEnum('skill_source_type', ['zip', 'github', 'url', 'authored']);
 export const skillInstallStatusEnum = pgEnum('skill_install_status', ['active', 'uninstalled']);
 
 // One row per skill package. latestVersion is only bumped by the worker once
