@@ -23,15 +23,27 @@ function AnthropicMark(props: React.SVGProps<SVGSVGElement>) {
     );
 }
 
-function GeminiMark(props: React.SVGProps<SVGSVGElement>) {
-    // A proper 4-point sparkle (N/E/S/W), not just a vertical lens — the
-    // previous path had no horizontal spread and read as a thin squeezed
-    // sliver at small sizes.
+function GoogleGMark(props: React.SVGProps<SVGSVGElement>) {
+    // Google's "G" wordmark glyph, flattened to currentColor to match this
+    // file's neutral, single-color icon style — a sparkle read as generic;
+    // the G is the recognizable, still-neutral alternative.
     return (
         <svg viewBox="0 0 24 24" fill="none" {...props}>
             <path
                 fill="currentColor"
-                d="M12 2c.7 4.2 2.1 7.1 4.6 8.9.8.6 1.7 1 2.7 1.3-1 .3-1.9.7-2.7 1.3-2.5 1.8-3.9 4.7-4.6 8.9-.7-4.2-2.1-7.1-4.6-8.9-.8-.6-1.7-1-2.7-1.3 1-.3 1.9-.7 2.7-1.3C9.9 9.1 11.3 6.2 12 2Z"
+                d="M22 12.24c0-.85-.07-1.48-.22-2.14H12v3.89h5.7c-.11.94-.74 2.36-2.13 3.31l-.02.13 3.1 2.38.21.02c1.97-1.8 3.14-4.46 3.14-7.59Z"
+            />
+            <path
+                fill="currentColor"
+                d="M12 22c2.83 0 5.2-.92 6.94-2.5l-3.31-2.53c-.88.6-2.07 1.02-3.63 1.02-2.77 0-5.12-1.8-5.96-4.29l-.12.01-3.22 2.47-.04.11C4.4 19.8 7.94 22 12 22Z"
+            />
+            <path
+                fill="currentColor"
+                d="M6.04 13.7A6.4 6.4 0 0 1 5.68 12c0-.59.11-1.17.35-1.7l-.01-.12-3.26-2.5-.11.05A9.94 9.94 0 0 0 1.5 12c0 1.6.39 3.12 1.15 4.47l3.39-2.77Z"
+            />
+            <path
+                fill="currentColor"
+                d="M12 5.51c1.97 0 3.3.83 4.06 1.53l2.96-2.83C17.19 2.62 14.83 1.5 12 1.5 7.94 1.5 4.4 3.7 2.66 7.18l3.38 2.62c.85-2.49 3.2-4.29 5.96-4.29Z"
             />
         </svg>
     );
@@ -60,9 +72,9 @@ function GenericModelMark(props: React.SVGProps<SVGSVGElement>) {
 const MARKS: Record<string, (props: React.SVGProps<SVGSVGElement>) => React.JSX.Element> = {
     openai: OpenAIMark,
     anthropic: AnthropicMark,
-    vertex: GeminiMark,
-    gemini: GeminiMark,
-    google: GeminiMark,
+    vertex: GoogleGMark,
+    gemini: GoogleGMark,
+    google: GoogleGMark,
     mistral: MistralMark,
 };
 

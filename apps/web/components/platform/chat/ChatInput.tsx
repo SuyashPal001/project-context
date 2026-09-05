@@ -772,7 +772,7 @@ export function ChatInput({
                                                                 key={provider.id}
                                                                 disabled={!isLive}
                                                                 onClick={() => onModelChange?.(provider.id)}
-                                                                className="flex items-start gap-3 cursor-pointer py-2.5 px-2 rounded-xl"
+                                                                className="group relative flex items-start gap-3 cursor-pointer py-2.5 px-2 rounded-xl"
                                                             >
                                                                 <span
                                                                     className={cn(
@@ -809,12 +809,15 @@ export function ChatInput({
                                                                             </span>
                                                                         )}
                                                                     </span>
-                                                                    {isLive && badges.get(provider.id) && (
-                                                                        <span className="text-xs text-muted-foreground">
-                                                                            {badges.get(provider.id)} cost tier
-                                                                        </span>
-                                                                    )}
                                                                 </span>
+                                                                {isLive && badges.get(provider.id) && (
+                                                                    <span
+                                                                        className="absolute right-9 top-1/2 -translate-y-1/2 shrink-0 flex items-center gap-1 text-xs text-muted-foreground opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[highlighted]:opacity-100"
+                                                                    >
+                                                                        <Sparkles className="h-3 w-3" />
+                                                                        {badges.get(provider.id)} cost
+                                                                    </span>
+                                                                )}
                                                                 {isSelected && (
                                                                     <span className="shrink-0 h-5 w-5 rounded-full bg-primary flex items-center justify-center mt-0.5 shadow-sm">
                                                                         <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
