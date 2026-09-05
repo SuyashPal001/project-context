@@ -166,21 +166,21 @@ describe('fetchAgentSkills', () => {
   // agent_skills.install_id is nullable for hand-authored skills, so the cap
   // must count every composed skill — not just those with an install id — or
   // an agent with only hand-authored skills bypasses the count cap entirely.
+  // All 9 rows here carry install_id: null on purpose: gating on
+  // installIds.length (the pre-fix logic) would never reach 8, so all 9
+  // would compose and this test would fail against that code. Gating on
+  // composed-parts count catches it at the 9th row regardless of install id.
   it('counts hand-authored skills (null install_id) against the cap', async () => {
-    const installed = Array.from({ length: 8 }, (_, i) => ({
-      name: `skill-${i}`, system_prompt: `body ${i}`, tools: null, config: null, install_id: `install-${i}`, version: 1,
+    const rows = Array.from({ length: 9 }, (_, i) => ({
+      name: `hand-authored-${i}`, system_prompt: `body ${i}`, tools: null, config: null, install_id: null, version: 1,
     }))
-    const rows = [
-      ...installed,
-      { name: 'hand-authored', system_prompt: 'no install row', tools: null, config: null, install_id: null, version: 1 },
-    ]
     mockPoolQuery.mockResolvedValueOnce({ rows })
 
     const composed = await fetchAgentSkills('agent-1')
 
-    expect(composed.installIds).toHaveLength(8)
-    expect(composed.droppedNames).toEqual(['hand-authored'])
-    expect(composed.systemPrompt).not.toContain('no install row')
+    expect(composed.installIds).toHaveLength(0)
+    expect(composed.droppedNames).toEqual(['hand-authored-8'])
+    expect(composed.systemPrompt).not.toContain('body 8')
   })
 
   // agent_skills is unique on (agent_id, tenant_id, name, version) — the
