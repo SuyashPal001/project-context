@@ -4,7 +4,7 @@ export function MarketingFooter() {
       <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-6 py-12 sm:flex-row sm:items-center">
         <div className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/olmoworks-mark.svg" alt="" className="shrink-0 object-contain" style={{ height: 28, width: "auto" }} />
+          <img src="/brand/olmoworks-mark.svg" alt="" className="shrink-0 object-contain" style={{ height: 22, width: "auto" }} />
           <span className="font-display text-lg">OlmoWorks</span>
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[var(--mk-muted)]">
