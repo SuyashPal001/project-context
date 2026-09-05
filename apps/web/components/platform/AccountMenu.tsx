@@ -117,11 +117,14 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                 side={collapsed ? "right" : "top"}
                 className={cn(
                     "p-2.5 rounded-2xl bg-card border-border/50 shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)]",
-                    // Expanded: sit flush inside the sidebar column, same as the reference,
-                    // by matching the trigger's own width rather than a fixed px value.
-                    // Collapsed: the trigger is a small icon button, so that width would be
-                    // far too narrow — keep a fixed size and float it off to the side instead.
-                    collapsed ? "w-[272px]" : "w-(--radix-dropdown-menu-trigger-width)",
+                    // Expanded: match the sidebar's inner content width (272px column
+                    // minus its 16px×2 padding) directly, not the trigger's own
+                    // rendered width — the trigger now shares its row with the
+                    // notifications bell, so `--radix-dropdown-menu-trigger-width`
+                    // would be trigger-minus-bell-width, narrower than the sidebar.
+                    // Collapsed: the trigger is a small icon button, so neither width
+                    // fits — keep a fixed size and float it off to the side instead.
+                    collapsed ? "w-[272px]" : "w-60",
                 )}
             >
                 {/* Header Block - Non-clickable */}
