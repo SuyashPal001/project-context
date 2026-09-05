@@ -103,22 +103,22 @@ export default function EditRolePage() {
                     {isSystem ? (
                         <>
                             <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</Label>
-                                <p className="text-lg font-bold capitalize">{name}</p>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</Label>
+                                <p className="text-lg font-extrabold capitalize">{name}</p>
                             </div>
                             <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</Label>
-                                <p className="text-base font-medium text-foreground/80">{description || "—"}</p>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Description</Label>
+                                <p className="text-base font-semibold text-foreground/80">{description || "—"}</p>
                             </div>
                         </>
                     ) : (
                         <>
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Name</Label>
                                 <Input value={name} onChange={e => setName(e.target.value)}/>
                             </div>
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</Label>
+                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Description</Label>
                                 <Textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}/>
                             </div>
                         </>
@@ -126,7 +126,7 @@ export default function EditRolePage() {
                 </div>
 
                 <div className="space-y-3 pt-2">
-                    <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">Permissions</h2>
+                    <h2 className="font-bold text-sm text-muted-foreground uppercase tracking-wider">Permissions</h2>
                     <PermissionPicker selected={selectedPerms} onChange={setSelectedPerms} disabled={isSystem}/>
                 </div>
 
