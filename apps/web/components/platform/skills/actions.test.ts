@@ -14,7 +14,7 @@ vi.mock("@/lib/api", () => {
 });
 
 import { api, ApiError } from "@/lib/api";
-import { attachSkillToAgent, resolveDefaultAgent, startSkillTestChat } from "./actions";
+import { attachSkillToAgent, createSkillFromBody, resolveDefaultAgent, startSkillTestChat } from "./actions";
 import type { Skill } from "./types";
 import type { Agent } from "@/components/platform/agents/types";
 
@@ -135,5 +135,20 @@ describe("startSkillTestChat", () => {
     it("throws NO_ACTIVE_AGENTS without creating a conversation", async () => {
         await expect(startSkillTestChat(makeSkill(), [])).rejects.toThrow("NO_ACTIVE_AGENTS");
         expect(api.post).not.toHaveBeenCalled();
+    });
+});
+
+describe("createSkillFromBody", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("posts an authored source with the generated body", async () => {
+        vi.mocked(api.post).mockResolvedValueOnce({});
+        await createSkillFromBody("Bid Writer", "Writes bids", "---\nname: bid-writer\ndescription: d\n---\n\nBody.");
+
+        expect(api.post).toHaveBeenCalledWith("/api/v1/skills", {
+            name: "Bid Writer",
+            description: "Writes bids",
+            source: { type: "authored", body: "---\nname: bid-writer\ndescription: d\n---\n\nBody." },
+        });
     });
 });
