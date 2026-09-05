@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../../db';
-import { skills, skillInstalls } from '@serverless-saas/agent-schema/skills';
+import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission, resolveUserPermissions } from '@serverless-saas/permissions';
 import { IdempotencyStore } from '@serverless-saas/idempotency';
@@ -49,20 +49,32 @@ internalSkillsRoute.post('/', async (c) => {
     return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
   }
 
+  const store = new IdempotencyStore(getCacheClient());
+  const idempotencyKey = `skill-create:${conversationId}:${messageId}:${slugify(name)}`;
+  let claimed = false;
+
   try {
+    // Scoped to authored (chat-created) skills only: skill_versions.source_type
+    // is the only place origin is recorded (skills has no origin column), so a
+    // tenant that imports 20 skills from the dashboard must not be locked out
+    // of chat creation, and vice versa — they are unrelated ceilings.
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(skills)
-      .where(and(eq(skills.ownerTenantId, tenantId), gte(skills.createdAt, since)));
+      .innerJoin(skillVersions, and(eq(skillVersions.skillId, skills.id), eq(skillVersions.version, 1)))
+      .where(and(
+        eq(skills.ownerTenantId, tenantId),
+        eq(skillVersions.sourceType, 'authored'),
+        gte(skills.createdAt, since),
+      ));
     if (count >= DAILY_TENANT_LIMIT) {
       return c.json({ error: `Daily limit of ${DAILY_TENANT_LIMIT} created skills reached.`, code: 'QUOTA_EXCEEDED' }, 429);
     }
 
     // A retried tool call must not create a second skill. Slugs carry a random
     // suffix, so the (ownerTenantId, slug) unique constraint never catches this.
-    const store = new IdempotencyStore(getCacheClient());
-    const claimed = await store.acquire(`skill-create:${conversationId}:${messageId}:${slugify(name)}`);
+    claimed = await store.acquire(idempotencyKey);
     if (!claimed) {
       return c.json({ error: 'This skill was already created for that message.', code: 'DUPLICATE_REQUEST' }, 409);
     }
@@ -93,9 +105,16 @@ internalSkillsRoute.post('/', async (c) => {
       traceId: c.get('traceId') ?? '',
     }).catch(() => {});
 
+    // Durably mark this message done so a post-TTL redelivery still can't
+    // create a second skill once the 15-minute processing claim has expired.
+    await store.complete(idempotencyKey);
+
     return c.json({ data: { skillId: skill.id, installId: install.id } }, 202);
   } catch (err) {
     console.error('Failed to create skill from conversation:', err);
+    // Release the claim so a retry of the same message isn't stuck behind a
+    // 15-minute idempotency window with no skill to show for it.
+    if (claimed) await store.release(idempotencyKey).catch(() => {});
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
 });
