@@ -15,7 +15,7 @@ import { Hono } from 'hono';
 vi.mock('@serverless-saas/database/client', () => ({ db: { select: vi.fn() } }));
 vi.mock('@serverless-saas/agent-schema/conversations', () => ({ conversations: {} }));
 vi.mock('@serverless-saas/agent-schema/agents', () => ({ agents: {} }));
-vi.mock('@serverless-saas/agent-schema/personas', () => ({ personas: {} }));
+vi.mock('@serverless-saas/agent-schema/personas', () => ({ personas: { id: 'p.id', name: 'p.name', tagline: 'p.tagline', slug: 'p.slug', suggestedPrompts: 'p.suggestedPrompts' } }));
 vi.mock('@serverless-saas/permissions', () => ({ hasPermission: () => true }));
 
 function appWithContext() {
@@ -140,6 +140,13 @@ describe('GET /conversations/:id — persona null-collapsing', () => {
 
         const res = await app.request('/conversations/conv-3');
         expect(res.status).toBe(200);
+
+        // Verify that db.select was called with a select object that includes slug and suggestedPrompts
+        expect((db.select as any).mock.calls[0][0].agent.persona).toMatchObject({
+            slug: 'p.slug',
+            suggestedPrompts: 'p.suggestedPrompts',
+        });
+
         const body = await res.json();
         expect(body.data.agent.persona.slug).toBe('producer');
         expect(body.data.agent.persona.suggestedPrompts).toEqual([
