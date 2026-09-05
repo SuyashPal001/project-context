@@ -21,6 +21,14 @@ interface CreateSkillResult {
  * can fix on the spot, rather than a `failed` version row the user discovers
  * minutes later on the Skills page.
  */
+// Best-effort mirror of parseSkillManifest, not a full re-implementation: the
+// worker module isn't importable from here (see task brief), so this checks
+// the delimiter and the two required keys by regex rather than by running a
+// real YAML.parse. A body with a `name:`/`description:` line present but
+// broken YAML elsewhere in the frontmatter (bad indentation, an unterminated
+// quote, etc.) passes this check and still fails at import time in the
+// worker, which does parse it for real and requires non-empty trimmed
+// strings for both fields.
 function validateSkillBody(body: string): string | null {
   if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) return `SKILL.md must be under ${MAX_BODY_BYTES} bytes`
   const match = FRONTMATTER_RE.exec(body)
@@ -30,6 +38,18 @@ function validateSkillBody(body: string): string | null {
   if (!/^description:\s*\S/m.test(frontmatter)) return "SKILL.md frontmatter is missing required field 'description'"
   return null
 }
+
+// Exported separately (rather than inlined into createTool's config) so a
+// test can assert on its shape directly: this is the security boundary the
+// API route's permission check depends on. tenantId/userId/agentId/
+// conversationId must never appear here — they come only from
+// execContext.requestContext (the authenticated session), never from
+// anything the model can name.
+export const createSkillInputSchema = z.object({
+  name: z.string().min(1).max(100).describe('Human-readable skill name, e.g. "Bid Writer"'),
+  description: z.string().max(2000).optional().describe('One line on what the skill is for'),
+  body: z.string().min(1).describe('The complete SKILL.md, frontmatter included'),
+})
 
 export const createSkillTool = createTool({
   id: 'create_skill',
@@ -43,11 +63,7 @@ You write the file. \`body\` must be a complete SKILL.md:
 - Never invent facts about the user's business. Where a specific is unknown, tell the agent to ask.
 
 The user is shown the draft and must approve it. The skill applies from their next message, not this reply.`,
-  inputSchema: z.object({
-    name: z.string().min(1).max(100).describe('Human-readable skill name, e.g. "Bid Writer"'),
-    description: z.string().max(2000).optional().describe('One line on what the skill is for'),
-    body: z.string().min(1).describe('The complete SKILL.md, frontmatter included'),
-  }),
+  inputSchema: createSkillInputSchema,
   execute: async (inputData, execContext) => {
     const { name, description, body } = inputData as { name: string; description?: string; body: string }
 
@@ -60,11 +76,16 @@ The user is shown the draft and must approve it. The skill applies from their ne
     const agentId = ctx?.get('agentId') as string | undefined
     const conversationId = ctx?.get('conversationId') as string | undefined
     const sendEvent = ctx?.get('sendEvent')
+    const sessionId = ctx?.get('sessionId') as string | undefined
 
     // No live session means the confirm gate would auto-approve — see its
-    // sendEvent guard. For a spend gate that is a documented hole; for a write
-    // into the tenant's skill library it would mean unattended creation.
-    if (!sendEvent || !tenantId || !userId || !agentId || !conversationId) {
+    // sendEvent/sessionId guard. For a spend gate that is a documented hole;
+    // for a write into the tenant's skill library it would mean unattended
+    // creation. Must cover every identifier confirmGenerationOrDecline's own
+    // guard checks (sendEvent, sessionId, tenantId, userId), not a subset —
+    // a caller that sets sendEvent without sessionId would otherwise slip
+    // past this guard and still get auto-approved by the gate underneath.
+    if (!sendEvent || !sessionId || !tenantId || !userId || !agentId || !conversationId) {
       return {
         success: false,
         error: 'Skills can only be created from a live chat session.',
@@ -97,7 +118,7 @@ The user is shown the draft and must approve it. The skill applies from their ne
       }
     }
 
-    const messageId = (ctx?.get('sessionId') as string | undefined) ?? conversationId
+    const messageId = sessionId ?? conversationId
 
     try {
       const res = await fetch(`${process.env.API_BASE_URL}/api/v1/internal/skills`, {

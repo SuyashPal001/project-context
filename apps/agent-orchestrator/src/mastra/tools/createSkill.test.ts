@@ -62,6 +62,18 @@ describe('create_skill', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  // confirmGenerationOrDecline itself auto-approves when sessionId is missing
+  // (alongside sendEvent/tenantId/userId) — this tool's own guard must cover
+  // every identifier that gate depends on, not a subset, or a caller that
+  // sets sendEvent without sessionId slips past this check and still gets
+  // rubber-stamped by the gate underneath.
+  it('refuses when sendEvent is present but sessionId is missing', async () => {
+    const result = await run({ name: 'Bid Writer', body: VALID_BODY }, execContext({ sessionId: undefined }))
+    expect(result.success).toBe(false)
+    expect(confirmMock).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('asks for confirmation with alwaysAsk and creates on approval', async () => {
     const result = await run({ name: 'Bid Writer', description: 'Writes bids', body: VALID_BODY })
 
@@ -117,5 +129,19 @@ describe('create_skill', () => {
     const withEmail = '---\nname: a\ndescription: b\n---\n\nMail ada@example.com about it.'
     await run({ name: 'Bid Writer', body: withEmail })
     expect(confirmMock.mock.calls[0][3]).toMatch(/personal|detected/i)
+  })
+
+  // Pins the security property the API route's permission check depends on:
+  // the model can never name a tenantId/userId/agentId/conversationId — those
+  // come only from execContext.requestContext. A future edit adding any of
+  // them back to the input schema should fail this test loudly.
+  it('exposes only name, description and body on the input schema — never identifiers from the session', async () => {
+    const { createSkillInputSchema } = await import('./createSkill.js')
+    const keys = Object.keys(createSkillInputSchema.shape)
+    expect(keys.sort()).toEqual(['body', 'description', 'name'])
+    expect(keys).not.toContain('tenantId')
+    expect(keys).not.toContain('userId')
+    expect(keys).not.toContain('agentId')
+    expect(keys).not.toContain('conversationId')
   })
 })
