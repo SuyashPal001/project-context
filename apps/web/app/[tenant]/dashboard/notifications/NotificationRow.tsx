@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import type { Notification } from "@/components/platform/notifications/types";
+import { NotificationIcon } from "@/components/platform/notifications/notificationVisuals";
 import { relativeTime } from "./_helpers";
 
 interface NotificationRowProps {
@@ -39,6 +40,7 @@ export function NotificationRow({ notification: n, canUpdate, onClick }: Notific
             ].join(" ")}
         >
             <div className="flex items-start justify-between gap-3">
+                <NotificationIcon messageType={n.messageType} className="mt-0.5" />
                 <div className="min-w-0 flex-1 space-y-1">
                     <p
                         className={[

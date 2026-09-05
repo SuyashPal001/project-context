@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import type { Notification, NotificationsInboxResponse } from "@/components/platform/notifications/types"
+import { NotificationIcon } from "@/components/platform/notifications/notificationVisuals"
 
 const FLYOUT_LIMIT = 20
 
@@ -164,22 +165,23 @@ export function NotificationsBell({ collapsed, compact }: { collapsed?: boolean;
                                 <button
                                     type="button"
                                     onClick={() => handleRowClick(n)}
-                                    className={cn(
-                                        "flex w-full flex-col gap-0.5 px-3.5 py-2 text-left transition-colors hover:bg-accent/50",
-                                        !n.read && "bg-primary/5"
-                                    )}
+                                    className="flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-accent/50"
                                 >
-                                    <div className="flex items-start justify-between gap-2">
-                                        <p className={cn("text-[12.5px] leading-snug", n.read ? "font-medium text-muted-foreground" : "font-semibold text-foreground")}>
+                                    <NotificationIcon messageType={n.messageType} className="mt-0.5" />
+                                    <div className="min-w-0 flex-1">
+                                        <p className={cn("text-[12.5px] leading-snug truncate", n.read ? "font-medium text-muted-foreground" : "font-semibold text-foreground")}>
                                             {n.title}
                                         </p>
-                                        <span className="shrink-0 text-[10px] text-muted-foreground/70 whitespace-nowrap">
+                                        <p className="text-[11.5px] text-muted-foreground truncate leading-relaxed">
+                                            {n.body}
+                                        </p>
+                                    </div>
+                                    <span className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                                        <span className="text-[10px] text-muted-foreground/70 whitespace-nowrap">
                                             {relativeTime(n.createdAt)}
                                         </span>
-                                    </div>
-                                    <p className="text-[11.5px] text-muted-foreground line-clamp-2 leading-relaxed">
-                                        {n.body}
-                                    </p>
+                                        {!n.read && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                                    </span>
                                 </button>
                             </React.Fragment>
                         )
