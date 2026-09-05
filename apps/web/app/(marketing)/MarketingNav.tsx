@@ -6,7 +6,7 @@ export function MarketingNav() {
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/olmoworks-mark.svg" alt="" className="shrink-0 object-contain" style={{ height: 22, width: "auto" }} />
+          <img src="/brand/olmoworks-mark.svg" alt="" className="shrink-0 object-contain" style={{ height: 28, width: "auto" }} />
           <span className="font-display text-lg leading-none">OlmoWorks</span>
         </Link>
         <div className="hidden items-center gap-8 sm:flex">
