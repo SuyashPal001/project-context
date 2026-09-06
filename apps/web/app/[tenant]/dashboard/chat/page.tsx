@@ -467,7 +467,7 @@ function ChatPage() {
                                         <CreditsPanel />
                                     </PopoverContent>
                                 </Popover>
-                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8 mt-[12vh]">
+                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8 mt-[28vh]">
                                     {firstName && <p className="text-3xl font-bold tracking-tight mb-2">Hi {firstName}</p>}
                                     <h1 className="text-3xl font-bold tracking-tight mb-8">What's on your mind today?</h1>
                                     <div className="w-full">
