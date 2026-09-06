@@ -360,11 +360,23 @@ NEVER claim to have called render_canvas unless you actually called it in this r
   // Sub-agent delegation to pm/architect/director/producer — gated to the
   // Olmo row only, since platformAgent is resolveAgent's fallback for every
   // unmatched agent name (Research Engineer, Analyst, custom agents, etc.).
-  // See olmoDelegates.ts for the gate and why the delegates are memory-inert.
+  // See olmoDelegates.ts for the gate itself.
+  //
   // Verified against @mastra/core 1.64 that a parent's own tool map is never
   // passed into a delegated sub-agent's tool list — the earlier concern here
   // (aiParas inheriting SERVER_TOOLS) does not reproduce; aiParas itself was
   // deleted from the codebase (57948a3d).
+  //
+  // Memory: the four delegates declare no `memory:` of their own, which stops
+  // them deriving a resource id from a model-writable tool field. It does NOT
+  // make delegated calls memory-inert — because THIS agent has
+  // `memory: getMastraMemory()` above, Mastra lends that instance to each
+  // memory-less delegate and scopes it by that model-influenced id, so a
+  // delegated turn still writes into the shared store under a steerable
+  // resource key. The thing keeping that from being a cross-tenant read is
+  // the explicit thread-scoping pinned in mastra/memory.ts — read the
+  // load-bearing note in getMastraMemory() before changing memory config here
+  // or on any delegate. Full mechanism: architectAgent.ts's delegate comment.
   agents: buildOlmoDelegates,
 
   // Dynamic model selection — see modelSelection.ts for the precedence order and

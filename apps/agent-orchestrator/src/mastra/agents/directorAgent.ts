@@ -52,7 +52,12 @@ export const directorAgent = new Agent({
   tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo },
 })
 
-// Used only as Olmo's delegate — no memory, see architectAgent.ts for why.
+// Used only as Olmo's delegate — no `memory:` of its own. Note this does NOT
+// make the delegated call memory-inert: Mastra lends the supervisor's memory
+// to a memory-less delegate and scopes it by a model-influenced resource id.
+// See architectAgent.ts's delegate comment for the full mechanism, and
+// mastra/memory.ts's getMastraMemory() for the thread-scoping that is what
+// actually keeps this from being a cross-tenant read channel.
 export const directorAgentDelegate = new Agent({
   id: 'pc-director-delegate',
   name: 'Director',

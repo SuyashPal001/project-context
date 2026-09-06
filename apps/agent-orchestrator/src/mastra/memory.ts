@@ -119,6 +119,29 @@ export async function truncateMastraThread(conversationId: string, fromTimestamp
 // Singleton Memory instance — shared across all tenants.
 // Isolation is enforced per-request via resourceId (MASTRA_RESOURCE_ID_KEY)
 // set on the RequestContext before each generate() call.
+//
+// `scope: 'thread'` below is LOAD-BEARING for Olmo's sub-agent delegation —
+// it is stated explicitly rather than left to Mastra's default because
+// changing it to 'resource' silently opens a cross-tenant read channel.
+// Why: this Memory instance is Olmo's (platformAgent's). When Olmo delegates
+// to pm/architect/director/producer, those delegate variants deliberately
+// declare no `memory:` of their own — but that does NOT make the delegated
+// call memory-inert. Verified against @mastra/core 1.64
+// (dist/agent-DsRUDsS_.js): because the supervisor has memory and the
+// delegate does not, Mastra lends THIS instance to the delegate
+// (MASTRA_INHERITED_MEMORY_KEY, :35203) and binds it to
+// `subAgentResourceId = \`${inputData.resourceId}-${agentName}\`` (:35144) —
+// where `inputData.resourceId` is a model-writable sub-agent tool input, and
+// the tenant's real resource id (MASTRA_RESOURCE_ID_KEY) has been stripped
+// from the delegated context (:35117).
+//
+// So a delegated turn WRITES into this shared store under a resource id the
+// model can be steered to choose (a prompt injection in retrieved/fetched
+// content can influence it). What keeps that from also being a cross-tenant
+// READ is exactly two things: `subAgentThreadId` always carries a random
+// UUID suffix (:35138), and recall + working memory are THREAD-scoped here.
+// Flip either scope to 'resource' and the model-chosen resource id becomes a
+// shared scratchpad two different tenants can both address by name.
 export function getMastraMemory(): Memory {
   if (memory) return memory
 
@@ -131,9 +154,13 @@ export function getMastraMemory(): Memory {
       semanticRecall: {
         topK: 3,
         messageRange: 2,
+        // Do not change to 'resource' — see the delegation note above.
+        scope: 'thread',
       },
       workingMemory: {
         enabled: true,
+        // Do not change to 'resource' — see the delegation note above.
+        scope: 'thread',
         template: `# Tenant Context
 - Product Name:
 - Industry:

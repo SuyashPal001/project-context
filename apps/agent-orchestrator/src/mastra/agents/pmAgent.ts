@@ -69,9 +69,16 @@ export const pmAgent = new Agent({
   scorers: pmScorers,
 })
 
-// Used only as Olmo's delegate — no memory, see architectAgent.ts for why.
-// prdAgent/roadmapAgent/taskAgent have no memory of their own, so nesting them
-// under this memory-inert variant introduces no new risk.
+// Used only as Olmo's delegate — no `memory:` of its own. Note this does NOT
+// make the delegated call memory-inert: Mastra lends the supervisor's memory
+// to a memory-less delegate and scopes it by a model-influenced resource id.
+// See architectAgent.ts's delegate comment for the full mechanism, and
+// mastra/memory.ts's getMastraMemory() for the thread-scoping that is what
+// actually keeps this from being a cross-tenant read channel.
+//
+// prdAgent/roadmapAgent/taskAgent declare no memory either, so a further
+// nested delegation from here inherits along the same path rather than
+// introducing a second, differently-scoped one.
 export const pmAgentDelegate = new Agent({
   id: 'pc-pm-delegate',
   name: 'Saarthi PM',

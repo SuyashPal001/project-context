@@ -52,10 +52,28 @@ export const architectAgent = new Agent({
 })
 
 // Used only as Olmo's delegate (see mastra/agents/olmoDelegates.ts). No `memory`
-// key — a delegated sub-agent's resource id is derived by Mastra from a
-// model-writable tool field, not the tenant's real resource id, so giving this
-// variant memory would let an injected instruction steer where it writes/reads
-// working memory across tenants. Standalone architectAgent above is unaffected.
+// key — this is the canonical explanation the other three delegate variants
+// (pm/director/producer) point back to. Read it before changing any of them.
+//
+// A delegated sub-agent's resource id is derived by Mastra from a
+// model-writable tool field (`inputData.resourceId`), not the tenant's real
+// resource id — MASTRA_RESOURCE_ID_KEY is stripped from the delegated context
+// copy. Declaring `memory: architectMemory` here would give this variant its
+// own resource-scoped working memory (`filesDiscussed`/`patternsConfirmed`)
+// keyed off that model-writable id, which is the worst case in the set.
+// Omitting `memory:` removes that path.
+//
+// It does NOT make the delegated call memory-inert — an earlier revision of
+// this comment and of the design doc claimed it did, and that was wrong.
+// Verified against @mastra/core 1.64: because the supervisor (Olmo) has memory
+// and this variant does not, Mastra lends Olmo's Memory instance to the
+// delegate and scopes it by that same model-influenced resource id. A
+// delegated turn therefore still WRITES into Olmo's shared store under a
+// resource id an injected instruction can steer. What keeps that from being a
+// cross-tenant READ is the thread-scoped recall/working-memory pinned in
+// mastra/memory.ts (plus Mastra's random suffix on the delegated thread id) —
+// see the load-bearing note in getMastraMemory(). Standalone architectAgent
+// above is unaffected either way: it keeps architectMemory in full.
 export const architectAgentDelegate = new Agent({
   id: 'pc-architect-delegate',
   name: 'Architect',

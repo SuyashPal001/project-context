@@ -4,11 +4,21 @@ import { directorAgent, directorAgentDelegate } from '../directorAgent.js'
 import { producerAgent, producerAgentDelegate } from '../producerAgent.js'
 import { pmAgent, pmAgentDelegate } from '../pmAgent.js'
 
-describe('delegate variants run memory-inert', () => {
+describe('delegate variants omit their own memory config', () => {
   // `memory` is a private field on @mastra/core's Agent (`#memory`), not a public
   // property — there is nothing to read via `(agent as any).memory`, on either
   // variant, regardless of configuration. `hasOwnMemory()` is the public,
   // typed accessor for exactly this check (see agent.d.ts).
+  //
+  // Scope of what this file proves: these are CONFIG assertions. They verify
+  // the delegates declare no memory of their own and the standalone agents do
+  // — nothing more. They deliberately do not claim the delegated call runs
+  // memory-inert at runtime, because it does not: Mastra lends the
+  // supervisor's memory to a memory-less delegate and scopes it by a
+  // model-influenced resource id. See architectAgent.ts's delegate comment for
+  // the mechanism and mastra/memory.ts's getMastraMemory() for the
+  // thread-scoping that is the actual mitigation. Runtime behaviour is covered
+  // by the manual Studio/trace check in the design doc, not here.
   it('architectAgentDelegate has no memory, architectAgent keeps its own', () => {
     expect(architectAgentDelegate.hasOwnMemory()).toBe(false)
     expect(architectAgent.hasOwnMemory()).toBe(true)
