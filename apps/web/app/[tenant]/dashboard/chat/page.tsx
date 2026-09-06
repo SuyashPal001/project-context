@@ -450,7 +450,7 @@ function ChatPage() {
                                 <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['conversations'] })} size="lg" className="rounded-full shadow-lg h-12 px-6">Retry Loading</Button>
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center p-8 text-center bg-background h-full relative overflow-y-auto">
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative overflow-y-auto">
                                 {sidebarToggleButton}
                                 <Popover>
                                     <PopoverTrigger asChild>
@@ -467,7 +467,7 @@ function ChatPage() {
                                         <CreditsPanel />
                                     </PopoverContent>
                                 </Popover>
-                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center pt-20 pb-8">
+                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
                                     {firstName && <p className="text-sm text-muted-foreground mb-2">Hi {firstName}</p>}
                                     <h1 className="text-3xl font-bold tracking-tight mb-8">What's on your mind today?</h1>
                                     <div className="w-full">
