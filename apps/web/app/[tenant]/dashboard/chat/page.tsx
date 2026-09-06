@@ -225,6 +225,10 @@ function ChatPage() {
     // Cleared immediately after firing so a later empty (0-message) conversation
     // load never re-sends it.
     const [pendingFirstMessage, setPendingFirstMessage] = useState<string | null>(null);
+    // Allow-mode toggled in that same pre-conversation composer — allowMode is
+    // stored on the conversation row, so there's nothing to PATCH until one
+    // exists. Held here and applied once, same as pendingFirstMessage above.
+    const [pendingAllowMode, setPendingAllowMode] = useState<'ask' | 'auto' | null>(null);
     // Which library tab (Templates/Avatars/Products/Audio) is expanded under the
     // no-conversation-selected composer. Null collapses the panel.
     const [activeEmptyStateTab, setActiveEmptyStateTab] = useState<string | null>(null);
@@ -234,7 +238,11 @@ function ChatPage() {
         if (!conversationId || isLoadingMessages || messages.length > 0) return;
         sendMessage(pendingFirstMessage);
         setPendingFirstMessage(null);
-    }, [pendingFirstMessage, conversationId, isLoadingMessages, messages.length, sendMessage]);
+        if (pendingAllowMode && pendingAllowMode !== 'ask') {
+            setAllowMode.mutate(pendingAllowMode);
+        }
+        setPendingAllowMode(null);
+    }, [pendingFirstMessage, conversationId, isLoadingMessages, messages.length, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const noopActivity = useCallback(() => {}, []);
 
@@ -464,9 +472,13 @@ function ChatPage() {
                                     <div className="w-full">
                                         <ChatInput
                                             onSend={(text) => { setPendingFirstMessage(text); handleNewChat(); }}
+                                            onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined}
+                                            onMediaClick={(t) => toast.info(`Adding ${t}...`)}
                                             isLoading={false}
                                             isStreaming={false}
                                             agentId={activeAgents[0]?.id}
+                                            allowMode={pendingAllowMode ?? 'ask'}
+                                            onAllowModeChange={setPendingAllowMode}
                                             {...modelChangeProps}
                                         />
                                     </div>
