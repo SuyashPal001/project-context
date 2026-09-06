@@ -125,12 +125,38 @@ export function useChatPage() {
             const agentId = selectedConversation?.agentId || selectedConversation?.agent?.id;
             return api.patch(`/api/v1/agents/${agentId}`, values);
         },
+        // Optimistic: the picker's checkmark and the composer's trigger label
+        // both derive from selectedConversation.agent.llmProviderId, which
+        // otherwise only changes after the PATCH round-trip + invalidate — a
+        // visible lag between clicking a model and the UI admitting it stuck.
+        onMutate: async (values) => {
+            await queryClient.cancelQueries({ queryKey: ['conversation', conversationId] });
+            await queryClient.cancelQueries({ queryKey: ['conversations'] });
+
+            const prevConversation = queryClient.getQueryData<{ data: Conversation }>(['conversation', conversationId]);
+            const prevConversations = queryClient.getQueryData<ConversationsResponse>(['conversations']);
+
+            const patchAgent = (agent?: Agent) => agent ? { ...agent, llmProviderId: values.llmProviderId } : agent;
+
+            queryClient.setQueryData<{ data: Conversation }>(['conversation', conversationId], (old) =>
+                old ? { ...old, data: { ...old.data, agent: patchAgent(old.data.agent) } } : old
+            );
+            queryClient.setQueryData<ConversationsResponse>(['conversations'], (old) =>
+                old ? { ...old, data: old.data.map(c => c.id === conversationId ? { ...c, agent: patchAgent(c.agent) } : c) } : old
+            );
+
+            return { prevConversation, prevConversations };
+        },
+        onError: (err: any, _values, context) => {
+            if (context?.prevConversation) queryClient.setQueryData(['conversation', conversationId], context.prevConversation);
+            if (context?.prevConversations) queryClient.setQueryData(['conversations'], context.prevConversations);
+            toast.error(err.data?.message || 'Failed to update model');
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
             queryClient.invalidateQueries({ queryKey: ['conversations'] });
             toast.success('AI Model updated');
         },
-        onError: (err: any) => { toast.error(err.data?.message || 'Failed to update model'); },
     });
 
     const deleteConversation = useMutation({

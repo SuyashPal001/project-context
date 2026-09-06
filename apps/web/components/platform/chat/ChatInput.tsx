@@ -794,9 +794,9 @@ export function ChatInput({
                                                                     />
                                                                 </span>
                                                                 <span className="flex-1 min-w-0 flex flex-col gap-0.5">
-                                                                    <span className="flex items-center gap-1.5">
+                                                                    <span className="flex items-center gap-1.5 min-w-0">
                                                                         <span className={cn(
-                                                                            "truncate text-sm",
+                                                                            "truncate text-sm min-w-0",
                                                                             isLive ? "text-foreground font-medium" : "text-muted-foreground",
                                                                         )}>
                                                                             {provider.displayName}
@@ -815,7 +815,7 @@ export function ChatInput({
                                                                 </span>
                                                                 {isLive && badges.get(provider.id) && (
                                                                     <span
-                                                                        className="absolute right-9 top-1/2 -translate-y-1/2 shrink-0 flex items-center gap-1 text-xs text-muted-foreground opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[highlighted]:opacity-100"
+                                                                        className="shrink-0 flex items-center gap-1 text-xs text-muted-foreground opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[highlighted]:opacity-100"
                                                                     >
                                                                         <Sparkles className="h-3 w-3" />
                                                                         {badges.get(provider.id)} cost
