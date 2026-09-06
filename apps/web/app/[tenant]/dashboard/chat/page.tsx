@@ -462,7 +462,7 @@ function ChatPage() {
                                 <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['conversations'] })} size="lg" className="rounded-full shadow-lg h-12 px-6">Retry Loading</Button>
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative overflow-y-auto">
+                            <div className="flex-1 flex flex-col items-center p-8 text-center bg-background h-full relative overflow-y-auto">
                                 {sidebarToggleButton}
                                 <Popover>
                                     <PopoverTrigger asChild>
@@ -479,13 +479,14 @@ function ChatPage() {
                                         <CreditsPanel />
                                     </PopoverContent>
                                 </Popover>
-                                {/* One column, centered as a single block — the gap above the
-                                    brand row mirrors the gap below the pills row by construction,
-                                    since the whole stack (not just the composer) is what's centered.
-                                    mt-10 nudges it down slightly off dead-center so the composer has
-                                    more headroom above it for the upward "@"/"#" palettes — a small,
-                                    deliberate asymmetry, not the centering breaking. */}
-                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8 mt-10">
+                                {/* Two ratio spacers instead of justify-center + margin: centering
+                                    a box with margin splits that margin between the two gaps rather
+                                    than adding it to just one side, which made an earlier margin-based
+                                    "shift down" attempt only move the block half as far as intended.
+                                    A 3:2 spacer ratio gives a direct, predictable downward shift — more
+                                    room above the composer for the upward "@"/"#" palettes. */}
+                                <div className="flex-[3] min-h-0" />
+                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
                                     <div className="flex flex-col items-center gap-2 mb-8">
                                         <div className="flex items-center gap-1.5 opacity-80">
                                             <OlmoMark height={18} />
@@ -542,6 +543,7 @@ function ChatPage() {
                                         </div>
                                     )}
                                 </div>
+                                <div className="flex-[2] min-h-0" />
                             </div>
                         )}
                     </div>
