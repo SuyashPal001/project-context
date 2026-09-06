@@ -181,6 +181,11 @@ onboardingRoutes.post('/complete', async (c) => {
         createdBy: userId,
     }).returning();
 
+    const [discoPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'disco')).limit(1);
+    if (!discoPersona) {
+        console.warn('[onboarding] disco persona not found — run the personas seed before onboarding tenants. Creating Research Engineer agent with personaId: null.');
+    }
+
     const [researchAgent] = await db.insert(agents).values({
         tenantId,
         name: 'Research Engineer',
@@ -189,6 +194,7 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         apiKeyId: researchKey.id,
         model: resolvedModel,
+        personaId: discoPersona?.id ?? null,
         createdBy: userId,
     }).returning();
 
