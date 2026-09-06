@@ -505,7 +505,7 @@ function ChatPage() {
                                             )}
                                         </div>
                                     </div>
-                                    <h1 className="text-3xl font-bold tracking-tight mb-8">{firstName ? `Hi ${firstName}, what's on your mind today?` : "What's on your mind today?"}</h1>
+                                    <h1 className="text-3xl font-bold tracking-tight mb-8">{firstName ? `Hi ${firstName}, what are we creating today?` : "What are we creating today?"}</h1>
                                     <div className="w-full">
                                         <ChatInput
                                             onSend={(text) => { setPendingFirstMessage(text); handleNewChat(); }}
