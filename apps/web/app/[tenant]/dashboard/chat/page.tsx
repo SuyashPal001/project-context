@@ -479,12 +479,16 @@ function ChatPage() {
                                         <CreditsPanel />
                                     </PopoverContent>
                                 </Popover>
-                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
-                                    <div className="flex items-center gap-2 mb-3 opacity-80">
-                                        <OlmoMark height={22} />
-                                        <span className="text-base font-semibold tracking-tight">Olmo Creative Agent</span>
+                                {/* Pinned to the top of the panel, out of the centered composer
+                                    column below — keeping it there gave the composer less headroom
+                                    for the upward "@"/"#" palettes and cut them off on shorter
+                                    viewports. */}
+                                <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3">
+                                    <div className="flex items-center gap-1.5 opacity-80">
+                                        <OlmoMark height={18} />
+                                        <span className="text-sm font-semibold tracking-tight">Olmo Creative Agent</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-1.5 text-xs font-medium mb-6">
+                                    <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium">
                                         <span className="text-muted-foreground">{currentPlanName} plan</span>
                                         {nextPlan && (
                                             <>
@@ -496,6 +500,8 @@ function ChatPage() {
                                             </>
                                         )}
                                     </div>
+                                </div>
+                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
                                     <h1 className="text-3xl font-bold tracking-tight mb-8">{firstName ? `Hi ${firstName}, what's on your mind today?` : "What's on your mind today?"}</h1>
                                     <div className="w-full">
                                         <ChatInput
