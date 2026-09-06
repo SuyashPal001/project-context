@@ -29,6 +29,59 @@ const PLATFORM_LLM_PROVIDERS: {
         displayName: 'Claude Sonnet 4.6',
         costPerToken: '0.00002000',
     },
+    // Curated "top companies" set added 2026-09-06, routed through OpenRouter
+    // rather than direct provider keys — the DB "provider" enum column stays
+    // 'openrouter' for all four; the real upstream model lives in `model`
+    // ("brand/slug"), which buildGatewayModelString (apps/agent-orchestrator/
+    // src/mastra/model.ts) prefixes with "openrouter/" for the gateway, and
+    // which ProviderIcon.iconKey reads to pick each brand's icon since the
+    // provider column alone can't distinguish them. Requires OPENROUTER_API_KEY
+    // set on the inference-gateway VM — until then these 404/503 if selected.
+    {
+        provider: 'openrouter',
+        model: 'anthropic/claude-sonnet-5',
+        isDefault: false,
+        isPlatform: true,
+        status: 'live',
+        displayName: 'Claude Sonnet 5',
+        costPerToken: '0.00000900',
+    },
+    {
+        provider: 'openrouter',
+        model: 'openai/gpt-5.2',
+        isDefault: false,
+        isPlatform: true,
+        status: 'live',
+        displayName: 'GPT-5.2',
+        costPerToken: '0.00000788',
+    },
+    {
+        provider: 'openrouter',
+        model: 'z-ai/glm-4.6',
+        isDefault: false,
+        isPlatform: true,
+        status: 'live',
+        displayName: 'GLM-4.6',
+        costPerToken: '0.00000109',
+    },
+    {
+        provider: 'openrouter',
+        model: 'moonshotai/kimi-k2.6',
+        isDefault: false,
+        isPlatform: true,
+        status: 'live',
+        displayName: 'Kimi K2.6',
+        costPerToken: '0.00000143',
+    },
+    {
+        provider: 'openrouter',
+        model: 'deepseek/deepseek-v4-pro',
+        isDefault: false,
+        isPlatform: true,
+        status: 'live',
+        displayName: 'DeepSeek V4 Pro',
+        costPerToken: '0.00000065',
+    },
 ];
 
 export async function seedLlmProviders(db: typeof DB) {

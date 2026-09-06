@@ -784,6 +784,7 @@ export function ChatInput({
                                                                 >
                                                                     <ProviderIcon
                                                                         provider={provider.provider}
+                                                                        model={provider.model}
                                                                         className={cn(
                                                                             "h-5 w-5 shrink-0",
                                                                             isLive ? "text-foreground/80" : "text-muted-foreground/30",

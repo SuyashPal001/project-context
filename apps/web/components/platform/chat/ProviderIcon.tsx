@@ -49,6 +49,34 @@ function GoogleGMark(props: React.SVGProps<SVGSVGElement>) {
     );
 }
 
+function GLMMark(props: React.SVGProps<SVGSVGElement>) {
+    // Bold blockish "Z" (Zhipu/Z.ai), same reinterpreted-glyph approach as
+    // AnthropicMark's "A" — not a trace of the real logo.
+    return (
+        <svg viewBox="0 0 24 24" fill="none" {...props}>
+            <path fill="currentColor" d="M5 4h14v3.2L8.7 17H19v3H5v-3.2L15.3 7H5V4Z" />
+        </svg>
+    );
+}
+
+function KimiMark(props: React.SVGProps<SVGSVGElement>) {
+    // Crescent moon for Moonshot AI's Kimi.
+    return (
+        <svg viewBox="0 0 24 24" fill="none" {...props}>
+            <path fill="currentColor" d="M13.2 2.3a10 10 0 1 0 8.5 15.9A8.3 8.3 0 0 1 13.2 2.3Z" />
+        </svg>
+    );
+}
+
+function DeepSeekMark(props: React.SVGProps<SVGSVGElement>) {
+    // Simplified whale silhouette (DeepSeek's mascot), body + tail fin.
+    return (
+        <svg viewBox="0 0 24 24" fill="none" {...props}>
+            <path fill="currentColor" d="M2.5 13c0-3.6 3.4-6 7.7-6 3.3 0 5.7 1.6 6.9 3.4l4.4-2.2-1.1 3.3 1.1 3.3-4.4-2.2c-1.2 1.8-3.6 3.4-6.9 3.4-4.3 0-7.7-2.4-7.7-6Z" />
+        </svg>
+    );
+}
+
 function MistralMark(props: React.SVGProps<SVGSVGElement>) {
     return (
         <svg viewBox="0 0 24 24" fill="none" {...props}>
@@ -76,9 +104,25 @@ const MARKS: Record<string, (props: React.SVGProps<SVGSVGElement>) => React.JSX.
     gemini: GoogleGMark,
     google: GoogleGMark,
     mistral: MistralMark,
+    'z-ai': GLMMark,
+    glm: GLMMark,
+    moonshotai: KimiMark,
+    kimi: KimiMark,
+    deepseek: DeepSeekMark,
 };
 
-export function ProviderIcon({ provider, className }: { provider: string; className?: string }) {
-    const Mark = MARKS[provider.toLowerCase()] ?? GenericModelMark;
+// llm_providers.model for an openrouter-routed row is the upstream slug
+// ("openai/gpt-5.2", "z-ai/glm-4.6", ...) — the DB "provider" column is just
+// "openrouter" for all of them, so it can't tell OpenAI apart from GLM. The
+// slug's first path segment is the real brand and is what picks the icon.
+function iconKey(provider: string, model?: string): string {
+    if (provider.toLowerCase() === 'openrouter' && model?.includes('/')) {
+        return model.split('/')[0].toLowerCase();
+    }
+    return provider.toLowerCase();
+}
+
+export function ProviderIcon({ provider, model, className }: { provider: string; model?: string; className?: string }) {
+    const Mark = MARKS[iconKey(provider, model)] ?? GenericModelMark;
     return <Mark className={className} />;
 }
