@@ -23,10 +23,16 @@ export const conversationsRoutes = new Hono<AppEnv>();
 // Presigned GET URLs expire (1hr — see storageService.getDownloadUrl), so avatarUrl is
 // never persisted on agents; only the stable avatarFileId is. Resolve a fresh URL on
 // every read here too, mirroring agents.crud.ts's resolveAvatarUrl.
-async function resolveConversationAgentAvatar<T extends { tenantId: string; agent: { avatarFileId: string | null } }>(row: T) {
+//
+// The seeded default agent (Olmo, isDefault: true) never gets an avatarFileId — see
+// the matching comment on agents.crud.ts's resolveAvatarUrl for why it uses the
+// static brand mark instead of the S3 presigned-URL path.
+async function resolveConversationAgentAvatar<T extends { tenantId: string; agent: { avatarFileId: string | null; isDefault?: boolean } }>(row: T) {
     const { avatarFileId, ...agentRest } = row.agent;
     let avatarUrl: string | null = null;
-    if (avatarFileId) {
+    if (row.agent.isDefault) {
+        avatarUrl = '/brand/olmoworks-mark.svg';
+    } else if (avatarFileId) {
         try { avatarUrl = await storageService.getDownloadUrl(row.tenantId, avatarFileId); } catch { /* file missing/deleted */ }
     }
     // Cast: TS can't narrow the generic `agent` shape after the Omit/spread — same
@@ -64,7 +70,7 @@ const conversationSelect = {
     updatedAt: conversations.updatedAt,
     agent: {
         id: agents.id, name: agents.name, type: agents.type,
-        avatarFileId: agents.avatarFileId,
+        avatarFileId: agents.avatarFileId, isDefault: agents.isDefault,
         // Cast to `any`: drizzle's SelectedFields type only supports one level of
         // nested-object selection, but this shape nests persona inside agent (two
         // levels) to match the API response contract. Runtime flattening handles
@@ -129,7 +135,7 @@ conversationsRoutes.get('/', async (c) => {
                 )`,
                 agent: {
                     id: agents.id, name: agents.name, type: agents.type,
-                    avatarFileId: agents.avatarFileId,
+                    avatarFileId: agents.avatarFileId, isDefault: agents.isDefault,
                     // Cast to `any`: drizzle's SelectedFields type only supports one level
                     // of nested-object selection, but this shape nests persona inside
                     // agent (two levels) to match the API response contract. Runtime

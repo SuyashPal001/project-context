@@ -34,7 +34,14 @@ async function checkFireDependencies(agentId: string): Promise<{ shiftsCount: nu
 // never persisted; only the stable avatarFileId is. Resolve a fresh URL on every read,
 // same as chat attachments already do. Swallows a missing/deleted file rather than
 // failing the whole agent list/detail response.
-async function resolveAvatarUrl(tenantId: string, avatarFileId: string | null): Promise<string | null> {
+//
+// The seeded default agent (Olmo, isDefault: true) never gets an avatarFileId — it's
+// the platform's own agent, not a per-tenant upload, so it uses the brand mark
+// (apps/web/public/brand/olmoworks-mark.svg) directly rather than routing a static
+// asset through the S3 presigned-URL machinery built to solve upload-expiry, a
+// problem this asset doesn't have.
+async function resolveAvatarUrl(tenantId: string, avatarFileId: string | null, isDefault?: boolean): Promise<string | null> {
+    if (isDefault) return '/brand/olmoworks-mark.svg';
     if (!avatarFileId) return null;
     try {
         return await storageService.getDownloadUrl(tenantId, avatarFileId);
@@ -70,7 +77,7 @@ export async function handleListAgents(c: Context<AppEnv>) {
         .orderBy(asc(agents.createdAt));
 
     const data = await Promise.all(rows.map(async ({ avatarFileId, ...row }) => ({
-        ...row, avatarUrl: await resolveAvatarUrl(tenantId, avatarFileId),
+        ...row, avatarUrl: await resolveAvatarUrl(tenantId, avatarFileId, row.isDefault),
     })));
 
     return c.json({ data });
@@ -90,7 +97,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
             id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
             model: agents.model, status: agents.status, apiKeyId: agents.apiKeyId,
             llmProviderId: agents.llmProviderId, avatarFileId: agents.avatarFileId, avatarParams: agents.avatarParams, description: agents.description,
-            isInternal: agents.isInternal, createdBy: agents.createdBy, personaId: agents.personaId,
+            isInternal: agents.isInternal, isDefault: agents.isDefault, createdBy: agents.createdBy, personaId: agents.personaId,
             createdAt: agents.createdAt, updatedAt: agents.updatedAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
@@ -119,7 +126,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
     // avatarFileId stays in the response (unlike the list endpoint) so the identity
     // form can round-trip it unchanged on saves that don't touch the avatar — the
     // resolved avatarUrl alone isn't enough to reconstruct it.
-    const avatarUrl = await resolveAvatarUrl(tenantId, agent.avatarFileId);
+    const avatarUrl = await resolveAvatarUrl(tenantId, agent.avatarFileId, agent.isDefault);
     return c.json({ ...agent, avatarUrl, llmProvider, createdByName: creator?.name ?? null });
 }
 
@@ -250,7 +257,7 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
         }).catch((err) => console.error('[agents] update failed:', err));
     }
 
-    const updatedAvatarUrl = await resolveAvatarUrl(tenantId, updated.avatarFileId);
+    const updatedAvatarUrl = await resolveAvatarUrl(tenantId, updated.avatarFileId, updated.isDefault);
     return c.json({ data: { agent: { ...updated, avatarUrl: updatedAvatarUrl } } });
 }
 
