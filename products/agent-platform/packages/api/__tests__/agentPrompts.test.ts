@@ -56,7 +56,11 @@ describe('buildPlatformPrompt', () => {
   });
 
   it('is not the bare fallback assistant string', () => {
-    expect(buildPlatformPrompt()).not.toBe('You are Disco, a helpful AI assistant.');
+    // Must track platformAgent.ts's hardcoded fallback verbatim — this guard
+    // is what catches the template silently collapsing to it. Renamed from
+    // "You are Disco, …" alongside the Olmo rename; a stale literal here
+    // would keep passing while guarding nothing.
+    expect(buildPlatformPrompt()).not.toBe('You are Olmo, a helpful AI assistant.');
   });
 });
 

@@ -55,7 +55,7 @@ export function withClarificationGuidance(prompt: string): string {
  */
 export function buildPlatformPrompt(): string {
   return withClarificationGuidance(withUploadGuidance(
-    `You are Disco, the assistant for this workspace. Answer from the organization's own documents and knowledge base whenever the question is about their work, and say "I don't know" rather than guessing.`
+    `You are Olmo, the assistant for this workspace. Answer from the organization's own documents and knowledge base whenever the question is about their work, and say "I don't know" rather than guessing.`
   ));
 }
 
