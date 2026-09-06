@@ -10,7 +10,7 @@ import pg from 'pg'
 import { platformModel, liteModel, privateModel } from '../model.js'
 import { selectModel } from './modelSelection.js'
 import type { TenantContext } from '../context.js'
-import { getMastraMemory } from '../memory.js'
+import { getOlmoMemory } from '../memory.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
 import { createViolationHandler } from '../guardrails.js'
@@ -25,6 +25,7 @@ import { renderCanvas } from '../tools/renderCanvas.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
 import { createSkillTool } from '../tools/createSkill.js'
+import { buildOlmoDelegates } from './olmoDelegates.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -66,7 +67,7 @@ async function fetchPlatformPrompt(): Promise<string> {
   } catch (err) {
     console.warn('[mastra:platform] fetchPlatformPrompt DB error:', (err as Error).message)
   }
-  const fallback = 'You are Disco, a helpful AI assistant.'
+  const fallback = 'You are Olmo, a helpful AI assistant.'
   _promptCache = { prompt: fallback, expiresAt: Date.now() + PROMPT_CACHE_TTL_MS }
   return fallback
 }
@@ -255,13 +256,17 @@ const systemPromptScrubber = new SystemPromptScrubber({
 // tools:        dynamic — builds per-request MCPClient from requestContext.
 //               Falls back to SERVER_TOOLS when requestContext has no tenantId
 //               (e.g., during tool discovery calls from Mastra Studio).
-// memory:       getMastraMemory() singleton — isolation enforced by resourceId.
+// memory:       getOlmoMemory() — Olmo's OWN instance, not the shared
+//               getMastraMemory() singleton. Same storage/vector/embedder, but
+//               thread-scoped recall and working memory, which is what keeps
+//               delegated sub-agent calls from becoming a cross-tenant read
+//               channel. See getOlmoMemory()'s note in memory.ts.
 // model:        AI SDK connector routes through Inference Gateway at INFERENCE_GATEWAY_URL.
 // ---------------------------------------------------------------------------
 
 export const platformAgent = new Agent({
-  id: 'disco',
-  name: 'Disco',
+  id: 'olmo',
+  name: 'Olmo',
 
   instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
     // Per-agent override takes precedence over the global agent_templates prompt.
@@ -354,15 +359,32 @@ NEVER claim to have called render_canvas unless you actually called it in this r
     return { ...filteredMcpTools, ...SERVER_TOOLS }
   },
 
-  memory: getMastraMemory(),
+  memory: getOlmoMemory(),
 
-  // Specialist agent delegation — Saarthi recognises pension scrutiny tasks
-  // and routes them to AI-PARAS (Tier 2) which delegates reading to Tier 3.
-  // agents: { aiParas: aiParasAgent },
-  // NOTE: aiParasAgent removed from sub-agents map. Having it here caused
-  // platformAgent's SERVER_TOOLS (internet_search, web_fetch) to leak into
-  // aiParasAgent's tool list when called as a sub-agent. AI-PARAS is
-  // registered standalone in the Mastra registry and testable directly in Studio.
+  // Sub-agent delegation to pm/architect/director/producer — gated to the
+  // Olmo row only, since platformAgent is resolveAgent's fallback for every
+  // unmatched agent name (Research Engineer, Analyst, custom agents, etc.).
+  // See olmoDelegates.ts for the gate itself.
+  //
+  // Verified against @mastra/core 1.64 that a parent's own tool map is never
+  // passed into a delegated sub-agent's tool list — the earlier concern here
+  // (aiParas inheriting SERVER_TOOLS) does not reproduce; aiParas itself was
+  // deleted from the codebase (57948a3d).
+  //
+  // Memory: the four delegates declare no `memory:` of their own, which stops
+  // them deriving a resource id from a model-writable tool field. It does NOT
+  // make delegated calls memory-inert — because THIS agent has
+  // `memory: getOlmoMemory()` above, Mastra lends that instance to each
+  // memory-less delegate and scopes it by that model-influenced id, so a
+  // delegated turn still writes into the store under a steerable resource key.
+  // The thing keeping that from being a cross-tenant READ is that
+  // getOlmoMemory() pins thread-scoped recall and working memory — which is
+  // exactly why Olmo has its own Memory instance instead of sharing
+  // getMastraMemory() with director/pm/producer, who keep Mastra's default
+  // resource scope for cross-conversation memory. Read getOlmoMemory()'s
+  // note in memory.ts before changing memory config here or on any delegate.
+  // Full mechanism: architectAgent.ts's delegate comment.
+  agents: buildOlmoDelegates,
 
   // Dynamic model selection — see modelSelection.ts for the precedence order and
   // why it's a separate module (testability: this file eagerly builds DB/network

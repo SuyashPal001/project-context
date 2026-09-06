@@ -7,12 +7,10 @@ import { generateImage } from '../tools/generateImage.js'
 import { editImage } from '../tools/editImage.js'
 import { generateVideo } from '../tools/generateVideo.js'
 
-export const directorAgent = new Agent({
-  id: 'pc-director',
-  name: 'Director',
-  description: 'Generates and edits images from a text description.',
-  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-    const base = `You are Director — an image generation specialist. You create and edit images from descriptions.
+const DIRECTOR_DESCRIPTION = 'Generates and edits images from a text description.'
+
+const directorInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
+  const base = `You are Director — an image generation specialist. You create and edit images from descriptions.
 
 ## Rules
 - Call generate_image for a new image from a text description.
@@ -37,13 +35,37 @@ export const directorAgent = new Agent({
   - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - "CONFIRM_BUSY": another generation confirmation is already awaiting the user's decision in this conversation — do not retry immediately; wait for the user to resolve it, or ask them directly.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.`
-    const persona = requestContext?.get('personaPersonality') as string | undefined
-    return persona ? `${persona}\n\n${base}` : base
-  },
+  const persona = requestContext?.get('personaPersonality') as string | undefined
+  return persona ? `${persona}\n\n${base}` : base
+}
+
+export const directorAgent = new Agent({
+  id: 'pc-director',
+  name: 'Director',
+  description: DIRECTOR_DESCRIPTION,
+  instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo },
+})
+
+// Used only as Olmo's delegate — no `memory:` of its own. Note this does NOT
+// make the delegated call memory-inert: Mastra lends the supervisor's memory
+// to a memory-less delegate and scopes it by a model-influenced resource id.
+// See architectAgent.ts's delegate comment for the full mechanism, and
+// mastra/memory.ts's getOlmoMemory() — Olmo's OWN memory instance, whose
+// thread-scoped recall is what actually keeps this from being a cross-tenant
+// read channel. Not the shared getMastraMemory() singleton that standalone
+// directorAgent above uses, which keeps Mastra's default 'resource' scope.
+export const directorAgentDelegate = new Agent({
+  id: 'pc-director-delegate',
+  name: 'Director',
+  description: DIRECTOR_DESCRIPTION,
+  instructions: directorInstructions,
+  requestContextSchema: tenantContextSchema,
+  model: selectModel,
   tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo },
 })

@@ -65,6 +65,9 @@ function makePool(max: number): pg.Pool {
 let store: PostgresStore | null = null
 let vector: PgVector | null = null
 let memory: Memory | null = null
+// Separate from `memory` above — Olmo's instance differs in scope, not wiring.
+// See getOlmoMemory().
+let olmoMemory: Memory | null = null
 
 export function getMastraStore(): PostgresStore {
   if (!store) {
@@ -116,25 +119,10 @@ export async function truncateMastraThread(conversationId: string, fromTimestamp
   return ids.length
 }
 
-// Singleton Memory instance — shared across all tenants.
-// Isolation is enforced per-request via resourceId (MASTRA_RESOURCE_ID_KEY)
-// set on the RequestContext before each generate() call.
-export function getMastraMemory(): Memory {
-  if (memory) return memory
-
-  memory = new Memory({
-    storage: getMastraStore(),
-    vector: getMastraVector(),
-    embedder,
-    options: {
-      lastMessages: 20,
-      semanticRecall: {
-        topK: 3,
-        messageRange: 2,
-      },
-      workingMemory: {
-        enabled: true,
-        template: `# Tenant Context
+// Working-memory template shared by the memory instances below. Extracted so
+// Olmo's dedicated instance and the shared one cannot drift apart on content
+// while deliberately differing on scope.
+const WORKING_MEMORY_TEMPLATE = `# Tenant Context
 - Product Name:
 - Industry:
 - Tech Stack:
@@ -152,10 +140,96 @@ export function getMastraMemory(): Memory {
 # Key Decisions
 - [Decision 1]
 - [Decision 2]
-`,
+`
+
+// Singleton Memory instance — shared across all tenants.
+// Isolation is enforced per-request via resourceId (MASTRA_RESOURCE_ID_KEY)
+// set on the RequestContext before each generate() call.
+//
+// semanticRecall.scope and workingMemory.scope are deliberately left at
+// Mastra's defaults (both 'resource'), which is what gives directorAgent,
+// pmAgent and producerAgent their cross-conversation memory — a user's
+// preferences and key decisions carry from one conversation to the next.
+// Do NOT pin these to 'thread' to satisfy Olmo's delegation safety
+// requirement: Olmo has its own instance for that (getOlmoMemory() below),
+// precisely so the two concerns cannot be conflated again. An earlier pass
+// pinned 'thread' here and silently stripped cross-conversation memory from
+// all three standalone agents.
+export function getMastraMemory(): Memory {
+  if (memory) return memory
+
+  memory = new Memory({
+    storage: getMastraStore(),
+    vector: getMastraVector(),
+    embedder,
+    options: {
+      lastMessages: 20,
+      semanticRecall: {
+        topK: 3,
+        messageRange: 2,
+      },
+      workingMemory: {
+        enabled: true,
+        template: WORKING_MEMORY_TEMPLATE,
       },
     },
   })
 
   return memory
+}
+
+// Olmo's (platformAgent's) own Memory instance — separate from the shared
+// singleton above for one reason: `scope: 'thread'`.
+//
+// This is LOAD-BEARING for Olmo's sub-agent delegation, and it is the reason
+// this function exists at all rather than reusing getMastraMemory().
+//
+// When Olmo delegates to pm/architect/director/producer, those delegate
+// variants deliberately declare no `memory:` of their own — but that does NOT
+// make the delegated call memory-inert. Verified against @mastra/core 1.64
+// (dist/agent-DsRUDsS_.js): because the supervisor has memory and the delegate
+// does not, Mastra lends THIS instance to the delegate
+// (MASTRA_INHERITED_MEMORY_KEY, :35203) and binds it to
+// `subAgentResourceId = \`${inputData.resourceId}-${agentName}\`` (:35144) —
+// where `inputData.resourceId` is a model-writable sub-agent tool input, and
+// the tenant's real resource id (MASTRA_RESOURCE_ID_KEY) has been stripped
+// from the delegated context copy (:35117). The delegated turn then writes
+// under that id (createThread + saveMessages, :35410).
+//
+// So a delegated turn WRITES into the shared store under a resource id the
+// model can be steered to choose — a prompt injection in retrieved or fetched
+// content can influence it, and Olmo ingests exactly that kind of content.
+// `subAgentResourceId` has no random component, so under Mastra's DEFAULT
+// 'resource' scope two different tenants could both address the same bucket
+// by name and read each other's delegated content. Thread scope is what
+// closes that: recall and working memory resolve against the delegated
+// thread id, which Mastra always gives a random UUID suffix (:35138).
+//
+// Do not change either scope to 'resource', and do not point platformAgent at
+// getMastraMemory() instead. Either one re-opens a cross-tenant read channel.
+export function getOlmoMemory(): Memory {
+  if (olmoMemory) return olmoMemory
+
+  olmoMemory = new Memory({
+    storage: getMastraStore(),
+    vector: getMastraVector(),
+    embedder,
+    options: {
+      lastMessages: 20,
+      semanticRecall: {
+        topK: 3,
+        messageRange: 2,
+        // Security boundary — see the note above. Not a tuning knob.
+        scope: 'thread',
+      },
+      workingMemory: {
+        enabled: true,
+        // Security boundary — see the note above. Not a tuning knob.
+        scope: 'thread',
+        template: WORKING_MEMORY_TEMPLATE,
+      },
+    },
+  })
+
+  return olmoMemory
 }

@@ -5,12 +5,10 @@ import { selectModel } from './modelSelection.js'
 import { getMastraMemory } from '../memory.js'
 import { generateSong } from '../tools/generateSong.js'
 
-export const producerAgent = new Agent({
-  id: 'pc-producer',
-  name: 'Producer',
-  description: 'Generates instrumental music clips from a text description.',
-  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-    const base = `You are Producer — an instrumental music generation specialist.
+const PRODUCER_DESCRIPTION = 'Generates instrumental music clips from a text description.'
+
+const producerInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
+  const base = `You are Producer — an instrumental music generation specialist.
 
 ## Rules
 - Call generate_song for a new instrumental clip from a mood/genre/style description.
@@ -26,11 +24,35 @@ export const producerAgent = new Agent({
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.
 - Never invent a fileId — only use one an earlier tool result actually gave you.
 - Never restate a tool result's fileId, name, fileType, or size in your reply text — the UI already renders an attachment card with that information. Reply with plain conversational text only.`
-    const persona = requestContext?.get('personaPersonality') as string | undefined
-    return persona ? `${persona}\n\n${base}` : base
-  },
+  const persona = requestContext?.get('personaPersonality') as string | undefined
+  return persona ? `${persona}\n\n${base}` : base
+}
+
+export const producerAgent = new Agent({
+  id: 'pc-producer',
+  name: 'Producer',
+  description: PRODUCER_DESCRIPTION,
+  instructions: producerInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
   memory: getMastraMemory(),
+  tools: { generate_song: generateSong },
+})
+
+// Used only as Olmo's delegate — no `memory:` of its own. Note this does NOT
+// make the delegated call memory-inert: Mastra lends the supervisor's memory
+// to a memory-less delegate and scopes it by a model-influenced resource id.
+// See architectAgent.ts's delegate comment for the full mechanism, and
+// mastra/memory.ts's getOlmoMemory() — Olmo's OWN memory instance, whose
+// thread-scoped recall is what actually keeps this from being a cross-tenant
+// read channel. Not the shared getMastraMemory() singleton that standalone
+// producerAgent above uses, which keeps Mastra's default 'resource' scope.
+export const producerAgentDelegate = new Agent({
+  id: 'pc-producer-delegate',
+  name: 'Producer',
+  description: PRODUCER_DESCRIPTION,
+  instructions: producerInstructions,
+  requestContextSchema: tenantContextSchema,
+  model: selectModel,
   tools: { generate_song: generateSong },
 })

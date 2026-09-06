@@ -1,7 +1,7 @@
 // Mastra proper orchestrator — ADR: Mastra Proper Orchestrator Adoption
 //
 // One Mastra instance registered at startup.
-// One platform-level Agent (disco) serving all tenants.
+// One platform-level Agent (olmo) serving all tenants.
 // Per-tenant isolation via RequestContext + MASTRA_RESOURCE_ID_KEY.
 //
 // Backward-compat re-exports let app.ts and workflow.ts import unchanged.
@@ -43,7 +43,7 @@ import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 export const mastra = new Mastra({
   agents: {
-    disco: platformAgent,
+    olmo: platformAgent,
     architect: architectAgent,
     formatter: formatterAgent,
     prd: prdAgent,

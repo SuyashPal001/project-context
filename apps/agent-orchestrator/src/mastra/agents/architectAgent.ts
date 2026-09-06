@@ -6,12 +6,10 @@ import { selectModel } from './modelSelection.js'
 import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 
-export const architectAgent = new Agent({
-  id: 'pc-architect',
-  name: 'Architect',
+const ARCHITECT_DESCRIPTION = 'Technical architect with full knowledge of this codebase — answers system-design and codebase questions by retrieving indexed migrations, routes, tests, and architectural patterns before answering.'
 
-  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-    const base = `You are the technical architect for this engineering team.
+const architectInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
+  const base = `You are the technical architect for this engineering team.
 You have deep knowledge of this codebase through indexed
 migrations, routes, tests, and architectural patterns.
 
@@ -36,15 +34,59 @@ You know about:
 - API surface: all route handlers and their contracts
 - System behavior: all test files and what they protect
 - Patterns: CLAUDE.md architectural decisions and rules`
-    // Persona personality is a layer composed ahead of the base prompt, never a
-    // replacement for it — see platformAgent.ts for the same pattern.
-    const persona = requestContext?.get('personaPersonality') as string | undefined
-    return persona ? `${persona}\n\n${base}` : base
-  },
+  // Persona personality is a layer composed ahead of the base prompt, never a
+  // replacement for it — see platformAgent.ts for the same pattern.
+  const persona = requestContext?.get('personaPersonality') as string | undefined
+  return persona ? `${persona}\n\n${base}` : base
+}
 
+export const architectAgent = new Agent({
+  id: 'pc-architect',
+  name: 'Architect',
+  description: ARCHITECT_DESCRIPTION,
+  instructions: architectInstructions,
   requestContextSchema: tenantContextSchema,
-
   tools: { retrieve_knowledge: retrieveKnowledge },
   model: selectModel,
   memory: architectMemory,
+})
+
+// Used only as Olmo's delegate (see mastra/agents/olmoDelegates.ts). No `memory`
+// key — this is the canonical explanation the other three delegate variants
+// (pm/director/producer) point back to. Read it before changing any of them.
+//
+// A delegated sub-agent's resource id is derived by Mastra from a
+// model-writable tool field (`inputData.resourceId`), not the tenant's real
+// resource id — MASTRA_RESOURCE_ID_KEY is stripped from the delegated context
+// copy. Declaring `memory: architectMemory` here would give this variant its
+// own resource-scoped working memory (`filesDiscussed`/`patternsConfirmed`)
+// keyed off that model-writable id, which is the worst case in the set.
+// Omitting `memory:` removes that path.
+//
+// It does NOT make the delegated call memory-inert — an earlier revision of
+// this comment and of the design doc claimed it did, and that was wrong.
+// Verified against @mastra/core 1.64: because the supervisor (Olmo) has memory
+// and this variant does not, Mastra lends Olmo's Memory instance to the
+// delegate and scopes it by that same model-influenced resource id. A
+// delegated turn therefore still WRITES into the store under a resource id an
+// injected instruction can steer.
+//
+// What keeps that from being a cross-tenant READ is that Olmo's memory is its
+// own instance — getOlmoMemory() in mastra/memory.ts — with thread-scoped
+// recall and working memory, plus Mastra's random suffix on the delegated
+// thread id. Note this is specifically NOT the shared getMastraMemory()
+// singleton, which keeps Mastra's default 'resource' scope so
+// director/pm/producer retain cross-conversation memory. Read
+// getOlmoMemory()'s note before changing memory config on any delegate.
+//
+// Standalone architectAgent above is unaffected either way: it keeps
+// architectMemory in full.
+export const architectAgentDelegate = new Agent({
+  id: 'pc-architect-delegate',
+  name: 'Architect',
+  description: ARCHITECT_DESCRIPTION,
+  instructions: architectInstructions,
+  requestContextSchema: tenantContextSchema,
+  tools: { retrieve_knowledge: retrieveKnowledge },
+  model: selectModel,
 })

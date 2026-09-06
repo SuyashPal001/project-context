@@ -13,7 +13,18 @@ import { describe, it, expect, vi } from 'vitest'
 // platformAgent builds memory, models and guardrails at module load; none of
 // that is under test here and all of it wants live infrastructure.
 vi.mock('../../db.js', () => ({ makeAppPool: () => ({ on: vi.fn(), query: vi.fn() }) }))
-vi.mock('../memory.js', () => ({ getMastraMemory: () => ({}) }))
+// architectAgent.ts (pulled in transitively via platformAgent.ts's
+// buildOlmoDelegates wiring) imports getMastraStore/getMastraVector/embedder
+// from this module at load time — stub them alongside getMastraMemory.
+vi.mock('../memory.js', () => ({
+  getMastraMemory: () => ({}),
+  // platformAgent.ts uses Olmo's own memory instance, not the shared
+  // singleton — see getOlmoMemory()'s note in memory.ts for why they differ.
+  getOlmoMemory: () => ({}),
+  getMastraStore: () => ({}),
+  getMastraVector: () => ({}),
+  embedder: {},
+}))
 vi.mock('../model.js', () => ({ platformModel: {}, liteModel: {}, privateModel: {} }))
 vi.mock('../tools.js', () => ({ getMCPClientForTenant: vi.fn() }))
 vi.mock('../composio.js', () => ({ isComposioEnabled: () => false, getComposioTools: vi.fn() }))

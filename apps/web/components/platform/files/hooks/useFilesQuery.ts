@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMemo } from "react";
 import type { FileRecord } from "../types";
+import type { Agent } from "@/components/platform/agents/types";
 
 export interface Breadcrumb {
     name: string;
@@ -11,9 +12,10 @@ export interface Breadcrumb {
 export function useFilesQuery(prefix: string) {
     const { data: agentsData } = useQuery({
         queryKey: ['agents'],
-        queryFn: () => api.get<{ data: { id: string; name: string; status: string }[] }>('/api/v1/agents'),
+        queryFn: () => api.get<{ data: Agent[] }>('/api/v1/agents'),
     });
-    const defaultAgentId = agentsData?.data?.find(a => a.status === 'active')?.id ?? null;
+    const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? [];
+    const defaultAgentId = (activeAgents.find(a => a.isDefault) ?? activeAgents[0])?.id ?? null;
 
     const { data: response, isLoading } = useQuery({
         queryKey: ['files', prefix],
