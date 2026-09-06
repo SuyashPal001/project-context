@@ -18,7 +18,7 @@ import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useVoice } from "@/hooks/useVoice";
-import { MessageSquare, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen, Calculator } from "lucide-react";
+import { MessageSquare, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen, Calculator, LayoutTemplate, UserRound, Package, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -33,6 +33,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { parseFolderId } from "@/lib/folderScope";
+
+// Category shortcuts under the no-conversation-selected composer — Templates
+// (proven ad-structure starting points), Avatars, Products, Audio. No "Browse"
+// tab: research on comparable ad-creation tools (Creatify, Arcads,
+// AdCreative.ai) turned up no evidence of a generic "browse everything" tab
+// at any of them, only these four named, revenue-driving categories.
+const EMPTY_STATE_LIBRARY_TABS = [
+    { id: 'templates', label: 'Templates', icon: LayoutTemplate },
+    { id: 'avatars', label: 'Avatars', icon: UserRound },
+    { id: 'products', label: 'Products', icon: Package },
+    { id: 'audio', label: 'Audio', icon: Music },
+] as const;
 
 function ChatPage() {
     const searchParams = useSearchParams();
@@ -207,6 +219,22 @@ function ChatPage() {
 
     const { isModalOpen, session, openVoice, closeVoice, handleTap } = useVoice({ conversationId: conversationId || undefined });
     const [inputPrefill, setInputPrefill] = useState('');
+
+    // Text typed into the no-conversation-selected composer, held until the
+    // conversation handleNewChat() creates finishes loading — then sent once.
+    // Cleared immediately after firing so a later empty (0-message) conversation
+    // load never re-sends it.
+    const [pendingFirstMessage, setPendingFirstMessage] = useState<string | null>(null);
+    // Which library tab (Templates/Avatars/Products/Audio) is expanded under the
+    // no-conversation-selected composer. Null collapses the panel.
+    const [activeEmptyStateTab, setActiveEmptyStateTab] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!pendingFirstMessage) return;
+        if (!conversationId || isLoadingMessages || messages.length > 0) return;
+        sendMessage(pendingFirstMessage);
+        setPendingFirstMessage(null);
+    }, [pendingFirstMessage, conversationId, isLoadingMessages, messages.length, sendMessage]);
 
     const noopActivity = useCallback(() => {}, []);
 
@@ -414,7 +442,7 @@ function ChatPage() {
                                 <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['conversations'] })} size="lg" className="rounded-full shadow-lg h-12 px-6">Retry Loading</Button>
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative">
+                            <div className="flex-1 flex flex-col items-center p-8 text-center bg-background h-full relative overflow-y-auto">
                                 {sidebarToggleButton}
                                 <Popover>
                                     <PopoverTrigger asChild>
@@ -431,10 +459,39 @@ function ChatPage() {
                                         <CreditsPanel />
                                     </PopoverContent>
                                 </Popover>
-                                <div className="h-16 w-16 rounded-2xl bg-muted flex items-center justify-center mb-6 border border-border"><MessageSquare className="h-8 w-8 text-muted-foreground" /></div>
-                                <h2 className="text-lg font-bold tracking-tight mb-2">Select a conversation</h2>
-                                <p className="text-muted-foreground max-w-sm mb-8">Select an existing conversation from the list or start a new one.</p>
-                                <Button onClick={() => handleNewChat()} size="lg" className="rounded-full shadow-lg h-12 px-6 gap-2 bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-black hover:opacity-90"><Plus className="h-4 w-4" />Start New Conversation</Button>
+                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center pt-20 pb-8">
+                                    <h1 className="text-3xl font-bold tracking-tight mb-8">What's on your mind today?</h1>
+                                    <div className="w-full">
+                                        <ChatInput
+                                            onSend={(text) => { setPendingFirstMessage(text); handleNewChat(); }}
+                                            isLoading={false}
+                                            isStreaming={false}
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-6 flex-wrap justify-center">
+                                        {EMPTY_STATE_LIBRARY_TABS.map((tab) => (
+                                            <button
+                                                key={tab.id}
+                                                type="button"
+                                                onClick={() => setActiveEmptyStateTab((cur) => (cur === tab.id ? null : tab.id))}
+                                                className={cn(
+                                                    "h-9 px-4 flex items-center gap-2 rounded-full border text-sm font-medium transition-colors",
+                                                    activeEmptyStateTab === tab.id
+                                                        ? "bg-foreground text-background border-foreground"
+                                                        : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                                )}
+                                            >
+                                                <tab.icon className="h-4 w-4" />
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {activeEmptyStateTab && (
+                                        <div className="w-full mt-6 rounded-2xl border border-border bg-muted/30 p-10 text-sm text-muted-foreground">
+                                            {EMPTY_STATE_LIBRARY_TABS.find((t) => t.id === activeEmptyStateTab)?.label} library — coming soon.
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
