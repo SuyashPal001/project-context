@@ -4,6 +4,12 @@ import { users } from '@serverless-saas/database/schema/auth';
 import { agents } from './agents';
 
 export const personaStatusEnum = pgEnum('persona_status', ['draft', 'published']);
+// Job-function category, one per persona — drives the Explore-page filter row.
+// Not skill-based: see products/agent-platform/packages/api/seeds/personas.ts
+// for the mapping. Default 'product' only exists so adding this column to a
+// table with existing rows doesn't violate NOT NULL — every real persona's
+// value is set explicitly by the seed's INSERT/UPDATE, not left on default.
+export const personaCategoryEnum = pgEnum('persona_category', ['engineering', 'product', 'research', 'creative']);
 
 export const personas = pgTable('personas', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -11,6 +17,7 @@ export const personas = pgTable('personas', {
   name: text('name').notNull(),
   tagline: text('tagline').notNull(),
   basePersonality: text('base_personality').notNull(),
+  category: personaCategoryEnum('category').notNull().default('product'),
   skillTags: jsonb('skill_tags').$type<string[]>().notNull().default([]),
   // Hand-authored per official persona (no LLM generation) — see
   // docs/superpowers/specs/2026-09-05-agent-welcome-pills-design.md.

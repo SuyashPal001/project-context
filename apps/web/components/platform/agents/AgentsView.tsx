@@ -76,18 +76,21 @@ export function AgentsView() {
     const teamDetails = teamDetailQueries.map((q) => q.data).filter((d): d is TeamDetail => Boolean(d));
     const selectedTeam = selectedTeamId ? teamDetails.find((t) => t.id === selectedTeamId) ?? null : null;
 
+    // Chip list is derived from whatever categories are actually present —
+    // a job-function taxonomy (Engineering/Product/Research/Creative), never
+    // built from skillTags. A category with no persona yet simply has no chip.
+    const CATEGORY_LABELS: Record<string, string> = {
+        engineering: 'Engineering', product: 'Product', research: 'Research', creative: 'Creative',
+    };
     const categories = useMemo(() => {
-        const tags = new Set<string>();
-        for (const persona of personas) {
-            for (const tag of persona.skillTags) tags.add(tag);
-        }
-        return Array.from(tags).sort();
+        const present = new Set(personas.map((p) => p.category));
+        return Array.from(present).sort();
     }, [personas]);
 
     const hiredAgentFor = (personaId: string) => findAgentForPersona(agents, personaId);
 
     const explorePersonas = personas.filter((persona) => {
-        if (category && !persona.skillTags.includes(category)) return false;
+        if (category && persona.category !== category) return false;
         const q = search.trim().toLowerCase();
         if (!q) return true;
         return persona.name.toLowerCase().includes(q) || persona.tagline.toLowerCase().includes(q);
@@ -284,7 +287,7 @@ export function AgentsView() {
                             className="rounded-full"
                             onClick={() => setCategory(tag)}
                         >
-                            {tag}
+                            {CATEGORY_LABELS[tag] ?? tag}
                         </Button>
                     ))}
                 </div>

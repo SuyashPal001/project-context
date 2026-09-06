@@ -30,7 +30,7 @@ agentsRoutes.get('/personas', async (c) => {
     const data = await db
         .select({
             id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
-            skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+            category: personas.category, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
             exampleAssetUrl: personas.exampleAssetUrl, exampleCaption: personas.exampleCaption,
             exampleAssetUrl2: personas.exampleAssetUrl2, exampleCaption2: personas.exampleCaption2,
         })

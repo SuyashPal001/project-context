@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db';
-import { personas } from '@serverless-saas/agent-schema/personas';
+import { personas, personaCategoryEnum } from '@serverless-saas/agent-schema/personas';
+
+const CATEGORY_VALUES = personaCategoryEnum.enumValues;
 import { isPlatformAdmin } from './ops.guard';
 import type { AppEnv } from '@serverless-saas/types';
 
@@ -38,6 +40,7 @@ personasRoutes.post('/', async (c) => {
         name: z.string().min(1).max(100),
         tagline: z.string().min(1).max(200),
         basePersonality: z.string().min(1),
+        category: z.enum(CATEGORY_VALUES),
         skillTags: z.array(z.string()).optional(),
         exampleAssetUrl: z.string().url().optional(),
         exampleCaption: z.string().max(200).optional(),
@@ -49,7 +52,7 @@ personasRoutes.post('/', async (c) => {
     const result = schema.safeParse(await c.req.json());
     if (!result.success) return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
 
-    const { slug, name, tagline, basePersonality, skillTags, exampleAssetUrl, exampleCaption, exampleAssetUrl2, exampleCaption2, isOfficial } = result.data;
+    const { slug, name, tagline, basePersonality, category, skillTags, exampleAssetUrl, exampleCaption, exampleAssetUrl2, exampleCaption2, isOfficial } = result.data;
 
     const [existing] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, slug)).limit(1);
     if (existing) return c.json({ error: 'Slug already in use', code: 'DUPLICATE_SLUG' }, 409);
@@ -57,7 +60,7 @@ personasRoutes.post('/', async (c) => {
     const [created] = await db
         .insert(personas)
         .values({
-            slug, name, tagline, basePersonality,
+            slug, name, tagline, basePersonality, category,
             skillTags: skillTags ?? [],
             exampleAssetUrl: exampleAssetUrl ?? null,
             exampleCaption: exampleCaption ?? null,
@@ -85,6 +88,7 @@ personasRoutes.put('/:id', async (c) => {
         name: z.string().min(1).max(100).optional(),
         tagline: z.string().min(1).max(200).optional(),
         basePersonality: z.string().min(1).optional(),
+        category: z.enum(CATEGORY_VALUES).optional(),
         skillTags: z.array(z.string()).optional(),
         exampleAssetUrl: z.string().url().optional(),
         exampleCaption: z.string().max(200).optional(),

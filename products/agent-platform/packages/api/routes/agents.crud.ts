@@ -59,7 +59,7 @@ export async function handleListAgents(c: Context<AppEnv>) {
             createdAt: agents.createdAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
-                skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+                category: personas.category, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
                 exampleAssetUrl: personas.exampleAssetUrl, exampleCaption: personas.exampleCaption,
                 exampleAssetUrl2: personas.exampleAssetUrl2, exampleCaption2: personas.exampleCaption2,
             },
@@ -94,7 +94,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
             createdAt: agents.createdAt, updatedAt: agents.updatedAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
-                skillTags: personas.skillTags, isOfficial: personas.isOfficial,
+                category: personas.category, skillTags: personas.skillTags, isOfficial: personas.isOfficial,
                 exampleAssetUrl: personas.exampleAssetUrl, exampleCaption: personas.exampleCaption,
                 exampleAssetUrl2: personas.exampleAssetUrl2, exampleCaption2: personas.exampleCaption2,
             },

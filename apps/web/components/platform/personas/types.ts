@@ -3,6 +3,7 @@ export interface PersonaSummary {
     slug: string;
     name: string;
     tagline: string;
+    category: 'engineering' | 'product' | 'research' | 'creative';
     skillTags: string[];
     isOfficial: boolean;
     exampleAssetUrl: string | null;
