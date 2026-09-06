@@ -25,6 +25,7 @@ import { renderCanvas } from '../tools/renderCanvas.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
 import { createSkillTool } from '../tools/createSkill.js'
+import { buildOlmoDelegates } from './olmoDelegates.js'
 
 // ---------------------------------------------------------------------------
 // Platform prompt — fetched from agentTemplates at request time.
@@ -66,7 +67,7 @@ async function fetchPlatformPrompt(): Promise<string> {
   } catch (err) {
     console.warn('[mastra:platform] fetchPlatformPrompt DB error:', (err as Error).message)
   }
-  const fallback = 'You are Disco, a helpful AI assistant.'
+  const fallback = 'You are Olmo, a helpful AI assistant.'
   _promptCache = { prompt: fallback, expiresAt: Date.now() + PROMPT_CACHE_TTL_MS }
   return fallback
 }
@@ -260,8 +261,8 @@ const systemPromptScrubber = new SystemPromptScrubber({
 // ---------------------------------------------------------------------------
 
 export const platformAgent = new Agent({
-  id: 'disco',
-  name: 'Disco',
+  id: 'olmo',
+  name: 'Olmo',
 
   instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
     // Per-agent override takes precedence over the global agent_templates prompt.
@@ -356,13 +357,15 @@ NEVER claim to have called render_canvas unless you actually called it in this r
 
   memory: getMastraMemory(),
 
-  // Specialist agent delegation — Saarthi recognises pension scrutiny tasks
-  // and routes them to AI-PARAS (Tier 2) which delegates reading to Tier 3.
-  // agents: { aiParas: aiParasAgent },
-  // NOTE: aiParasAgent removed from sub-agents map. Having it here caused
-  // platformAgent's SERVER_TOOLS (internet_search, web_fetch) to leak into
-  // aiParasAgent's tool list when called as a sub-agent. AI-PARAS is
-  // registered standalone in the Mastra registry and testable directly in Studio.
+  // Sub-agent delegation to pm/architect/director/producer — gated to the
+  // Olmo row only, since platformAgent is resolveAgent's fallback for every
+  // unmatched agent name (Research Engineer, Analyst, custom agents, etc.).
+  // See olmoDelegates.ts for the gate and why the delegates are memory-inert.
+  // Verified against @mastra/core 1.64 that a parent's own tool map is never
+  // passed into a delegated sub-agent's tool list — the earlier concern here
+  // (aiParas inheriting SERVER_TOOLS) does not reproduce; aiParas itself was
+  // deleted from the codebase (57948a3d).
+  agents: buildOlmoDelegates,
 
   // Dynamic model selection — see modelSelection.ts for the precedence order and
   // why it's a separate module (testability: this file eagerly builds DB/network
