@@ -17,7 +17,7 @@ import { downloadMediaAttachment, buildAttachmentNote } from './media.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 import { validateToken } from './auth.js'
 import { createConversation, saveUserMessage, saveAssistantMessage, fetchConversationAllowMode } from './persistence.js'
-import { fetchAgentMemory, fetchAgentName } from './usage.js'
+import { fetchAgentMemory } from './usage.js'
 import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
 import { getMCPClientForTenant } from './mastra/tools.js'
@@ -182,7 +182,17 @@ async function handleSession(
         requestContext.set(MASTRA_THREAD_ID_KEY, conversationId ?? crypto.randomUUID())
         requestContext.set('tenantId', tenantId)
         requestContext.set('agentId', agentId)
-        requestContext.set('agentName', (await fetchAgentName(agentId)) ?? '')
+        // Deliberately NOT setting 'agentName' here, unlike chatStream.ts and
+        // mastra/agent.ts. buildOlmoDelegates gates Olmo's sub-agent delegation
+        // on that key, and this path never sets 'agentSystemPrompt' or
+        // 'personaPersonality' — it doesn't fetch agentSkills/persona at all —
+        // so an Olmo conversation over WebSocket would be handed the four
+        // delegate tools with none of the routing instructions that live in the
+        // seeded row's agentSkills.systemPrompt, and would delegate blind.
+        // Leaving the key unset keeps this path byte-identical to its
+        // pre-delegation behaviour (the gate defaults closed and returns {}).
+        // Full WS parity — fetching agentSkills/persona to match chatStream.ts
+        // — is deliberate follow-up work, not part of the Olmo MVP pass.
         // Mirrors chatStream.ts's resolution: internalUserId is already resolved
         // once per connection in the upgrade handler below (auth/me, falling back
         // to the Cognito sub on failure) — without this, start_task/get_task_thread
