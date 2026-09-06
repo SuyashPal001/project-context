@@ -466,6 +466,8 @@ function ChatPage() {
                                             onSend={(text) => { setPendingFirstMessage(text); handleNewChat(); }}
                                             isLoading={false}
                                             isStreaming={false}
+                                            agentId={activeAgents[0]?.id}
+                                            {...modelChangeProps}
                                         />
                                     </div>
                                     <div className="flex items-center gap-2 mt-6 flex-wrap justify-center">
