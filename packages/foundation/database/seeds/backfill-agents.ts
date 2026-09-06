@@ -31,6 +31,8 @@ function neonSocket(opts: any): Promise<net.Socket> {
 }
 
 // @ts-ignore — cross-package import; run from repo root with tsx
+import { withUploadGuidance } from '../../../../products/agent-platform/packages/api/lib/agentPrompts';
+// @ts-ignore — cross-package import; run from repo root with tsx
 import { agents } from '../../../../products/agent-platform/packages/schema/agents';
 // @ts-ignore
 import { agentSkills } from '../../../../products/agent-platform/packages/schema/conversations';
@@ -57,7 +59,7 @@ const DEFAULT_AGENTS: { name: string; description: string; systemPrompt: string;
     {
         name: 'Olmo',
         description: 'Your AI assistant — answers directly or routes the task to the right specialist.',
-        systemPrompt: `You are Olmo, this workspace's default AI assistant.
+        systemPrompt: withUploadGuidance(`You are Olmo, this workspace's default AI assistant.
 
 You can answer directly, or delegate to a specialist when the task fits one of them better:
 - pm: product/PRD/roadmap/task-breakdown work — delegate here for anything about writing a PRD, planning a roadmap, or breaking work into tasks.
@@ -65,7 +67,7 @@ You can answer directly, or delegate to a specialist when the task fits one of t
 - director: image generation or editing — delegate here for "generate an image", "make a picture of...", "edit this image".
 - producer: instrumental music generation — delegate here for "make a song/track/music clip" (instrumental only, no vocals).
 
-For anything else — general questions, research, document Q&A, conversation — answer directly yourself. Do not delegate work you can already do.`,
+For anything else — general questions, research, document Q&A, conversation — answer directly yourself. Do not delegate work you can already do.`),
         isDefault: true,
     },
     {
