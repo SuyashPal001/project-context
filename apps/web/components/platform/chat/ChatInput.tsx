@@ -774,11 +774,11 @@ export function ChatInput({
                                                                 key={provider.id}
                                                                 disabled={!isLive}
                                                                 onClick={() => onModelChange?.(provider.id)}
-                                                                className="group relative flex items-start gap-3 cursor-pointer py-2.5 px-2 rounded-xl"
+                                                                className="group relative flex items-center gap-3 cursor-pointer py-2.5 px-2 rounded-xl"
                                                             >
                                                                 <span
                                                                     className={cn(
-                                                                        "h-11 w-11 shrink-0 rounded-xl border flex items-center justify-center",
+                                                                        "h-9 w-9 shrink-0 rounded-xl border flex items-center justify-center",
                                                                         isLive
                                                                             ? "border-border/60 bg-gradient-to-b from-muted/60 to-muted/20 shadow-sm"
                                                                             : "border-border/30 bg-muted/20",
@@ -788,12 +788,12 @@ export function ChatInput({
                                                                         provider={provider.provider}
                                                                         model={provider.model}
                                                                         className={cn(
-                                                                            "h-5 w-5 shrink-0",
+                                                                            "h-4 w-4 shrink-0",
                                                                             isLive ? "text-foreground/80" : "text-muted-foreground/30",
                                                                         )}
                                                                     />
                                                                 </span>
-                                                                <span className="flex-1 min-w-0 flex flex-col gap-0.5 pt-0.5">
+                                                                <span className="flex-1 min-w-0 flex flex-col gap-0.5">
                                                                     <span className="flex items-center gap-1.5">
                                                                         <span className={cn(
                                                                             "truncate text-sm",
@@ -822,7 +822,7 @@ export function ChatInput({
                                                                     </span>
                                                                 )}
                                                                 {isSelected && (
-                                                                    <span className="shrink-0 h-5 w-5 rounded-full bg-primary flex items-center justify-center mt-0.5 shadow-sm">
+                                                                    <span className="shrink-0 h-5 w-5 rounded-full bg-primary flex items-center justify-center shadow-sm">
                                                                         <Check className="h-3 w-3 text-primary-foreground" strokeWidth={3} />
                                                                     </span>
                                                                 )}
