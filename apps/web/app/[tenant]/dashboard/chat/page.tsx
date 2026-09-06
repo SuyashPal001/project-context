@@ -485,7 +485,7 @@ function ChatPage() {
                                     "shift down" attempt only move the block half as far as intended.
                                     A 3:2 spacer ratio gives a direct, predictable downward shift — more
                                     room above the composer for the upward "@"/"#" palettes. */}
-                                <div className="flex-[3] min-h-0" />
+                                <div className="flex-[5] min-h-0" />
                                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
                                     <div className="flex flex-col items-center gap-2 mb-8">
                                         <div className="flex items-center gap-1.5 opacity-80">
@@ -543,7 +543,7 @@ function ChatPage() {
                                         </div>
                                     )}
                                 </div>
-                                <div className="flex-[2] min-h-0" />
+                                <div className="flex-[1] min-h-0" />
                             </div>
                         )}
                     </div>
