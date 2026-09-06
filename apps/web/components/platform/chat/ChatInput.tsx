@@ -44,6 +44,8 @@ interface LLMProvider {
 // Ranks providers by costPerToken into thirds for a relative $ / $$ / $$$ badge —
 // no hardcoded dollar thresholds, since costPerToken values will shift as models are
 // added/removed from the picker. Providers with no costPerToken get no badge.
+const COST_TIER_LABELS = ['Low', 'Medium', 'High'] as const;
+
 function costTierBadges(providers: LLMProvider[]): Map<string, string> {
     const withCost = providers
         .filter((p): p is LLMProvider & { costPerToken: string } => p.costPerToken !== null)
@@ -54,7 +56,7 @@ function costTierBadges(providers: LLMProvider[]): Map<string, string> {
     const n = withCost.length;
     withCost.forEach((p, i) => {
         const tier = n <= 1 ? 1 : Math.floor((i / n) * 3);
-        badges.set(p.id, '$'.repeat(Math.min(tier + 1, 3)));
+        badges.set(p.id, COST_TIER_LABELS[Math.min(tier, 2)]);
     });
     return badges;
 }
