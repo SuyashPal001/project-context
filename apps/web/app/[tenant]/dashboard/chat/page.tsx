@@ -480,7 +480,10 @@ function ChatPage() {
                                     </PopoverContent>
                                 </Popover>
                                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
-                                    <OlmoMark height={28} className="mb-3 opacity-80" />
+                                    <div className="flex items-center gap-2 mb-3 opacity-80">
+                                        <OlmoMark height={22} />
+                                        <span className="text-base font-semibold tracking-tight">Olmo Creative Agent</span>
+                                    </div>
                                     <div className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-1.5 text-xs font-medium mb-6">
                                         <span className="text-muted-foreground">{currentPlanName} plan</span>
                                         {nextPlan && (
