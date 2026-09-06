@@ -188,7 +188,7 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
     return (
         <div
             className="absolute bottom-full left-0 right-0 mb-2 rounded-2xl border border-border/50 bg-popover shadow-[0_20px_50px_-12px_rgba(0,0,0,0.28),0_8px_24px_-8px_rgba(0,0,0,0.16)] dark:shadow-[0_24px_60px_-15px_rgba(0,0,0,0.65),0_10px_28px_-8px_rgba(0,0,0,0.45),inset_0_1px_0_0_rgba(255,255,255,0.05)] p-3 flex flex-col"
-            style={{ maxHeight: '70vh' }}
+            style={{ maxHeight: '420px' }}
         >
             <div className="flex items-center gap-2 px-3 h-11 mb-3 rounded-xl bg-muted/50 focus-within:ring-1 focus-within:ring-primary/30 shrink-0">
                 <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
