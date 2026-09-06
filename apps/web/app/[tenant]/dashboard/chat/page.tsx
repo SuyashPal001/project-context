@@ -1,7 +1,10 @@
 "use client"
 
 import { useCallback, Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useTenant } from "@/app/[tenant]/tenant-provider";
+import { PLANS } from "@/components/platform/billing/PlanSelectorDialog";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
@@ -18,7 +21,7 @@ import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useVoice } from "@/hooks/useVoice";
-import { MessageSquare, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen, Calculator, LayoutTemplate, UserRound, Package, Music } from "lucide-react";
+import { MessageSquare, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen, Calculator, LayoutTemplate, UserRound, Package, Music, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -62,6 +65,14 @@ function ChatPage() {
         createConversation, updateAgentMutation, deleteConversation,
         handleSelectConversation, handleNewChat,
     } = page;
+
+    // Same plan lookup AccountMenu.tsx uses: `plan` off the tenant JWT claim is
+    // a raw id ('free', 'business', ...), mapped through the canonical PLANS
+    // list for a display name and the next tier to upgrade into.
+    const tenantClaims = useTenant();
+    const planIndex = PLANS.findIndex(p => p.id === (tenantClaims.plan?.toLowerCase() || 'free'));
+    const nextPlan = planIndex >= 0 && planIndex < PLANS.length - 1 ? PLANS[planIndex + 1] : null;
+    const currentPlanName = planIndex >= 0 ? PLANS[planIndex].name : (tenantClaims.plan || 'Free');
 
     const queryClient = useQueryClient();
     const { isCanvasOpen, isCanvasExpanded, hasActivity, toggleCanvas, toggleExpand, openCanvas, handleCanvasUpdate, flushPending } = useCanvas();
@@ -468,6 +479,18 @@ function ChatPage() {
                                     </PopoverContent>
                                 </Popover>
                                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8 mt-[28vh]">
+                                    <div className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-1.5 text-xs font-medium mb-6">
+                                        <span className="text-muted-foreground">{currentPlanName} plan</span>
+                                        {nextPlan && (
+                                            <>
+                                                <span className="text-border">|</span>
+                                                <Link href={`/${tenantSlug}/dashboard/billing`} className="flex items-center gap-1 font-semibold text-foreground hover:opacity-80 transition-opacity">
+                                                    <Zap className="h-3 w-3 fill-foreground shrink-0" />
+                                                    Upgrade
+                                                </Link>
+                                            </>
+                                        )}
+                                    </div>
                                     {firstName && <p className="text-3xl font-bold tracking-tight mb-2">Hi {firstName}</p>}
                                     <h1 className="text-3xl font-bold tracking-tight mb-8">What's on your mind today?</h1>
                                     <div className="w-full">
