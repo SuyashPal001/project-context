@@ -462,7 +462,7 @@ function ChatPage() {
                                 <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['conversations'] })} size="lg" className="rounded-full shadow-lg h-12 px-6">Retry Loading</Button>
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative overflow-y-auto">
+                            <div className="flex-1 flex flex-col items-center p-8 text-center bg-background h-full relative overflow-y-auto">
                                 {sidebarToggleButton}
                                 <Popover>
                                     <PopoverTrigger asChild>
@@ -479,11 +479,11 @@ function ChatPage() {
                                         <CreditsPanel />
                                     </PopoverContent>
                                 </Popover>
-                                {/* Pinned to the top of the panel, out of the centered composer
-                                    column below — keeping it there gave the composer less headroom
-                                    for the upward "@"/"#" palettes and cut them off on shorter
-                                    viewports. */}
-                                <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3">
+                                {/* Sits in normal flow (not pinned) so its own top margin mirrors
+                                    the p-8 the container already gives the bottom — the composer
+                                    block below is centered in the flex-1 space that remains, giving
+                                    it maximal headroom for the upward "@"/"#" palettes. */}
+                                <div className="flex flex-col items-center gap-2 shrink-0">
                                     <div className="flex items-center gap-1.5 opacity-80">
                                         <OlmoMark height={18} />
                                         <span className="text-sm font-semibold tracking-tight">Olmo Creative Agent</span>
@@ -501,7 +501,7 @@ function ChatPage() {
                                         )}
                                     </div>
                                 </div>
-                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
+                                <div className="w-full max-w-2xl mx-auto flex-1 flex flex-col items-center justify-center py-8">
                                     <h1 className="text-3xl font-bold tracking-tight mb-8">{firstName ? `Hi ${firstName}, what's on your mind today?` : "What's on your mind today?"}</h1>
                                     <div className="w-full">
                                         <ChatInput
