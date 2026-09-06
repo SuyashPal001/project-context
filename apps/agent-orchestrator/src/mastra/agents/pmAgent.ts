@@ -10,12 +10,10 @@ import { taskAgent } from './taskAgent.js'
 import { delegationAccuracyScorer } from '../scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from '../scorers/clarityBeforeDelegate.js'
 
-export const pmAgent = new Agent({
-  id: 'pc-pm',
-  name: 'Saarthi PM',
-  description: 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.',
-  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-    const base = `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
+const PM_DESCRIPTION = 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.'
+
+const pmInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
+  const base = `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
 
 ## Your specialist agents
 - prdAgent: Writes, drafts, and saves PRDs. Delegate when the user wants a PRD, product spec, or requirements document.
@@ -41,24 +39,47 @@ export const pmAgent = new Agent({
 - Never return raw JSON to the user
 - Never write PRD content, milestones, or tasks yourself — always delegate
 - If the request is ambiguous, ask ONE clarifying question before delegating`
-    // Persona personality is a layer composed ahead of the base prompt, never a
-    // replacement for it — see platformAgent.ts for the same pattern.
-    const persona = requestContext?.get('personaPersonality') as string | undefined
-    return persona ? `${persona}\n\n${base}` : base
+  // Persona personality is a layer composed ahead of the base prompt, never a
+  // replacement for it — see platformAgent.ts for the same pattern.
+  const persona = requestContext?.get('personaPersonality') as string | undefined
+  return persona ? `${persona}\n\n${base}` : base
+}
+
+const pmScorers = {
+  delegationAccuracy: {
+    scorer: delegationAccuracyScorer,
+    sampling: { type: 'ratio' as const, rate: 1 },
   },
+  clarityBeforeDelegate: {
+    scorer: clarityBeforeDelegateScorer,
+    sampling: { type: 'ratio' as const, rate: 1 },
+  },
+}
+
+export const pmAgent = new Agent({
+  id: 'pc-pm',
+  name: 'Saarthi PM',
+  description: PM_DESCRIPTION,
+  instructions: pmInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
   memory: getMastraMemory(),
   tools: { fetchAgentContext },
   agents: { prdAgent, roadmapAgent, taskAgent },
-  scorers: {
-    delegationAccuracy: {
-      scorer: delegationAccuracyScorer,
-      sampling: { type: 'ratio', rate: 1 },
-    },
-    clarityBeforeDelegate: {
-      scorer: clarityBeforeDelegateScorer,
-      sampling: { type: 'ratio', rate: 1 },
-    },
-  },
+  scorers: pmScorers,
+})
+
+// Used only as Olmo's delegate — no memory, see architectAgent.ts for why.
+// prdAgent/roadmapAgent/taskAgent have no memory of their own, so nesting them
+// under this memory-inert variant introduces no new risk.
+export const pmAgentDelegate = new Agent({
+  id: 'pc-pm-delegate',
+  name: 'Saarthi PM',
+  description: PM_DESCRIPTION,
+  instructions: pmInstructions,
+  requestContextSchema: tenantContextSchema,
+  model: selectModel,
+  tools: { fetchAgentContext },
+  agents: { prdAgent, roadmapAgent, taskAgent },
+  scorers: pmScorers,
 })

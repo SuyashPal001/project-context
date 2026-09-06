@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { architectAgent, architectAgentDelegate } from '../architectAgent.js'
 import { directorAgent, directorAgentDelegate } from '../directorAgent.js'
 import { producerAgent, producerAgentDelegate } from '../producerAgent.js'
+import { pmAgent, pmAgentDelegate } from '../pmAgent.js'
 
 describe('delegate variants run memory-inert', () => {
   // `memory` is a private field on @mastra/core's Agent (`#memory`), not a public
@@ -23,9 +24,18 @@ describe('delegate variants run memory-inert', () => {
     expect(producerAgent.hasOwnMemory()).toBe(true)
   })
 
+  it('pmAgentDelegate has no memory, pmAgent keeps its own', () => {
+    expect(pmAgentDelegate.hasOwnMemory()).toBe(false)
+    expect(pmAgent.hasOwnMemory()).toBe(true)
+  })
+
   it('delegate variants keep the same description as their standalone counterpart', () => {
     expect(architectAgentDelegate.getDescription()).toBe(architectAgent.getDescription())
     expect(directorAgentDelegate.getDescription()).toBe(directorAgent.getDescription())
     expect(producerAgentDelegate.getDescription()).toBe(producerAgent.getDescription())
+  })
+
+  it('pmAgentDelegate keeps the same description and sub-agent delegation as pmAgent', () => {
+    expect(pmAgentDelegate.getDescription()).toBe(pmAgent.getDescription())
   })
 })
