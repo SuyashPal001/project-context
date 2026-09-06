@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { PLANS } from "@/components/platform/billing/PlanSelectorDialog";
+import { OlmoMark } from "@/components/platform/OlmoMark";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
@@ -479,6 +480,7 @@ function ChatPage() {
                                     </PopoverContent>
                                 </Popover>
                                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8 mt-[28vh]">
+                                    <OlmoMark height={28} className="mb-3 opacity-80" />
                                     <div className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-1.5 text-xs font-medium mb-6">
                                         <span className="text-muted-foreground">{currentPlanName} plan</span>
                                         {nextPlan && (
