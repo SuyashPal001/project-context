@@ -492,7 +492,7 @@ function ChatPage() {
                                                 className={cn(
                                                     "h-9 px-4 flex items-center gap-2 rounded-full border text-sm font-medium transition-colors",
                                                     activeEmptyStateTab === tab.id
-                                                        ? "bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-black border-transparent"
+                                                        ? "bg-foreground text-background border-foreground"
                                                         : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
                                                 )}
                                             >
