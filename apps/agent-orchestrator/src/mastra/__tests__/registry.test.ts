@@ -21,3 +21,13 @@ describe('registry — director', () => {
     expect(resolveAgentLabel(directorAgentStub as never)).toBe('directorAgent')
   })
 })
+
+describe('registry — olmo', () => {
+  it('resolves the exact agent name "Olmo" (lowercased) to platformAgent', () => {
+    expect(resolveAgent('Olmo')).toBe(platformAgentStub)
+  })
+
+  it('labels platformAgent (Olmo) correctly', () => {
+    expect(resolveAgentLabel(platformAgentStub as never)).toBe('platformAgent')
+  })
+})

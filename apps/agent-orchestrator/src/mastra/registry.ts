@@ -7,7 +7,7 @@ import { producerAgent } from './agents/producerAgent.js'
 // Map of DB agent name (lowercased) → Mastra agent instance.
 // Exact-match keys are tried first; substring fallback uses the same keys.
 const AGENT_REGISTRY: Record<string, Agent> = {
-  disco:      platformAgent as unknown as Agent,
+  olmo:       platformAgent as unknown as Agent,
   'pm agent': pmAgent as unknown as Agent,
   architect:  architectAgent as unknown as Agent,
   director:   directorAgent as unknown as Agent,
@@ -24,7 +24,7 @@ export function resolveAgent(agentName: string): Agent {
   for (const [name, agent] of Object.entries(AGENT_REGISTRY)) {
     if (key.includes(name)) return agent
   }
-  // Disco (platformAgent) is the default for
+  // platformAgent (Olmo) is the default for
   // all tenants — handles unknown agent names
   return platformAgent as unknown as Agent
 }
@@ -43,12 +43,12 @@ export function resolveAgentLabel(agent: Agent): string {
 // this list in sync with onboarding.ts and backfill-agents.ts by hand.
 export const DEFAULT_AGENTS = [
   {
-    name: 'Disco',
-    description: 'Your AI assistant',
+    name: 'Olmo',
+    description: 'Your AI assistant — routes to the right specialist for the task',
     type: 'assistant',
     status: 'active',
     is_internal: false,
-    apiKeyName: 'Disco API Key',
+    apiKeyName: 'Olmo API Key',
     isDefault: true,
   },
   {
