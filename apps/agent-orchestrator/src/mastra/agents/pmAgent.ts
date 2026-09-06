@@ -73,12 +73,21 @@ export const pmAgent = new Agent({
 // make the delegated call memory-inert: Mastra lends the supervisor's memory
 // to a memory-less delegate and scopes it by a model-influenced resource id.
 // See architectAgent.ts's delegate comment for the full mechanism, and
-// mastra/memory.ts's getMastraMemory() for the thread-scoping that is what
-// actually keeps this from being a cross-tenant read channel.
+// mastra/memory.ts's getOlmoMemory() — Olmo's OWN memory instance, whose
+// thread-scoped recall is what actually keeps this from being a cross-tenant
+// read channel. Not the shared getMastraMemory() singleton that standalone
+// pmAgent above uses, which keeps Mastra's default 'resource' scope.
 //
 // prdAgent/roadmapAgent/taskAgent declare no memory either, so a further
 // nested delegation from here inherits along the same path rather than
 // introducing a second, differently-scoped one.
+//
+// NB (pre-existing, outside this branch): standalone pmAgent has both
+// `memory: getMastraMemory()` (resource-scoped) and its own `agents:` map, so
+// the same lending mechanism applies to prd/roadmap/task when pmAgent is used
+// directly — without the thread scoping Olmo has. That predates this work and
+// is not introduced or worsened here, but it is the same class of issue and
+// should be looked at separately.
 export const pmAgentDelegate = new Agent({
   id: 'pc-pm-delegate',
   name: 'Saarthi PM',

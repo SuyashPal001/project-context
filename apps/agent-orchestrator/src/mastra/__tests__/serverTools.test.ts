@@ -18,6 +18,9 @@ vi.mock('../../db.js', () => ({ makeAppPool: () => ({ on: vi.fn(), query: vi.fn(
 // from this module at load time — stub them alongside getMastraMemory.
 vi.mock('../memory.js', () => ({
   getMastraMemory: () => ({}),
+  // platformAgent.ts uses Olmo's own memory instance, not the shared
+  // singleton — see getOlmoMemory()'s note in memory.ts for why they differ.
+  getOlmoMemory: () => ({}),
   getMastraStore: () => ({}),
   getMastraVector: () => ({}),
   embedder: {},

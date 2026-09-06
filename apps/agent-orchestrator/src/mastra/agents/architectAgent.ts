@@ -68,12 +68,19 @@ export const architectAgent = new Agent({
 // Verified against @mastra/core 1.64: because the supervisor (Olmo) has memory
 // and this variant does not, Mastra lends Olmo's Memory instance to the
 // delegate and scopes it by that same model-influenced resource id. A
-// delegated turn therefore still WRITES into Olmo's shared store under a
-// resource id an injected instruction can steer. What keeps that from being a
-// cross-tenant READ is the thread-scoped recall/working-memory pinned in
-// mastra/memory.ts (plus Mastra's random suffix on the delegated thread id) —
-// see the load-bearing note in getMastraMemory(). Standalone architectAgent
-// above is unaffected either way: it keeps architectMemory in full.
+// delegated turn therefore still WRITES into the store under a resource id an
+// injected instruction can steer.
+//
+// What keeps that from being a cross-tenant READ is that Olmo's memory is its
+// own instance — getOlmoMemory() in mastra/memory.ts — with thread-scoped
+// recall and working memory, plus Mastra's random suffix on the delegated
+// thread id. Note this is specifically NOT the shared getMastraMemory()
+// singleton, which keeps Mastra's default 'resource' scope so
+// director/pm/producer retain cross-conversation memory. Read
+// getOlmoMemory()'s note before changing memory config on any delegate.
+//
+// Standalone architectAgent above is unaffected either way: it keeps
+// architectMemory in full.
 export const architectAgentDelegate = new Agent({
   id: 'pc-architect-delegate',
   name: 'Architect',
