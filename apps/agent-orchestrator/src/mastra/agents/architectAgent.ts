@@ -6,12 +6,10 @@ import { selectModel } from './modelSelection.js'
 import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 
-export const architectAgent = new Agent({
-  id: 'pc-architect',
-  name: 'Architect',
+const ARCHITECT_DESCRIPTION = 'Technical architect with full knowledge of this codebase — answers system-design and codebase questions by retrieving indexed migrations, routes, tests, and architectural patterns before answering.'
 
-  instructions: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-    const base = `You are the technical architect for this engineering team.
+const architectInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
+  const base = `You are the technical architect for this engineering team.
 You have deep knowledge of this codebase through indexed
 migrations, routes, tests, and architectural patterns.
 
@@ -36,15 +34,34 @@ You know about:
 - API surface: all route handlers and their contracts
 - System behavior: all test files and what they protect
 - Patterns: CLAUDE.md architectural decisions and rules`
-    // Persona personality is a layer composed ahead of the base prompt, never a
-    // replacement for it — see platformAgent.ts for the same pattern.
-    const persona = requestContext?.get('personaPersonality') as string | undefined
-    return persona ? `${persona}\n\n${base}` : base
-  },
+  // Persona personality is a layer composed ahead of the base prompt, never a
+  // replacement for it — see platformAgent.ts for the same pattern.
+  const persona = requestContext?.get('personaPersonality') as string | undefined
+  return persona ? `${persona}\n\n${base}` : base
+}
 
+export const architectAgent = new Agent({
+  id: 'pc-architect',
+  name: 'Architect',
+  description: ARCHITECT_DESCRIPTION,
+  instructions: architectInstructions,
   requestContextSchema: tenantContextSchema,
-
   tools: { retrieve_knowledge: retrieveKnowledge },
   model: selectModel,
   memory: architectMemory,
+})
+
+// Used only as Olmo's delegate (see mastra/agents/olmoDelegates.ts). No `memory`
+// key — a delegated sub-agent's resource id is derived by Mastra from a
+// model-writable tool field, not the tenant's real resource id, so giving this
+// variant memory would let an injected instruction steer where it writes/reads
+// working memory across tenants. Standalone architectAgent above is unaffected.
+export const architectAgentDelegate = new Agent({
+  id: 'pc-architect-delegate',
+  name: 'Architect',
+  description: ARCHITECT_DESCRIPTION,
+  instructions: architectInstructions,
+  requestContextSchema: tenantContextSchema,
+  tools: { retrieve_knowledge: retrieveKnowledge },
+  model: selectModel,
 })
