@@ -3,7 +3,7 @@ import { RequestContext, MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-con
 import type { MCPClient } from '@mastra/mcp'
 import { getMCPClientForTenant } from './tools.js'
 import { platformAgent } from './index.js'
-import { fetchAgentPersonality, fetchAgentSkills } from '../usage.js'
+import { fetchAgentPersonality, fetchAgentSkills, fetchAgentName } from '../usage.js'
 
 // TenantAgentConfig — unchanged signature for backward compatibility.
 // Instructions are now resolved dynamically from agentTemplates (via platformAgent)
@@ -58,10 +58,12 @@ export async function createTenantAgent(
   // Same persona/skill resolution as chatStream.ts (the interactive chat path) —
   // a hired employee must behave the same whether it's chatting or running a
   // scheduled Shift, not just when a human is watching.
-  const [personaPersonality, agentSkill] = await Promise.all([
+  const [personaPersonality, agentSkill, agentName] = await Promise.all([
     fetchAgentPersonality(config.agentId),
     fetchAgentSkills(config.agentId, config.tenantId),
+    fetchAgentName(config.agentId),
   ])
+  requestContext.set('agentName', agentName ?? '')
   if (personaPersonality) requestContext.set('personaPersonality', personaPersonality)
   if (agentSkill.systemPrompt) requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
 

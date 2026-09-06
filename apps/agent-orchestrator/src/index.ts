@@ -17,7 +17,7 @@ import { downloadMediaAttachment, buildAttachmentNote } from './media.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 import { validateToken } from './auth.js'
 import { createConversation, saveUserMessage, saveAssistantMessage, fetchConversationAllowMode } from './persistence.js'
-import { fetchAgentMemory } from './usage.js'
+import { fetchAgentMemory, fetchAgentName } from './usage.js'
 import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
 import { getMCPClientForTenant } from './mastra/tools.js'
@@ -182,6 +182,7 @@ async function handleSession(
         requestContext.set(MASTRA_THREAD_ID_KEY, conversationId ?? crypto.randomUUID())
         requestContext.set('tenantId', tenantId)
         requestContext.set('agentId', agentId)
+        requestContext.set('agentName', (await fetchAgentName(agentId)) ?? '')
         // Mirrors chatStream.ts's resolution: internalUserId is already resolved
         // once per connection in the upgrade handler below (auth/me, falling back
         // to the Cognito sub on failure) — without this, start_task/get_task_thread

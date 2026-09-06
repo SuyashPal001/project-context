@@ -260,6 +260,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     if (agentSkills.systemPrompt) {
       requestContext.set('agentSystemPrompt', agentSkills.systemPrompt)
     }
+    requestContext.set('agentName', agentName ?? '')
     // One run per composed install per chat message. Fire-and-forget: a counter
     // write must never break or delay the stream.
     if (agentSkills.installIds.length > 0) {
