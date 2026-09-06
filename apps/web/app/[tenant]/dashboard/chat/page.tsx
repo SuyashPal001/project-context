@@ -483,7 +483,7 @@ function ChatPage() {
                                             {...modelChangeProps}
                                         />
                                     </div>
-                                    <div className="flex items-center gap-2 mt-3 flex-wrap justify-center">
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap justify-center">
                                         {EMPTY_STATE_LIBRARY_TABS.map((tab) => (
                                             <button
                                                 key={tab.id}
