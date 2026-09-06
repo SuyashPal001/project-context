@@ -5,15 +5,23 @@ import { cn } from "@/lib/utils"
 interface OlmoMarkProps {
     height?: number
     className?: string
+    /** Tight, symmetric viewBox around the shape's actual bounding box
+     * (x:186-814, y:42-654), instead of the default's top-padded one. The
+     * default padding exists so the mark's visual weight lines up with
+     * adjacent wordmark text (Sidebar, SaarthiLogo, auth screens) — that
+     * same padding reads as visibly off-center when the mark stands alone
+     * inside a centered avatar circle (AgentOrb, PersonaAvatar). Use this
+     * there instead of changing the default and breaking wordmark layouts. */
+    centered?: boolean
 }
 
 // Theme-aware mark: black in light mode, white in dark mode via currentColor.
 // viewBox is padded on top (vs the tight favicon crop) so the shape's visual
 // weight lines up with adjacent wordmark text instead of floating high.
-export function OlmoMark({ height = 24, className }: OlmoMarkProps) {
+export function OlmoMark({ height = 24, className, centered = false }: OlmoMarkProps) {
     return (
         <svg
-            viewBox="179 -8 642 670"
+            viewBox={centered ? "186 42 628 612" : "179 -8 642 670"}
             className={cn("shrink-0 text-foreground", className)}
             style={{ height, width: "auto" }}
             aria-hidden="true"
