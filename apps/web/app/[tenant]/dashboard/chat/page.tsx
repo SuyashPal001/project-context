@@ -468,6 +468,7 @@ function ChatPage() {
                                     </PopoverContent>
                                 </Popover>
                                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8 mt-[12vh]">
+                                    {firstName && <p className="text-sm text-muted-foreground mb-2">Hi {firstName}</p>}
                                     <h1 className="text-3xl font-bold tracking-tight mb-8">What's on your mind today?</h1>
                                     <div className="w-full">
                                         <ChatInput
@@ -482,7 +483,7 @@ function ChatPage() {
                                             {...modelChangeProps}
                                         />
                                     </div>
-                                    <div className="flex items-center gap-2 mt-1 flex-wrap justify-center">
+                                    <div className="flex items-center gap-2 -mt-2 flex-wrap justify-center">
                                         {EMPTY_STATE_LIBRARY_TABS.map((tab) => (
                                             <button
                                                 key={tab.id}
