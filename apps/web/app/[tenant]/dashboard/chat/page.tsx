@@ -462,7 +462,7 @@ function ChatPage() {
                                 <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['conversations'] })} size="lg" className="rounded-full shadow-lg h-12 px-6">Retry Loading</Button>
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center p-8 text-center bg-background h-full relative overflow-y-auto">
+                            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background h-full relative overflow-y-auto">
                                 {sidebarToggleButton}
                                 <Popover>
                                     <PopoverTrigger asChild>
@@ -479,29 +479,31 @@ function ChatPage() {
                                         <CreditsPanel />
                                     </PopoverContent>
                                 </Popover>
-                                {/* Sits in normal flow (not pinned) so its own top margin mirrors
-                                    the p-8 the container already gives the bottom — the composer
-                                    block below is centered in the flex-1 space that remains, giving
-                                    it maximal headroom for the upward "@"/"#" palettes. */}
-                                <div className="flex flex-col items-center gap-2 shrink-0">
-                                    <div className="flex items-center gap-1.5 opacity-80">
-                                        <OlmoMark height={18} />
-                                        <span className="text-sm font-semibold tracking-tight">Olmo Creative Agent</span>
+                                {/* One column, centered as a single block — the gap above the
+                                    brand row mirrors the gap below the pills row by construction,
+                                    since the whole stack (not just the composer) is what's centered.
+                                    mt-10 nudges it down slightly off dead-center so the composer has
+                                    more headroom above it for the upward "@"/"#" palettes — a small,
+                                    deliberate asymmetry, not the centering breaking. */}
+                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8 mt-10">
+                                    <div className="flex flex-col items-center gap-2 mb-8">
+                                        <div className="flex items-center gap-1.5 opacity-80">
+                                            <OlmoMark height={18} />
+                                            <span className="text-sm font-semibold tracking-tight">Olmo Creative Agent</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium">
+                                            <span className="text-muted-foreground">{currentPlanName} plan</span>
+                                            {nextPlan && (
+                                                <>
+                                                    <span className="text-border">|</span>
+                                                    <Link href={`/${tenantSlug}/dashboard/billing`} className="flex items-center gap-1 font-semibold text-foreground hover:opacity-80 transition-opacity">
+                                                        <Zap className="h-3 w-3 fill-foreground shrink-0" />
+                                                        Upgrade
+                                                    </Link>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium">
-                                        <span className="text-muted-foreground">{currentPlanName} plan</span>
-                                        {nextPlan && (
-                                            <>
-                                                <span className="text-border">|</span>
-                                                <Link href={`/${tenantSlug}/dashboard/billing`} className="flex items-center gap-1 font-semibold text-foreground hover:opacity-80 transition-opacity">
-                                                    <Zap className="h-3 w-3 fill-foreground shrink-0" />
-                                                    Upgrade
-                                                </Link>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                                <div className="w-full max-w-2xl mx-auto flex-1 flex flex-col items-center justify-center py-8">
                                     <h1 className="text-3xl font-bold tracking-tight mb-8">{firstName ? `Hi ${firstName}, what's on your mind today?` : "What's on your mind today?"}</h1>
                                     <div className="w-full">
                                         <ChatInput
