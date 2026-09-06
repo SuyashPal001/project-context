@@ -42,6 +42,7 @@ export function AgentsView() {
     const [tab, setTab] = useState<AgentsTab>(searchParams.get("tab") === "explore" ? "explore" : "mine");
     const [mineSubTab, setMineSubTab] = useState<MineSubTab>("employees");
     const [category, setCategory] = useState<string | null>(null);
+    const [officialOnly, setOfficialOnly] = useState(false);
     const [search, setSearch] = useState("");
     const [selectedPersona, setSelectedPersona] = useState<PersonaSummary | null>(null);
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
@@ -90,6 +91,7 @@ export function AgentsView() {
     const hiredAgentFor = (personaId: string) => findAgentForPersona(agents, personaId);
 
     const explorePersonas = personas.filter((persona) => {
+        if (officialOnly && !persona.isOfficial) return false;
         if (category && persona.category !== category) return false;
         const q = search.trim().toLowerCase();
         if (!q) return true;
@@ -290,6 +292,15 @@ export function AgentsView() {
                             {CATEGORY_LABELS[tag] ?? tag}
                         </Button>
                     ))}
+                    <span className="mx-1 h-5 w-px bg-border" />
+                    <Button
+                        variant={officialOnly ? "default" : "outline"}
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => setOfficialOnly((v) => !v)}
+                    >
+                        Official
+                    </Button>
                 </div>
             )}
 
