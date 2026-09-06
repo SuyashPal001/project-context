@@ -36,12 +36,11 @@ async function checkFireDependencies(agentId: string): Promise<{ shiftsCount: nu
 // failing the whole agent list/detail response.
 //
 // The seeded default agent (Olmo, isDefault: true) never gets an avatarFileId — it's
-// the platform's own agent, not a per-tenant upload, so it uses the brand mark
-// (apps/web/public/brand/olmoworks-mark.svg) directly rather than routing a static
-// asset through the S3 presigned-URL machinery built to solve upload-expiry, a
-// problem this asset doesn't have.
-async function resolveAvatarUrl(tenantId: string, avatarFileId: string | null, isDefault?: boolean): Promise<string | null> {
-    if (isDefault) return '/brand/olmoworks-mark.svg';
+// the platform's own agent, not a per-tenant upload. It stays null here on purpose;
+// the frontend (AgentOrb/PersonaAvatar) renders the theme-aware brand mark directly
+// off `agent.isDefault`, which every agent response already carries — no need to
+// route a static brand asset through this presigned-URL/files-table machinery.
+async function resolveAvatarUrl(tenantId: string, avatarFileId: string | null): Promise<string | null> {
     if (!avatarFileId) return null;
     try {
         return await storageService.getDownloadUrl(tenantId, avatarFileId);
@@ -77,7 +76,7 @@ export async function handleListAgents(c: Context<AppEnv>) {
         .orderBy(asc(agents.createdAt));
 
     const data = await Promise.all(rows.map(async ({ avatarFileId, ...row }) => ({
-        ...row, avatarUrl: await resolveAvatarUrl(tenantId, avatarFileId, row.isDefault),
+        ...row, avatarUrl: await resolveAvatarUrl(tenantId, avatarFileId),
     })));
 
     return c.json({ data });
@@ -126,7 +125,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
     // avatarFileId stays in the response (unlike the list endpoint) so the identity
     // form can round-trip it unchanged on saves that don't touch the avatar — the
     // resolved avatarUrl alone isn't enough to reconstruct it.
-    const avatarUrl = await resolveAvatarUrl(tenantId, agent.avatarFileId, agent.isDefault);
+    const avatarUrl = await resolveAvatarUrl(tenantId, agent.avatarFileId);
     return c.json({ ...agent, avatarUrl, llmProvider, createdByName: creator?.name ?? null });
 }
 
@@ -257,7 +256,7 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
         }).catch((err) => console.error('[agents] update failed:', err));
     }
 
-    const updatedAvatarUrl = await resolveAvatarUrl(tenantId, updated.avatarFileId, updated.isDefault);
+    const updatedAvatarUrl = await resolveAvatarUrl(tenantId, updated.avatarFileId);
     return c.json({ data: { agent: { ...updated, avatarUrl: updatedAvatarUrl } } });
 }
 

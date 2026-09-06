@@ -18,7 +18,7 @@ interface MentionChipProps {
 export function MentionChip({ agent, onRemove }: MentionChipProps) {
     return (
         <div className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-secondary border border-border text-xs w-fit">
-            <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={20} className="rounded-full" icon={getAgentTypeIcon(agent.type)} />
+            <PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={20} className="rounded-full" icon={getAgentTypeIcon(agent.type)} isDefault={agent.isDefault} />
             <span className="font-medium text-foreground truncate max-w-[160px]">{agent.name}</span>
             <button
                 type="button"

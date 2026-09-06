@@ -270,6 +270,8 @@ export interface ThinkingIndicatorProps {
     reasoningText?: string;
     agentAvatarUrl?: string | null;
     agentPersona?: PersonaSummary | null;
+    /** The seeded default agent (Olmo) — see AgentOrb's isDefault prop. */
+    agentIsDefault?: boolean;
 }
 
 export function ThinkingIndicator({
@@ -280,6 +282,7 @@ export function ThinkingIndicator({
     reasoningText = '',
     agentAvatarUrl,
     agentPersona,
+    agentIsDefault,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
 
@@ -298,7 +301,7 @@ export function ThinkingIndicator({
     if (isRetrying) {
         return (
             <div className="flex items-center gap-4 animate-in fade-in duration-300 pt-1">
-                <AgentOrb size={60} liveState="thinking" isLoading avatarUrl={agentAvatarUrl} persona={agentPersona} />
+                <AgentOrb size={60} liveState="thinking" isLoading avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
                 <div className="h-6 overflow-hidden">
                     <div
                         className="transition-transform duration-500 ease-in-out"
@@ -324,7 +327,7 @@ export function ThinkingIndicator({
 
     return (
         <div className="flex items-start gap-4">
-            <AgentOrb size={60} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity} avatarUrl={agentAvatarUrl} persona={agentPersona} />
+            <AgentOrb size={60} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity} avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
             <div className={hasToolActivity ? "flex-1 pt-1" : "flex-1 pt-1.5"}>
                 <LiveTrace
                     isStreaming={isStreaming}

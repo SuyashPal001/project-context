@@ -59,6 +59,7 @@ export function AgentSelector({ open, onOpenChange, onSelect }: AgentSelectorPro
                                         className="rounded-full bg-primary/10 border-0"
                                         iconClassName="text-primary"
                                         icon={getAgentTypeIcon(agent.type)}
+                                        isDefault={agent.isDefault}
                                     />
                                     <div className="flex flex-col items-start overflow-hidden">
                                         <span className="font-medium truncate w-full">{agent.name}</span>

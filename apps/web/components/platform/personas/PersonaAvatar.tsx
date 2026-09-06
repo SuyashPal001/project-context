@@ -5,6 +5,7 @@ import { Bot, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buildAvatarSvg } from "@/components/platform/agents/avatar-builder/buildAvatarSvg";
 import { randomizeAvatarParams } from "@/components/platform/agents/avatar-builder/avatarParams";
+import { OlmoMark } from "../OlmoMark";
 import type { PersonaSummary } from "./types";
 import type { PersonaAnimationState } from "./usePersonaAnimationState";
 
@@ -38,9 +39,24 @@ interface PersonaAvatarProps {
     /** Overrides the generic Bot fallback icon — e.g. a role-specific icon
      * so agents remain visually distinguishable in a list without color. */
     icon?: LucideIcon;
+    /** The seeded default agent (Olmo) never gets a persona or avatarUrl —
+     * it's the platform's own agent, not a per-tenant hire — so render the
+     * theme-aware brand mark instead of the generic Bot icon. Checked before
+     * persona/avatarUrl so it wins even if either is ever set. */
+    isDefault?: boolean;
 }
 
-export function PersonaAvatar({ persona, avatarUrl, state, size = 40, className, iconClassName, icon: Icon = Bot }: PersonaAvatarProps) {
+export function PersonaAvatar({ persona, avatarUrl, state, size = 40, className, iconClassName, icon: Icon = Bot, isDefault = false }: PersonaAvatarProps) {
+    if (isDefault) {
+        return (
+            <div
+                className={cn("flex shrink-0 items-center justify-center rounded-xl border border-border/50 bg-secondary text-foreground", className)}
+                style={{ width: size, height: size }}
+            >
+                <OlmoMark height={size * 0.5} />
+            </div>
+        );
+    }
     // Motion (via `state` below) is fully decoupled from persona art — see
     // globals.css's persona-avatar-motion rules — so there's no per-state image to
     // look up. Personas have no dedicated avatar field (only avatarUrl on a

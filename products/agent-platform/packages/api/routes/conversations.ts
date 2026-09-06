@@ -25,14 +25,12 @@ export const conversationsRoutes = new Hono<AppEnv>();
 // every read here too, mirroring agents.crud.ts's resolveAvatarUrl.
 //
 // The seeded default agent (Olmo, isDefault: true) never gets an avatarFileId — see
-// the matching comment on agents.crud.ts's resolveAvatarUrl for why it uses the
-// static brand mark instead of the S3 presigned-URL path.
+// the matching comment on agents.crud.ts's resolveAvatarUrl. `isDefault` still flows
+// through the `agent` object below so the frontend can render the brand mark itself.
 async function resolveConversationAgentAvatar<T extends { tenantId: string; agent: { avatarFileId: string | null; isDefault?: boolean } }>(row: T) {
     const { avatarFileId, ...agentRest } = row.agent;
     let avatarUrl: string | null = null;
-    if (row.agent.isDefault) {
-        avatarUrl = '/brand/olmoworks-mark.svg';
-    } else if (avatarFileId) {
+    if (avatarFileId) {
         try { avatarUrl = await storageService.getDownloadUrl(row.tenantId, avatarFileId); } catch { /* file missing/deleted */ }
     }
     // Cast: TS can't narrow the generic `agent` shape after the Omit/spread — same

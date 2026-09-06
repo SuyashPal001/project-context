@@ -163,6 +163,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                     className="rounded-full h-9 w-9 shrink-0"
                     iconClassName="text-foreground/50"
                     icon={getAgentTypeIcon(agent.type)}
+                    isDefault={agent.isDefault}
                 />
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -401,6 +402,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                                                 className="rounded bg-transparent border-0"
                                                 iconClassName="text-muted-foreground/40"
                                                 icon={getAgentTypeIcon(agent.type)}
+                                                isDefault={agent.isDefault}
                                             />
                                             <span className="text-[11px] font-semibold text-muted-foreground/50 uppercase tracking-wider truncate">
                                                 {agent.name}

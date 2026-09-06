@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { buildAvatarSvg } from "@/components/platform/agents/avatar-builder/buildAvatarSvg";
 import { randomizeAvatarParams } from "@/components/platform/agents/avatar-builder/avatarParams";
 import { seededRng } from "../personas/PersonaAvatar";
+import { OlmoMark } from "../OlmoMark";
 import type { PersonaSummary } from "../personas/types";
 import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
 
@@ -31,6 +32,12 @@ interface AgentOrbProps {
      * animating. Only set this where the avatar is genuinely reacting to a
      * live chat stream — the currently-streaming message row, nowhere else. */
     liveState?: PersonaAnimationState;
+    /** The seeded default agent (Olmo) never gets a persona or avatarUrl —
+     * it's the platform's own agent, not a per-tenant hire — so render the
+     * theme-aware brand mark instead of falling through to the generic
+     * canvas orb below. Checked before avatarUrl/persona so it wins even if
+     * either is ever set. */
+    isDefault?: boolean;
 }
 
 interface Vars {
@@ -55,7 +62,7 @@ interface Vars {
 
 function randomBlink() { return 3000 + Math.random() * 5000; }
 
-export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarUrl = null, persona = null, liveState }: AgentOrbProps) {
+export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarUrl = null, persona = null, liveState, isDefault = false }: AgentOrbProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [isJumping, setIsJumping] = useState(false);
     const stateRef = useRef<OrbState>(state);
@@ -382,6 +389,18 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
             setTimeout(() => setIsJumping(false), 500);
         }
     };
+
+    if (isDefault) {
+        return (
+            <div
+                data-persona-state={liveState}
+                className="persona-avatar-motion shrink-0 flex items-center justify-center rounded-full bg-secondary text-foreground"
+                style={{ width: size, height: size }}
+            >
+                <OlmoMark height={size * 0.5} />
+            </div>
+        );
+    }
 
     if (avatarUrl) {
         return (

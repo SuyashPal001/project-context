@@ -180,6 +180,7 @@ export function AddToChatMenu({
                                         className="rounded-full h-5 w-5"
                                         iconClassName="text-foreground/50"
                                         icon={getAgentTypeIcon(group.agent?.type)}
+                                        isDefault={group.agent?.isDefault}
                                     />
                                     <span className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                                         {group.agent?.name || 'Agent'}
