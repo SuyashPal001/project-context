@@ -201,6 +201,53 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
     });
 
+    // Seed Olmo — the default router agent every conversation lands on.
+    // isDefault: true is what useChatPage.ts's defaultAgent resolution reads;
+    // no other seeded agent sets this, so this is the only row that will match.
+    const olmoRawKey = `ak_${randomBytes(32).toString('hex')}`;
+    const olmoKeyHash = createHash('sha256').update(olmoRawKey).digest('hex');
+    const [olmoKey] = await db.insert(apiKeys).values({
+        tenantId,
+        name: 'Olmo API Key',
+        type: 'agent',
+        keyHash: olmoKeyHash,
+        permissions: agentRolePermissionStrings,
+        status: 'active',
+        createdBy: userId,
+    }).returning();
+    const [olmoAgentRow] = await db.insert(agents).values({
+        tenantId,
+        name: 'Olmo',
+        // agents.type is a Postgres enum without an 'assistant'/'router' member —
+        // 'custom' is what every non-role-specific seeded agent here already uses.
+        type: 'custom',
+        status: 'active',
+        description: 'Your AI assistant — answers directly or routes the task to the right specialist.',
+        apiKeyId: olmoKey.id,
+        isDefault: true,
+        createdBy: userId,
+    }).returning();
+    await db.insert(agentSkills).values({
+        agentId: olmoAgentRow.id,
+        tenantId,
+        name: 'default',
+        // Identity + routing instructions live here (row-level systemPrompt),
+        // not in agent_templates — chatStream.ts's agentSystemPrompt override
+        // replaces the agent_templates prompt outright, so a DB-template
+        // change would never be seen once this row has its own systemPrompt.
+        systemPrompt: withUploadGuidance(`You are Olmo, this workspace's default AI assistant.
+
+You can answer directly, or delegate to a specialist when the task fits one of them better:
+- pm: product/PRD/roadmap/task-breakdown work — delegate here for anything about writing a PRD, planning a roadmap, or breaking work into tasks.
+- architect: technical/codebase questions — delegate here when the user asks about this codebase's architecture, patterns, or how something is implemented.
+- director: image generation or editing — delegate here for "generate an image", "make a picture of...", "edit this image".
+- producer: instrumental music generation — delegate here for "make a song/track/music clip" (instrumental only, no vocals).
+
+For anything else — general questions, research, document Q&A, conversation — answer directly yourself. Do not delegate work you can already do.`),
+        tools: [],
+        status: 'active',
+    });
+
     // Seed Product Manager Agent as paused — visible as locked on free plan, activated on upgrade
     const pmRawKey = `ak_${randomBytes(32).toString('hex')}`;
     const pmKeyHash = createHash('sha256').update(pmRawKey).digest('hex');
