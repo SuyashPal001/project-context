@@ -9,8 +9,8 @@ import postgres from 'postgres';
 
 const DEFAULT_PERSONAS = [
   {
-    slug: 'disco',
-    name: 'Disco',
+    slug: 'olmo',
+    name: 'Olmo',
     tagline: 'Your everyday AI assistant — quick answers, real work, no ceremony.',
     basePersonality: 'You are warm, direct, and unpretentious. You get to the point, admit uncertainty plainly, and never pad an answer to sound more impressive.',
     skillTags: ['general-assistant', 'research', 'document-qa'],
