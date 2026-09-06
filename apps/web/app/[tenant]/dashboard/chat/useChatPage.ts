@@ -111,15 +111,6 @@ export function useChatPage() {
         },
     });
 
-    const silentCreateConversation = useMutation({
-        mutationFn: (agentId: string) => api.post<{ data: Conversation }>('/api/v1/conversations', { agentId }),
-        onSuccess: (res) => {
-            queryClient.invalidateQueries({ queryKey: ['conversations'] });
-            router.push(`/${tenantSlug}/dashboard/chat?id=${res.data.id}`);
-        },
-        onError: () => { autoCreatingRef.current = false; },
-    });
-
     const updateAgentMutation = useMutation({
         mutationFn: (values: { llmProviderId: string }) => {
             const agentId = selectedConversation?.agentId || selectedConversation?.agent?.id;
@@ -169,15 +160,10 @@ export function useChatPage() {
         onError: (err: any) => { toast.error(err.data?.message || 'Failed to archive conversation'); },
     });
 
-    // Auto-create a conversation for first-time users
-    useEffect(() => {
-        if (!isLoadingConversations && !isErrorConversations && conversations.length === 0 &&
-            !conversationId && activeAgents.length > 0 && !autoCreatingRef.current) {
-            autoCreatingRef.current = true;
-            silentCreateConversation.mutate(defaultAgent.id);
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isLoadingConversations, isErrorConversations, conversations.length, conversationId, activeAgents.length]);
+    // First-time users with no conversations land on the empty-state composer
+    // screen (chat/page.tsx's "what are we creating today?" block) instead of
+    // being auto-dropped into a silently-created conversation — a conversation
+    // is only created once they actually send a message, via handleNewChat.
 
     // Auto-create a conversation when ?agentId= is in the URL (e.g. from Files page "Chat with Agent" button)
     useEffect(() => {
