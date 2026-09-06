@@ -397,7 +397,7 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
                 className="persona-avatar-motion shrink-0 flex items-center justify-center rounded-full bg-secondary text-foreground"
                 style={{ width: size, height: size }}
             >
-                <OlmoMark height={size * 0.5} />
+                <OlmoMark height={size * 0.8} />
             </div>
         );
     }

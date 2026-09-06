@@ -53,7 +53,7 @@ export function PersonaAvatar({ persona, avatarUrl, state, size = 40, className,
                 className={cn("flex shrink-0 items-center justify-center rounded-xl border border-border/50 bg-secondary text-foreground", className)}
                 style={{ width: size, height: size }}
             >
-                <OlmoMark height={size * 0.5} />
+                <OlmoMark height={size * 0.8} />
             </div>
         );
     }
