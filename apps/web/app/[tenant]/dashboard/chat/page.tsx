@@ -232,6 +232,16 @@ function ChatPage() {
     // Which library tab (Templates/Avatars/Products/Audio) is expanded under the
     // no-conversation-selected composer. Null collapses the panel.
     const [activeEmptyStateTab, setActiveEmptyStateTab] = useState<string | null>(null);
+    // Starts as the timezone-neutral fallback so SSR and first client paint
+    // match, then swaps to the real time-of-day greeting client-side — the
+    // server's clock/timezone can differ from the browser's, and computing
+    // this from `new Date()` directly in the initial render would risk a
+    // hydration mismatch.
+    const [greeting, setGreeting] = useState('Welcome back');
+    useEffect(() => {
+        const hour = new Date().getHours();
+        setGreeting(hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening');
+    }, []);
 
     useEffect(() => {
         if (!pendingFirstMessage) return;
@@ -468,8 +478,7 @@ function ChatPage() {
                                     </PopoverContent>
                                 </Popover>
                                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
-                                    {firstName && <p className="text-sm text-muted-foreground mb-2">Hi {firstName}</p>}
-                                    <h1 className="text-3xl font-bold tracking-tight mb-8">What's on your mind today?</h1>
+                                    <h1 className="text-3xl font-bold tracking-tight mb-8">{greeting}{firstName ? `, ${firstName}` : ''}</h1>
                                     <div className="w-full">
                                         <ChatInput
                                             onSend={(text) => { setPendingFirstMessage(text); handleNewChat(); }}
