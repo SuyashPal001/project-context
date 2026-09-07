@@ -33,7 +33,9 @@ async function upsertUser(
             .returning()
         return user
     } catch (err: any) {
-        if (err?.code === '23505' && err?.constraint === 'users_personal_identifier_unique' && attempt < 3) {
+        // See the note in userUpsertMiddleware's catch below — same wrong-shape bug.
+        const pgErr = err?.cause ?? err;
+        if (pgErr?.code === '23505' && pgErr?.constraint_name === 'users_personal_identifier_unique' && attempt < 3) {
             return upsertUser(cognitoId, email, name, attempt + 1)
         }
         throw err
@@ -97,7 +99,14 @@ export const userUpsertMiddleware = async (c: Context, next: Next) => {
         const user = await upsertUser(cognitoId, email, name || "")
         c.set('userId', user.id);
     } catch (error: any) {
-        if (error?.code === '23505' && error?.constraint === 'users_email_unique') {
+        // Drizzle wraps the driver's error in a DrizzleQueryError, with the real
+        // postgres.js error (code, constraint_name — not `constraint`) on `.cause`.
+        // Checking the top-level error's `.constraint` here never matched anything,
+        // so this recovery path silently never ran and every duplicate-email upsert
+        // (e.g. re-signing-up with Google after switching auth method, or after a
+        // Cognito identity was recreated) fell through to an unhandled 500 instead.
+        const pgError = error?.cause ?? error;
+        if (pgError?.code === '23505' && pgError?.constraint_name === 'users_email_unique') {
             // Same email, different cognitoId — user switched auth method (e.g., email → Google OAuth)
             // Update the existing row to point to the new cognitoId
             const [user] = await db.update(users)
