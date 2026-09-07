@@ -59,7 +59,7 @@ export default function OnboardingPage() {
 
     return (
         <div className="relative min-h-screen bg-black text-white flex flex-col items-center justify-center overflow-hidden">
-            <StarfieldCanvas speedMode="idle" active={true} />
+            <StarfieldCanvas speedMode="idle" active={true} forceDark />
 
             <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center justify-center">
 

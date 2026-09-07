@@ -6,12 +6,20 @@ import { useTheme } from "next-themes";
 interface StarfieldCanvasProps {
     speedMode?: 'idle' | 'warp';
     active?: boolean;
+    /** Every other caller places its content in a theme-aware bg-card box
+     * on top of the starfield, so the canvas's own light/dark fill never
+     * affects text contrast. Onboarding is the one caller that puts text
+     * directly on the bare starfield with hardcoded white/dark styling —
+     * on a light-resolved theme the canvas's near-white fill (#fafafa)
+     * sat behind that hardcoded white text, reading as blank. Pin it dark
+     * there instead of making every other caller theme-aware unnecessarily. */
+    forceDark?: boolean;
 }
 
-export function StarfieldCanvas({ speedMode = 'warp', active = true }: StarfieldCanvasProps) {
+export function StarfieldCanvas({ speedMode = 'warp', active = true, forceDark = false }: StarfieldCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const { resolvedTheme } = useTheme();
-    const isLight = resolvedTheme === 'light';
+    const isLight = !forceDark && resolvedTheme === 'light';
 
     useEffect(() => {
         if (!active || !canvasRef.current) return;
