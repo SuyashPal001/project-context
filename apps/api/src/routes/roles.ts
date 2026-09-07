@@ -102,7 +102,7 @@ rolesRoutes.post('/', async (c) => {
     }).returning();
 
     await logWithDiff({
-        tenantId, actorId: requestContext?.userId ?? 'system', actorType: 'human',
+        tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
         action: 'role_created', resource: 'role', resourceId: role.id,
         newState: { name: role.name, description: role.description },
         traceId: c.get('traceId') ?? '',
@@ -143,7 +143,7 @@ rolesRoutes.patch('/:id', async (c) => {
         .returning();
 
     await logWithDiff({
-        tenantId, actorId: requestContext?.userId ?? 'system', actorType: 'human',
+        tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
         action: 'role_updated', resource: 'role', resourceId: updated.id,
         previousState: { name: existing.name, description: existing.description },
         newState: { name: updated.name, description: updated.description },
@@ -185,7 +185,7 @@ rolesRoutes.post('/:id/permissions', async (c) => {
         .onConflictDoNothing();
 
     await logWithDiff({
-        tenantId, actorId: requestContext?.userId ?? 'system', actorType: 'human',
+        tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
         action: 'role_permissions_assigned', resource: 'role', resourceId: roleId,
         newState: { permissionIds: result.data.permissionIds },
         traceId: c.get('traceId') ?? '',
@@ -218,7 +218,7 @@ rolesRoutes.delete('/:id/permissions/:permId', async (c) => {
     );
 
     await logWithDiff({
-        tenantId, actorId: requestContext?.userId ?? 'system', actorType: 'human',
+        tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
         action: 'role_permission_revoked', resource: 'role', resourceId: roleId,
         previousState: { permissionId: permId },
         traceId: c.get('traceId') ?? '',
@@ -255,7 +255,7 @@ rolesRoutes.delete('/:id', async (c) => {
     await db.delete(roles).where(eq(roles.id, roleId));
 
     await logWithDiff({
-        tenantId, actorId: requestContext?.userId ?? 'system', actorType: 'human',
+        tenantId, actorId: c.get('userId') ?? 'system', actorType: 'human',
         action: 'role_deleted', resource: 'role', resourceId: roleId,
         previousState: { name: existing.name, description: existing.description },
         traceId: c.get('traceId') ?? '',

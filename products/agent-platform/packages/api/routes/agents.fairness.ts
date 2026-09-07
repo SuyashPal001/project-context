@@ -67,10 +67,11 @@ export function deriveOverallStatus(results: FairnessCheckResult[]): 'pass' | 'w
 agentFairnessRoutes.post('/:agentId/fairness/run', async (c) => {
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
-  const userId = requestContext?.userId;
+  const userId = c.get('userId') as string | undefined;
   const permissions = requestContext?.permissions ?? [];
 
   if (!hasPermission(permissions, 'agents', 'update')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401);
 
   const agentId = c.req.param('agentId');
   const [agent] = await db.select({ id: agents.id, description: agents.description })
