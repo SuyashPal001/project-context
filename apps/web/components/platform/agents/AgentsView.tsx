@@ -228,19 +228,6 @@ export function AgentsView() {
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Employees</h1>
                     <p className="text-muted-foreground mt-2">Browse and hire AI employees for your team</p>
                 </div>
-                <div className="flex gap-2">
-                    {isPlatformAdmin && (
-                        <CreateAgentDialog>
-                            <Button variant="outline">Create Custom</Button>
-                        </CreateAgentDialog>
-                    )}
-                    {tab !== "explore" && (
-                        <Button onClick={() => setTab("explore")}>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add Employee
-                        </Button>
-                    )}
-                </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -258,7 +245,56 @@ export function AgentsView() {
                         </button>
                     ))}
                 </div>
-                {!(tab === "mine" && mineSubTab === "teams") && (
+                <div className="flex gap-2">
+                    {isPlatformAdmin && (
+                        <CreateAgentDialog>
+                            <Button variant="outline">Create Custom</Button>
+                        </CreateAgentDialog>
+                    )}
+                    {tab !== "explore" && (
+                        <Button onClick={() => setTab("explore")}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Employee
+                        </Button>
+                    )}
+                </div>
+            </div>
+
+            {!(tab === "mine" && mineSubTab === "teams") && (
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap gap-2">
+                        {tab === "explore" && categories.length > 0 && (
+                            <>
+                                <Button
+                                    variant={category === null && !officialOnly ? "secondary" : "outline"}
+                                    size="sm"
+                                    className="rounded-full"
+                                    onClick={() => { setCategory(null); setOfficialOnly(false); }}
+                                >
+                                    All
+                                </Button>
+                                {categories.map((tag) => (
+                                    <Button
+                                        key={tag}
+                                        variant={category === tag && !officialOnly ? "secondary" : "outline"}
+                                        size="sm"
+                                        className="rounded-full"
+                                        onClick={() => { setCategory(tag); setOfficialOnly(false); }}
+                                    >
+                                        {CATEGORY_LABELS[tag] ?? tag}
+                                    </Button>
+                                ))}
+                                <Button
+                                    variant={officialOnly ? "secondary" : "outline"}
+                                    size="sm"
+                                    className="rounded-full"
+                                    onClick={() => { setOfficialOnly(true); setCategory(null); }}
+                                >
+                                    Official
+                                </Button>
+                            </>
+                        )}
+                    </div>
                     <div className="relative w-full max-w-xs">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -268,39 +304,6 @@ export function AgentsView() {
                             className="pl-9 focus-visible:border-foreground/30 focus-visible:ring-foreground/10"
                         />
                     </div>
-                )}
-            </div>
-
-            {tab === "explore" && categories.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                    <Button
-                        variant={category === null ? "default" : "outline"}
-                        size="sm"
-                        className="rounded-full"
-                        onClick={() => setCategory(null)}
-                    >
-                        All
-                    </Button>
-                    {categories.map((tag) => (
-                        <Button
-                            key={tag}
-                            variant={category === tag ? "default" : "outline"}
-                            size="sm"
-                            className="rounded-full"
-                            onClick={() => setCategory(tag)}
-                        >
-                            {CATEGORY_LABELS[tag] ?? tag}
-                        </Button>
-                    ))}
-                    <span className="mx-1 h-5 w-px bg-border" />
-                    <Button
-                        variant={officialOnly ? "default" : "outline"}
-                        size="sm"
-                        className="rounded-full"
-                        onClick={() => setOfficialOnly((v) => !v)}
-                    >
-                        Official
-                    </Button>
                 </div>
             )}
 
