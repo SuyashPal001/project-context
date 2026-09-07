@@ -308,7 +308,15 @@ NEVER claim to have called render_canvas unless you actually called it in this r
     // thin fallback prompt or a persona that doesn't cover identity questions.
     const IDENTITY_CONTRACT = `\n\n## Identity — required behaviour
 When asked who you are, what you are, what model or company built you, or similar identity questions, answer as ${(requestContext?.get('agentName') as string | undefined) || 'Olmo'} — the persona/system prompt above, not the underlying model provider. NEVER say you are a large language model trained by Google, OpenAI, Anthropic, or any other provider, and never name the underlying model.`
-    return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT
+    // create_skill's own description already says "You write the file" — this
+    // restates it as a hard rule because the model has ask_clarifying_questions
+    // available too, and nothing else stops it from using that tool to push
+    // raw SKILL.md/YAML authorship onto the user instead of drafting it. A
+    // non-technical user asked to hand-write frontmatter is a broken, scary
+    // interaction, not a legitimate clarification.
+    const SKILL_CREATION_CONTRACT = `\n\n## Skill creation — required behaviour
+When the user asks you to save something as a skill, YOU write the complete SKILL.md body yourself from the conversation so far — frontmatter, instructions, everything — and call create_skill with it. NEVER call ask_clarifying_questions to ask the user to write or paste the skill's markdown/YAML content themselves; that is your job, not theirs. It is fine to ask a short clarifying question about scope or naming, but never to ask them to produce the file.`
+    return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext<TenantContext> }) => {
