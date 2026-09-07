@@ -403,10 +403,17 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
     };
 
     if (isDefault) {
+        // No data-persona-state here, unlike every other branch below —
+        // globals.css's persona-idle keyframe (mapped from the 'waving'
+        // state this screen passes) bounces translateY between 0 and -3px,
+        // which a static screenshot can catch mid-cycle and misread as the
+        // mark sitting permanently off-center. PersonaAvatar's isDefault
+        // branch (ChatHeader) never receives a liveState at all, so it was
+        // never animating — keep this branch equally static instead of
+        // reproducing motion the header intentionally doesn't have.
         return (
             <div
-                data-persona-state={liveState}
-                className="persona-avatar-motion shrink-0 flex items-center justify-center rounded-full bg-secondary text-foreground"
+                className="shrink-0 flex items-center justify-center rounded-full bg-secondary text-foreground"
                 style={{ width: size, height: size }}
             >
                 <OlmoMark height={size * 0.5} centered />
