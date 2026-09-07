@@ -266,7 +266,7 @@ export function AgentsView() {
                         {tab === "explore" && categories.length > 0 && (
                             <>
                                 <Button
-                                    variant={category === null && !officialOnly ? "secondary" : "outline"}
+                                    variant={category === null && !officialOnly ? "outline" : "ghost"}
                                     size="sm"
                                     className="rounded-full"
                                     onClick={() => { setCategory(null); setOfficialOnly(false); }}
@@ -276,7 +276,7 @@ export function AgentsView() {
                                 {categories.map((tag) => (
                                     <Button
                                         key={tag}
-                                        variant={category === tag && !officialOnly ? "secondary" : "outline"}
+                                        variant={category === tag && !officialOnly ? "outline" : "ghost"}
                                         size="sm"
                                         className="rounded-full"
                                         onClick={() => { setCategory(tag); setOfficialOnly(false); }}
@@ -285,7 +285,7 @@ export function AgentsView() {
                                     </Button>
                                 ))}
                                 <Button
-                                    variant={officialOnly ? "secondary" : "outline"}
+                                    variant={officialOnly ? "outline" : "ghost"}
                                     size="sm"
                                     className="rounded-full"
                                     onClick={() => { setOfficialOnly(true); setCategory(null); }}
