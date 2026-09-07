@@ -97,18 +97,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                             return (
                                 <div key={i} className="flex flex-col gap-1.5">
                                     <div className="text-sm font-medium">{q.prompt}</div>
-                                    {/* Answer rendered as its own right-aligned "You" turn — same
-                                        pill treatment as a real user message (see MessageItem.tsx)
-                                        — instead of a second line under the question, which read
-                                        as the agent asking and answering itself. */}
-                                    <div className="flex justify-end">
-                                        <div
-                                            className="max-w-[85%] px-3 py-1.5 rounded-2xl bg-primary text-primary-foreground text-sm"
-                                            style={{ borderRadius: '14px 14px 4px 14px' }}
-                                        >
-                                            {answerText}
-                                        </div>
-                                    </div>
+                                    <div className="text-sm text-muted-foreground">{answerText}</div>
                                 </div>
                             );
                         })}
