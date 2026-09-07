@@ -5,8 +5,10 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import { User, LogOut, ChevronsUpDown, Sun, Moon, Monitor, Zap, HelpCircle, Settings, Code2 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { useTenant } from "@/app/[tenant]/tenant-provider"
 import { signOut } from "@/lib/auth"
+import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useCreditBalance, microToCredits } from "@/lib/hooks/useCredits"
 import { PLANS } from "@/components/platform/billing/PlanSelectorDialog"
@@ -35,6 +37,15 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
     const router = useRouter()
     const { tenantSlug, plan, email, name, role } = useTenant()
     const { theme, setTheme } = useTheme()
+    // Shares the "user-profile" cache with the profile settings page — saving
+    // a new avatar there invalidates this query too, so the sidebar/dropdown
+    // avatar updates without a re-login. useTenant()'s name/email come from
+    // the JWT claims instead (stale until token refresh) and stay as-is here.
+    const { data: profileData } = useQuery<{ user: { avatarUrl: string | null } }>({
+        queryKey: ["user-profile"],
+        queryFn: () => api.get<{ user: { avatarUrl: string | null } }>("/api/v1/users/profile"),
+    })
+    const avatarUrl = profileData?.user?.avatarUrl || null
     const [isOpen, setIsOpen] = React.useState(false)
     const [showCreditsDetail, setShowCreditsDetail] = React.useState(false)
     const [mounted, setMounted] = React.useState(false)
@@ -93,9 +104,14 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                         "w-8 h-8 rounded-full flex items-center justify-center shrink-0 border border-border shadow-sm overflow-hidden",
                         getAvatarBg()
                     )}>
-                        <span className="text-xs font-bold text-white">
-                            {getInitials()}
-                        </span>
+                        {avatarUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                            <span className="text-xs font-bold text-white">
+                                {getInitials()}
+                            </span>
+                        )}
                     </div>
                     {!collapsed && (
                         <>
@@ -136,7 +152,12 @@ export function AccountMenu({ collapsed }: { collapsed?: boolean }) {
                         "w-9 h-9 rounded-full flex items-center justify-center shrink-0 border border-border shadow-sm overflow-hidden",
                         getAvatarBg()
                     )}>
-                        <span className="text-xs font-bold text-white">{getInitials()}</span>
+                        {avatarUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                            <span className="text-xs font-bold text-white">{getInitials()}</span>
+                        )}
                     </div>
                     <div className="flex flex-col min-w-0">
                         <p className="text-[13px] font-medium text-foreground truncate">{name || "User"}</p>
