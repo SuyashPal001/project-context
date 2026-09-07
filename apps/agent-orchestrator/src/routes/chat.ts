@@ -136,8 +136,14 @@ chatRouter.post('/api/chat', async (c) => {
       ? fetch(`${API_BASE_URL}/api/v1/auth/me`, { headers: { 'Authorization': `Bearer ${idToken}` } })
           .then(async (meResp) => {
             if (meResp.ok) {
-              const me = await meResp.json() as { id?: string }
-              if (typeof me.id === 'string' && me.id) internalUserId = me.id
+              // /api/v1/auth/me returns the field as `userId`, not `id` (see
+              // apps/api/src/routes/auth.ts). Checking `me.id` here always read
+              // undefined, so this assignment never fired and internalUserId
+              // silently stayed at the raw Cognito sub for every request —
+              // breaking anything keyed off the real internal users.id
+              // (permission checks via memberships.user_id, audit logs, etc).
+              const me = await meResp.json() as { userId?: string }
+              if (typeof me.userId === 'string' && me.userId) internalUserId = me.userId
             } else {
               console.warn(`[sse] auth/me returned ${meResp.status} — falling back to Cognito sub`)
             }

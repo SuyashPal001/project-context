@@ -329,8 +329,10 @@ server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
         headers: { 'Authorization': `Bearer ${idToken}` },
       })
       if (meResp.ok) {
-        const me = await meResp.json() as { id?: string }
-        if (typeof me.id === 'string' && me.id) internalUserId = me.id
+        // /api/v1/auth/me returns the field as `userId`, not `id` — see the
+        // same fix and note in routes/chat.ts.
+        const me = await meResp.json() as { userId?: string }
+        if (typeof me.userId === 'string' && me.userId) internalUserId = me.userId
       } else {
         console.warn(`[session] auth/me returned ${meResp.status} — falling back to Cognito sub`)
       }
