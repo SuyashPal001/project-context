@@ -130,7 +130,10 @@ export function AgentIdentityCard({
                                     value={form.avatarUrl}
                                     fallbackText={initials}
                                     onChange={(url) => {
-                                        setForm(prev => ({ ...prev, avatarUrl: url, avatarParams: null }));
+                                        // Remove passes "" here — also clear avatarFileId, otherwise
+                                        // Save persists the old file id unchanged (the preview clears
+                                        // locally but the removal never reaches the server).
+                                        setForm(prev => ({ ...prev, avatarUrl: url, avatarParams: null, avatarFileId: url ? prev.avatarFileId : null }));
                                         setIsDirty(true);
                                     }}
                                     onFileIdChange={(fileId) => {
