@@ -12,7 +12,14 @@ describe('buildAvatarSvg', () => {
         const svg = buildAvatarSvg(DEFAULT_AVATAR_PARAMS);
         expect(svg.trim().startsWith('<svg')).toBe(true);
         expect(svg.trim().endsWith('</svg>')).toBe(true);
-        expect(svg).toContain('viewBox="0 -15 200 215"');
+    });
+
+    it('only extends the viewBox for animespikes, which needs the extra top headroom', () => {
+        const tight = buildAvatarSvg(withOverrides({ accessory: 'cybermohawk' }));
+        expect(tight).toContain('viewBox="0 0 200 200"');
+
+        const spiky = buildAvatarSvg(withOverrides({ accessory: 'animespikes' }));
+        expect(spiky).toContain('viewBox="0 -15 200 215"');
     });
 
     it('never interpolates anything other than the closed AvatarParams fields (no free text reaches markup)', () => {

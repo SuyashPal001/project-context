@@ -165,8 +165,17 @@ export function buildAvatarSvg(params: AvatarParams): string {
         renderMouthLine(params.mouth, g),
     ];
 
-    // viewBox starts at y=-15, not 0 — animespikes' tallest tip renders at
-    // headY-40 (as low as -6 for the "tall" head shape), which a 0-origin
-    // viewBox clips flat since SVG crops anything outside it by default.
-    return `<svg width="220" height="220" viewBox="0 -15 200 215" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
+    // viewBox starts at y=-15, not 0, ONLY for animespikes — its tallest tip
+    // renders at headY-40 (as low as -6 for the "tall" head shape), which a
+    // 0-origin viewBox clips flat since SVG crops anything outside it by
+    // default. Every other hairstyle's tallest point stays well within
+    // y>=0 (pompadour ~16, hightop/cybermohawk similar), so applying that
+    // extra 15 units unconditionally left them with dead space at the top
+    // and no matching space at the bottom — the artwork visibly not
+    // centered in its own box once rendered at any real size (was hard to
+    // notice at a small avatar size, obvious at WelcomeView's 96px).
+    const needsTopHeadroom = params.accessory === 'animespikes';
+    const viewBoxY = needsTopHeadroom ? -15 : 0;
+    const viewBoxH = needsTopHeadroom ? 215 : 200;
+    return `<svg width="220" height="220" viewBox="0 ${viewBoxY} 200 ${viewBoxH}" xmlns="http://www.w3.org/2000/svg">${parts.join('')}</svg>`;
 }
