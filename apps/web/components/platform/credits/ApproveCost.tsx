@@ -259,7 +259,7 @@ function Shell({
 
     return (
         <div className="flex w-full justify-center my-5" data-testid={testId}>
-            <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-card shadow-elevated p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-primary/40 bg-card shadow-elevated p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {label && <h4 className="text-sm font-medium px-1">{label}</h4>}
                 {preview && (
                     <pre

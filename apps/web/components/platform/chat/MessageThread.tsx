@@ -411,7 +411,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             // Same "anchored toward the bottom" takeover wrapper as the clarification
             // overlay above — ApproveCost is the only input surface while a generation
             // confirm request is pending.
-            <div className="absolute inset-0 z-40 flex items-end justify-center pb-6 bg-background/90 backdrop-blur-sm px-4">
+            <div className="absolute inset-0 z-40 flex items-end justify-center pb-10 bg-background/90 backdrop-blur-md px-4">
                 <ApproveCost
                     label={pendingGenerationConfirmMessage.generationConfirmRequest!.label}
                     resourceType={toCreditResourceType(pendingGenerationConfirmMessage.generationConfirmRequest!.resourceType)}
