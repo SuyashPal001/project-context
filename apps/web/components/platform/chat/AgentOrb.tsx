@@ -58,6 +58,7 @@ interface Vars {
     currentEyeY: number;
     isHappy: boolean;
     happyTimer: number;
+    raiseAmount: number;
 }
 
 function randomBlink() { return 3000 + Math.random() * 5000; }
@@ -71,7 +72,7 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
         blinkTimer: randomBlink(), blinkProgress: 0, blinkClosing: false,
         eyeScanPhase: 0, bulbOpacity: 0, glassesY: -200, lastTs: 0,
         mouseX: null, mouseY: null, currentEyeX: 0, currentEyeY: 0,
-        isHappy: false, happyTimer: 0
+        isHappy: false, happyTimer: 0, raiseAmount: 0
     });
     const rafId = useRef(0);
 
@@ -102,15 +103,7 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
         ctx.scale(dpr, dpr);
 
         const showExtras = size >= 48;
-        // baseCY below shifts the circle's center down by size*0.08 when
-        // showExtras (room for the lightbulb/glasses above it) — at radius
-        // 0.50 that shift alone pushed the bottom edge to 1.08*size, past
-        // the canvas box, so it got clipped flat instead of staying
-        // circular. Shrinking the radius by the same amount keeps the
-        // bottom edge exactly at the box edge.
-        const orbR = size * (showExtras ? 0.42 : 0.50);
         const cx = size / 2;
-        const baseCY = size / 2 + (showExtras ? size * 0.08 : 0);
 
         function frame(ts: number) {
             const v = vars.current;
@@ -118,6 +111,25 @@ export function AgentOrb({ state = 'idle', size = 32, isLoading = false, avatarU
             const dt = v.lastTs ? Math.min(ts - v.lastTs, 50) : 16;
             v.lastTs = ts;
             const t = dt / 16;
+
+            // The circle only needs headroom above it while the lightbulb
+            // (thinking) or glasses (searching) are actually visible — in
+            // 'idle' there's nothing to make room for, so it should sit
+            // centered in its box. raiseAmount lerps between centered (0)
+            // and raised (1) instead of jumping straight to the raised
+            // geometry whenever the orb is merely large enough (size>=48)
+            // to ever show extras, which used to leave idle-state orbs
+            // permanently off-center for no visible reason (WelcomeView's
+            // 96px greeting orb, always 'idle', was the visible case).
+            const wantsRaise = showExtras && (s === 'thinking' || s === 'searching');
+            v.raiseAmount += ((wantsRaise ? 1 : 0) - v.raiseAmount) * 0.08 * t;
+            // At raiseAmount 1, radius shrinks to 0.42 and center moves down
+            // by 0.08*size — shrinking the radius by the same amount the
+            // center shifts keeps the bottom edge exactly at the box edge
+            // (radius 0.50 + shift 0.08 would push the bottom past the
+            // canvas box, clipping it flat instead of staying circular).
+            const orbR = size * (0.50 - 0.08 * v.raiseAmount);
+            const baseCY = size / 2 + size * 0.08 * v.raiseAmount;
 
             // rotation
             v.rot += (s === 'searching' ? 0.010 : s === 'thinking' ? 0.006 : 0.002) * t;
