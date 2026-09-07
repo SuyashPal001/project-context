@@ -143,7 +143,7 @@ export function MessageItem({
         )}>
                 {isFirstInSequence && (
                     <span className="flex items-center gap-2 text-[10px] font-mono tracking-[0.08em] text-muted-foreground/80 uppercase select-none mb-1">
-                        {isUser ? 'You' : (agentName || 'Assistant')}
+                        <span className="font-bold">{isUser ? 'You' : (agentName || 'Assistant')}</span>
                         <span className="normal-case tracking-normal text-muted-foreground/60">
                             {format(new Date(message.createdAt), 'h:mm a')}
                         </span>
