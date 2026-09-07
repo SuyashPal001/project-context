@@ -86,7 +86,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         <span>{total} answer{total === 1 ? '' : 's'}</span>
                     </div>
                     <div className="border-t border-border/40" />
-                    <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-4">
                         {request.questions.map((q, i) => {
                             const a = answers[i];
                             const answerText = a?.skipped || !a
@@ -95,9 +95,20 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                     ? q.options[a.selectedIndex]?.label ?? 'Skipped'
                                     : a.freeText || 'Skipped';
                             return (
-                                <div key={i}>
+                                <div key={i} className="flex flex-col gap-1.5">
                                     <div className="text-sm font-medium">{q.prompt}</div>
-                                    <div className="text-sm text-muted-foreground mt-0.5">{answerText}</div>
+                                    {/* Answer rendered as its own right-aligned "You" turn — same
+                                        pill treatment as a real user message (see MessageItem.tsx)
+                                        — instead of a second line under the question, which read
+                                        as the agent asking and answering itself. */}
+                                    <div className="flex justify-end">
+                                        <div
+                                            className="max-w-[85%] px-3 py-1.5 rounded-2xl bg-primary text-primary-foreground text-sm"
+                                            style={{ borderRadius: '14px 14px 4px 14px' }}
+                                        >
+                                            {answerText}
+                                        </div>
+                                    </div>
                                 </div>
                             );
                         })}

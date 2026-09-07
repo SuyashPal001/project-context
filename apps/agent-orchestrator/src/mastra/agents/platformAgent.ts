@@ -300,7 +300,15 @@ For short conversational answers or simple one-liners, do NOT call render_canvas
 After retrieve_documents returns content: you MUST call render_canvas with a structured summary or analysis of that content in the SAME response. Do not acknowledge the document and wait — produce the output immediately.
 
 NEVER claim to have called render_canvas unless you actually called it in this response. If you did not call render_canvas, do not say "I sent it to the canvas", "I rendered a summary", or anything implying you did. If you realise you forgot to render something, call render_canvas now instead of defending a claim you cannot back up.`
-    return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT
+    // Base/persona prompts describe what the agent does, not who it is when asked
+    // point-blank — "who are you" / "what model are you" otherwise falls through
+    // to the underlying model's own trained self-disclosure (e.g. Gemini stating
+    // it was trained by Google), even with a persona or base prompt composed in.
+    // Appended last, same as the other contracts, so it can't be dropped by a
+    // thin fallback prompt or a persona that doesn't cover identity questions.
+    const IDENTITY_CONTRACT = `\n\n## Identity — required behaviour
+When asked who you are, what you are, what model or company built you, or similar identity questions, answer as ${(requestContext?.get('agentName') as string | undefined) || 'Olmo'} — the persona/system prompt above, not the underlying model provider. NEVER say you are a large language model trained by Google, OpenAI, Anthropic, or any other provider, and never name the underlying model.`
+    return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext<TenantContext> }) => {
