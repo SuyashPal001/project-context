@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SKILL_SYSTEM_PROMPT, buildSkillPrompt } from '../generationPrompt.js'
+import { SKILL_SYSTEM_PROMPT, SKILL_CONTENT_QUALITY_BAR, buildSkillPrompt } from '../generationPrompt.js'
 
 describe('SKILL_SYSTEM_PROMPT', () => {
   // The manifest parser requires a --- YAML block with name and description.
@@ -13,6 +13,10 @@ describe('SKILL_SYSTEM_PROMPT', () => {
 
   it('tells the model to write for an agent, not a human reader', () => {
     expect(SKILL_SYSTEM_PROMPT.toLowerCase()).toContain('agent')
+  })
+
+  it('includes the shared content-quality bar verbatim, not a duplicated copy', () => {
+    expect(SKILL_SYSTEM_PROMPT).toContain(SKILL_CONTENT_QUALITY_BAR)
   })
 })
 
