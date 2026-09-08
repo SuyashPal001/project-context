@@ -26,6 +26,12 @@ function buildPreview(body: string): string {
 }
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/
 
+// Mirrors MIN_DESCRIPTION_LENGTH in
+// products/agent-platform/packages/worker-handlers/lib/skillManifest.ts — see
+// that file's comment for the reasoning. Kept in sync by hand, not imported:
+// same cross-package boundary as MAX_COMPOSED_SKILL_CHARS above.
+const MIN_DESCRIPTION_LENGTH = 20
+
 interface CreateSkillResult {
   success: boolean
   message?: string
@@ -43,12 +49,13 @@ interface CreateSkillResult {
  */
 // Best-effort mirror of parseSkillManifest, not a full re-implementation: the
 // worker module isn't importable from here (see task brief), so this checks
-// the delimiter and the two required keys by regex rather than by running a
-// real YAML.parse. A body with a `name:`/`description:` line present but
-// broken YAML elsewhere in the frontmatter (bad indentation, an unterminated
-// quote, etc.) passes this check and still fails at import time in the
-// worker, which does parse it for real and requires non-empty trimmed
-// strings for both fields.
+// the delimiter, the two required keys, and the description length floor by
+// regex rather than by running a real YAML.parse. A body with a
+// `name:`/`description:` line present but broken YAML elsewhere in the
+// frontmatter (bad indentation, an unterminated quote, etc.) passes this
+// check and still fails at import time in the worker, which does parse it
+// for real and requires non-empty trimmed strings for both fields (plus the
+// same MIN_DESCRIPTION_LENGTH floor on description).
 function validateSkillBody(body: string, name: string): string | null {
   if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) return `SKILL.md must be under ${MAX_BODY_BYTES} bytes`
   // The composition budget, checked here rather than discovered later. A body
@@ -64,7 +71,12 @@ function validateSkillBody(body: string, name: string): string | null {
   if (!match) return 'SKILL.md must start with a --- YAML frontmatter block'
   const frontmatter = match[1]
   if (!/^name:\s*\S/m.test(frontmatter)) return "SKILL.md frontmatter is missing required field 'name'"
-  if (!/^description:\s*\S/m.test(frontmatter)) return "SKILL.md frontmatter is missing required field 'description'"
+  const descriptionMatch = /^description:\s*(\S.*)$/m.exec(frontmatter)
+  if (!descriptionMatch) return "SKILL.md frontmatter is missing required field 'description'"
+  const description = descriptionMatch[1].trim()
+  if (description.length < MIN_DESCRIPTION_LENGTH) {
+    return `SKILL.md frontmatter 'description' is too short to be useful (${description.length} chars, minimum ${MIN_DESCRIPTION_LENGTH}) — write a real sentence saying when an agent should use this skill`
+  }
   return null
 }
 
@@ -87,9 +99,8 @@ export const createSkillTool = createTool({
 Call this ONLY when the user explicitly asks for it — "save that as a skill", "/create-skill", "remember this as a skill". Never call it on your own initiative.
 
 You write the file. \`body\` must be a complete SKILL.md:
-- Start with a YAML frontmatter block delimited by --- lines, containing name (lowercase kebab-case) and description (one sentence saying when an agent should use this skill).
+- Start with a YAML frontmatter block delimited by --- lines, containing name (lowercase kebab-case) and description (one sentence saying when an agent should use this skill, at least 20 characters).
 - After the closing ---, write instructions addressed to the agent that will follow them: when the skill applies, concrete steps, exact phrasings and formats, and what to avoid.
-- Never invent facts about the user's business. Where a specific is unknown, tell the agent to ask.
 
 The user is shown the draft and must approve it. The skill applies from their next message, not this reply.`,
   inputSchema: createSkillInputSchema,
