@@ -1,9 +1,8 @@
 # Skill reference-file support (S3 + Mastra dynamic skills)
 
 Date: 2026-09-08
-Status: draft — Open Questions 1, 2, and 3 now have decisions (see below);
-only the exact scope of Q2's "teach mode" toggle (per-agent vs
-per-conversation) remains open. Needs one more review pass before planning.
+Status: draft — all 4 Open Questions now have decisions (see below). Ready
+for a final review pass before planning.
 
 Split from `2026-09-08-skill-quality-and-references-design.md`. The
 quality-bar half of that doc is independent and safe — see
@@ -120,14 +119,17 @@ verified against code, not opinion:
    `skill_read` tool schemas that come with it) only runs when teach mode is
    on for the relevant scope. When off, behavior is unchanged from today:
    no resolver, no catalog injection, no reference access — body-only,
-   force-injected, same as now. Still open, needed before planning:
-   - **Scope of the toggle** — per-agent setting (sticky across every chat
-     with that agent) vs. per-conversation toggle (flips for one session
-     only, same agent stays cheap elsewhere). Not yet decided.
-   - The per-turn cost still needs an actual measurement once teach mode is
-     on, even though it's no longer paid by default — a "how expensive is
-     it when a user actually turns this on" number, not just "we've hidden
-     it behind a flag so it doesn't matter."
+   force-injected, same as now.
+   **Scope of the toggle — DECIDED: per-conversation.** Flips for one
+   session only; the same agent stays on today's zero-overhead path in
+   every other conversation. Simpler than a per-agent setting: no new
+   agent-config field, no cross-conversation state to reconcile, and
+   getting it wrong just means toggling it again next time — not a stale
+   setting silently taxing every future conversation with that agent.
+   The per-turn cost still needs an actual measurement once teach mode is
+   on, even though it's no longer paid by default — a "how expensive is
+   it when a user actually turns this on" number, not just "we've hidden
+   it behind a flag so it doesn't matter."
 3. **S3 access from the orchestrator VM — DECIDED: no AWS SDK, no AWS
    credentials in `apps/agent-orchestrator` at all.** This mirrors a
    pattern already shipped in the same file the resolver lives beside:
