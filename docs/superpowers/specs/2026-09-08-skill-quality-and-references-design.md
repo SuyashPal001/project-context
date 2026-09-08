@@ -1,7 +1,17 @@
 # Skill quality and reference-file support
 
 Date: 2026-09-08
-Status: approved for planning
+Status: **superseded** — split after Opus review found a false security claim
+(the resolver's proposed join doesn't mirror anything; `fetchAgentSkills`
+does no join at all), a body/reference version-drift bug, an unstated new
+AWS SDK dependency, and an unmeasured per-turn token-cost claim. Split into:
+- [`2026-09-08-skill-quality-bar-design.md`](./2026-09-08-skill-quality-bar-design.md)
+  — the two cheap, independent, verified-safe items. Ready for planning.
+- [`2026-09-08-skill-references-s3-design.md`](./2026-09-08-skill-references-s3-design.md)
+  — the references-via-S3 item, revised to fix the above. Needs another
+  review pass before planning.
+
+Kept below for history; superseded by the two docs above.
 
 ## Problem
 
