@@ -68,9 +68,9 @@ describe('handleSkillImport', () => {
       Body: (async function* () { yield Buffer.from('zip-bytes'); })(),
     });
     safeExtractSkillZipMock.mockResolvedValue({
-      accepted: [{ fileName: 'SKILL.md', buffer: Buffer.from('---\nname: demo\ndescription: d\n---\n') }],
+      accepted: [{ fileName: 'SKILL.md', buffer: Buffer.from('---\nname: demo\ndescription: "A sample skill description for testing"\n---\n') }],
       skipped: [],
-      manifestSource: '---\nname: demo\ndescription: d\n---\n',
+      manifestSource: '---\nname: demo\ndescription: "A sample skill description for testing"\n---\n',
     });
 
     const { handleSkillImport } = await import('../handlers/skillImport');
@@ -107,9 +107,9 @@ describe('handleSkillImport', () => {
     // missing the required 'name' field, so parseSkillManifest (real,
     // unmocked) throws SkillManifestError.
     safeExtractSkillZipMock.mockResolvedValue({
-      accepted: [{ fileName: 'SKILL.md', buffer: Buffer.from('---\ndescription: d\n---\n') }],
+      accepted: [{ fileName: 'SKILL.md', buffer: Buffer.from('---\ndescription: "A sample skill description for testing"\n---\n') }],
       skipped: [],
-      manifestSource: '---\ndescription: d\n---\n',
+      manifestSource: '---\ndescription: "A sample skill description for testing"\n---\n',
     });
 
     const { handleSkillImport } = await import('../handlers/skillImport');
@@ -178,7 +178,7 @@ describe('handleSkillImport', () => {
 
     await handleSkillImport({
       tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
-      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+      source: { type: 'authored', body: '---\nname: n\ndescription: "A sample skill description for testing"\n---\n\nBody.' },
     });
 
     expect(safeExtractSkillZipMock).not.toHaveBeenCalled();
@@ -216,7 +216,7 @@ describe('handleSkillImport', () => {
 
     await handleSkillImport({
       tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
-      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: d\n---\n\nOpen with the client name.' },
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "A sample skill description for testing"\n---\n\nOpen with the client name.' },
       attachToAgentId: 'agent-1',
     });
 
@@ -239,7 +239,7 @@ describe('handleSkillImport', () => {
 
     await handleSkillImport({
       tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
-      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: d\n---\n\nBody.' },
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "A sample skill description for testing"\n---\n\nBody.' },
       attachToAgentId: 'agent-1',
     });
 
@@ -268,7 +268,7 @@ describe('handleSkillImport', () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
     await handleSkillImport({
       tenantId: 'attacker-tenant', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
-      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+      source: { type: 'authored', body: '---\nname: n\ndescription: "A sample skill description for testing"\n---\n\nBody.' },
       attachToAgentId: 'victim-tenant-agent',
     });
 
@@ -287,7 +287,7 @@ describe('handleSkillImport', () => {
 
     await handleSkillImport({
       tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
-      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+      source: { type: 'authored', body: '---\nname: n\ndescription: "A sample skill description for testing"\n---\n\nBody.' },
     });
 
     const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
@@ -322,7 +322,7 @@ describe('handleSkillImport', () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
     await handleSkillImport({
       tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
-      source: { type: 'authored', body: '---\nname: new-skill\ndescription: d\n---\n\nBody.' },
+      source: { type: 'authored', body: '---\nname: new-skill\ndescription: "A sample skill description for testing"\n---\n\nBody.' },
       attachToAgentId: 'agent-1',
     });
 
@@ -345,7 +345,7 @@ describe('handleSkillImport', () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
     await handleSkillImport({
       tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
-      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+      source: { type: 'authored', body: '---\nname: n\ndescription: "A sample skill description for testing"\n---\n\nBody.' },
       attachToAgentId: 'agent-1',
     });
 
@@ -368,7 +368,7 @@ describe('handleSkillImport', () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
     await handleSkillImport({
       tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
-      source: { type: 'authored', body: '---\nname: n\ndescription: d\n---\n\nBody.' },
+      source: { type: 'authored', body: '---\nname: n\ndescription: "A sample skill description for testing"\n---\n\nBody.' },
       attachToAgentId: 'not-a-uuid',
     });
 

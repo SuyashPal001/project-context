@@ -8,6 +8,7 @@ import { Exa as ExaClass } from 'exa-js'
 import pg from 'pg'
 
 import { platformModel, liteModel, privateModel } from '../model.js'
+import { SKILL_CONTENT_QUALITY_BAR } from '../../skills/generationPrompt.js'
 import { selectModel } from './modelSelection.js'
 import type { TenantContext } from '../context.js'
 import { getOlmoMemory } from '../memory.js'
@@ -266,6 +267,25 @@ const systemPromptScrubber = new SystemPromptScrubber({
 // model:        AI SDK connector routes through Inference Gateway at INFERENCE_GATEWAY_URL.
 // ---------------------------------------------------------------------------
 
+// create_skill's own description already says "You write the file" — this
+// restates it as a hard rule because the model has ask_clarifying_questions
+// available too, and nothing else stops it from using that tool to push
+// raw SKILL.md/YAML authorship onto the user instead of drafting it. A
+// non-technical user asked to hand-write frontmatter is a broken, scary
+// interaction, not a legitimate clarification.
+//
+// Shared with the web modal's Generate path (SKILL_SYSTEM_PROMPT in
+// generationPrompt.ts) via SKILL_CONTENT_QUALITY_BAR — a skill Olmo writes
+// unprompted in chat is held to the same content bar as one generated
+// through the dashboard modal. The authorship rule below (agent writes the
+// file, never the user) is a separate concern from content quality and
+// stays inline.
+export const SKILL_CREATION_CONTRACT = `\n\n## Skill creation — required behaviour
+When the user asks you to save something as a skill, YOU write the complete SKILL.md body yourself from the conversation so far — frontmatter, instructions, everything — and call create_skill with it. NEVER call ask_clarifying_questions to ask the user to write or paste the skill's markdown/YAML content themselves; that is your job, not theirs. It is fine to ask a short clarifying question about scope or naming, but never to ask them to produce the file.
+
+## Skill content quality — required behaviour
+${SKILL_CONTENT_QUALITY_BAR}`
+
 export const platformAgent = new Agent({
   id: 'olmo',
   name: 'Olmo',
@@ -310,14 +330,6 @@ NEVER claim to have called render_canvas unless you actually called it in this r
     // thin fallback prompt or a persona that doesn't cover identity questions.
     const IDENTITY_CONTRACT = `\n\n## Identity — required behaviour
 When asked who you are, what you are, what model or company built you, or similar identity questions, answer as ${(requestContext?.get('agentName') as string | undefined) || 'Olmo'} — the persona/system prompt above, not the underlying model provider. NEVER say you are a large language model trained by Google, OpenAI, Anthropic, or any other provider, and never name the underlying model.`
-    // create_skill's own description already says "You write the file" — this
-    // restates it as a hard rule because the model has ask_clarifying_questions
-    // available too, and nothing else stops it from using that tool to push
-    // raw SKILL.md/YAML authorship onto the user instead of drafting it. A
-    // non-technical user asked to hand-write frontmatter is a broken, scary
-    // interaction, not a legitimate clarification.
-    const SKILL_CREATION_CONTRACT = `\n\n## Skill creation — required behaviour
-When the user asks you to save something as a skill, YOU write the complete SKILL.md body yourself from the conversation so far — frontmatter, instructions, everything — and call create_skill with it. NEVER call ask_clarifying_questions to ask the user to write or paste the skill's markdown/YAML content themselves; that is your job, not theirs. It is fine to ask a short clarifying question about scope or naming, but never to ask them to produce the file.`
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
   },
 

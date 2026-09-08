@@ -10,6 +10,16 @@ export interface SkillManifest {
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
+// A non-empty description like "a skill" or "helper" passes a presence check
+// but gives an agent's skill_search nothing to match a task against. This is
+// the cheapest, least-ambiguous floor: a real "when to use this" sentence is
+// essentially never under 20 characters. A stronger content check (does it
+// actually describe a *when*, not just a *what*) is a nice-to-have that adds
+// LLM-judgment complexity to what is otherwise pure string parsing — start
+// here, revisit only if thin-but-long descriptions turn out to be a real
+// problem in practice.
+const MIN_DESCRIPTION_LENGTH = 20;
+
 /**
  * Parses SKILL.md's YAML frontmatter. Only `name` and `description` are
  * required — every other frontmatter key passes through into the stored
@@ -40,6 +50,11 @@ export function parseSkillManifest(skillMdContent: string): SkillManifest {
   }
   if (typeof manifest.description !== 'string' || manifest.description.trim().length === 0) {
     throw new SkillManifestError("SKILL.md frontmatter is missing required field 'description'");
+  }
+  if (manifest.description.trim().length < MIN_DESCRIPTION_LENGTH) {
+    throw new SkillManifestError(
+      `SKILL.md frontmatter 'description' is too short to be useful (${manifest.description.trim().length} chars, minimum ${MIN_DESCRIPTION_LENGTH}) — write a real sentence saying when an agent should use this skill`,
+    );
   }
 
   return manifest as SkillManifest;

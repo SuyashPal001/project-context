@@ -5,7 +5,7 @@ vi.mock('./confirmGeneration.js', () => ({ confirmGenerationOrDecline: confirmMo
 
 const fetchMock = vi.hoisted(() => vi.fn())
 
-const VALID_BODY = '---\nname: bid-writer\ndescription: Writes bids\n---\n\nOpen with the client name.'
+const VALID_BODY = '---\nname: bid-writer\ndescription: Writes bids for prospective clients\n---\n\nOpen with the client name.'
 
 /** Mirrors the tool's own copy — see its comment for why it isn't imported. */
 const MAX_COMPOSED_SKILL_CHARS = 24_000
@@ -47,6 +47,19 @@ describe('create_skill', () => {
   it('rejects a body missing the description field', async () => {
     const result = await run({ name: 'Bid Writer', body: '---\nname: x\n---\n\nBody.' })
     expect(result.success).toBe(false)
+    expect(result.error).toMatch(/missing required field 'description'/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // Mirrors MIN_DESCRIPTION_LENGTH in skillManifest.ts — a description present
+  // but under 20 trimmed characters gives skill_search nothing to match a task
+  // against, and must be caught here (before the user approves) rather than
+  // surfacing minutes later as a `failed` import row.
+  it('rejects a body whose description is present but too short, with a message distinct from "missing"', async () => {
+    const result = await run({ name: 'Bid Writer', body: '---\nname: x\ndescription: too short\n---\n\nBody.' })
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/too short to be useful/)
+    expect(result.error).not.toMatch(/missing required field/)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -71,7 +84,7 @@ describe('create_skill', () => {
   })
 
   it('accepts a body sitting exactly on the composition budget', async () => {
-    const frontmatter = '---\nname: a\ndescription: b\n---\n\n'
+    const frontmatter = '---\nname: a\ndescription: Writes bids for prospective clients\n---\n\n'
     // body.length + name.length + 15 === MAX_COMPOSED_SKILL_CHARS — the last
     // size that composes, so the boundary is inclusive rather than off by one.
     const filler = MAX_COMPOSED_SKILL_CHARS - 'Bid Writer'.length - 15 - frontmatter.length
@@ -89,7 +102,7 @@ describe('create_skill', () => {
   })
 
   it('truncates a long preview rather than sending the whole body', async () => {
-    const long = `---\nname: a\ndescription: b\n---\n\n${'line\n'.repeat(400)}`
+    const long = `---\nname: a\ndescription: Writes bids for prospective clients\n---\n\n${'line\n'.repeat(400)}`
     await run({ name: 'Bid Writer', body: long })
     const opts = confirmMock.mock.calls[0][4] as { preview?: string }
     expect(opts.preview!.length).toBeLessThan(long.length)
@@ -175,7 +188,7 @@ describe('create_skill', () => {
   })
 
   it('passes PII detections into the confirmation label', async () => {
-    const withEmail = '---\nname: a\ndescription: b\n---\n\nMail ada@example.com about it.'
+    const withEmail = '---\nname: a\ndescription: Writes bids for prospective clients\n---\n\nMail ada@example.com about it.'
     await run({ name: 'Bid Writer', body: withEmail })
     expect(confirmMock.mock.calls[0][3]).toMatch(/personal|detected/i)
   })
