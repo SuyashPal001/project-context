@@ -1,10 +1,9 @@
 # Skill reference-file support (S3 + Mastra dynamic skills)
 
 Date: 2026-09-08
-Status: draft — needs one more review pass before planning (see Open
-questions below; this revision fixes the false claims and missing pieces an
-Opus review found in the previous combined draft, but the resolver's
-version-consistency behavior still needs a decision, not just a description)
+Status: draft — Open Questions 1 and 2 now have decisions (see below);
+Q3 (S3 credentials) and the exact scope of Q2's "teach mode" toggle are
+still open. Needs one more review pass before planning.
 
 Split from `2026-09-08-skill-quality-and-references-design.md`. The
 quality-bar half of that doc is independent and safe — see
@@ -102,40 +101,47 @@ verified against code, not opinion:
 | How does the agent read them | Mastra's native `createSkill({ instructions, references })` via a dynamic `skills:` resolver on `platformAgent`, same `{ requestContext }` shape `instructions`/`tools` already use |
 | Agent-facing description source | `manifest`'s parsed frontmatter description — never `skills.description` (the raw dashboard column). This was always a requirement on the *new* resolver code (nothing existing violates it today, since no resolver exists yet) |
 
-## Open questions (must be resolved before this goes to planning)
+## Open questions
 
-1. **Version consistency.** Pick one, explicitly:
-   - (a) Resolver reads references from the *same* version the cached body
-     reflects — but `agent_skills` doesn't currently store which version
-     `system_prompt` was resolved from (only the non-authoritative `version`
-     display field), so this requires either adding that column or deriving
-     it some other way.
-   - (b) Resolver reads references from the *live* pinned
-     `skill_installs.installed_version`, accepting that this can
-     occasionally diverge from a stale cached body until the next
-     attach/reconcile — a known, pre-existing limitation, explicitly
-     documented rather than silently inherited.
-   - (c) Something else (e.g., trigger a `system_prompt` refresh whenever
-     the resolver detects a version mismatch) — bigger scope, touches the
-     attach path too.
-2. **Measure the per-turn catalog cost** (`<available_skills>` block +
-   3 tool schemas) against a real agent with several skills attached before
-   deciding this is acceptable. If it's large, decide whether that's fine
-   (discoverability is worth the tokens) or whether the `skills:` resolver
-   should be gated to only run when at least one attached skill actually has
-   references (skip the whole Mastra skills path for agents with only
-   body-only skills, preserving today's zero-overhead behavior for the
-   common case).
-3. **S3 access from the orchestrator VM.** Confirm what credential
-   mechanism is available/intended (instance role vs. explicit key vs.
-   Secrets Manager, per this repo's usual pattern) before picking a
+1. **Version consistency — DECIDED: (a).** Resolver reads references from
+   the *same* version the cached body reflects. `agent_skills` does not
+   currently store which version `system_prompt` was resolved from (only
+   the non-authoritative `version` display field) — this decision requires
+   adding a new column (e.g. `resolved_version` or similar name TBD at
+   planning time) written once at attach/reconcile time, alongside
+   `system_prompt`. Do not repurpose the existing `version` field — it is
+   documented elsewhere as a display/order field and other code may already
+   depend on that meaning.
+2. **Per-turn catalog cost — DECIDED: gated behind an explicit "teach mode"
+   toggle**, not an automatic heuristic. The `skills:` resolver (and the
+   `<available_skills>` catalog injection + `skill`/`skill_search`/
+   `skill_read` tool schemas that come with it) only runs when teach mode is
+   on for the relevant scope. When off, behavior is unchanged from today:
+   no resolver, no catalog injection, no reference access — body-only,
+   force-injected, same as now. Still open, needed before planning:
+   - **Scope of the toggle** — per-agent setting (sticky across every chat
+     with that agent) vs. per-conversation toggle (flips for one session
+     only, same agent stays cheap elsewhere). Not yet decided.
+   - The per-turn cost still needs an actual measurement once teach mode is
+     on, even though it's no longer paid by default — a "how expensive is
+     it when a user actually turns this on" number, not just "we've hidden
+     it behind a flag so it doesn't matter."
+3. **S3 access from the orchestrator VM.** Still open. Confirm what
+   credential mechanism is available/intended (instance role vs. explicit
+   key vs. Secrets Manager, per this repo's usual pattern) before picking a
    dependency and client setup — this is infra work, not just an npm install.
 4. **Caching.** Since a specific `(skillId, version)`'s S3 objects are
    immutable once `status = 'ready'` (a new version gets a new prefix), a
    cache keyed on `(skillId, version)` with no TTL is safe and removes the
    per-turn S3 round-trip after the first read. Confirm this is in scope for
    the first implementation or explicitly deferred with the latency cost
-   accepted for v1.
+   accepted for v1. **Precedent check:** deepseek-harness (deepseek-ai's
+   open-source agent harness, `docs/architecture.md`'s Session log section)
+   relies on the identical invariant for its own durable session
+   generations — "committed generation paths are never renamed, replaced,
+   or deleted" — and caches on that basis. Same reasoning applies here;
+   this is not a shortcut, it's the standard move for content that's
+   immutable-by-construction once published.
 
 ## Architecture (unchanged mechanism, now scoped around the open questions above)
 
@@ -157,21 +163,52 @@ usage.ts fetchAgentSkills(agentId, tenantId)
   -> platformAgent.ts `instructions` fn folds it into the system prompt,
      every turn, exactly as today
 
-RUNTIME (new, additive — pending Open Questions 1-4 above)
+RUNTIME (new, additive — only runs when teach mode is on, per Open Question 2)
 --------------------------------------------------------------------
 platformAgent.ts new `skills:` field (dynamic resolver)
-  for each active agent_skills row with a non-null install_id:
+  if teach mode is off for this scope: return [] — zero overhead, identical
+  to today's behavior (no catalog injection, no skill_read tool)
+  else, for each active agent_skills row with a non-null install_id:
     - NEW join: skill_installs (by install_id, tenant_id) -> skill_versions
-      (by skill_id + a version per Open Question 1's decision)
-    - list S3 objects under that version's s3Prefix, excluding SKILL.md
-    - fetch each remaining file (cached per Open Question 4)
+      (by skill_id + the resolved_version column per Open Question 1)
+    - fetch remaining files (excluding SKILL.md) through the reference
+      provider (see below), not inline S3 calls
     - slugify(name) for createSkill's name constraint
     - createSkill({ name: slugify(name), description: <manifest description>,
                      instructions: <manifest.body>, references: {...} })
   -> Mastra's SkillsProcessor injects <available_skills> catalog every turn
-     (cost per Open Question 2) + registers skill/skill_search/skill_read
+     this agent/session has teach mode on + registers skill/skill_search/skill_read
   -> agent calls skill_read(...) only when it decides the task needs it
 ```
+
+### Reference provider — a named seam, not inline S3 calls
+
+Looked at how `deepseek-harness` (deepseek-ai's open-source agent harness)
+structures analogous capabilities and it's worth copying one thing: every
+swappable capability there is a named triad — Service Definition (the
+interface), Provider (the implementation), Consumer (the thing that calls
+it) — never inlined into the orchestration code that uses it. Their own
+example: pointing the `fs`/`subprocess` provider at a remote sandbox moves
+Bash, PTY, and LSP with it, with no fork of the calling code, because the
+calling code only ever knew the interface.
+
+Apply the same shape here instead of writing S3 calls directly inside the
+`skills:` resolver:
+
+- **Interface:** `SkillReferenceProvider` — `list(skillId, version):
+  string[]` and `get(skillId, version, filename): Promise<string>`. The
+  resolver (Consumer) only ever calls this interface.
+- **Provider (v1):** an S3-backed implementation, wrapping whatever client
+  setup Open Question 3 resolves, plus the caching behavior from Open
+  Question 4.
+- Why bother now, for a first implementation: the resolver code, the
+  `createSkill()` call shape, and the tests around them stay unchanged if
+  the provider is later swapped (a different bucket, a local filesystem
+  provider for tests, a future non-S3 backend) or if caching strategy
+  changes. Without this seam, a caching change or credential-mechanism
+  change (Open Questions 3-4) means editing the resolver itself and
+  re-reviewing its security-sensitive join logic for no reason related to
+  the actual change being made.
 
 ## Testing
 
@@ -185,8 +222,14 @@ platformAgent.ts new `skills:` field (dynamic resolver)
   not an accidental one).
 - `createSkill()` name normalization: a skill named with spaces/mixed case/
   non-hyphen characters doesn't throw.
-- A measured before/after token count for a representative agent+skill set,
-  attached to this spec's approval record before implementation starts.
+- A measured before/after token count for a representative agent+skill set
+  with teach mode **on**, attached to this spec's approval record before
+  implementation starts.
+- Teach mode **off**: assert zero resolver invocation, zero catalog
+  injection, zero new tool schemas — same system prompt shape as today.
+- `SkillReferenceProvider`: test the S3 implementation against the
+  interface directly (list/get), independent of resolver tests — the
+  resolver's tests should be able to use a fake provider and never touch S3.
 
 ## Rollout
 
