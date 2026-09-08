@@ -1,9 +1,9 @@
 # Skill reference-file support (S3 + Mastra dynamic skills)
 
 Date: 2026-09-08
-Status: draft — Open Questions 1 and 2 now have decisions (see below);
-Q3 (S3 credentials) and the exact scope of Q2's "teach mode" toggle are
-still open. Needs one more review pass before planning.
+Status: draft — Open Questions 1, 2, and 3 now have decisions (see below);
+only the exact scope of Q2's "teach mode" toggle (per-agent vs
+per-conversation) remains open. Needs one more review pass before planning.
 
 Split from `2026-09-08-skill-quality-and-references-design.md`. The
 quality-bar half of that doc is independent and safe — see
@@ -79,12 +79,14 @@ verified against code, not opinion:
    That's a real, currently unmeasured per-turn token cost that exists
    independent of whether any reference is ever actually read. This must be
    measured before shipping, not assumed away.
-4. **Missing dependency, unstated.** `apps/agent-orchestrator` has no AWS SDK
-   dependency today (no `@aws-sdk/client-s3` in its `package.json`). The
-   resolver needs one, plus AWS credentials reachable from the GCP VM it runs
-   on (not Lambda — a different credential story than the API side), plus a
-   caching plan, since a naive per-turn `ListObjectsV2` + N `GetObject` calls
-   for every active skill on every turn is real added latency.
+4. **Missing dependency, unstated (now resolved — see Open Question 3).**
+   `apps/agent-orchestrator` has no AWS SDK dependency today (no
+   `@aws-sdk/client-s3` in its `package.json`), and running on a GCP VM
+   means no AWS instance role either — a different credential story than
+   the Lambda side. Resolved by not adding one: the reference provider
+   calls through the existing Lambda API instead, same as
+   `uploadGeneratedFile` already does for writes. Caching plan is Open
+   Question 4, decided separately below.
 5. **`createSkill` input constraints, unstated.** Per `@mastra/core/skills`
    types, `createSkill({name})` requires 1-64 lowercase-and-hyphen
    characters, and throws on violation. `agent_skills.name` is free text
@@ -126,10 +128,23 @@ verified against code, not opinion:
      on, even though it's no longer paid by default — a "how expensive is
      it when a user actually turns this on" number, not just "we've hidden
      it behind a flag so it doesn't matter."
-3. **S3 access from the orchestrator VM.** Still open. Confirm what
-   credential mechanism is available/intended (instance role vs. explicit
-   key vs. Secrets Manager, per this repo's usual pattern) before picking a
-   dependency and client setup — this is infra work, not just an npm install.
+3. **S3 access from the orchestrator VM — DECIDED: no AWS SDK, no AWS
+   credentials in `apps/agent-orchestrator` at all.** This mirrors a
+   pattern already shipped in the same file the resolver lives beside:
+   `persistence.ts:392` (`uploadGeneratedFile`) never touches AWS directly
+   — it calls `POST /api/v1/files/upload` on the Lambda API (which already
+   holds the IAM role and the `@aws-sdk/client-s3` dependency, see
+   `packages/foundation/storage/src/providers/s3.ts`), gets back a
+   presigned URL, and PUTs straight to S3 with no SDK involved. The
+   `SkillReferenceProvider` (see Architecture below) does the same thing in
+   the read direction: a new internal Lambda route calls the storage
+   provider's existing `getDownloadUrl(key, expiresIn)` (already
+   implemented, `s3.ts:35-41` — nothing new to build there) for a
+   `skill-packages/{skillId}/{version}/references/{filename}` key, and the
+   provider on the orchestrator side does an authenticated `fetch()` to
+   that route, then either follows the presigned URL or receives proxied
+   bytes directly — implementation detail for planning, but either way:
+   zero new orchestrator dependency, zero new credential story.
 4. **Caching.** Since a specific `(skillId, version)`'s S3 objects are
    immutable once `status = 'ready'` (a new version gets a new prefix), a
    cache keyed on `(skillId, version)` with no TTL is safe and removes the
