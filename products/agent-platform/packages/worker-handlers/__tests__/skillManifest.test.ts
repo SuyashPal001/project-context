@@ -28,4 +28,27 @@ describe('parseSkillManifest', () => {
     const md = `---\nname: [unclosed\n---\nbody`;
     expect(() => parseSkillManifest(md)).toThrow(SkillManifestError);
   });
+
+  it('rejects a description that is present but too short to be useful', () => {
+    const md = `---\nname: too-thin\ndescription: a skill\n---\nbody`;
+    expect(() => parseSkillManifest(md)).toThrow(/too short/i);
+  });
+
+  it('rejects a description exactly one character under the floor', () => {
+    // 19 characters — one under the 20-character floor this task introduces.
+    const md = `---\nname: one-under\ndescription: "0123456789012345678"\n---\nbody`;
+    expect(() => parseSkillManifest(md)).toThrow(/too short/i);
+  });
+
+  it('accepts a description right at the minimum length', () => {
+    // Exactly 20 characters — the floor this task introduces.
+    const md = `---\nname: right-at-floor\ndescription: "01234567890123456789"\n---\nbody`;
+    const manifest = parseSkillManifest(md);
+    expect(manifest.description).toBe('01234567890123456789');
+  });
+
+  it('still distinguishes a missing description from a too-short one', () => {
+    const md = `---\nname: no-description\n---\nbody`;
+    expect(() => parseSkillManifest(md)).toThrow(/missing required field/i);
+  });
 });
