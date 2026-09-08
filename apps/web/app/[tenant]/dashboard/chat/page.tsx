@@ -150,7 +150,7 @@ function ChatPage() {
         handleCanvasUpdate,
         openCanvas,
     });
-    const { sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
+    const { sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
 
     const { state: animationState, onStreamEvent } = usePersonaAnimationState();
     const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
@@ -180,6 +180,10 @@ function ChatPage() {
     // Mirrors awaitingClarificationReply: ApproveCost is the only input surface while a
     // generation confirm request is pending, so the normal composer stays hidden.
     const awaitingGenerationConfirmReply = messages[messages.length - 1]?.generationConfirmRequest?.status === 'pending';
+
+    // Mirrors awaitingClarificationReply: UploadRequestCard is the only input
+    // surface while an upload request is pending.
+    const awaitingUploadReply = messages[messages.length - 1]?.uploadRequest?.status === 'pending';
 
     useEffect(() => {
         if (isLoadingMessages) return; // wait for messages to actually reflect `conversationId` before seeding or dispatching
@@ -352,6 +356,29 @@ function ChatPage() {
         return true;
     }, [conversationId, queryClient, sendClarificationAnswer]);
 
+    const handleUploadAnswer = useCallback(async (messageId: string, uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }): Promise<boolean> => {
+        const ok = await sendUploadAnswer(uploadId, answer);
+        if (!ok) {
+            toast.error('Could not submit your upload. Please try again.');
+            return false;
+        }
+        queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+            old ? {
+                data: old.data.map(m => m.id === messageId ? {
+                    ...m,
+                    uploadRequest: m.uploadRequest ? {
+                        ...m.uploadRequest,
+                        status: answer.skipped ? 'skipped' as const : 'answered' as const,
+                        answeredAt: new Date().toISOString(),
+                        files: answer.files.map(f => ({ fileId: f.fileId, name: f.name, type: f.type })),
+                        freeText: answer.freeText,
+                    } : undefined,
+                } : m),
+            } : old
+        );
+        return true;
+    }, [conversationId, queryClient, sendUploadAnswer]);
+
     const sidebarToggleButton = (
         <Button
             variant="ghost" size="icon"
@@ -430,9 +457,9 @@ function ChatPage() {
                                     )
                                 ) : (
                                     <>
-                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onGenerationConfirm={handleGenerationConfirm} onGenerationDecline={handleGenerationDecline} onClarificationAnswer={handleClarificationAnswer} onFollowUpSelect={(text) => { if (!isStreaming) sendMessage(text); }} onRegenerate={regenerate} onEditAndResubmit={editAndResubmit} agentAvatarUrl={selectedConversation.agent?.avatarUrl} agentPersona={selectedConversation.agent?.persona} agentIsDefault={selectedConversation.agent?.isDefault} agentName={selectedConversation.agent?.name} avatarLiveState={displayState} />
+                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onGenerationConfirm={handleGenerationConfirm} onGenerationDecline={handleGenerationDecline} onClarificationAnswer={handleClarificationAnswer} onUploadAnswer={handleUploadAnswer} onFollowUpSelect={(text) => { if (!isStreaming) sendMessage(text); }} onRegenerate={regenerate} onEditAndResubmit={editAndResubmit} agentAvatarUrl={selectedConversation.agent?.avatarUrl} agentPersona={selectedConversation.agent?.persona} agentIsDefault={selectedConversation.agent?.isDefault} agentName={selectedConversation.agent?.name} avatarLiveState={displayState} />
                                         <ChatTimelineNavigator messages={messages} />
-                                        {!awaitingClarificationReply && !awaitingGenerationConfirmReply && (
+                                        {!awaitingClarificationReply && !awaitingGenerationConfirmReply && !awaitingUploadReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                                                 <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...allowModeProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                             </div>

@@ -10,6 +10,7 @@ import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
 import { ClarificationCard } from "./ClarificationCard";
+import { UploadRequestCard } from "./UploadRequestCard";
 import { ApproveCost } from "@/components/platform/credits/ApproveCost";
 import type { CreditResourceType } from "@/lib/hooks/useCredits";
 import type { PersonaAnimationState } from "../personas/usePersonaAnimationState";
@@ -31,6 +32,7 @@ interface MessageThreadProps {
     onGenerationConfirm?: (messageId: string, confirmationId: string) => void;
     onGenerationDecline?: (messageId: string, confirmationId: string, reason?: string) => void;
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
+    onUploadAnswer?: (messageId: string, uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     onFollowUpSelect?: (text: string) => void;
     onRegenerate?: (message: Message) => void;
     onEditAndResubmit?: (message: Message, newContent: string) => void;
@@ -63,7 +65,7 @@ function toCreditResourceType(resourceType: string): CreditResourceType | null {
         : null;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, agentIsDefault, agentName }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onUploadAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, agentIsDefault, agentName }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -103,7 +105,8 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // instead of rendering inline — MessageItem deliberately skips it while pending.
     const pendingClarificationMessage = lastMessage?.clarificationRequest?.status === 'pending' ? lastMessage : undefined;
     const pendingGenerationConfirmMessage = lastMessage?.generationConfirmRequest?.status === 'pending' ? lastMessage : undefined;
-    const awaitingReply = pendingClarificationMessage !== undefined;
+    const pendingUploadMessage = lastMessage?.uploadRequest?.status === 'pending' ? lastMessage : undefined;
+    const awaitingReply = pendingClarificationMessage !== undefined || pendingUploadMessage !== undefined;
     // Whether onDelta has already created a row for the turn currently in
     // progress. Before that (tool calls/reasoning firing with no text yet),
     // the trailing ThinkingIndicator below owns the live status display —
@@ -317,6 +320,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             onApprove={onApprove}
                             onDismiss={onDismiss}
                             onClarificationAnswer={onClarificationAnswer}
+                            onUploadAnswer={onUploadAnswer}
                             onFollowUpSelect={onFollowUpSelect}
                             onRegenerate={onRegenerate}
                             onEditAndResubmit={onEditAndResubmit}
@@ -419,6 +423,20 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     preview={pendingGenerationConfirmMessage.generationConfirmRequest!.preview}
                     onApprove={() => onGenerationConfirm?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
                     onCancel={(reason) => onGenerationDecline?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id, reason)}
+                />
+            </div>
+        )}
+        {pendingUploadMessage && (
+            // Same anchored takeover wrapper as clarification/generation-confirm above.
+            <div className="absolute inset-0 z-40 flex items-end justify-center pb-10 bg-background/90 backdrop-blur-md px-4">
+                <UploadRequestCard
+                    key={pendingUploadMessage.uploadRequest!.id}
+                    request={pendingUploadMessage.uploadRequest!}
+                    onAnswer={(answer) => onUploadAnswer?.(
+                        pendingUploadMessage.id,
+                        pendingUploadMessage.uploadRequest!.id,
+                        answer,
+                    ) ?? Promise.resolve(true)}
                 />
             </div>
         )}

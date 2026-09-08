@@ -14,9 +14,10 @@ import {
   sseApprovalChannels,
   sessionActiveClarification, pendingClarifications,
   sessionActiveGenerationConfirmations, pendingGenerationConfirmations,
+  sessionActiveUpload, pendingUploads,
   checkRateLimit,
 } from '../types.js'
-import { updateClarificationRequest, updateGenerationConfirmRequest, fetchConversationAllowMode } from '../persistence.js'
+import { updateClarificationRequest, updateGenerationConfirmRequest, updateUploadRequest, fetchConversationAllowMode } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -276,6 +277,26 @@ chatRouter.post('/api/chat', async (c) => {
           }
         }
         sessionActiveGenerationConfirmations.delete(sessionId)
+      }
+
+      // Resolve any pending upload request immediately, same reasoning as the
+      // clarification block above — don't leave the agent blocked for up to
+      // UPLOAD_TIMEOUT_MS after the client is gone.
+      const uploadId = sessionActiveUpload.get(sessionId)
+      if (uploadId) {
+        const pending = pendingUploads.get(uploadId)
+        if (pending) {
+          clearTimeout(pending.timer)
+          pendingUploads.delete(uploadId)
+          sessionActiveUpload.delete(sessionId)
+          pending.resolve({ files: [], skipped: true })
+          if (pending.messageId && pending.conversationId && pending.idToken) {
+            updateUploadRequest(pending.idToken, pending.conversationId, pending.messageId, {
+              status: 'skipped',
+              answeredAt: new Date().toISOString(),
+            })
+          }
+        }
       }
     },
   })

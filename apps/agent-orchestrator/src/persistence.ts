@@ -168,6 +168,68 @@ export function updateClarificationRequest(
   })
 }
 
+export interface UploadRequestPayload {
+  id: string
+  prompt: string
+  minFiles: number
+  maxFiles: number
+  status: 'pending' | 'answered' | 'skipped'
+  fileIds?: string[]
+  freeText?: string
+  answeredAt?: string
+}
+
+export function saveUploadRequest(
+  idToken: string,
+  conversationId: string,
+  messageId: string,
+  uploadRequest: UploadRequestPayload,
+): void {
+  const payload = {
+    id: messageId,
+    role: 'assistant',
+    content: '',
+    uploadRequest,
+    createdAt: new Date().toISOString(),
+  }
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
+    method: 'POST',
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+    body: JSON.stringify(payload),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] saveUploadRequest status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] saveUploadRequest status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] saveUploadRequest error:', err.message)
+  })
+}
+
+export function updateUploadRequest(
+  idToken: string,
+  conversationId: string,
+  messageId: string,
+  update: Pick<UploadRequestPayload, 'status' | 'fileIds' | 'freeText' | 'answeredAt'>,
+): void {
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/${messageId}/upload`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+    body: JSON.stringify({ uploadRequest: update }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.error(`[persistence] updateUploadRequest status: ${res.status} body: ${body}`)
+    } else {
+      console.log('[persistence] updateUploadRequest status:', res.status)
+    }
+  }).catch((err: Error) => {
+    console.error('[persistence] updateUploadRequest error:', err.message)
+  })
+}
+
 export interface ApprovalRequestPayload {
   id: string
   toolName: string

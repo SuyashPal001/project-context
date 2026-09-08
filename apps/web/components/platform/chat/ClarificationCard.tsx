@@ -83,7 +83,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                             <path d="M9.5 9a2.5 2.5 0 0 1 4.83-.92c-.28.7-.77 1.1-1.33 1.5-.62.44-1 .8-1 1.67" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                             <circle cx="12" cy="16.25" r="0.75" fill="currentColor" />
                         </svg>
-                        <span>{total} answer{total === 1 ? '' : 's'}</span>
+                        <span>{request.status === 'expired' ? 'Expired — the assistant moved on' : `${total} answer${total === 1 ? '' : 's'}`}</span>
                     </div>
                     <div className="border-t border-border/40" />
                     <div className="flex flex-col gap-4">

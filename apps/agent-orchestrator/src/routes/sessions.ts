@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
-import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, pendingGenerationConfirmations, sessionActiveGenerationConfirmations, type ClarificationAnswer } from '../types.js'
+import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, pendingGenerationConfirmations, sessionActiveGenerationConfirmations, pendingUploads, sessionActiveUpload, type ClarificationAnswer, type UploadedFileRef } from '../types.js'
 import { validateToken } from '../auth.js'
-import { updateClarificationRequest, saveApprovalRequest, updateApprovalRequest, updateGenerationConfirmRequest } from '../persistence.js'
+import { updateClarificationRequest, saveApprovalRequest, updateApprovalRequest, updateGenerationConfirmRequest, updateUploadRequest } from '../persistence.js'
 
 export const sessionsRouter = new Hono()
 
@@ -21,6 +21,20 @@ sessionsRouter.options('/api/chat/approval', (c) => {
 })
 
 sessionsRouter.options('/api/chat/clarification', (c) => {
+  const origin = getAllowedOrigin(c.req.header('Origin'))
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Credentials': 'true',
+      'Vary': 'Origin',
+    },
+  })
+})
+
+sessionsRouter.options('/api/chat/upload', (c) => {
   const origin = getAllowedOrigin(c.req.header('Origin'))
   return new Response(null, {
     status: 204,
@@ -270,6 +284,86 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   }
 
   return c.json({ ok: true, remaining: Math.max(0, pending.expectedCount - pending.collected.length) }, 200, corsHeaders)
+})
+
+// ─── Upload answer — called by frontend once the user submits/skips an UploadRequestCard ──
+// Files are already uploaded+confirmed via the regular chat-attachment pipeline before this
+// call — this route only relays the resulting fileIds (with name/mimeType) back to the tool.
+sessionsRouter.post('/api/chat/upload', async (c) => {
+  const origin = getAllowedOrigin(c.req.header('Origin'))
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  }
+
+  const authHeader = c.req.header('Authorization') ?? ''
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+  if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
+
+  let callerTenantId = ''
+  try {
+    const payload = await validateToken(token)
+    callerTenantId = payload['custom:tenantId'] ?? ''
+  } catch {
+    return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
+  }
+
+  let body: { uploadId?: unknown; files?: unknown; freeText?: unknown; skipped?: unknown }
+  try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid_body' }, 400, corsHeaders) }
+
+  const uploadId = typeof body.uploadId === 'string' ? body.uploadId.trim() : ''
+  if (!uploadId) return c.json({ ok: false, error: 'uploadId required' }, 400, corsHeaders)
+
+  const pending = pendingUploads.get(uploadId)
+  if (!pending) return c.json({ ok: false, error: 'upload_not_found' }, 404, corsHeaders)
+  // Tenant-scoped only, matching /api/chat/clarification above — see the
+  // comment there on why pending.userId is never compared against the caller.
+  if (!callerTenantId || pending.tenantId !== callerTenantId) {
+    return c.json({ ok: false, error: 'upload_not_found' }, 404, corsHeaders)
+  }
+
+  const MAX_FREE_TEXT_LEN = 2000
+  if (typeof body.freeText === 'string' && body.freeText.length > MAX_FREE_TEXT_LEN) {
+    return c.json({ ok: false, error: 'freeText too long' }, 400, corsHeaders)
+  }
+
+  const skipped = body.skipped === true
+  const rawFiles = Array.isArray(body.files) ? body.files : []
+  const files: UploadedFileRef[] = rawFiles
+    .filter((f): f is { fileId: unknown; name: unknown; type: unknown } => !!f && typeof f === 'object')
+    .map((f) => ({
+      fileId: typeof f.fileId === 'string' ? f.fileId : '',
+      name: typeof f.name === 'string' ? f.name : 'file',
+      mimeType: typeof f.type === 'string' ? f.type : 'application/octet-stream',
+    }))
+    .filter((f) => f.fileId.length > 0)
+
+  if (!skipped) {
+    if (files.length < pending.minFiles) {
+      return c.json({ ok: false, error: `at least ${pending.minFiles} file(s) required` }, 400, corsHeaders)
+    }
+    if (files.length > pending.maxFiles) {
+      return c.json({ ok: false, error: `at most ${pending.maxFiles} file(s) allowed` }, 400, corsHeaders)
+    }
+  }
+
+  const freeText = typeof body.freeText === 'string' ? body.freeText : undefined
+
+  clearTimeout(pending.timer)
+  pendingUploads.delete(uploadId)
+  pending.resolve({ files, freeText, skipped })
+
+  if (pending.messageId && pending.conversationId && pending.idToken) {
+    updateUploadRequest(pending.idToken, pending.conversationId, pending.messageId, {
+      status: skipped ? 'skipped' : 'answered',
+      fileIds: files.map((f) => f.fileId),
+      freeText,
+      answeredAt: new Date().toISOString(),
+    })
+  }
+
+  return c.json({ ok: true }, 200, corsHeaders)
 })
 
 // ─── Generation confirm decision — called by frontend after user confirms/declines ──

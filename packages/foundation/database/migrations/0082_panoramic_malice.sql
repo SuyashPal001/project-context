@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "upload_request" jsonb;

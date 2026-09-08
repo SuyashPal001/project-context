@@ -28,6 +28,7 @@ export interface UseChatOptions {
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
     onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string) => void;
     onClarificationRequired?: (clarificationId: string, questions: ClarificationQuestion[]) => void;
+    onUploadRequired?: (uploadId: string, prompt: string, minFiles: number, maxFiles: number) => void;
 }
 
 export interface UseChatReturn {
@@ -35,6 +36,7 @@ export interface UseChatReturn {
     sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
     sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined', reason?: string) => Promise<boolean>;
     sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => Promise<boolean>;
+    sendUploadAnswer: (uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     cancel: () => void;
     isStreaming: boolean;
     isRetrying: boolean;
@@ -57,6 +59,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onApprovalRequired,
         onGenerationConfirmRequired,
         onClarificationRequired,
+        onUploadRequired,
     } = options;
 
     const [isStreaming, setIsStreaming] = useState(false);
@@ -81,6 +84,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onApprovalRequiredRef = useRef(onApprovalRequired);
     const onGenerationConfirmRequiredRef = useRef(onGenerationConfirmRequired);
     const onClarificationRequiredRef = useRef(onClarificationRequired);
+    const onUploadRequiredRef = useRef(onUploadRequired);
     const conversationIdRef = useRef(conversationId);
     const agentIdRef = useRef(agentId);
     const folderIdRef = useRef(folderId);
@@ -99,6 +103,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onApprovalRequiredRef.current = onApprovalRequired;
     onGenerationConfirmRequiredRef.current = onGenerationConfirmRequired;
     onClarificationRequiredRef.current = onClarificationRequired;
+    onUploadRequiredRef.current = onUploadRequired;
     conversationIdRef.current = conversationId;
     agentIdRef.current = agentId;
 
@@ -365,6 +370,16 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                             break;
                         }
 
+                        case 'upload_request': {
+                            onUploadRequiredRef.current?.(
+                                payload.uploadId as string,
+                                payload.prompt as string,
+                                payload.minFiles as number,
+                                payload.maxFiles as number,
+                            );
+                            break;
+                        }
+
                         case 'auth_expired': {
                             authExpired = true;
                             break;
@@ -478,6 +493,28 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         }
     }, []);
 
+    const sendUploadAnswer = useCallback(async (
+        uploadId: string,
+        answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean },
+    ): Promise<boolean> => {
+        const { accessToken } = getAuthTokens();
+        if (!accessToken) return false;
+
+        try {
+            const res = await fetch(`${CHAT_ENDPOINT}/upload`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+                body: JSON.stringify({ uploadId, ...answer }),
+            });
+            return res.ok;
+        } catch {
+            return false;
+        }
+    }, []);
+
     sendMessageRef.current = sendMessage;
 
     return {
@@ -485,6 +522,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         sendApproval,
         sendGenerationConfirm,
         sendClarificationAnswer,
+        sendUploadAnswer,
         cancel,
         isStreaming,
         isRetrying,

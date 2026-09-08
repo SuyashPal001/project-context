@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
 import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef, MessageAttachment } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
-import type { ClarificationRequest, ClarificationQuestion } from '@/components/platform/chat/types';
+import type { ClarificationRequest, ClarificationQuestion, UploadRequest } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
 import type { ChatStreamEventType } from '@/components/platform/personas/usePersonaAnimationState';
 
@@ -104,7 +104,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         setActiveToolCalls(prev => { const next = new Map(prev); next.delete(toolCallId); return next; });
     }, [activeToolCalls]);
 
-    const { sendMessage: sendChatMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, cancel, isStreaming, isRetrying } = useChat({
+    const { sendMessage: sendChatMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isRetrying } = useChat({
         conversationId: conversationId || undefined,
         agentId,
         folderId,
@@ -348,6 +348,22 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 return old ? { data: [...old.data, msg] } : { data: [msg] };
             });
         }, [queryClient]),
+
+        onUploadRequired: useCallback((uploadId: string, prompt: string, minFiles: number, maxFiles: number) => {
+            if (!prompt) return;
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                const request: UploadRequest = { id: uploadId, prompt, minFiles, maxFiles, status: 'pending' };
+                const msg: Message = {
+                    id: crypto.randomUUID(),
+                    conversationId: conversationIdRef.current!,
+                    role: 'assistant',
+                    content: '',
+                    createdAt: new Date().toISOString(),
+                    uploadRequest: request,
+                };
+                return old ? { data: [...old.data, msg] } : { data: [msg] };
+            });
+        }, [queryClient]),
     });
 
     // Cancel any in-flight stream when navigating to a different conversation
@@ -438,7 +454,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     };
 
     return {
-        sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, cancel, isStreaming, isRetrying,
+        sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isRetrying,
         activeToolCalls, completedToolCalls, reasoningText,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
         lastStreamEvent, regenerate, editAndResubmit,

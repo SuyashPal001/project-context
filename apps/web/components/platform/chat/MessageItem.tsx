@@ -13,6 +13,7 @@ import { TraceSummary } from "./TraceSummary";
 import { LiveTrace } from "./ThinkingIndicator";
 import { ApprovalCard } from "./ApprovalCard";
 import { ClarificationCard } from "./ClarificationCard";
+import { UploadRequestCard } from "./UploadRequestCard";
 import { StreamingMessage } from "./StreamingMessage";
 import { MessageFeedback } from "./MessageFeedback";
 import { PlanCard } from "./PlanCard";
@@ -36,7 +37,8 @@ export function messageHasDisplayedContent(message: Message): boolean {
         message.artifactRef ||
         message.planResult ||
         (message.toolCalls && message.toolCalls.length > 0) ||
-        (message.clarificationRequest && message.clarificationRequest.status !== 'pending')
+        (message.clarificationRequest && message.clarificationRequest.status !== 'pending') ||
+        (message.uploadRequest && message.uploadRequest.status !== 'pending')
     );
 }
 
@@ -48,6 +50,7 @@ interface MessageItemProps {
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
     onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
+    onUploadAnswer?: (messageId: string, uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     creatingPlanId: string | null;
     planErrors: Record<string, string>;
     onCreateInSystem: (messageId: string, planResult: PlanResult) => Promise<void>;
@@ -75,6 +78,7 @@ export function MessageItem({
     onApprove,
     onDismiss,
     onClarificationAnswer,
+    onUploadAnswer,
     creatingPlanId,
     planErrors,
     onCreateInSystem,
@@ -306,6 +310,19 @@ export function MessageItem({
                             answer.questionIndex,
                             { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
                             allAnswered,
+                        ) ?? Promise.resolve(true)}
+                    />
+                )}
+
+                {/* Same "resolved summary stays inline, pending takes over as an
+                    overlay" split as clarification above. */}
+                {message.uploadRequest && message.uploadRequest.status !== 'pending' && (
+                    <UploadRequestCard
+                        request={message.uploadRequest}
+                        onAnswer={(answer) => onUploadAnswer?.(
+                            message.id,
+                            message.uploadRequest!.id,
+                            answer,
                         ) ?? Promise.resolve(true)}
                     />
                 )}

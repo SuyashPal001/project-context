@@ -50,7 +50,7 @@ const db = {
   insert: vi.fn(() => chain()),
 }
 
-vi.mock('@serverless-saas/agent-schema', () => ({ agentTasks: {}, taskEvents: {} }))
+vi.mock('@serverless-saas/agent-schema', () => ({ agentTasks: {}, taskEvents: {}, messages: {} }))
 vi.mock('@serverless-saas/database/schema/audit', () => ({ auditLog: {} }))
 vi.mock('@serverless-saas/database/schema/storage', () => ({ files: {} }))
 vi.mock('../db', () => ({ db }))

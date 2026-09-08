@@ -155,6 +155,47 @@ export const pendingGenerationConfirmations = new Map<string, {
   idToken?: string
 }>()
 
+// ─── Upload-request gate ──────────────────────────────────────────────────────
+// Mirrors the clarification-question pattern above (block-via-promise, resolved
+// by a frontend HTTP call), generalized to "the agent needs the user to upload
+// one or more files" instead of answering a question. Files themselves travel
+// through the existing chat-attachment upload pipeline (presigned S3 PUT +
+// /files/:id/confirm) before their fileIds ever reach this map — this only
+// relays already-confirmed fileIds back to the blocked tool call.
+
+export interface UploadedFileRef {
+  fileId: string
+  name: string
+  mimeType: string
+}
+
+export interface UploadAnswer {
+  files: UploadedFileRef[]
+  freeText?: string
+  skipped?: boolean
+}
+
+// Same role as sessionActiveClarification: lets the SSE cancel() handler find
+// and resolve the live pending upload request for a session without scanning
+// the whole pendingUploads map.
+export const sessionActiveUpload = new Map<string, string>()
+
+// Upload timeout is longer than clarification's 120s — the user has to pick a
+// file and wait out a real S3 PUT, not just click an option.
+export const UPLOAD_TIMEOUT_MS = 10 * 60_000
+
+export const pendingUploads = new Map<string, {
+  resolve: (answer: UploadAnswer) => void
+  timer: ReturnType<typeof setTimeout>
+  minFiles: number
+  maxFiles: number
+  tenantId: string
+  userId: string
+  messageId?: string
+  conversationId?: string
+  idToken?: string
+}>()
+
 // ─── Rate limiter ─────────────────────────────────────────────────────────────
 
 export const rateLimitMap = new Map<string, { count: number; windowStart: number }>()

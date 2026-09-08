@@ -21,6 +21,7 @@ import { findInFolderTool } from '../tools/findInFolder.js'
 import { readFileTool } from '../tools/readFile.js'
 import { platformCapabilityTools } from '../tools/platform-capabilities.js'
 import { askClarifyingQuestionsTool } from '../tools/askClarifyingQuestions.js'
+import { requestUploadTool } from '../tools/requestUpload.js'
 import { renderCanvas } from '../tools/renderCanvas.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
@@ -166,6 +167,7 @@ export const SERVER_TOOLS = {
     },
   }),
   ask_clarifying_questions: askClarifyingQuestionsTool,
+  request_upload: requestUploadTool,
   render_canvas: renderCanvas,
   analyze_audio: analyzeAudioTool,
   analyze_video: analyzeVideoTool,

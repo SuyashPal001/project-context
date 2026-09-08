@@ -56,11 +56,29 @@ export interface ClarificationAnswer {
 export interface ClarificationRequest {
     id: string;
     questions: ClarificationQuestion[];
-    status: 'pending' | 'answered' | 'skipped';
+    status: 'pending' | 'answered' | 'skipped' | 'expired';
     answeredAt?: string;
     // Per-question answer actually given, keyed by question index — populated
     // once the request resolves, powers the resolved "N answer(s)" summary card.
     answers?: Record<number, ClarificationAnswer>;
+}
+
+export interface UploadedFileRef {
+    fileId: string;
+    name: string;
+    type: string;
+}
+
+export interface UploadRequest {
+    id: string;
+    prompt: string;
+    minFiles: number;
+    maxFiles: number;
+    status: 'pending' | 'answered' | 'skipped' | 'expired';
+    answeredAt?: string;
+    // Populated once the request resolves, powers the resolved summary card.
+    files?: UploadedFileRef[];
+    freeText?: string;
 }
 
 export interface MessageAttachment {
@@ -142,6 +160,7 @@ export interface Message {
     approvalRequest?: ApprovalRequest;
     generationConfirmRequest?: GenerationConfirmRequest;
     clarificationRequest?: ClarificationRequest;
+    uploadRequest?: UploadRequest;
     isStreaming?: boolean;
     attachments?: MessageAttachment[];
     planResult?: PlanResult;

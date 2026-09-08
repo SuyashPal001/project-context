@@ -575,6 +575,13 @@
       "when": 1788700978350,
       "tag": "0081_normal_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1788816799055,
+      "tag": "0082_panoramic_malice",
+      "breakpoints": true
     }
   ]
 }

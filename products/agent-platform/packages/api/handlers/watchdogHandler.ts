@@ -1,5 +1,5 @@
 import type { ScheduledHandler } from 'aws-lambda';
-import { agentTasks, taskEvents } from '@serverless-saas/agent-schema';
+import { agentTasks, taskEvents, messages } from '@serverless-saas/agent-schema';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { files } from '@serverless-saas/database/schema/storage';
 import { db } from '../db';
@@ -327,5 +327,51 @@ export const handler: ScheduledHandler = async () => {
         traceId: '',
       }).catch(() => {});
     }
+  }
+
+  // --- Sweep 5: Orphaned clarification/upload requests ---
+  // ask_clarifying_questions and request_upload both block the agent-orchestrator
+  // tool's execute() on an in-memory Promise, resolved either by the user
+  // answering or by the tool's own setTimeout (120s / 10min). Both live only in
+  // a module-level Map, so a PM2 restart of agent-orchestrator (this repo's
+  // deploy.sh never restarts it — CLAUDE.md — every deploy needing it needs a
+  // manual `pm2 restart agent-orchestrator`) wipes the Map without ever
+  // resolving the promise or updating the DB row. The message is left
+  // 'pending' forever: the overlay card would render on any future reload,
+  // and the agent that was blocked on it is simply gone.
+  //
+  // Cutoffs sit well past each tool's own timeout (120s clarification, 10min
+  // upload) so this only catches requests whose *process* died — not ones a
+  // live instance is still legitimately counting down on its own.
+  const expiredClarifications = await db
+    .update(messages)
+    .set({ clarificationRequest: sql`jsonb_set(${messages.clarificationRequest}, '{status}', '"expired"')` })
+    .where(and(
+      sql`${messages.clarificationRequest}->>'status' = 'pending'`,
+      sql`${messages.createdAt} < NOW() - INTERVAL '5 minutes'`,
+    ))
+    .returning({ id: messages.id, tenantId: messages.tenantId });
+
+  if (expiredClarifications.length > 0) {
+    wlog('warn', 'Orphaned clarification requests marked expired', {
+      count: expiredClarifications.length,
+      messageIds: expiredClarifications.map((m) => m.id),
+    });
+  }
+
+  const expiredUploads = await db
+    .update(messages)
+    .set({ uploadRequest: sql`jsonb_set(${messages.uploadRequest}, '{status}', '"expired"')` })
+    .where(and(
+      sql`${messages.uploadRequest}->>'status' = 'pending'`,
+      sql`${messages.createdAt} < NOW() - INTERVAL '15 minutes'`,
+    ))
+    .returning({ id: messages.id, tenantId: messages.tenantId });
+
+  if (expiredUploads.length > 0) {
+    wlog('warn', 'Orphaned upload requests marked expired', {
+      count: expiredUploads.length,
+      messageIds: expiredUploads.map((m) => m.id),
+    });
   }
 };

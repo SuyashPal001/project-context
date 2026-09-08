@@ -166,7 +166,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
         clarificationRequest: z.object({
             id: z.string(),
             questions: z.array(z.any()),
-            status: z.enum(['pending', 'answered', 'skipped']),
+            status: z.enum(['pending', 'answered', 'skipped', 'expired']),
             answers: z.record(z.string(), z.any()).optional(),
             answeredAt: z.string().optional(),
         }).nullish(),
@@ -190,6 +190,16 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             status: z.enum(['pending', 'approved', 'declined']),
             decisionAt: z.string().optional(),
             declineReason: z.string().max(500).optional(),
+        }).nullish(),
+        uploadRequest: z.object({
+            id: z.string(),
+            prompt: z.string(),
+            minFiles: z.number(),
+            maxFiles: z.number(),
+            status: z.enum(['pending', 'answered', 'skipped', 'expired']),
+            fileIds: z.array(z.string()).optional(),
+            freeText: z.string().max(2000).optional(),
+            answeredAt: z.string().optional(),
         }).nullish(),
         createdAt: z.string().datetime().optional(),
     });
@@ -250,6 +260,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             clarificationRequest: result.data.clarificationRequest ?? null,
             approvalRequest: result.data.approvalRequest ?? null,
             generationConfirmRequest: result.data.generationConfirmRequest ?? null,
+            uploadRequest: result.data.uploadRequest ?? null,
             createdAt: result.data.createdAt ? new Date(result.data.createdAt) : undefined,
         })
         .returning();
@@ -273,7 +284,7 @@ messagesRoutes.patch('/:conversationId/messages/:messageId/clarification', async
 
     const schema = z.object({
         clarificationRequest: z.object({
-            status: z.enum(['pending', 'answered', 'skipped']),
+            status: z.enum(['pending', 'answered', 'skipped', 'expired']),
             answers: z.record(z.string(), z.any()).optional(),
             answeredAt: z.string().optional(),
         }),
@@ -298,6 +309,54 @@ messagesRoutes.patch('/:conversationId/messages/:messageId/clarification', async
     const [updated] = await db
         .update(messages)
         .set({ clarificationRequest: merged })
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
+        .returning();
+
+    return c.json({ data: updated }, 200);
+});
+
+// PATCH /conversations/:conversationId/messages/:messageId/upload — update upload-request status
+// Internal only: called by the orchestrator when the user finishes uploading (or skips).
+messagesRoutes.patch('/:conversationId/messages/:messageId/upload', async (c) => {
+    if (!isAuthorized(c.req.header('x-internal-service-key') ?? '')) {
+        return c.json({ error: 'Unauthorized', code: 'UNAUTHORIZED' }, 401);
+    }
+
+    const requestContext = c.get('requestContext') as any;
+    const tenantId = requestContext?.tenant?.id;
+    if (!tenantId) return c.json({ error: 'Tenant not resolved', code: 'NO_TENANT' }, 400);
+
+    const conversationId = c.req.param('conversationId');
+    const messageId = c.req.param('messageId');
+
+    const schema = z.object({
+        uploadRequest: z.object({
+            status: z.enum(['pending', 'answered', 'skipped', 'expired']),
+            fileIds: z.array(z.string()).optional(),
+            freeText: z.string().max(2000).optional(),
+            answeredAt: z.string().optional(),
+        }),
+    });
+
+    const body = await c.req.json().catch(() => null);
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
+    }
+
+    const [existing] = await db
+        .select({ uploadRequest: messages.uploadRequest })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
+        .limit(1);
+
+    if (!existing) return c.json({ error: 'Message not found', code: 'NOT_FOUND' }, 404);
+
+    const merged = { ...(existing.uploadRequest as object ?? {}), ...result.data.uploadRequest };
+
+    const [updated] = await db
+        .update(messages)
+        .set({ uploadRequest: merged })
         .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId), eq(messages.tenantId, tenantId)))
         .returning();
 
