@@ -145,18 +145,39 @@ verified against code, not opinion:
    that route, then either follows the presigned URL or receives proxied
    bytes directly — implementation detail for planning, but either way:
    zero new orchestrator dependency, zero new credential story.
-4. **Caching.** Since a specific `(skillId, version)`'s S3 objects are
-   immutable once `status = 'ready'` (a new version gets a new prefix), a
-   cache keyed on `(skillId, version)` with no TTL is safe and removes the
-   per-turn S3 round-trip after the first read. Confirm this is in scope for
-   the first implementation or explicitly deferred with the latency cost
-   accepted for v1. **Precedent check:** deepseek-harness (deepseek-ai's
-   open-source agent harness, `docs/architecture.md`'s Session log section)
-   relies on the identical invariant for its own durable session
-   generations — "committed generation paths are never renamed, replaced,
-   or deleted" — and caches on that basis. Same reasoning applies here;
-   this is not a shortcut, it's the standard move for content that's
-   immutable-by-construction once published.
+4. **Caching — DECIDED: bounded in-process LRU keyed on `(skillId,
+   version)`, no TTL, in scope for v1.** A version's S3 prefix is
+   `skill-packages/{skillId}/{version}` and version numbers are
+   `max(version)+1` under `unique(skill_id, version)` (`schema/skills.ts:51`,
+   `routes/skills.ts:326`), so a new version never reuses a prefix and no
+   other code writes there.
+
+   **Caveat, not covered by "immutable once ready":** the import worker PUTs
+   objects before setting `status='ready'` (`skillImport.ts:107-119`) and
+   the SQS idempotency claim only completes after the handler returns
+   (`lambda.ts:46`), so an uncatchable consumer death (timeout/OOM) triggers
+   a deliberate redelivery (`lambda.ts:20-24`) that re-fetches the source
+   and re-PUTs over an already-`ready` prefix. For `github` (branch ref) and
+   `url` sources those bytes can differ. The exposure is one process's
+   cached copy of one version whose import was retried; accepted for v1,
+   with the cache being process-lifetime rather than durable so a restart
+   clears it. Do not cache misses or fetch errors — only successful reads.
+
+   **Bound:** LRU with an explicit byte ceiling, not unbounded. A single
+   package can be 50MB (500 entries × 10MB, `safeSkillZip.ts:11-13`), the
+   orchestrator is one long-lived process with no `max_memory_restart` and
+   no heap cap (`start.sh`), and it is restarted only by hand. Ceiling TBD
+   at planning; the repo precedent for payload caches is expiry/size-bounded
+   (`platformAgent.ts:197`, `composio.ts:9`), not the unbounded string cache
+   at `usage.ts:228`.
+
+   **Authorization ordering (load-bearing):** skills default to
+   `visibility='private'` with an `ownerTenantId` (`schema/skills.ts:16-22`),
+   so package contents are tenant-confidential. The cache key intentionally
+   has no tenant dimension; that is only safe because the
+   `agent_skills → skill_installs → skill_versions` join runs *before*
+   every provider call. The cache must never be consulted on a path that
+   hasn't already done that join — no cache warming, no `list()` shortcut.
 
 ## Architecture (unchanged mechanism, now scoped around the open questions above)
 
