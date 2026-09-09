@@ -98,7 +98,7 @@ export function AgentsView() {
         return persona.name.toLowerCase().includes(q) || persona.tagline.toLowerCase().includes(q);
     });
 
-    const hiredAgents = agents.filter((a) => a.status === "active" && !a.isInternal).filter((a) => {
+    const hiredAgents = agents.filter((a) => a.status !== "retired" && !a.isInternal).filter((a) => {
         const q = search.trim().toLowerCase();
         if (!q) return true;
         return a.name.toLowerCase().includes(q);

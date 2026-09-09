@@ -24,5 +24,5 @@ export async function firePersonaAgent(agentId: string, opts?: { force?: boolean
 }
 
 export function findAgentForPersona(agents: AgentsResponse["data"], personaId: string): Agent | undefined {
-    return agents.find((a) => a.persona?.id === personaId && a.status === "active");
+    return agents.find((a) => a.persona?.id === personaId && a.status !== "retired");
 }
