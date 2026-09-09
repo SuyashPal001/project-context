@@ -21,7 +21,7 @@ export const askClarifyingQuestionsTool = createTool({
       options: z.array(z.object({
         label: z.string(),
         rationale: z.string().optional(),
-      })).min(1),
+      })).min(0),
       allowFreeText: z.boolean().optional().default(true),
       allowSkip: z.boolean().optional().default(true),
     })).min(1),
