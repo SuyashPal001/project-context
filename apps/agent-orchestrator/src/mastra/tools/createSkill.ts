@@ -77,6 +77,13 @@ function validateSkillBody(body: string, name: string): string | null {
   if (description.length < MIN_DESCRIPTION_LENGTH) {
     return `SKILL.md frontmatter 'description' is too short to be useful (${description.length} chars, minimum ${MIN_DESCRIPTION_LENGTH}) — write a real sentence saying when an agent should use this skill`
   }
+  // Weak but cheap proxy for "states when to use it" vs. "summarizes what it
+  // does" — the two read differently to a human, but the only mechanical
+  // signal available without an LLM pass is whether the sentence bothers to
+  // say "when" at all. Mirrors the same floor in skillManifest.ts.
+  if (!/\bwhen\b/i.test(description)) {
+    return `SKILL.md frontmatter 'description' should say when to use this skill, not just what it does — start with "Use when..." and name the trigger`
+  }
   return null
 }
 

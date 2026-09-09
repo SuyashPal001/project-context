@@ -5,7 +5,7 @@ vi.mock('./confirmGeneration.js', () => ({ confirmGenerationOrDecline: confirmMo
 
 const fetchMock = vi.hoisted(() => vi.fn())
 
-const VALID_BODY = '---\nname: bid-writer\ndescription: Writes bids for prospective clients\n---\n\nOpen with the client name.'
+const VALID_BODY = '---\nname: bid-writer\ndescription: Use when writing bids for prospective clients\n---\n\nOpen with the client name.'
 
 /** Mirrors the tool's own copy — see its comment for why it isn't imported. */
 const MAX_COMPOSED_SKILL_CHARS = 24_000
@@ -63,6 +63,15 @@ describe('create_skill', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  // Long enough to pass the length floor but summarizes what the skill does
+  // rather than when to use it — the length check alone would let this through.
+  it('rejects a description that is long enough but never says "when"', async () => {
+    const result = await run({ name: 'Bid Writer', body: '---\nname: x\ndescription: Formats client bids as a PDF document\n---\n\nBody.' })
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/should say when to use/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('rejects a body over 64KB', async () => {
     const result = await run({ name: 'Big', body: `---\nname: a\ndescription: b\n---\n\n${'x'.repeat(65_537)}` })
     expect(result.success).toBe(false)
@@ -84,7 +93,7 @@ describe('create_skill', () => {
   })
 
   it('accepts a body sitting exactly on the composition budget', async () => {
-    const frontmatter = '---\nname: a\ndescription: Writes bids for prospective clients\n---\n\n'
+    const frontmatter = '---\nname: a\ndescription: Use when writing bids for prospective clients\n---\n\n'
     // body.length + name.length + 15 === MAX_COMPOSED_SKILL_CHARS — the last
     // size that composes, so the boundary is inclusive rather than off by one.
     const filler = MAX_COMPOSED_SKILL_CHARS - 'Bid Writer'.length - 15 - frontmatter.length
@@ -102,7 +111,7 @@ describe('create_skill', () => {
   })
 
   it('truncates a long preview rather than sending the whole body', async () => {
-    const long = `---\nname: a\ndescription: Writes bids for prospective clients\n---\n\n${'line\n'.repeat(400)}`
+    const long = `---\nname: a\ndescription: Use when writing bids for prospective clients\n---\n\n${'line\n'.repeat(400)}`
     await run({ name: 'Bid Writer', body: long })
     const opts = confirmMock.mock.calls[0][4] as { preview?: string }
     expect(opts.preview!.length).toBeLessThan(long.length)
@@ -188,7 +197,7 @@ describe('create_skill', () => {
   })
 
   it('passes PII detections into the confirmation label', async () => {
-    const withEmail = '---\nname: a\ndescription: Writes bids for prospective clients\n---\n\nMail ada@example.com about it.'
+    const withEmail = '---\nname: a\ndescription: Use when writing bids for prospective clients\n---\n\nMail ada@example.com about it.'
     await run({ name: 'Bid Writer', body: withEmail })
     expect(confirmMock.mock.calls[0][3]).toMatch(/personal|detected/i)
   })

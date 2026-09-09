@@ -13,11 +13,7 @@ const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 // A non-empty description like "a skill" or "helper" passes a presence check
 // but gives an agent's skill_search nothing to match a task against. This is
 // the cheapest, least-ambiguous floor: a real "when to use this" sentence is
-// essentially never under 20 characters. A stronger content check (does it
-// actually describe a *when*, not just a *what*) is a nice-to-have that adds
-// LLM-judgment complexity to what is otherwise pure string parsing — start
-// here, revisit only if thin-but-long descriptions turn out to be a real
-// problem in practice.
+// essentially never under 20 characters.
 const MIN_DESCRIPTION_LENGTH = 20;
 
 /**
@@ -54,6 +50,15 @@ export function parseSkillManifest(skillMdContent: string): SkillManifest {
   if (manifest.description.trim().length < MIN_DESCRIPTION_LENGTH) {
     throw new SkillManifestError(
       `SKILL.md frontmatter 'description' is too short to be useful (${manifest.description.trim().length} chars, minimum ${MIN_DESCRIPTION_LENGTH}) — write a real sentence saying when an agent should use this skill`,
+    );
+  }
+  // Weak but cheap proxy for "states when to use it" vs. "summarizes what it
+  // does" — the two read differently to a human, but the only mechanical
+  // signal available without an LLM pass is whether the sentence bothers to
+  // say "when" at all. Mirrors the same floor in createSkill.ts.
+  if (!/\bwhen\b/i.test(manifest.description)) {
+    throw new SkillManifestError(
+      `SKILL.md frontmatter 'description' should say when to use this skill, not just what it does — start with "Use when..." and name the trigger`,
     );
   }
 

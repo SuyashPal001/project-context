@@ -3,10 +3,10 @@ import { parseSkillManifest, SkillManifestError } from '../lib/skillManifest';
 
 describe('parseSkillManifest', () => {
   it('parses name/description plus arbitrary extra fields', () => {
-    const md = `---\nname: pdf-tools\ndescription: Extracts tables from PDFs\ntags:\n  - pdf\n  - extraction\n---\n\n# Body\n`;
+    const md = `---\nname: pdf-tools\ndescription: Use when extracting tables from PDFs\ntags:\n  - pdf\n  - extraction\n---\n\n# Body\n`;
     const manifest = parseSkillManifest(md);
     expect(manifest.name).toBe('pdf-tools');
-    expect(manifest.description).toBe('Extracts tables from PDFs');
+    expect(manifest.description).toBe('Use when extracting tables from PDFs');
     expect(manifest.tags).toEqual(['pdf', 'extraction']);
   });
 
@@ -41,14 +41,22 @@ describe('parseSkillManifest', () => {
   });
 
   it('accepts a description right at the minimum length', () => {
-    // Exactly 20 characters — the floor this task introduces.
-    const md = `---\nname: right-at-floor\ndescription: "01234567890123456789"\n---\nbody`;
+    // Exactly 20 characters — the floor this task introduces — and contains
+    // "when" so it also clears the when-check below.
+    const md = `---\nname: right-at-floor\ndescription: "use when it applies!"\n---\nbody`;
     const manifest = parseSkillManifest(md);
-    expect(manifest.description).toBe('01234567890123456789');
+    expect(manifest.description).toBe('use when it applies!');
   });
 
   it('still distinguishes a missing description from a too-short one', () => {
     const md = `---\nname: no-description\n---\nbody`;
     expect(() => parseSkillManifest(md)).toThrow(/missing required field/i);
+  });
+
+  // Long enough to pass the length floor but summarizes what the skill does
+  // rather than when to use it — the length check alone would let this through.
+  it('rejects a description that is long enough but never says "when"', () => {
+    const md = `---\nname: pdf-tools\ndescription: Extracts tables from PDF documents\n---\nbody`;
+    expect(() => parseSkillManifest(md)).toThrow(/should say when to use/i);
   });
 });

@@ -208,6 +208,14 @@ skillsRoutes.get('/', async (c) => {
 skillsRoutes.get('/:id', async (c) => {
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
+  // Every query below filters by tenantId (skillInstalls.tenantId in
+  // particular). An undefined tenantId turns that into `= NULL`, which never
+  // matches and never errors — the route would return 200 with install data
+  // silently wrong instead of failing loudly. tenantResolutionMiddleware
+  // guarantees this is set on any request that reaches here, but this route
+  // is also reachable by a non-owner tenant for public/official skills (see
+  // comment above), so the invariant is worth asserting rather than trusting.
+  if (!tenantId) return c.json({ error: 'Tenant context missing', code: 'TENANT_REQUIRED' }, 401);
   const permissions = requestContext?.permissions ?? [];
   if (!hasPermission(permissions, 'skills', 'read')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
 
