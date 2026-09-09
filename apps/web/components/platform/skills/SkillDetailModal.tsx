@@ -97,6 +97,7 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
         setIsTesting(true);
         try {
             const { conversationId } = await startSkillTestChat(skill, agentsData?.data ?? []);
+            toast.success(`${skill.name} attached to this agent.`);
             onOpenChange(false);
             router.push(`/${tenantSlug}/dashboard/chat?conversationId=${conversationId}`);
         } catch (err) {
