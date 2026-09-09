@@ -48,6 +48,7 @@ export interface ClarificationQuestion {
 }
 
 export interface ClarificationAnswer {
+    files?: { fileId: string; name: string; type: string }[];
     selectedIndex?: number;
     freeText?: string;
     skipped?: boolean;

@@ -97,6 +97,7 @@ export const sseApprovalChannels = new Map<string, {
 // approval gate above (single boolean) to an ordered array of per-question answers
 // collected across a paginated ClarificationCard in the UI.
 export interface ClarificationAnswer {
+    files?: { fileId: string; name: string; type: string }[];
   questionIndex: number
   selectedIndex?: number
   freeText?: string

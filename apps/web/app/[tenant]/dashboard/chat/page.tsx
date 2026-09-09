@@ -318,9 +318,9 @@ function ChatPage() {
     // Accumulates each question's answer as it's submitted, keyed by
     // clarificationId then questionIndex — attached to the resolved request so
     // the "N answer(s)" summary card has real question/answer text to show.
-    const clarificationAnswersRef = useRef<Map<string, Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }>>>(new Map());
+    const clarificationAnswersRef = useRef<Map<string, Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>>>(new Map());
 
-    const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean): Promise<boolean> => {
+    const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }, allAnswered?: boolean): Promise<boolean> => {
         const ok = await sendClarificationAnswer(clarificationId, questionIndex, answer);
         if (!ok) {
             toast.error('Could not submit your answer. Please try again.');

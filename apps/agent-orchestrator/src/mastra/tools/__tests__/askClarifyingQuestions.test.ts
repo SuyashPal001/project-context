@@ -25,13 +25,15 @@ describe('askClarifyingQuestionsTool', () => {
     // Simulate the frontend resolving the single pending question
     await vi.waitFor(() => expect(pendingClarifications.size).toBe(1))
     const [[clarificationId, pending]] = pendingClarifications.entries()
-    pending.collected.push({ questionIndex: 0, selectedIndex: 1 })
+    pending.collected.push({ questionIndex: 0, selectedIndex: 1, files: [{ fileId: 'file-1', name: 'product.png', type: 'image/png' }] })
     pending.resolve(pending.collected)
     pendingClarifications.delete(clarificationId)
 
     const result = await resultPromise
     expect(sendEvent).toHaveBeenCalledWith('clarification_request', expect.objectContaining({ questions: input.questions }))
     expect((result as any).answers[0].selectedLabel).toBe('60s')
+    expect((result as any).answers[0].files).toEqual([{ fileId: 'file-1', name: 'product.png', type: 'image/png' }])
+    clearTimeout(pending.timer)
   })
 
   it('returns no_active_session when sendEvent/sessionId are missing', async () => {
@@ -81,6 +83,7 @@ describe('askClarifyingQuestionsTool', () => {
       const result = await resultPromise
       expect((result as any).answers).toHaveLength(1)
       expect((result as any).answers[0].selectedLabel).toBe('60s')
+
     } finally {
       vi.useRealTimers()
     }

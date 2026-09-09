@@ -114,7 +114,7 @@ export interface ClarificationRequestPayload {
   id: string
   questions: ClarificationQuestion[]
   status: 'pending' | 'answered' | 'skipped'
-  answers?: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }>
+  answers?: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>
   answeredAt?: string
 }
 

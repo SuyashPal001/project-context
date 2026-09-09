@@ -14,7 +14,7 @@ vi.mock('../persistence.js', () => ({
 }))
 
 import { sessionsRouter } from './sessions.js'
-import { pendingGenerationConfirmations, sessionActiveGenerationConfirmations } from '../types.js'
+import { pendingClarifications, pendingGenerationConfirmations, sessionActiveGenerationConfirmations } from '../types.js'
 
 const app = new Hono()
 app.route('/', sessionsRouter)
@@ -130,5 +130,47 @@ describe('POST /api/chat/generation-confirm', () => {
     expect(res.status).toBe(400)
     expect(resolve).not.toHaveBeenCalled()
     clearTimeout(timer)
+  })
+})
+
+
+describe('POST /api/chat/clarification attachments', () => {
+  it('passes uploaded files to the agent and persists them', async () => {
+    validateToken.mockResolvedValue({ 'custom:tenantId': 't1' })
+    const resolve = vi.fn()
+    const timer = setTimeout(() => {}, 999_999)
+    pendingClarifications.set('clar-files', {
+      resolve, timer, tenantId: 't1', userId: 'u1', expectedCount: 1, collected: [],
+      messageId: 'm1', conversationId: 'c1', idToken: 'tok',
+    })
+    const files = [{ fileId: 'file-1', name: 'product.png', type: 'image/png' }]
+    const res = await app.request('/api/chat/clarification', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test' },
+      body: JSON.stringify({ clarificationId: 'clar-files', questionIndex: 0, files }),
+    })
+    expect(res.status).toBe(200)
+    expect(resolve).toHaveBeenCalledWith([expect.objectContaining({ questionIndex: 0, files })])
+    const { updateClarificationRequest } = await import('../persistence.js')
+    expect(updateClarificationRequest).toHaveBeenCalledWith('tok', 'c1', 'm1', expect.objectContaining({
+      answers: { 0: expect.objectContaining({ files }) },
+    }))
+  })
+
+  it('rejects malformed file references without completing the question', async () => {
+    validateToken.mockResolvedValue({ 'custom:tenantId': 't1' })
+    const resolve = vi.fn()
+    const timer = setTimeout(() => {}, 999_999)
+    pendingClarifications.set('clar-invalid', { resolve, timer, tenantId: 't1', userId: 'u1', expectedCount: 1, collected: [] })
+    try {
+      const res = await app.request('/api/chat/clarification', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test' },
+        body: JSON.stringify({ clarificationId: 'clar-invalid', questionIndex: 0, files: [{ name: 'missing-id.png' }] }),
+      })
+      expect(res.status).toBe(400)
+      expect(resolve).not.toHaveBeenCalled()
+    } finally {
+      clearTimeout(timer)
+      pendingClarifications.delete('clar-invalid')
+    }
   })
 })

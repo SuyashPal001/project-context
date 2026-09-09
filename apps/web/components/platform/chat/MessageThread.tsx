@@ -31,7 +31,7 @@ interface MessageThreadProps {
     onDismiss?: (messageId: string, approvalId: string) => void;
     onGenerationConfirm?: (messageId: string, confirmationId: string) => void;
     onGenerationDecline?: (messageId: string, confirmationId: string, reason?: string) => void;
-    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
+    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }, allAnswered?: boolean) => void;
     onUploadAnswer?: (messageId: string, uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     onFollowUpSelect?: (text: string) => void;
     onRegenerate?: (message: Message) => void;
@@ -405,7 +405,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         pendingClarificationMessage.id,
                         pendingClarificationMessage.clarificationRequest!.id,
                         answer.questionIndex,
-                        { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
+                        { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped, files: answer.files },
                         allAnswered,
                     ) ?? Promise.resolve(true)}
                 />

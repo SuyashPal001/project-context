@@ -49,9 +49,10 @@ interface AttachmentStripProps {
     attachments: Attachment[];
     pendingUpload: PendingUpload | null;
     onRemove: (fileId: string) => void;
+    readOnly?: boolean;
 }
 
-export function AttachmentStrip({ attachments, pendingUpload, onRemove }: AttachmentStripProps) {
+export function AttachmentStrip({ attachments, pendingUpload, onRemove, readOnly = false }: AttachmentStripProps) {
     if (attachments.length === 0 && !pendingUpload) return null;
 
     return (
@@ -59,12 +60,14 @@ export function AttachmentStrip({ attachments, pendingUpload, onRemove }: Attach
             {attachments.map((file) => (
                 <div key={file.fileId} className="relative">
                     <AttachmentTile fileId={file.fileId} name={file.name} type={file.type} previewUrl={file.previewUrl} />
-                    <button
+                    {!readOnly && <button
+                        type="button"
+                        aria-label={`Remove ${file.name}`}
                         onClick={() => onRemove(file.fileId)}
                         className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-foreground text-background flex items-center justify-center shadow-md hover:scale-110 transition-transform duration-150"
                     >
                         <X className="h-3 w-3" />
-                    </button>
+                    </button>}
                 </div>
             ))}
 

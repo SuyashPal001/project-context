@@ -53,7 +53,7 @@ export const askClarifyingQuestionsTool = createTool({
 
     if (sessionId) sessionActiveClarification.set(sessionId, clarificationId)
 
-    const answers = await new Promise<Array<{ questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }>>((resolve) => {
+    const answers = await new Promise<Array<{ questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>>((resolve) => {
       const timer = setTimeout(() => {
         // Timeout still returns whatever the user had already answered before
         // going idle, rather than discarding partial progress as a full blank.
@@ -66,9 +66,9 @@ export const askClarifyingQuestionsTool = createTool({
         // permanently invisible orphan once the agent produces a later message.
         if (pending?.messageId && pending?.conversationId && pending?.idToken) {
           const allSkipped = collected.length === 0 || collected.every((a) => a.skipped === true)
-          const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
+          const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }> = {}
           for (const a of collected) {
-            answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
+            answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped, files: a.files }
           }
           updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
             status: allSkipped ? 'skipped' : 'answered',
@@ -98,6 +98,7 @@ export const askClarifyingQuestionsTool = createTool({
         selectedLabel: a.selectedIndex !== undefined
           ? inputData.questions[a.questionIndex]?.options[a.selectedIndex]?.label
           : undefined,
+        files: a.files,
         freeText: a.freeText,
         skipped: a.skipped ?? false,
       })),

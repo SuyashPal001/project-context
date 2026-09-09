@@ -35,7 +35,7 @@ export interface UseChatReturn {
     sendMessage: (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => Promise<void>;
     sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
     sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined', reason?: string) => Promise<boolean>;
-    sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => Promise<boolean>;
+    sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }) => Promise<boolean>;
     sendUploadAnswer: (uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     cancel: () => void;
     isStreaming: boolean;
@@ -475,7 +475,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const sendClarificationAnswer = useCallback(async (
         clarificationId: string,
         questionIndex: number,
-        answer: { selectedIndex?: number; freeText?: string; skipped?: boolean },
+        answer: { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] },
     ): Promise<boolean> => {
         const { accessToken } = getAuthTokens();
         if (!accessToken) return false;

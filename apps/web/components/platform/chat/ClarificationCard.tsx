@@ -11,10 +11,13 @@
 // of bottom-anchored overlay.
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowUp, ChevronLeft, ChevronRight, Paperclip } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
-import { ClarificationRequest } from './types';
+import { ClarificationRequest, UploadedFileRef } from './types';
+import { AttachmentStrip } from './AttachmentStrip';
+import { uploadToS3, MAX_FILES_PER_SELECTION, MAX_ATTACHMENTS_PER_MESSAGE, PendingUpload } from './useFileUpload';
+import { toast } from 'sonner';
 
 interface ClarificationCardProps {
     request: ClarificationRequest;
@@ -24,7 +27,7 @@ interface ClarificationCardProps {
     // Chevron nav lets the user jump straight to the last page and submit out
     // of order, so "last page" alone is not a safe signal that the backend's
     // full answer set is complete.
-    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered: boolean) => Promise<boolean>;
+    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }, allAnswered: boolean) => Promise<boolean>;
 }
 
 export function ClarificationCard({ request, onAnswer }: ClarificationCardProps) {
@@ -37,6 +40,44 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     // been answered".
     const [answeredIndices, setAnsweredIndices] = useState<Set<number>>(new Set());
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const [filesByQuestion, setFilesByQuestion] = useState<Record<number, UploadedFileRef[]>>(
+        () => Object.fromEntries(Object.entries(request.answers ?? {}).map(([index, answer]) => [index, answer.files ?? []])),
+    );
+    const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const busyRef = useRef(false);
+    const files = filesByQuestion[pageIndex] ?? [];
+    const busy = isSubmitting || pendingUpload !== null;
+
+    const addFiles = async (incoming: File[]) => {
+        if (busyRef.current || !incoming.length) return;
+        if (incoming.length > MAX_FILES_PER_SELECTION || files.length + incoming.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+            toast.error(`Attach up to ${MAX_FILES_PER_SELECTION} files at once and ${MAX_ATTACHMENTS_PER_MESSAGE} per answer.`);
+            return;
+        }
+        busyRef.current = true;
+        try {
+            for (const file of incoming) {
+                const maxMB = file.type.startsWith('video/') ? 200 : 35;
+                if (file.size > maxMB * 1024 * 1024) {
+                    toast.error(`${file.name} is too large. Maximum size is ${maxMB}MB.`);
+                    continue;
+                }
+                setPendingUpload({ name: file.name, type: file.type });
+                try {
+                    const type = file.type || 'application/octet-stream';
+                    const fileId = await uploadToS3(file, file.name, type, file.size);
+                    setFilesByQuestion(prev => ({ ...prev, [pageIndex]: [...(prev[pageIndex] ?? []), { fileId, name: file.name, type }] }));
+                } catch {
+                    toast.error(`Failed to upload ${file.name}. Please try again.`);
+                }
+            }
+        } finally {
+            setPendingUpload(null);
+            busyRef.current = false;
+        }
+    };
 
     // Restore partial progress from server-persisted answers after a page reload.
     // Runs once on mount only — not on every answer update — so it only applies
@@ -97,7 +138,8 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                             return (
                                 <div key={i} className="flex flex-col gap-1.5">
                                     <div className="text-sm font-medium">{q.prompt}</div>
-                                    <div className="text-sm text-muted-foreground">{answerText}</div>
+                                    <div className="text-sm text-muted-foreground">{a?.files?.length && answerText === 'Skipped' && !a.skipped ? 'Files attached' : answerText}</div>
+                                    {!!a?.files?.length && <AttachmentStrip attachments={a.files} pendingUpload={null} onRemove={() => {}} readOnly />}
                                 </div>
                             );
                         })}
@@ -113,41 +155,49 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     const freeText = currentFreeText;
     const isLast = pageIndex === total - 1;
 
-    // Mark `pageIndex` as answered and report whether that completes the full
+    // Check whether accepting `pageIndex` would complete the full
     // set. Computed synchronously (not from the setState updater) since the
     // caller needs the "is this submission the completing one" answer
     // immediately, before the async state update flushes.
-    const markAnsweredAndCheckComplete = () => {
+    const wouldCompleteAnswers = () => {
         const next = new Set(answeredIndices);
         next.add(pageIndex);
-        setAnsweredIndices(next);
         return next.size >= total;
     };
 
     const commitCurrent = async () => {
+        if (busyRef.current || (selectedIndex === undefined && !freeText.trim() && !files.length)) return;
         const trimmedFreeText = freeText.trim();
         // Send whichever of selectedIndex/freeText are actually present — a user
         // can click an option AND add free text, and both should reach the
         // backend rather than one silently overwriting the other.
         const answer = {
             questionIndex: pageIndex,
+            ...(files.length ? { files } : {}),
             ...(selectedIndex !== undefined ? { selectedIndex } : {}),
             ...(trimmedFreeText ? { freeText: trimmedFreeText } : {}),
         };
-        const allAnswered = markAnsweredAndCheckComplete();
+        const allAnswered = wouldCompleteAnswers();
+        busyRef.current = true;
         setIsSubmitting(true);
-        const ok = await onAnswer(answer, allAnswered);
-        setIsSubmitting(false);
+        let ok = false;
+        try { ok = await onAnswer(answer, allAnswered); }
+        finally { setIsSubmitting(false); busyRef.current = false; }
+        if (ok) setAnsweredIndices(prev => new Set([...prev, pageIndex]));
         // Only advance on network success — if the POST failed, the toast is
         // already shown by the caller and the user stays on this question to retry.
         if (ok && !isLast) setPageIndex(p => p + 1);
     };
 
     const handleSkip = async () => {
-        const allAnswered = markAnsweredAndCheckComplete();
+        if (busyRef.current || files.length) return;
+        const allAnswered = wouldCompleteAnswers();
+        busyRef.current = true;
         setIsSubmitting(true);
-        const ok = await onAnswer({ questionIndex: pageIndex, skipped: true }, allAnswered);
-        setIsSubmitting(false);
+        let ok = false;
+        try { ok = await onAnswer({ questionIndex: pageIndex, skipped: true }, allAnswered); }
+        finally { setIsSubmitting(false); busyRef.current = false; }
+        if (ok) setAnsweredIndices(prev => new Set([...prev, pageIndex]));
         if (ok && !isLast) setPageIndex(p => p + 1);
     };
 
@@ -160,7 +210,8 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0 ml-3">
                             <button
                                 type="button"
-                                disabled={pageIndex === 0}
+                                aria-label="Previous question"
+                                disabled={busy || pageIndex === 0}
                                 onClick={() => setPageIndex(p => Math.max(0, p - 1))}
                                 className="disabled:opacity-30"
                             >
@@ -169,7 +220,8 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                             <span>{pageIndex + 1}/{total}</span>
                             <button
                                 type="button"
-                                disabled={pageIndex === total - 1}
+                                aria-label="Next question"
+                                disabled={busy || pageIndex === total - 1}
                                 onClick={() => setPageIndex(p => Math.min(total - 1, p + 1))}
                                 className="disabled:opacity-30"
                             >
@@ -211,30 +263,47 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                     )}
                 </div>
 
+                <AttachmentStrip attachments={files} pendingUpload={pendingUpload} onRemove={(fileId) => {
+                    if (!busy) setFilesByQuestion(prev => ({ ...prev, [pageIndex]: files.filter(file => file.fileId !== fileId) }));
+                }} />
+                <input ref={fileInputRef} type="file" multiple className="hidden" aria-label="Attach files to answer" disabled={busy}
+                    onChange={(event) => { void addFiles(Array.from(event.target.files ?? [])); event.target.value = ''; }} />
                 <div className="border-t border-border/40 pt-4 flex items-end gap-2">
+                    <button type="button" aria-label="Attach files" title="Attach images or files" disabled={busy}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40">
+                        <Paperclip className="h-4 w-4" />
+                    </button>
                     {/* Always rendered regardless of question.allowFreeText — the agent's tool
                         call can restrict this per-question, but a fixed option set can never
                         fully anticipate intent. A user should never be stuck picking the closest
                         wrong option or Skip with no way to say what they actually meant. */}
                     <Textarea
                         ref={freeTextRef}
+                        disabled={busy}
+                        onPaste={(event) => {
+                            if (event.clipboardData.files.length) {
+                                event.preventDefault();
+                                void addFiles(Array.from(event.clipboardData.files));
+                            }
+                        }}
                         value={freeText}
                         onChange={(e) => setFreeTextByQuestion(prev => ({ ...prev, [pageIndex]: e.target.value }))}
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
-                                if (selectedIndex !== undefined || freeText.trim()) commitCurrent();
+                                if (!busy && (selectedIndex !== undefined || freeText.trim() || files.length)) commitCurrent();
                                 return;
                             }
                             // Escape-to-skip only applies while the field reads as the
                             // "Skip [ESC]" affordance shown below — once the user has
                             // typed something, Escape shouldn't discard it silently.
-                            if (e.key === 'Escape' && question.allowSkip && !freeText.trim()) {
+                            if (e.key === 'Escape' && question.allowSkip && !freeText.trim() && !files.length && !busy) {
                                 e.preventDefault();
                                 handleSkip();
                             }
                         }}
-                        placeholder="No, and tell what to do differently"
+                        placeholder="Type an answer or attach files"
                         rows={1}
                         // dark:bg-input/30 on the base Textarea isn't a plain `bg-*` utility —
                         // it's scoped to the dark: variant, so an unscoped bg-transparent here
@@ -243,7 +312,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         className="flex-1 min-h-0 max-h-[160px] py-1.5 px-0 resize-none border-0 bg-transparent dark:bg-transparent rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/60"
                     />
                     <div className="flex items-center gap-2 shrink-0 pb-1.5">
-                        {question.allowSkip && !freeText.trim() && (
+                        {question.allowSkip && !freeText.trim() && !files.length && !busy && (
                             <button type="button" onClick={handleSkip} disabled={isSubmitting} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40">
                                 <span>Skip</span>
                                 <kbd className="text-[10px] leading-none px-1.5 py-1 rounded bg-accent text-muted-foreground/70 font-mono">ESC</kbd>
@@ -252,7 +321,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         <button
                             type="button"
                             onClick={commitCurrent}
-                            disabled={(selectedIndex === undefined && !freeText.trim()) || isSubmitting}
+                            disabled={(selectedIndex === undefined && !freeText.trim() && !files.length) || busy}
                             className={cn(
                                 "bg-primary text-primary-foreground disabled:opacity-40 flex items-center justify-center",
                                 freeText.trim()

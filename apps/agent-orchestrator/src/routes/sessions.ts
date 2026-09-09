@@ -197,7 +197,7 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
 
-  let body: { clarificationId?: unknown; questionIndex?: unknown; selectedIndex?: unknown; freeText?: unknown; skipped?: unknown }
+  let body: { clarificationId?: unknown; files?: unknown; questionIndex?: unknown; selectedIndex?: unknown; freeText?: unknown; skipped?: unknown }
   try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid_body' }, 400, corsHeaders) }
 
   const clarificationId = typeof body.clarificationId === 'string' ? body.clarificationId.trim() : ''
@@ -231,7 +231,15 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
     return c.json({ ok: false, error: 'freeText too long' }, 400, corsHeaders)
   }
 
+  if (body.files !== undefined && (!Array.isArray(body.files) || body.files.length > 20 || body.files.some(
+    (file) => !file || typeof file !== 'object' || typeof file.fileId !== 'string' || !file.fileId.trim()
+      || typeof file.name !== 'string' || typeof file.type !== 'string',
+  ))) {
+    return c.json({ ok: false, error: 'invalid_files' }, 400, corsHeaders)
+  }
+
   const answer: ClarificationAnswer = {
+    files: (body.files as ClarificationAnswer['files'])?.map(({ fileId, name, type }) => ({ fileId, name, type })),
     questionIndex,
     // selectedIndex isn't bounds-checked here — this layer doesn't know the
     // target question's option count (only `expectedCount`, the question
@@ -254,9 +262,9 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   // Persist partial progress after every answer so a page reload can restore
   // mid-flow state. Fire-and-forget — don't block the response on this.
   if (pending.messageId && pending.conversationId && pending.idToken && pending.collected.length < pending.expectedCount) {
-    const partialAnswers: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
+    const partialAnswers: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }> = {}
     for (const a of pending.collected) {
-      partialAnswers[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
+      partialAnswers[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped, files: a.files }
     }
     updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
       status: 'pending',
@@ -271,9 +279,9 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
 
     if (pending.messageId && pending.conversationId && pending.idToken) {
       const allSkipped = pending.collected.every((a) => a.skipped === true)
-      const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean }> = {}
+      const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }> = {}
       for (const a of pending.collected) {
-        answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped }
+        answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped, files: a.files }
       }
       updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
         status: allSkipped ? 'skipped' : 'answered',
