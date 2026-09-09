@@ -8,7 +8,7 @@ import { X } from "lucide-react";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { getSkill, installSkill, listSkillFiles, publishSkill, startSkillTestChat, uninstallSkill } from "./actions";
 import { SkillDetailContent } from "./SkillDetailContent";
 import type { Skill, SkillFile } from "./types";
@@ -104,7 +104,11 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
                 toast.error("No active agents available. Please create one first.");
             } else if (err instanceof Error && err.message === "NO_INSTALL_ID") {
                 toast.error("This skill has no install record — reinstall it from the Skills page first.");
+            } else if (err instanceof ApiError) {
+                console.error("startSkillTestChat failed:", err.status, err.data);
+                toast.error(err.data?.error ?? "Failed to start a test chat.");
             } else {
+                console.error("startSkillTestChat failed:", err);
                 toast.error("Failed to start a test chat.");
             }
         } finally {
