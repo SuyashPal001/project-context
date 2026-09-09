@@ -11,9 +11,22 @@ import { auditLog } from '@serverless-saas/database/schema/audit';
 import { sendEmail } from '@serverless-saas/notifications';
 import { createHash, randomBytes } from 'crypto';
 import { hasPermission } from '@serverless-saas/permissions';
+import { storageService } from '@serverless-saas/storage';
 import type { AppEnv } from '../types';
 
 export const membersRoutes = new Hono<AppEnv>();
+
+// Presigned GET URLs expire (1hr — see storageService.getDownloadUrl), so
+// userAvatarUrl is never persisted; only the stable avatarFileId is. Resolve a
+// fresh URL on every read, same pattern agents.avatarFileId already uses.
+async function resolveAvatarUrl(tenantId: string, avatarFileId: string | null): Promise<string | null> {
+    if (!avatarFileId) return null;
+    try {
+        return await storageService.getDownloadUrl(tenantId, avatarFileId);
+    } catch {
+        return null;
+    }
+}
 
 // GET /members
 // Returns all active members in the tenant with their user and role details
@@ -38,7 +51,7 @@ membersRoutes.get('/', async (c) => {
                 userId: memberships.userId,
                 userEmail: users.email,
                 userName: users.name,
-                userAvatarUrl: users.avatarUrl,
+                userAvatarFileId: users.avatarFileId,
                 roleId: roles.id,
                 roleName: roles.name,
                 agentId: memberships.agentId,
@@ -55,7 +68,12 @@ membersRoutes.get('/', async (c) => {
                 inArray(memberships.status, ['active', 'invited', 'suspended']),
             ));
 
-        return c.json({ members });
+        const membersWithAvatars = await Promise.all(members.map(async ({ userAvatarFileId, ...member }) => ({
+            ...member,
+            userAvatarUrl: await resolveAvatarUrl(tenantId, userAvatarFileId),
+        })));
+
+        return c.json({ members: membersWithAvatars });
     } catch (err: any) {
         console.error('Get members error:', err);
         const code = err.name || 'INTERNAL_ERROR';

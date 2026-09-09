@@ -603,6 +603,13 @@
       "when": 1788979701595,
       "tag": "0085_nostalgic_onslaught",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1788979717818,
+      "tag": "0086_plain_logan",
+      "breakpoints": true
     }
   ]
 }

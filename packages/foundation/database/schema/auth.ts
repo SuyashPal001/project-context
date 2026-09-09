@@ -1,4 +1,6 @@
 import { pgTable, uuid, text, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { files } from './storage';
 
 export const sessionStatusEnum = pgEnum('session_status', ['active', 'invalidated']);
 export const invalidatedReasonEnum = pgEnum('invalidated_reason', ['role_changed', 'suspended', 'logout', 'expired', 'tenant_deleted']);
@@ -7,7 +9,11 @@ export const users = pgTable('users', {
   cognitoId: text('cognito_id').notNull().unique(),
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
-  avatarUrl: text('avatar_url'),
+  // Presigned S3 GET URLs expire (1hr, see storageService.getDownloadUrl) — storing
+  // one directly here (the old avatarUrl text column) meant every avatar silently
+  // broke an hour after being saved. Store the stable fileId instead and resolve a
+  // fresh presigned URL at read time, same pattern agents.avatarFileId already uses.
+  avatarFileId: uuid('avatar_file_id').references((): AnyPgColumn => files.id),
   personalIdentifier: text('personal_identifier').unique(),
   pendingTenantId: uuid('pending_tenant_id'),
   createdAt: timestamp('created_at').notNull().defaultNow(),

@@ -33,7 +33,10 @@ const hexColorSchema = z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/, "I
 
 const brandingFormSchema = z.object({
     brandName: z.string().max(100).optional().nullable(),
+    // Display-only — the presigned URL shown in the ImageUpload preview. Never
+    // sent to the server; logoFileId (the stable id) is what gets persisted.
     logoUrl: z.string().url().or(z.string().length(0)).optional().nullable(),
+    logoFileId: z.string().uuid().optional().nullable(),
     brandColor: hexColorSchema.or(z.string().length(0)).optional().nullable(),
     agentDisplayName: z.string().max(100).optional().nullable(),
 });
@@ -56,6 +59,7 @@ export default function BrandingPage() {
         defaultValues: {
             brandName: "",
             logoUrl: "",
+            logoFileId: null,
             brandColor: "",
             agentDisplayName: "",
         },
@@ -66,6 +70,7 @@ export default function BrandingPage() {
             form.reset({
                 brandName: brandingData.brandName || "",
                 logoUrl: brandingData.logoUrl || "",
+                logoFileId: (brandingData as BrandingFormValues & { logoFileId?: string | null }).logoFileId || null,
                 brandColor: brandingData.brandColor || "",
                 agentDisplayName: brandingData.agentDisplayName || "",
             });
@@ -76,7 +81,7 @@ export default function BrandingPage() {
         mutationFn: async (values: BrandingFormValues) => {
             const payload = {
                 brandName: values.brandName || null,
-                logoUrl: values.logoUrl || null,
+                logoFileId: values.logoFileId || null,
                 brandColor: values.brandColor || null,
                 agentDisplayName: values.agentDisplayName || null,
             };
@@ -160,9 +165,16 @@ export default function BrandingPage() {
                                     <FormItem>
                                         <FormLabel>Workspace Logo</FormLabel>
                                         <FormControl>
-                                            <ImageUpload 
-                                                value={field.value || ""} 
-                                                onChange={field.onChange}
+                                            <ImageUpload
+                                                value={field.value || ""}
+                                                onChange={(url) => {
+                                                    // Remove passes "" here — also clear logoFileId, otherwise
+                                                    // Save persists the old file id unchanged (the preview clears
+                                                    // locally but the removal never reaches the server).
+                                                    field.onChange(url);
+                                                    if (!url) form.setValue("logoFileId", null);
+                                                }}
+                                                onFileIdChange={(fileId) => form.setValue("logoFileId", fileId)}
                                                 fallbackText={form.getValues("brandName") || "LB"}
                                             />
                                         </FormControl>

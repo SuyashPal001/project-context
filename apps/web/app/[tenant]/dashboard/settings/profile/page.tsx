@@ -37,7 +37,10 @@ import { DeleteAccountModal } from "./DeleteAccountModal";
 
 const profileSchema = z.object({
     name: z.string().min(1, "Name is required").max(100),
+    // Display-only — the presigned URL shown in the ImageUpload preview. Never
+    // sent to the server; avatarFileId (the stable id) is what gets persisted.
     avatarUrl: z.string().url("Must be a valid URL").or(z.string().length(0)).optional().nullable(),
+    avatarFileId: z.string().uuid().optional().nullable(),
     personalIdentifier: z.string().min(3, "At least 3 characters").max(50).regex(/^[a-zA-Z0-9_-]+$/, "Only letters, numbers, hyphens and underscores").or(z.string().length(0)).optional().nullable(),
 });
 
@@ -48,6 +51,7 @@ interface UserProfile {
     name: string;
     email: string;
     avatarUrl: string | null;
+    avatarFileId: string | null;
     personalIdentifier: string | null;
 }
 
@@ -71,6 +75,7 @@ export default function ProfileSettingsPage() {
             form.reset({
                 name: data.user.name,
                 avatarUrl: data.user.avatarUrl || "",
+                avatarFileId: data.user.avatarFileId || null,
                 personalIdentifier: data.user.personalIdentifier || "",
             });
         }
@@ -80,7 +85,7 @@ export default function ProfileSettingsPage() {
         mutationFn: (values: ProfileFormValues) =>
             api.patch("/api/v1/users/profile", {
                 name: values.name,
-                avatarUrl: values.avatarUrl || null,
+                avatarFileId: values.avatarFileId || null,
                 personalIdentifier: values.personalIdentifier || null,
             }),
         onSuccess: () => {
@@ -145,7 +150,14 @@ export default function ProfileSettingsPage() {
                                         <FormControl>
                                             <ImageUpload
                                                 value={field.value || ""}
-                                                onChange={field.onChange}
+                                                onChange={(url) => {
+                                                    // Remove passes "" here — also clear avatarFileId, otherwise
+                                                    // Save persists the old file id unchanged (the preview clears
+                                                    // locally but the removal never reaches the server).
+                                                    field.onChange(url);
+                                                    if (!url) form.setValue("avatarFileId", null);
+                                                }}
+                                                onFileIdChange={(fileId) => form.setValue("avatarFileId", fileId)}
                                                 fallbackText={form.getValues("name") || userEmail}
                                                 disabled={updateMutation.isPending}
                                             />

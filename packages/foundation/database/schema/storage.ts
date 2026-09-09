@@ -1,4 +1,5 @@
 import { pgTable, uuid, varchar, integer, timestamp, pgEnum, jsonb, text, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy';
 import { users } from './auth';
 
@@ -8,14 +9,14 @@ export const personFolderStatusEnum = pgEnum('person_folder_status', ['pending',
 
 export const personFolders = pgTable('person_folders', {
   id: uuid('id').primaryKey().defaultRandom(),
-  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  tenantId: uuid('tenant_id').notNull().references((): AnyPgColumn => tenants.id),
   identifier: text('identifier').notNull(),
   displayName: text('display_name'),
   status: personFolderStatusEnum('status').notNull().default('pending'),
   // Nullable, not required — this column is new on an existing table (see
   // integrations.ts for the same pattern) and can't assume zero pre-existing
   // rows, unlike status which has a safe default to backfill against.
-  createdBy: uuid('created_by').references(() => users.id),
+  createdBy: uuid('created_by').references((): AnyPgColumn => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -33,13 +34,13 @@ export const ingestionStatusEnum = pgEnum('ingestion_status', ['pending', 'proce
 // Files table - tracks uploaded files metadata
 export const files = pgTable('files', {
   id: uuid('id').primaryKey().defaultRandom(),
-  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  tenantId: uuid('tenant_id').notNull().references((): AnyPgColumn => tenants.id),
   name: varchar('name', { length: 255 }).notNull(),
   key: varchar('key', { length: 512 }).notNull(), // S3 key: {tenantId}/{id}/{filename}
   size: integer('size'), // bytes, set after upload confirmed
   mimeType: varchar('mime_type', { length: 127 }),
   status: fileStatusEnum('status').notNull().default('pending'),
-  uploadedBy: uuid('uploaded_by').references(() => users.id),
+  uploadedBy: uuid('uploaded_by').references((): AnyPgColumn => users.id),
   uploadedAt: timestamp('uploaded_at', { withTimezone: true }),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
