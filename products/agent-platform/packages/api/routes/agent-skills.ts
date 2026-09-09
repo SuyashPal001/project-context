@@ -211,8 +211,11 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
         db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_created', resource: 'agent_skill', resourceId: created.id, metadata: { agentId, name: result.data.name }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
         return c.json({ data: created }, 201);
     } catch (err: any) {
-        // Unique constraint on [agentId, tenantId, name, version]
-        if (err?.code === '23505') {
+        // Unique constraint on [agentId, tenantId, name, version]. Driver wraps
+        // the pg error under `.cause` (same shape as userUpsertMiddleware) —
+        // `err.code` is undefined, `err.cause.code` is '23505'.
+        const pgErr = err?.cause ?? err;
+        if (pgErr?.code === '23505') {
             // An installed skill can be re-attached after its pinned install
             // version was upgraded server-side (v1 -> v3): the client still
             // writes the same `version` (it's a display/order field, not a
