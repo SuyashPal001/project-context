@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
+import { toast } from "sonner";
 import { Agent } from "./types";
 import {
     DropdownMenu,
@@ -38,19 +39,24 @@ export function AgentCard({ agent }: AgentCardProps) {
     const params = useParams();
     const tenantSlug = params.tenant as string;
     const [isRetireDialogOpen, setIsRetireDialogOpen] = useState(false);
+    const [isPauseDialogOpen, setIsPauseDialogOpen] = useState(false);
     const [fireDependencies, setFireDependencies] = useState<{ shiftsCount: number; teamsCount: number } | null>(null);
 
     const updateStatusMutation = useMutation({
         mutationFn: ({ status, force }: { status: Agent["status"]; force?: boolean }) =>
             api.patch(`/api/v1/agents/${agent.id}`, { status, force }),
-        onSuccess: () => {
+        onSuccess: (_data, { status }) => {
             setFireDependencies(null);
             queryClient.invalidateQueries({ queryKey: ["agents"] });
+            const message = status === "paused" ? "Employee put on leave." : status === "active" ? "Employee returned from leave." : "Employee fired.";
+            toast.success(message);
         },
         onError: (err) => {
             if (err instanceof ApiError && err.status === 409) {
                 setIsRetireDialogOpen(false);
                 setFireDependencies({ shiftsCount: err.data?.shiftsCount ?? 0, teamsCount: err.data?.teamsCount ?? 0 });
+            } else {
+                toast.error("Failed to update employee status.");
             }
         },
     });
@@ -113,7 +119,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                                     </Link>
                                 </DropdownMenuItem>
                                 {agent.status === "active" && (
-                                    <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ status: "paused" })}>
+                                    <DropdownMenuItem onClick={() => setIsPauseDialogOpen(true)}>
                                         <Pause className="mr-2 h-4 w-4" />
                                         Put on leave
                                     </DropdownMenuItem>
@@ -141,6 +147,30 @@ export function AgentCard({ agent }: AgentCardProps) {
                 outcomes={outcomes}
                 showOutcomeImages={false}
             />
+
+            <AlertDialog open={isPauseDialogOpen} onOpenChange={setIsPauseDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Put this employee on leave?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            The employee will stop working — it won&apos;t appear for chat,
+                            tasks, or assignment — until you return it from leave. Its API key
+                            stays valid and nothing else is deleted.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel variant="ghost">Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                updateStatusMutation.mutate({ status: "paused" });
+                                setIsPauseDialogOpen(false);
+                            }}
+                        >
+                            Put on leave
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <AlertDialog open={isRetireDialogOpen} onOpenChange={setIsRetireDialogOpen}>
                 <AlertDialogContent>
