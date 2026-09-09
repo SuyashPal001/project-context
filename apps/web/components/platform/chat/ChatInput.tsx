@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { consumePendingAttachments } from "@/lib/pendingAttachments";
 import { FolderScopeChip } from "./FolderScopeChip";
 import { MentionChip } from "./MentionChip";
+import { SkillChip } from "./SkillChip";
 
 import { useAudioRecorder } from "./useAudioRecorder";
 import { useFileUpload, MAX_ATTACHMENTS_PER_MESSAGE } from "./useFileUpload";
@@ -153,6 +154,11 @@ export function ChatInput({
     // `content`, then re-serialized back into "@Name" text at send time so the
     // wire format (and whatever downstream reads it) is unchanged.
     const [mentionedAgents, setMentionedAgents] = useState<Agent[]>([]);
+    // Skills picked via "/" in this draft — purely a visual "it happened"
+    // confirmation. The attach itself already fired (agent-level, via
+    // handleAttachSkill) at selection time; this array never round-trips
+    // into `content` or the send payload.
+    const [pickedSkills, setPickedSkills] = useState<Skill[]>([]);
 
     const recorder = useAudioRecorder();
     const uploader = useFileUpload();
@@ -202,6 +208,7 @@ export function ChatInput({
         onSend(contentWithMentions, uploader.attachments.length > 0 ? uploader.attachments : undefined);
         setContent("");
         setMentionedAgents([]);
+        setPickedSkills([]);
         uploader.clearAttachments();
         // Safety net: a send can happen with a palette still open (e.g. the Send
         // button clicked directly instead of Enter). Never leave a stale palette
@@ -438,12 +445,14 @@ export function ChatInput({
                         ref={paletteRef}
                         query={paletteQuery}
                         onSelect={(skill: Skill) => {
-                            // Strip the typed "/query" trigger text — the attach
-                            // is confirmed by toast, not by text in the draft.
+                            // Strip the typed "/query" trigger text — the pick
+                            // becomes a chip below (plus a toast), not text in
+                            // the draft.
                             setContent(c => {
                                 if (!paletteRange) return c;
                                 return c.slice(0, paletteRange.start) + c.slice(paletteRange.end);
                             });
+                            setPickedSkills(prev => prev.some(s => s.id === skill.id) ? prev : [...prev, skill]);
                             void handleAttachSkill(skill);
                             textareaRef.current?.focus();
                         }}
@@ -582,6 +591,18 @@ export function ChatInput({
                                     key={agent.id}
                                     agent={agent}
                                     onRemove={() => setMentionedAgents(prev => prev.filter(a => a.id !== agent.id))}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    {pickedSkills.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 px-4 pt-3">
+                            {pickedSkills.map(skill => (
+                                <SkillChip
+                                    key={skill.id}
+                                    skill={skill}
+                                    onRemove={() => setPickedSkills(prev => prev.filter(s => s.id !== skill.id))}
                                 />
                             ))}
                         </div>
