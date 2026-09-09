@@ -7,6 +7,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { useState, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { Attachment } from "@/types/agent-events";
 import { FileText } from "lucide-react";
@@ -159,6 +161,23 @@ export function ChatInput({
     // handleAttachSkill) at selection time; this array never round-trips
     // into `content` or the send payload.
     const [pickedSkills, setPickedSkills] = useState<Skill[]>([]);
+    // Locally hidden attached-skill rows — mirrors pickedSkills' dismiss
+    // semantics (SkillChip.tsx): removing the chip never detaches anything,
+    // it only clears the confirmation from view for this session.
+    const [dismissedAttachedIds, setDismissedAttachedIds] = useState<Set<string>>(new Set());
+    const queryClient = useQueryClient();
+
+    // Skills already attached to this agent (via "/" here, "Test in chat" on
+    // the Skills page, or the agent's own picker) — unlike pickedSkills above,
+    // this is not draft state: it's what GET /agents/:id/skills actually
+    // returns, so it survives reload and shows up even when the attach
+    // happened somewhere other than this composer.
+    const { data: attachedSkillsData } = useQuery({
+        queryKey: ["agent-skills", agentId],
+        queryFn: () => api.get<{ data: Array<{ id: string; name: string }> }>(`/api/v1/agents/${agentId}/skills`),
+        enabled: !!agentId,
+    });
+    const attachedSkills = (attachedSkillsData?.data ?? []).filter(s => !dismissedAttachedIds.has(s.id));
 
     const recorder = useAudioRecorder();
     const uploader = useFileUpload();
@@ -290,6 +309,7 @@ export function ChatInput({
         try {
             await attachSkillToAgent(agentId, skill);
             toast.success(`${skill.name} attached to this agent.`);
+            queryClient.invalidateQueries({ queryKey: ["agent-skills", agentId] });
         } catch (err) {
             if (err instanceof Error && err.message === "NO_INSTALL_ID") {
                 toast.error("This skill has no install record — reinstall it from the Skills page first.");
@@ -592,6 +612,18 @@ export function ChatInput({
                                     key={agent.id}
                                     agent={agent}
                                     onRemove={() => setMentionedAgents(prev => prev.filter(a => a.id !== agent.id))}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    {attachedSkills.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 px-4 pt-3">
+                            {attachedSkills.map(skill => (
+                                <SkillChip
+                                    key={skill.id}
+                                    skill={skill}
+                                    onRemove={() => setDismissedAttachedIds(prev => new Set(prev).add(skill.id))}
                                 />
                             ))}
                         </div>

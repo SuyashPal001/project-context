@@ -5,7 +5,10 @@ import { SkillIcon } from "@/components/platform/skills/SkillIcon";
 import type { Skill } from "@/components/platform/skills/types";
 
 interface SkillChipProps {
-    skill: Skill;
+    // Only id (icon seed) and name are rendered — accepts a full catalog
+    // Skill (composer "/" pick) or a bare agent_skills row (already-attached,
+    // fetched by agentId — see ChatInput's attachedSkills).
+    skill: Pick<Skill, "id" | "name">;
     onRemove: () => void;
 }
 

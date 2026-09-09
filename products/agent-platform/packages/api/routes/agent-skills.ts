@@ -91,6 +91,7 @@ agentSkillsRoutes.get('/:agentId/skills', async (c) => {
         .where(and(
             eq(agentSkills.agentId, agentId),
             eq(agentSkills.tenantId, tenantId),
+            eq(agentSkills.status, 'active'),
         ))
         .orderBy(desc(agentSkills.createdAt));
 
