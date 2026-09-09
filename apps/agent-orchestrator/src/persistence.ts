@@ -59,14 +59,15 @@ export function saveUserMessage(
   idToken: string,
   conversationId: string,
   content: string,
-  attachments?: Array<{ fileId?: string; name: string; type: string; size?: number }>
+  attachments?: Array<{ fileId?: string; name: string; type: string; size?: number }>,
+  skillsUsed?: Array<{ id: string; name: string }>
 ): void {
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}/messages/save`, {
     method: 'POST',
     // Both: the user token identifies the conversation owner, the service key
     // proves this is the relay rather than a user posting forged assistant text.
     headers: { ...authHeaders(idToken), 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-    body: JSON.stringify({ role: 'user', content, attachments: attachments ?? [], createdAt: new Date().toISOString() }),
+    body: JSON.stringify({ role: 'user', content, attachments: attachments ?? [], skillsUsed: skillsUsed && skillsUsed.length > 0 ? skillsUsed : undefined, createdAt: new Date().toISOString() }),
   }).then(async (res) => {
     if (!res.ok) {
       const body = await res.text().catch(() => '')

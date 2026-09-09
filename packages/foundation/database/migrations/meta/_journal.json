@@ -582,6 +582,13 @@
       "when": 1788816799055,
       "tag": "0082_panoramic_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1788949271474,
+      "tag": "0083_wandering_multiple_man",
+      "breakpoints": true
     }
   ]
 }

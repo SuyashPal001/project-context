@@ -370,7 +370,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => { return () => { cancel(); }; }, [conversationId]);
 
-    const sendMessage = async (content: string, attachments?: Attachment[]) => {
+    const sendMessage = async (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
 
         // Auto-generate title for new conversations
@@ -400,6 +400,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             const msg: Message = {
                 id: crypto.randomUUID(), conversationId: conversationId!, role: 'user', content,
                 attachments: attachments?.map(a => ({ id: crypto.randomUUID(), fileId: a.fileId, name: a.name, type: a.type, size: a.size, previewUrl: a.previewUrl })),
+                skillsUsed: skillsUsed && skillsUsed.length > 0 ? skillsUsed : undefined,
                 createdAt: new Date().toISOString(),
             };
             return { data: [...(old?.data ?? []), msg].sort(sortByDate) };
@@ -410,7 +411,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         setHasSentFirstMessage(true);
         streamStartRef.current = Date.now();
         setReasoningText('');
-        await sendChatMessage(content, enriched);
+        await sendChatMessage(content, enriched, skillsUsed);
     };
 
     // Truncate app DB + Mastra memory from fromTimestamp onward, then optimistically
@@ -444,7 +445,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             type: a.type,
             size: a.size,
             previewUrl: a.previewUrl,
-        })));
+        })), userMsg.skillsUsed);
     };
 
     const editAndResubmit = async (userMessage: Message, newContent: string) => {

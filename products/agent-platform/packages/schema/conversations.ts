@@ -65,6 +65,12 @@ export const messages = pgTable('messages', {
   // { id, prompt, minFiles, maxFiles, status, fileIds, freeText, answeredAt } —
   // persisted UploadRequestCard state, mirrors clarificationRequest above.
   uploadRequest: jsonb('upload_request'),
+  // Array of { id, name } — skills picked via "/" in the composer at send time,
+  // snapshotted onto the message the same way attachments are. The underlying
+  // attach is agent-level and permanent (agent_skills); this is just a durable
+  // "which skill was active when this message was sent" record so the chip
+  // survives the reconcile refetch, matching attachments' pattern.
+  skillsUsed: jsonb('skills_used'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => ({
   // Postgres does not index foreign keys on its own, and this table had no index

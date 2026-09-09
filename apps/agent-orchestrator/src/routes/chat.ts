@@ -92,6 +92,11 @@ chatRouter.post('/api/chat', async (c) => {
     : undefined
   const folderPrefix = resolveFolderPrefix(body)
   const bodyAllowMode: 'ask' | 'auto' = (body as Record<string, unknown>).allowMode === 'auto' ? 'auto' : 'ask'
+  const rawSkillsUsed = (body as Record<string, unknown>).skillsUsed
+  const skillsUsed: Array<{ id: string; name: string }> = Array.isArray(rawSkillsUsed)
+    ? rawSkillsUsed.filter((s): s is { id: string; name: string } =>
+        !!s && typeof s === 'object' && typeof (s as any).id === 'string' && typeof (s as any).name === 'string')
+    : []
 
   if (!conversationId || (!rawMessage && attachments.length === 0)) {
     return c.json({ error: 'conversationId and message or attachments are required' }, 400)
@@ -307,7 +312,7 @@ chatRouter.post('/api/chat', async (c) => {
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream,
     isStreamClosed: () => streamClosed,
-    folderId, folderPrefix, allowMode,
+    folderId, folderPrefix, allowMode, skillsUsed,
   })
 
   const origin = getAllowedOrigin(c.req.header('Origin'))

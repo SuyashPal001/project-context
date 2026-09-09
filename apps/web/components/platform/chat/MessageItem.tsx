@@ -21,6 +21,7 @@ import { ChatArtifactCard } from "../canvas/ChatArtifactCard";
 import { GeneratedAssetCard } from "./GeneratedAssetCard";
 import { CitationStrip } from "./CitationStrip";
 import { FollowUpChips } from "./FollowUpChips";
+import { SkillIcon } from "@/components/platform/skills/SkillIcon";
 
 // Whether this message renders anything at all — mirrors the same criteria
 // MessageItem uses internally (see hasDisplayedContent below), but exported
@@ -276,6 +277,20 @@ export function MessageItem({
 
                 {isAssistant && !message.isStreaming && isLastMessage && message.suggestedFollowUps && message.suggestedFollowUps.length > 0 && onFollowUpSelect && (
                     <FollowUpChips suggestions={message.suggestedFollowUps} onSelect={onFollowUpSelect} />
+                )}
+
+                {message.skillsUsed && message.skillsUsed.length > 0 && (
+                    <div className={cn(
+                        "flex flex-wrap gap-1.5 mt-2",
+                        isUser ? "justify-end" : "justify-start"
+                    )}>
+                        {message.skillsUsed.map(skill => (
+                            <div key={skill.id} className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-secondary border border-border text-xs w-fit">
+                                <SkillIcon seed={skill.id} className="h-5 w-5 rounded-full shrink-0" />
+                                <span className="font-medium text-foreground truncate max-w-[160px]">{skill.name}</span>
+                            </div>
+                        ))}
+                    </div>
                 )}
 
                 {message.attachments && message.attachments.length > 0 && (

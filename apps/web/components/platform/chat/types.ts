@@ -173,6 +173,11 @@ export interface Message {
     completedTrace?: CompletedTrace;
     citations?: Array<{ name: string; score: number }>;
     suggestedFollowUps?: string[];
+    // Skills picked via "/" in the composer at the moment this message was
+    // sent — a durable snapshot, same idea as attachments. Rendered as chips
+    // under the message so the confirmation survives the reconcile refetch
+    // that would otherwise wipe a client-only annotation.
+    skillsUsed?: Array<{ id: string; name: string }>;
 }
 
 export interface Conversation {

@@ -201,6 +201,13 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             freeText: z.string().max(2000).optional(),
             answeredAt: z.string().optional(),
         }).nullish(),
+        // Snapshot of skills picked via "/" in this draft at send time — id + name
+        // only, purely a durable display record (the real attach already happened
+        // agent-side via POST /agents/:agentId/skills).
+        skillsUsed: z.array(z.object({
+            id: z.string(),
+            name: z.string(),
+        })).nullish(),
         createdAt: z.string().datetime().optional(),
     });
 
@@ -261,6 +268,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             approvalRequest: result.data.approvalRequest ?? null,
             generationConfirmRequest: result.data.generationConfirmRequest ?? null,
             uploadRequest: result.data.uploadRequest ?? null,
+            skillsUsed: result.data.skillsUsed ?? null,
             createdAt: result.data.createdAt ? new Date(result.data.createdAt) : undefined,
         })
         .returning();

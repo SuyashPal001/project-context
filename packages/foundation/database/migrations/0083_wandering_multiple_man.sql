@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "skills_used" jsonb;

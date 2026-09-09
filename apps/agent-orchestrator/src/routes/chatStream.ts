@@ -62,6 +62,7 @@ export interface ChatStreamOpts {
   folderId?: string
   folderPrefix?: string
   allowMode?: 'ask' | 'auto'
+  skillsUsed?: Array<{ id: string; name: string }>
 }
 
 type ContentPart =
@@ -167,7 +168,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed,
-    folderId, folderPrefix, allowMode,
+    folderId, folderPrefix, allowMode, skillsUsed,
   } = opts
 
   // Heartbeat while any tool call is in flight — see sendHeartbeat's doc
@@ -451,7 +452,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (isStreamClosed()) break
 
           const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-          saveUserMessage(idToken, conversationId, displayMessage, atts)
+          saveUserMessage(idToken, conversationId, displayMessage, atts, skillsUsed)
           // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
           // turn that's too fast/toolless to show a summary live doesn't get one
           // materialize after a reload either.
@@ -487,7 +488,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // The finish path is never reached when the turn throws, so this is the only
     // opportunity to durably persist the user turn.
     const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-    saveUserMessage(idToken, conversationId, message, atts)
+    saveUserMessage(idToken, conversationId, message, atts, skillsUsed)
     closeStream()
   }
 }

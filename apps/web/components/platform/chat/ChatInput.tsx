@@ -96,7 +96,7 @@ function isDroppableFile(file: File): boolean {
 }
 
 interface ChatInputProps {
-    onSend: (content: string, attachments?: Attachment[]) => void;
+    onSend: (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => void;
     onStop?: () => void;
     onVoiceClick?: () => void;
     onMediaClick?: (type: 'file' | 'video' | 'audio') => void;
@@ -191,9 +191,10 @@ export function ChatInput({
                     recorder.audioPreview.blob,
                     recorder.audioPreview.url,
                 );
-                onSend(contentWithMentions, [...uploader.attachments, voiceAttachment]);
+                onSend(contentWithMentions, [...uploader.attachments, voiceAttachment], pickedSkills.length > 0 ? pickedSkills.map(s => ({ id: s.id, name: s.name })) : undefined);
                 setContent("");
                 setMentionedAgents([]);
+                setPickedSkills([]);
                 uploader.clearAttachments();
                 recorder.clearPreview();
             } catch (err) {
@@ -205,7 +206,7 @@ export function ChatInput({
 
         if ((!content.trim() && mentionedAgents.length === 0 && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading) return;
 
-        onSend(contentWithMentions, uploader.attachments.length > 0 ? uploader.attachments : undefined);
+        onSend(contentWithMentions, uploader.attachments.length > 0 ? uploader.attachments : undefined, pickedSkills.length > 0 ? pickedSkills.map(s => ({ id: s.id, name: s.name })) : undefined);
         setContent("");
         setMentionedAgents([]);
         setPickedSkills([]);

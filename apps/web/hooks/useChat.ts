@@ -32,7 +32,7 @@ export interface UseChatOptions {
 }
 
 export interface UseChatReturn {
-    sendMessage: (text: string, attachments?: Attachment[]) => Promise<void>;
+    sendMessage: (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => Promise<void>;
     sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
     sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined', reason?: string) => Promise<boolean>;
     sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }) => Promise<boolean>;
@@ -68,11 +68,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const parserRef = useRef(new SSEParser());
-    const sendMessageRef = useRef<((text: string, attachments?: Attachment[]) => Promise<void>) | null>(null);
+    const sendMessageRef = useRef<((text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => Promise<void>) | null>(null);
 
     const retryStartRef = useRef<number | null>(null);
     const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pendingRetryPayloadRef = useRef<{ text: string; attachments?: Attachment[] } | null>(null);
+    const pendingRetryPayloadRef = useRef<{ text: string; attachments?: Attachment[]; skillsUsed?: Array<{ id: string; name: string }> } | null>(null);
 
     // Keep latest option callbacks in refs so they never stale-close over props.
     const onDeltaRef = useRef(onDelta);
@@ -127,6 +127,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                     sendMessageRef.current?.(
                         pendingRetryPayloadRef.current.text,
                         pendingRetryPayloadRef.current.attachments,
+                        pendingRetryPayloadRef.current.skillsUsed,
                     );
                 }
             }, RETRY_INTERVAL_MS);
@@ -145,7 +146,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         setIsStreaming(false);
     }, [clearRetry]);
 
-    const sendMessage = useCallback(async (text: string, attachments?: Attachment[]) => {
+    const sendMessage = useCallback(async (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => {
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
@@ -153,7 +154,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        pendingRetryPayloadRef.current = { text, attachments };
+        pendingRetryPayloadRef.current = { text, attachments, skillsUsed };
 
         let { accessToken: token, idToken } = getAuthTokens();
 
@@ -183,6 +184,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 agentId: agentIdRef.current,
                 conversationId: conversationIdRef.current,
                 attachments,
+                ...(skillsUsed && skillsUsed.length > 0 ? { skillsUsed } : {}),
                 ...(folderIdRef.current ? { folderId: folderIdRef.current } : {}),
                 ...(folderPrefixRef.current ? { folderPrefix: folderPrefixRef.current } : {}),
                 ...(allowModeRef.current ? { allowMode: allowModeRef.current } : {}),
