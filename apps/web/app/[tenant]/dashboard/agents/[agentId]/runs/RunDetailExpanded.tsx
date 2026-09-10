@@ -2,12 +2,17 @@
 
 import { Badge } from "@/components/ui/badge";
 import type { AgentRun } from "@/components/platform/agents/types";
+import { WorkflowStepApprovalCard } from "./WorkflowStepApprovalCard";
 
 export function RunDetailExpanded({ run }: { run: AgentRun }) {
     const uniqueTools = Array.from(new Set(run.stepsCompleted.map(s => s.toolCalled).filter((t): t is string => Boolean(t))));
 
     return (
-        <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
+        <div className="space-y-6">
+            {run.status === 'awaiting_approval' && run.pendingApproval && (
+                <WorkflowStepApprovalCard runId={run.id} pendingApproval={run.pendingApproval} />
+            )}
+            <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-4">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80">
                     Steps Completed
@@ -93,6 +98,7 @@ export function RunDetailExpanded({ run }: { run: AgentRun }) {
                         </p>
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );

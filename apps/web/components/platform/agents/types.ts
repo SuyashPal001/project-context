@@ -86,6 +86,7 @@ export interface AgentRun {
     actionsTaken: ActionTaken[];
     insights?: string;
     humanApproved: boolean | null;
+    pendingApproval: { stepId: string; title: string; toolName: string; reason: string } | null;
 }
 
 export interface AgentRunsResponse {
