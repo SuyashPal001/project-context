@@ -34,6 +34,7 @@ import { architectAgent } from './agents/architectAgent.js'
 import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { taskWorkflow } from './workflows/taskWorkflow.js'
 import { pmWorkflow } from './workflows/pmWorkflow.js'
+import { taskExecutionPlanWorkflow } from './workflows/taskExecutionPlanWorkflow.js'
 import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,7 @@ export const mastra = new Mastra({
     roadmap: roadmapWorkflow,
     tasks: taskWorkflow,
     'pm-workflow': pmWorkflow, // Primary PM orchestration flow (workflow-first architecture)
+    'task-execution-plan': taskExecutionPlanWorkflow,
   },
   storage: getMastraStore(),
   scheduler: {
