@@ -447,4 +447,33 @@ export const handler: ScheduledHandler = async () => {
       ].filter((v): v is string => v !== null),
     });
   }
+
+  // --- Sweep 7: Stalled agent_workflow_runs awaiting_approval (> 24h) ---
+  // Mirrors Sweep 6's shape exactly: this Lambda owns the threshold and sends
+  // the cutoff, the orchestrator owns everything Mastra (resuming a run and
+  // reading its own snapshot storage are Mastra-engine operations with no
+  // storage-level equivalent this Lambda could do directly).
+  const WORKFLOW_APPROVAL_EXPIRY_HOURS = 24;
+  if (orchestratorUrl && internalServiceKey) {
+    const cutoff = new Date(Date.now() - WORKFLOW_APPROVAL_EXPIRY_HOURS * 60 * 60 * 1000);
+    try {
+      const res = await fetch(`${orchestratorUrl}/internal/expire-workflow-approvals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': internalServiceKey },
+        body: JSON.stringify({ toDate: cutoff.toISOString() }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) {
+        wlog('error', 'Expire-workflow-approvals request failed', { status: res.status });
+      } else {
+        const body = await res.json() as { declined?: Array<{ workflowRunId: string; error?: string }> };
+        const declined = body.declined ?? [];
+        if (declined.length > 0) {
+          wlog('info', 'Expired workflow-run approvals declined', { count: declined.length, failedCount: declined.filter((d) => d.error).length });
+        }
+      }
+    } catch (err) {
+      wlog('error', 'Expire-workflow-approvals call failed', { error: (err as Error).message });
+    }
+  }
 };

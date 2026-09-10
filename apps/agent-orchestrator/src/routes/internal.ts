@@ -13,6 +13,8 @@ import type { AgentRun } from '@mastra/core/agent'
 import {
   sessions, lastRagResult, pendingToolApprovals,
 } from '../types.js'
+import { getPool } from '../usage.js'
+import { resumeWorkflowRun } from './tasks.workflow.js'
 
 // ─── Internal + infrastructure routes ────────────────────────────────────────
 
@@ -308,6 +310,65 @@ internalRouter.post('/internal/expire-tool-approvals', async (c) => {
 
   console.log(`[expire-tool-approvals] cutoff=${cutoff.toISOString()} declined=${declined.length}`)
   return c.json({ ok: true, declined })
+})
+
+// ─── Expire stalled workflow-run approvals ────────────────────────────────────
+// Called only by the watchdog Lambda's Sweep 7 (products/agent-platform/packages/api
+// handlers/watchdogHandler.ts). The watchdog owns the threshold and sends the
+// cutoff as `toDate`; this side owns everything Mastra by delegating straight to
+// `resumeWorkflowRun` (routes/tasks.workflow.ts) — the same suspended/failed/success
+// handling the resume route dispatches on approve/decline, so a future change to
+// that three-way branch can't drift between the two callers.
+
+internalRouter.post('/internal/expire-workflow-approvals', async (c) => {
+  const serviceKey = c.req.header('x-internal-service-key') ?? c.req.header('X-Service-Key')
+  if (!isInternalServiceKey(serviceKey ?? '')) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  let body: { toDate?: unknown }
+  try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON' }, 400) }
+  const cutoff = typeof body.toDate === 'string' ? new Date(body.toDate) : null
+  if (!cutoff || isNaN(cutoff.getTime())) return c.json({ error: 'toDate (ISO timestamp) is required' }, 400)
+
+  const p = getPool()
+  const rows = await p.query<{ id: string; tenant_id: string; mastra_run_id: string | null; agent_id: string | null; pending_approval: { resumeLabel?: string } | null }>(
+    `SELECT id, tenant_id, mastra_run_id, agent_id, pending_approval FROM agent_workflow_runs
+     WHERE status = 'awaiting_approval' AND pending_approval_at < $1`,
+    [cutoff.toISOString()],
+  )
+
+  const declined: Array<{ workflowRunId: string; error?: string }> = []
+
+  for (const row of rows.rows) {
+    const resumeLabel = row.pending_approval?.resumeLabel
+    if (!row.mastra_run_id || !resumeLabel) continue
+
+    // Same handling the resume route (routes/tasks.ts) dispatches on
+    // approve/decline — called directly rather than re-implemented, so a
+    // future change to that three-way branch can't drift between the two
+    // callers. Awaited (not fire-and-forget) here: this route runs inside a
+    // 30s-timeout fetch from the watchdog Lambda (AbortSignal.timeout(30_000)
+    // in watchdogHandler.ts), but only a handful of runs are expected to be
+    // stale at once, and each resumeWorkflowRun call is itself bounded by
+    // however long the single declined step's postWorkflowUpdate calls take
+    // — not by the workflow's full remaining duration, since a decline is
+    // fail-fast (Task 4) and every later step short-circuits without an
+    // agent call.
+    try {
+      await resumeWorkflowRun({
+        workflowRunId: row.id, tenantId: row.tenant_id, agentId: row.agent_id ?? '',
+        mastraRunId: row.mastra_run_id, resumeLabel, approved: false,
+        traceId: crypto.randomUUID(),
+      })
+      declined.push({ workflowRunId: row.id })
+    } catch (err) {
+      declined.push({ workflowRunId: row.id, error: (err as Error).message })
+      console.error(`[expire-workflow-approvals] decline failed for ${row.id}:`, (err as Error).message)
+    }
+  }
+
+  return c.json({ declined })
 })
 
 // ─── Mastra Studio — platform admin observability ─────────────────────────────

@@ -1,19 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 /**
- * Sweep 6 declines a tool-call approval nobody answered in 24h by calling
- * the agent-orchestrator's own /internal/expire-tool-approvals endpoint —
- * it never touches this Lambda's database directly (there is nothing to
- * touch: the suspended run lives entirely in Mastra's snapshot storage on
- * the orchestrator side). So the thing worth asserting here is narrower
- * than the DB-heavy sweeps above: that the sweep fires the right request
- * with the right cutoff/headers when configured, stays silent (no request
- * at all) when the orchestrator isn't configured for this environment, and
- * never lets a failed call take down the sweeps that already ran.
+ * Sweep 7 declines a stalled `agent_workflow_runs` row stuck in
+ * `awaiting_approval` by calling the agent-orchestrator's own
+ * /internal/expire-workflow-approvals endpoint — it never touches this
+ * Lambda's database directly (there is nothing to touch: resuming the run
+ * and reading its Mastra snapshot are engine operations on the orchestrator
+ * side). So the thing worth asserting here mirrors Sweep 6's test: that the
+ * sweep fires the right request with the right cutoff/headers when
+ * configured, stays silent (no request at all) when the orchestrator isn't
+ * configured for this environment, and never lets a failed call take down
+ * the sweeps that already ran.
  */
 
 /** Chainable stand-in for the drizzle builders sweeps 1-5 use — empty
- *  results for all of them so sweep 6 is reached with nothing else firing. */
+ *  results for all of them so sweep 7 is reached with nothing else firing. */
 function chain(result: unknown = []) {
   const p: any = Promise.resolve(result)
   for (const m of ['from', 'where', 'set', 'values', 'returning', 'orderBy', 'limit']) {
@@ -64,27 +65,24 @@ afterEach(() => {
   process.env = originalEnv
 })
 
-describe('watchdog sweep 6: abandoned tool-call approvals', () => {
-  it('calls the orchestrator with a 24h cutoff, X-Service-Key, and a reason', async () => {
+describe('watchdog sweep 7: stalled workflow-run approvals', () => {
+  it('calls the orchestrator with a 24h cutoff and the service-key header', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ ok: true, declined: [] }),
+      json: async () => ({ declined: [] }),
     })
 
     const { handler } = await import('../handlers/watchdogHandler')
     await handler({} as never, {} as never, (() => {}) as never)
 
-    // Sweep 7 (stalled workflow-run approvals) also fires against the same
-    // configured orchestrator, so select this sweep's call by URL rather
-    // than assuming it's the only fetch call made.
-    const call = fetchMock.mock.calls.find(([callUrl]) => callUrl === 'https://orchestrator.internal/internal/expire-tool-approvals')
+    const call = fetchMock.mock.calls.find(([url]) => url === 'https://orchestrator.internal/internal/expire-workflow-approvals')
     expect(call).toBeDefined()
     const [url, opts] = call!
+    expect(url).toBe('https://orchestrator.internal/internal/expire-workflow-approvals')
     expect(opts.method).toBe('POST')
-    expect(opts.headers['X-Service-Key']).toBe('test-key')
+    expect(opts.headers['x-internal-service-key']).toBe('test-key')
 
     const body = JSON.parse(opts.body)
-    expect(typeof body.reason).toBe('string')
     const cutoff = new Date(body.toDate)
     const expected = Date.now() - 24 * 60 * 60 * 1000
     // Within a few seconds of the exact 24h boundary — no fixed timers to
@@ -92,33 +90,55 @@ describe('watchdog sweep 6: abandoned tool-call approvals', () => {
     expect(Math.abs(cutoff.getTime() - expected)).toBeLessThan(5_000)
   })
 
-  it('does not call fetch when AGENT_ORCHESTRATOR_URL is unset', async () => {
+  it('does not call the workflow-approvals endpoint when AGENT_ORCHESTRATOR_URL is unset', async () => {
     delete process.env.AGENT_ORCHESTRATOR_URL
 
     const { handler } = await import('../handlers/watchdogHandler')
     await handler({} as never, {} as never, (() => {}) as never)
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls.some(([url]) => url === 'https://orchestrator.internal/internal/expire-workflow-approvals')).toBe(false)
   })
 
-  it('does not call fetch when INTERNAL_SERVICE_KEY is unset', async () => {
+  it('does not call the workflow-approvals endpoint when INTERNAL_SERVICE_KEY is unset', async () => {
     delete process.env.INTERNAL_SERVICE_KEY
 
     const { handler } = await import('../handlers/watchdogHandler')
     await handler({} as never, {} as never, (() => {}) as never)
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls.some(([url]) => url.includes('expire-workflow-approvals'))).toBe(false)
   })
 
-  it('does not throw when the orchestrator call fails — sweep completes', async () => {
-    fetchMock.mockRejectedValue(new Error('orchestrator unreachable'))
+  it('logs the declined count on a successful sweep', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ declined: [{ workflowRunId: 'wf-1' }, { workflowRunId: 'wf-2', error: 'boom' }] }),
+    })
+    const wlogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    const { handler } = await import('../handlers/watchdogHandler')
+    await handler({} as never, {} as never, (() => {}) as never)
+
+    const loggedInfo = wlogSpy.mock.calls.some(([line]) =>
+      typeof line === 'string' && line.includes('Expired workflow-run approvals declined'))
+    expect(loggedInfo).toBe(true)
+
+    wlogSpy.mockRestore()
+  })
+
+  it('does not throw when the orchestrator responds non-2xx', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
 
     const { handler } = await import('../handlers/watchdogHandler')
     await expect(handler({} as never, {} as never, (() => {}) as never)).resolves.toBeUndefined()
   })
 
-  it('does not throw when the orchestrator responds non-2xx', async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 500, json: async () => ({}) })
+  it('does not throw when the orchestrator call fails — sweep completes', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url === 'https://orchestrator.internal/internal/expire-workflow-approvals') {
+        return Promise.reject(new Error('orchestrator unreachable'))
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ok: true, declined: [] }) })
+    })
 
     const { handler } = await import('../handlers/watchdogHandler')
     await expect(handler({} as never, {} as never, (() => {}) as never)).resolves.toBeUndefined()
