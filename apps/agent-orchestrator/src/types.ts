@@ -135,25 +135,31 @@ export interface GenerationConfirmRequest {
   declineReason?: string
 }
 
-// Lets the stream cancel() handler find and resolve every live pending
-// confirmation for a given SSE session without scanning the entire
-// pendingGenerationConfirmations map. A Set, not a single value like
-// sessionActiveClarification, because the concurrency guard in
-// confirmGenerationOrDecline (Task 6) needs to check "is anything already
-// pending for this session" before adding a new one.
-export const sessionActiveGenerationConfirmations = new Map<string, Set<string>>()
+// Lets chatStream.ts's SSE cancel() handler find and resolve every live
+// pending tool-call approval for a given session without scanning the
+// entire pendingToolApprovals map — same reasoning as
+// sessionActiveClarification above, a Set because Mastra supports more than
+// one concurrent pending approval per run (distinct toolCallIds), unlike
+// the old hand-rolled single-slot CONFIRM_BUSY guard this replaces.
+export const sessionActiveToolApprovals = new Map<string, Set<string>>()
 
-export const pendingGenerationConfirmations = new Map<string, {
-  // declineReason carries the user's free-text note when they decline instead
-  // of approving — same channel ClarificationAnswer.freeText already uses so
-  // the agent reads it on its next turn and decides what to do. No new
-  // decision logic needed on our side, just forwarding a string.
+export const pendingToolApprovals = new Map<string, {
+  // declineReason carries the user's free-text note when they decline
+  // instead of approving — same channel ClarificationAnswer.freeText
+  // already uses, forwarded to Mastra's declineToolCall({ reason }).
   resolve: (result: { confirmed: boolean; declineReason?: string }) => void
-  timer: ReturnType<typeof setTimeout>
   tenantId: string
+  runId: string
+  toolCallId: string
   messageId?: string
   conversationId?: string
   idToken?: string
+  // No `timer` field — unlike the old pendingGenerationConfirmations, this
+  // entry has no server-side expiry. It resolves on a human decision, on
+  // SSE disconnect (chat.ts's cancel() handler), or never — until the
+  // watchdog's 24h sweep declines the underlying Mastra run directly via
+  // declineToolCall, independent of whether this in-process entry still
+  // exists.
 }>()
 
 // ─── Upload-request gate ──────────────────────────────────────────────────────
