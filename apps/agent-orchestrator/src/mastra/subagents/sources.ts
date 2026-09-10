@@ -3,6 +3,7 @@ import { pmAgentDelegate } from '../agents/pmAgent.js'
 import { architectAgentDelegate } from '../agents/architectAgent.js'
 import { directorAgentDelegate } from '../agents/directorAgent.js'
 import { producerAgentDelegate } from '../agents/producerAgent.js'
+import { BACKGROUND_TASKS_ENABLED } from '../backgroundTasks.js'
 import type { Agent } from '@mastra/core/agent'
 
 /**
@@ -68,7 +69,22 @@ export function assertRegistryValid(specs: SubAgentSpec[]): void {
   }
 }
 
+/**
+ * A spec declaring background while the manager is off declares something
+ * inert: the delegation runs inline, and a video-length call blocks its
+ * parent. Fail at boot instead.
+ */
+export function assertBackgroundSupported(specs: SubAgentSpec[], enabled = BACKGROUND_TASKS_ENABLED): void {
+  if (enabled) return
+  for (const spec of specs) {
+    if (spec.background?.enabled) {
+      throw new SubAgentSpecError(spec.id, 'declares background, but backgroundTasks is disabled on the Mastra instance')
+    }
+  }
+}
+
 assertRegistryValid(SPECS)
+assertBackgroundSupported(SPECS)
 
 export function listSpecs(): SubAgentSpec[] {
   return SPECS
