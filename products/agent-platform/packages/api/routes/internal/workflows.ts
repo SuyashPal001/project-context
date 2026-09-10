@@ -6,6 +6,7 @@ import { db } from '../../db';
 import { agentWorkflowRuns } from '@serverless-saas/agent-schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import type { AppEnv } from '@serverless-saas/types';
+import { pushWebSocketEvent } from '../../lib/websocket';
 
 function isAuthorized(provided: string): boolean {
   const expected = process.env.INTERNAL_SERVICE_KEY
@@ -20,6 +21,14 @@ function isAuthorized(provided: string): boolean {
   }
 }
 
+const pendingApprovalSchema = z.object({
+  stepId: z.string(),
+  title: z.string(),
+  toolName: z.string(),
+  reason: z.literal('requires_approval'),
+  resumeLabel: z.string(),
+});
+
 const updateSchema = z.object({
   tenantId: z.string().uuid().optional(),
   mastraRunId: z.string().min(1).optional(),
@@ -28,6 +37,8 @@ const updateSchema = z.object({
   toolsCalled: z.array(z.unknown()).optional(),
   insights: z.string().optional(),
   completedAt: z.string().optional(),
+  pendingApproval: pendingApprovalSchema.nullable().optional(),
+  pendingApprovalAt: z.string().nullable().optional(),
 });
 
 export const internalWorkflowsRoute = new Hono<AppEnv>();
@@ -69,6 +80,12 @@ internalWorkflowsRoute.post('/:workflowRunId/update', async (c) => {
   if (parsed.data.completedAt !== undefined) {
     update.completedAt = new Date(parsed.data.completedAt);
   }
+  if (parsed.data.pendingApproval !== undefined) {
+    update.pendingApproval = parsed.data.pendingApproval;
+  }
+  if (parsed.data.pendingApprovalAt !== undefined) {
+    update.pendingApprovalAt = parsed.data.pendingApprovalAt ? new Date(parsed.data.pendingApprovalAt) : null;
+  }
 
   if (Object.keys(update).length === 0) {
     return c.json({ success: true });
@@ -78,6 +95,13 @@ internalWorkflowsRoute.post('/:workflowRunId/update', async (c) => {
     .update(agentWorkflowRuns)
     .set(update)
     .where(eq(agentWorkflowRuns.id, workflowRunId));
+
+  if (parsed.data.pendingApproval && parsed.data.tenantId) {
+    pushWebSocketEvent(parsed.data.tenantId, {
+      type: 'workflow_run.awaiting_approval',
+      workflowRunId,
+    }).catch((err: unknown) => console.error('[internal/workflows] WS push failed:', err));
+  }
 
   if (parsed.data.tenantId && parsed.data.status) {
     db.insert(auditLog).values({

@@ -14,6 +14,7 @@ const dbMock = vi.hoisted(() => {
 vi.mock('../db', () => ({ db: dbMock }))
 vi.mock('@serverless-saas/agent-schema/agents', () => ({ agentWorkflowRuns: {} }))
 vi.mock('@serverless-saas/database/schema/audit', () => ({ auditLog: {} }))
+vi.mock('../lib/websocket', () => ({ pushWebSocketEvent: vi.fn().mockResolvedValue(undefined) }))
 
 process.env.INTERNAL_SERVICE_KEY = 'test-key'
 
@@ -39,5 +40,32 @@ describe('POST /internal/workflows/:workflowRunId/update', () => {
       body: JSON.stringify({ status: 'bogus' }),
     })
     expect(res.status).toBe(400)
+  })
+
+  it('persists pendingApproval and pendingApprovalAt, pushes a WS event', async () => {
+    const { internalWorkflowsRoute } = await import('../routes/internal/workflows')
+    const pendingApproval = { stepId: 's1', title: 'Send email', toolName: 'gmail_send_message', reason: 'requires_approval' as const, resumeLabel: 'approve:s1' }
+    const res = await internalWorkflowsRoute.request('/run-1/update', {
+      method: 'POST',
+      headers: { 'x-internal-service-key': 'test-key', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId: '11111111-1111-1111-1111-111111111111', status: 'awaiting_approval', pendingApproval, pendingApprovalAt: '2026-01-01T00:00:00.000Z' }),
+    })
+    expect(res.status).toBe(200)
+    expect(dbMock.dbSet).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'awaiting_approval',
+      pendingApproval,
+      pendingApprovalAt: new Date('2026-01-01T00:00:00.000Z'),
+    }))
+  })
+
+  it('clears pendingApproval with an explicit null', async () => {
+    const { internalWorkflowsRoute } = await import('../routes/internal/workflows')
+    const res = await internalWorkflowsRoute.request('/run-1/update', {
+      method: 'POST',
+      headers: { 'x-internal-service-key': 'test-key', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'completed', pendingApproval: null, pendingApprovalAt: null }),
+    })
+    expect(res.status).toBe(200)
+    expect(dbMock.dbSet).toHaveBeenCalledWith(expect.objectContaining({ pendingApproval: null, pendingApprovalAt: null }))
   })
 })

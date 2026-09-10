@@ -21,15 +21,23 @@ export async function postWorkflowUpdate(
   body: Record<string, unknown>,
   traceId: string,
 ): Promise<void> {
-  await fetch(`${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-service-key': INTERNAL_SERVICE_KEY,
-      'x-trace-id': traceId,
-    },
-    body: JSON.stringify(body),
-  }).catch((e: Error) => console.error('[workflow] update failed:', e.message))
+  try {
+    const res = await fetch(`${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service-key': INTERNAL_SERVICE_KEY,
+        'x-trace-id': traceId,
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.error(`[workflow] update rejected ${res.status}: ${text}`, { workflowRunId, body })
+    }
+  } catch (e) {
+    console.error('[workflow] update failed:', (e as Error).message)
+  }
 }
 
 export async function runMastraWorkflowSteps(
