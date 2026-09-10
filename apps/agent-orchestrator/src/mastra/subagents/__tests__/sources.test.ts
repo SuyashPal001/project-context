@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { listSpecs, getSpec, maxDepthForHost, hostAllows, assertRegistryValid, assertMatchesCodeSpecIds, OLMO_HOST_MAX_DEPTH } from '../sources.js'
+import { listSpecs, getSpec, getSpecByAgentId, buildAgentIdIndex, maxDepthForHost, hostAllows, assertRegistryValid, assertMatchesCodeSpecIds, OLMO_HOST_MAX_DEPTH } from '../sources.js'
 import { NEGATIVE_CLAUSE } from '../spec.js'
 import { CODE_SPEC_IDS } from '../ids.js'
 
@@ -23,6 +23,27 @@ describe('code spec source', () => {
   it('resolves a spec by id and returns undefined for an unknown one', () => {
     expect(getSpec('director')?.id).toBe('director')
     expect(getSpec('nope')).toBeUndefined()
+  })
+
+  it('resolves every registered spec from its delegate Agent id', () => {
+    // Mastra's hook primitiveId is the Agent's id (agent-Dp3vcrIx.cjs:35121),
+    // e.g. 'pc-director-delegate' — not the spec id the delegate map is keyed by.
+    for (const spec of listSpecs()) {
+      const agentId = spec.build().id
+      expect(agentId).not.toBe(spec.id)
+      expect(getSpecByAgentId(agentId)).toBe(spec)
+    }
+  })
+
+  it('does not resolve a spec id or an unknown id as an Agent id', () => {
+    expect(getSpecByAgentId('director')).toBeUndefined()
+    expect(getSpecByAgentId('ghost')).toBeUndefined()
+  })
+
+  it('rejects two specs whose Agents share an id', () => {
+    const pm = getSpec('pm')!
+    const twin = { ...getSpec('director')!, build: pm.build }
+    expect(() => buildAgentIdIndex([pm, twin])).toThrow(/already used by spec "pm"/)
   })
 
   it('gives the olmo host a depth of 1 and every other host 0', () => {
@@ -80,6 +101,10 @@ describe('smoke stub registration behind SUBAGENT_SMOKE_STUB', () => {
       const ids = fresh.listSpecs().map((s) => s.id).sort()
       expect(ids).toEqual(['architect', 'director', 'pm', 'producer', 'smoke'])
       expect(fresh.getSpec('smoke')?.id).toBe('smoke')
+      // The stub's own Agent id must resolve too, or a smoke delegation is
+      // refused exactly like the four real ones were.
+      const stub = fresh.getSpec('smoke')!
+      expect(fresh.getSpecByAgentId(stub.build().id)).toBe(stub)
 
       // assertRegistryValid and assertBackgroundSupported must cover the
       // stub too — re-run them explicitly against the freshly loaded SPECS

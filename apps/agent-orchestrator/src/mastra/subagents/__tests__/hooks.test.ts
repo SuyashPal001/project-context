@@ -2,6 +2,17 @@ import { describe, it, expect, vi } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
 import type { TenantContext } from '../../context.js'
 import { buildDelegationConfig, type DelegationHost } from '../hooks.js'
+import { resolveDelegates } from '../resolve.js'
+import { getSpec, getSpecByAgentId } from '../sources.js'
+import type { SubAgentSpec } from '../spec.js'
+import { directorAgentDelegate } from '../../agents/directorAgent.js'
+
+// Mastra fills a hook's primitiveId from the delegate AGENT's id
+// (agent-Dp3vcrIx.cjs:35121), never from the delegate-map key. These tests
+// once hand-built primitiveId: 'director' — the spec id — which no real
+// delegation ever carries, so every test passed while every real delegation
+// was refused. Always take the id from the real Agent.
+const DIRECTOR_AGENT_ID = directorAgentDelegate.id
 
 // The stable per-stream facts the hooks prefer over their own per-delegation
 // context — see the DelegationHost doc comment in hooks.ts. Matches the
@@ -24,7 +35,7 @@ function startContext(overrides: Record<string, unknown> = {}) {
   requestContext.set('agentSystemPrompt', 'OLMO PROMPT OVERRIDE')
   requestContext.set('personaPersonality', 'olmo persona')
   return {
-    primitiveId: 'director', primitiveType: 'agent' as const, prompt: 'make an image',
+    primitiveId: DIRECTOR_AGENT_ID, primitiveType: 'agent' as const, prompt: 'make an image',
     params: {}, iteration: 1, runId: 'run-1', toolCallId: 'call-1',
     parentAgentId: 'olmo', parentAgentName: 'Olmo', messages: [],
     requestContext: requestContext as unknown as RequestContext,
@@ -95,6 +106,14 @@ describe('onDelegationStart', () => {
     }))
   })
 
+  it('refuses a spec id used as a primitiveId — only delegate Agent ids are registered', async () => {
+    // Guards the two id spaces from being conflated again: 'director' names
+    // the tool, 'pc-director-delegate' is what Mastra actually sends.
+    const result = await buildDelegationConfig(host, { budget: allow, record: noopRecord })
+      .onDelegationStart!(startContext({ primitiveId: 'director' }) as never)
+    expect(result).toMatchObject({ proceed: false })
+  })
+
   it('refuses a delegation to an unregistered primitive and records it', async () => {
     const record = vi.fn().mockResolvedValue(undefined)
     const result = await buildDelegationConfig(host, { budget: allow, record })
@@ -122,7 +141,7 @@ describe('onDelegationStart', () => {
 
 function completeContext(overrides: Record<string, unknown> = {}) {
   return {
-    primitiveId: 'director', primitiveType: 'agent' as const, prompt: 'make an image',
+    primitiveId: DIRECTOR_AGENT_ID, primitiveType: 'agent' as const, prompt: 'make an image',
     result: { text: 'here it is', finishReason: 'stop' as const },
     duration: 900, success: true, iteration: 1, runId: 'run-1', toolCallId: 'call-1',
     parentAgentId: 'olmo', parentAgentName: 'Olmo', messages: [], bail: vi.fn(),
@@ -147,17 +166,48 @@ describe('onDelegationComplete', () => {
     expect(record).toHaveBeenCalledWith(expect.objectContaining({ success: false, errorMessage: 'model exploded' }))
   })
 
-  it('bails with feedback when a delegation fails and the spec has no fallback', async () => {
+  it('records the spec id, not the delegate Agent id, on the link row', async () => {
+    const record = vi.fn().mockResolvedValue(undefined)
+    await buildDelegationConfig(host, { record }).onDelegationComplete!(completeContext() as never)
+    expect(record.mock.calls[0][0].primitiveId).toBe('director')
+    expect(record.mock.calls[0][0].primitiveId).not.toBe(DIRECTOR_AGENT_ID)
+  })
+
+  it('does not bail on failure, so Olmo keeps the step in which to explain it', async () => {
+    // bail() ends the supervisor loop after the current step
+    // (agent-Dp3vcrIx.cjs:26108, :27185) — the failure text below would
+    // never be acted on this turn.
+    const ctx = completeContext({ success: false, error: new Error('model exploded') })
+    await buildDelegationConfig(host, { record: noopRecord }).onDelegationComplete!(ctx as never)
+    expect(ctx.bail).not.toHaveBeenCalled()
+  })
+
+  it('on failure with no fallback, returns resultText naming the spec id and the error, telling Olmo not to retry', async () => {
     const ctx = completeContext({ success: false, error: new Error('model exploded') })
     const result = await buildDelegationConfig(host, { record: noopRecord }).onDelegationComplete!(ctx as never)
-    expect(ctx.bail).toHaveBeenCalled()
-    expect(result?.feedback).toMatch(/director/)
+    // resultText is what the parent reads in THIS run (cjs:35570-35573).
+    expect(result?.resultText).toMatch(/"director" failed \(model exploded\)/)
+    expect(result?.resultText).toMatch(/do not retry/i)
+    expect(result?.resultText).not.toContain(DIRECTOR_AGENT_ID)
+    // feedback is the only channel on Mastra's thrown-error path
+    // (cjs:35609-35655); it is a factual record, not an instruction.
+    expect(result?.feedback).toBe('Delegation to "director" failed (model exploded).')
+  })
+
+  it('on failure with a fallback, names the fallback in resultText', async () => {
+    const withFallback: SubAgentSpec = { ...getSpec('director')!, fallback: 'producer' }
+    const lookup = (id: string) => (id === DIRECTOR_AGENT_ID ? withFallback : undefined)
+    const ctx = completeContext({ success: false, error: new Error('model exploded') })
+    const result = await buildDelegationConfig(host, { record: noopRecord, lookup }).onDelegationComplete!(ctx as never)
+    expect(result?.resultText).toMatch(/"director" failed \(model exploded\)\. Try "producer" instead/)
+    expect(ctx.bail).not.toHaveBeenCalled()
   })
 
   it('replaces empty text after a tool-calls stop with an honest description', async () => {
     const ctx = completeContext({ result: { text: '', finishReason: 'tool-calls' } })
     const result = await buildDelegationConfig(host, { record: noopRecord }).onDelegationComplete!(ctx as never)
     expect(result?.resultText).toMatch(/did not finish/i)
+    expect(result?.resultText).toMatch(/^"director"/)
     expect(ctx.bail).not.toHaveBeenCalled()
   })
 
@@ -165,6 +215,30 @@ describe('onDelegationComplete', () => {
     const result = await buildDelegationConfig(host, { record: noopRecord }).onDelegationComplete!(completeContext() as never)
     expect(result?.resultText).toBeUndefined()
     expect(result?.feedback).toBeUndefined()
+  })
+})
+
+describe('the real Olmo delegate map through the hooks', () => {
+  // The test that would have caught every delegation being refused: take the
+  // Agents resolveDelegates actually hands Mastra for an Olmo turn, and feed
+  // each one's real .id — exactly what Mastra puts in primitiveId — through
+  // onDelegationStart.
+  it('admits every delegate resolveDelegates returns for Olmo, applying its own spec', async () => {
+    const olmoCtx = new RequestContext<TenantContext>()
+    olmoCtx.set('agentName', 'Olmo')
+    const delegates = resolveDelegates({ requestContext: olmoCtx })
+    expect(Object.keys(delegates).length).toBeGreaterThan(0)
+
+    for (const [specId, agent] of Object.entries(delegates)) {
+      const record = vi.fn().mockResolvedValue(undefined)
+      const ctx = startContext({ primitiveId: agent.id })
+      const result = await buildDelegationConfig(host, { budget: allow, record }).onDelegationStart!(ctx as never)
+      expect(result, `delegate "${specId}" (Agent id "${agent.id}") was refused`).not.toMatchObject({ proceed: false })
+      expect(result).toEqual({ modifiedMaxSteps: getSpec(specId)!.maxSteps })
+      expect(ctx.requestContext.get('agentName')).toBe(specId)
+      expect(record).not.toHaveBeenCalled()
+      expect(getSpecByAgentId(agent.id)?.id).toBe(specId)
+    }
   })
 })
 

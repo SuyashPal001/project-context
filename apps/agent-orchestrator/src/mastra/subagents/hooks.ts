@@ -1,13 +1,19 @@
 import type {
   DelegationConfig, DelegationCompleteContext, DelegationStartContext,
 } from '@mastra/core/agent'
-import { getSpec } from './sources.js'
+import { getSpecByAgentId } from './sources.js'
 import { checkDelegationBudget } from './budget.js'
 import { recordDelegation } from './link.js'
 
 export interface HookDeps {
   budget?: typeof checkDelegationBudget
   record?: typeof recordDelegation
+  /**
+   * Maps a hook's `primitiveId` — the delegate AGENT's id, e.g.
+   * 'pc-director-delegate' — to its spec. Injectable so a test can supply a
+   * spec shape the registry does not contain (one with a `fallback`).
+   */
+  lookup?: typeof getSpecByAgentId
 }
 
 /**
@@ -34,14 +40,25 @@ export interface DelegationHost {
  * The delegation lifecycle for the Olmo path.
  *
  * NOTE: `delegation` is a per-EXECUTION option, not an Agent constructor
- * field, so this config has to be passed at every stream() call site that can
- * reach Olmo. There are two — routes/chatStream.ts (SSE) and index.ts
- * (WebSocket) — and a hook wired into only one of them silently does not run
- * on the other path.
+ * field, so this config has to be passed at every call site that can reach
+ * Olmo — and on SSE, into the approveToolCall/declineToolCall resumes too,
+ * because a resumed run restores memory from its snapshot, not options. A
+ * hook wired into only some call sites silently does not run on the others.
+ *
+ * Three call sites reach Olmo:
+ * - routes/chatStream.ts (SSE) — wired, gated on activeAgent === platformAgent.
+ * - index.ts (WebSocket) — wired, but inert today: that path never sets
+ *   agentName, so resolveDelegates returns {} and there is nothing to govern.
+ * - mastra/agent.ts's createTenantAgent (the task path) — NOT wired. Its
+ *   Proxy forwards platformAgent.generate() with no `delegation` option, so a
+ *   task run on an Olmo row reaches the delegates with no budget check, no
+ *   audit row and default step counts. A known ungoverned path, left for a
+ *   follow-up spec; see the spec's "Known gaps after implementation".
  */
 export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {}): DelegationConfig {
   const budget = deps.budget ?? checkDelegationBudget
   const record = deps.record ?? recordDelegation
+  const lookup = deps.lookup ?? getSpecByAgentId
 
   return {
     // If a hook throws, fail the delegation. The default ('warn') proceeds
@@ -52,7 +69,7 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
 
     onDelegationStart: async (context: DelegationStartContext) => {
       const ctx = context.requestContext
-      const spec = getSpec(context.primitiveId)
+      const spec = lookup(context.primitiveId)
       const tenantId = host.tenantId || (ctx.get('tenantId') as string | undefined) || ''
       const agentId = host.agentId ?? (ctx.get('agentId') as string | undefined) ?? null
       const conversationId = host.conversationId ?? (ctx.get('sessionId') as string | undefined) ?? null
@@ -96,9 +113,11 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
       // 2. Identity. Mastra hands the sub-agent a near-complete copy of the
       // parent's context (agent-Dp3vcrIx.cjs:35119 excludes only four internal
       // keys). `agentName` is rewritten to the delegate's spec id — that is
-      // what resolveDelegates gates on, so without this a delegate would
-      // inherit agentName='olmo', resolve Olmo's own delegate map, and
-      // re-delegate in a circle. `subAgentId` carries the same spec id for
+      // what resolveDelegates gates on. No current delegate calls
+      // resolveDelegates (only platformAgent's `agents:` resolver does), so
+      // this is not closing a live loop; it stops a delegate that later gains
+      // a dynamic `agents:` resolver from inheriting agentName='olmo' and
+      // with it Olmo's delegate map. `subAgentId` carries the same spec id for
       // any future delegate-scoped skills resolver to read.
       //
       // `agentId` is deliberately left UNCHANGED — it keeps the HOST's real
@@ -127,8 +146,9 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
       ctx.set('agentSystemPrompt', '')
       ctx.set('personaPersonality', '')
 
-      // 3. Depth. The only thing standing between the system and a delegation
-      // loop, because the agentName gate's own input is inherited.
+      // 3. Depth. Defence in depth alongside the agentName rewrite: once a
+      // delegate declares its own dynamic `agents:` resolver, this is what
+      // stops it re-delegating past the host's ceiling.
       const depth = (ctx.get('delegationDepth') as number | undefined) ?? 0
       ctx.set('delegationDepth', depth + 1)
 
@@ -137,13 +157,17 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
     },
 
     onDelegationComplete: async (context: DelegationCompleteContext) => {
-      const spec = getSpec(context.primitiveId)
+      const spec = lookup(context.primitiveId)
+      // Spec id once a spec is found — that is the name Olmo routes by and the
+      // one the audit table is queried by. The raw Agent id survives only for
+      // an unregistered primitive, where there is no spec id to use.
+      const name = spec?.id ?? context.primitiveId
 
       await record({
         tenantId: host.tenantId,
         agentId: host.agentId,
         conversationId: host.conversationId,
-        primitiveId: context.primitiveId,
+        primitiveId: name,
         runId: context.runId,
         toolCallId: context.toolCallId,
         success: context.success,
@@ -155,12 +179,30 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
         // One optional fallback per spec, or none — no chains. Handing the
         // work to the fallback is the next delegation the model makes, so all
         // this does is tell the parent which one to try.
+        //
+        // No bail(). bail() sets __mastra_delegationBailed, which ends the
+        // supervisor's loop after the current step (agent-Dp3vcrIx.cjs:26108,
+        // :27185) — Olmo would never get the step in which to try the
+        // fallback or explain the failure, the two things this text asks of it.
+        //
+        // Mastra has two failure paths and they honour different fields:
+        // - The delegate FINISHED with finishReason 'error' (success is
+        //   `finishReason !== "error"`, cjs:35556). `resultText` replaces the
+        //   tool result the parent reads in THIS run (cjs:35570-35573).
+        // - The delegate THREW (the catch at cjs:35609). `resultText` is
+        //   ignored there; only `feedback` is used, saved to the supervisor's
+        //   memory for the next turn (cjs:35633-35655), and the tool then
+        //   throws, so this run's parent sees a tool-error instead.
+        // So both are returned: resultText for the first path, and a factual
+        // (not instructional — it is read a turn later) feedback note for the
+        // second, which on the first path is a harmless record in memory.
         const fallback = spec?.fallback
-        context.bail()
+        const reason = context.error?.message ?? 'unknown error'
         return {
-          feedback: fallback
-            ? `Delegation to "${context.primitiveId}" failed (${context.error?.message ?? 'unknown error'}). Try "${fallback}" instead, or finish with what you have.`
-            : `Delegation to "${context.primitiveId}" failed (${context.error?.message ?? 'unknown error'}). Do not retry it — finish with what you have and say plainly that this step failed.`,
+          resultText: fallback
+            ? `Delegation to "${name}" failed (${reason}). Try "${fallback}" instead, or finish with what you have.`
+            : `Delegation to "${name}" failed (${reason}). Do not retry it — finish with what you have and say plainly that this step failed.`,
+          feedback: `Delegation to "${name}" failed (${reason}).`,
         }
       }
 
@@ -170,7 +212,7 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
       // feedback would only reach it on the next turn.
       if (!context.result.text?.trim() && context.result.finishReason === 'tool-calls') {
         return {
-          resultText: `"${context.primitiveId}" did not finish: it stopped mid-tool-call and returned nothing. Treat this as a failed step, not an empty answer.`,
+          resultText: `"${name}" did not finish: it stopped mid-tool-call and returned nothing. Treat this as a failed step, not an empty answer.`,
         }
       }
 

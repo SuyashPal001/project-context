@@ -31,10 +31,14 @@ export const tenantContextSchema = z.object({
   // How many delegation boundaries this run is below the user-facing agent.
   // Stamped by onDelegationStart (subagents/hooks.ts) onto the outgoing
   // context; read by resolveDelegates to return {} at the host's ceiling.
-  // Load-bearing, not advisory: Mastra copies the parent's context into the
-  // sub-agent almost wholesale (agent-Dp3vcrIx.cjs:35119 excludes only four
-  // internal keys), so a delegate inherits agentName='olmo' and would
-  // otherwise resolve Olmo's own delegate map and re-delegate in a circle.
+  // Defence in depth, not a live loop guard. Mastra copies the parent's
+  // context into the sub-agent almost wholesale (agent-Dp3vcrIx.cjs:35119
+  // excludes only four internal keys), so depth survives the boundary. Today
+  // only platformAgent resolves its delegates dynamically (buildOlmoDelegates);
+  // every delegate has a static or empty `agents:` map and never calls the
+  // resolver, so none can loop back through Olmo's map. Depth is what caps
+  // nesting on the day a delegate first declares its own dynamic `agents:`
+  // resolver.
   delegationDepth: z.number().optional(),
   // The sub-agent ids this tenant may use. Filled upstream by an ownership
   // query today and by an install query when sharing ships — the resolver

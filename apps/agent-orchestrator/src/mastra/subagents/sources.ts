@@ -136,8 +136,50 @@ export function listSpecs(): SubAgentSpec[] {
   return SPECS
 }
 
+/** Looks a spec up by its SPEC id ('director'). See getSpecByAgentId for the other key. */
 export function getSpec(id: string): SubAgentSpec | undefined {
   return SPECS.find(s => s.id === id)
+}
+
+/**
+ * Index from each delegate Agent's own `id` to its spec.
+ *
+ * Two id spaces exist and must not be confused. A spec id ('director') keys
+ * the delegate map resolveDelegates returns, so it only names the TOOL Mastra
+ * builds (`agent-director`). The delegation hooks never see it: Mastra fills
+ * `primitiveId` from the delegate Agent's own id — `primitiveId: agent.id` at
+ * agent-Dp3vcrIx.cjs:35121 (start) and :35551 / :35614 (complete) — and those
+ * ids are 'pc-pm-delegate', 'pc-director-delegate' and so on. Looking a hook's
+ * primitiveId up with getSpec() therefore misses every real delegation.
+ *
+ * The Agent ids are deliberately NOT renamed to match the spec ids:
+ * suspended-run snapshots are keyed by them.
+ *
+ * Built once at module load from `spec.build().id`. Every current `build` returns
+ * a module constant, so this constructs nothing. Two specs whose Agents share
+ * an id would make the lookup ambiguous, so that fails at boot like every
+ * other registry defect.
+ */
+export function buildAgentIdIndex(specs: SubAgentSpec[]): ReadonlyMap<string, SubAgentSpec> {
+  const index = new Map<string, SubAgentSpec>()
+  for (const spec of specs) {
+    const agentId = spec.build().id
+    const clash = index.get(agentId)
+    if (clash) throw new SubAgentSpecError(spec.id, `delegate Agent id "${agentId}" is already used by spec "${clash.id}"`)
+    index.set(agentId, spec)
+  }
+  return index
+}
+
+const SPECS_BY_AGENT_ID = buildAgentIdIndex(SPECS)
+
+/**
+ * Looks a spec up by its delegate Agent's id — the value Mastra puts in a
+ * delegation hook's `primitiveId`. Use this, not getSpec, anywhere the key
+ * came from Mastra.
+ */
+export function getSpecByAgentId(agentId: string): SubAgentSpec | undefined {
+  return SPECS_BY_AGENT_ID.get(agentId)
 }
 
 /**
