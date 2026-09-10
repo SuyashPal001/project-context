@@ -95,6 +95,7 @@ vi.mock('../usage.js', () => ({
   fetchAgentName: vi.fn().mockResolvedValue('test-agent'),
   fetchAgentPersonality: vi.fn().mockResolvedValue(null),
   fetchAgentModelSelection: vi.fn().mockResolvedValue(null),
+  fetchAllowedSubAgents: vi.fn().mockResolvedValue(['pm', 'architect', 'director', 'producer']),
   recordUsage: vi.fn(),
 }))
 

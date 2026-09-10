@@ -10,7 +10,7 @@ import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordUsage } from '../usage.js'
+import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage } from '../usage.js'
 import { fetchConversationTestSkillInstallId } from '../persistence.js'
 import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
@@ -261,7 +261,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // reads it and composes just that one skill instead of the agent's
     // real attached ones. The agent's persona (below) is unaffected either
     // way — it's a separate concern, read the same regardless of test mode.
-    const [testSkillInstallId, agentPersonaPrompt, agentName, personaPersonality, agentModelSelection] = await Promise.all([
+    const [testSkillInstallId, agentPersonaPrompt, agentName, personaPersonality, agentModelSelection, allowedSubAgents] = await Promise.all([
       fetchConversationTestSkillInstallId(idToken, conversationId),
       fetchAgentPersonaPrompt(agentId, tenantId),
       fetchAgentName(agentId),
@@ -270,6 +270,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         console.warn(`[sse:${sessionId}] fetchAgentModelSelection failed, falling back to default model:`, (err as Error).message)
         return null
       }),
+      fetchAllowedSubAgents(tenantId),
     ])
     if (testSkillInstallId) requestContext.set('testSkillInstallId', testSkillInstallId)
     if (agentPersonaPrompt) {
@@ -283,6 +284,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       const modelString = buildGatewayModelString(agentModelSelection.provider, agentModelSelection.model)
       if (modelString) requestContext.set('selectedModel', modelString)
     }
+    requestContext.set('allowedSubAgents', allowedSubAgents)
 
     const thinkingBudget = getThinkingBudget(message)
     requestContext.set('thinkingBudget', thinkingBudget)

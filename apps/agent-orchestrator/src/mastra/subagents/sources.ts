@@ -4,6 +4,7 @@ import { architectAgentDelegate } from '../agents/architectAgent.js'
 import { directorAgentDelegate } from '../agents/directorAgent.js'
 import { producerAgentDelegate } from '../agents/producerAgent.js'
 import { BACKGROUND_TASKS_ENABLED } from '../backgroundTasks.js'
+import { CODE_SPEC_IDS } from './ids.js'
 import type { Agent } from '@mastra/core/agent'
 
 /**
@@ -83,8 +84,36 @@ export function assertBackgroundSupported(specs: SubAgentSpec[], enabled = BACKG
   }
 }
 
+/**
+ * Confirms ids.ts's `CODE_SPEC_IDS` — the copy usage.ts reads so it never
+ * has to import this file's Agent-construction chain (see ids.ts's doc
+ * comment) — hasn't drifted from the specs actually registered here.
+ * Compared as sets: order is not part of the contract.
+ *
+ * Callers must pass only the UNCONDITIONALLY registered specs. A spec
+ * gated behind an env flag (e.g. a smoke-test stub) is not part of the
+ * fixed contract `CODE_SPEC_IDS` promises — its presence depends on the
+ * environment, so folding it into `specs` here would make this assertion
+ * flip pass/fail with an unrelated flag instead of catching real drift.
+ * Filter such specs out (or register them after this call, separately)
+ * rather than passing them in.
+ */
+export function assertMatchesCodeSpecIds(specs: SubAgentSpec[], expectedIds: readonly string[]): void {
+  const actual = new Set(specs.map(s => s.id))
+  const expected = new Set(expectedIds)
+  const missing = [...expected].filter(id => !actual.has(id))
+  const extra = [...actual].filter(id => !expected.has(id))
+  if (missing.length > 0 || extra.length > 0) {
+    const parts: string[] = []
+    if (missing.length > 0) parts.push(`missing from SPECS: ${missing.join(', ')}`)
+    if (extra.length > 0) parts.push(`extra in SPECS not in CODE_SPEC_IDS: ${extra.join(', ')}`)
+    throw new SubAgentSpecError('CODE_SPEC_IDS', `drifted from registered specs (${parts.join('; ')})`)
+  }
+}
+
 assertRegistryValid(SPECS)
 assertBackgroundSupported(SPECS)
+assertMatchesCodeSpecIds(SPECS, CODE_SPEC_IDS)
 
 export function listSpecs(): SubAgentSpec[] {
   return SPECS

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { listSpecs, getSpec, maxDepthForHost, hostAllows, assertRegistryValid, OLMO_HOST_MAX_DEPTH } from '../sources.js'
+import { listSpecs, getSpec, maxDepthForHost, hostAllows, assertRegistryValid, assertMatchesCodeSpecIds, OLMO_HOST_MAX_DEPTH } from '../sources.js'
 import { NEGATIVE_CLAUSE } from '../spec.js'
+import { CODE_SPEC_IDS } from '../ids.js'
 
 describe('code spec source', () => {
   it('registers the four existing delegates', () => {
@@ -49,5 +50,19 @@ describe('code spec source', () => {
   it('rejects duplicate ids', () => {
     const pm = getSpec('pm')!
     expect(() => assertRegistryValid([pm, pm])).toThrow(/duplicate/i)
+  })
+
+  it('passes when SPECS ids exactly match CODE_SPEC_IDS', () => {
+    expect(() => assertMatchesCodeSpecIds(listSpecs(), CODE_SPEC_IDS)).not.toThrow()
+  })
+
+  it('throws when a code spec id is missing from SPECS', () => {
+    const withoutPm = listSpecs().filter(s => s.id !== 'pm')
+    expect(() => assertMatchesCodeSpecIds(withoutPm, CODE_SPEC_IDS)).toThrow(/pm/)
+  })
+
+  it('throws when SPECS has an id not in CODE_SPEC_IDS', () => {
+    const withExtra = [...listSpecs(), { ...getSpec('pm')!, id: 'stylist' }]
+    expect(() => assertMatchesCodeSpecIds(withExtra, CODE_SPEC_IDS)).toThrow(/stylist/)
   })
 })

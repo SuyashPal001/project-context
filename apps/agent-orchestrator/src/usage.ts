@@ -4,6 +4,7 @@ import { db } from '@serverless-saas/database'
 import { getAgentTools } from '@serverless-saas/ai'
 import { createSkill } from '@mastra/core/skills'
 import type { InlineSkill } from '@mastra/core/skills'
+import { CODE_SPEC_IDS } from './mastra/subagents/ids.js'
 
 // DDL (run once at deploy time):
 //
@@ -316,6 +317,36 @@ export async function fetchAgentName(agentId: string): Promise<string | null> {
   const name = res.rows[0]?.name ?? null
   if (name) agentNameCache.set(agentId, name)
   return name
+}
+
+/**
+ * The sub-agent ids this tenant may use: every platform-owned spec, plus any
+ * published template this tenant owns. Ownership only — install rows are not
+ * built until tenants can share sub-agents with each other, and when they are,
+ * only this function changes.
+ *
+ * Fails OPEN, unlike the credit checks: a bad filter here is invisible — Olmo
+ * silently lacks a capability and does the job badly, with no signal to anyone
+ * that something was hidden.
+ */
+export async function fetchAllowedSubAgents(
+  tenantId: string,
+  pool: { query: (text: string, values: unknown[]) => Promise<{ rows: Array<{ name: string }> }> } = getPool() as never,
+): Promise<string[]> {
+  const codeSpecIds = [...CODE_SPEC_IDS]
+  if (!tenantId) return codeSpecIds
+  try {
+    const res = await pool.query(
+      `SELECT name FROM agent_templates
+        WHERE (tenant_id IS NULL OR tenant_id = $1)
+          AND status = 'published'`,
+      [tenantId],
+    )
+    return [...new Set([...codeSpecIds, ...res.rows.map(r => r.name)])]
+  } catch (err) {
+    console.error(`[subagents] allowed-set lookup failed tenantId=${tenantId}, failing open:`, (err as Error).message)
+    return codeSpecIds
+  }
 }
 
 export async function fetchAgentSlug(agentId: string): Promise<string | null> {

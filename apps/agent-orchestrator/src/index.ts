@@ -17,7 +17,7 @@ import { downloadMediaAttachment, buildAttachmentNote } from './media.js'
 import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 import { validateToken } from './auth.js'
 import { createConversation, saveUserMessage, saveAssistantMessage, fetchConversationAllowMode } from './persistence.js'
-import { fetchAgentMemory } from './usage.js'
+import { fetchAgentMemory, fetchAllowedSubAgents } from './usage.js'
 import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
 import { olmoDelegationOptions } from './mastra/subagents/streamOptions.js'
@@ -210,6 +210,7 @@ async function handleSession(
         if (folderId) requestContext.set('folderId', folderId)
         applyFolderScope(requestContext, folderPrefix)
         requestContext.set('allowMode', allowMode)
+        requestContext.set('allowedSubAgents', await fetchAllowedSubAgents(tenantId))
         mcpClient = getMCPClientForTenant(tenantId, agentId)
         requestContext.set('__mcpClient', mcpClient as any)
 

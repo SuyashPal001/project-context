@@ -322,12 +322,17 @@ export const agentToolAssignments = pgTable(
 
 // ─── Agent Template System ────────────────────────────────────────────────────
 // Platform-level versioned agent prompts (ADR-030).
-// No tenantId — owned by platform admins via Mission Control.
+// tenantId is nullable — see the column comment below.
 
 export const agentTemplateStatusEnum = pgEnum('agent_template_status', ['draft', 'published', 'archived'])
 
 export const agentTemplates = pgTable('agent_templates', {
   id: uuid('id').primaryKey().defaultRandom(),
+  // NULL = platform-owned, following the convention agent_tools already uses.
+  // Nullable rather than NOT NULL because a platform template belongs to no
+  // tenant — the same gap that makes agents.tenantId NOT NULL wrong for
+  // sub-agents. Tenant-authored templates carry their tenant here.
+  tenantId: uuid('tenant_id').references(() => tenants.id),
   name: text('name').notNull(),
   description: text('description'),
   systemPrompt: text('system_prompt').notNull(),
