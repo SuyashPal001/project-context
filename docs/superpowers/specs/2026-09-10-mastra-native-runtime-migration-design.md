@@ -342,13 +342,19 @@ commits to this shape; see open question 3.
    Recommend keeping a small count cap (e.g. 8) at attach time as a product
    guard, decoupled from the deleted char-budget logic — confirm before
    planning.
-2. Suspended-run expiry: decided that `WatchdogFunction` owns the sweep
-   (see Design section 2) — open is only the threshold N for "untouched
-   for N hours." The old behavior expired at 5 minutes because an
-   unanswered card was assumed abandoned; a persisted approval has no such
-   pressure, so N should be materially longer (hours, not minutes) —
-   confirm before planning, along with what happens to a swept run
-   (auto-decline with a reason vs. a distinct `expired` status).
+2. ~~Suspended-run expiry~~ — **decided.** `WatchdogFunction` sweeps runs
+   suspended awaiting tool approval, untouched for a named constant
+   `APPROVAL_EXPIRY_HOURS = 24` (not a literal in the sweep code). A swept
+   run calls `agent.declineToolCall({ runId, reason: 'expired' })` — never
+   deletes the snapshot — so the run finishes cleanly, the model sees the
+   reason, and the path is identical to a user clicking decline; nothing
+   distinguishes a timed-out decision from a human one downstream. The
+   sweep query matches on the approval payload specifically (the
+   suspended step's payload shape/kind, not merely "suspended and old") —
+   other workflow suspends persist in the same storage, and matching by
+   age alone repeats the false-positive pattern from the earlier watchdog
+   bug that marked every non-ingestible file `failed` by scanning too
+   broad a condition.
 3. Suspend-inside-`.foreach()` semantics: unverified whether a step
    defined once but iterated by `.foreach()` resumes on the correct item
    after `run.resume()`, or restarts the whole foreach. Blocks Design
