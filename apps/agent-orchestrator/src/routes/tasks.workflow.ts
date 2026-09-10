@@ -109,7 +109,22 @@ export async function runMastraWorkflowSteps(
   })
 
   if (result.status === 'suspended') {
-    await postWorkflowUpdate(workflowRunId, { status: 'awaiting_approval' }, traceId)
+    const payload = (result.suspendPayload as Record<string, { stepId: string; title: string; toolName: string; reason: 'requires_approval' }> | undefined)?.['run-plan-step']
+    if (!payload) {
+      // Should be unreachable — runPlanStep is the workflow's only step, and
+      // a 'suspended' result always carries this step's payload. Logged
+      // rather than thrown so a Mastra internals change surfaces here
+      // instead of crashing the caller silently.
+      console.error(JSON.stringify({ level: 'error', msg: 'suspended result missing run-plan-step payload', traceId, workflowRunId, ts: Date.now() }))
+    }
+    await postWorkflowUpdate(workflowRunId, {
+      status: 'awaiting_approval',
+      pendingApproval: payload ? {
+        stepId: payload.stepId, title: payload.title, toolName: payload.toolName, reason: payload.reason,
+        resumeLabel: `approve:${payload.stepId}`,
+      } : null,
+      pendingApprovalAt: new Date().toISOString(),
+    }, traceId)
     console.log(JSON.stringify({ level: 'info', msg: 'workflow suspended for approval', traceId, workflowRunId, mastraRunId: run.runId, ts: Date.now() }))
     return
   }

@@ -77,12 +77,26 @@ describe('runMastraWorkflowSteps — settle on success', () => {
     expect(settleTask).toHaveBeenCalledWith(expect.objectContaining({ taskId: 'run-3', inputTokens: 0, outputTokens: 0 }))
   })
 
-  it('marks awaiting_approval and does not settle or refund when the run suspends', async () => {
-    runResult = { status: 'suspended', suspendPayload: { stepId: 'step-2', toolName: 'x' } }
+  it('marks awaiting_approval and persists the pending-approval descriptor when the run suspends', async () => {
+    runResult = {
+      status: 'suspended',
+      suspendPayload: { 'run-plan-step': { stepId: 'step-2', title: 'Step 2', toolName: 'x', reason: 'requires_approval' } },
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, text: async () => '' }))
     const { runMastraWorkflowSteps } = await import('../routes/tasks.workflow.js')
     await runMastraWorkflowSteps('wf-1', 'run-4', 'agent-1', 'tenant-1', STEPS as never, null, false, 'trace-4', 'gemini-2.5-pro')
 
     expect(settleTask).not.toHaveBeenCalled()
     expect(refundTask).not.toHaveBeenCalled()
+
+    const fetchMock = vi.mocked(fetch)
+    const updateCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/update'))
+    const updateCall = updateCalls[updateCalls.length - 1]
+    expect(updateCall).toBeDefined()
+    const body = JSON.parse((updateCall![1] as RequestInit).body as string)
+    expect(body).toMatchObject({
+      status: 'awaiting_approval',
+      pendingApproval: { stepId: 'step-2', title: 'Step 2', toolName: 'x', reason: 'requires_approval', resumeLabel: 'approve:step-2' },
+    })
   })
 })
