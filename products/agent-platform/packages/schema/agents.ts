@@ -92,6 +92,24 @@ export const agentWorkflowRuns = pgTable('agent_workflow_runs', {
   // suspended run: the workflowRunId (this row's own id) identifies OUR
   // record of the run; mastraRunId identifies MASTRA's.
   mastraRunId: text('mastra_run_id'),
+  // The pending approval descriptor for a suspended run — null except while
+  // status is 'awaiting_approval'. Written on EVERY suspend (initial and
+  // re-suspend after a prior step was approved) and cleared ONLY on a
+  // terminal outcome (success/failed) — clearing it on every resume instead
+  // would make a second approval-gated step in the same run unreachable.
+  // resumeLabel is the Mastra resume label (`approve:${planStepId}`) this
+  // descriptor was suspended under — forwarded to the orchestrator's resume
+  // call unchanged, never re-derived.
+  pendingApproval: jsonb('pending_approval').$type<{
+    stepId: string
+    title: string
+    toolName: string
+    reason: 'requires_approval'
+    resumeLabel: string
+  }>(),
+  // When pendingApproval was last written — the watchdog sweep's staleness
+  // clock. Cleared alongside pendingApproval.
+  pendingApprovalAt: timestamp('pending_approval_at'),
   trigger: text('trigger').notNull(),
   stepsCompleted: json('steps_completed').notNull().default([]),
   toolsCalled: json('tools_called').notNull().default([]),
