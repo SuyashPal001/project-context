@@ -100,10 +100,20 @@ The user is shown the draft and must approve it. The skill applies from their ne
   inputSchema: createSkillInputSchema,
   // Unconditional gate, mirroring today's alwaysAsk: true — this tool never
   // checks isUnlimited/resolveRate (creating a skill is free; a human still
-  // must see it). The only reason to skip the pause is an invalid draft,
-  // where there is nothing meaningful to show on a card and execute() will
-  // reject it immediately anyway (validateSkillBody runs there unchanged).
-  requireApproval: async (input) => {
+  // must see it). Two reasons to skip the pause:
+  //   1. An invalid draft — nothing meaningful to show on a card, and
+  //      execute() rejects it immediately anyway (validateSkillBody runs
+  //      there unchanged).
+  //   2. No live SSE session — same liveness check shouldRequireApproval
+  //      makes, and the same one execute()'s hard guard below makes. Paths
+  //      that never handle the `tool-call-approval` chunk (index.ts's
+  //      WebSocket loop, mastra/agent.ts's background-task generate()) would
+  //      otherwise suspend the run silently for 24h instead of letting
+  //      execute() return its clean, immediate error. Note `ctx.requestContext`
+  //      here is a plain object view, not a RequestContext instance — no .get().
+  requireApproval: async (input, ctx) => {
+    const sendEvent = ctx?.requestContext?.sendEvent
+    if (!sendEvent) return false
     const { name, body } = input as { name: string; body: string }
     return !validateSkillBody(body, name)
   },

@@ -17,7 +17,7 @@ import {
   sessionActiveUpload, pendingUploads,
   checkRateLimit,
 } from '../types.js'
-import { updateClarificationRequest, updateGenerationConfirmRequest, updateUploadRequest, fetchConversationAllowMode } from '../persistence.js'
+import { updateClarificationRequest, updateUploadRequest, fetchConversationAllowMode } from '../persistence.js'
 
 // ─── SSE chat endpoint ────────────────────────────────────────────────────────
 
@@ -276,13 +276,12 @@ chatRouter.post('/api/chat', async (c) => {
           const pending = pendingToolApprovals.get(toolCallId)
           if (pending) {
             pendingToolApprovals.delete(toolCallId)
+            // Resolve only — no 'declined' PATCH here. chatStream.ts's
+            // turnLoop writes that PATCH unconditionally as soon as this
+            // promise resolves, from any resolver (the frontend decision
+            // route or this disconnect handler), so writing it here too
+            // would double every disconnect write.
             pending.resolve({ confirmed: false })
-            if (pending.messageId && pending.conversationId && pending.idToken) {
-              updateGenerationConfirmRequest(pending.idToken, pending.conversationId, pending.messageId, {
-                status: 'declined',
-                decisionAt: new Date().toISOString(),
-              })
-            }
           }
         }
         sessionActiveToolApprovals.delete(sessionId)

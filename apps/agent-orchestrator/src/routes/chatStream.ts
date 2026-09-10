@@ -377,9 +377,16 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // 1). Fail open rather than hang the turn on an invisible card.
           if (!meta || !toolCallId) {
             console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — auto-approving`)
-            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId })
+            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext })
             continue turnLoop
           }
+
+          // The approval card is persisted as a row in the `messages` table,
+          // whose `id` column is a uuid (and the save route validates it with
+          // Zod `.uuid()`). Mastra's toolCallId is a short nanoid, so it can
+          // never be that id — it stays the SSE/pendingToolApprovals
+          // correlation key only, and the message gets its own uuid.
+          const approvalMessageId = crypto.randomUUID()
 
           const preview = meta.buildPreview?.(args)
           const piiNote = toolName === 'create_skill' && typeof args.body === 'string' ? detectSkillPii(args.body) : ''
@@ -391,7 +398,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           })
 
           if (conversationId && idToken) {
-            saveGenerationConfirmRequest(idToken, conversationId, toolCallId, {
+            saveGenerationConfirmRequest(idToken, conversationId, approvalMessageId, {
               id: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label, status: 'pending',
               ...(preview ? { preview } : {}),
             })
@@ -414,7 +421,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const { confirmed, declineReason } = await new Promise<{ confirmed: boolean; declineReason?: string }>((resolve) => {
             pendingToolApprovals.set(toolCallId, {
               resolve, tenantId, runId, toolCallId,
-              messageId: toolCallId, conversationId, idToken,
+              messageId: approvalMessageId, conversationId, idToken,
             })
           })
 
@@ -422,16 +429,22 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (sessionActiveToolApprovals.get(sessionId)?.size === 0) sessionActiveToolApprovals.delete(sessionId)
 
           if (conversationId && idToken) {
-            updateGenerationConfirmRequest(idToken, conversationId, toolCallId, {
+            updateGenerationConfirmRequest(idToken, conversationId, approvalMessageId, {
               status: confirmed ? 'approved' : 'declined',
               decisionAt: new Date().toISOString(),
               ...(declineReason ? { declineReason } : {}),
             })
           }
 
+          // The live `requestContext` must be passed back in on resume. Mastra
+          // rehydrates a resumed run from its persisted snapshot, and
+          // RequestContext.toJSON() drops every function value — including
+          // `sendEvent`, which createSkill.ts's live-session guard requires.
+          // Without this, approving a create_skill draft resumes with no
+          // sendEvent and the skill is never saved.
           currentStream = confirmed
-            ? await (activeAgent as any).approveToolCall({ runId, toolCallId })
-            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? 'Declined by user' })
+            ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext })
+            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? 'Declined by user', requestContext })
           continue turnLoop
         }
         case 'tool-result': {

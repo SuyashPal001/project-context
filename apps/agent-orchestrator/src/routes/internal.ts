@@ -265,6 +265,27 @@ internalRouter.post('/internal/expire-tool-approvals', async (c) => {
         }
 
         try {
+          // KNOWN, DELIBERATELY DEFERRED RISK — no requestContext is passed
+          // here, and there is none to pass: this sweep exists precisely
+          // because nobody is watching this run. The consequence is that if
+          // the model calls another approval-gated generation tool inside the
+          // resumed turn, generationApproval.ts's shouldRequireApproval sees no
+          // `sendEvent` and returns false (its first guard, ahead of the
+          // allowMode/isUnlimited/rate checks), so that call auto-approves and
+          // spends credits unattended.
+          //
+          // There is no lever in the current predicate that closes this:
+          // shouldRequireApproval's liveness guard short-circuits before
+          // allowMode is read, so no allowMode value can force the gate back
+          // on; and synthesising a fake live context would make the resumed run
+          // suspend again on a card nobody can see — re-creating the exact 24h
+          // hang this sweep is here to clear, sweep after sweep.
+          // Closing it properly means teaching the generation tools' execute()
+          // to refuse an unattended resume, which is a behavior change for
+          // every non-SSE caller and out of scope for this migration.
+          //
+          // Window: narrow but real — the model must decide to call another
+          // generation tool in the same turn it was just told "no".
           const stream = await agent.declineToolCall({
             runId: run.runId,
             toolCallId: toolCall.toolCallId,

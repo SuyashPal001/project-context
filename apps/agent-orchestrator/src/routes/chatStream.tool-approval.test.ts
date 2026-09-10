@@ -158,7 +158,16 @@ describe('runChatStream — tool-call-approval round trip', () => {
     pendingToolApprovals.get('tc-1')?.resolve({ confirmed: true })
 
     await runPromise
-    expect(approveToolCall).toHaveBeenCalledWith({ runId: 'run-1', toolCallId: 'tc-1' })
+    // The live requestContext must be forwarded on resume — Mastra rehydrates
+    // from the persisted snapshot otherwise, and RequestContext.toJSON() drops
+    // every function value (sendEvent included).
+    const streamedRequestContext = streamMock.mock.calls[0][1].requestContext
+    expect(streamedRequestContext).toBeTruthy()
+    expect(approveToolCall).toHaveBeenCalledWith({
+      runId: 'run-1',
+      toolCallId: 'tc-1',
+      requestContext: streamedRequestContext,
+    })
     expect(declineToolCall).not.toHaveBeenCalled()
   })
 
@@ -181,7 +190,14 @@ describe('runChatStream — tool-call-approval round trip', () => {
     pendingToolApprovals.get('tc-2')?.resolve({ confirmed: false, declineReason: 'too expensive' })
 
     await runPromise
-    expect(declineToolCall).toHaveBeenCalledWith({ runId: 'run-2', toolCallId: 'tc-2', reason: 'too expensive' })
+    const streamedRequestContext = streamMock.mock.calls[0][1].requestContext
+    expect(streamedRequestContext).toBeTruthy()
+    expect(declineToolCall).toHaveBeenCalledWith({
+      runId: 'run-2',
+      toolCallId: 'tc-2',
+      reason: 'too expensive',
+      requestContext: streamedRequestContext,
+    })
     expect(approveToolCall).not.toHaveBeenCalled()
   })
 })

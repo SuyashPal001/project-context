@@ -166,15 +166,29 @@ describe('create_skill', () => {
 })
 
 describe('createSkillTool.requireApproval', () => {
-  it('requires approval for a valid draft', async () => {
+  const liveCtx = { requestContext: { sendEvent: () => {} } }
+
+  it('requires approval for a valid draft in a live session', async () => {
     const { createSkillTool } = await import('./createSkill.js')
-    const result = await (createSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: VALID_BODY }, {})
+    const result = await (createSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: VALID_BODY }, liveCtx)
     expect(result).toBe(true)
   })
 
   it('skips approval for an invalid draft (no frontmatter)', async () => {
     const { createSkillTool } = await import('./createSkill.js')
-    const result = await (createSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: 'no frontmatter here' }, {})
+    const result = await (createSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: 'no frontmatter here' }, liveCtx)
     expect(result).toBe(false)
+  })
+
+  // Without a live SSE session there is nobody to show an approval card to,
+  // and the paths that lack one (WebSocket loop, background-task generate())
+  // never handle the tool-call-approval chunk — pausing there would suspend
+  // the run for 24h instead of letting execute()'s own guard error out.
+  it('skips approval when there is no live session, even for a valid draft', async () => {
+    const { createSkillTool } = await import('./createSkill.js')
+    const fn = createSkillTool.requireApproval as (input: unknown, ctx?: unknown) => Promise<boolean>
+    expect(await fn({ name: 'x', body: VALID_BODY }, {})).toBe(false)
+    expect(await fn({ name: 'x', body: VALID_BODY }, { requestContext: {} })).toBe(false)
+    expect(await fn({ name: 'x', body: VALID_BODY })).toBe(false)
   })
 })
