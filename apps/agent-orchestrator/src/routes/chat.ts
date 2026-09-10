@@ -13,7 +13,7 @@ import {
   getAllowedOrigin, INTERNAL_SERVICE_KEY, API_BASE_URL,
   sseApprovalChannels,
   sessionActiveClarification, pendingClarifications,
-  sessionActiveGenerationConfirmations, pendingGenerationConfirmations,
+  sessionActiveToolApprovals, pendingToolApprovals,
   sessionActiveUpload, pendingUploads,
   checkRateLimit,
 } from '../types.js'
@@ -262,16 +262,20 @@ chatRouter.post('/api/chat', async (c) => {
         }
       }
 
-      // Resolve every pending generation confirmation for this session
-      // immediately, same reasoning as the clarification block above — don't
-      // leave the agent blocked for up to 5 minutes after the client is gone.
-      const confirmIds = sessionActiveGenerationConfirmations.get(sessionId)
-      if (confirmIds) {
-        for (const confirmationId of Array.from(confirmIds)) {
-          const pending = pendingGenerationConfirmations.get(confirmationId)
+      // Resolve every pending tool-call approval for this session
+      // immediately on disconnect — same reasoning as the clarification
+      // block above, don't leave the agent's Mastra run suspended
+      // indefinitely waiting on an in-process await nobody can answer
+      // anymore. The underlying Mastra run stays suspended in storage;
+      // only this local await is resolved (as a decline) so the request
+      // handler can finish. The watchdog's 24h sweep is what eventually
+      // declines the Mastra-side run itself if it's never revisited.
+      const approvalIds = sessionActiveToolApprovals.get(sessionId)
+      if (approvalIds) {
+        for (const toolCallId of Array.from(approvalIds)) {
+          const pending = pendingToolApprovals.get(toolCallId)
           if (pending) {
-            clearTimeout(pending.timer)
-            pendingGenerationConfirmations.delete(confirmationId)
+            pendingToolApprovals.delete(toolCallId)
             pending.resolve({ confirmed: false })
             if (pending.messageId && pending.conversationId && pending.idToken) {
               updateGenerationConfirmRequest(pending.idToken, pending.conversationId, pending.messageId, {
@@ -281,7 +285,7 @@ chatRouter.post('/api/chat', async (c) => {
             }
           }
         }
-        sessionActiveGenerationConfirmations.delete(sessionId)
+        sessionActiveToolApprovals.delete(sessionId)
       }
 
       // Resolve any pending upload request immediately, same reasoning as the
