@@ -37,6 +37,25 @@ const stepFormatSchema = z.object({
   toolCalled: z.string().optional(),
 })
 
+// Every prior successfully-completed step's summary, in order — threaded
+// into later steps' prompts (buildStepPrompt) so a .foreach() iteration
+// that runs independently of its siblings still sees what came before it.
+// Declared here (on the WORKFLOW, not just the step) because only the
+// workflow-level stateSchema's default is actually applied by Mastra's
+// _validateInitialState on the first iteration — a step-only stateSchema
+// leaves the runtime value undefined while the type system still infers a
+// populated array, which throws on every run's very first step.
+const workflowStateSchema = z.object({
+  completedSummaries: z.array(z.object({
+    stepId: z.string(), title: z.string(), summary: z.string(),
+  })).default([]),
+  // Set true the moment a step's approval is declined — every later step
+  // checks this and short-circuits to a failed output without calling the
+  // agent, implementing fail-fast decline without a workflow-level abort
+  // primitive.
+  declined: z.boolean().default(false),
+})
+
 const workflowInputSchema = z.object({
   taskId: z.string(),
   taskTitle: z.string(),
@@ -71,12 +90,29 @@ function buildStepPrompt(
   taskTitle: string,
   taskDescription: string | undefined,
   step: { title: string; description?: string; toolName?: string },
-  attachmentContext?: string | null,
-  acceptanceCriteria?: string | null,
+  attachmentContext: string | null | undefined,
+  acceptanceCriteria: string | null | undefined,
+  completedSummaries: Array<{ stepId: string; title: string; summary: string }>,
+  requiresApprovalTools: string[],
 ): string {
+  // Matches routes/tasks.prompt.ts's existing convention for rendering prior
+  // work, rather than inventing a new heading for this workflow's local copy.
+  // Capped to the last 5 steps and 400 chars per summary — unbounded replay
+  // of "the actual output data the user needs" (this schema's own summary
+  // field description) grows every later step's prompt without limit
+  // otherwise.
+  const priorWork = completedSummaries.slice(-5).map((s) =>
+    `- ✅ ${s.title}: ${s.summary.length > 400 ? s.summary.slice(0, 400) + '…' : s.summary}`
+  ).join('\n')
+
+  const governanceNote = requiresApprovalTools.length > 0
+    ? `\n\nTOOL GOVERNANCE:\nThese tools require human approval before use: ${requiresApprovalTools.join(', ')}. If a step requires one of these tools, respond with status "needs_clarification" unless you have already been granted approval for this step.`
+    : ''
+
   return [
     `Task: ${taskTitle}`,
     taskDescription ? `Context: ${taskDescription}` : null,
+    priorWork ? `\n**Previously Completed Steps:**\n${priorWork}` : null,
     attachmentContext ? `\n## Attached Files\n${attachmentContext}` : null,
     acceptanceCriteria
       ? `\n## Definition of Done\n${acceptanceCriteria}\n\nYou MUST verify your output meets these criteria before marking this step complete.`
@@ -85,6 +121,7 @@ function buildStepPrompt(
     `Current step: ${step.title}`,
     step.description ? `Step details: ${step.description}` : null,
     step.toolName ? `Use tool: ${normalizeToolName(step.toolName)}` : null,
+    governanceNote,
     ``,
     `You MUST respond with valid JSON matching:`,
     `{`,
@@ -117,7 +154,8 @@ const runPlanStep = createStep({
     toolName: z.string(),
     reason: z.literal('requires_approval'),
   }),
-  execute: async ({ inputData, resumeData, suspend, suspendData, requestContext, getInitData }) => {
+  stateSchema: workflowStateSchema,
+  execute: async ({ inputData, resumeData, suspend, suspendData, requestContext, getInitData, state, setState }) => {
     // `getInitData<z.infer<typeof workflowInputSchema>>()` — the established
     // pattern used by every other workflow step in this codebase — because
     // `getInitData<typeof workflowInputSchema>()` resolves to the ZodObject
@@ -129,9 +167,19 @@ const runPlanStep = createStep({
       toolName: rawStep.toolName ? normalizeToolName(rawStep.toolName) : rawStep.toolName,
     }
 
+    // A prior step's approval was declined — stop immediately instead of
+    // burning tokens running steps that will only need refunding later.
+    if (state?.declined) {
+      return {
+        stepId: step.stepId, status: 'failed' as const,
+        summary: `Run stopped: an earlier tool call was declined.`,
+      }
+    }
+
     // Resuming a suspended approval — resumeData is only present on that path.
     if (suspendData?.stepId && resumeData) {
       if (!resumeData.approved) {
+        await setState({ ...state, declined: true })
         return {
           stepId: step.stepId, status: 'failed' as const,
           summary: `Tool "${suspendData.toolName}" approval was declined.`,
@@ -154,10 +202,10 @@ const runPlanStep = createStep({
         }
       }
       if (step.toolName && (init.requiresApprovalTools.includes(step.toolName) || init.requiresApprovalTools.includes('*'))) {
-        return await suspend({
-          stepId: step.stepId, title: step.title, toolName: step.toolName,
-          reason: 'requires_approval' as const,
-        })
+        return await suspend(
+          { stepId: step.stepId, title: step.title, toolName: step.toolName, reason: 'requires_approval' as const },
+          { resumeLabel: `approve:${step.stepId}` },
+        )
       }
     }
 
@@ -165,6 +213,7 @@ const runPlanStep = createStep({
     const prompt = buildStepPrompt(
       init.taskTitle, init.taskDescription, step,
       init.attachmentContext, init.acceptanceCriteria,
+      state?.completedSummaries ?? [], init.requiresApprovalTools,
     )
 
     let pass1Result
@@ -218,6 +267,16 @@ const runPlanStep = createStep({
       }
     }
 
+    if (pass2Result.object.status === 'done') {
+      await setState({
+        ...state,
+        completedSummaries: [
+          ...(state?.completedSummaries ?? []),
+          { stepId: step.stepId, title: step.title, summary: pass2Result.object.summary },
+        ],
+      })
+    }
+
     return {
       ...pass2Result.object,
       stepId: step.stepId,
@@ -235,6 +294,7 @@ export const taskExecutionPlanWorkflow = createWorkflow({
   requestContextSchema: tenantContextSchema,
   inputSchema: workflowInputSchema,
   outputSchema: z.array(planStepOutputSchema),
+  stateSchema: workflowStateSchema,
 })
   .map(async ({ inputData }) => inputData.steps)
   .foreach(runPlanStep)
