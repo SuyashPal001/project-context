@@ -40,6 +40,12 @@ export const tenantContextSchema = z.object({
   // query today and by an install query when sharing ships — the resolver
   // does not change either way. Unset means "unconfigured": fail open.
   allowedSubAgents: z.array(z.string()).optional(),
+  // The delegate's spec id, stamped by onDelegationStart (subagents/hooks.ts)
+  // alongside the agentName rewrite. `agentId` deliberately keeps the HOST's
+  // real UUID — see the comment in hooks.ts on why it is not overwritten —
+  // so this is where a delegate-scoped skills resolver (none exists yet)
+  // would read which delegate it's running as.
+  subAgentId: z.string().optional(),
   // Not JSON-serializable — a live client reference carried through context so
   // platformAgent.ts's tools resolver reuses the same instance instead of
   // creating a second one. RequestContext.toJSON() silently skips it.

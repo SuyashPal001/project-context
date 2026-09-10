@@ -11,16 +11,18 @@ export interface HookDeps {
 }
 
 /**
- * The stable per-stream facts `onDelegationComplete` needs but cannot read
- * off its own context.
+ * The stable per-stream facts the hooks need but cannot fully trust their own
+ * per-delegation context for.
  *
- * @mastra/core 1.64's `DelegationCompleteContext` (agent.types.d.ts) carries
- * no `requestContext` field the way `DelegationStartContext` does, so there
- * is nowhere on that hook's own argument to read tenantId/conversationId/
- * agentId from. These three are constant for the whole stream() call this
- * config is attached to (chatStream.ts's SSE path, or the WebSocket path in
- * index.ts), so the call site supplies them once here instead of the hook
- * reaching for a context field that does not exist.
+ * `onDelegationComplete`'s context (@mastra/core 1.64, agent.types.d.ts) has
+ * no `requestContext` field at all, so it has nowhere else to read
+ * tenantId/conversationId/agentId from. `onDelegationStart`'s context does
+ * carry a `requestContext`, but sourcing identity from two different places
+ * across the two hooks let a refusal be billed to the wrong tenant (or to
+ * none, silently dropping the audit row — see the tenantId fallback below).
+ * Both hooks now prefer `host`, which is constant for the whole stream() call
+ * this config is attached to, and fall back to the request context only when
+ * `host` does not carry a value.
  */
 export interface DelegationHost {
   tenantId: string
@@ -51,12 +53,27 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
     onDelegationStart: async (context: DelegationStartContext) => {
       const ctx = context.requestContext
       const spec = getSpec(context.primitiveId)
-      const tenantId = (ctx.get('tenantId') as string | undefined) ?? ''
+      const tenantId = host.tenantId || (ctx.get('tenantId') as string | undefined) || ''
+      const agentId = host.agentId ?? (ctx.get('agentId') as string | undefined) ?? null
+      const conversationId = host.conversationId ?? (ctx.get('sessionId') as string | undefined) ?? null
 
       if (!spec) {
         // resolveDelegates cannot return an unregistered delegate, so this is
-        // a registry bug rather than a routing one — refuse loudly.
-        return { proceed: false, rejectionReason: `"${context.primitiveId}" is not a registered sub-agent.` }
+        // a registry bug rather than a routing one — the one refusal class
+        // most worth having in the table.
+        const rejectionReason = `"${context.primitiveId}" is not a registered sub-agent.`
+        await record({
+          tenantId,
+          agentId,
+          conversationId,
+          primitiveId: context.primitiveId,
+          runId: context.runId,
+          toolCallId: context.toolCallId,
+          success: false,
+          durationMs: 0,
+          rejectionReason,
+        })
+        return { proceed: false, rejectionReason }
       }
 
       // 1. Money first: refuse before anything is spent.
@@ -64,8 +81,8 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
       if (!decision.allowed) {
         await record({
           tenantId,
-          agentId: (ctx.get('agentId') as string | undefined) ?? null,
-          conversationId: (ctx.get('sessionId') as string | undefined) ?? null,
+          agentId,
+          conversationId,
           primitiveId: spec.id,
           runId: context.runId,
           toolCallId: context.toolCallId,
@@ -78,11 +95,35 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
 
       // 2. Identity. Mastra hands the sub-agent a near-complete copy of the
       // parent's context (agent-Dp3vcrIx.cjs:35119 excludes only four internal
-      // keys), so without this the delegate runs as Olmo: Olmo's agentId — and
-      // therefore Olmo's attached skills — and Olmo's prompt override layered
-      // on top of its own instructions. Only the tenant-level facts survive.
-      ctx.set('agentId', spec.id)
+      // keys). `agentName` is rewritten to the delegate's spec id — that is
+      // what resolveDelegates gates on, so without this a delegate would
+      // inherit agentName='olmo', resolve Olmo's own delegate map, and
+      // re-delegate in a circle. `subAgentId` carries the same spec id for
+      // any future delegate-scoped skills resolver to read.
+      //
+      // `agentId` is deliberately left UNCHANGED — it keeps the HOST's real
+      // agent UUID. The delegates' own tools (generateImage.ts:36,
+      // editImage.ts:43, generateVideo.ts:36, generateSong.ts:34) read
+      // requestContext.get('agentId') and pass it to spendCredits as
+      // actorId, which packages/foundation/credits/src/spend.ts:54 binds as
+      // `${actorId}::uuid`. `agents.id` is a Postgres uuid column, so writing
+      // a spec id (or '') there makes the charge throw AFTER the paid
+      // generation already ran — cost spent, tenant not billed. The leak
+      // this would have closed (a delegate resolving the supervisor's
+      // attached skills) is inert today because no delegate declares a
+      // skills resolver; the billing break is live money. When a DB-backed
+      // registry lands and delegates have real agent rows, `agentId` can
+      // carry a real per-delegate UUID again.
+      //
+      // `agentSystemPrompt` and `personaPersonality` are cleared so the
+      // delegate runs on its own instructions, not Olmo's prompt override
+      // layered on top. Everything else on the context — tenantId, userId,
+      // sessionId, selectedModel, thinkingBudget, maxDataSensitivity,
+      // testSkillInstallId, allowedSubAgents, __mcpClient — survives the copy
+      // by design; `allowedSubAgents` surviving in particular is correct and
+      // load-bearing for resolveDelegates' entitlement filter.
       ctx.set('agentName', spec.id)
+      ctx.set('subAgentId', spec.id)
       ctx.set('agentSystemPrompt', '')
       ctx.set('personaPersonality', '')
 
