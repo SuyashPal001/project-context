@@ -6,6 +6,16 @@ import { refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
 import { mastra } from '../mastra/index.js'
 import type { TenantContext } from '../mastra/context.js'
 
+// Shape of a completed `task-execution-plan` run's `result.result` — shared
+// between the initial run.start() success path here and the resume route's
+// run.resume() success path (routes/tasks.ts) so both call
+// finishSuccessfulWorkflowRun with the same typed shape instead of an `as never` cast.
+export type WorkflowStepOutputs = Array<{
+  stepId: string; status: string; summary: string
+  toolCalled?: string; toolResult?: unknown
+  inputTokens?: number; outputTokens?: number
+}>
+
 export async function postWorkflowUpdate(
   workflowRunId: string,
   body: Record<string, unknown>,
@@ -113,11 +123,7 @@ export async function runMastraWorkflowSteps(
   // status === 'success' — same completion accounting as the resume route
   // (routes/tasks.ts's POST /api/workflows/:workflowRunId/resume), shared
   // here rather than duplicated.
-  const stepOutputs = result.result as Array<{
-    stepId: string; status: string; summary: string
-    toolCalled?: string; toolResult?: unknown
-    inputTokens?: number; outputTokens?: number
-  }>
+  const stepOutputs = result.result as WorkflowStepOutputs
   await finishSuccessfulWorkflowRun(workflowRunId, tenantId, stepOutputs, traceId, agentId, model)
 }
 
@@ -132,11 +138,7 @@ export async function runMastraWorkflowSteps(
 export async function finishSuccessfulWorkflowRun(
   workflowRunId: string,
   tenantId: string,
-  stepOutputs: Array<{
-    stepId: string; status: string; summary: string
-    toolCalled?: string; toolResult?: unknown
-    inputTokens?: number; outputTokens?: number
-  }>,
+  stepOutputs: WorkflowStepOutputs,
   traceId: string,
   agentId: string,
   model: string,

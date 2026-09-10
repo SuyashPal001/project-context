@@ -4,8 +4,9 @@ import { platformAgent, formatterAgent } from '../index.js'
 import { tenantContextSchema } from '../context.js'
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
-// Mirrors mastra/workflow.ts's StepInputSchema/StepOutputSchema exactly — the
-// plan's shape hasn't changed, only how each step executes.
+// Mirrors the pre-migration hand-rolled step loop's StepInputSchema/
+// StepOutputSchema exactly — the plan's shape hasn't changed, only how each
+// step executes.
 
 const planStepInputSchema = z.object({
   stepId: z.string(),
@@ -51,7 +52,7 @@ const workflowInputSchema = z.object({
   acceptanceCriteria: z.string().nullable(),
 })
 
-// ─── Tool-name normalization (verbatim from mastra/workflow.ts) ──────────────
+// ─── Tool-name normalization (ported from the pre-migration hand-rolled step loop) ──
 
 const TOOL_NAME_MAP: Record<string, string> = {
   web_search: 'internet_search',
@@ -100,9 +101,9 @@ function buildStepPrompt(
 // ─── Step: runPlanStep ────────────────────────────────────────────────────────
 // One step definition, iterated by .foreach() over workflowInputSchema.steps.
 // Policy checks (blocked/allowed/requiresApproval) run before any agent call —
-// same order mastra/workflow.ts used. requiresApproval suspends via Mastra's
-// native mechanism instead of the old code's early `return` that discarded
-// all remaining-step state.
+// same order the pre-migration hand-rolled step loop used. requiresApproval
+// suspends via Mastra's native mechanism instead of the old code's early
+// `return` that discarded all remaining-step state.
 
 const runPlanStep = createStep({
   id: 'run-plan-step',
@@ -117,17 +118,10 @@ const runPlanStep = createStep({
     reason: z.literal('requires_approval'),
   }),
   execute: async ({ inputData, resumeData, suspend, suspendData, requestContext, getInitData }) => {
-    // NOTE ON DEVIATION FROM THE BRIEF'S LITERAL CODE:
-    // The brief's snippet reads `getInitData<typeof workflowInputSchema>()`.
-    // Verified against node_modules/@mastra/core/dist/workflows/step.d.ts:33 —
-    //   getInitData<T>(): T extends Workflow<...> ? InferStandardSchemaOutput<T['inputSchema']> : T
-    // `typeof workflowInputSchema` is a ZodObject type, not a Workflow type, so the
-    // conditional's false branch applies and T is returned verbatim (the schema type,
-    // not the inferred data). Every other workflow step in this codebase
-    // (taskWorkflow.ts, roadmapWorkflow.ts, prdWorkflow.ts, taskExecution.ts,
-    // documentWorkflow.plan.ts, ingestionWorkflow.classify.ts) calls
-    // `getInitData<z.infer<typeof workflowInputSchema>>()` instead — that is the
-    // correct, established pattern, and is what's used here.
+    // `getInitData<z.infer<typeof workflowInputSchema>>()` — the established
+    // pattern used by every other workflow step in this codebase — because
+    // `getInitData<typeof workflowInputSchema>()` resolves to the ZodObject
+    // schema type itself rather than the inferred data type.
     const init = getInitData<z.infer<typeof workflowInputSchema>>()
     const rawStep = inputData
     const step = {
@@ -146,7 +140,7 @@ const runPlanStep = createStep({
       // Approved — fall through to execute the step below, exactly as a
       // first-run step with no approval requirement would.
     } else {
-      // First run — policy checks, in the same order mastra/workflow.ts used.
+      // First run — policy checks, in the same order the pre-migration hand-rolled step loop used.
       if (step.toolName && init.blockedTools.includes(step.toolName)) {
         return {
           stepId: step.stepId, status: 'failed' as const,
@@ -159,7 +153,7 @@ const runPlanStep = createStep({
           summary: `Tool "${step.toolName}" is not in the allowed tools list for this agent.`,
         }
       }
-      if (step.toolName && init.requiresApprovalTools.includes(step.toolName)) {
+      if (step.toolName && (init.requiresApprovalTools.includes(step.toolName) || init.requiresApprovalTools.includes('*'))) {
         return await suspend({
           stepId: step.stepId, title: step.title, toolName: step.toolName,
           reason: 'requires_approval' as const,

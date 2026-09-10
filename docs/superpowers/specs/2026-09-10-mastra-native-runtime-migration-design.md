@@ -302,19 +302,27 @@ const taskExecutionWorkflow = createWorkflow({
 ```
 
 A run starts via `createRunAsync()` then `run.start({ inputData })`, and
-resumes via `run.resume({ resumeData, step })` — not
-`run.resume({ decision })` as an earlier draft of this spec had it; the
-resume payload must match the step's declared `resumeSchema`.
+resumes via `run.resume({ step, resumeData, forEachIndex })` — not
+`run.resume({ decision })` as an earlier draft of this spec had it, and not
+`run.resume({ resumeData, step })` alone as a later draft had it either;
+under `.foreach()` the resume call needs a third field. The resume payload
+must match the step's declared `resumeSchema`.
 `settleTask()`/`refundTask()` still run after the workflow
 completes/fails — unchanged.
 
-**Open before implementation:** can a step suspend inside `.foreach()`,
-and does `resume()` land on the correct iteration? Docs describe a resumed
-workflow restarting from the step where it paused, but under `foreach` one
-step definition executes many times across the plan's items — anything
-relying on human approval inside that per-item loop depends on the answer.
-Verify against the installed bundle (or a throwaway spike) before the plan
-commits to this shape; see open question 3.
+**Resolved (was open question 3): a step DOES suspend correctly inside
+`.foreach()`, targeted by index.** Confirmed against the installed bundle's
+own docs (`docs-workflows-suspend-and-resume.md`): Mastra tracks a
+per-iteration `foreachIndex` in the run's suspended state, and
+`createWorkflowStateReader(state).getResumeLabel(...)` returns a label
+carrying that `foreachIndex` for a foreach suspension. Resuming the exact
+suspended item is `run.resume({ step, resumeData, forEachIndex })` — not
+implicit; the caller must read `foreachIndex` off the suspended state (via
+`reader.getSuspendedStep()`/`getResumeLabel()`) and pass it back. One step
+definition executing many times across the plan's items does not lose or
+conflate per-item suspend state — each iteration's suspend is independently
+addressable. This unblocks Plan 3 (Tasks workflow) on the `.foreach()`
+shape chosen above; no architecture change needed.
 
 ## Testing
 
@@ -355,9 +363,7 @@ commits to this shape; see open question 3.
    age alone repeats the false-positive pattern from the earlier watchdog
    bug that marked every non-ingestible file `failed` by scanning too
    broad a condition.
-3. Suspend-inside-`.foreach()` semantics: unverified whether a step
-   defined once but iterated by `.foreach()` resumes on the correct item
-   after `run.resume()`, or restarts the whole foreach. Blocks Design
-   section 3 if approval needs to pause mid-plan rather than only at the
-   end — verify against the installed bundle, or spike it, before the
-   plan for the Tasks path is written.
+3. ~~Suspend-inside-`.foreach()` semantics~~ — **resolved, see Design
+   section 3.** A step suspends correctly per-iteration; resume targets the
+   exact item via `forEachIndex` read off `createWorkflowStateReader`'s
+   suspended-state accessors. No longer blocks Plan 3.

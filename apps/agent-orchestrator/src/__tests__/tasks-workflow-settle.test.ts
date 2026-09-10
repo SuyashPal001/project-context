@@ -47,6 +47,7 @@ describe('runMastraWorkflowSteps — settle on success', () => {
     await runMastraWorkflowSteps('wf-1', 'run-1', 'agent-1', 'tenant-1', STEPS as never, null, false, 'trace-1', 'gemini-2.5-pro')
 
     expect(refundTask).not.toHaveBeenCalled()
+    expect(settleTask).toHaveBeenCalledTimes(1)
     expect(settleTask).toHaveBeenCalledWith({
       tenantId: 'tenant-1', taskId: 'run-1', agentId: 'agent-1', model: 'gemini-2.5-pro',
       inputTokens: 200, outputTokens: 50,

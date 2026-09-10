@@ -22,7 +22,7 @@ function isAuthorized(provided: string): boolean {
 
 const updateSchema = z.object({
   tenantId: z.string().uuid().optional(),
-  mastraRunId: z.string().optional(),
+  mastraRunId: z.string().min(1).optional(),
   status: z.enum(['running', 'awaiting_approval', 'completed', 'failed']).optional(),
   stepsCompleted: z.array(z.unknown()).optional(),
   toolsCalled: z.array(z.unknown()).optional(),
