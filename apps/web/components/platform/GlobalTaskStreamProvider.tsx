@@ -26,6 +26,7 @@ import { api } from '@/lib/api';
  *   task.step.updated          — step status, agentOutput, timestamps
  *   task.clarification.requested — task status → blocked, appends event
  *   task.comment.added         — appends to ['task-comments', taskId]
+ *   workflow_run.awaiting_approval — invalidates ['agent-runs'], toasts
  *
  * BUG-10: Reconnect behaviour
  *   - Exponential backoff: 1s → 2s → 4s → 8s → 16s → 30s cap, max 6 retries.
@@ -324,6 +325,17 @@ export function GlobalTaskStreamProvider({ children }: { children: React.ReactNo
                 const existing: any[] = old?.data ?? [];
                 if (existing.some((c: any) => c.id === comment.id)) return old;
                 return { ...old, data: [...existing, comment] };
+              });
+            } else if (message.type === 'workflow_run.awaiting_approval') {
+              // Pushed from products/agent-platform/packages/api/routes/internal/workflows.ts
+              // whenever a workflow run's status update carries a non-null pendingApproval.
+              // No cache write — the runs list/detail views read pendingApproval straight
+              // from the API, so invalidating is enough to pick it up.
+              const workflowRunId = message.workflowRunId as string;
+              if (!workflowRunId) return;
+              queryClient.invalidateQueries({ queryKey: ['agent-runs'] });
+              toast('Approval needed', {
+                description: 'A workflow run is waiting for your approval.',
               });
             }
           } catch {
