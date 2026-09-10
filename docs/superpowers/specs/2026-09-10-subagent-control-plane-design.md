@@ -1,7 +1,11 @@
 # Sub-agent control plane for the Olmo supervisor
 
 Date: 2026-09-10
-Status: draft — depends on `2026-09-10-mastra-native-runtime-migration-design.md` landing first
+Status: approved — dependency satisfied. The native runtime migration landed on
+`main`: tool-call approvals (`c8c8d1ca`, `c279a2d5`) and the native task-execution
+workflow (`4c44eae9`, with the hand-rolled `runMastraWorkflow` deleted in `986728d0`).
+Non-goals confirmed as written; the smoke consumer is a throwaway stub delegate, not
+the first marketing specialist.
 
 ## Problem
 
