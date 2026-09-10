@@ -15,6 +15,13 @@ const AGENT_REGISTRY: Record<string, Agent> = {
 }
 
 /**
+ * Re-exported so a call site can test `activeAgent === platformAgent` — the
+ * Olmo-only gate on the delegation options (routes/chatStream.ts) — against the
+ * same instance resolveAgent hands out.
+ */
+export { platformAgent }
+
+/**
  * Resolve a Mastra agent from the conversation's agent name string.
  * Exact match first, then substring match, then Saarthi default.
  */

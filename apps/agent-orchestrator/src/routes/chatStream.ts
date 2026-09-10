@@ -2,7 +2,7 @@ import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@m
 import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type ArtifactRefPayload, type AttachmentPayload } from '../persistence.js'
 import { downloadMediaAttachment, buildAttachmentNote } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
-import { resolveAgent, resolveAgentLabel } from '../mastra/registry.js'
+import { resolveAgent, resolveAgentLabel, platformAgent } from '../mastra/registry.js'
 import { olmoDelegationOptions } from '../mastra/subagents/streamOptions.js'
 import { runWithGuardrailContext } from '../mastra/guardrails.js'
 import { runFairnessCheck } from '../fairness/index.js'
@@ -299,6 +299,18 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
+    // Olmo ONLY. The delegation hooks refuse any primitive that is not a
+    // registered sub-agent spec, so handing them to another agent that
+    // delegates on its own — pmAgent's static prd/roadmap/task map — would
+    // refuse every one of its delegations. maxSteps: 20 is Olmo's supervisor
+    // budget and is scoped the same way. The same object goes into the
+    // approve/decline resumes below: a resumed run rebuilds its tools and
+    // step limit from the options passed to it, and restores only memory and
+    // stream state from the snapshot, so omitting it there drops both.
+    const olmoOptions = (activeAgent as unknown) === (platformAgent as unknown)
+      ? olmoDelegationOptions({ tenantId, conversationId, agentId })
+      : {}
+
     let fullText = ''
     let planResult: unknown
     let toolCallCount = 0
@@ -318,7 +330,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         },
         requestContext,
         providerOptions: { 'inference-gateway': { thinkingBudget } },
-        ...olmoDelegationOptions({ tenantId, conversationId, agentId }),
+        ...olmoOptions,
       })
 
     turnLoop: while (true) {
@@ -381,7 +393,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // 1). Fail open rather than hang the turn on an invisible card.
           if (!meta || !toolCallId) {
             console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — auto-approving`)
-            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext })
+            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, ...olmoOptions })
             continue turnLoop
           }
 
@@ -447,8 +459,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // Without this, approving a create_skill draft resumes with no
           // sendEvent and the skill is never saved.
           currentStream = confirmed
-            ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext })
-            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? 'Declined by user', requestContext })
+            ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, ...olmoOptions })
+            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? 'Declined by user', requestContext, ...olmoOptions })
           continue turnLoop
         }
         case 'tool-result': {

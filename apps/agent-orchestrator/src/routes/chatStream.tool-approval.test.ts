@@ -16,11 +16,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // external deps) and '@mastra/core/request-context' (real RequestContext
 // class — safe to construct in-process, no I/O).
 
-const { approveToolCall, declineToolCall, streamMock } = vi.hoisted(() => ({
-  approveToolCall: vi.fn(),
-  declineToolCall: vi.fn(),
-  streamMock: vi.fn(),
-}))
+const { approveToolCall, declineToolCall, streamMock, agents } = vi.hoisted(() => {
+  const approveToolCall = vi.fn()
+  const declineToolCall = vi.fn()
+  const streamMock = vi.fn()
+  // Two distinct fake agents sharing the same spies. chatStream.ts gates the
+  // Olmo delegation options on `activeAgent === platformAgent`, so which one
+  // resolveAgent returns decides whether those options are sent.
+  const olmo = { stream: streamMock, approveToolCall, declineToolCall }
+  const other = { stream: streamMock, approveToolCall, declineToolCall }
+  return { approveToolCall, declineToolCall, streamMock, agents: { olmo, other, current: 'other' as 'olmo' | 'other' } }
+})
 
 function fakeStream(chunks: any[], runId: string) {
   return {
@@ -30,12 +36,9 @@ function fakeStream(chunks: any[], runId: string) {
 }
 
 vi.mock('../mastra/registry.js', () => ({
-  resolveAgent: () => ({
-    stream: streamMock,
-    approveToolCall,
-    declineToolCall,
-  }),
+  resolveAgent: () => agents[agents.current],
   resolveAgentLabel: () => 'test-agent',
+  platformAgent: agents.olmo,
 }))
 
 vi.mock('../mastra/tools/generationApproval.js', () => ({
@@ -160,6 +163,7 @@ describe('runChatStream — tool-call-approval round trip', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     pendingToolApprovals.clear()
+    agents.current = 'other'
   })
 
   it('approves: sends generation_confirm_request, then resumes via approveToolCall', async () => {
@@ -222,5 +226,70 @@ describe('runChatStream — tool-call-approval round trip', () => {
       requestContext: streamedRequestContext,
     })
     expect(approveToolCall).not.toHaveBeenCalled()
+  })
+})
+
+describe('runChatStream — Olmo-only delegation options', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pendingToolApprovals.clear()
+  })
+
+  async function runOneApproval(confirmed: boolean) {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-9', args: { prompt: 'x' } } }],
+      'run-9',
+    ))
+    const resumed = fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-9')
+    if (confirmed) approveToolCall.mockResolvedValueOnce(resumed)
+    else declineToolCall.mockResolvedValueOnce(resumed)
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+    await vi.waitFor(() =>
+      expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({ confirmationId: 'tc-9' }))
+    )
+    pendingToolApprovals.get('tc-9')?.resolve(confirmed ? { confirmed: true } : { confirmed: false, declineReason: 'no' })
+    await runPromise
+    return streamMock.mock.calls[0][1]
+  }
+
+  it('does not hand the delegation hooks or maxSteps to a non-Olmo agent (e.g. pmAgent)', async () => {
+    // pmAgent delegates to its own static prd/roadmap/task map; the hooks
+    // would refuse every one of those as an unregistered sub-agent.
+    agents.current = 'other'
+    const streamOpts = await runOneApproval(true)
+    expect(streamOpts).not.toHaveProperty('delegation')
+    expect(streamOpts).not.toHaveProperty('maxSteps')
+    expect(approveToolCall.mock.calls[0][0]).not.toHaveProperty('delegation')
+    expect(approveToolCall.mock.calls[0][0]).not.toHaveProperty('maxSteps')
+  })
+
+  it('sends the delegation config and maxSteps to Olmo, and again on the approve resume', async () => {
+    agents.current = 'olmo'
+    const streamOpts = await runOneApproval(true)
+    expect(streamOpts.maxSteps).toBe(20)
+    expect(typeof streamOpts.delegation?.onDelegationStart).toBe('function')
+    // A resumed run rebuilds tools and the step limit from these options, not
+    // from the snapshot — so the same config must be passed back in.
+    expect(approveToolCall).toHaveBeenCalledWith({
+      runId: 'run-9',
+      toolCallId: 'tc-9',
+      requestContext: streamOpts.requestContext,
+      maxSteps: 20,
+      delegation: streamOpts.delegation,
+    })
+  })
+
+  it('sends the delegation config and maxSteps on the decline resume too', async () => {
+    agents.current = 'olmo'
+    const streamOpts = await runOneApproval(false)
+    expect(declineToolCall).toHaveBeenCalledWith({
+      runId: 'run-9',
+      toolCallId: 'tc-9',
+      reason: 'no',
+      requestContext: streamOpts.requestContext,
+      maxSteps: 20,
+      delegation: streamOpts.delegation,
+    })
   })
 })
