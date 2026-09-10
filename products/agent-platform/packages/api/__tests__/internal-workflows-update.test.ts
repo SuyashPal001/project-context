@@ -16,6 +16,8 @@ vi.mock('@serverless-saas/agent-schema/agents', () => ({ agentWorkflowRuns: {} }
 vi.mock('@serverless-saas/database/schema/audit', () => ({ auditLog: {} }))
 vi.mock('../lib/websocket', () => ({ pushWebSocketEvent: vi.fn().mockResolvedValue(undefined) }))
 
+import { pushWebSocketEvent } from '../lib/websocket'
+
 process.env.INTERNAL_SERVICE_KEY = 'test-key'
 
 describe('POST /internal/workflows/:workflowRunId/update', () => {
@@ -55,6 +57,10 @@ describe('POST /internal/workflows/:workflowRunId/update', () => {
       status: 'awaiting_approval',
       pendingApproval,
       pendingApprovalAt: new Date('2026-01-01T00:00:00.000Z'),
+    }))
+    expect(pushWebSocketEvent).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111', expect.objectContaining({
+      type: 'workflow_run.awaiting_approval',
+      workflowRunId: 'run-1',
     }))
   })
 

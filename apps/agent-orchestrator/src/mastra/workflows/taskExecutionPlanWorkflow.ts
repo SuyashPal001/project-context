@@ -18,6 +18,10 @@ const planStepInputSchema = z.object({
 
 const planStepOutputSchema = z.object({
   stepId: z.string(),
+  // Optional: the plan step's human-readable title, threaded through so
+  // downstream consumers (finishSuccessfulWorkflowRun's wfStepsCompleted)
+  // can show a real title instead of falling back to the raw stepId.
+  title: z.string().optional(),
   status: z.enum(['done', 'needs_clarification', 'failed']),
   summary: z.string(),
   reasoning: z.string().optional(),
@@ -86,6 +90,14 @@ function normalizeToolName(toolName: string): string {
   return toolName
 }
 
+// Single source of truth for the suspend/resume label string — the
+// suspend() call site below and both postWorkflowUpdate sites in
+// routes/tasks.workflow.ts (initial suspend and re-suspend) all use this
+// instead of independently constructing `approve:${stepId}`.
+export function approvalResumeLabel(stepId: string): string {
+  return `approve:${stepId}`
+}
+
 function buildStepPrompt(
   taskTitle: string,
   taskDescription: string | undefined,
@@ -94,6 +106,10 @@ function buildStepPrompt(
   acceptanceCriteria: string | null | undefined,
   completedSummaries: Array<{ stepId: string; title: string; summary: string }>,
   requiresApprovalTools: string[],
+  // True only on the fall-through path after a resumed, approved step — lets
+  // the governance note tell the agent THIS step was just granted approval,
+  // instead of repeating the generic warning it may read as still pending.
+  approvalGranted: boolean,
 ): string {
   // Matches routes/tasks.prompt.ts's existing convention for rendering prior
   // work, rather than inventing a new heading for this workflow's local copy.
@@ -106,7 +122,9 @@ function buildStepPrompt(
   ).join('\n')
 
   const governanceNote = requiresApprovalTools.length > 0
-    ? `\n\nTOOL GOVERNANCE:\nThese tools require human approval before use: ${requiresApprovalTools.join(', ')}. If a step requires one of these tools, respond with status "needs_clarification" unless you have already been granted approval for this step.`
+    ? (approvalGranted
+      ? `\n\nTOOL GOVERNANCE:\nApproval for "${step.toolName}" has been granted for this step — proceed.`
+      : `\n\nTOOL GOVERNANCE:\nThese tools require human approval before use: ${requiresApprovalTools.join(', ')}. If a step requires one of these tools, respond with status "needs_clarification" unless you have already been granted approval for this step.`)
     : ''
 
   return [
@@ -171,40 +189,42 @@ const runPlanStep = createStep({
     // burning tokens running steps that will only need refunding later.
     if (state?.declined) {
       return {
-        stepId: step.stepId, status: 'failed' as const,
+        stepId: step.stepId, title: step.title, status: 'failed' as const,
         summary: `Run stopped: an earlier tool call was declined.`,
       }
     }
 
     // Resuming a suspended approval — resumeData is only present on that path.
+    let approvalGranted = false
     if (suspendData?.stepId && resumeData) {
       if (!resumeData.approved) {
         await setState({ ...state, declined: true })
         return {
-          stepId: step.stepId, status: 'failed' as const,
+          stepId: step.stepId, title: step.title, status: 'failed' as const,
           summary: `Tool "${suspendData.toolName}" approval was declined.`,
         }
       }
       // Approved — fall through to execute the step below, exactly as a
       // first-run step with no approval requirement would.
+      approvalGranted = true
     } else {
       // First run — policy checks, in the same order the pre-migration hand-rolled step loop used.
       if (step.toolName && init.blockedTools.includes(step.toolName)) {
         return {
-          stepId: step.stepId, status: 'failed' as const,
+          stepId: step.stepId, title: step.title, status: 'failed' as const,
           summary: `Tool "${step.toolName}" is blocked by agent policy.`,
         }
       }
       if (step.toolName && init.allowedTools.length > 0 && !init.allowedTools.includes(step.toolName)) {
         return {
-          stepId: step.stepId, status: 'failed' as const,
+          stepId: step.stepId, title: step.title, status: 'failed' as const,
           summary: `Tool "${step.toolName}" is not in the allowed tools list for this agent.`,
         }
       }
       if (step.toolName && (init.requiresApprovalTools.includes(step.toolName) || init.requiresApprovalTools.includes('*'))) {
         return await suspend(
           { stepId: step.stepId, title: step.title, toolName: step.toolName, reason: 'requires_approval' as const },
-          { resumeLabel: `approve:${step.stepId}` },
+          { resumeLabel: approvalResumeLabel(step.stepId) },
         )
       }
     }
@@ -214,6 +234,7 @@ const runPlanStep = createStep({
       init.taskTitle, init.taskDescription, step,
       init.attachmentContext, init.acceptanceCriteria,
       state?.completedSummaries ?? [], init.requiresApprovalTools,
+      approvalGranted,
     )
 
     let pass1Result
@@ -262,7 +283,7 @@ const runPlanStep = createStep({
 
     if (!pass2Result.object) {
       return {
-        stepId: step.stepId, status: 'failed' as const,
+        stepId: step.stepId, title: step.title, status: 'failed' as const,
         summary: `Formatter returned no structured output. Raw: ${String(pass2Result.text ?? '').slice(0, 200)}`,
       }
     }
@@ -280,6 +301,7 @@ const runPlanStep = createStep({
     return {
       ...pass2Result.object,
       stepId: step.stepId,
+      title: step.title,
       latencyMs: stepLatencyMs,
       inputTokens: (pass1Usage?.inputTokens ?? 0) + (pass2Usage?.inputTokens ?? 0),
       outputTokens: (pass1Usage?.outputTokens ?? 0) + (pass2Usage?.outputTokens ?? 0),

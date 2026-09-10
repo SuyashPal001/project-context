@@ -5,13 +5,14 @@ import { fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, fetchAg
 import { refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
 import { mastra } from '../mastra/index.js'
 import type { TenantContext } from '../mastra/context.js'
+import { approvalResumeLabel } from '../mastra/workflows/taskExecutionPlanWorkflow.js'
 
 // Shape of a completed `task-execution-plan` run's `result.result` — shared
 // between the initial run.start() success path here and the resume route's
 // run.resume() success path (routes/tasks.ts) so both call
 // finishSuccessfulWorkflowRun with the same typed shape instead of an `as never` cast.
 export type WorkflowStepOutputs = Array<{
-  stepId: string; status: string; summary: string
+  stepId: string; title?: string; status: string; summary: string
   toolCalled?: string; toolResult?: unknown
   inputTokens?: number; outputTokens?: number
 }>
@@ -114,15 +115,24 @@ export async function runMastraWorkflowSteps(
       // Should be unreachable — runPlanStep is the workflow's only step, and
       // a 'suspended' result always carries this step's payload. Logged
       // rather than thrown so a Mastra internals change surfaces here
-      // instead of crashing the caller silently.
+      // instead of crashing the caller silently. Since there's no usable
+      // descriptor, this row can never be approved and would otherwise sit
+      // forever unrefunded (the watchdog sweep skips rows with no
+      // resumeLabel) — treat it as a failure instead.
       console.error(JSON.stringify({ level: 'error', msg: 'suspended result missing run-plan-step payload', traceId, workflowRunId, ts: Date.now() }))
+      await refundTask({ tenantId, taskId: workflowRunId })
+      await postWorkflowUpdate(workflowRunId, {
+        status: 'failed', pendingApproval: null, pendingApprovalAt: null, completedAt: new Date().toISOString(),
+      }, traceId)
+      return
     }
     await postWorkflowUpdate(workflowRunId, {
       status: 'awaiting_approval',
-      pendingApproval: payload ? {
+      tenantId,
+      pendingApproval: {
         stepId: payload.stepId, title: payload.title, toolName: payload.toolName, reason: payload.reason,
-        resumeLabel: `approve:${payload.stepId}`,
-      } : null,
+        resumeLabel: approvalResumeLabel(payload.stepId),
+      },
       pendingApprovalAt: new Date().toISOString(),
     }, traceId)
     console.log(JSON.stringify({ level: 'info', msg: 'workflow suspended for approval', traceId, workflowRunId, mastraRunId: run.runId, ts: Date.now() }))
@@ -170,7 +180,7 @@ export async function finishSuccessfulWorkflowRun(
   const wfInputTokens = stepOutputs.reduce((sum, s) => sum + (s.inputTokens ?? 0), 0)
   const wfOutputTokens = stepOutputs.reduce((sum, s) => sum + (s.outputTokens ?? 0), 0)
   const wfStepsCompleted = stepOutputs.map((s) => ({
-    stepId: s.stepId, title: s.stepId, status: s.status, summary: s.summary,
+    stepId: s.stepId, title: s.title ?? s.stepId, status: s.status, summary: s.summary,
     toolCalled: s.toolCalled ?? null, completedAt: new Date().toISOString(),
   }))
   const wfToolsCalled = stepOutputs
@@ -181,6 +191,7 @@ export async function finishSuccessfulWorkflowRun(
     await refundTask({ tenantId, taskId: workflowRunId })
     await postWorkflowUpdate(workflowRunId, {
       status: 'failed', stepsCompleted: wfStepsCompleted, toolsCalled: wfToolsCalled,
+      pendingApproval: null, pendingApprovalAt: null,
       completedAt: new Date().toISOString(),
     }, traceId)
     return
@@ -194,6 +205,7 @@ export async function finishSuccessfulWorkflowRun(
   await postWorkflowUpdate(workflowRunId, {
     status: 'completed', stepsCompleted: wfStepsCompleted, toolsCalled: wfToolsCalled,
     insights: wfStepsCompleted.map((s) => s.summary).filter(Boolean).join('\n'),
+    pendingApproval: null, pendingApprovalAt: null,
     completedAt: new Date().toISOString(),
   }, traceId)
 }
@@ -236,9 +248,10 @@ export async function resumeWorkflowRun(args: {
       const payload = (result.suspendPayload as Record<string, { stepId: string; title: string; toolName: string; reason: 'requires_approval' }> | undefined)?.['run-plan-step']
       await postWorkflowUpdate(workflowRunId, {
         status: 'awaiting_approval',
+        tenantId,
         pendingApproval: payload ? {
           stepId: payload.stepId, title: payload.title, toolName: payload.toolName, reason: payload.reason,
-          resumeLabel: `approve:${payload.stepId}`,
+          resumeLabel: approvalResumeLabel(payload.stepId),
         } : null,
         pendingApprovalAt: new Date().toISOString(),
       }, traceId)
@@ -256,7 +269,6 @@ export async function resumeWorkflowRun(args: {
 
     const modelSelection = await fetchAgentModelSelection(agentId)
     const model = modelSelection?.model ?? DEFAULT_TASK_MODEL
-    await postWorkflowUpdate(workflowRunId, { pendingApproval: null, pendingApprovalAt: null }, traceId)
     await finishSuccessfulWorkflowRun(workflowRunId, tenantId, result.result as WorkflowStepOutputs, traceId, agentId, model)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -265,5 +277,15 @@ export async function resumeWorkflowRun(args: {
     // whichever caller (the route or the watchdog sweep) dispatched this
     // already returned its own response before this catch can run.
     console.error(JSON.stringify({ level: 'error', msg: 'workflow resume threw', traceId, workflowRunId, error: message, ts: Date.now() }))
+    // This function runs detached/fire-and-forget — nobody else will retry
+    // it, so a thrown run.resume() (bad label, Mastra claim conflict,
+    // network error to Mastra's storage, etc.) must not leave the row stuck
+    // at status='running' forever. Take a terminal recovery action instead.
+    try {
+      await postWorkflowUpdate(workflowRunId, { status: 'failed', pendingApproval: null, pendingApprovalAt: null, completedAt: new Date().toISOString() }, traceId)
+      await refundTask({ tenantId, taskId: workflowRunId })
+    } catch (cleanupErr) {
+      console.error(JSON.stringify({ level: 'error', msg: 'resumeWorkflowRun cleanup after throw also failed', traceId, workflowRunId, error: (cleanupErr as Error).message, ts: Date.now() }))
+    }
   }
 }

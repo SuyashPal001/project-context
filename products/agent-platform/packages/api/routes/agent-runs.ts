@@ -109,6 +109,15 @@ agentRunsRoutes.put('/:id/approve', async (c) => {
     }
     const approved = body.approved;
 
+    // Config check runs BEFORE the atomic UPDATE below — if the relay isn't
+    // configured we must never flip the row to 'running' with no relay call
+    // ever made, or it gets stuck there forever with the credit estimate held.
+    const orchestratorUrl = process.env.AGENT_ORCHESTRATOR_URL;
+    const internalServiceKey = process.env.INTERNAL_SERVICE_KEY;
+    if (!orchestratorUrl || !internalServiceKey) {
+        return c.json({ error: 'Relay not configured' }, 503);
+    }
+
     // Atomic conditional update — same shape as tasks.approval.ts's
     // handlePlanApprove BUG-6 fix. A plain SELECT followed by an
     // unconditional fetch would let two concurrent approvals both pass.
@@ -136,12 +145,6 @@ agentRunsRoutes.put('/:id/approve', async (c) => {
         return c.json({ error: 'Run has no pending approval to act on' }, 409);
     }
 
-    const orchestratorUrl = process.env.AGENT_ORCHESTRATOR_URL;
-    const internalServiceKey = process.env.INTERNAL_SERVICE_KEY;
-    if (!orchestratorUrl || !internalServiceKey) {
-        return c.json({ error: 'Relay not configured' }, 503);
-    }
-
     const res = await fetch(`${orchestratorUrl}/api/workflows/${runId}/resume`, {
         method: 'POST',
         headers: {
@@ -155,6 +158,18 @@ agentRunsRoutes.put('/:id/approve', async (c) => {
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         console.error(`[agent-runs/approve] relay resume failed ${res.status}: ${text}`);
+        // Roll the row back so it doesn't stay stuck at 'running' with
+        // pending_approval still populated — a future approve attempt would
+        // otherwise 409 forever since the conditional UPDATE's WHERE clause
+        // requires status='awaiting_approval'. Guard on status='running' so
+        // this can't clobber a row some other process already moved on from.
+        await db.update(agentWorkflowRuns)
+            .set({ status: 'awaiting_approval', humanApproved: null, approvedBy: null })
+            .where(and(
+                eq(agentWorkflowRuns.id, runId),
+                eq(agentWorkflowRuns.tenantId, tenantId),
+                eq(agentWorkflowRuns.status, 'running'),
+            ));
         return c.json({ error: 'Failed to dispatch resume' }, 502);
     }
 
