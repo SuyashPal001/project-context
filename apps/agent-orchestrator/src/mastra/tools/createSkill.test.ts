@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const confirmMock = vi.hoisted(() => vi.fn())
-vi.mock('./confirmGeneration.js', () => ({ confirmGenerationOrDecline: confirmMock }))
-
 const fetchMock = vi.hoisted(() => vi.fn())
 
 const VALID_BODY = '---\nname: bid-writer\ndescription: Use when writing bids for prospective clients\n---\n\nOpen with the client name.'
@@ -33,7 +30,6 @@ describe('create_skill', () => {
     vi.stubGlobal('fetch', fetchMock)
     process.env.INTERNAL_SERVICE_KEY = 'test-key'
     process.env.API_BASE_URL = 'https://api.test'
-    confirmMock.mockResolvedValue({ confirmed: true })
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: { skillId: 'skill-1', installId: 'install-1' } }), { status: 202 }))
   })
 
@@ -88,7 +84,6 @@ describe('create_skill', () => {
     expect(result.success).toBe(false)
     expect(result.retryable).toBe(true)
     expect(result.error).toMatch(/too long|shorter/i)
-    expect(confirmMock).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -101,51 +96,25 @@ describe('create_skill', () => {
     expect(result.success).toBe(true)
   })
 
-  // The card is the credential/PII defence the spec rests on, so it has to show
-  // the body — approving a label alone is approving text the user cannot see.
-  it('sends a preview of the drafted body to the confirmation card', async () => {
-    await run({ name: 'Bid Writer', body: VALID_BODY })
-    const opts = confirmMock.mock.calls[0][4] as { preview?: string }
-    expect(opts.preview).toContain('name: bid-writer')
-    expect(opts.preview).toContain('Open with the client name.')
-  })
-
-  it('truncates a long preview rather than sending the whole body', async () => {
-    const long = `---\nname: a\ndescription: Use when writing bids for prospective clients\n---\n\n${'line\n'.repeat(400)}`
-    await run({ name: 'Bid Writer', body: long })
-    const opts = confirmMock.mock.calls[0][4] as { preview?: string }
-    expect(opts.preview!.length).toBeLessThan(long.length)
-    expect(opts.preview).toMatch(/…$/)
-  })
-
-  // Without a live SSE session the confirm gate auto-approves, which would mean
-  // unattended writes into the tenant's library.
+  // Without a live SSE session the tool refuses outright — there is no card
+  // to have shown, approved or not.
   it('refuses when there is no live session', async () => {
     const result = await run({ name: 'Bid Writer', body: VALID_BODY }, execContext({ sendEvent: undefined }))
     expect(result.success).toBe(false)
-    expect(confirmMock).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  // confirmGenerationOrDecline itself auto-approves when sessionId is missing
-  // (alongside sendEvent/tenantId/userId) — this tool's own guard must cover
-  // every identifier that gate depends on, not a subset, or a caller that
-  // sets sendEvent without sessionId slips past this check and still gets
-  // rubber-stamped by the gate underneath.
+  // This tool's own guard must cover every identifier a live session implies,
+  // not a subset — sendEvent present but sessionId missing must still refuse.
   it('refuses when sendEvent is present but sessionId is missing', async () => {
     const result = await run({ name: 'Bid Writer', body: VALID_BODY }, execContext({ sessionId: undefined }))
     expect(result.success).toBe(false)
-    expect(confirmMock).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('asks for confirmation with alwaysAsk and creates on approval', async () => {
+  it('creates the skill directly — approval already happened before execute() runs', async () => {
     const result = await run({ name: 'Bid Writer', description: 'Writes bids', body: VALID_BODY })
 
-    expect(confirmMock).toHaveBeenCalledWith(
-      expect.anything(), 'skill_creation', 'create', expect.stringContaining('Bid Writer'),
-      { alwaysAsk: true, preview: expect.stringContaining('Open with the client name.') },
-    )
     expect(result.success).toBe(true)
     const [url, init] = fetchMock.mock.calls[0]
     expect(String(url)).toBe('https://api.test/api/v1/internal/skills')
@@ -167,21 +136,6 @@ describe('create_skill', () => {
     expect(result.message).not.toMatch(/\battached\b/i)
   })
 
-  it('returns a terminal result when the user declines', async () => {
-    confirmMock.mockResolvedValue({ confirmed: false })
-    const result = await run({ name: 'Bid Writer', body: VALID_BODY })
-    expect(result.success).toBe(false)
-    expect(result.retryable).toBe(false)
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('returns a terminal result when another confirmation is pending', async () => {
-    confirmMock.mockResolvedValue({ confirmed: false, reason: 'CONFIRM_BUSY' })
-    const result = await run({ name: 'Bid Writer', body: VALID_BODY })
-    expect(result.success).toBe(false)
-    expect(result.retryable).toBe(false)
-  })
-
   it('surfaces a quota rejection as a plain message', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ code: 'QUOTA_EXCEEDED' }), { status: 429 }))
     const result = await run({ name: 'Bid Writer', body: VALID_BODY })
@@ -196,12 +150,6 @@ describe('create_skill', () => {
     expect(result.error).toMatch(/permission|role/i)
   })
 
-  it('passes PII detections into the confirmation label', async () => {
-    const withEmail = '---\nname: a\ndescription: Use when writing bids for prospective clients\n---\n\nMail ada@example.com about it.'
-    await run({ name: 'Bid Writer', body: withEmail })
-    expect(confirmMock.mock.calls[0][3]).toMatch(/personal|detected/i)
-  })
-
   // Pins the security property the API route's permission check depends on:
   // the model can never name a tenantId/userId/agentId/conversationId — those
   // come only from execContext.requestContext. A future edit adding any of
@@ -214,5 +162,19 @@ describe('create_skill', () => {
     expect(keys).not.toContain('userId')
     expect(keys).not.toContain('agentId')
     expect(keys).not.toContain('conversationId')
+  })
+})
+
+describe('createSkillTool.requireApproval', () => {
+  it('requires approval for a valid draft', async () => {
+    const { createSkillTool } = await import('./createSkill.js')
+    const result = await (createSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: VALID_BODY }, {})
+    expect(result).toBe(true)
+  })
+
+  it('skips approval for an invalid draft (no frontmatter)', async () => {
+    const { createSkillTool } = await import('./createSkill.js')
+    const result = await (createSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: 'no frontmatter here' }, {})
+    expect(result).toBe(false)
   })
 })

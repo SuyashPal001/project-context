@@ -1,7 +1,5 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
-import { confirmGenerationOrDecline } from './confirmGeneration.js'
-import { filterPII } from '../../pii-filter.js'
 import { API_BASE_URL } from '../../types.js'
 
 const MAX_BODY_BYTES = 65_536
@@ -13,17 +11,6 @@ const MAX_BODY_BYTES = 65_536
 // change it in all four places.
 const MAX_COMPOSED_SKILL_CHARS = 24_000
 
-/** How much of the draft the confirmation card shows. Enough to read what the
- *  agent actually wrote; short enough that the card stays a card. */
-const PREVIEW_MAX_CHARS = 800
-const PREVIEW_MAX_LINES = 16
-
-function buildPreview(body: string): string {
-  const lines = body.split(/\r?\n/)
-  let preview = lines.slice(0, PREVIEW_MAX_LINES).join('\n')
-  if (preview.length > PREVIEW_MAX_CHARS) preview = preview.slice(0, PREVIEW_MAX_CHARS)
-  return preview.length < body.length ? `${preview.trimEnd()}\n…` : preview
-}
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/
 
 // Mirrors MIN_DESCRIPTION_LENGTH in
@@ -111,6 +98,15 @@ You write the file. \`body\` must be a complete SKILL.md:
 
 The user is shown the draft and must approve it. The skill applies from their next message, not this reply.`,
   inputSchema: createSkillInputSchema,
+  // Unconditional gate, mirroring today's alwaysAsk: true — this tool never
+  // checks isUnlimited/resolveRate (creating a skill is free; a human still
+  // must see it). The only reason to skip the pause is an invalid draft,
+  // where there is nothing meaningful to show on a card and execute() will
+  // reject it immediately anyway (validateSkillBody runs there unchanged).
+  requireApproval: async (input) => {
+    const { name, body } = input as { name: string; body: string }
+    return !validateSkillBody(body, name)
+  },
   execute: async (inputData, execContext) => {
     const { name, description, body } = inputData as { name: string; description?: string; body: string }
 
@@ -125,13 +121,9 @@ The user is shown the draft and must approve it. The skill applies from their ne
     const sendEvent = ctx?.get('sendEvent')
     const sessionId = ctx?.get('sessionId') as string | undefined
 
-    // No live session means the confirm gate would auto-approve — see its
-    // sendEvent/sessionId guard. For a spend gate that is a documented hole;
-    // for a write into the tenant's skill library it would mean unattended
-    // creation. Must cover every identifier confirmGenerationOrDecline's own
-    // guard checks (sendEvent, sessionId, tenantId, userId), not a subset —
-    // a caller that sets sendEvent without sessionId would otherwise slip
-    // past this guard and still get auto-approved by the gate underneath.
+    // Same hard guard as today — this tool requires a live chat session
+    // regardless of the approval outcome; requireApproval above has no
+    // opinion on session liveness (that check has no card to skip to).
     if (!sendEvent || !sessionId || !tenantId || !userId || !agentId || !conversationId) {
       return {
         success: false,
@@ -140,42 +132,18 @@ The user is shown the draft and must approve it. The skill applies from their ne
       }
     }
 
-    // filterPII covers India identity patterns (email, phone, Aadhaar, PAN,
-    // passport, voter id) and nothing credential-shaped. It informs the human
-    // rather than blocking — the confirmation card is the actual control.
-    const pii = filterPII(body)
-    const piiNote = pii.detections.length > 0
-      ? ` — personal data detected: ${[...new Set(pii.detections.map((d) => d.type))].join(', ')}`
-      : ''
-
-    // The card is the actual control (see the filterPII note above), so it has
-    // to show what is being approved — the name, the opening of the body, and
-    // any PII detections. Approving a label alone is approving text the user
-    // cannot see.
-    const confirmation = await confirmGenerationOrDecline(
-      execContext,
-      'skill_creation',
-      'create',
-      `Create skill "${name}"${piiNote}`,
-      { alwaysAsk: true, preview: buildPreview(body) },
-    )
-    if (!confirmation.confirmed) {
-      return {
-        success: false,
-        error: confirmation.reason === 'CONFIRM_BUSY'
-          ? 'Another confirmation is already open — finish that one first.'
-          : 'The user declined, so nothing was created.',
-        retryable: false,
-      }
-    }
-
-    const messageId = sessionId ?? conversationId
+    // DELETE the old confirmGenerationOrDecline call and its CONFIRM_BUSY
+    // branch entirely — approval already happened (or was skipped because
+    // the draft was invalid, in which case execute() already returned
+    // above) before this line runs. The card's preview/PII note are now
+    // built once, in chatStream.ts, from GENERATION_APPROVAL_METADATA's
+    // create_skill.buildPreview — not recomputed here.
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/internal/skills`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ tenantId, userId, agentId, conversationId, messageId, name, description, body }),
+        body: JSON.stringify({ tenantId, userId, agentId, conversationId, messageId: sessionId, name, description, body }),
       })
 
       if (!res.ok) {
@@ -198,7 +166,7 @@ The user is shown the draft and must approve it. The skill applies from their ne
       }
     } catch (err) {
       console.error('[create_skill] failed:', (err as Error).message)
-      return { success: false, error: 'The skill could not be saved.', retryable: false }
+      return { success: false, error: 'The skill could not be saved.', retryable: true }
     }
   },
 })
