@@ -344,3 +344,35 @@ export const agentTemplates = pgTable('agent_templates', {
 
 export type AgentTemplate = typeof agentTemplates.$inferSelect
 export type NewAgentTemplate = typeof agentTemplates.$inferInsert
+
+// One row per delegation attempt, success or failure. Deliberately narrow:
+// Mastra's own observability store already holds duration, tokens, model and
+// errors for the same delegation, keyed by run_id — this table exists only to
+// join that span to OUR facts (tenant, conversation, refusal). Adding token or
+// cost columns here rebuilds what Mastra already records.
+export const agentDelegations = pgTable('agent_delegations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  // The host agent row that delegated (Olmo today). Nullable because a
+  // delegation refused before the run starts may not have resolved one.
+  agentId: uuid('agent_id').references(() => agents.id),
+  conversationId: uuid('conversation_id'),
+  // The spec id of the delegate — 'director', 'pm', … Text, not an FK: specs
+  // are code constants today and rows later.
+  primitiveId: text('primitive_id').notNull(),
+  // Mastra run id — the join key into the observability store.
+  runId: text('run_id').notNull(),
+  toolCallId: text('tool_call_id').notNull(),
+  success: boolean('success').notNull(),
+  durationMs: integer('duration_ms').notNull().default(0),
+  // Set when the credit gate refused the delegation before it ran.
+  rejectionReason: text('rejection_reason'),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  tenantIdx: index('agent_delegations_tenant_idx').on(table.tenantId, table.createdAt),
+  runIdx: index('agent_delegations_run_idx').on(table.runId),
+}))
+
+export type AgentDelegation = typeof agentDelegations.$inferSelect
+export type NewAgentDelegation = typeof agentDelegations.$inferInsert
