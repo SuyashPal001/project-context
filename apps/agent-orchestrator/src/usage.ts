@@ -2,6 +2,8 @@ import pg from 'pg'
 import { makeAppPool } from './db.js'
 import { db } from '@serverless-saas/database'
 import { getAgentTools } from '@serverless-saas/ai'
+import { createSkill } from '@mastra/core/skills'
+import type { InlineSkill } from '@mastra/core/skills'
 
 // DDL (run once at deploy time):
 //
@@ -37,117 +39,34 @@ export interface UsageRecord {
 }
 
 /**
- * Composition caps. These are a prompt budget, not a product limit: every
- * composed body is injected into the system prompt on every turn, so an
- * unbounded skill set silently eats the context window the conversation needs.
- * The API enforces the same two numbers at attach time (see the attach route),
- * where exceeding them is a visible rejection rather than a silent drop.
+ * Mastra requires a skill `name` of 1-64 lowercase letters/numbers/hyphens
+ * (InlineSkillInput, @mastra/core/skills types.d.ts) — createSkill() throws
+ * otherwise. agent_skills.name and the skills catalog's display name are
+ * free text ("UGC Ad Production"), never guaranteed to already be in that
+ * shape, so every name is slugified before it reaches createSkill().
  */
-export const MAX_ATTACHED_SKILLS = 8
-export const MAX_COMPOSED_SKILL_CHARS = 24_000
-
-export interface ComposedAgentSkills {
-  /** Every active skill's body, composed in attachment order. Null when none. */
-  systemPrompt: string | null
-  /** Every install that made it into the prompt — all of them get a run count. */
-  installIds: string[]
-  /** Skills excluded by a cap. Non-empty only for agents that predate the caps. */
-  droppedNames: string[]
+export function toMastraSkillName(raw: string): string {
+  const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64)
+  return slug || 'skill'
 }
 
 /**
- * Every active skill attached to the agent, composed into one prompt section.
- *
- * This used to be `LIMIT 1`, which meant only the newest attached skill ever
- * reached the model and attaching a second one silently switched the first
- * off. Ordering is `created_at ASC, id ASC` — attachment order, with the id as
- * a tiebreaker so two rows sharing a timestamp cannot reorder between turns —
- * so the composed prompt is stable rather than reshuffling under the model.
- *
- * `tenantId` is required and filtered on, not just passed for logging:
- * agent_skills carries agent_id and tenant_id as two independent foreign keys,
- * so a row whose agent belongs to another tenant is representable. Composing by
- * agent_id alone would inject that row into this tenant's system prompt.
- */
-export async function fetchAgentSkills(agentId: string, tenantId: string): Promise<ComposedAgentSkills> {
-  const p = getPool()
-  const res = await p.query<{ name: string; system_prompt: string | null; install_id: string | null; version: number }>(
-    `SELECT name, system_prompt, install_id, version FROM agent_skills
-     WHERE agent_id = $1 AND tenant_id = $2 AND status = 'active'
-     ORDER BY created_at ASC, id ASC`,
-    [agentId, tenantId],
-  )
-
-  // agent_skills is unique on (agent_id, tenant_id, name, version), and the
-  // attach route lets a caller re-attach the same skill name at a new version
-  // without deactivating the old row — so two active rows can share a name.
-  // Dedupe to the highest version per name, before caps are applied, or a
-  // superseded version and its replacement both land in the prompt and
-  // contradict each other. A Map preserves the key's first-insertion
-  // position when its value is overwritten, so this keeps attachment order.
-  const byName = new Map<string, (typeof res.rows)[number]>()
-  for (const row of res.rows) {
-    const existing = byName.get(row.name)
-    if (!existing || row.version > existing.version) {
-      byName.set(row.name, row)
-    }
-  }
-
-  const parts: string[] = []
-  const installIds: string[] = []
-  const droppedNames: string[] = []
-  let budget = MAX_COMPOSED_SKILL_CHARS
-
-  for (const row of byName.values()) {
-    const body = row.system_prompt?.trim()
-    if (!body) continue
-    // The composed cost is the body plus its "## Skill: <name>\n\n" header —
-    // budgeting body.length alone lets the joined output exceed the cap it's
-    // meant to enforce.
-    const cost = body.length + row.name.length + 15
-    // Gate on how many skills actually compose, not on how many carry an
-    // install id — agent_skills.install_id is nullable for hand-authored
-    // skills, so keying the cap off installIds.length would let an agent
-    // with only hand-authored rows bypass the count cap entirely.
-    if (parts.length >= MAX_ATTACHED_SKILLS || cost > budget) {
-      droppedNames.push(row.name)
-      continue
-    }
-    budget -= cost
-    parts.push(`## Skill: ${row.name}\n\n${body}`)
-    if (row.install_id) installIds.push(row.install_id)
-  }
-
-  if (droppedNames.length > 0) {
-    // Loud on purpose: these skills are attached but not running, and nothing
-    // in the UI says so. Attach-time rejection prevents new cases; this only
-    // fires for agents that were over the cap before the caps existed.
-    console.error(`[skills] tenant=${tenantId} agent=${agentId} dropped ${droppedNames.length} skill(s) over cap: ${droppedNames.join(', ')}`)
-  }
-
-  return {
-    systemPrompt: parts.length > 0 ? parts.join('\n\n') : null,
-    installIds,
-    droppedNames,
-  }
-}
-
-/**
- * Resolves ONE skill's body directly off its install — bypassing agent_skills
- * entirely. Used only for a Test-in-chat conversation (see
- * fetchConversationTestSkillInstallId): testing a skill must never touch the
- * agent's real, permanent skillset, so this never reads or writes that table.
- * Mirrors resolveInstall/resolveInstalledSkillBody in the API package's
- * agent-skills.ts — same two-step (install -> pinned version's manifest body)
- * and same tenant-scoping reasoning, just via the orchestrator's raw pg pool
- * since it has no drizzle access. A wrong-tenant or unready installId simply
+ * Resolves an installed skill's current, pinned-version content — name,
+ * agent-facing description, and body. The description comes from
+ * skill_versions.manifest->>'description' (the frontmatter description the
+ * quality bar enforces — see 2026-09-08-skill-quality-bar-design.md), never
+ * skills.description, which is a separate cosmetic dashboard subtitle.
+ * Shared by fetchTestSkill and fetchAttachedSkills so both read content the
+ * same way. Mirrors resolveInstall/resolveInstalledSkillBody in the API
+ * package's agent-skills.ts, via the orchestrator's raw pg pool since it has
+ * no drizzle access. Tenant-scoped: a wrong-tenant or unready installId
  * resolves to null rather than leaking cross-tenant content.
  */
-export async function fetchTestSkillPrompt(installId: string, tenantId: string): Promise<{ systemPrompt: string | null; name: string | null }> {
+async function resolveInstalledSkillContent(installId: string, tenantId: string): Promise<{ name: string; description: string; body: string } | null> {
   const p = getPool()
   try {
-    const res = await p.query<{ name: string; body: string | null }>(
-      `SELECT s.name, sv.manifest->>'body' AS body
+    const res = await p.query<{ name: string; description: string | null; body: string | null }>(
+      `SELECT s.name, sv.manifest->>'description' AS description, sv.manifest->>'body' AS body
        FROM skill_installs si
        JOIN skills s ON s.id = si.skill_id
        JOIN skill_versions sv ON sv.skill_id = si.skill_id AND sv.version = si.installed_version
@@ -156,18 +75,104 @@ export async function fetchTestSkillPrompt(installId: string, tenantId: string):
       [installId, tenantId],
     )
     const row = res.rows[0]
-    if (!row || !row.body?.trim()) return { systemPrompt: null, name: null }
-    return { systemPrompt: `## Skill: ${row.name}\n\n${row.body.trim()}`, name: row.name }
+    const body = row?.body?.trim()
+    if (!row || !body) return null
+    return { name: row.name, description: row.description?.trim() || `Use when the task matches "${row.name}".`, body }
   } catch (err) {
-    console.error('[usage] fetchTestSkillPrompt error:', (err as Error).message)
-    return { systemPrompt: null, name: null }
+    console.error('[usage] resolveInstalledSkillContent error:', (err as Error).message)
+    return null
   }
+}
+
+/**
+ * Resolves ONE skill for a Test-in-chat conversation — bypassing
+ * agent_skills entirely. Testing a skill must never touch the agent's real,
+ * permanent skillset (see fetchConversationTestSkillInstallId in
+ * persistence.ts), so this never reads or writes that table. Records a run
+ * immediately since this call IS the run — there is no later composition
+ * step to attach it to.
+ */
+export async function fetchTestSkill(installId: string, tenantId: string): Promise<InlineSkill | null> {
+  const content = await resolveInstalledSkillContent(installId, tenantId)
+  if (!content) return null
+  recordSkillRuns([installId], tenantId).catch((err) => console.warn('[usage] fetchTestSkill recordSkillRuns failed:', (err as Error).message))
+  return createSkill({ name: toMastraSkillName(content.name), description: content.description, instructions: content.body })
+}
+
+/**
+ * Every active skill attached to the agent (excluding "default" — the
+ * onboarding bootstrap row holding the agent's base persona, not a real
+ * skill; read separately by fetchAgentPersonaPrompt), as native Mastra Skill
+ * objects for the agent's `skills:` resolver.
+ *
+ * `tenantId` is required and filtered on, not just passed for logging:
+ * agent_skills carries agent_id and tenant_id as two independent foreign
+ * keys, so a row whose agent belongs to another tenant is representable.
+ * Querying by agent_id alone would hand that row to this tenant's agent.
+ *
+ * Two content sources, by row shape:
+ * - install_id set (the normal case — dashboard/"/" picker attach): content
+ *   is resolved fresh from the pinned skill_installs/skill_versions, same as
+ *   fetchTestSkill — the row's own stored system_prompt is never read, so an
+ *   installed skill always reflects its current pinned version.
+ * - install_id null (hand-authored — the in-chat create_skill path can
+ *   attach a skill with no catalog install, per agent-skills.ts's POST
+ *   schema): there is no install to resolve, so the row's own name/
+ *   system_prompt IS the content. No stored "when to use" description exists
+ *   for this case, so one is synthesized from the name — a known limitation
+ *   versus an installed skill's real frontmatter description.
+ */
+export async function fetchAttachedSkills(agentId: string, tenantId: string): Promise<InlineSkill[]> {
+  const p = getPool()
+  const res = await p.query<{ name: string; system_prompt: string | null; install_id: string | null; version: number }>(
+    `SELECT name, system_prompt, install_id, version FROM agent_skills
+     WHERE agent_id = $1 AND tenant_id = $2 AND status = 'active' AND name != 'default'
+     ORDER BY created_at ASC, id ASC`,
+    [agentId, tenantId],
+  )
+
+  // agent_skills is unique on (agent_id, tenant_id, name, version), and the
+  // attach route lets a caller re-attach the same skill name at a new
+  // version without deactivating the old row — so two active rows can share
+  // a name. Dedupe to the highest version per name. A Map preserves the
+  // key's first-insertion position when its value is overwritten, so this
+  // keeps attachment order.
+  const byName = new Map<string, (typeof res.rows)[number]>()
+  for (const row of res.rows) {
+    const existing = byName.get(row.name)
+    if (!existing || row.version > existing.version) byName.set(row.name, row)
+  }
+
+  const skills: InlineSkill[] = []
+  const installIds: string[] = []
+  for (const row of byName.values()) {
+    if (row.install_id) {
+      const content = await resolveInstalledSkillContent(row.install_id, tenantId)
+      if (!content) continue
+      skills.push(createSkill({ name: toMastraSkillName(content.name), description: content.description, instructions: content.body }))
+      installIds.push(row.install_id)
+    } else {
+      const body = row.system_prompt?.trim()
+      if (!body) continue
+      skills.push(createSkill({
+        name: toMastraSkillName(row.name),
+        description: `Use when the task matches "${row.name}".`,
+        instructions: body,
+      }))
+    }
+  }
+
+  if (installIds.length > 0) {
+    recordSkillRuns(installIds, tenantId).catch((err) => console.warn('[usage] fetchAttachedSkills recordSkillRuns failed:', (err as Error).message))
+  }
+
+  return skills
 }
 
 /**
  * The agent's base persona only — the "default" agent_skills row every agent
  * gets at onboarding (apps/api/src/routes/onboarding.ts), holding its
- * identity/tone prompt. Used alongside fetchTestSkillPrompt for a
+ * identity/tone prompt. Used alongside fetchTestSkill for a
  * Test-in-chat conversation: the agent should still sound like itself during
  * a test, just with none of its *other* real attached skills mixed in.
  */
