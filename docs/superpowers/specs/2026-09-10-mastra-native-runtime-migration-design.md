@@ -1,0 +1,213 @@
+# Move agent runtime onto native Mastra primitives (skills, suspend/resume, workflows)
+
+Date: 2026-09-10
+Status: approved for planning
+
+## Problem
+
+`@mastra/core` is already on 1.64.0 in this repo (`apps/agent-orchestrator`).
+That version ships three primitives this codebase re-implemented by hand
+instead of using, found via a targeted audit this session (triggered by a
+real bug: skill attachments accumulating on an agent forever, contaminating
+unrelated "test one skill" sessions):
+
+1. **Skills.** `agent_skills` (DB table) + `usage.ts`'s `fetchAgentSkills`
+   concatenate every active row — including the `default` persona
+   bootstrap row — into one string, force-fed into `instructions` on every
+   turn. No per-request scoping exists: attaching a skill is permanent and
+   agent-wide, there is no way to try one skill in isolation, and a hard
+   cap (`MAX_ATTACHED_SKILLS = 8`, `MAX_COMPOSED_SKILL_CHARS = 24_000`)
+   exists purely to bound this hand-rolled composition. Mastra ships a
+   native per-request `skills: ({ requestContext }) => SkillInput[]`
+   resolver (`docs-skills.md`) plus automatic `skill` / `skill_read` /
+   `skill_search` tools — the model pulls in one skill's content on demand
+   instead of everything being pasted into context every turn.
+
+2. **Pause-and-wait-for-a-human.** `confirmGeneration.ts`'s
+   `confirmGenerationOrDecline` hand-rolls a suspend: a
+   `pendingGenerationConfirmations` in-memory Map, a manual 5-minute
+   `setTimeout`, an SSE push to show the approval card, and a wait for the
+   Map entry to resolve. Mastra ships this natively as workflow
+   suspend/resume (`docs-workflows-suspend-and-resume.md`,
+   `docs-workflows-human-in-the-loop.md`) — persisted, not in-memory, and
+   not something to hand-roll a second time per caller.
+
+3. **Multi-step execution.** `mastra/workflow.ts`'s `runMastraWorkflow`
+   (called from `routes/tasks.workflow.ts`, itself invoked by
+   `POST /workflows/execute` in `routes/tasks.ts` — the async Tasks
+   feature: PRDs, roadmaps, any planned multi-step work) is a hand-written
+   loop over `steps[]`, calling `agent.generate()` per step and branching
+   in plain JS. No persisted run state — a crash mid-run loses all
+   progress, nothing survives to resume from. Mastra ships `createWorkflow`
+   / `createStep` with tracked, resumable runs, and steps can call existing
+   agents directly (`docs-workflows-agents-and-tools.md`) — no new
+   workflow-specific agents need to be created.
+
+Also audited and confirmed **not** duplicated (native Mastra used
+correctly, no change needed): `memory.ts` (native `Memory` class),
+`guardrails.ts` (native processor violation hooks), `platformAgent.ts`'s
+`tools:` field (already the same per-request dynamic-resolver shape skills
+should have used). `registry.ts`'s static per-conversation agent router
+resembles Mastra's native Subagents feature but solves a different problem
+(binding once to a conversation's fixed agent, not runtime model-driven
+delegation) — flagged, not changed by this spec.
+
+## Goal
+
+- A skill attached via the dashboard/`/` picker stays exactly as
+  permanent, agent-wide behavior it is today — but is composed through
+  Mastra's native `skills:` resolver, not a hand-built string.
+- "Test in chat" tests exactly one skill, scoped to that one conversation,
+  touching nothing else attached to the agent — via the same native
+  resolver, fed a conversation-scoped override instead of a DB attach.
+- The agent's persona (`default` row) is structurally isolated from
+  skills — no skill's content can ever land in `instructions`.
+- `confirmGenerationOrDecline`'s pause mechanism and `runMastraWorkflow`'s
+  step execution both run on Mastra's own suspend/resume and workflow
+  primitives, sharing one mechanism instead of two separate hand-rolled
+  ones.
+- Credit/billing logic (`isUnlimited`, `resolveRate`, `chargeTaskEstimate`,
+  `settleTask`/`refundTask`) is untouched — only the execution/pause
+  plumbing underneath it changes.
+
+## Non-goals
+
+- Rewriting the skills catalog/marketplace (`skills`, `skill_versions`,
+  `skill_installs` tables, the dashboard Skills page, import/publish
+  flows). Those stay exactly as they are — this spec only changes how an
+  already-installed skill's content reaches the agent at runtime.
+- `registry.ts`'s agent router — flagged as a maybe against Subagents, not
+  a confirmed duplicate. Separate investigation if picked up later.
+- Any change to `cost.ts`, `thinking.ts`, `composio.ts`, or the credit
+  pricing/estimation logic in `tasks.ts` — all confirmed legitimate
+  app-specific logic with no Mastra equivalent.
+- Retroactive data migration of existing `agent_skills.system_prompt`
+  content — the resolver re-derives content fresh from `skill_installs`/
+  `skill_versions` on every request, so nothing needs backfilling.
+
+## Decisions taken
+
+| Question | Decision |
+|---|---|
+| Does persona (`default` row) go through the skills resolver | No — stays read only by `instructions:` (`platformAgent.ts`), exactly as today. Skills resolver never sees it. |
+| How does "Test in chat" scope to one skill | The web app creates the test conversation with `metadata.testSkillInstallId` set (already implemented this session in `actions.ts`/`conversations.ts` PATCH schema) — no agent-level attach at all. `chatStream.ts` reads it via `fetchConversationTestSkillInstallId` and passes it into `requestContext`; the `skills:` resolver returns only that one skill when present. |
+| What happens to `agent_skills.system_prompt` | Stops being read for composition. The table keeps its role as "which skills are attached to this agent" (attach/detach, `installId`, `name`) but content is resolved fresh per-request from `skill_installs`/`skill_versions`, same pattern already built for the test path (`fetchTestSkillPrompt` in `usage.ts`). |
+| What happens to `MAX_ATTACHED_SKILLS`/`MAX_COMPOSED_SKILL_CHARS` | Deleted. Nothing gets composed into one string anymore, so there's no char budget to enforce. A count cap on *attach* (not compose) may still be reasonable to prevent unbounded growth in the attach UI, but is a product decision, not carried over automatically — flagged as an open question below. |
+| Does `confirmGenerationOrDecline`'s credit logic change | No. `isUnlimited`/`resolveRate`/the alwaysAsk gate stay exactly as-is. Only the pause mechanism (custom Map + timer → `step.suspend()`/`run.resume()`) changes. |
+| Do workflow steps need their own agents | No. `createStep(existingAgent)` or calling `mastra.getAgent(name).generate()` inside a step's `execute()` both reuse the agents `registry.ts` already builds (`platformAgent`, `pmAgent`, `architectAgent`, `directorAgent`, `producerAgent`). |
+| Does `runMastraWorkflow`'s approval gate share the same mechanism as `confirmGeneration` | Yes — both become Mastra's native suspend/resume. One mechanism, two callers, instead of two separate hand-rolled ones. |
+
+## Design
+
+### 1. Skills
+
+```
+instructions: async ({ requestContext }) => {
+  // UNCHANGED — reads the agent's `default` agent_skills row only.
+}
+
+skills: async ({ requestContext }) => {
+  const testInstallId = requestContext.get('testSkillInstallId')
+  if (testInstallId) {
+    const skill = await fetchTestSkill(testInstallId, tenantId) // one skill only
+    return skill ? [skill] : []
+  }
+  return fetchAttachedSkills(agentId, tenantId) // every active non-default row
+}
+```
+
+Both `fetchTestSkill` and `fetchAttachedSkills` return Mastra `Skill`
+objects (via `createSkill({ name, description, instructions, ... })`),
+resolving `instructions` fresh from `skill_installs` → `skill_versions`
+(pinned version's manifest body) at request time — no stored composed
+string anywhere.
+
+`chatStream.ts` sets `requestContext.set('testSkillInstallId', ...)` when
+`fetchConversationTestSkillInstallId` returns non-null (conversation-scoped,
+read via the existing ownership-checked `GET /conversations/:id`), otherwise
+leaves it unset so the resolver falls through to the agent's real attached
+skills.
+
+`startSkillTestChat` (web, already implemented) creates the conversation
+with `metadata.testSkillInstallId` and does **not** call
+`attachSkillToAgent` — no DB write to `agent_skills` for a test at all.
+
+Attach (the `/` picker, dashboard Install) is unchanged in the web/API
+layer — still writes an `agent_skills` row. What changes is only that the
+row's `system_prompt` column stops being read (may stop being written too,
+since nothing consumes it — implementation detail for the plan).
+
+### 2. Pause-and-wait-for-a-human
+
+`confirmGenerationOrDecline` keeps its exact signature and credit-gate
+logic. Internally, replace:
+
+```
+pendingGenerationConfirmations.set(id, { resolve, reject })
+setTimeout(() => { ... }, CONFIRM_TIMEOUT_MS)
+sendEvent('generation_confirm', { ...card })
+// wait for the Map entry to resolve
+```
+
+with a step-level `suspend()` inside whichever workflow step calls it (both
+the credit-confirm path in normal tool calls and the Tasks workflow's
+approval gate route through the same call) — `step.suspend({ card })`
+persists the run and returns control; a resume call
+(`run.resume({ decision })`, triggered by the existing UI "Approve"/"Decline"
+action) continues execution with the decision. Same UI, same card shape,
+same timeout semantics (Mastra suspend has no built-in timeout — a stale
+suspended run still needs the existing 5-minute expiry behavior,
+carried over as an explicit check rather than relying on a `setTimeout`).
+
+### 3. Multi-step execution (Tasks)
+
+`routes/tasks.ts`'s `POST /workflows/execute` stays as the entry point —
+same request body, same credit estimate/charge before starting. Internally:
+
+```
+runMastraWorkflowSteps(...)  // UNCHANGED signature
+  → createWorkflow({ id: workflowId })
+      .then(createStep(stepAgent, { ... }))  // one createStep per planned step
+      .then(...)
+      .commit()
+      .createRun()
+      .start()
+```
+
+`settleTask()`/`refundTask()` still run after the workflow completes/fails
+— unchanged. A step requiring approval calls the same suspended
+`confirmGenerationOrDecline` path from section 2, so Tasks and normal chat
+tool calls share one suspend/resume mechanism instead of each having their
+own.
+
+## Testing
+
+- Skills: existing `agent-skills.test.ts` (API) stays — attach/detach
+  behavior unchanged. New tests: `skills:` resolver returns only the test
+  skill when `testSkillInstallId` is set, returns all attached (minus
+  `default`) otherwise, returns `[]` gracefully for a revoked/foreign
+  install id.
+- Confirm/suspend: existing `confirmGeneration.test.ts` behavior
+  (alwaysAsk, isUnlimited, allowMode) stays green: re-target assertions at
+  `suspend()`/`resume()` calls instead of the Map.
+- Workflow: existing `tasks-workflow-settle.test.ts` /
+  `tasks-execute-attempt-key.test.ts` / `tasks-resume-attempt-key.test.ts`
+  stay green against the new `createWorkflow` internals — same external
+  `runMastraWorkflowSteps` signature, same settle/refund behavior asserted.
+
+## Open questions
+
+1. Should attach (not test) still have a count cap now that there's no
+   char budget to enforce? `MAX_ATTACHED_SKILLS` prevented unbounded
+   growth; removing it entirely means an agent could accumulate arbitrarily
+   many real attached skills over time (same shape of problem this spec's
+   trigger bug came from, just for real attachments instead of test ones).
+   Recommend keeping a small count cap (e.g. 8) at attach time as a product
+   guard, decoupled from the deleted char-budget logic — confirm before
+   planning.
+2. Suspended-run expiry: Mastra suspend/resume has no built-in timeout.
+   The existing 5-minute stale-confirmation behavior needs an explicit
+   check (e.g. a `suspendedAt` timestamp + a sweep) rather than relying on
+   framework behavior — needs a decision on where that check lives
+   (watchdog function already exists for stalled tasks, may be able to
+   extend it).
