@@ -227,8 +227,8 @@ internalRouter.post('/internal/expire-tool-approvals', async (c) => {
       // `toDate` filters on run creation, so it is only a coarse pre-filter —
       // suspendedAt is re-checked below. A run created before the cutoff but
       // suspended a minute ago is not abandoned.
-      const result = await (agent as any).listSuspendedRuns({ toDate: cutoff })
-      runs = (result?.runs ?? []) as AgentRun[]
+      const result = await agent.listSuspendedRuns({ toDate: cutoff })
+      runs = result?.runs ?? []
     } catch (err) {
       console.error(`[expire-tool-approvals] listSuspendedRuns failed for agent=${name}:`, (err as Error).message)
       continue
@@ -265,7 +265,7 @@ internalRouter.post('/internal/expire-tool-approvals', async (c) => {
         }
 
         try {
-          const stream = await (agent as any).declineToolCall({
+          const stream = await agent.declineToolCall({
             runId: run.runId,
             toolCallId: toolCall.toolCallId,
             reason,

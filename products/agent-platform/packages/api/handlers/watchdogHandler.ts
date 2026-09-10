@@ -439,5 +439,12 @@ export const handler: ScheduledHandler = async () => {
       // service.
       wlog('error', 'Expire-tool-approvals call failed', { error: (err as Error).message });
     }
+  } else {
+    wlog('warn', 'Expire-tool-approvals sweep skipped — missing config', {
+      missing: [
+        !orchestratorUrl ? 'AGENT_ORCHESTRATOR_URL' : null,
+        !internalServiceKey ? 'INTERNAL_SERVICE_KEY' : null,
+      ].filter((v): v is string => v !== null),
+    });
   }
 };

@@ -247,6 +247,7 @@ Resources:
           UPSTASH_REDIS_TOKEN: !Sub "{{resolve:secretsmanager:${ProjectName}/${EnvironmentName}/cache:SecretString:token}}"
           INTERNAL_SERVICE_KEY_SECRET_ARN: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${ProjectName}/${EnvironmentName}/internal-service-key"
           SQS_PROCESSING_QUEUE_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/sqs/processing-queue-url}}"
+          AGENT_ORCHESTRATOR_URL: !Sub "{{resolve:ssm:/${ProjectName}/${EnvironmentName}/agent-orchestrator-url}}"
       Events:
         WatchdogSchedule:
           Type: Schedule
