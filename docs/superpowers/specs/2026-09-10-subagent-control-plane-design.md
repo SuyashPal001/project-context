@@ -293,9 +293,10 @@ export function resolveDelegates(
   const depth = ctx?.get('delegationDepth') ?? 0
   const installed = ctx?.get('installedSubAgents')  // undefined = unconfigured = allow
 
-  const specs = listSpecs()
+  const hostMaxDepth = maxDepthForHost(agentName)   // from the host's own spec
+
+  const specs = depth >= hostMaxDepth ? [] : listSpecs()
     .filter(s => hostAllows(agentName, s))
-    .filter(s => depth < s.maxDepthForHost)
     .filter(s => !installed || !s.requiresEntitlement || installed.includes(s.id))
 
   return Object.fromEntries(specs.map(s => [s.id, s.build()]))
@@ -313,8 +314,10 @@ The `agentName` gate stays. It is what stops every custom agent falling
 through `platformAgent` and inheriting Olmo's delegates. It generalises to
 "which host is asking" but does not go away.
 
-Depth is read from the *host's* spec, not the delegate's: a specialist
-with `maxDepth: 0` receives `{}` and has nothing to call.
+Depth is read from the *host's* spec, not the delegate's: `maxDepth` on a
+spec says how deep **that** agent may delegate, so a specialist with
+`maxDepth: 0` receives `{}` and has nothing to call. Olmo's own host depth
+is its ceiling as the root.
 
 `TenantContext` gains `delegationDepth?: number` and
 `installedSubAgents?: string[]`. The file's own comment directs new fields
