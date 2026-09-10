@@ -3,6 +3,7 @@ import { saveUserMessage, saveAssistantMessage, fireArtifactNotification, type A
 import { downloadMediaAttachment, buildAttachmentNote } from '../media.js'
 import { fireMetrics, fireAutoEval, fireToolCallLog, fireKnowledgeGap } from '../events.js'
 import { resolveAgent, resolveAgentLabel } from '../mastra/registry.js'
+import { olmoDelegationOptions } from '../mastra/subagents/streamOptions.js'
 import { runWithGuardrailContext } from '../mastra/guardrails.js'
 import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
@@ -315,6 +316,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         },
         requestContext,
         providerOptions: { 'inference-gateway': { thinkingBudget } },
+        ...olmoDelegationOptions({ tenantId, conversationId, agentId }),
       })
 
     turnLoop: while (true) {

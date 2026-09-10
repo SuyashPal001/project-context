@@ -20,6 +20,7 @@ import { createConversation, saveUserMessage, saveAssistantMessage, fetchConvers
 import { fetchAgentMemory } from './usage.js'
 import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
+import { olmoDelegationOptions } from './mastra/subagents/streamOptions.js'
 import { getMCPClientForTenant } from './mastra/tools.js'
 import { getThinkingBudget } from './mastra/thinking.js'
 import { loadRates } from './mastra/cost.js'
@@ -219,6 +220,7 @@ async function handleSession(
           memory: { thread: conversationId ?? crypto.randomUUID(), resource: tenantId },
           requestContext,
           providerOptions: { google: { thinkingConfig: { thinkingBudget } } },
+          ...olmoDelegationOptions({ tenantId, conversationId, agentId }),
         })
 
         let fullText = ''
