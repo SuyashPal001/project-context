@@ -16,6 +16,9 @@ import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
+import { pendingToolApprovals, sessionActiveToolApprovals } from '../types.js'
+import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/generationApproval.js'
+import { saveGenerationConfirmRequest, updateGenerationConfirmRequest } from '../persistence.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
   const prompt = `Based on this conversation turn, generate exactly 3 short, natural follow-up questions the user might want to ask next.
@@ -304,7 +307,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     let reasoningLastMs: number | null = null
 
     await runWithGuardrailContext({ tenantId, conversationId }, async () => {
-      const agentStream = await (activeAgent as any).stream(mastraMessage, {
+      let currentStream: any = await (activeAgent as any).stream(mastraMessage, {
         memory: {
           thread: conversationId || crypto.randomUUID(),
           resource: tenantId,
@@ -314,8 +317,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         providerOptions: { 'inference-gateway': { thinkingBudget } },
       })
 
-    for await (const part of agentStream.fullStream as AsyncIterable<any>) {
-      if (isStreamClosed()) break
+    turnLoop: while (true) {
+    for await (const part of currentStream.fullStream as AsyncIterable<any>) {
+      if (isStreamClosed()) break turnLoop
 
       switch (part.type) {
         case 'text-delta': {
@@ -358,6 +362,77 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           if (toolName === 'retrieve_documents') ragFired = true
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
           break
+        }
+        case 'tool-call-approval': {
+          const p = part.payload ?? part
+          const toolName = (p.toolName ?? '') as string
+          const toolCallId = (p.toolCallId ?? '') as string
+          const args = (p.args ?? {}) as Record<string, unknown>
+          const runId = (currentStream.runId ?? '') as string
+          const meta = GENERATION_APPROVAL_METADATA[toolName]
+
+          // A tool paused for approval that this migration doesn't know how
+          // to render a card for (shouldn't happen — only the 5 gated tools
+          // set requireApproval, and all 5 have a metadata entry from Task
+          // 1). Fail open rather than hang the turn on an invisible card.
+          if (!meta || !toolCallId) {
+            console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — auto-approving`)
+            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId })
+            continue turnLoop
+          }
+
+          const preview = meta.buildPreview?.(args)
+          const piiNote = toolName === 'create_skill' && typeof args.body === 'string' ? detectSkillPii(args.body) : ''
+          const label = piiNote ? `${meta.label}${piiNote}` : meta.label
+
+          sendEvent('generation_confirm_request', {
+            confirmationId: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label,
+            ...(preview ? { preview } : {}),
+          })
+
+          if (conversationId && idToken) {
+            saveGenerationConfirmRequest(idToken, conversationId, toolCallId, {
+              id: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label, status: 'pending',
+              ...(preview ? { preview } : {}),
+            })
+          }
+
+          let approvalSet = sessionActiveToolApprovals.get(sessionId)
+          if (!approvalSet) {
+            approvalSet = new Set()
+            sessionActiveToolApprovals.set(sessionId, approvalSet)
+          }
+          approvalSet.add(toolCallId)
+
+          // No timeout here — unlike the old CONFIRM_TIMEOUT_MS, this waits
+          // until the human answers (sessions.ts's /api/chat/generation-confirm
+          // route resolves this entry), the connection drops (chat.ts's
+          // cancel() handler resolves it), or neither happens and the
+          // watchdog's 24h sweep declines the underlying Mastra run directly
+          // — which this in-process await never sees resolve, matching the
+          // spec's accepted trade-off for a connection abandoned that long.
+          const { confirmed, declineReason } = await new Promise<{ confirmed: boolean; declineReason?: string }>((resolve) => {
+            pendingToolApprovals.set(toolCallId, {
+              resolve, tenantId, runId, toolCallId,
+              messageId: toolCallId, conversationId, idToken,
+            })
+          })
+
+          sessionActiveToolApprovals.get(sessionId)?.delete(toolCallId)
+          if (sessionActiveToolApprovals.get(sessionId)?.size === 0) sessionActiveToolApprovals.delete(sessionId)
+
+          if (conversationId && idToken) {
+            updateGenerationConfirmRequest(idToken, conversationId, toolCallId, {
+              status: confirmed ? 'approved' : 'declined',
+              decisionAt: new Date().toISOString(),
+              ...(declineReason ? { declineReason } : {}),
+            })
+          }
+
+          currentStream = confirmed
+            ? await (activeAgent as any).approveToolCall({ runId, toolCallId })
+            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? 'Declined by user' })
+          continue turnLoop
         }
         case 'tool-result': {
           const p = part.payload ?? part
@@ -480,6 +555,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         }
       }
     }
+    // The stream ran to completion without a tool-call-approval pause. Every
+    // resumption path above uses `continue turnLoop`, so reaching here means
+    // the turn is over — without this the while(true) would re-iterate an
+    // already-exhausted fullStream forever.
+    break turnLoop
+    } // end turnLoop while(true)
     }) // end runWithGuardrailContext
 
     stopHeartbeat()
