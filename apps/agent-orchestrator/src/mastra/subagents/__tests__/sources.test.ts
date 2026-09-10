@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { listSpecs, getSpec, maxDepthForHost, hostAllows, assertRegistryValid, assertMatchesCodeSpecIds, OLMO_HOST_MAX_DEPTH } from '../sources.js'
 import { NEGATIVE_CLAUSE } from '../spec.js'
 import { CODE_SPEC_IDS } from '../ids.js'
@@ -64,5 +64,33 @@ describe('code spec source', () => {
   it('throws when SPECS has an id not in CODE_SPEC_IDS', () => {
     const withExtra = [...listSpecs(), { ...getSpec('pm')!, id: 'stylist' }]
     expect(() => assertMatchesCodeSpecIds(withExtra, CODE_SPEC_IDS)).toThrow(/stylist/)
+  })
+})
+
+describe('smoke stub registration behind SUBAGENT_SMOKE_STUB', () => {
+  // The flag is read at module load, so the module must be re-imported with
+  // the env var already set — setting process.env after a normal top-level
+  // import would prove nothing, since sources.ts already evaluated STUB_ENABLED.
+  it('boots with the stub present when the flag is on, without tripping the drift assertion', async () => {
+    const prev = process.env.SUBAGENT_SMOKE_STUB
+    process.env.SUBAGENT_SMOKE_STUB = '1'
+    vi.resetModules()
+    try {
+      const fresh = await import('../sources.js')
+      const ids = fresh.listSpecs().map((s) => s.id).sort()
+      expect(ids).toEqual(['architect', 'director', 'pm', 'producer', 'smoke'])
+      expect(fresh.getSpec('smoke')?.id).toBe('smoke')
+
+      // assertRegistryValid and assertBackgroundSupported must cover the
+      // stub too — re-run them explicitly against the freshly loaded SPECS
+      // to prove they see it (module-load already ran them without throwing,
+      // which is itself part of the proof: the flag-on module imported clean).
+      expect(() => fresh.assertRegistryValid(fresh.listSpecs())).not.toThrow()
+      expect(() => fresh.assertBackgroundSupported(fresh.listSpecs())).not.toThrow()
+    } finally {
+      if (prev === undefined) delete process.env.SUBAGENT_SMOKE_STUB
+      else process.env.SUBAGENT_SMOKE_STUB = prev
+      vi.resetModules()
+    }
   })
 })

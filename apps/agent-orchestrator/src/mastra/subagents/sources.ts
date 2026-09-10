@@ -5,6 +5,7 @@ import { directorAgentDelegate } from '../agents/directorAgent.js'
 import { producerAgentDelegate } from '../agents/producerAgent.js'
 import { BACKGROUND_TASKS_ENABLED } from '../backgroundTasks.js'
 import { CODE_SPEC_IDS } from './ids.js'
+import { stubSpec, STUB_ENABLED } from './stub.js'
 import type { Agent } from '@mastra/core/agent'
 
 /**
@@ -17,7 +18,13 @@ export const OLMO_HOST_MAX_DEPTH = 1
 /** The host row that may delegate at all. Lowercased comparison. */
 const OLMO_HOST = 'olmo'
 
-const SPECS: SubAgentSpec[] = [
+/**
+ * The unconditional, always-registered code specs. This is exactly the set
+ * `assertMatchesCodeSpecIds` checks against `ids.ts`'s `CODE_SPEC_IDS` — see
+ * that function's doc comment for why an env-gated spec must never be folded
+ * in here.
+ */
+const CODE_SPECS: SubAgentSpec[] = [
   defineSubAgent({
     id: 'pm',
     build: () => pmAgentDelegate as unknown as Agent,
@@ -51,6 +58,16 @@ const SPECS: SubAgentSpec[] = [
     estimatedCredits: 20_000,
   }),
 ]
+
+/**
+ * Everything that can actually be delegated to, including the smoke stub
+ * when the flag is on. `assertRegistryValid` (duplicate ids, fallback
+ * targets) and `assertBackgroundSupported` must see this — not just
+ * `CODE_SPECS` — because those checks exist to cover everything reachable
+ * at runtime, not just the fixed code contract. `listSpecs`/`getSpec` read
+ * from this too, so the stub is resolvable and delegatable once enabled.
+ */
+const SPECS: SubAgentSpec[] = [...CODE_SPECS, ...(STUB_ENABLED ? [stubSpec] : [])]
 
 /**
  * Cross-spec checks that cannot run inside defineSubAgent, because they need
@@ -113,7 +130,7 @@ export function assertMatchesCodeSpecIds(specs: SubAgentSpec[], expectedIds: rea
 
 assertRegistryValid(SPECS)
 assertBackgroundSupported(SPECS)
-assertMatchesCodeSpecIds(SPECS, CODE_SPEC_IDS)
+assertMatchesCodeSpecIds(CODE_SPECS, CODE_SPEC_IDS)
 
 export function listSpecs(): SubAgentSpec[] {
   return SPECS
