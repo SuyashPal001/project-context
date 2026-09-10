@@ -15,10 +15,10 @@ vi.mock('@serverless-saas/credits', () => ({
 vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 
-const { confirmGenerationOrDecline } = vi.hoisted(() => ({
-  confirmGenerationOrDecline: vi.fn(),
+const { shouldRequireApproval } = vi.hoisted(() => ({
+  shouldRequireApproval: vi.fn(),
 }))
-vi.mock('./confirmGeneration.js', () => ({ confirmGenerationOrDecline }))
+vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
 import { generateSong } from './generateSong.js'
 import { uploadGeneratedFile } from '../../persistence.js'
@@ -34,7 +34,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   isUnlimited.mockResolvedValue(false)
   resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 20_000 } })
-  confirmGenerationOrDecline.mockResolvedValue({ confirmed: true })
+  shouldRequireApproval.mockResolvedValue(false)
 })
 
 describe('generateSong tool', () => {
@@ -101,15 +101,15 @@ describe('generateSong tool', () => {
     expect(result).toEqual({ refused: true, refusalReason: 'GENERATION_FAILED' })
   })
 
-  it('short-circuits with DECLINED and never calls the gateway when the user declines', async () => {
-    confirmGenerationOrDecline.mockResolvedValue({ confirmed: false })
-    const fetchMock = vi.fn()
-    global.fetch = fetchMock as unknown as typeof fetch
+  it('requireApproval delegates to shouldRequireApproval with music_generation/MUSIC_MODEL', async () => {
+    shouldRequireApproval.mockResolvedValue(true)
+    const ctxArg = baseCtx()
 
-    const result = await generateSong.execute!({ prompt: 'a calm lo-fi beat' } as never, baseCtx())
+    await (generateSong.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ prompt: 'a calm lo-fi beat' }, ctxArg)
 
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(spendCredits).not.toHaveBeenCalled()
-    expect(result).toEqual({ refused: true, refusalReason: 'DECLINED' })
+    expect(shouldRequireApproval).toHaveBeenCalledWith(
+      { resourceType: 'music_generation', subject: 'lyria-002' },
+      ctxArg,
+    )
   })
 })

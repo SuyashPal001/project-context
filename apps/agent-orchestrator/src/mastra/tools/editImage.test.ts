@@ -20,10 +20,10 @@ vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 vi.mock('../../media.js', () => ({ resolveSourceImage }))
 
-const { confirmGenerationOrDecline } = vi.hoisted(() => ({
-  confirmGenerationOrDecline: vi.fn(),
+const { shouldRequireApproval } = vi.hoisted(() => ({
+  shouldRequireApproval: vi.fn(),
 }))
-vi.mock('./confirmGeneration.js', () => ({ confirmGenerationOrDecline }))
+vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
 import { editImage } from './editImage.js'
 import { uploadGeneratedFile } from '../../persistence.js'
@@ -46,7 +46,7 @@ beforeEach(() => {
   isUnlimited.mockResolvedValue(false)
   resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 50_000 } })
   resolveSourceImage.mockResolvedValue({ base64: 'c291cmNlLWJ5dGVz', mimeType: 'image/png' })
-  confirmGenerationOrDecline.mockResolvedValue({ confirmed: true })
+  shouldRequireApproval.mockResolvedValue(false)
 })
 
 describe('editImage tool', () => {
@@ -162,16 +162,15 @@ describe('editImage tool', () => {
     expect(result).toEqual({ refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' })
   })
 
-  it('short-circuits with DECLINED and never resolves the source image when the user declines', async () => {
-    confirmGenerationOrDecline.mockResolvedValue({ confirmed: false })
-    const fetchMock = vi.fn()
-    global.fetch = fetchMock as unknown as typeof fetch
+  it('requireApproval delegates to shouldRequireApproval with image_generation/IMAGE_MODEL', async () => {
+    shouldRequireApproval.mockResolvedValue(true)
+    const ctxArg = baseCtx()
 
-    const result = await editImage.execute!({ prompt: 'make it blue', sourceFileId: 'f1', sourceMimeType: 'image/png' } as never, baseCtx())
+    await (editImage.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)(baseInput, ctxArg)
 
-    expect(resolveSourceImage).not.toHaveBeenCalled()
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(spendCredits).not.toHaveBeenCalled()
-    expect(result).toEqual({ refused: true, refusalReason: 'DECLINED' })
+    expect(shouldRequireApproval).toHaveBeenCalledWith(
+      { resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview' },
+      ctxArg,
+    )
   })
 })

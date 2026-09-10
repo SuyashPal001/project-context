@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { refundVideoCharge } from './videoCredits.js'
-import { confirmGenerationOrDecline } from './confirmGeneration.js'
+import { shouldRequireApproval } from './generationApproval.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const VIDEO_MODEL = 'gemini-omni-1.1-flash'
@@ -28,6 +28,8 @@ export const generateVideo = createTool({
     prompt: z.string().describe('Description of the video to generate'),
   }),
   outputSchema,
+  requireApproval: async (_input, ctx) =>
+    shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {
     const { prompt } = inputData as { prompt: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
@@ -35,9 +37,6 @@ export const generateVideo = createTool({
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
-
-    const confirm = await confirmGenerationOrDecline(execContext, 'video_generation', VIDEO_MODEL, 'Generate video')
-    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.declineReason ?? confirm.reason ?? 'DECLINED' }
 
     let genResult: { videoBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {

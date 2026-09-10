@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { refundImageCharge } from './imageCredits.js'
-import { confirmGenerationOrDecline } from './confirmGeneration.js'
+import { shouldRequireApproval } from './generationApproval.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -28,6 +28,8 @@ export const generateImage = createTool({
     prompt: z.string().describe('Full description of the image to generate'),
   }),
   outputSchema,
+  requireApproval: async (_input, ctx) =>
+    shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
   execute: async (inputData, execContext) => {
     const { prompt } = inputData as { prompt: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
@@ -35,9 +37,6 @@ export const generateImage = createTool({
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
-
-    const confirm = await confirmGenerationOrDecline(execContext, 'image_generation', IMAGE_MODEL, 'Generate image')
-    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.declineReason ?? confirm.reason ?? 'DECLINED' }
 
     let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { refundMusicCharge } from './musicCredits.js'
-import { confirmGenerationOrDecline } from './confirmGeneration.js'
+import { shouldRequireApproval } from './generationApproval.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const MUSIC_MODEL = 'lyria-002'
@@ -26,6 +26,8 @@ export const generateSong = createTool({
     prompt: z.string().describe('Mood/genre/style description of the instrumental clip to generate'),
   }),
   outputSchema,
+  requireApproval: async (_input, ctx) =>
+    shouldRequireApproval({ resourceType: 'music_generation', subject: MUSIC_MODEL }, ctx),
   execute: async (inputData, execContext) => {
     const { prompt } = inputData as { prompt: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
@@ -33,9 +35,6 @@ export const generateSong = createTool({
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
-
-    const confirm = await confirmGenerationOrDecline(execContext, 'music_generation', MUSIC_MODEL, 'Generate song')
-    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.declineReason ?? confirm.reason ?? 'DECLINED' }
 
     let genResult: { audioBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {

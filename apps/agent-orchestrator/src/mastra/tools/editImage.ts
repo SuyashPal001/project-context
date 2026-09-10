@@ -5,7 +5,7 @@ import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-s
 import { uploadGeneratedFile } from '../../persistence.js'
 import { resolveSourceImage } from '../../media.js'
 import { refundImageCharge } from './imageCredits.js'
-import { confirmGenerationOrDecline } from './confirmGeneration.js'
+import { shouldRequireApproval } from './generationApproval.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -35,6 +35,8 @@ export const editImage = createTool({
     sourceMimeType: z.string().describe('MIME type of the source image, e.g. image/png'),
   }),
   outputSchema,
+  requireApproval: async (_input, ctx) =>
+    shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
   execute: async (inputData, execContext) => {
     const { prompt, sourceFileId, sourceMimeType } = inputData as { prompt: string; sourceFileId: string; sourceMimeType: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
@@ -42,9 +44,6 @@ export const editImage = createTool({
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
-
-    const confirm = await confirmGenerationOrDecline(execContext, 'image_generation', IMAGE_MODEL, 'Edit image')
-    if (!confirm.confirmed) return { refused: true, refusalReason: confirm.declineReason ?? confirm.reason ?? 'DECLINED' }
 
     const source = await resolveSourceImage(idToken ?? '', sourceFileId, sourceMimeType, sessionId)
     if (!source) {

@@ -15,10 +15,10 @@ vi.mock('@serverless-saas/credits', () => ({
 vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 
-const { confirmGenerationOrDecline } = vi.hoisted(() => ({
-  confirmGenerationOrDecline: vi.fn(),
+const { shouldRequireApproval } = vi.hoisted(() => ({
+  shouldRequireApproval: vi.fn(),
 }))
-vi.mock('./confirmGeneration.js', () => ({ confirmGenerationOrDecline }))
+vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
 import { generateVideo } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
@@ -34,7 +34,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   isUnlimited.mockResolvedValue(false)
   resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 100_000 } })
-  confirmGenerationOrDecline.mockResolvedValue({ confirmed: true })
+  shouldRequireApproval.mockResolvedValue(false)
 })
 
 describe('generateVideo tool', () => {
@@ -119,15 +119,15 @@ describe('generateVideo tool', () => {
     expect(result).toEqual({ refused: true, refusalReason: 'GENERATION_FAILED' })
   })
 
-  it('short-circuits with DECLINED and never calls the gateway when the user declines', async () => {
-    confirmGenerationOrDecline.mockResolvedValue({ confirmed: false })
-    const fetchMock = vi.fn()
-    global.fetch = fetchMock as unknown as typeof fetch
+  it('requireApproval delegates to shouldRequireApproval with video_generation/VIDEO_MODEL', async () => {
+    shouldRequireApproval.mockResolvedValue(true)
+    const ctxArg = baseCtx()
 
-    const result = await generateVideo.execute!({ prompt: 'a marble rolling down a track' } as never, baseCtx())
+    await (generateVideo.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ prompt: 'a marble rolling down a track' }, ctxArg)
 
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(spendCredits).not.toHaveBeenCalled()
-    expect(result).toEqual({ refused: true, refusalReason: 'DECLINED' })
+    expect(shouldRequireApproval).toHaveBeenCalledWith(
+      { resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash' },
+      ctxArg,
+    )
   })
 })
