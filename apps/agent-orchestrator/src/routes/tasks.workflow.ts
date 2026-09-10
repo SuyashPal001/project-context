@@ -1,9 +1,36 @@
+import { RequestContext, MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context'
 import { INTERNAL_SERVICE_KEY, INTERNAL_API_URL } from '../types.js'
 import type { WorkflowStep } from '../types.js'
-import { fetchAgentSkillsPrompt, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from '../usage.js'
+import { fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from '../usage.js'
 import { refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
-import { runMastraWorkflow } from '../mastra/index.js'
-import type { WorkflowContext } from '../mastra/index.js'
+import { mastra } from '../mastra/index.js'
+import type { TenantContext } from '../mastra/context.js'
+
+// Shape of a completed `task-execution-plan` run's `result.result` — shared
+// between the initial run.start() success path here and the resume route's
+// run.resume() success path (routes/tasks.ts) so both call
+// finishSuccessfulWorkflowRun with the same typed shape instead of an `as never` cast.
+export type WorkflowStepOutputs = Array<{
+  stepId: string; status: string; summary: string
+  toolCalled?: string; toolResult?: unknown
+  inputTokens?: number; outputTokens?: number
+}>
+
+export async function postWorkflowUpdate(
+  workflowRunId: string,
+  body: Record<string, unknown>,
+  traceId: string,
+): Promise<void> {
+  await fetch(`${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-service-key': INTERNAL_SERVICE_KEY,
+      'x-trace-id': traceId,
+    },
+    body: JSON.stringify(body),
+  }).catch((e: Error) => console.error('[workflow] update failed:', e.message))
+}
 
 export async function runMastraWorkflowSteps(
   workflowId: string,
@@ -21,8 +48,7 @@ export async function runMastraWorkflowSteps(
   // unmetered.
   model: string = DEFAULT_TASK_MODEL,
 ): Promise<void> {
-  const agentSkillsPrompt = await fetchAgentSkillsPrompt(agentId, tenantId)
-  const instructions = systemPrompt ?? agentSkillsPrompt ?? 'You are a helpful AI assistant.'
+  const instructions = systemPrompt ?? 'You are a helpful AI assistant.'
   const connectedProviders = await fetchConnectedProviders(tenantId)
   const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)
   const policy = await fetchAgentPolicy(agentId, tenantId)
@@ -32,112 +58,119 @@ export async function runMastraWorkflowSteps(
       ...toolGovernance.requiresApprovalTools,
       ...policy.requiresApproval,
       ...(requiresApproval ? ['*'] : []),
-    ])
+    ]),
   ]
 
-  const wfStepsCompleted: unknown[] = []
-  const wfToolsCalled: unknown[] = []
-  // Real token totals for the settle below. runMastraWorkflow already reports
-  // per-step usage on the onStepComplete payload (it sums the two generate
-  // passes) — this flow simply never read it, so a SUCCESSFUL workflow stayed
-  // charged at the up-front estimate forever while an equivalent task run got
-  // reconciled to what it actually cost.
-  let wfInputTokens = 0
-  let wfOutputTokens = 0
-  // A failed step is this flow's only terminal-failure signal, so it is also
-  // the only place the charge can be refunded.
-  let hadFailure = false
+  // Typed explicitly as TenantContext (not the bare `new RequestContext()`
+  // used elsewhere in this codebase): taskExecutionPlanWorkflow declares
+  // `requestContextSchema: tenantContextSchema`, and its `.map().foreach()`
+  // chain (unlike pmWorkflow's more elaborate chain, which loses the type
+  // param) actually propagates that schema type to `run.start()`'s
+  // `requestContext` parameter, so a `RequestContext<unknown>` fails to
+  // typecheck against it. MASTRA_RESOURCE_ID_KEY is a reserved
+  // middleware-only key outside the declared schema, so it goes through
+  // `setRaw` rather than the schema-checked `set`.
+  const requestContext = new RequestContext<TenantContext>()
+  requestContext.setRaw(MASTRA_RESOURCE_ID_KEY, tenantId)
+  requestContext.set('tenantId', tenantId)
+  requestContext.set('agentId', agentId)
 
-  const ctx: WorkflowContext = {
-    taskId: workflowRunId, tenantId, agentId, agentSlug: agentId, instructions,
-    taskTitle: `Workflow ${workflowId}`, taskDescription: undefined,
-    steps: steps.map((s, i) => ({
-      id: s.id ?? `step-${i}`, stepNumber: s.stepNumber ?? i + 1,
-      title: s.title, description: s.description, toolName: s.toolName,
-    })),
-    // enabledTools has had no reader since platformAgent's tools resolver
-    // (Composio/MCP + SERVER_TOOL_NAMES gate on tenantId, not this field) —
-    // it's vestigial. This was one of its three producers; all three now
-    // hardcode null, so the field is permanently null.
-    connectedProviders, enabledTools: null,
-    highStakeTools: toolGovernance.highStakeTools, requiresApprovalTools: mergedRequiresApproval,
-    blockedTools: policy.blockedActions, allowedTools: policy.allowedActions,
-    maxTokensPerMessage: policy.maxTokensPerMessage,
-    onStepStart: async (_stepId) => { /* workflow steps have no separate start endpoint */ },
-    onStepComplete: async (stepId, output) => {
-      wfInputTokens += output.inputTokens ?? 0
-      wfOutputTokens += output.outputTokens ?? 0
-      wfStepsCompleted.push({
-        stepId,
-        title: steps.find((s: WorkflowStep) => s.id === stepId)?.title ?? stepId,
-        status: output.status, summary: output.summary,
-        toolCalled: output.toolCalled ?? null, completedAt: new Date().toISOString(),
-      })
-      if (output.toolCalled) {
-        wfToolsCalled.push({ tool: output.toolCalled, result: output.toolResult ?? null })
-      }
-      console.log(JSON.stringify({ level: 'info', msg: 'workflow step complete', traceId, workflowRunId, stepId, status: output.status, ts: Date.now() }))
-    },
-    onStepFail: async (stepId, error) => {
-      hadFailure = true
-      wfStepsCompleted.push({ stepId, status: 'failed', error, completedAt: new Date().toISOString() })
-      await fetch(`${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-internal-service-key': INTERNAL_SERVICE_KEY,
-          'x-trace-id': traceId,
-        },
-        body: JSON.stringify({
-          status: 'failed', stepsCompleted: wfStepsCompleted,
-          toolsCalled: wfToolsCalled, completedAt: new Date().toISOString(),
-        }),
-      }).catch((e: Error) => console.error('[workflow] update failed:', e.message))
-      console.error(JSON.stringify({ level: 'error', msg: 'workflow step failed', traceId, workflowRunId, stepId, error, ts: Date.now() }))
-    },
-    onTaskComment: async (comment) => {
-      console.log(`[workflows] workflowRunId=${workflowRunId} comment: ${comment}`)
-    },
-  }
+  const workflow = mastra.getWorkflow('task-execution-plan')
+  const run = await workflow.createRun({ resourceId: tenantId })
 
-  await runMastraWorkflow(ctx)
+  await postWorkflowUpdate(workflowRunId, { mastraRunId: run.runId, status: 'running' }, traceId)
 
-  if (hadFailure) {
-    // onStepFail already posted the 'failed' status update per-step; refund
-    // the estimate charged at submit time so a failed workflow run doesn't
-    // leave the tenant charged for work that didn't land. Skip the
-    // 'completed' update below — it would otherwise overwrite the 'failed'
-    // status onStepFail already reported.
-    await refundTask({ tenantId, taskId: workflowRunId })
+  const result = await run.start({
+    inputData: {
+      taskId: workflowRunId,
+      taskTitle: `Workflow ${workflowId}`,
+      instructions,
+      steps: steps.map((s, i) => ({
+        stepId: s.id ?? `step-${i}`, stepNumber: s.stepNumber ?? i + 1,
+        title: s.title, description: s.description, toolName: s.toolName,
+      })),
+      highStakeTools: toolGovernance.highStakeTools,
+      requiresApprovalTools: mergedRequiresApproval,
+      blockedTools: policy.blockedActions,
+      allowedTools: policy.allowedActions,
+      maxTokensPerMessage: policy.maxTokensPerMessage,
+      attachmentContext: null,
+      acceptanceCriteria: null,
+    },
+    requestContext,
+  })
+
+  if (result.status === 'suspended') {
+    await postWorkflowUpdate(workflowRunId, { status: 'awaiting_approval' }, traceId)
+    console.log(JSON.stringify({ level: 'info', msg: 'workflow suspended for approval', traceId, workflowRunId, mastraRunId: run.runId, ts: Date.now() }))
     return
   }
 
-  // The run succeeded, so reconcile the up-front estimate against what it
-  // actually cost — the same treatment runMastraTaskSteps gives a task.
-  // Defaults for chargeKey and key are `task:{workflowRunId}` and
-  // `task:{workflowRunId}:settle`, which is exactly what the estimate at
-  // /api/workflows/execute was charged under.
-  //
-  // Awaited, not fire-and-forget: nothing races it here, and letting it finish
-  // before the 'completed' status update means a workflow reported complete has
-  // already had its price fixed.
+  if (result.status !== 'success') {
+    // Covers 'failed' plus the 'tripwire'/'paused' states the plan-workflow
+    // never intentionally produces (no output processors, no manual pause
+    // call) — treated the same as a failure so a stuck run still refunds
+    // and reports instead of falling through silently.
+    await refundTask({ tenantId, taskId: workflowRunId })
+    const errorMessage = result.status === 'failed' ? result.error.message : `workflow ended with status '${result.status}'`
+    await postWorkflowUpdate(workflowRunId, {
+      status: 'failed', completedAt: new Date().toISOString(),
+    }, traceId)
+    console.error(JSON.stringify({ level: 'error', msg: 'workflow failed', traceId, workflowRunId, error: errorMessage, ts: Date.now() }))
+    return
+  }
+
+  // status === 'success' — same completion accounting as the resume route
+  // (routes/tasks.ts's POST /api/workflows/:workflowRunId/resume), shared
+  // here rather than duplicated.
+  const stepOutputs = result.result as WorkflowStepOutputs
+  await finishSuccessfulWorkflowRun(workflowRunId, tenantId, stepOutputs, traceId, agentId, model)
+}
+
+/**
+ * Shared success-path accounting for a completed `task-execution-plan` run —
+ * settle (or refund on a per-step failure) plus the `postWorkflowUpdate` that
+ * marks the workflow run terminal. Called both from `runMastraWorkflowSteps`
+ * above (the initial `run.start()` path) and from the resume route
+ * (`routes/tasks.ts`'s `POST /api/workflows/:workflowRunId/resume`, the
+ * `run.resume()` path) so the two don't drift.
+ */
+export async function finishSuccessfulWorkflowRun(
+  workflowRunId: string,
+  tenantId: string,
+  stepOutputs: WorkflowStepOutputs,
+  traceId: string,
+  agentId: string,
+  model: string,
+): Promise<void> {
+  const hadFailure = stepOutputs.some((s) => s.status === 'failed')
+  const wfInputTokens = stepOutputs.reduce((sum, s) => sum + (s.inputTokens ?? 0), 0)
+  const wfOutputTokens = stepOutputs.reduce((sum, s) => sum + (s.outputTokens ?? 0), 0)
+  const wfStepsCompleted = stepOutputs.map((s) => ({
+    stepId: s.stepId, title: s.stepId, status: s.status, summary: s.summary,
+    toolCalled: s.toolCalled ?? null, completedAt: new Date().toISOString(),
+  }))
+  const wfToolsCalled = stepOutputs
+    .filter((s) => s.toolCalled)
+    .map((s) => ({ tool: s.toolCalled, result: s.toolResult ?? null }))
+
+  if (hadFailure) {
+    await refundTask({ tenantId, taskId: workflowRunId })
+    await postWorkflowUpdate(workflowRunId, {
+      status: 'failed', stepsCompleted: wfStepsCompleted, toolsCalled: wfToolsCalled,
+      completedAt: new Date().toISOString(),
+    }, traceId)
+    return
+  }
+
   await settleTask({
     tenantId, taskId: workflowRunId, agentId, model,
     inputTokens: wfInputTokens, outputTokens: wfOutputTokens,
   })
 
-  await fetch(`${INTERNAL_API_URL}/internal/workflows/${workflowRunId}/update`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-internal-service-key': INTERNAL_SERVICE_KEY,
-      'x-trace-id': traceId,
-    },
-    body: JSON.stringify({
-      status: 'completed', stepsCompleted: wfStepsCompleted, toolsCalled: wfToolsCalled,
-      insights: (wfStepsCompleted as Array<{ summary?: string }>)
-        .map(s => s.summary).filter(Boolean).join('\n'),
-      completedAt: new Date().toISOString(),
-    }),
-  }).catch((e: Error) => console.error('[workflow] update failed:', e.message))
+  await postWorkflowUpdate(workflowRunId, {
+    status: 'completed', stepsCompleted: wfStepsCompleted, toolsCalled: wfToolsCalled,
+    insights: wfStepsCompleted.map((s) => s.summary).filter(Boolean).join('\n'),
+    completedAt: new Date().toISOString(),
+  }, traceId)
 }

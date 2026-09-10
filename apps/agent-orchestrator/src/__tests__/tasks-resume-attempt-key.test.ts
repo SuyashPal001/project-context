@@ -86,7 +86,6 @@ vi.mock('../routes/tasks.workflow.js', () => ({ runMastraWorkflowSteps: vi.fn() 
 vi.mock('../mastra/index.js', () => ({
   taskExecutionWorkflow: { createRun: vi.fn() },
   documentWorkflow: { createRun: vi.fn() },
-  runMastraWorkflow: vi.fn(),
 }))
 
 function requestBody(attempt: number) {

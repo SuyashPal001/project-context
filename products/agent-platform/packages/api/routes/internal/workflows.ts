@@ -22,7 +22,8 @@ function isAuthorized(provided: string): boolean {
 
 const updateSchema = z.object({
   tenantId: z.string().uuid().optional(),
-  status: z.enum(['running', 'completed', 'failed']).optional(),
+  mastraRunId: z.string().min(1).optional(),
+  status: z.enum(['running', 'awaiting_approval', 'completed', 'failed']).optional(),
   stepsCompleted: z.array(z.unknown()).optional(),
   toolsCalled: z.array(z.unknown()).optional(),
   insights: z.string().optional(),
@@ -52,6 +53,9 @@ internalWorkflowsRoute.post('/:workflowRunId/update', async (c) => {
 
   if (parsed.data.status !== undefined) {
     update.status = parsed.data.status;
+  }
+  if (parsed.data.mastraRunId !== undefined) {
+    update.mastraRunId = parsed.data.mastraRunId;
   }
   if (parsed.data.stepsCompleted !== undefined) {
     update.stepsCompleted = parsed.data.stepsCompleted;

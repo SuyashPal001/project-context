@@ -82,7 +82,6 @@ vi.mock('../mastra/index.js', () => ({
       start: vi.fn().mockImplementation(async () => documentRunResult),
     })),
   },
-  runMastraWorkflow: vi.fn(),
 }))
 
 const STEPS = [
