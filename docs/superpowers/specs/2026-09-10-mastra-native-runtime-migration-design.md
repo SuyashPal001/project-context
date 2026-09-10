@@ -23,34 +23,55 @@ unrelated "test one skill" sessions):
    `skill_search` tools — the model pulls in one skill's content on demand
    instead of everything being pasted into context every turn.
 
-2. **Pause-and-wait-for-a-human.** `confirmGeneration.ts`'s
-   `confirmGenerationOrDecline` hand-rolls a suspend: a
+2. **Pause-and-wait-for-a-human, in chat.** `confirmGeneration.ts`'s
+   `confirmGenerationOrDecline` — called from inside chat tool calls
+   (`generateImage`, `generateVideo`, `generateSong`, `createSkill`'s
+   `alwaysAsk` path) — hand-rolls a suspend: a
    `pendingGenerationConfirmations` in-memory Map, a manual 5-minute
    `setTimeout`, an SSE push to show the approval card, and a wait for the
-   Map entry to resolve. Mastra ships this natively as workflow
-   suspend/resume (`docs-workflows-suspend-and-resume.md`,
-   `docs-workflows-human-in-the-loop.md`) — persisted, not in-memory, and
-   not something to hand-roll a second time per caller.
+   Map entry to resolve. **Corrected after Opus review of this spec
+   against the actual docs**: chat tool calls run through `agent.stream()`,
+   not a workflow, so there is no workflow step to suspend here. Mastra
+   ships a *separate* native mechanism for exactly this —
+   `docs-agents-human-in-the-loop.md`: `requireToolApproval` on
+   `agent.stream()` accepts a function,
+   `(ctx: { toolName, args, requestContext }) => boolean | Promise<boolean>`
+   (confirmed at `dist/tools/types.d.ts:38`), a `tool-call-approval` stream
+   chunk, and `agent.approveToolCall({ runId })` /
+   `agent.declineToolCall({ runId, reason })`. `requestContext` is passed
+   into the function, so the existing `isUnlimited`/`resolveRate`/
+   `alwaysAsk`/`allowMode` logic (all already reachable from
+   `requestContext`) becomes the body of that function instead of a
+   hand-rolled Map.
 
-3. **Multi-step execution.** `mastra/workflow.ts`'s `runMastraWorkflow`
-   (called from `routes/tasks.workflow.ts`, itself invoked by
-   `POST /workflows/execute` in `routes/tasks.ts` — the async Tasks
-   feature: PRDs, roadmaps, any planned multi-step work) is a hand-written
-   loop over `steps[]`, calling `agent.generate()` per step and branching
-   in plain JS. No persisted run state — a crash mid-run loses all
-   progress, nothing survives to resume from. Mastra ships `createWorkflow`
-   / `createStep` with tracked, resumable runs, and steps can call existing
-   agents directly (`docs-workflows-agents-and-tools.md`) — no new
-   workflow-specific agents need to be created.
+3. **Multi-step execution, in the Tasks feature.** `mastra/workflow.ts`'s
+   `runMastraWorkflow` (called from `routes/tasks.workflow.ts`, itself
+   invoked by `POST /workflows/execute` in `routes/tasks.ts` — PRDs,
+   roadmaps, any planned multi-step work) is a hand-written loop over
+   `steps[]`, calling `agent.generate()` per step and branching in plain
+   JS. No persisted run state — a crash mid-run loses all progress,
+   nothing survives to resume from. **Corrected after review**: this is
+   narrower than it first looked. `mastra/index.ts` already registers 7
+   native Mastra workflows (`taskExecution`, `documentWorkflow`,
+   `documentIngestion`, `prd`, `roadmap`, `tasks`, `pm-workflow`), and one
+   of them — `pmWorkflow.ts`'s `prdStep` — already does suspend/resume
+   correctly today:
+   `execute: async ({ inputData, resumeData, suspend, suspendData, ... }) => { ...; return await suspend({ phase: 'prd', prdId, title }) }`
+   with `resumeSchema`/`suspendSchema` declared on the step. That's the
+   real, working pattern to follow — `runMastraWorkflow` in
+   `mastra/workflow.ts` is the one hand-rolled outlier, not evidence native
+   workflows are unused here.
 
 Also audited and confirmed **not** duplicated (native Mastra used
 correctly, no change needed): `memory.ts` (native `Memory` class),
 `guardrails.ts` (native processor violation hooks), `platformAgent.ts`'s
 `tools:` field (already the same per-request dynamic-resolver shape skills
-should have used). `registry.ts`'s static per-conversation agent router
-resembles Mastra's native Subagents feature but solves a different problem
-(binding once to a conversation's fixed agent, not runtime model-driven
-delegation) — flagged, not changed by this spec.
+should have used), and the 6 workflows listed above other than
+`runMastraWorkflow`/`pm-workflow`'s already-correct suspend usage.
+`registry.ts`'s static per-conversation agent router resembles Mastra's
+native Subagents feature but solves a different problem (binding once to a
+conversation's fixed agent, not runtime model-driven delegation) —
+flagged, not changed by this spec.
 
 ## Goal
 
@@ -62,10 +83,12 @@ delegation) — flagged, not changed by this spec.
   resolver, fed a conversation-scoped override instead of a DB attach.
 - The agent's persona (`default` row) is structurally isolated from
   skills — no skill's content can ever land in `instructions`.
-- `confirmGenerationOrDecline`'s pause mechanism and `runMastraWorkflow`'s
-  step execution both run on Mastra's own suspend/resume and workflow
-  primitives, sharing one mechanism instead of two separate hand-rolled
-  ones.
+- `confirmGenerationOrDecline`'s pause mechanism moves onto Mastra's native
+  agent-level tool approval (`requireToolApproval`), and `runMastraWorkflow`'s
+  step execution moves onto Mastra's native workflow suspend/resume — two
+  different native mechanisms for two genuinely different call sites (a
+  chat tool call vs. a workflow step), replacing two separate hand-rolled
+  ones with the two matching native ones, not one shared mechanism.
 - Credit/billing logic (`isUnlimited`, `resolveRate`, `chargeTaskEstimate`,
   `settleTask`/`refundTask`) is untouched — only the execution/pause
   plumbing underneath it changes.
@@ -78,6 +101,10 @@ delegation) — flagged, not changed by this spec.
   already-installed skill's content reaches the agent at runtime.
 - `registry.ts`'s agent router — flagged as a maybe against Subagents, not
   a confirmed duplicate. Separate investigation if picked up later.
+- The 6 already-native workflows other than the `runMastraWorkflow` path
+  (`taskExecutionWorkflow`, `documentWorkflow`, `ingestionWorkflow`,
+  `prdWorkflow`, `roadmapWorkflow`, `taskWorkflow`) and `pmWorkflow.ts`'s
+  existing correct suspend/resume — all untouched, already right.
 - Any change to `cost.ts`, `thinking.ts`, `composio.ts`, or the credit
   pricing/estimation logic in `tasks.ts` — all confirmed legitimate
   app-specific logic with no Mastra equivalent.
@@ -93,9 +120,9 @@ delegation) — flagged, not changed by this spec.
 | How does "Test in chat" scope to one skill | The web app creates the test conversation with `metadata.testSkillInstallId` set (already implemented this session in `actions.ts`/`conversations.ts` PATCH schema) — no agent-level attach at all. `chatStream.ts` reads it via `fetchConversationTestSkillInstallId` and passes it into `requestContext`; the `skills:` resolver returns only that one skill when present. |
 | What happens to `agent_skills.system_prompt` | Stops being read for composition. The table keeps its role as "which skills are attached to this agent" (attach/detach, `installId`, `name`) but content is resolved fresh per-request from `skill_installs`/`skill_versions`, same pattern already built for the test path (`fetchTestSkillPrompt` in `usage.ts`). |
 | What happens to `MAX_ATTACHED_SKILLS`/`MAX_COMPOSED_SKILL_CHARS` | Deleted. Nothing gets composed into one string anymore, so there's no char budget to enforce. A count cap on *attach* (not compose) may still be reasonable to prevent unbounded growth in the attach UI, but is a product decision, not carried over automatically — flagged as an open question below. |
-| Does `confirmGenerationOrDecline`'s credit logic change | No. `isUnlimited`/`resolveRate`/the alwaysAsk gate stay exactly as-is. Only the pause mechanism (custom Map + timer → `step.suspend()`/`run.resume()`) changes. |
-| Do workflow steps need their own agents | No. `createStep(existingAgent)` or calling `mastra.getAgent(name).generate()` inside a step's `execute()` both reuse the agents `registry.ts` already builds (`platformAgent`, `pmAgent`, `architectAgent`, `directorAgent`, `producerAgent`). |
-| Does `runMastraWorkflow`'s approval gate share the same mechanism as `confirmGeneration` | Yes — both become Mastra's native suspend/resume. One mechanism, two callers, instead of two separate hand-rolled ones. |
+| Does `confirmGenerationOrDecline`'s credit logic change | No. `isUnlimited`/`resolveRate`/the alwaysAsk gate stay exactly as-is, moved into a `requireToolApproval` function on `agent.stream()` (chat tool calls), not a workflow suspend. |
+| Do workflow steps need their own agents | No. `createStep(existingAgent)` (needs a preceding `.map()` to shape input into `{ prompt }`, per `docs-workflows-agents-and-tools.md`) or calling `mastra.getAgent(name).generate()` inside a step's `execute()` both reuse the agents `registry.ts` already builds (`platformAgent`, `pmAgent`, `architectAgent`, `directorAgent`, `producerAgent`). |
+| Does `runMastraWorkflow`'s approval gate share the same mechanism as `confirmGeneration` | No — different call sites, different native mechanisms. Chat tool calls (`confirmGeneration`) use agent-level `requireToolApproval`; Tasks workflow steps use workflow `suspend`/`resume`, the exact pattern `pmWorkflow.ts`'s `prdStep` already uses correctly today. |
 
 ## Design
 
@@ -137,10 +164,11 @@ layer — still writes an `agent_skills` row. What changes is only that the
 row's `system_prompt` column stops being read (may stop being written too,
 since nothing consumes it — implementation detail for the plan).
 
-### 2. Pause-and-wait-for-a-human
+### 2. Pause-and-wait-for-a-human (chat tool calls)
 
 `confirmGenerationOrDecline` keeps its exact signature and credit-gate
-logic. Internally, replace:
+logic (`isUnlimited`, `resolveRate`, `alwaysAsk`, `allowMode`). Internally,
+replace:
 
 ```
 pendingGenerationConfirmations.set(id, { resolve, reject })
@@ -149,36 +177,63 @@ sendEvent('generation_confirm', { ...card })
 // wait for the Map entry to resolve
 ```
 
-with a step-level `suspend()` inside whichever workflow step calls it (both
-the credit-confirm path in normal tool calls and the Tasks workflow's
-approval gate route through the same call) — `step.suspend({ card })`
-persists the run and returns control; a resume call
-(`run.resume({ decision })`, triggered by the existing UI "Approve"/"Decline"
-action) continues execution with the decision. Same UI, same card shape,
-same timeout semantics (Mastra suspend has no built-in timeout — a stale
-suspended run still needs the existing 5-minute expiry behavior,
-carried over as an explicit check rather than relying on a `setTimeout`).
+with `requireToolApproval` on the `agent.stream()` call in `chatStream.ts`
+— a function, not a boolean, so it can run the existing per-call decision:
+
+```
+requireToolApproval: async ({ toolName, args, requestContext }) => {
+  // the gated tool set (generateImage, generateVideo, generateSong,
+  // createSkill's alwaysAsk case) decides per toolName; body is today's
+  // confirmGenerationOrDecline logic (isUnlimited/alwaysAsk/allowMode),
+  // now reading requestContext instead of execContext.requestContext
+}
+```
+
+The stream then emits a `tool-call-approval` chunk (`toolName`,
+`toolCallId`, `args`) instead of the hand-built SSE `generation_confirm`
+event — `chatStream.ts` forwards that chunk to the frontend as today's
+approval card, and the existing "Approve"/"Decline" UI action calls
+`agent.approveToolCall({ runId })` / `agent.declineToolCall({ runId, reason })`
+instead of resolving a Map entry. `declineToolCall`'s `reason` is returned
+to the model in place of the tool result — a real improvement over today's
+plain rejection, the model can adjust instead of blindly retrying.
+
+Mastra requires a configured storage provider for this (snapshots hold the
+resume state) — the repo already has one (`getMastraStore()`), so no new
+infra needed. No built-in timeout exists on a pending approval (confirmed —
+neither this doc, `run`, `step`, nor `workflow` references expose one), so
+the existing 5-minute expiry needs an explicit check rather than relying on
+a framework timeout — see open question 2.
 
 ### 3. Multi-step execution (Tasks)
 
 `routes/tasks.ts`'s `POST /workflows/execute` stays as the entry point —
-same request body, same credit estimate/charge before starting. Internally:
+same request body, same credit estimate/charge before starting. Internally,
+`runMastraWorkflowSteps` moves off the hand-written loop in
+`mastra/workflow.ts` onto `createWorkflow`/`createStep`, following the same
+pattern `pmWorkflow.ts`'s `prdStep` already uses correctly:
 
 ```
-runMastraWorkflowSteps(...)  // UNCHANGED signature
-  → createWorkflow({ id: workflowId })
-      .then(createStep(stepAgent, { ... }))  // one createStep per planned step
-      .then(...)
-      .commit()
-      .createRun()
-      .start()
+createStep({
+  id: '<step-id>',
+  inputSchema, outputSchema,
+  resumeSchema,   // shape of the data a resume call supplies
+  suspendSchema,  // shape of the data shown while suspended
+  execute: async ({ inputData, resumeData, suspend, suspendData, mastra, requestContext }) => {
+    if (requires approval and not yet resumed) {
+      return await suspend({ ...cardData })   // NOT step.suspend() — suspend
+    }                                          // is a parameter Mastra passes
+    // ...call the step's agent (mastra.getAgent(name)), or use createStep(agent)
+    // with a preceding .map() to shape { prompt } when no custom logic is needed
+  },
+})
 ```
 
-`settleTask()`/`refundTask()` still run after the workflow completes/fails
-— unchanged. A step requiring approval calls the same suspended
-`confirmGenerationOrDecline` path from section 2, so Tasks and normal chat
-tool calls share one suspend/resume mechanism instead of each having their
-own.
+and a run resumes via `run.resume({ resumeData, step })` — not
+`run.resume({ decision })` as an earlier draft of this spec had it; the
+resume payload must match the step's declared `resumeSchema`.
+`settleTask()`/`refundTask()` still run after the workflow
+completes/fails — unchanged.
 
 ## Testing
 
@@ -187,9 +242,10 @@ own.
   skill when `testSkillInstallId` is set, returns all attached (minus
   `default`) otherwise, returns `[]` gracefully for a revoked/foreign
   install id.
-- Confirm/suspend: existing `confirmGeneration.test.ts` behavior
+- Confirm/approval: existing `confirmGeneration.test.ts` behavior
   (alwaysAsk, isUnlimited, allowMode) stays green: re-target assertions at
-  `suspend()`/`resume()` calls instead of the Map.
+  the `requireToolApproval` function's return value and
+  `approveToolCall`/`declineToolCall` calls instead of the Map.
 - Workflow: existing `tasks-workflow-settle.test.ts` /
   `tasks-execute-attempt-key.test.ts` / `tasks-resume-attempt-key.test.ts`
   stay green against the new `createWorkflow` internals — same external
