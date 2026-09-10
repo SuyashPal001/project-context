@@ -23,6 +23,9 @@ export const tenantContextSchema = z.object({
   personaPersonality: z.string().optional(),
   // Per-agent skill override for the base prompt — set by chatStream.ts.
   agentSystemPrompt: z.string().optional(),
+  // Set by chatStream.ts for Test-in-chat conversations (see fetchConversationTestSkillInstallId);
+  // read by platformAgent.ts's skills resolver to compose just that one skill.
+  testSkillInstallId: z.string().optional(),
   // Live conversation id, carried for tool-call logging.
   sessionId: z.string().optional(),
   // Not JSON-serializable — a live client reference carried through context so
