@@ -29,6 +29,19 @@ export function resolveAgent(agentName: string): Agent {
   return platformAgent as unknown as Agent
 }
 
+/**
+ * Every agent that can own a suspended run in Mastra's snapshot storage.
+ *
+ * `Agent.listSuspendedRuns()` is scoped to the agent it is called on — the
+ * snapshot persists the owning agent's id, and runs started by other agents on
+ * the same Mastra instance are not returned. So anything that has to see *all*
+ * pending tool-call approvals (the watchdog's abandoned-approval sweep) must
+ * ask each registered agent in turn rather than the Mastra instance once.
+ */
+export function listRegisteredAgents(): { name: string; agent: Agent }[] {
+  return Object.entries(AGENT_REGISTRY).map(([name, agent]) => ({ name, agent }))
+}
+
 export function resolveAgentLabel(agent: Agent): string {
   if (agent === (architectAgent as unknown as Agent)) return 'architectAgent'
   if (agent === (pmAgent as unknown as Agent)) return 'pmAgent'

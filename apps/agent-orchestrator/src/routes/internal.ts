@@ -8,8 +8,10 @@ import { filterPII } from '../pii-filter.js'
 import { saveUserMessage, saveAssistantMessage } from '../persistence.js'
 import { isInternalServiceKey } from '../service-key.js'
 import { truncateMastraThread } from '../mastra/memory.js'
+import { listRegisteredAgents } from '../mastra/registry.js'
+import type { AgentRun } from '@mastra/core/agent'
 import {
-  sessions, lastRagResult,
+  sessions, lastRagResult, pendingToolApprovals,
 } from '../types.js'
 
 // ─── Internal + infrastructure routes ────────────────────────────────────────
@@ -171,6 +173,120 @@ internalRouter.delete('/thread/truncate', async (c) => {
     console.error('[truncate] error:', (err as Error).message)
     return c.json({ error: 'Truncation failed' }, 500)
   }
+})
+
+// ─── Expire abandoned tool-call approvals ─────────────────────────────────────
+// Called only by the watchdog Lambda's Sweep 6 (products/agent-platform/packages/api
+// handlers/watchdogHandler.ts). The watchdog owns the threshold and sends the
+// cutoff as `toDate`; this side owns everything Mastra.
+//
+// It lives here rather than in the watchdog because both halves of the job are
+// Agent methods, not storage reads: `listSuspendedRuns()` is scoped to the agent
+// whose id the snapshot carries, and `declineToolCall()` resumes the model loop so
+// the model actually sees the decline. Neither has a storage-level equivalent, and
+// writing the snapshot directly would leave the run suspended forever with a
+// mutated payload.
+
+interface ExpiredApproval {
+  runId: string
+  toolCallId?: string
+  toolName?: string
+  agent: string
+  threadId?: string
+  resourceId?: string
+  /** Present when this specific decline failed; the sweep continues regardless. */
+  error?: string
+}
+
+internalRouter.post('/internal/expire-tool-approvals', async (c) => {
+  const serviceKey = c.req.header('X-Service-Key')
+  if (!isInternalServiceKey(serviceKey)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  let body: { toDate?: unknown; reason?: unknown }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON' }, 400)
+  }
+
+  const cutoff = typeof body.toDate === 'string' ? new Date(body.toDate) : null
+  if (!cutoff || isNaN(cutoff.getTime())) {
+    return c.json({ error: 'toDate (ISO timestamp) is required' }, 400)
+  }
+  const reason = typeof body.reason === 'string' && body.reason.trim()
+    ? body.reason.trim()
+    : 'Expired: nobody answered this approval request in time.'
+
+  const declined: ExpiredApproval[] = []
+
+  for (const { name, agent } of listRegisteredAgents()) {
+    let runs: AgentRun[]
+    try {
+      // `toDate` filters on run creation, so it is only a coarse pre-filter —
+      // suspendedAt is re-checked below. A run created before the cutoff but
+      // suspended a minute ago is not abandoned.
+      const result = await (agent as any).listSuspendedRuns({ toDate: cutoff })
+      runs = (result?.runs ?? []) as AgentRun[]
+    } catch (err) {
+      console.error(`[expire-tool-approvals] listSuspendedRuns failed for agent=${name}:`, (err as Error).message)
+      continue
+    }
+
+    for (const run of runs) {
+      const suspendedAt = run.suspendedAt ? new Date(run.suspendedAt) : null
+      if (!suspendedAt || isNaN(suspendedAt.getTime()) || suspendedAt > cutoff) continue
+
+      for (const toolCall of run.toolCalls ?? []) {
+        // THE filter that keeps this sweep narrow. A suspended run is either
+        // waiting on a tool-call approval or on resume data for a tool that
+        // called suspend() itself — Mastra's own workflow suspends (the PRD /
+        // roadmap / task workflows in mastra/index.ts) persist in exactly the
+        // same snapshot table and are NOT ours to decline. `requiresApproval`
+        // is the discriminator Mastra itself exposes for that; sweeping on
+        // "suspended and old" alone would cancel live workflow runs, the same
+        // shape of mistake as the watchdog's Sweep 4 ingest incident.
+        if (!toolCall.requiresApproval) continue
+        if (!toolCall.toolCallId) continue
+
+        // A live SSE waiter still holds this approval — a human can still
+        // answer it, and resolving it here would race that. Vanishingly rare
+        // at 24h, but the check is free.
+        if (pendingToolApprovals.has(toolCall.toolCallId)) continue
+
+        const entry: ExpiredApproval = {
+          runId: run.runId,
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+          agent: name,
+          threadId: run.threadId,
+          resourceId: run.resourceId,
+        }
+
+        try {
+          const stream = await (agent as any).declineToolCall({
+            runId: run.runId,
+            toolCallId: toolCall.toolCallId,
+            reason,
+          })
+          // declineToolCall resumes the model loop; the resumed turn only runs
+          // if something drains it. Nothing is streamed anywhere — the point is
+          // that the decline lands in the thread's message history.
+          await stream.consumeStream({ onError: (err: unknown) => {
+            console.error(`[expire-tool-approvals] resumed stream error runId=${run.runId}:`, (err as Error)?.message)
+          } })
+        } catch (err) {
+          entry.error = (err as Error).message
+        }
+
+        declined.push(entry)
+      }
+    }
+  }
+
+  console.log(`[expire-tool-approvals] cutoff=${cutoff.toISOString()} declined=${declined.length}`)
+  return c.json({ ok: true, declined })
 })
 
 // ─── Mastra Studio — platform admin observability ─────────────────────────────

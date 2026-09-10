@@ -374,4 +374,70 @@ export const handler: ScheduledHandler = async () => {
       messageIds: expiredUploads.map((m) => m.id),
     });
   }
+
+  // --- Sweep 6: Abandoned tool-call approvals (> 24h) ---
+  // A generation tool paused for human approval (generateImage/Video/Song,
+  // editImage, createSkill) suspends via Mastra's native tool-approval
+  // mechanism, which — unlike the old hand-rolled confirm gate this replaced
+  // — has no built-in expiry: it persists indefinitely until answered. See
+  // docs/superpowers/specs/2026-09-10-mastra-native-runtime-migration-design.md
+  // Design §2. chatStream.ts's SSE disconnect handler already declines the
+  // *local* wait the instant a browser tab closes, so this sweep only ever
+  // catches a run whose Mastra-side snapshot survived that — a PM2 restart
+  // mid-wait, or a decision nobody ever made.
+  //
+  // The threshold is 24h, not this schedule's 5 minutes, because an open SSE
+  // connection resolves the overwhelming majority of these in seconds, not
+  // minutes — this sweep exists for the rare leftover, not the common case.
+  //
+  // Declines via the agent-orchestrator's own declineToolCall (not a direct
+  // storage write) so the run's model loop actually resumes and the decline
+  // lands in the thread's message history exactly like a human decline
+  // would — same path as sessions.ts's POST /api/chat/generation-confirm.
+  //
+  // Filters on toolCall.requiresApproval, Mastra's own discriminator for an
+  // approval suspension — not "suspended and old" alone. Other Mastra
+  // workflow suspends (the PRD/roadmap/task workflows) persist in the exact
+  // same snapshot storage for entirely unrelated reasons; sweeping by age
+  // alone would cancel live workflow runs, the same shape of false positive
+  // as Sweep 4's ingest incident documented above.
+  const APPROVAL_EXPIRY_HOURS = 24;
+  const orchestratorUrl = process.env.AGENT_ORCHESTRATOR_URL;
+  const internalServiceKey = process.env.INTERNAL_SERVICE_KEY;
+
+  if (orchestratorUrl && internalServiceKey) {
+    const cutoff = new Date(Date.now() - APPROVAL_EXPIRY_HOURS * 60 * 60 * 1000);
+    try {
+      const res = await fetch(`${orchestratorUrl}/internal/expire-tool-approvals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Service-Key': internalServiceKey },
+        body: JSON.stringify({
+          toDate: cutoff.toISOString(),
+          reason: 'Expired: nobody answered this approval request in time.',
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) {
+        wlog('error', 'Expire-tool-approvals request failed', { status: res.status });
+      } else {
+        const body = await res.json() as { declined?: Array<{ runId: string; toolCallId?: string; error?: string }> };
+        const declined = body.declined ?? [];
+        const failed = declined.filter((d) => d.error);
+        if (declined.length > 0) {
+          wlog('info', 'Expired tool-call approvals declined', {
+            count: declined.length,
+            failedCount: failed.length,
+            runIds: declined.map((d) => d.runId),
+          });
+        }
+      }
+    } catch (err) {
+      // Non-fatal by the same convention as every sweep above — a failed
+      // call here must not stop sweeps that already ran, and there is no
+      // per-tenant state to roll back: nothing was written to this
+      // Lambda's own database in this sweep, only a request to another
+      // service.
+      wlog('error', 'Expire-tool-approvals call failed', { error: (err as Error).message });
+    }
+  }
 };
