@@ -102,8 +102,30 @@ vi.mock('../credits.js', () => ({
   debitChatTurn: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('../mastra/model.js', () => ({
-  buildGatewayModelString: vi.fn().mockReturnValue(null),
+// mastra/model.js and mastra/memory.js were not previously reachable from
+// this test — chatStream.ts now imports mastra/subagents/streamOptions.js,
+// which transitively pulls in the full delegate registry (pmAgent,
+// architectAgent, directorAgent, producerAgent and what they in turn import),
+// so these two mocks now need to cover every export that chain touches at
+// module-load time, not just buildGatewayModelString. model.js has no
+// top-level I/O, so its real exports are spread in via importActual; memory.js
+// opens a real Postgres pool at import time (DATABASE_URL, top-level DNS
+// resolution) and cannot be loaded in a test process, so it stays a full
+// explicit replacement.
+vi.mock('../mastra/model.js', async () => {
+  const actual = await vi.importActual<typeof import('../mastra/model.js')>('../mastra/model.js')
+  return { ...actual, buildGatewayModelString: vi.fn().mockReturnValue(null) }
+})
+vi.mock('../mastra/memory.js', () => ({
+  getMastraStore: vi.fn().mockReturnValue({}),
+  getMastraVector: vi.fn().mockReturnValue({}),
+  getMastraMemory: vi.fn().mockReturnValue({}),
+  getOlmoMemory: vi.fn().mockReturnValue({}),
+  truncateMastraThread: vi.fn().mockResolvedValue(0),
+  embedder: {},
+  resolvedDbHost: 'localhost',
+  isNeonDb: false,
+  dbUrl: new URL('postgresql://localhost/db'),
 }))
 
 vi.mock('../llm/quickCall.js', () => ({
