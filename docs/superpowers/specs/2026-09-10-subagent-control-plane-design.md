@@ -256,7 +256,7 @@ the marker follows an existing convention rather than inventing one.
 | Where the credit budget binds | Both: a per-delegation gate in `onDelegationStart`, and a ceiling across the goal loop |
 | Official vs tenant-authored sub-agents | Both. Ownership is marked platform vs tenant, following `agent_tools`' existing `tenantId IS NULL` convention; `agent_templates` gains a nullable `tenantId` on the same convention. `agents.tenantId` being `NOT NULL` is the gap forcing this |
 | Ownership marker or install rows | Ownership marker plus visibility now; install rows deferred until tenants can share sub-agents. They answer different questions — who owns it vs who may use it — and only the first is needed before sharing exists |
-| Delegate identity across the boundary | Rewritten in `onDelegationStart`, and closed over by `defineSubAgent()` as a second line of defence |
+| Delegate identity across the boundary | Rewritten in `onDelegationStart`: `agentName` and a new `subAgentId` carry the delegate's identity, the prompt overrides are cleared, and `agentId` keeps the host's real agent UUID (corrected during implementation — see Design 4, step 2). `defineSubAgent()` does not close over identity; the hook is the single place it is set |
 | Delegation telemetry | A narrow link row joining a delegation to tenant, task and credit charge. Timing, tokens and errors are read from Mastra's observability store |
 | Hook error strategy | `hookErrorStrategy: 'throw'` |
 | Where the approval rule lives | On the tool (`requireApproval` / `needsApprovalFn`), not only on the chat stream — so it survives delegation and survives a specialist becoming directly addressable |
@@ -406,10 +406,38 @@ here.
 1. **Credit check.** Remaining balance against the spec's
    `estimatedCredits`. On refusal, `{ proceed: false, rejectionReason }` —
    Olmo sees the reason and can wrap up with what it has.
-2. **Identity rewrite.** Set `agentId` and `agentName` to the delegate's
-   own; clear `agentSystemPrompt` and `personaPersonality`. Only
-   `tenantId`, `userId` and `sessionId` survive unchanged. This is the fix
-   for Finding 1 and is not optional.
+2. **Identity rewrite.** Set `agentName` and `subAgentId` to the
+   delegate's spec id; clear `agentSystemPrompt` and `personaPersonality`.
+   This is the fix for Finding 1 and is not optional.
+
+   **Corrected during implementation (2026-09-11): `agentId` is NOT
+   rewritten.** This section originally said to set `agentId` to the
+   delegate's own. That assumed every delegate has an `agents` row, and
+   none does — delegates are code specs identified by strings like
+   `director`. `agentId` is read by the generation tools
+   (`generateImage.ts`, `editImage.ts`, `generateVideo.ts`,
+   `generateSong.ts`) and passed to `spendCredits` as `actorId`, which
+   binds it as `::uuid`. Writing `'director'` there makes every paid
+   generation inside a delegation throw after the media has already been
+   generated: gateway cost spent, tenant not billed, user shown nothing.
+   So `agentId` keeps the host's real agent UUID, and the delegate's
+   identity rides on `agentName` (which the resolver gates on, so the
+   delegation-loop guard is unaffected) and the new `subAgentId` context
+   field.
+
+   The leak this rewrite was meant to close — a delegate resolving the
+   host's attached skills through `agentId` — is inert today, because no
+   delegate declares a `skills` resolver. `subAgentId` exists so that
+   whoever adds a delegate-scoped skills resolver has the right key to
+   read. When the database-backed registry lands and delegates get real
+   agent rows, `agentId` can carry a real UUID again.
+
+   The rest of the context survives the copy by design — `tenantId`,
+   `userId`, `sessionId`, `selectedModel`, `thinkingBudget`,
+   `maxDataSensitivity`, `testSkillInstallId`, `allowedSubAgents` and
+   `__mcpClient`. `allowedSubAgents` surviving is load-bearing for the
+   resolver. `testSkillInstallId` is the same class of leak as `agentId`
+   was, and is inert for the same reason.
 3. **Depth stamp.** `delegationDepth + 1` onto the outgoing context.
 4. **Step budget.** `modifiedMaxSteps` from the spec, replacing the silent
    `stepCountIs(5)`.
@@ -560,9 +588,10 @@ resolver is pure:
 - Credit gate: with a stubbed balance, the delegation is refused at the
   right point and the refusal carries a reason.
 - Identity rewrite: after `onDelegationStart`, the outgoing context
-  carries the delegate's own `agentId`/`agentName`, no
-  `agentSystemPrompt`, and depth incremented — asserted directly, since
-  Finding 1 shows the default is to inherit all three.
+  carries the delegate's spec id in `agentName` and `subAgentId`, the
+  host's unchanged `agentId`, no `agentSystemPrompt`, and depth
+  incremented — asserted directly, since Finding 1 shows the default is
+  to inherit all of them.
 
 Requires a live run: whether Olmo picks the right delegate, and whether
 the goal loop converges. Neither is unit-testable, and both are what the
@@ -578,6 +607,43 @@ Done means all six of these are observable:
 5. A crashing hook fails the delegation instead of continuing quietly.
 6. An objective that exhausts its budget lands in a resumable paused
    state, distinct from blocked.
+
+## Known gaps after implementation (2026-09-11)
+
+Found by the whole-branch review and deliberately left open. Each needs a
+design decision this spec never made, or pre-dates the branch.
+
+**I4. pm's nested delegations run ungoverned.** pmAgent's own
+`agents: { prdAgent, roadmapAgent, taskAgent }` map is static, and Mastra
+does not forward the parent's `delegation` option into a sub-agent's own
+`stream()`. So Olmo → pm → prd runs at depth 2 with no audit row, no budget
+check and Mastra's default step count. Left because governing it means
+either making pm's map dynamic or deciding that nested delegates get their
+own hooks, and neither was designed here.
+
+**I6. The task path reaches Olmo's delegates with no hooks.**
+`mastra/agent.ts`'s `createTenantAgent` proxies `platformAgent.generate()`
+without a `delegation` option, while still setting `agentName`, so a task
+run on an Olmo row gets the full delegate map and none of the governance.
+This pre-existed the branch. Left because the task path's execution model is
+itself scheduled to change (see Dependencies, point 3).
+
+**Minor 4. Olmo cannot delegate over WebSocket.** `index.ts` never sets
+`agentName`, so `resolveDelegates` returns `{}` on that path. The delegation
+hooks and the allowed-set query are wired there but currently do nothing.
+This also pre-existed: the WebSocket path deliberately skips persona and
+skill loading, and giving it delegates without the routing instructions
+would have Olmo delegating blind. Full WebSocket parity is follow-up work.
+
+**Minor 6. Design 4 step 5, the message filter, was not built.** Delegates
+still receive the parent's full conversation. Nothing today needs trimming,
+and no spec declares what it should not see.
+
+**Minor 1. The entitlement filter is keyed on a display name.**
+`fetchAllowedSubAgents` compares spec ids against `agent_templates.name`.
+That is inert today, because no spec sets `requiresEntitlement`. It must be
+keyed on a stable column before the first spec does, or renaming a template
+will silently grant or revoke a delegate.
 
 ## Dependencies and open questions
 

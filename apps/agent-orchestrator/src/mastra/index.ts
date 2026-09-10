@@ -11,6 +11,7 @@ import { MastraEditor } from '@mastra/editor'
 import { Observability, DefaultExporter } from '@mastra/observability'
 
 import { getMastraStore, getMastraMemory } from './memory.js'
+import { BACKGROUND_TASKS } from './backgroundTasks.js'
 import { taskExecutionWorkflow } from './workflows/taskExecution.js'
 import { documentWorkflow } from './workflows/documentWorkflow.js'
 import { ingestionWorkflow } from './workflows/ingestionWorkflow.js'
@@ -131,6 +132,7 @@ export const mastra = new Mastra({
     enabled: true,
     tickIntervalMs: 30_000, // check every 30s
   },
+  backgroundTasks: BACKGROUND_TASKS,
   scorers: {
     dodPass: dodPassScorer,
     prdCompleteness: prdCompletenessScorer,
