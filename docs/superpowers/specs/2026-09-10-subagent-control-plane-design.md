@@ -443,6 +443,35 @@ the goal-driven agent, which iterates until the rubric passes or the
 budget is spent. The two nest rather than compete: one answers "which
 phase", the other "is this phase's output good enough yet".
 
+**Which step, precisely.** The companion spec's `runMastraWorkflow`
+replacement executes a per-task plan, so the task workflow is expected to
+be a `.foreach()` over that plan rather than a declared `.then()` chain —
+the graph is fixed at "run the plan" and the plan is input data. Under
+that shape "one step" is ambiguous, because a `foreach` body is one step
+definition executed many times. The objective attaches to the plan step
+that produces the creative artifact, **not** to the `foreach` as a whole.
+Otherwise every plan step gets its own objective and its own budget.
+
+**Two consequences of that shape:**
+
+- **Verify that a step can suspend inside a `.foreach()` and that
+  `resume()` lands on the correct iteration.** The design depends on a
+  paused goal suspending its step and resuming cleanly; the docs say a
+  resumed workflow restarts from the step where it paused, but under
+  `foreach` one definition runs many times. Confirm before planning.
+- **`.foreach()` takes a `concurrency` option, default `1`.** The default
+  is safe. Raising it runs plan steps simultaneously, and the per-loop
+  credit counter is then incremented from parallel iterations — it must be
+  a single shared counter, not one per iteration.
+
+**Mastra's own run statuses may already carry the distinction.** A
+workflow run's status is one of `success | failed | suspended | tripwire |
+paused`, with `suspended` and `paused` as separate states. That is close
+to the three-state split below — waiting on a human, waiting on money,
+broken — but the installed docs do not say what `paused` means, so this is
+a check rather than an assumption. If it fits, the work is adopting a
+state Mastra already has rather than inventing one.
+
 Two details this must get right, both silent-money bugs if missed:
 
 - **A paused goal suspends its step; it does not fail it.** Out of budget
