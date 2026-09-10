@@ -608,6 +608,43 @@ Done means all six of these are observable:
 6. An objective that exhausts its budget lands in a resumable paused
    state, distinct from blocked.
 
+## Known gaps after implementation (2026-09-11)
+
+Found by the whole-branch review and deliberately left open. Each needs a
+design decision this spec never made, or pre-dates the branch.
+
+**I4. pm's nested delegations run ungoverned.** pmAgent's own
+`agents: { prdAgent, roadmapAgent, taskAgent }` map is static, and Mastra
+does not forward the parent's `delegation` option into a sub-agent's own
+`stream()`. So Olmo → pm → prd runs at depth 2 with no audit row, no budget
+check and Mastra's default step count. Left because governing it means
+either making pm's map dynamic or deciding that nested delegates get their
+own hooks, and neither was designed here.
+
+**I6. The task path reaches Olmo's delegates with no hooks.**
+`mastra/agent.ts`'s `createTenantAgent` proxies `platformAgent.generate()`
+without a `delegation` option, while still setting `agentName`, so a task
+run on an Olmo row gets the full delegate map and none of the governance.
+This pre-existed the branch. Left because the task path's execution model is
+itself scheduled to change (see Dependencies, point 3).
+
+**Minor 4. Olmo cannot delegate over WebSocket.** `index.ts` never sets
+`agentName`, so `resolveDelegates` returns `{}` on that path. The delegation
+hooks and the allowed-set query are wired there but currently do nothing.
+This also pre-existed: the WebSocket path deliberately skips persona and
+skill loading, and giving it delegates without the routing instructions
+would have Olmo delegating blind. Full WebSocket parity is follow-up work.
+
+**Minor 6. Design 4 step 5, the message filter, was not built.** Delegates
+still receive the parent's full conversation. Nothing today needs trimming,
+and no spec declares what it should not see.
+
+**Minor 1. The entitlement filter is keyed on a display name.**
+`fetchAllowedSubAgents` compares spec ids against `agent_templates.name`.
+That is inert today, because no spec sets `requiresEntitlement`. It must be
+keyed on a stable column before the first spec does, or renaming a template
+will silently grant or revoke a delegate.
+
 ## Dependencies and open questions
 
 **Depends on `2026-09-10-mastra-native-runtime-migration-design.md`
