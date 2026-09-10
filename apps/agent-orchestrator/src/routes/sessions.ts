@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
-import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, pendingGenerationConfirmations, sessionActiveGenerationConfirmations, pendingUploads, sessionActiveUpload, type ClarificationAnswer, type UploadedFileRef } from '../types.js'
+import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, pendingToolApprovals, sessionActiveToolApprovals, pendingUploads, sessionActiveUpload, type ClarificationAnswer, type UploadedFileRef } from '../types.js'
 import { validateToken } from '../auth.js'
-import { updateClarificationRequest, saveApprovalRequest, updateApprovalRequest, updateGenerationConfirmRequest, updateUploadRequest } from '../persistence.js'
+import { updateClarificationRequest, saveApprovalRequest, updateApprovalRequest, updateUploadRequest } from '../persistence.js'
 
 export const sessionsRouter = new Hono()
 
@@ -398,6 +398,10 @@ sessionsRouter.post('/api/chat/generation-confirm', async (c) => {
   let body: { confirmationId?: unknown; decision?: unknown; reason?: unknown }
   try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid_body' }, 400, corsHeaders) }
 
+  // `confirmationId` is now the tool call's own toolCallId — chatStream.ts's
+  // tool-call-approval handling uses it as both the SSE card's id and the
+  // pendingToolApprovals key (Task 5), so this route needs no id it doesn't
+  // already get from the chunk.
   const confirmationId = typeof body.confirmationId === 'string' ? body.confirmationId.trim() : ''
   const decision        = typeof body.decision === 'string' ? body.decision.trim() : ''
   if (!confirmationId) return c.json({ ok: false, error: 'confirmationId required' }, 400, corsHeaders)
@@ -407,18 +411,16 @@ sessionsRouter.post('/api/chat/generation-confirm', async (c) => {
     return c.json({ ok: false, error: 'reason too long' }, 400, corsHeaders)
   }
 
-  const pending = pendingGenerationConfirmations.get(confirmationId)
+  const pending = pendingToolApprovals.get(confirmationId)
   if (!pending) return c.json({ ok: false, error: 'confirmation_not_found' }, 404, corsHeaders)
   if (!callerTenantId || pending.tenantId !== callerTenantId) {
     return c.json({ ok: false, error: 'confirmation_not_found' }, 404, corsHeaders)
   }
 
-  clearTimeout(pending.timer)
-  pendingGenerationConfirmations.delete(confirmationId)
-  // Find which session this belongs to and clear it from the active-set index too.
-  for (const [sessionId, ids] of sessionActiveGenerationConfirmations.entries()) {
+  pendingToolApprovals.delete(confirmationId)
+  for (const [sessionId, ids] of sessionActiveToolApprovals.entries()) {
     if (ids.delete(confirmationId) && ids.size === 0) {
-      sessionActiveGenerationConfirmations.delete(sessionId)
+      sessionActiveToolApprovals.delete(sessionId)
     }
   }
 
@@ -426,15 +428,11 @@ sessionsRouter.post('/api/chat/generation-confirm', async (c) => {
   const declineReason = !wasApproved && typeof body.reason === 'string' && body.reason.trim()
     ? body.reason.trim()
     : undefined
+  // Resolving this Promise is what makes chatStream.ts's turnLoop wake up
+  // and call approveToolCall/declineToolCall — see Task 5, Step 3. This
+  // route itself never touches the Mastra Agent instance; the resume
+  // happens entirely inside the original SSE request's own closure.
   pending.resolve({ confirmed: wasApproved, declineReason })
-
-  if (pending.messageId && pending.conversationId && pending.idToken) {
-    updateGenerationConfirmRequest(pending.idToken, pending.conversationId, pending.messageId, {
-      status: wasApproved ? 'approved' : 'declined',
-      decisionAt: new Date().toISOString(),
-      ...(declineReason ? { declineReason } : {}),
-    })
-  }
 
   return c.json({ ok: true }, 200, corsHeaders)
 })
