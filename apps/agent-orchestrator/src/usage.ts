@@ -133,6 +133,62 @@ export async function fetchAgentSkills(agentId: string, tenantId: string): Promi
 }
 
 /**
+ * Resolves ONE skill's body directly off its install — bypassing agent_skills
+ * entirely. Used only for a Test-in-chat conversation (see
+ * fetchConversationTestSkillInstallId): testing a skill must never touch the
+ * agent's real, permanent skillset, so this never reads or writes that table.
+ * Mirrors resolveInstall/resolveInstalledSkillBody in the API package's
+ * agent-skills.ts — same two-step (install -> pinned version's manifest body)
+ * and same tenant-scoping reasoning, just via the orchestrator's raw pg pool
+ * since it has no drizzle access. A wrong-tenant or unready installId simply
+ * resolves to null rather than leaking cross-tenant content.
+ */
+export async function fetchTestSkillPrompt(installId: string, tenantId: string): Promise<{ systemPrompt: string | null; name: string | null }> {
+  const p = getPool()
+  try {
+    const res = await p.query<{ name: string; body: string | null }>(
+      `SELECT s.name, sv.manifest->>'body' AS body
+       FROM skill_installs si
+       JOIN skills s ON s.id = si.skill_id
+       JOIN skill_versions sv ON sv.skill_id = si.skill_id AND sv.version = si.installed_version
+       WHERE si.id = $1 AND si.tenant_id = $2 AND si.status = 'active' AND sv.status = 'ready'
+       LIMIT 1`,
+      [installId, tenantId],
+    )
+    const row = res.rows[0]
+    if (!row || !row.body?.trim()) return { systemPrompt: null, name: null }
+    return { systemPrompt: `## Skill: ${row.name}\n\n${row.body.trim()}`, name: row.name }
+  } catch (err) {
+    console.error('[usage] fetchTestSkillPrompt error:', (err as Error).message)
+    return { systemPrompt: null, name: null }
+  }
+}
+
+/**
+ * The agent's base persona only — the "default" agent_skills row every agent
+ * gets at onboarding (apps/api/src/routes/onboarding.ts), holding its
+ * identity/tone prompt. Used alongside fetchTestSkillPrompt for a
+ * Test-in-chat conversation: the agent should still sound like itself during
+ * a test, just with none of its *other* real attached skills mixed in.
+ */
+export async function fetchAgentPersonaPrompt(agentId: string, tenantId: string): Promise<string | null> {
+  const p = getPool()
+  try {
+    const res = await p.query<{ system_prompt: string | null }>(
+      `SELECT system_prompt FROM agent_skills
+       WHERE agent_id = $1 AND tenant_id = $2 AND name = 'default' AND status = 'active'
+       ORDER BY created_at DESC LIMIT 1`,
+      [agentId, tenantId],
+    )
+    const body = res.rows[0]?.system_prompt?.trim()
+    return body || null
+  } catch (err) {
+    console.error('[usage] fetchAgentPersonaPrompt error:', (err as Error).message)
+    return null
+  }
+}
+
+/**
  * Does this agent belong to this tenant? The chat route takes `agentId` off the
  * request body while `tenantId` comes from the verified JWT, so without this the
  * two are never compared and a user in tenant A can drive tenant B's agent —

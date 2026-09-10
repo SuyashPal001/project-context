@@ -109,19 +109,29 @@ export function resolveDefaultAgent(agents: Agent[]): Agent | null {
 }
 
 /**
- * Opens a fresh conversation on the tenant's default agent with this skill
- * attached. The attach carries the real SKILL.md body (derived server-side), so
- * the agent's behavior in that conversation genuinely reflects the skill.
+ * Opens a fresh conversation scoped to testing exactly this one skill — NOT
+ * the agent-level attach `attachSkillToAgent` does. Testing must never touch
+ * the agent's real, permanent skillset: this stores the install id on the
+ * new conversation's own `metadata` (the same field folderScope/allowMode
+ * already live in), and the orchestrator (chatStream.ts) reads it back to
+ * compose ONLY this skill's body for this conversation — no attach, no
+ * detach, no accumulation, no interaction with the agent's fixed skills at
+ * all. Liking the result and wanting it for real is a separate, explicit
+ * attach action.
  * Throws Error("NO_ACTIVE_AGENTS") when the tenant has none.
  */
 export async function startSkillTestChat(
     skill: Skill,
     agents: Agent[],
 ): Promise<{ conversationId: string; agentId: string }> {
+    if (!skill.installId) throw new Error("NO_INSTALL_ID");
     const agent = resolveDefaultAgent(agents);
     if (!agent) throw new Error("NO_ACTIVE_AGENTS");
 
-    const conversation = await api.post<{ data: { id: string } }>("/api/v1/conversations", { agentId: agent.id });
-    await attachSkillToAgent(agent.id, skill);
+    const conversation = await api.post<{ data: { id: string } }>("/api/v1/conversations", {
+        agentId: agent.id,
+        metadata: { testSkillInstallId: skill.installId },
+    });
+
     return { conversationId: conversation.data.id, agentId: agent.id };
 }

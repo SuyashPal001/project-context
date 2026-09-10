@@ -9,7 +9,8 @@ import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentSkills, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRuns, recordUsage } from '../usage.js'
+import { fetchAgentSkills, fetchTestSkillPrompt, fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRuns, recordUsage } from '../usage.js'
+import { fetchConversationTestSkillInstallId } from '../persistence.js'
 import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
@@ -249,8 +250,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const mcpClient = getMCPClientForTenant(tenantId, agentId, sessionId)
     requestContext.set('__mcpClient', mcpClient as any)
 
+    // Test-in-chat conversations carry the tested skill's install id on their
+    // own metadata rather than an agent_skills row (see startSkillTestChat in
+    // the web app) — so this conversation composes just the agent's persona
+    // plus that one skill, never the agent's other real attached skills.
+    const testSkillInstallId = await fetchConversationTestSkillInstallId(idToken, conversationId)
+
     const [agentSkills, agentName, personaPersonality, agentModelSelection] = await Promise.all([
-      fetchAgentSkills(agentId, tenantId),
+      testSkillInstallId
+        ? Promise.all([fetchAgentPersonaPrompt(agentId, tenantId), fetchTestSkillPrompt(testSkillInstallId, tenantId)])
+            .then(([persona, test]) => ({
+              systemPrompt: [persona, test.systemPrompt].filter((s): s is string => !!s).join('\n\n') || null,
+              installIds: test.systemPrompt ? [testSkillInstallId] : [],
+              droppedNames: [],
+            }))
+        : fetchAgentSkills(agentId, tenantId),
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
       fetchAgentModelSelection(agentId).catch((err) => {

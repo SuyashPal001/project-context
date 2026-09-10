@@ -321,6 +321,27 @@ This boundary stays clean until the foundation is extracted into a separate repo
 
 ---
 
+## Before touching agent creation/runtime (Mastra)
+
+**Check the installed `@mastra/core` version and its docs for a native capability
+before hand-building anything in agent creation or agent runtime** — skills,
+tools, memory, guardrails, workflows, dynamic per-request behavior, all of it.
+Docs ship inside the installed package (`node_modules/@mastra/core/dist/docs/references/*.md`)
+so they match the exact version in use; `docs-skills.md`, `docs-agents-tools.md`,
+`docs-memory-*.md`, `docs-agents-guardrails.md` are the ones most likely to matter here.
+
+This repo has already hand-built a duplicate of a native Mastra feature once:
+skills are composed by hand into `instructions` from a custom DB table
+(`agent_skills`, `usage.ts`'s `fetchAgentSkills`), when Mastra 1.64 ships a
+native per-request `skills: ({ requestContext }) => [...]` resolver for exactly
+this — the same dynamic-resolver shape `platformAgent.ts`'s `tools:` field
+*already* uses correctly one field below it in the same file. Memory
+(`memory.ts`, native `Memory` class) and guardrails (`guardrails.ts`, native
+processor violation hooks) are done right; skills is the one that never got
+the same check. Read the relevant doc file first — a few minutes there is
+cheaper than a hand-built system that turns out to duplicate something
+already shipped.
+
 ## What NOT to do
 
 - **Don't add product features to `packages/foundation/*`.** Foundation packages are shared. Product code goes in `apps/*` or `products/*`.
