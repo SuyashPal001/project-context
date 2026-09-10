@@ -9,7 +9,7 @@ import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentSkills, fetchTestSkillPrompt, fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordSkillRuns, recordUsage } from '../usage.js'
+import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, recordUsage } from '../usage.js'
 import { fetchConversationTestSkillInstallId } from '../persistence.js'
 import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
@@ -250,21 +250,18 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const mcpClient = getMCPClientForTenant(tenantId, agentId, sessionId)
     requestContext.set('__mcpClient', mcpClient as any)
 
-    // Test-in-chat conversations carry the tested skill's install id on their
-    // own metadata rather than an agent_skills row (see startSkillTestChat in
-    // the web app) — so this conversation composes just the agent's persona
-    // plus that one skill, never the agent's other real attached skills.
+    // Test-in-chat conversations carry the tested skill's install id on
+    // their own metadata (see startSkillTestChat in the web app) rather
+    // than an agent_skills row. Setting it on requestContext is the only
+    // thing this route does with it — platformAgent.ts's skills: resolver
+    // reads it and composes just that one skill instead of the agent's
+    // real attached ones. The agent's persona (below) is unaffected either
+    // way — it's a separate concern, read the same regardless of test mode.
     const testSkillInstallId = await fetchConversationTestSkillInstallId(idToken, conversationId)
+    if (testSkillInstallId) requestContext.set('testSkillInstallId', testSkillInstallId)
 
-    const [agentSkills, agentName, personaPersonality, agentModelSelection] = await Promise.all([
-      testSkillInstallId
-        ? Promise.all([fetchAgentPersonaPrompt(agentId, tenantId), fetchTestSkillPrompt(testSkillInstallId, tenantId)])
-            .then(([persona, test]) => ({
-              systemPrompt: [persona, test.systemPrompt].filter((s): s is string => !!s).join('\n\n') || null,
-              installIds: test.systemPrompt ? [testSkillInstallId] : [],
-              droppedNames: [],
-            }))
-        : fetchAgentSkills(agentId, tenantId),
+    const [agentPersonaPrompt, agentName, personaPersonality, agentModelSelection] = await Promise.all([
+      fetchAgentPersonaPrompt(agentId, tenantId),
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
       fetchAgentModelSelection(agentId).catch((err) => {
@@ -272,16 +269,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         return null
       }),
     ])
-    if (agentSkills.systemPrompt) {
-      requestContext.set('agentSystemPrompt', agentSkills.systemPrompt)
+    if (agentPersonaPrompt) {
+      requestContext.set('agentSystemPrompt', agentPersonaPrompt)
     }
     requestContext.set('agentName', agentName ?? '')
-    // One run per composed install per chat message. Fire-and-forget: a counter
-    // write must never break or delay the stream.
-    if (agentSkills.installIds.length > 0) {
-      recordSkillRuns(agentSkills.installIds, tenantId)
-        .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRuns failed:`, (err as Error).message))
-    }
     if (personaPersonality) {
       requestContext.set('personaPersonality', personaPersonality)
     }
