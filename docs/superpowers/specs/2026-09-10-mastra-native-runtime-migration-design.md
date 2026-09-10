@@ -33,15 +33,18 @@ unrelated "test one skill" sessions):
    against the actual docs**: chat tool calls run through `agent.stream()`,
    not a workflow, so there is no workflow step to suspend here. Mastra
    ships a *separate* native mechanism for exactly this —
-   `docs-agents-human-in-the-loop.md`: `requireToolApproval` on
-   `agent.stream()` accepts a function,
-   `(ctx: { toolName, args, requestContext }) => boolean | Promise<boolean>`
-   (confirmed at `dist/tools/types.d.ts:38`), a `tool-call-approval` stream
-   chunk, and `agent.approveToolCall({ runId })` /
-   `agent.declineToolCall({ runId, reason })`. `requestContext` is passed
-   into the function, so the existing `isUnlimited`/`resolveRate`/
-   `alwaysAsk`/`allowMode` logic (all already reachable from
-   `requestContext`) becomes the body of that function instead of a
+   `docs-agents-human-in-the-loop.md`: a `tool-call-approval` stream chunk,
+   `agent.approveToolCall({ runId })` / `agent.declineToolCall({ runId, reason })`,
+   and three places to demand approval from (confirmed against the
+   installed bundle, see Finding 7 of
+   `docs/superpowers/specs/2026-09-10-subagent-control-plane-design.md`):
+   a stream-level `requireToolApproval` on `agent.stream()`, a static
+   `requireApproval: true` on `createTool()`, or a per-call
+   `needsApprovalFn(args, ctx)` on the tool itself. **This spec places the
+   rule on the tool (`needsApprovalFn`), not on the stream** — see Design
+   section 2 for why. The existing `isUnlimited`/`resolveRate`/`alwaysAsk`/
+   `allowMode` logic (all already reachable from `requestContext`) becomes
+   the body of `needsApprovalFn`, evaluated pre-execution, in place of the
    hand-rolled Map.
 
 3. **Multi-step execution, in the Tasks feature.** `mastra/workflow.ts`'s
@@ -84,11 +87,12 @@ flagged, not changed by this spec.
 - The agent's persona (`default` row) is structurally isolated from
   skills — no skill's content can ever land in `instructions`.
 - `confirmGenerationOrDecline`'s pause mechanism moves onto Mastra's native
-  agent-level tool approval (`requireToolApproval`), and `runMastraWorkflow`'s
-  step execution moves onto Mastra's native workflow suspend/resume — two
-  different native mechanisms for two genuinely different call sites (a
-  chat tool call vs. a workflow step), replacing two separate hand-rolled
-  ones with the two matching native ones, not one shared mechanism.
+  tool-level approval (`needsApprovalFn` on `generateImage`/`generateVideo`/
+  `generateSong`), and `runMastraWorkflow`'s step execution moves onto
+  Mastra's native workflow suspend/resume — two different native
+  mechanisms for two genuinely different call sites (a chat tool call vs.
+  a workflow step), replacing two separate hand-rolled ones with the two
+  matching native ones, not one shared mechanism.
 - Credit/billing logic (`isUnlimited`, `resolveRate`, `chargeTaskEstimate`,
   `settleTask`/`refundTask`) is untouched — only the execution/pause
   plumbing underneath it changes.
@@ -120,9 +124,11 @@ flagged, not changed by this spec.
 | How does "Test in chat" scope to one skill | The web app creates the test conversation with `metadata.testSkillInstallId` set (already implemented this session in `actions.ts`/`conversations.ts` PATCH schema) — no agent-level attach at all. `chatStream.ts` reads it via `fetchConversationTestSkillInstallId` and passes it into `requestContext`; the `skills:` resolver returns only that one skill when present. |
 | What happens to `agent_skills.system_prompt` | Stops being read for composition. The table keeps its role as "which skills are attached to this agent" (attach/detach, `installId`, `name`) but content is resolved fresh per-request from `skill_installs`/`skill_versions`, same pattern already built for the test path (`fetchTestSkillPrompt` in `usage.ts`). |
 | What happens to `MAX_ATTACHED_SKILLS`/`MAX_COMPOSED_SKILL_CHARS` | Deleted. Nothing gets composed into one string anymore, so there's no char budget to enforce. A count cap on *attach* (not compose) may still be reasonable to prevent unbounded growth in the attach UI, but is a product decision, not carried over automatically — flagged as an open question below. |
-| Does `confirmGenerationOrDecline`'s credit logic change | No. `isUnlimited`/`resolveRate`/the alwaysAsk gate stay exactly as-is, moved into a `requireToolApproval` function on `agent.stream()` (chat tool calls), not a workflow suspend. |
+| Does `confirmGenerationOrDecline`'s credit logic change | Moves up one level, not otherwise changed. Native approval is pre-execution — it pauses before the tool's `execute` runs at all — so `isUnlimited`/`resolveRate`/`alwaysAsk`/`allowMode` can't stay inside a function called from partway through execution like today. They become the body of `needsApprovalFn(args, ctx)` on the tool, which receives the same args and request context `confirmGenerationOrDecline` reads today. Same logic, same decision, evaluated one level up. |
+| Where does the approval rule attach — stream, static tool flag, or per-call tool function | Tool-level `needsApprovalFn`, not stream-level `requireToolApproval`. Verified against the installed bundle (Finding 7, `2026-09-10-subagent-control-plane-design.md`): a stream-level rule does reach delegated sub-agent runs (it rides `requestContext` under `__mastra_requireToolApproval`, not among the four keys the delegation boundary strips at `agent-Dp3vcrIx.cjs:35119`, and Mastra escalates a suspended sub-agent's approval up to the parent via `isDelegatedApproval`/`suspendedToolRunId`/`requireApprovalMetadata[primitiveId]`) — but a tool-level rule holds in that case too, *and* keeps holding when a specialist later becomes an agent a user talks to directly, which a stream-only rule does not. Generation sits behind marketing specialists per the Olmo supervisor design, so tool-level is the durable placement. |
 | Do workflow steps need their own agents | No. `createStep(existingAgent)` (needs a preceding `.map()` to shape input into `{ prompt }`, per `docs-workflows-agents-and-tools.md`) or calling `mastra.getAgent(name).generate()` inside a step's `execute()` both reuse the agents `registry.ts` already builds (`platformAgent`, `pmAgent`, `architectAgent`, `directorAgent`, `producerAgent`). |
-| Does `runMastraWorkflow`'s approval gate share the same mechanism as `confirmGeneration` | No — different call sites, different native mechanisms. Chat tool calls (`confirmGeneration`) use agent-level `requireToolApproval`; Tasks workflow steps use workflow `suspend`/`resume`, the exact pattern `pmWorkflow.ts`'s `prdStep` already uses correctly today. |
+| Does `runMastraWorkflow`'s approval gate share the same mechanism as `confirmGeneration` | No — different call sites, different native mechanisms. Chat tool calls (`confirmGeneration`) use tool-level `requireApproval`/`needsApprovalFn`; Tasks workflow steps use workflow `suspend`/`resume`, the exact pattern `pmWorkflow.ts`'s `prdStep` already uses correctly today. |
+| Who cleans up an approval nobody answers | The watchdog (`WatchdogFunction`, already runs every 5 minutes over stalled tasks) — extended with a new case: a suspended run awaiting tool approval, untouched for N hours, distinct from "crashed". See Design section 2 and open question 2. |
 
 ## Design
 
@@ -166,44 +172,67 @@ since nothing consumes it — implementation detail for the plan).
 
 ### 2. Pause-and-wait-for-a-human (chat tool calls)
 
-`confirmGenerationOrDecline` keeps its exact signature and credit-gate
-logic (`isUnlimited`, `resolveRate`, `alwaysAsk`, `allowMode`). Internally,
-replace:
+The `pendingGenerationConfirmations` Map becomes a persisted run snapshot
+(Mastra's, not ours); the SSE `generation_confirm` push becomes a
+`tool-call-approval` stream chunk carrying `toolCallId`, `toolName` and
+`args`; resolving the Map entry becomes
+`agent.approveToolCall({ runId })` / `agent.declineToolCall({ runId, reason })`.
+`declineToolCall`'s `reason` is returned to the model in place of the tool
+result — a real improvement over today's plain rejection, the model can
+adjust instead of blindly retrying.
+
+The rule that decides *whether* to pause goes on the tool, not the stream.
+`createTool()` takes `needsApprovalFn(args, ctx)` — called with the tool's
+own args and the request context, before `execute` runs at all — on
+`generateImage`, `generateVideo`, `generateSong`, and `createSkill`'s
+`alwaysAsk` path:
 
 ```
-pendingGenerationConfirmations.set(id, { resolve, reject })
-setTimeout(() => { ... }, CONFIRM_TIMEOUT_MS)
-sendEvent('generation_confirm', { ...card })
-// wait for the Map entry to resolve
+createTool({
+  id: 'generateImage',
+  // ...
+  needsApprovalFn: async (args, { requestContext }) => {
+    // today's confirmGenerationOrDecline body — isUnlimited/resolveRate/
+    // alwaysAsk/allowMode — moved up one level: this runs BEFORE execute,
+    // where confirmGenerationOrDecline used to run partway through it.
+    // Reads requestContext exactly as it does today.
+  },
+  execute: async (args, ctx) => { /* unchanged tool body */ },
+})
 ```
 
-with `requireToolApproval` on the `agent.stream()` call in `chatStream.ts`
-— a function, not a boolean, so it can run the existing per-call decision:
+Why the tool and not `requireToolApproval` on `agent.stream()`: verified
+against the installed `@mastra/core@1.64.0` bundle
+(Finding 7, `2026-09-10-subagent-control-plane-design.md`) that a
+stream-level rule *does* reach a delegated sub-agent's tool calls — it
+rides `requestContext` under `__mastra_requireToolApproval`, a key the
+delegation boundary does not strip, and Mastra escalates a suspended
+sub-agent's approval up to the parent stream
+(`isDelegatedApproval`/`suspendedToolRunId`/
+`requireApprovalMetadata[primitiveId]`). But a tool-level rule holds in
+that same case *and* keeps holding when a specialist later becomes an
+agent a user talks to directly, with no chat stream re-establishing the
+rule for it. Generation is going behind marketing specialists (Olmo
+supervisor design), so the tool is the durable placement — `chatStream.ts`
+attaches nothing approval-related to `agent.stream()` itself.
 
-```
-requireToolApproval: async ({ toolName, args, requestContext }) => {
-  // the gated tool set (generateImage, generateVideo, generateSong,
-  // createSkill's alwaysAsk case) decides per toolName; body is today's
-  // confirmGenerationOrDecline logic (isUnlimited/alwaysAsk/allowMode),
-  // now reading requestContext instead of execContext.requestContext
-}
-```
-
-The stream then emits a `tool-call-approval` chunk (`toolName`,
-`toolCallId`, `args`) instead of the hand-built SSE `generation_confirm`
-event — `chatStream.ts` forwards that chunk to the frontend as today's
-approval card, and the existing "Approve"/"Decline" UI action calls
-`agent.approveToolCall({ runId })` / `agent.declineToolCall({ runId, reason })`
-instead of resolving a Map entry. `declineToolCall`'s `reason` is returned
-to the model in place of the tool result — a real improvement over today's
-plain rejection, the model can adjust instead of blindly retrying.
+`confirmGenerationOrDecline` as a standalone function goes away — its body
+splits across each gated tool's `needsApprovalFn`, not because the logic
+changes, but because there's no longer a single call site to hold it.
 
 Mastra requires a configured storage provider for this (snapshots hold the
 resume state) — the repo already has one (`getMastraStore()`), so no new
 infra needed. No built-in timeout exists on a pending approval (confirmed —
-neither this doc, `run`, `step`, nor `workflow` references expose one), so
-the existing 5-minute expiry needs an explicit check rather than relying on
-a framework timeout — see open question 2.
+neither this doc, `run`, `step`, nor `workflow` references expose one), and
+unlike the Map-based version, an unanswered native approval now persists
+indefinitely instead of expiring after 5 minutes — a deliberate behavior
+change (a deploy today kills every in-flight confirmation; after this it
+won't) that trades a self-cleaning timeout for accumulating suspended
+runs. Cleanup moves to an explicit sweep: `WatchdogFunction`, which
+already runs every 5 minutes over stalled `in_progress` tasks, gets a new
+case — a run suspended awaiting tool approval, untouched for N hours — a
+different condition from "crashed," not something its existing stall
+check covers. See open question 2 for the threshold.
 
 ### 3. Multi-step execution (Tasks)
 
@@ -261,9 +290,10 @@ completes/fails — unchanged.
    Recommend keeping a small count cap (e.g. 8) at attach time as a product
    guard, decoupled from the deleted char-budget logic — confirm before
    planning.
-2. Suspended-run expiry: Mastra suspend/resume has no built-in timeout.
-   The existing 5-minute stale-confirmation behavior needs an explicit
-   check (e.g. a `suspendedAt` timestamp + a sweep) rather than relying on
-   framework behavior — needs a decision on where that check lives
-   (watchdog function already exists for stalled tasks, may be able to
-   extend it).
+2. Suspended-run expiry: decided that `WatchdogFunction` owns the sweep
+   (see Design section 2) — open is only the threshold N for "untouched
+   for N hours." The old behavior expired at 5 minutes because an
+   unanswered card was assumed abandoned; a persisted approval has no such
+   pressure, so N should be materially longer (hours, not minutes) —
+   confirm before planning, along with what happens to a swept run
+   (auto-decline with a reason vs. a distinct `expired` status).
