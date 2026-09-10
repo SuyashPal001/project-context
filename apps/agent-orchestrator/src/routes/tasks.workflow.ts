@@ -1,6 +1,6 @@
 import { INTERNAL_SERVICE_KEY, INTERNAL_API_URL } from '../types.js'
 import type { WorkflowStep } from '../types.js'
-import { fetchAgentSkills, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from '../usage.js'
+import { fetchAgentSkillsPrompt, fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from '../usage.js'
 import { refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
 import { runMastraWorkflow } from '../mastra/index.js'
 import type { WorkflowContext } from '../mastra/index.js'
@@ -21,8 +21,8 @@ export async function runMastraWorkflowSteps(
   // unmetered.
   model: string = DEFAULT_TASK_MODEL,
 ): Promise<void> {
-  const skill = await fetchAgentSkills(agentId, tenantId)
-  const instructions = systemPrompt ?? skill.systemPrompt ?? 'You are a helpful AI assistant.'
+  const agentSkillsPrompt = await fetchAgentSkillsPrompt(agentId, tenantId)
+  const instructions = systemPrompt ?? agentSkillsPrompt ?? 'You are a helpful AI assistant.'
   const connectedProviders = await fetchConnectedProviders(tenantId)
   const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)
   const policy = await fetchAgentPolicy(agentId, tenantId)

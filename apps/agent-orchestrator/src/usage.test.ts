@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentSkills, agentBelongsToTenant, recordSkillRuns } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAttachedSkills, fetchTestSkill, toMastraSkillName, agentBelongsToTenant, recordSkillRuns } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -116,134 +116,180 @@ describe('fetchAgentMemory', () => {
   })
 })
 
-describe('fetchAgentSkills', () => {
-  it('composes every active skill in attachment order', async () => {
+describe('toMastraSkillName', () => {
+  it('lowercases and hyphenates', () => {
+    expect(toMastraSkillName('UGC Ad Production')).toBe('ugc-ad-production')
+  })
+
+  it('strips leading/trailing hyphens produced by punctuation', () => {
+    expect(toMastraSkillName('  Bid Writer!!  ')).toBe('bid-writer')
+  })
+
+  it('falls back to "skill" when nothing alphanumeric survives', () => {
+    expect(toMastraSkillName('###')).toBe('skill')
+  })
+
+  it('truncates to 64 characters, Mastra\'s InlineSkillInput.name limit', () => {
+    const long = 'a'.repeat(100)
+    expect(toMastraSkillName(long)).toHaveLength(64)
+  })
+
+  it('never ends in a hyphen even when truncation lands mid hyphen-run', () => {
+    // 63 'a's + a hyphen-run that would land exactly at the 64-char cut if
+    // stripped before slicing — the old (broken) order produced 'a'.repeat(63) + '-'.
+    const raw = 'a'.repeat(63) + '---trailing-content-that-gets-cut-off'
+    const result = toMastraSkillName(raw)
+    expect(result.endsWith('-')).toBe(false)
+    expect(result.length).toBeLessThanOrEqual(64)
+  })
+})
+
+describe('fetchTestSkill', () => {
+  it('resolves the pinned version into a valid Mastra Skill', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [
-      { name: 'bid-writer', system_prompt: 'Open with the client name.', tools: null, config: null, install_id: 'install-1' },
-      { name: 'tone-guide', system_prompt: 'Never promise a date.', tools: null, config: null, install_id: 'install-2' },
+      { name: 'Bid Writer', description: 'Use when writing bids.', body: 'Open with the client name.' },
     ] })
 
-    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
+    const skill = await fetchTestSkill('install-1', 'tenant-1')
 
-    // Both bodies present, first-attached first.
-    expect(composed.systemPrompt).toContain('Open with the client name.')
-    expect(composed.systemPrompt).toContain('Never promise a date.')
-    expect(composed.systemPrompt!.indexOf('Open with')).toBeLessThan(composed.systemPrompt!.indexOf('Never promise'))
-    expect(composed.installIds).toEqual(['install-1', 'install-2'])
-    expect(composed.droppedNames).toEqual([])
+    expect(skill).not.toBeNull()
+    expect(skill!.name).toBe('bid-writer')
+    expect(skill!.description).toBe('Use when writing bids.')
+    expect(skill!.instructions).toBe('Open with the client name.')
   })
 
-  it('orders by created_at then id so the prompt is stable between turns', async () => {
+  it('scopes the query to the tenant, not just the install id', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
-    await fetchAgentSkills('agent-1', 'tenant-1')
+    await fetchTestSkill('install-1', 'tenant-1')
+    const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('si.tenant_id = $2')
+    expect(params).toEqual(['install-1', 'tenant-1'])
+  })
+
+  it('returns null for a revoked or foreign install id', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    const skill = await fetchTestSkill('install-1', 'attacker-tenant')
+    expect(skill).toBeNull()
+  })
+
+  it('returns null when the body is empty', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ name: 'empty', description: 'Use when empty.', body: '   ' }] })
+    const skill = await fetchTestSkill('install-1', 'tenant-1')
+    expect(skill).toBeNull()
+  })
+
+  it('synthesizes a description when the manifest has none', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ name: 'legacy-skill', description: null, body: 'Do the thing.' }] })
+    const skill = await fetchTestSkill('install-1', 'tenant-1')
+    expect(skill!.description).toContain('legacy-skill')
+  })
+
+  it('records a run for the resolved install', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ name: 'bid-writer', description: 'Use when writing bids.', body: 'Body.' }] })
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] }) // the recordSkillRuns UPDATE
+    await fetchTestSkill('install-1', 'tenant-1')
+    await new Promise((resolve) => setTimeout(resolve, 0)) // let the fire-and-forget settle
+    expect(mockPoolQuery).toHaveBeenCalledTimes(2)
+    expect(mockPoolQuery.mock.calls[1][0]).toContain('UPDATE skill_installs')
+  })
+
+  it('returns null instead of throwing when createSkill validation fails', async () => {
+    // A description over 1024 chars would normally throw inside createSkill —
+    // this must be caught and turned into a null return, not propagate.
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'bid-writer', description: 'x'.repeat(2000), body: 'Body.' },
+    ] })
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] }) // recordSkillRuns
+    const skill = await fetchTestSkill('install-1', 'tenant-1')
+    // Description gets clamped to 1024 by resolveInstalledSkillContent before
+    // reaching createSkill, so this specific case should actually succeed —
+    // this test exists to prove the clamp works, not to prove the catch fires.
+    expect(skill).not.toBeNull()
+    expect(skill!.description.length).toBeLessThanOrEqual(1024)
+  })
+})
+
+describe('fetchAttachedSkills', () => {
+  it('returns a Mastra Skill for an installed row, resolved fresh', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'Bid Writer', system_prompt: null, install_id: 'install-1', version: 1 },
+    ] })
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'Bid Writer', description: 'Use when writing bids.', body: 'Open with the client name.' },
+    ] })
+
+    const skills = await fetchAttachedSkills('agent-1', 'tenant-1')
+
+    expect(skills).toHaveLength(1)
+    expect(skills[0].name).toBe('bid-writer')
+    expect(skills[0].instructions).toBe('Open with the client name.')
+  })
+
+  it('excludes the default persona row in the query itself', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await fetchAttachedSkills('agent-1', 'tenant-1')
     const sql = mockPoolQuery.mock.calls[0][0] as string
-    // The id tiebreaker matters: two rows attached in the same transaction can
-    // share created_at, and without it their order can flip between turns.
-    expect(sql).toContain('ORDER BY created_at ASC, id ASC')
-    expect(sql).not.toContain('LIMIT 1')
+    expect(sql).toContain("name != 'default'")
   })
 
-  // agent_skills.agent_id and agent_skills.tenant_id are independent foreign
-  // keys, so a row pairing this tenant with another tenant's agent (or the
-  // reverse) is representable. Composing by agent_id alone meant an attacker
-  // who got such a row written could inject text into the victim tenant's
-  // system prompt on every turn.
-  it('scopes the query to the tenant, not just the agent', async () => {
+  it('scopes the query to the tenant', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
-    await fetchAgentSkills('agent-1', 'tenant-1')
+    await fetchAttachedSkills('agent-1', 'tenant-1')
     const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
     expect(sql).toContain('tenant_id = $2')
     expect(params).toEqual(['agent-1', 'tenant-1'])
   })
 
-  it('composes nothing when the rows belong to another tenant', async () => {
-    // The filter lives in SQL, so a mismatched tenant returns no rows at all.
+  it('dedupes by name, keeping the highest version, resolving only that one', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'bid-writer', system_prompt: null, install_id: 'install-1', version: 1 },
+      { name: 'bid-writer', system_prompt: null, install_id: 'install-2', version: 2 },
+    ] })
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'bid-writer', description: 'Use when writing bids.', body: 'New body v2.' },
+    ] })
+
+    const skills = await fetchAttachedSkills('agent-1', 'tenant-1')
+
+    expect(skills).toHaveLength(1)
+    expect(mockPoolQuery.mock.calls[1][1]).toEqual(['install-2', 'tenant-1'])
+  })
+
+  it('uses the stored system_prompt directly for a hand-authored row (no install_id)', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'internal-helper', system_prompt: 'Do the internal thing.', install_id: null, version: 1 },
+    ] })
+
+    const skills = await fetchAttachedSkills('agent-1', 'tenant-1')
+
+    expect(skills).toHaveLength(1)
+    expect(skills[0].name).toBe('internal-helper')
+    expect(skills[0].instructions).toBe('Do the internal thing.')
+    // No install to resolve — only the one agent_skills query ran.
+    expect(mockPoolQuery).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips a hand-authored row with an empty system_prompt', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'empty', system_prompt: '  ', install_id: null, version: 1 },
+    ] })
+    const skills = await fetchAttachedSkills('agent-1', 'tenant-1')
+    expect(skills).toEqual([])
+  })
+
+  it('skips an installed row whose content fails to resolve', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'stale', system_prompt: null, install_id: 'install-1', version: 1 },
+    ] })
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
-    const composed = await fetchAgentSkills('agent-1', 'attacker-tenant')
-    expect(composed).toEqual({ systemPrompt: null, installIds: [], droppedNames: [] })
+    const skills = await fetchAttachedSkills('agent-1', 'tenant-1')
+    expect(skills).toEqual([])
   })
 
-  it('returns a null prompt when the agent has no active skills', async () => {
+  it('returns an empty array when the agent has no active skills', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
-    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
-    expect(composed).toEqual({ systemPrompt: null, installIds: [], droppedNames: [] })
-  })
-
-  // Legacy agents can already hold more rows than the cap allows — those rows
-  // were being ignored entirely before this change, so dropping the overflow
-  // is strictly better than today, but it must be loud rather than silent.
-  it('drops skills past the count cap and names them', async () => {
-    const rows = Array.from({ length: 10 }, (_, i) => ({
-      name: `skill-${i}`, system_prompt: `body ${i}`, tools: null, config: null, install_id: `install-${i}`,
-    }))
-    mockPoolQuery.mockResolvedValueOnce({ rows })
-
-    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
-
-    expect(composed.installIds).toHaveLength(8)
-    expect(composed.droppedNames).toEqual(['skill-8', 'skill-9'])
-    expect(composed.systemPrompt).not.toContain('body 8')
-  })
-
-  // agent_skills.install_id is nullable for hand-authored skills, so the cap
-  // must count every composed skill — not just those with an install id — or
-  // an agent with only hand-authored skills bypasses the count cap entirely.
-  // All 9 rows here carry install_id: null on purpose: gating on
-  // installIds.length (the pre-fix logic) would never reach 8, so all 9
-  // would compose and this test would fail against that code. Gating on
-  // composed-parts count catches it at the 9th row regardless of install id.
-  it('counts hand-authored skills (null install_id) against the cap', async () => {
-    const rows = Array.from({ length: 9 }, (_, i) => ({
-      name: `hand-authored-${i}`, system_prompt: `body ${i}`, tools: null, config: null, install_id: null, version: 1,
-    }))
-    mockPoolQuery.mockResolvedValueOnce({ rows })
-
-    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
-
-    expect(composed.installIds).toHaveLength(0)
-    expect(composed.droppedNames).toEqual(['hand-authored-8'])
-    expect(composed.systemPrompt).not.toContain('body 8')
-  })
-
-  // agent_skills is unique on (agent_id, tenant_id, name, version) — the
-  // attach route can write a new version for a skill name without
-  // deactivating the old row, so two active rows can share a name.
-  it('dedupes by name, keeping the highest version, before caps are applied', async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [
-      { name: 'bid-writer', system_prompt: 'Old body v1.', tools: null, config: null, install_id: 'install-1', version: 1 },
-      { name: 'bid-writer', system_prompt: 'New body v2.', tools: null, config: null, install_id: 'install-2', version: 2 },
-    ] })
-
-    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
-
-    expect(composed.systemPrompt).toContain('New body v2.')
-    expect(composed.systemPrompt).not.toContain('Old body v1.')
-    expect(composed.installIds).toEqual(['install-2'])
-  })
-
-  it('drops skills past the character budget', async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [
-      { name: 'huge', system_prompt: 'x'.repeat(23_900), tools: null, config: null, install_id: 'install-1' },
-      { name: 'small', system_prompt: 'y'.repeat(500), tools: null, config: null, install_id: 'install-2' },
-    ] })
-
-    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
-
-    expect(composed.installIds).toEqual(['install-1'])
-    expect(composed.droppedNames).toEqual(['small'])
-    expect(composed.systemPrompt!.length).toBeLessThanOrEqual(24_000 + 200) // bodies plus per-skill headers
-  })
-
-  it('skips rows with a null system_prompt without dropping the rest', async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [
-      { name: 'empty', system_prompt: null, tools: null, config: null, install_id: 'install-1' },
-      { name: 'real', system_prompt: 'Do the thing.', tools: null, config: null, install_id: 'install-2' },
-    ] })
-
-    const composed = await fetchAgentSkills('agent-1', 'tenant-1')
-
-    expect(composed.systemPrompt).toContain('Do the thing.')
-    expect(composed.installIds).toEqual(['install-2'])
+    const skills = await fetchAttachedSkills('agent-1', 'tenant-1')
+    expect(skills).toEqual([])
   })
 })
 

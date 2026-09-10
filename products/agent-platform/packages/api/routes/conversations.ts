@@ -268,6 +268,11 @@ conversationsRoutes.patch('/:id', async (c) => {
             // tool call. 'auto': confirmGenerationOrDecline skips the card entirely and
             // runs — see apps/agent-orchestrator/src/mastra/tools/confirmGeneration.ts.
             allowMode: z.enum(['ask', 'auto']).nullable().optional(),
+            // Set by startSkillTestChat (web) at creation time; cleared (null) when
+            // the user dismisses the test-skill chip in ChatInput — see
+            // fetchConversationTestSkillInstallId in the orchestrator, which reads
+            // this same key to compose only the tested skill for this conversation.
+            testSkillInstallId: z.string().uuid().nullable().optional(),
         });
 
         const result = schema.safeParse(await c.req.json());
@@ -278,9 +283,9 @@ conversationsRoutes.patch('/:id', async (c) => {
             return c.json({ error: 'No fields provided for update', code: 'VALIDATION_ERROR' }, 400);
         }
 
-        const { folderScope, allowMode, ...rest } = result.data;
+        const { folderScope, allowMode, testSkillInstallId, ...rest } = result.data;
         const patch: Record<string, unknown> = { ...rest };
-        if (folderScope !== undefined || allowMode !== undefined) {
+        if (folderScope !== undefined || allowMode !== undefined || testSkillInstallId !== undefined) {
             // Merge, never overwrite: metadata is shared with whatever else the
             // product stores on a conversation.
             const current = { ...((existing.metadata ?? {}) as Record<string, unknown>) };
@@ -291,6 +296,10 @@ conversationsRoutes.patch('/:id', async (c) => {
             if (allowMode !== undefined) {
                 if (allowMode === null) delete current.allowMode;
                 else current.allowMode = allowMode;
+            }
+            if (testSkillInstallId !== undefined) {
+                if (testSkillInstallId === null) delete current.testSkillInstallId;
+                else current.testSkillInstallId = testSkillInstallId;
             }
             patch.metadata = current;
         }

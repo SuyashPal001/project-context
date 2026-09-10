@@ -23,7 +23,7 @@ vi.mock('../credits.js', () => ({
 }))
 
 vi.mock('../usage.js', () => ({
-  fetchAgentSkills: vi.fn().mockResolvedValue({ systemPrompt: 'be helpful', installIds: [], droppedNames: [] }),
+  fetchAgentSkillsPrompt: vi.fn().mockResolvedValue('be helpful'),
   fetchConnectedProviders: vi.fn().mockResolvedValue([]),
   fetchToolGovernance: vi.fn().mockResolvedValue({ requiresApprovalTools: [], highStakeTools: [] }),
   fetchAgentPolicy: vi.fn().mockResolvedValue({

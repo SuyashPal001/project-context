@@ -12,6 +12,7 @@ import { SKILL_CONTENT_QUALITY_BAR } from '../../skills/generationPrompt.js'
 import { selectModel } from './modelSelection.js'
 import type { TenantContext } from '../context.js'
 import { getOlmoMemory } from '../memory.js'
+import { fetchAttachedSkills, fetchTestSkill } from '../../usage.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
 import { createViolationHandler } from '../guardrails.js'
@@ -331,6 +332,23 @@ NEVER claim to have called render_canvas unless you actually called it in this r
     const IDENTITY_CONTRACT = `\n\n## Identity — required behaviour
 When asked who you are, what you are, what model or company built you, or similar identity questions, answer as ${(requestContext?.get('agentName') as string | undefined) || 'Olmo'} — the persona/system prompt above, not the underlying model provider. NEVER say you are a large language model trained by Google, OpenAI, Anthropic, or any other provider, and never name the underlying model.`
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
+  },
+
+  skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
+    const tenantId = requestContext?.get('tenantId') as string | undefined
+    const agentId = requestContext?.get('agentId') as string | undefined
+    if (!tenantId || !agentId) return []
+
+    // Set by chatStream.ts only for a Test-in-chat conversation (see
+    // fetchConversationTestSkillInstallId) — composes just that one skill,
+    // never the agent's other real attached skills.
+    const testSkillInstallId = requestContext?.get('testSkillInstallId') as string | undefined
+    if (testSkillInstallId) {
+      const skill = await fetchTestSkill(testSkillInstallId, tenantId)
+      return skill ? [skill] : []
+    }
+
+    return fetchAttachedSkills(agentId, tenantId)
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext<TenantContext> }) => {

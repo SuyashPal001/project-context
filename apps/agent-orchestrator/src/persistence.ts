@@ -55,6 +55,25 @@ export async function fetchConversationAllowMode(idToken: string, conversationId
   }
 }
 
+// Same ownership-check reasoning as fetchConversationAllowMode above: a
+// client-asserted installId on the wire is never trusted directly — this
+// reads it back off the conversation row, scoped to (tenantId, userId)
+// server-side by GET /conversations/:id, so a stranger's conversationId 404s
+// and falls back to no test skill rather than resolving anything.
+export async function fetchConversationTestSkillInstallId(idToken: string, conversationId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/conversations/${conversationId}`, {
+      headers: { 'Authorization': `Bearer ${idToken}` },
+    })
+    if (!res.ok) return null
+    const json = await res.json() as { data?: { metadata?: { testSkillInstallId?: string } } }
+    return json.data?.metadata?.testSkillInstallId ?? null
+  } catch (err) {
+    console.error('[persistence] fetchConversationTestSkillInstallId error:', (err as Error).message)
+    return null
+  }
+}
+
 export function saveUserMessage(
   idToken: string,
   conversationId: string,

@@ -1,7 +1,7 @@
 import { InsufficientCreditsError } from '@serverless-saas/credits'
 import type { TaskStep } from '../types.js'
 import {
-  fetchAgentSkills, fetchAgentModelSelection,
+  fetchAgentSkillsPrompt, fetchAgentModelSelection,
   fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, recordUsage,
 } from '../usage.js'
 import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, settleTask, refundTask, taskChargeKey, DEFAULT_TASK_MODEL } from '../credits.js'
@@ -61,8 +61,8 @@ export async function runMastraTaskSteps(
     throw err
   }
 
-  const skill = await fetchAgentSkills(agentId, tenantId)
-  const instructions = skill.systemPrompt ?? `You are ${agentName}, a helpful AI assistant.`
+  const agentSkillsPrompt = await fetchAgentSkillsPrompt(agentId, tenantId)
+  const instructions = agentSkillsPrompt ?? `You are ${agentName}, a helpful AI assistant.`
   const connectedProviders = await fetchConnectedProviders(tenantId)
   const toolGovernance = await fetchToolGovernance(agentId, tenantId, connectedProviders)
   const policy = await fetchAgentPolicy(agentId, tenantId)

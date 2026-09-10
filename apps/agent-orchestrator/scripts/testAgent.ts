@@ -17,7 +17,7 @@ import { pmAgent } from '../src/mastra/agents/pmAgent.js'
 import { platformAgent } from '../src/mastra/index.js'
 import { getMCPClientForTenant } from '../src/mastra/tools.js'
 import { getThinkingBudget } from '../src/mastra/thinking.js'
-import { fetchAgentSkills } from '../src/usage.js'
+import { fetchAgentSkillsPrompt } from '../src/usage.js'
 import { isPmIntent, fetchPrdDraft } from '../src/routes/pmRouting.js'
 
 // ── Test identity (disco.suyash@gmail.com / Acme Corp) ────────────────────────
@@ -71,9 +71,9 @@ async function main() {
   const mcpClient = getMCPClientForTenant(TEST_TENANT_ID)
   requestContext.set('__mcpClient', mcpClient as any)
 
-  const agentSkill = await fetchAgentSkills(TEST_AGENT_ID, TEST_TENANT_ID)
-  if (agentSkill.systemPrompt) {
-    requestContext.set('agentSystemPrompt', agentSkill.systemPrompt)
+  const agentSkillsPrompt = await fetchAgentSkillsPrompt(TEST_AGENT_ID, TEST_TENANT_ID)
+  if (agentSkillsPrompt) {
+    requestContext.set('agentSystemPrompt', agentSkillsPrompt)
   }
 
   const thinkingBudget = getThinkingBudget(message)
