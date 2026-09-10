@@ -98,53 +98,57 @@ describe('POST /api/workflows/:workflowRunId/resume', () => {
 
   it('404s when the run has no mastra_run_id', async () => {
     poolQuery.mockResolvedValue({ rows: [{ mastra_run_id: null, agent_id: 'agent-1' }] })
-    const res = await post('wf-run-2', { tenantId: 'tenant-1' })
+    const res = await post('wf-run-2', { tenantId: 'tenant-1', approved: true, resumeLabel: 'approve:s1' })
     expect(res.status).toBe(404)
     expect(resume).not.toHaveBeenCalled()
   })
 
   it('404s when isRunOwnedByTenant refuses (wrong tenant)', async () => {
     isRunOwnedByTenant.mockResolvedValue(false)
-    const res = await post('wf-run-3', { tenantId: 'tenant-wrong' })
+    const res = await post('wf-run-3', { tenantId: 'tenant-wrong', approved: true, resumeLabel: 'approve:s1' })
     expect(res.status).toBe(404)
     expect(resume).not.toHaveBeenCalled()
   })
 
-  it('resumes with the right step/resumeData/forEachIndex on a successful call', async () => {
-    resume.mockResolvedValue({ status: 'suspended' })
-    const res = await post('wf-run-4', { tenantId: 'tenant-1', approved: true, forEachIndex: 2 })
-
-    expect(res.status).toBe(200)
-    expect(createRun).toHaveBeenCalledWith({ runId: 'mastra-run-1' })
-    expect(resume).toHaveBeenCalledTimes(1)
-    const call = resume.mock.calls[0][0]
-    expect(call.step).toBe('run-plan-step')
-    expect(call.resumeData).toEqual({ approved: true })
-    expect(call.forEachIndex).toBe(2)
+  it('returns 400 when resumeLabel is missing', async () => {
+    const res = await post('wf-run-4', { tenantId: 'tenant-1', approved: true })
+    expect(res.status).toBe(400)
+    expect(resume).not.toHaveBeenCalled()
   })
 
-  it('settles and reports completed on a success result', async () => {
-    resume.mockResolvedValue({
-      status: 'success',
-      result: [{ stepId: 'step-1', status: 'done', summary: 'ok', inputTokens: 10, outputTokens: 5 }],
+  it('accepts and dispatches without waiting for the workflow to settle', async () => {
+    let resolveResume!: (v: unknown) => void
+    const resumePromise = new Promise((resolve) => { resolveResume = resolve })
+    const detachedResume = vi.fn(() => resumePromise)
+    getWorkflow.mockReturnValue({ createRun: vi.fn().mockResolvedValue({ resume: detachedResume }) })
+
+    const start = Date.now()
+    const res = await post('wf-run-5', { tenantId: 'tenant-1', approved: true, resumeLabel: 'approve:s1' })
+    const elapsedMs = Date.now() - start
+
+    expect(res.status).toBe(202)
+    expect(await res.json()).toEqual({ ok: true, status: 'accepted' })
+    // The route must not have awaited `resume` — it's still unresolved.
+    expect(elapsedMs).toBeLessThan(50)
+
+    resolveResume({ status: 'success', result: [] })
+    await new Promise((r) => setTimeout(r, 0)) // flush the detached IIFE's microtask queue
+    expect(detachedResume).toHaveBeenCalledWith(expect.objectContaining({ label: 'approve:s1', resumeData: { approved: true } }))
+  })
+
+  it('re-suspend writes a new pending_approval descriptor rather than clearing it', async () => {
+    const detachedResume = vi.fn().mockResolvedValue({
+      status: 'suspended',
+      suspendPayload: { 'run-plan-step': { stepId: 's2', title: 'Step 2', toolName: 'y', reason: 'requires_approval' } },
     })
-    const res = await post('wf-run-5', { tenantId: 'tenant-1', approved: true })
-    const body = await res.json() as { status: string }
+    getWorkflow.mockReturnValue({ createRun: vi.fn().mockResolvedValue({ resume: detachedResume }) })
 
-    expect(res.status).toBe(200)
-    expect(body.status).toBe('completed')
-    expect(settleTask).toHaveBeenCalledTimes(1)
-    expect(refundTask).not.toHaveBeenCalled()
-  })
+    await post('wf-run-6', { tenantId: 'tenant-1', approved: true, resumeLabel: 'approve:s1' })
+    await new Promise((r) => setTimeout(r, 0))
 
-  it('refunds and reports failed on a failed result', async () => {
-    resume.mockResolvedValue({ status: 'failed', error: { message: 'boom' } })
-    const res = await post('wf-run-6', { tenantId: 'tenant-1', approved: false })
-    const body = await res.json() as { status: string }
-
-    expect(res.status).toBe(200)
-    expect(body.status).toBe('failed')
-    expect(refundTask).toHaveBeenCalledWith({ tenantId: 'tenant-1', taskId: 'wf-run-6' })
-    expect(settleTask).not.toHaveBeenCalled()
+    const fetchMock = vi.mocked(fetch)
+    const updateCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/update'))
+    const updateBody = JSON.parse((updateCall![1] as RequestInit).body as string)
+    expect(updateBody.pendingApproval).toMatchObject({ stepId: 's2', resumeLabel: 'approve:s2' })
   })
 })

@@ -1,7 +1,7 @@
 import { RequestContext, MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context'
 import { INTERNAL_SERVICE_KEY, INTERNAL_API_URL } from '../types.js'
 import type { WorkflowStep } from '../types.js'
-import { fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy } from '../usage.js'
+import { fetchConnectedProviders, fetchToolGovernance, fetchAgentPolicy, fetchAgentModelSelection } from '../usage.js'
 import { refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
 import { mastra } from '../mastra/index.js'
 import type { TenantContext } from '../mastra/context.js'
@@ -196,4 +196,74 @@ export async function finishSuccessfulWorkflowRun(
     insights: wfStepsCompleted.map((s) => s.summary).filter(Boolean).join('\n'),
     completedAt: new Date().toISOString(),
   }, traceId)
+}
+
+/**
+ * Shared resume-outcome handling for a suspended `task-execution-plan` run —
+ * the 3-way branch (re-suspended / failed-or-other / success) that follows a
+ * `run.resume()` call. Dispatched fire-and-forget by the resume route
+ * (`routes/tasks.ts`'s `POST /api/workflows/:workflowRunId/resume`, which
+ * returns its own HTTP 202 before this settles) and, later, by the watchdog
+ * sweep for stale `awaiting_approval` runs — both need the identical
+ * suspended/failed/success handling, so it lives here rather than being
+ * duplicated.
+ */
+export async function resumeWorkflowRun(args: {
+  workflowRunId: string
+  tenantId: string
+  agentId: string
+  mastraRunId: string
+  resumeLabel: string
+  approved: boolean
+  traceId: string
+}): Promise<void> {
+  const { workflowRunId, tenantId, agentId, mastraRunId, resumeLabel, approved, traceId } = args
+  const requestContext = new RequestContext<TenantContext>()
+  requestContext.setRaw(MASTRA_RESOURCE_ID_KEY, tenantId)
+  requestContext.set('tenantId', tenantId)
+  requestContext.set('agentId', agentId)
+
+  try {
+    const workflow = mastra.getWorkflow('task-execution-plan')
+    const run = await workflow.createRun({ runId: mastraRunId })
+    const result = await run.resume({ label: resumeLabel, resumeData: { approved }, requestContext })
+
+    if (result.status === 'suspended') {
+      // A LATER step in the same run also requires approval — write the NEW
+      // descriptor. Do not clear pending_approval here: that would make
+      // this second approval unreachable, the exact defect class this plan
+      // exists to fix.
+      const payload = (result.suspendPayload as Record<string, { stepId: string; title: string; toolName: string; reason: 'requires_approval' }> | undefined)?.['run-plan-step']
+      await postWorkflowUpdate(workflowRunId, {
+        status: 'awaiting_approval',
+        pendingApproval: payload ? {
+          stepId: payload.stepId, title: payload.title, toolName: payload.toolName, reason: payload.reason,
+          resumeLabel: `approve:${payload.stepId}`,
+        } : null,
+        pendingApprovalAt: new Date().toISOString(),
+      }, traceId)
+      return
+    }
+    if (result.status !== 'success') {
+      await refundTask({ tenantId, taskId: workflowRunId })
+      await postWorkflowUpdate(workflowRunId, {
+        status: 'failed', pendingApproval: null, pendingApprovalAt: null, completedAt: new Date().toISOString(),
+      }, traceId)
+      const errorMessage = result.status === 'failed' ? result.error.message : `workflow ended with status '${result.status}'`
+      console.error(JSON.stringify({ level: 'error', msg: 'workflow resume failed', traceId, workflowRunId, error: errorMessage, ts: Date.now() }))
+      return
+    }
+
+    const modelSelection = await fetchAgentModelSelection(agentId)
+    const model = modelSelection?.model ?? DEFAULT_TASK_MODEL
+    await postWorkflowUpdate(workflowRunId, { pendingApproval: null, pendingApprovalAt: null }, traceId)
+    await finishSuccessfulWorkflowRun(workflowRunId, tenantId, result.result as WorkflowStepOutputs, traceId, agentId, model)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    // Mastra's own compare-and-set throws a distinct error when a second
+    // resume races this one and loses — surfaced only as a log, since
+    // whichever caller (the route or the watchdog sweep) dispatched this
+    // already returned its own response before this catch can run.
+    console.error(JSON.stringify({ level: 'error', msg: 'workflow resume threw', traceId, workflowRunId, error: message, ts: Date.now() }))
+  }
 }
