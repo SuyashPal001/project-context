@@ -257,10 +257,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // reads it and composes just that one skill instead of the agent's
     // real attached ones. The agent's persona (below) is unaffected either
     // way — it's a separate concern, read the same regardless of test mode.
-    const testSkillInstallId = await fetchConversationTestSkillInstallId(idToken, conversationId)
-    if (testSkillInstallId) requestContext.set('testSkillInstallId', testSkillInstallId)
-
-    const [agentPersonaPrompt, agentName, personaPersonality, agentModelSelection] = await Promise.all([
+    const [testSkillInstallId, agentPersonaPrompt, agentName, personaPersonality, agentModelSelection] = await Promise.all([
+      fetchConversationTestSkillInstallId(idToken, conversationId),
       fetchAgentPersonaPrompt(agentId, tenantId),
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
@@ -269,6 +267,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         return null
       }),
     ])
+    if (testSkillInstallId) requestContext.set('testSkillInstallId', testSkillInstallId)
     if (agentPersonaPrompt) {
       requestContext.set('agentSystemPrompt', agentPersonaPrompt)
     }

@@ -8,11 +8,11 @@ vi.mock('./index.js', () => ({
 vi.mock('./tools.js', () => ({ getMCPClientForTenant: vi.fn(() => ({ disconnect: vi.fn() })) }))
 vi.mock('../usage.js', () => ({
   fetchAgentPersonality: vi.fn(async () => 'You are the Visual Design Director.'),
-  fetchAgentSkillsPrompt: vi.fn(async () => 'Custom skill override prompt'),
+  fetchAgentPersonaPrompt: vi.fn(async () => 'Persona prompt override'),
   fetchAgentName: vi.fn(async () => 'Olmo'),
 }))
 
-import { fetchAgentPersonality, fetchAgentSkillsPrompt, fetchAgentName } from '../usage.js'
+import { fetchAgentPersonality, fetchAgentPersonaPrompt, fetchAgentName } from '../usage.js'
 import { createTenantAgent } from './agent.js'
 
 describe('createTenantAgent — background-task path persona/skill parity with chat', () => {
@@ -30,11 +30,11 @@ describe('createTenantAgent — background-task path persona/skill parity with c
     await agent.generate('run the scheduled shift')
 
     expect(fetchAgentPersonality).toHaveBeenCalledWith('agent-1')
-    expect(fetchAgentSkillsPrompt).toHaveBeenCalledWith('agent-1', 'tenant-1')
+    expect(fetchAgentPersonaPrompt).toHaveBeenCalledWith('agent-1', 'tenant-1')
 
     const [, options] = mockGenerate.mock.calls[0]
     expect(options.requestContext.get('personaPersonality')).toBe('You are the Visual Design Director.')
-    expect(options.requestContext.get('agentSystemPrompt')).toBe('Custom skill override prompt')
+    expect(options.requestContext.get('agentSystemPrompt')).toBe('Persona prompt override')
   })
 
   it('sets agentName into requestContext so delegation gating can read it', async () => {

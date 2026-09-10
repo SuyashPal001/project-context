@@ -46,7 +46,7 @@ export interface UsageRecord {
  * shape, so every name is slugified before it reaches createSkill().
  */
 export function toMastraSkillName(raw: string): string {
-  const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64)
+  const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 64).replace(/^-+|-+$/g, '')
   return slug || 'skill'
 }
 
@@ -77,7 +77,8 @@ async function resolveInstalledSkillContent(installId: string, tenantId: string)
     const row = res.rows[0]
     const body = row?.body?.trim()
     if (!row || !body) return null
-    return { name: row.name, description: row.description?.trim() || `Use when the task matches "${row.name}".`, body }
+    const description = (row.description?.trim() || `Use when the task matches "${row.name}".`).slice(0, 1024)
+    return { name: row.name, description, body }
   } catch (err) {
     console.error('[usage] resolveInstalledSkillContent error:', (err as Error).message)
     return null
@@ -96,7 +97,12 @@ export async function fetchTestSkill(installId: string, tenantId: string): Promi
   const content = await resolveInstalledSkillContent(installId, tenantId)
   if (!content) return null
   recordSkillRuns([installId], tenantId).catch((err) => console.warn('[usage] fetchTestSkill recordSkillRuns failed:', (err as Error).message))
-  return createSkill({ name: toMastraSkillName(content.name), description: content.description, instructions: content.body })
+  try {
+    return createSkill({ name: toMastraSkillName(content.name), description: content.description, instructions: content.body })
+  } catch (err) {
+    console.error('[usage] fetchTestSkill createSkill validation failed:', (err as Error).message)
+    return null
+  }
 }
 
 /**
@@ -149,16 +155,26 @@ export async function fetchAttachedSkills(agentId: string, tenantId: string): Pr
     if (row.install_id) {
       const content = await resolveInstalledSkillContent(row.install_id, tenantId)
       if (!content) continue
-      skills.push(createSkill({ name: toMastraSkillName(content.name), description: content.description, instructions: content.body }))
+      try {
+        skills.push(createSkill({ name: toMastraSkillName(content.name), description: content.description, instructions: content.body }))
+      } catch (err) {
+        console.error('[usage] fetchAttachedSkills createSkill validation failed for', row.name, ':', (err as Error).message)
+        continue
+      }
       installIds.push(row.install_id)
     } else {
       const body = row.system_prompt?.trim()
       if (!body) continue
-      skills.push(createSkill({
-        name: toMastraSkillName(row.name),
-        description: `Use when the task matches "${row.name}".`,
-        instructions: body,
-      }))
+      try {
+        skills.push(createSkill({
+          name: toMastraSkillName(row.name),
+          description: `Use when the task matches "${row.name}".`,
+          instructions: body,
+        }))
+      } catch (err) {
+        console.error('[usage] fetchAttachedSkills createSkill validation failed for', row.name, ':', (err as Error).message)
+        continue
+      }
     }
   }
 

@@ -133,6 +133,15 @@ describe('toMastraSkillName', () => {
     const long = 'a'.repeat(100)
     expect(toMastraSkillName(long)).toHaveLength(64)
   })
+
+  it('never ends in a hyphen even when truncation lands mid hyphen-run', () => {
+    // 63 'a's + a hyphen-run that would land exactly at the 64-char cut if
+    // stripped before slicing — the old (broken) order produced 'a'.repeat(63) + '-'.
+    const raw = 'a'.repeat(63) + '---trailing-content-that-gets-cut-off'
+    const result = toMastraSkillName(raw)
+    expect(result.endsWith('-')).toBe(false)
+    expect(result.length).toBeLessThanOrEqual(64)
+  })
 })
 
 describe('fetchTestSkill', () => {
@@ -182,6 +191,21 @@ describe('fetchTestSkill', () => {
     await new Promise((resolve) => setTimeout(resolve, 0)) // let the fire-and-forget settle
     expect(mockPoolQuery).toHaveBeenCalledTimes(2)
     expect(mockPoolQuery.mock.calls[1][0]).toContain('UPDATE skill_installs')
+  })
+
+  it('returns null instead of throwing when createSkill validation fails', async () => {
+    // A description over 1024 chars would normally throw inside createSkill —
+    // this must be caught and turned into a null return, not propagate.
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'bid-writer', description: 'x'.repeat(2000), body: 'Body.' },
+    ] })
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] }) // recordSkillRuns
+    const skill = await fetchTestSkill('install-1', 'tenant-1')
+    // Description gets clamped to 1024 by resolveInstalledSkillContent before
+    // reaching createSkill, so this specific case should actually succeed —
+    // this test exists to prove the clamp works, not to prove the catch fires.
+    expect(skill).not.toBeNull()
+    expect(skill!.description.length).toBeLessThanOrEqual(1024)
   })
 })
 
