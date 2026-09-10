@@ -126,6 +126,41 @@ entitlements up by `featureKey`, while the middleware populates the set
 keyed by feature UUID, so it returns `feature_not_found` for everything.
 The delegate gate must not be built on it.
 
+### 7. Tool approval does survive delegation, and belongs on the tool
+
+Verified, resolving what an earlier draft left open.
+
+`requireToolApproval`, when it is a function, is written into the request
+context under `__mastra_requireToolApproval` (`agent-Dp3vcrIx.cjs`
+27413-27415) and read back by the tool-call step when it was not passed
+directly (26401). That key is **not** among the four excluded by the
+delegation copy at 35119, so the parent's approval rule reaches a
+sub-agent's tool calls. The same permissive copy that leaks identity in
+Finding 1 is what makes approvals work.
+
+Mastra also ships the escalation explicitly: `isDelegatedApproval`, a
+`suspendedToolRunId`, and `requireApprovalMetadata[primitiveId]`. When a
+sub-agent suspends for approval the delegation step re-suspends upward
+carrying that sub-agent's approval payload (28647), so the request climbs
+to whoever is hosting the conversation.
+
+Approval can be demanded in three places, combined with OR — if any says
+yes, the call pauses:
+
+| Where | Scope |
+|---|---|
+| `requireToolApproval` on `stream()` / `generate()` | Every tool call in that request |
+| `requireApproval: true` on `createTool()` | That tool, whoever calls it |
+| `needsApprovalFn` on the tool | That tool, decided per call from the arguments |
+
+The durable choice for generation is the **tool** level. Put it on
+`generateImage` / `generateVideo` / `generateSong`, with `needsApprovalFn`
+carrying the existing unlimited / rate / always-ask logic, and the rule
+holds however the tool is reached: Olmo directly, a specialist under
+delegation, or that specialist later promoted to an agent the user talks
+to on its own. A rule attached only to the chat stream holds for the first
+case and has to be re-established for the other two.
+
 ## Goals
 
 - Every delegation runs with a step budget that was chosen, a spend check
@@ -184,6 +219,7 @@ The delegate gate must not be built on it.
 | Delegate identity across the boundary | Rewritten in `onDelegationStart`, and closed over by `defineSubAgent()` as a second line of defence |
 | Delegation telemetry | A narrow link row joining a delegation to tenant, task and credit charge. Timing, tokens and errors are read from Mastra's observability store |
 | Hook error strategy | `hookErrorStrategy: 'throw'` |
+| Where the approval rule lives | On the tool (`requireApproval` / `needsApprovalFn`), not only on the chat stream — so it survives delegation and survives a specialist becoming directly addressable |
 | Entitlement filtering | Stable facets only — installs, status, official vs tenant. Fails open when unconfigured |
 | Intent-based filtering | Designed as a seam, not built. Mechanism undecided |
 
@@ -480,12 +516,18 @@ Done means all six of these are observable:
 landing first**, for three reasons:
 
 1. **Tool approvals must be native before generation moves behind a
-   delegate.** Mastra bubbles a sub-agent's approval request to the
-   parent's stream, but `confirmGeneration` uses a hand-rolled in-memory
-   Map with its own timeout and SSE push. Behind a sub-agent, the approval
-   card has no path back to the user: the delegate blocks on a Map nobody
-   is watching and times out. That lands precisely on the generation-heavy
-   marketing vertical.
+   delegate.** Native approvals propagate through delegation and escalate
+   upward (Finding 7). `confirmGeneration` does not: it is a hand-rolled
+   in-memory Map with its own timeout and SSE push, so behind a sub-agent
+   the approval card has no path back to the user — the delegate blocks on
+   a Map nobody is watching and times out. That lands precisely on the
+   generation-heavy marketing vertical.
+
+   **Recommendation for that spec:** attach the rule to the generation
+   tools via `requireApproval` / `needsApprovalFn` rather than only to the
+   chat stream's `requireToolApproval`. Same credit logic, one level down,
+   and it then holds for delegated calls and for a specialist that later
+   becomes directly addressable.
 2. **Sub-agent skills need the native per-request resolver.** Today skills
    are concatenated permanently into one agent's instructions, capped at
    8. Building specialist skills on that is building on something already
@@ -495,11 +537,6 @@ landing first**, for three reasons:
 
 Open, and needing an answer before implementation:
 
-- **Does the parent's `requireToolApproval` function get consulted for a
-  delegate's tool call?** Mastra propagates the approval to the parent's
-  stream, but the function is configured on the parent's `stream()` call.
-  If it is not consulted, generation behind a specialist still has no
-  approval path. Verify before relying on it.
 - **What is the source of the installed-delegate set?** A dedicated
   install table mirroring `skill_installs`, or reuse of `agents.status`
   and `isInternal` for the four that exist. This is the first real piece
