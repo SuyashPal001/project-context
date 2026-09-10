@@ -12,12 +12,18 @@ describe('buildOlmoDelegates', () => {
     const requestContext = new RequestContext<TenantContext>()
     requestContext.set('agentName', 'Olmo')
     const delegates = buildOlmoDelegates({ requestContext })
-    expect(delegates).toEqual({
-      pm: pmAgentDelegate,
-      architect: architectAgentDelegate,
-      director: directorAgentDelegate,
-      producer: producerAgentDelegate,
-    })
+    expect(Object.keys(delegates).sort()).toEqual(['architect', 'director', 'pm', 'producer'])
+    expect(delegates.pm).toBe(pmAgentDelegate)
+    expect(delegates.architect).toBe(architectAgentDelegate)
+    expect(delegates.director).toBe(directorAgentDelegate)
+    expect(delegates.producer).toBe(producerAgentDelegate)
+  })
+
+  it('returns no delegates once the depth ceiling is reached', () => {
+    const requestContext = new RequestContext<TenantContext>()
+    requestContext.set('agentName', 'Olmo')
+    requestContext.set('delegationDepth', 1)
+    expect(buildOlmoDelegates({ requestContext })).toEqual({})
   })
 
   it('is case-insensitive on agentName', () => {

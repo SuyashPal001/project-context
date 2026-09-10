@@ -28,6 +28,18 @@ export const tenantContextSchema = z.object({
   testSkillInstallId: z.string().optional(),
   // Live conversation id, carried for tool-call logging.
   sessionId: z.string().optional(),
+  // How many delegation boundaries this run is below the user-facing agent.
+  // Stamped by onDelegationStart (subagents/hooks.ts) onto the outgoing
+  // context; read by resolveDelegates to return {} at the host's ceiling.
+  // Load-bearing, not advisory: Mastra copies the parent's context into the
+  // sub-agent almost wholesale (agent-Dp3vcrIx.cjs:35119 excludes only four
+  // internal keys), so a delegate inherits agentName='olmo' and would
+  // otherwise resolve Olmo's own delegate map and re-delegate in a circle.
+  delegationDepth: z.number().optional(),
+  // The sub-agent ids this tenant may use. Filled upstream by an ownership
+  // query today and by an install query when sharing ships — the resolver
+  // does not change either way. Unset means "unconfigured": fail open.
+  allowedSubAgents: z.array(z.string()).optional(),
   // Not JSON-serializable — a live client reference carried through context so
   // platformAgent.ts's tools resolver reuses the same instance instead of
   // creating a second one. RequestContext.toJSON() silently skips it.
