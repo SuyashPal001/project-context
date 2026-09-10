@@ -39,7 +39,7 @@ vi.mock('../usage.js', () => ({
   fetchAgentModelSelection: vi.fn().mockResolvedValue(null),
   getPool: vi.fn(),
   recordUsage: vi.fn(),
-  fetchAgentSkills: vi.fn().mockResolvedValue({ systemPrompt: 'be helpful', installIds: [], droppedNames: [] }),
+  fetchAgentSkillsPrompt: vi.fn().mockResolvedValue('be helpful'),
   fetchConnectedProviders: vi.fn().mockResolvedValue([]),
   fetchToolGovernance: vi.fn().mockResolvedValue({ requiresApprovalTools: [], highStakeTools: [] }),
   fetchAgentPolicy: vi.fn().mockResolvedValue({

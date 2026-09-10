@@ -434,3 +434,20 @@ export function recordUsage(record: UsageRecord): void {
       .catch((err: Error) => { console.error('[usage] failed to record output_tokens:', err.message) })
   }
 }
+
+/**
+ * String form of the agent's attached skills, for background-task agents
+ * created fresh via createTenantAgent (Tasks execution, document planning)
+ * — these are NOT live per-request Mastra Agents, so they can't use the
+ * skills: resolver's InlineSkill[] directly; they need a plain instructions
+ * string at creation time instead. Thin wrapper over fetchAttachedSkills —
+ * reuses its tenant-scoped query and recordSkillRuns wiring rather than
+ * re-querying or re-composing. Returns null (not '') when there are no
+ * attached skills, matching the old fetchAgentSkills().systemPrompt
+ * contract these callers already null-coalesce against.
+ */
+export async function fetchAgentSkillsPrompt(agentId: string, tenantId: string): Promise<string | null> {
+  const skills = await fetchAttachedSkills(agentId, tenantId)
+  if (skills.length === 0) return null
+  return skills.map((s) => `## Skill: ${s.name}\n\n${s.instructions}`).join('\n\n')
+}
