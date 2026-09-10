@@ -52,6 +52,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
         'agent_tasks:create',
         'agent_tasks:read',
         'agent_tasks:update',
+        'agent_runs:read',
+        'agent_runs:update',
         'project_plans:create',
         'project_plans:read',
         'project_plans:update',

@@ -16,7 +16,7 @@ export const RESOURCES: Record<string, Action[]> = {
     agents: ['create', 'read', 'update', 'delete'],
     agent_tasks: ['create', 'read', 'update', 'delete'],
     agent_workflows: ['create', 'read', 'update', 'delete'],
-    agent_runs: ['read', 'delete'],
+    agent_runs: ['read', 'update', 'delete'],
     notifications: ['create', 'read', 'update', 'delete'],
     audit_log: ['read'],
     tenant: ['read', 'update', 'delete'],
