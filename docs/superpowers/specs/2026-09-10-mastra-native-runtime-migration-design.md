@@ -170,6 +170,22 @@ layer — still writes an `agent_skills` row. What changes is only that the
 row's `system_prompt` column stops being read (may stop being written too,
 since nothing consumes it — implementation detail for the plan).
 
+**Delegation caveat (Finding 1, `2026-09-10-subagent-control-plane-design.md`):**
+the delegation boundary strips only four Mastra-internal keys from
+`requestContext` (`MastraMemory`, `mastra__threadId`, `mastra__resourceId`,
+`mastra__inheritedMemory`) — `agentId`, `agentName` and `agentSystemPrompt`
+all pass through unchanged into a delegated sub-agent's run. A `skills:`
+resolver that reads `agentId`, called inside a delegated run, resolves the
+**parent's** attached skills, not the sub-agent's. Confirmed dormant today
+— the four current Olmo delegates (`pmAgentDelegate`/`architectAgentDelegate`/
+`directorAgentDelegate`/`producerAgentDelegate`) declare no `skills:` of
+their own, so nothing calls this resolver from inside a delegated run yet —
+but it bites the moment a delegate gains its own skills resolver, which the
+Olmo supervisor design's marketing verticals will need. That design owns
+the fix (`resolve.ts`'s identity rewrite in `onDelegationStart`); this spec
+only flags it so the resolver isn't built on an assumption the control
+plane spec already disproves.
+
 ### 2. Pause-and-wait-for-a-human (chat tool calls)
 
 The `pendingGenerationConfirmations` Map becomes a persisted run snapshot
@@ -239,30 +255,66 @@ check covers. See open question 2 for the threshold.
 `routes/tasks.ts`'s `POST /workflows/execute` stays as the entry point —
 same request body, same credit estimate/charge before starting. Internally,
 `runMastraWorkflowSteps` moves off the hand-written loop in
-`mastra/workflow.ts` onto `createWorkflow`/`createStep`, following the same
-pattern `pmWorkflow.ts`'s `prdStep` already uses correctly:
+`mastra/workflow.ts` onto `createWorkflow`/`createStep`.
+
+**The step list is data, not code — this rules out a declared step chain.**
+`runMastraWorkflow` executes a plan generated per task, so `steps[]` differs
+on every run. A `.then(step1).then(step2)` chain is a fixed graph written
+at build time and can't express "however many steps this task's plan has."
+Two shapes fit a dynamic step list:
+
+- **`.foreach()` over the plan, inside one committed workflow.** The graph
+  itself is fixed — "run the plan" — and the plan is input data. This is
+  the safer default: one workflow definition, ordinary `createWorkflow`
+  registration, no beta surface.
+- **Dynamic workflows** (`mastra.addDynamicWorkflow`, a JSON definition
+  validated, registered and persisted) fit "an LLM authored this exact
+  graph" more precisely, but the API is marked Beta and it means one
+  registered definition per plan rather than one committed workflow.
+
+This spec uses `.foreach()`. Real API, corrected against the installed
+bundle (the earlier draft's shape was wrong on two counts):
 
 ```
-createStep({
-  id: '<step-id>',
-  inputSchema, outputSchema,
-  resumeSchema,   // shape of the data a resume call supplies
-  suspendSchema,  // shape of the data shown while suspended
-  execute: async ({ inputData, resumeData, suspend, suspendData, mastra, requestContext }) => {
-    if (requires approval and not yet resumed) {
-      return await suspend({ ...cardData })   // NOT step.suspend() — suspend
-    }                                          // is a parameter Mastra passes
-    // ...call the step's agent (mastra.getAgent(name)), or use createStep(agent)
-    // with a preceding .map() to shape { prompt } when no custom logic is needed
-  },
+const taskExecutionWorkflow = createWorkflow({
+  id: 'task-execution',
+  inputSchema: z.object({ steps: z.array(planStepSchema), taskId: z.string() }),
+  outputSchema: z.object({ results: z.array(stepResultSchema) }),
 })
+  .foreach(
+    createStep({
+      id: 'run-plan-step',
+      inputSchema: planStepSchema,
+      outputSchema: stepResultSchema,
+      resumeSchema,   // shape of the data a resume call supplies
+      suspendSchema,  // shape of the data shown while suspended
+      execute: async ({ inputData, resumeData, suspend, suspendData, mastra, requestContext }) => {
+        if (requires approval and not yet resumed) {
+          return await suspend({ ...cardData })   // NOT step.suspend() — suspend
+        }                                          // is a parameter Mastra passes
+        // ...call the step's agent (mastra.getAgent(name)), or use
+        // createStep(agent) with a preceding .map() to shape { prompt }
+        // when no custom logic is needed
+      },
+    })
+  )
+  .commit()   // required — a workflow without .commit() is never runnable
 ```
 
-and a run resumes via `run.resume({ resumeData, step })` — not
+A run starts via `createRunAsync()` then `run.start({ inputData })`, and
+resumes via `run.resume({ resumeData, step })` — not
 `run.resume({ decision })` as an earlier draft of this spec had it; the
 resume payload must match the step's declared `resumeSchema`.
 `settleTask()`/`refundTask()` still run after the workflow
 completes/fails — unchanged.
+
+**Open before implementation:** can a step suspend inside `.foreach()`,
+and does `resume()` land on the correct iteration? Docs describe a resumed
+workflow restarting from the step where it paused, but under `foreach` one
+step definition executes many times across the plan's items — anything
+relying on human approval inside that per-item loop depends on the answer.
+Verify against the installed bundle (or a throwaway spike) before the plan
+commits to this shape; see open question 3.
 
 ## Testing
 
@@ -297,3 +349,9 @@ completes/fails — unchanged.
    pressure, so N should be materially longer (hours, not minutes) —
    confirm before planning, along with what happens to a swept run
    (auto-decline with a reason vs. a distinct `expired` status).
+3. Suspend-inside-`.foreach()` semantics: unverified whether a step
+   defined once but iterated by `.foreach()` resumes on the correct item
+   after `run.resume()`, or restarts the whole foreach. Blocks Design
+   section 3 if approval needs to pause mid-plan rather than only at the
+   end — verify against the installed bundle, or spike it, before the
+   plan for the Tasks path is written.
