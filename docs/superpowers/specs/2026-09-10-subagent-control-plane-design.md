@@ -161,6 +161,41 @@ delegation, or that specialist later promoted to an agent the user talks
 to on its own. A rule attached only to the chat stream holds for the first
 case and has to be re-established for the other two.
 
+### 8. Ownership and usage are different facts, and only ownership is needed now
+
+`agents.tenantId` is `NOT NULL`, so a platform-owned agent has no legal
+home in that table: every row must belong to a tenant. That is a defect
+for a system that must carry both official and tenant-authored
+sub-agents, and no install table fixes it.
+
+Skills already model this correctly and are the pattern to follow. That
+feature carries **two** separate facts: `skills.isOfficial` /
+`skills.visibility` say who owns a skill and whether it is published,
+while a `skill_installs` row says that a given tenant has it, at a pinned
+version, and can uninstall it. Two facts, two homes, because a public
+skill is available to everyone and installed by few.
+
+The same triple applies to sub-agents:
+
+| Fact | Where it lives |
+|---|---|
+| Who owns it | An ownership marker — platform-owned vs tenant-owned |
+| Is it shared | Visibility — private vs public |
+| Does this tenant use it | An install row |
+
+The sequencing follows from that split. The ownership marker is required
+now, because of the `NOT NULL` gap above. Install rows are only required
+when tenants can share sub-agents with each other — until then, "which
+sub-agents does this tenant have" is fully answered by *owned by the
+platform, or owned by me, and not retired*.
+
+This costs nothing later because the resolver reads a **set of allowed
+ids** out of the request context rather than querying anything itself
+(Design 3). Today that set is filled by an ownership query; when sharing
+ships it is filled by an install query. The resolver does not change.
+`agent_tools` already uses `tenantId IS NULL` to mean platform-owned, so
+the marker follows an existing convention rather than inventing one.
+
 ## Goals
 
 - Every delegation runs with a step budget that was chosen, a spend check
@@ -215,12 +250,13 @@ case and has to be re-established for the other two.
 | Where the objective lives | On a task, not on the chat thread. Chat stays conversational; Olmo opens a task for real work and reports progress back |
 | Workflow or goal owns the task | The workflow owns the task; the goal runs inside one step |
 | Where the credit budget binds | Both: a per-delegation gate in `onDelegationStart`, and a ceiling across the goal loop |
-| Official vs tenant-authored sub-agents | Both, eventually. `personas.isOfficial` and `agent_tools.tenantId IS NULL` already encode this axis; `agent_templates` has no `tenantId` and is where a tenant-authored delegate would need to live. Not built here |
+| Official vs tenant-authored sub-agents | Both. Ownership is marked platform vs tenant, following `agent_tools`' existing `tenantId IS NULL` convention; `agent_templates` gains a nullable `tenantId` on the same convention. `agents.tenantId` being `NOT NULL` is the gap forcing this |
+| Ownership marker or install rows | Ownership marker plus visibility now; install rows deferred until tenants can share sub-agents. They answer different questions — who owns it vs who may use it — and only the first is needed before sharing exists |
 | Delegate identity across the boundary | Rewritten in `onDelegationStart`, and closed over by `defineSubAgent()` as a second line of defence |
 | Delegation telemetry | A narrow link row joining a delegation to tenant, task and credit charge. Timing, tokens and errors are read from Mastra's observability store |
 | Hook error strategy | `hookErrorStrategy: 'throw'` |
 | Where the approval rule lives | On the tool (`requireApproval` / `needsApprovalFn`), not only on the chat stream — so it survives delegation and survives a specialist becoming directly addressable |
-| Entitlement filtering | Stable facets only — installs, status, official vs tenant. Fails open when unconfigured |
+| Ownership filtering | Stable facets only — ownership, visibility, `status != 'retired'`. Fails open when the source is unconfigured |
 | Intent-based filtering | Designed as a seam, not built. Mechanism undecided |
 
 ## Design
@@ -240,8 +276,8 @@ Per turn:
 
 ```
 request  →  resolve.ts
-              reads requestContext (agentName, delegationDepth, installed set)
-              filters specs: host → depth → entitlement
+              reads requestContext (agentName, delegationDepth, allowed set)
+              filters specs: host → depth → ownership
               returns Record<string, Agent>   (or {} at the depth limit)
          →  Olmo's model picks a delegate (dispatched as a tool call)
          →  onDelegationStart
@@ -327,21 +363,21 @@ export function resolveDelegates(
   const ctx = requestContext
   const agentName = (ctx?.get('agentName') ?? '').toLowerCase().trim()
   const depth = ctx?.get('delegationDepth') ?? 0
-  const installed = ctx?.get('installedSubAgents')  // undefined = unconfigured = allow
+  const allowed = ctx?.get('allowedSubAgents')  // ownership query now, installs later
 
   const hostMaxDepth = maxDepthForHost(agentName)   // from the host's own spec
 
   const specs = depth >= hostMaxDepth ? [] : listSpecs()
     .filter(s => hostAllows(agentName, s))
-    .filter(s => !installed || !s.requiresEntitlement || installed.includes(s.id))
+    .filter(s => !allowed || !s.requiresEntitlement || allowed.includes(s.id))
 
   return Object.fromEntries(specs.map(s => [s.id, s.build()]))
 }
 ```
 
 Synchronous and pure. Nothing here does IO: specs are module-level, depth
-and the installed set come from context. When the DB source lands, the
-installed set is loaded into `RequestContext` upstream — the pattern
+and the allowed set come from context. When the DB source lands, the
+allowed set is loaded into `RequestContext` upstream — the pattern
 `fetchAgentName()` and `fetchAgentContext()` already use — rather than
 making the resolver async and putting an `await` in front of every turn.
 It is also trivially testable with no database.
@@ -356,7 +392,7 @@ spec says how deep **that** agent may delegate, so a specialist with
 is its ceiling as the root.
 
 `TenantContext` gains `delegationDepth?: number` and
-`installedSubAgents?: string[]`. The file's own comment directs new fields
+`allowedSubAgents?: string[]`. The file's own comment directs new fields
 here.
 
 ### 4. Hooks
@@ -446,8 +482,8 @@ vertical supervisor as one entry; write descriptions that discriminate
 "Hide the sub-agents and present it all as Olmo" is therefore a resolver
 filter. The registry may hold fifty specs while Olmo sees six.
 
-Stable facets — installs, `agents.status != 'retired'`, official vs
-tenant-authored — are a plain lookup and are in scope. Intent-based
+Stable facets — ownership, visibility, `agents.status != 'retired'` —
+are a plain lookup and are in scope. Intent-based
 filtering is wanted but its mechanism is undecided (an LLM classifier
 before the resolver, an embedding match against spec tags, or a per-thread
 sticky choice). It is designed as a seam here and left unbuilt.
@@ -455,7 +491,7 @@ sticky choice). It is designed as a seam here and left unbuilt.
 Two constraints hold whichever mechanism wins:
 
 - **Fail open.** Below threshold, or on any error, return the full
-  entitled set. Unlike a filter a person chooses, a bad inferred filter is
+  allowed set. Unlike a filter a person chooses, a bad inferred filter is
   invisible: Olmo silently lacks a capability and does the job badly with
   no signal anything was hidden.
 - **Record the candidate set and the surviving set every turn**, or "Olmo
@@ -537,11 +573,11 @@ landing first**, for three reasons:
 
 Open, and needing an answer before implementation:
 
-- **What is the source of the installed-delegate set?** A dedicated
-  install table mirroring `skill_installs`, or reuse of `agents.status`
-  and `isInternal` for the four that exist. This is the first real piece
-  of registry schema and is deliberately unanswered here; until it exists,
-  the resolver fails open.
-- **Does `agent_templates` gain a nullable `tenantId`** to host
-  tenant-authored delegates, with the tool list constrained server-side to
-  `agent_tools` rows visible to that tenant? Deferred with the registry.
+- **What may a tenant author when they build their own sub-agent?** A
+  persona only, with tools and loop policy inherited from an official
+  template; or a full tenant-owned `agent_templates` row with its own
+  prompt, model and tool list. If the latter, the tool list must be
+  constrained server-side to `agent_tools` rows visible to that tenant —
+  `agent_tools.stakes` and `requiresApproval` exist for exactly this and
+  are currently decorative. This is the one genuinely open registry
+  question and is deferred with the registry itself.
