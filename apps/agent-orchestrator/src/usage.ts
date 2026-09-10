@@ -329,14 +329,21 @@ export async function fetchAgentName(agentId: string): Promise<string | null> {
  * silently lacks a capability and does the job badly, with no signal to anyone
  * that something was hidden.
  */
+type AllowedSetPool = { query: (text: string, values: unknown[]) => Promise<{ rows: Array<{ name: string }> }> }
+
 export async function fetchAllowedSubAgents(
   tenantId: string,
-  pool: { query: (text: string, values: unknown[]) => Promise<{ rows: Array<{ name: string }> }> } = getPool() as never,
+  // Resolved inside the try, not as a default parameter: a default is
+  // evaluated before the body runs, so a throwing getPool() would reject this
+  // function instead of failing open — and on SSE that rejects the whole
+  // Promise.all and the turn with it.
+  pool?: AllowedSetPool,
 ): Promise<string[]> {
   const codeSpecIds = [...CODE_SPEC_IDS]
   if (!tenantId) return codeSpecIds
   try {
-    const res = await pool.query(
+    const p: AllowedSetPool = pool ?? (getPool() as never)
+    const res = await p.query(
       `SELECT name FROM agent_templates
         WHERE (tenant_id IS NULL OR tenant_id = $1)
           AND status = 'published'`,

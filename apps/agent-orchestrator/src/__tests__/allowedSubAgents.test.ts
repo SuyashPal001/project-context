@@ -1,4 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
+
+// getPool() builds its pool through makeAppPool. Every test below except the
+// last injects its own pool, so this only fires where a test omits one.
+vi.mock('../db.js', () => ({
+  makeAppPool: () => { throw new Error('DATABASE_URL is not set') },
+}))
+
 import { fetchAllowedSubAgents } from '../usage.js'
 
 describe('fetchAllowedSubAgents', () => {
@@ -21,5 +28,14 @@ describe('fetchAllowedSubAgents', () => {
     const query = vi.fn().mockRejectedValue(new Error('pool down'))
     expect((await fetchAllowedSubAgents('t1', { query } as never)).sort())
       .toEqual(['architect', 'director', 'pm', 'producer'])
+  })
+
+  it('fails open when acquiring the pool itself throws, instead of rejecting', async () => {
+    // A default parameter (pool = getPool()) is evaluated before the try, so a
+    // throwing pool constructor rejected the call — and on SSE, the whole
+    // Promise.all and the turn with it.
+    await expect(fetchAllowedSubAgents('t1')).resolves.toEqual(
+      expect.arrayContaining(['architect', 'director', 'pm', 'producer']),
+    )
   })
 })
