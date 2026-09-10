@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, count } from 'drizzle-orm';
 import { db } from '../db';
 import { agentWorkflowRuns } from '@serverless-saas/agent-schema/agents';
 import { auditLog } from '@serverless-saas/database/schema/audit';
@@ -9,6 +9,17 @@ import { randomUUID } from 'crypto';
 
 
 export const agentRunsRoutes = new Hono<AppEnv>();
+
+// resumeLabel is an implementation detail of the resume call (Task 7's
+// approve route re-reads it server-side from the DB itself — a client
+// never supplies it), not user-facing data — strip it before this row
+// ever reaches the browser, on both the list endpoint and the GET /:id
+// detail endpoint below.
+function stripResumeLabel<T extends { pendingApproval?: unknown }>(run: T): T {
+    if (!run.pendingApproval || typeof run.pendingApproval !== 'object') return run;
+    const { resumeLabel: _resumeLabel, ...rest } = run.pendingApproval as Record<string, unknown>;
+    return { ...run, pendingApproval: rest };
+}
 
 // GET /agent-runs — list all runs for tenant, newest first
 agentRunsRoutes.get('/', async (c) => {
@@ -22,20 +33,35 @@ agentRunsRoutes.get('/', async (c) => {
 
     // Optional filter by agentId via query param
     const agentId = c.req.query('agentId');
+    const page = Math.max(1, Number.parseInt(c.req.query('page') ?? '1', 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number.parseInt(c.req.query('pageSize') ?? '20', 10) || 20));
 
     const conditions = [eq(agentWorkflowRuns.tenantId, tenantId)];
     if (agentId) {
         conditions.push(eq(agentWorkflowRuns.agentId, agentId));
     }
 
-    const data = await db
+    const [{ value: total }] = await db
+        .select({ value: count() })
+        .from(agentWorkflowRuns)
+        .where(and(...conditions));
+
+    const rows = await db
         .select()
         .from(agentWorkflowRuns)
         .where(and(...conditions))
         .orderBy(desc(agentWorkflowRuns.startedAt))
-        .limit(50);
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
 
-    return c.json({ data });
+    const runs = rows.map(stripResumeLabel);
+
+    return c.json({
+        runs,
+        total: Number(total),
+        page,
+        totalPages: Math.max(1, Math.ceil(Number(total) / pageSize)),
+    });
 });
 
 // GET /agent-runs/:id — full detail of one run
@@ -50,15 +76,17 @@ agentRunsRoutes.get('/:id', async (c) => {
 
     const runId = c.req.param('id');
 
-    const data = (await db
+    const row = (await db
         .select()
         .from(agentWorkflowRuns)
         .where(and(eq(agentWorkflowRuns.id, runId), eq(agentWorkflowRuns.tenantId, tenantId)))
         .limit(1))[0];
 
-    if (!data) {
+    if (!row) {
         return c.json({ error: 'Run not found' }, 404);
     }
+
+    const data = stripResumeLabel(row);
 
     return c.json({ data });
 });

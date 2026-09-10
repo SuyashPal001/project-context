@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import type { AgentRun } from "@/components/platform/agents/types";
 
 export function RunDetailExpanded({ run }: { run: AgentRun }) {
-    const uniqueTools = Array.from(new Set(run.stepsCompleted.map(s => s.toolName)));
+    const uniqueTools = Array.from(new Set(run.stepsCompleted.map(s => s.toolCalled).filter((t): t is string => Boolean(t))));
 
     return (
         <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-4">
@@ -17,10 +17,10 @@ export function RunDetailExpanded({ run }: { run: AgentRun }) {
                         run.stepsCompleted.map((step, idx) => (
                             <div key={idx} className="flex flex-col gap-1 border-l-2 border-primary/20 pl-3 pb-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-xs font-semibold">{step.toolName}</span>
+                                    <span className="text-xs font-semibold">{step.title}</span>
                                     <Badge variant="secondary" className="text-[9px] h-4 px-1">{step.status}</Badge>
                                 </div>
-                                <span className="text-[10px] text-muted-foreground">Step {step.stepOrder}</span>
+                                <span className="text-[10px] text-muted-foreground">{step.toolCalled ?? step.stepId}</span>
                             </div>
                         ))
                     ) : (

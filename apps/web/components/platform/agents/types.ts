@@ -60,9 +60,12 @@ export interface WorkflowsResponse {
 }
 
 export interface StepCompleted {
-    stepOrder: number;
-    toolName: string;
+    stepId: string;
+    title: string;
     status: string;
+    summary: string;
+    toolCalled: string | null;
+    completedAt: string;
 }
 
 export interface ActionTaken {
