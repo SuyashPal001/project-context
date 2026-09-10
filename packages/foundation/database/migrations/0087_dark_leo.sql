@@ -1,0 +1,1 @@
+ALTER TABLE "agent_workflow_runs" ADD COLUMN "mastra_run_id" text;

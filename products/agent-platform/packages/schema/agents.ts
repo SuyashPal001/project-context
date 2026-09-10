@@ -87,6 +87,11 @@ export const agentWorkflowRuns = pgTable('agent_workflow_runs', {
   workflowId: uuid('workflow_id').notNull().references(() => agentWorkflows.id),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   agentId: uuid('agent_id').notNull(),
+  // The Mastra run's own runId — null until the run actually starts (set by
+  // tasks.workflow.ts right after createRun()), and the only way to resume a
+  // suspended run: the workflowRunId (this row's own id) identifies OUR
+  // record of the run; mastraRunId identifies MASTRA's.
+  mastraRunId: text('mastra_run_id'),
   trigger: text('trigger').notNull(),
   stepsCompleted: json('steps_completed').notNull().default([]),
   toolsCalled: json('tools_called').notNull().default([]),
