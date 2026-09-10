@@ -6,7 +6,7 @@ import { refundTask, settleTask, DEFAULT_TASK_MODEL } from '../credits.js'
 import { mastra } from '../mastra/index.js'
 import type { TenantContext } from '../mastra/context.js'
 
-async function postWorkflowUpdate(
+export async function postWorkflowUpdate(
   workflowRunId: string,
   body: Record<string, unknown>,
   traceId: string,
@@ -110,20 +110,42 @@ export async function runMastraWorkflowSteps(
     return
   }
 
-  // status === 'success'
+  // status === 'success' — same completion accounting as the resume route
+  // (routes/tasks.ts's POST /api/workflows/:workflowRunId/resume), shared
+  // here rather than duplicated.
   const stepOutputs = result.result as Array<{
     stepId: string; status: string; summary: string
     toolCalled?: string; toolResult?: unknown
     inputTokens?: number; outputTokens?: number
   }>
+  await finishSuccessfulWorkflowRun(workflowRunId, tenantId, stepOutputs, traceId, agentId, model)
+}
 
+/**
+ * Shared success-path accounting for a completed `task-execution-plan` run —
+ * settle (or refund on a per-step failure) plus the `postWorkflowUpdate` that
+ * marks the workflow run terminal. Called both from `runMastraWorkflowSteps`
+ * above (the initial `run.start()` path) and from the resume route
+ * (`routes/tasks.ts`'s `POST /api/workflows/:workflowRunId/resume`, the
+ * `run.resume()` path) so the two don't drift.
+ */
+export async function finishSuccessfulWorkflowRun(
+  workflowRunId: string,
+  tenantId: string,
+  stepOutputs: Array<{
+    stepId: string; status: string; summary: string
+    toolCalled?: string; toolResult?: unknown
+    inputTokens?: number; outputTokens?: number
+  }>,
+  traceId: string,
+  agentId: string,
+  model: string,
+): Promise<void> {
   const hadFailure = stepOutputs.some((s) => s.status === 'failed')
   const wfInputTokens = stepOutputs.reduce((sum, s) => sum + (s.inputTokens ?? 0), 0)
   const wfOutputTokens = stepOutputs.reduce((sum, s) => sum + (s.outputTokens ?? 0), 0)
   const wfStepsCompleted = stepOutputs.map((s) => ({
-    stepId: s.stepId,
-    title: steps.find((st) => st.id === s.stepId)?.title ?? s.stepId,
-    status: s.status, summary: s.summary,
+    stepId: s.stepId, title: s.stepId, status: s.status, summary: s.summary,
     toolCalled: s.toolCalled ?? null, completedAt: new Date().toISOString(),
   }))
   const wfToolsCalled = stepOutputs

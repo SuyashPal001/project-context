@@ -8,9 +8,13 @@ import { estimateTaskMicro, chargeTaskEstimate, resolveTaskRate, refundTask, set
 import { filterPII } from '../pii-filter.js'
 import { runMastraTaskSteps } from './tasks.execution.js'
 import type { PlanResult } from './tasks.execution.js'
-import { runMastraWorkflowSteps } from './tasks.workflow.js'
+import { runMastraWorkflowSteps, finishSuccessfulWorkflowRun, postWorkflowUpdate } from './tasks.workflow.js'
 import { callInternalTaskApi, postTaskComment } from './tasks.helpers.js'
 import { isInternalServiceKey } from '../service-key.js'
+import { RequestContext, MASTRA_RESOURCE_ID_KEY } from '@mastra/core/request-context'
+import { mastra } from '../mastra/index.js'
+import { isRunOwnedByTenant, type RunLookup } from './run-ownership.js'
+import type { TenantContext } from '../mastra/context.js'
 
 // Re-export for documents.ts and any other consumers
 export { fetchTaskComments } from './tasks.helpers.js'
@@ -312,6 +316,85 @@ tasksRouter.post('/api/workflows/execute', async (c) => {
     console.error(JSON.stringify({ level: 'error', msg: 'workflow unhandled error', traceId, workflowId, workflowRunId, tenantId, error: err.message, ts: Date.now() }))
   })
   return c.json({ ok: true, workflowRunId })
+})
+
+// ─── Workflow-run resume (native Mastra suspend/resume) ──────────────────────
+//
+// Resumes a suspended `task-execution-plan` run directly via `run.resume()` —
+// the same pattern routes/pm.ts's `/pm/resume` already uses — not the
+// Studio-HTTP-polling pattern the task-level `/api/tasks/:taskId/resume`
+// route above uses.
+
+tasksRouter.post('/api/workflows/:workflowRunId/resume', async (c) => {
+  const serviceKey = c.req.header('x-internal-service-key') ?? ''
+  if (!isInternalServiceKey(serviceKey)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+
+  const workflowRunId = c.req.param('workflowRunId')
+  const traceId = c.req.header('x-trace-id') ?? crypto.randomUUID()
+
+  let body: { tenantId?: unknown; approved?: unknown; forEachIndex?: unknown }
+  try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON body' }, 400) }
+
+  const tenantId = typeof body.tenantId === 'string' ? body.tenantId.trim() : ''
+  const approved = body.approved === true
+  const forEachIndex = typeof body.forEachIndex === 'number' ? body.forEachIndex : undefined
+  if (!tenantId) return c.json({ error: 'tenantId is required' }, 400)
+
+  const p = getPool()
+  const rowRes = await p.query<{ mastra_run_id: string | null; agent_id: string | null }>(
+    `SELECT mastra_run_id, agent_id FROM agent_workflow_runs WHERE id = $1 LIMIT 1`,
+    [workflowRunId],
+  )
+  const row = rowRes.rows[0]
+  if (!row || !row.mastra_run_id) return c.json({ error: 'No suspended run for this workflow' }, 404)
+
+  const workflow = mastra.getWorkflow('task-execution-plan')
+  const owned = await isRunOwnedByTenant(
+    mastra.getStorage() as unknown as RunLookup,
+    'task-execution-plan',
+    row.mastra_run_id,
+    tenantId,
+  )
+  if (!owned) {
+    console.warn('[workflows/resume] refused resume of unowned run', { workflowRunId, tenantId })
+    return c.json({ error: 'Not found' }, 404)
+  }
+
+  // Same reserved-key typing reason as runMastraWorkflowSteps in
+  // tasks.workflow.ts: taskExecutionPlanWorkflow declares a schema-typed
+  // requestContext, and MASTRA_RESOURCE_ID_KEY sits outside that schema, so
+  // it has to go through setRaw rather than the schema-checked set.
+  const requestContext = new RequestContext<TenantContext>()
+  requestContext.setRaw(MASTRA_RESOURCE_ID_KEY, tenantId)
+  requestContext.set('tenantId', tenantId)
+
+  const run = await workflow.createRun({ runId: row.mastra_run_id })
+  const result = await run.resume({
+    step: 'run-plan-step', resumeData: { approved }, forEachIndex, requestContext,
+  })
+
+  if (result.status === 'suspended') {
+    await postWorkflowUpdate(workflowRunId, { status: 'awaiting_approval' }, traceId)
+    return c.json({ ok: true, status: 'suspended' })
+  }
+  if (result.status !== 'success') {
+    // Same treatment as runMastraWorkflowSteps: 'failed' plus the
+    // 'tripwire'/'paused' members of the 5-way WorkflowResult union are all
+    // handled as a failure — refund + report failed — rather than only
+    // switching on 'failed' and silently falling through on the rest.
+    await refundTask({ tenantId, taskId: workflowRunId })
+    await postWorkflowUpdate(workflowRunId, { status: 'failed', completedAt: new Date().toISOString() }, traceId)
+    return c.json({ ok: true, status: 'failed' })
+  }
+
+  // status === 'success' — same completion accounting as runMastraWorkflowSteps.
+  const agentId = row.agent_id ?? ''
+  const modelSelection = await fetchAgentModelSelection(agentId)
+  const model = modelSelection?.model ?? DEFAULT_TASK_MODEL
+  await finishSuccessfulWorkflowRun(workflowRunId, tenantId, result.result as never, traceId, agentId, model)
+  return c.json({ ok: true, status: 'completed' })
 })
 
 // ─── Plan creation from PRD ───────────────────────────────────────────────────
