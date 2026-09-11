@@ -127,11 +127,7 @@ agentSkillsRoutes.get('/:agentId/skills', async (c) => {
         ))
         .orderBy(desc(agentSkills.createdAt));
 
-    // TRANSITION: the 'default' row is the agent's base prompt, not a skill.
-    // The sentinel is name='default' AND install_id IS NULL — a real skill
-    // manifest named "default" (which carries an installId) is not this row.
-    // Migration 0092 deletes those rows; Task 13 removes this filter.
-    return c.json({ data: data.filter((row) => !(row.name === 'default' && row.installId === null)) });
+    return c.json({ data });
 });
 
 // POST /agents/:agentId/skills — create a new skill
@@ -191,9 +187,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
 
         // The cap counts the agent's *other* attached skills, excluding rows
         // whose install has been uninstalled (dead installs don't count
-        // against the cap). The 'default' row (name='default' AND
-        // install_id IS NULL) is its base prompt, not a skill (TRANSITION:
-        // removed in Task 13), and a re-attach never counts the row it
+        // against the cap), and a re-attach never counts the row it
         // reactivates.
         const active = await db.select({ name: agentSkills.name, installId: agentSkills.installId })
             .from(agentSkills)
@@ -207,8 +201,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
                 eq(agentSkills.status, 'active'),
                 or(isNull(agentSkills.installId), eq(skillInstalls.status, 'active')),
             ));
-        const others = active.filter((s) => !(s.name === 'default' && s.installId === null)
-            && (install ? s.installId !== install.id : s.name !== result.data.name));
+        const others = active.filter((s) => install ? s.installId !== install.id : s.name !== result.data.name);
         if (others.length >= MAX_ATTACHED_SKILLS) {
             return c.json({
                 error: `This agent already has the maximum of ${MAX_ATTACHED_SKILLS} skills attached. Detach one first.`,

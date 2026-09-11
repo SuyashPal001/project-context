@@ -177,9 +177,7 @@ export async function fetchInvokedSkills(installIds: string[], tenantId: string)
 }
 
 /**
- * Every active skill attached to the agent (excluding "default" — the
- * onboarding bootstrap row holding the agent's base persona, not a real
- * skill; read separately by fetchAgentPersonaPrompt), as native Mastra Skill
+ * Every active skill attached to the agent, as native Mastra Skill
  * objects for the agent's `skills:` resolver.
  *
  * `tenantId` is required and filtered on, not just passed for logging:
@@ -204,7 +202,6 @@ export async function fetchAttachedSkills(agentId: string, tenantId: string): Pr
   const res = await p.query<{ name: string; system_prompt: string | null; install_id: string | null; version: number }>(
     `SELECT name, system_prompt, install_id, version FROM agent_skills
      WHERE agent_id = $1 AND tenant_id = $2 AND status = 'active'
-       AND NOT (name = 'default' AND install_id IS NULL)
      ORDER BY created_at ASC, id ASC`,
     [agentId, tenantId],
   )
@@ -268,18 +265,8 @@ export async function fetchAgentPersonaPrompt(agentId: string, tenantId: string)
   const p = getPool()
   try {
     const res = await p.query<{ system_prompt: string | null }>(
-      // TRANSITION (remove in migration 0092 / PR 2): a tenant onboarded
-      // between applying migration 0091 and deploying the new Lambdas has
-      // only a 'default' agent_skills row and a NULL agents.system_prompt —
-      // without this fallback its prompt would silently drop until PR 2.
-      `SELECT COALESCE(a.system_prompt, (
-         SELECT s.system_prompt FROM agent_skills s
-         WHERE s.agent_id = a.id AND s.tenant_id = a.tenant_id
-           AND s.name = 'default' AND s.install_id IS NULL AND s.status = 'active'
-         ORDER BY s.created_at DESC LIMIT 1
-       )) AS system_prompt
-       FROM agents a
-       WHERE a.id = $1 AND a.tenant_id = $2
+      `SELECT system_prompt FROM agents
+       WHERE id = $1 AND tenant_id = $2
        LIMIT 1`,
       [agentId, tenantId],
     )

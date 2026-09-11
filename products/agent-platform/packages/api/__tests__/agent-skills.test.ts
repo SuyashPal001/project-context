@@ -292,12 +292,6 @@ describe('POST /agents/:agentId/skills — the 8-skill cap', () => {
         expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
     });
 
-    it("does not count the agent's 'default' row, which is its base prompt", async () => {
-        mockDb({ active: [{ name: 'default', installId: null }, ...others(7)] });
-        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
-        expect(res.status).toBe(201);
-    });
-
     it('does not count the install being re-attached against itself', async () => {
         mockDb({ active: [...others(7), { name: 'bid-writer', installId: INSTALL_ID }], existing: [{ id: 'row-1' }] });
         const res = await request('POST', { name: 'x', installId: INSTALL_ID });
@@ -380,18 +374,11 @@ describe('POST /agents/:agentId/skills — hand-authored skills', () => {
 describe('GET /agents/:agentId/skills', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("lists attached skills without the agent's 'default' row", async () => {
-        mockDb({ list: [{ id: 'a', name: 'default', installId: null }, { id: 'b', name: 'bid-writer', installId: INSTALL_ID }] });
+    it('lists the attached skills', async () => {
+        mockDb({ list: [{ id: 'b', name: 'bid-writer', installId: null }] });
         const res = await request('GET', undefined, 'read');
         expect(res.status).toBe(200);
-        expect((await res.json()).data).toEqual([{ id: 'b', name: 'bid-writer', installId: INSTALL_ID }]);
-    });
-
-    it('keeps a real skill named "default" that carries an installId (the sentinel is name+null installId together)', async () => {
-        mockDb({ list: [{ id: 'a', name: 'default', installId: INSTALL_ID }] });
-        const res = await request('GET', undefined, 'read');
-        expect(res.status).toBe(200);
-        expect((await res.json()).data).toEqual([{ id: 'a', name: 'default', installId: INSTALL_ID }]);
+        expect((await res.json()).data).toEqual([{ id: 'b', name: 'bid-writer', installId: null }]);
     });
 
     it('left-joins skill_installs tenant-scoped and excludes a dead (uninstalled) install, failing if either predicate is dropped', async () => {
