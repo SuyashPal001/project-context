@@ -5,7 +5,6 @@ import { Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { chatMarkdownComponents } from './markdownComponents';
-import { useRevealedText } from './use-reveal';
 
 interface StreamingMessageProps {
   isStreaming: boolean;
@@ -15,12 +14,6 @@ interface StreamingMessageProps {
 
 export function StreamingMessage({ isStreaming, content, isThinking }: StreamingMessageProps) {
   const contentRef = useRef<HTMLDivElement>(null);
-  // Paces text at the rate it's actually arriving instead of dumping each SSE
-  // chunk straight to screen, and gates the cursor on "still catching up to
-  // received text" rather than the raw isStreaming flag — so it never lingers
-  // after content is fully drawn, independent of backend reconciliation delays.
-  const revealed = useRevealedText(content, isStreaming);
-  const stillRevealing = revealed !== content;
 
   // Auto-scroll as content streams — 'nearest' only moves the scroll position
   // when the growing content has actually run past the visible area, instead
@@ -38,10 +31,10 @@ export function StreamingMessage({ isStreaming, content, isThinking }: Streaming
   // snapping the view back down almost immediately, before the top-anchor
   // scroll ever got to finish. Waiting for real content removes the race.
   useEffect(() => {
-    if (contentRef.current && isStreaming && revealed) {
+    if (contentRef.current && isStreaming && content) {
       contentRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
-  }, [revealed, isStreaming]);
+  }, [content, isStreaming]);
 
   if (isThinking && !content) {
     return (
@@ -58,9 +51,9 @@ export function StreamingMessage({ isStreaming, content, isThinking }: Streaming
           remarkPlugins={[remarkGfm]}
           components={chatMarkdownComponents}
       >
-          {revealed}
+          {content}
       </ReactMarkdown>
-      {stillRevealing && (
+      {isStreaming && (
         <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
       )}
     </div>
