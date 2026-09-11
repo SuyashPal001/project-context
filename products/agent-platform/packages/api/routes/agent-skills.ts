@@ -263,9 +263,10 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
         // covers archived rows. POST /skills/:id/install upserts on
         // (tenant_id, skill_id), so a reinstall keeps the same install id and
         // the skill_installs row simply comes back live — it does not mint a
-        // fresh installId. This path instead guards a hand-authored skill (no
-        // install) detached and re-created under the same name/version, which
-        // would otherwise insert, collide with the row the earlier attach
+        // fresh installId. This path guards two cases: a hand-authored skill (no
+        // install) detached and re-created under the same name/version, and an
+        // installed skill whose earlier row sat under another (or no) install id.
+        // Either would otherwise insert, collide with the row the earlier attach
         // left archived, and report NAME_CONFLICT forever. Reactivate that
         // row instead — relinking it to the current install (or null for a
         // hand-authored skill).

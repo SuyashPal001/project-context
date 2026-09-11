@@ -2562,7 +2562,7 @@ Expected: FAIL, because the count SQL still contains `'default'`.
 - `products/agent-platform/packages/api/routes/agent-skills.ts`:
   - in GET, delete the TRANSITION comment and `.filter(...)` — return the joined/predicated `data` directly: `return c.json({ data });`;
   - in POST, delete `!(s.name === 'default' && s.installId === null) && ` from the `others` filter (keep the dead-install exclusion and the re-attach exclusion), and delete the TRANSITION sentence from its comment;
-  - restore the original wording of the reinstall comment above the archived-row lookup (the final-fix wave only corrected its "fresh installId" claim; that correction is not a TRANSITION guard and may stay).
+  - leave the reinstall comment above the archived-row lookup as is. It is not a TRANSITION guard, and its "fresh installId" correction must stay.
 - `products/agent-platform/packages/worker-handlers/handlers/skillImport.ts`:
   - delete `AND NOT (s.name = 'default' AND s.install_id IS NULL)` from the count SQL (keep the `LEFT JOIN skill_installs si ...` and its `(s.install_id IS NULL OR si.status = 'active')` predicate — that's Fix 1, not a TRANSITION guard);
   - delete the TRANSITION sentence from the comment above it.

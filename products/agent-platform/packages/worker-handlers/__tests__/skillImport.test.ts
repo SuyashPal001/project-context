@@ -451,7 +451,7 @@ describe('handleSkillImport', () => {
     // skill_installs, tenant-scoped, and exclude a row whose install isn't
     // active any more.
     expect(count).toContain('LEFT JOIN skill_installs si ON si.id = s.install_id AND si.tenant_id =');
-    expect(count).toContain('(s.install_id IS NULL OR si.status = ');
+    expect(count).toContain("(s.install_id IS NULL OR si.status = 'active')");
   });
 
   it('has no character budget: a long skill still attaches', async () => {
