@@ -12,6 +12,7 @@ import type { Conversation } from '@/components/platform/chat/types';
 import { FEATURE_FLAGS } from '@/lib/feature-flags';
 import { PersonaAvatar } from '@/components/platform/personas/PersonaAvatar';
 import { getAgentTypeIcon } from '@/components/platform/agents/agentTypeIcon';
+import { getAgentOriginLabel } from '@/components/platform/agents/agentOriginLabel';
 import { CreditsPanel } from '@/components/platform/credits/CreditsPanel';
 
 interface Props {
@@ -57,7 +58,7 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
                     </div>
                     <p className="text-[11px] text-muted-foreground/70 font-medium">
                         Agent: {selectedConversation.agent?.name || 'Ready'}
-                        {selectedConversation.agent?.type ? ` (${selectedConversation.agent.type})` : ''}
+                        {selectedConversation.agent ? ` (${getAgentOriginLabel(selectedConversation.agent)})` : ''}
                     </p>
                 </div>
             </div>

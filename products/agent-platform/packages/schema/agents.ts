@@ -19,6 +19,14 @@ export const workflowRunStatusEnum = pgEnum('workflow_run_status', ['running', '
 
 export const agentTypeEnum = pgEnum('agent_type', ['ops', 'support', 'billing', 'custom', 'product_manager', 'analyst', 'project_manager', 'tech_lead', 'architect']);
 export const agentStatusEnum = pgEnum('agent_status', ['active', 'paused', 'retired']);
+// Who put this agent on the tenant — orthogonal to `type` (the agent's role).
+// 'built_in': the one agent every tenant gets automatically (isDefault: true,
+// currently only Olmo). 'official': attached from the platform's persona
+// catalog (personaId set). 'custom': hand-authored by the tenant (no persona,
+// not the default). Set explicitly at creation time in onboarding.ts and
+// agents.crud.ts rather than left to be inferred from isDefault/personaId at
+// every read site.
+export const agentOriginEnum = pgEnum('agent_origin', ['built_in', 'official', 'custom']);
 
 export type AvatarParams = {
   head: 'tall' | 'round' | 'oval';
@@ -55,6 +63,7 @@ export const agents = pgTable('agents', {
   systemPrompt: text('system_prompt'),
   isInternal: boolean('is_internal').notNull().default(false),
   isDefault: boolean('is_default').notNull().default(false),
+  origin: agentOriginEnum('origin').notNull().default('custom'),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

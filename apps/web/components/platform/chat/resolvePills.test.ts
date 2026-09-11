@@ -5,7 +5,7 @@ import type { Agent } from '../agents/types';
 function makeAgent(overrides: Partial<Agent>): Agent {
     return {
         id: 'a1', tenantId: 't1', name: 'Test Agent', type: 'custom', status: 'active',
-        model: null, llmProviderId: null, isInternal: false, isDefault: false,
+        model: null, llmProviderId: null, isInternal: false, isDefault: false, origin: 'custom',
         description: null, persona: null, avatarUrl: null, createdAt: new Date().toISOString(),
         ...overrides,
     };

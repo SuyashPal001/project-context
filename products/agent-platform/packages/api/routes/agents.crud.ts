@@ -61,7 +61,7 @@ export async function handleListAgents(c: Context<AppEnv>) {
         .select({
             id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
             model: agents.model, status: agents.status, llmProviderId: agents.llmProviderId,
-            isInternal: agents.isInternal, isDefault: agents.isDefault, description: agents.description, avatarFileId: agents.avatarFileId,
+            isInternal: agents.isInternal, isDefault: agents.isDefault, origin: agents.origin, description: agents.description, avatarFileId: agents.avatarFileId,
             createdAt: agents.createdAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
@@ -96,7 +96,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
             id: agents.id, tenantId: agents.tenantId, name: agents.name, type: agents.type,
             model: agents.model, status: agents.status, apiKeyId: agents.apiKeyId,
             llmProviderId: agents.llmProviderId, avatarFileId: agents.avatarFileId, avatarParams: agents.avatarParams, description: agents.description,
-            isInternal: agents.isInternal, isDefault: agents.isDefault, createdBy: agents.createdBy, personaId: agents.personaId,
+            isInternal: agents.isInternal, isDefault: agents.isDefault, origin: agents.origin, createdBy: agents.createdBy, personaId: agents.personaId,
             createdAt: agents.createdAt, updatedAt: agents.updatedAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,
@@ -182,7 +182,11 @@ export async function handleCreateAgent(c: Context<AppEnv>) {
 
     const rawKey = generateApiKey('ak');
     const [newKey] = await db.insert(apiKeys).values({ tenantId, name: `${result.data.name} API Key`, type: 'agent', keyHash: hashKey(rawKey), permissions: agentRolePermissionStrings, status: 'active', createdBy: userId }).returning();
-    const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model, llmProviderId, personaId: result.data.personaId, apiKeyId: newKey.id, createdBy: userId }).returning();
+    // A client-supplied personaId means this is a catalog persona being attached
+    // (the Explore tab flow) rather than a hand-authored agent — 'official' vs
+    // 'custom' origin, same distinction agentOriginEnum documents in the schema.
+    const origin = result.data.personaId ? 'official' : 'custom';
+    const [newAgent] = await db.insert(agents).values({ tenantId, name: result.data.name, type: result.data.type, model, llmProviderId, personaId: result.data.personaId, origin, apiKeyId: newKey.id, createdBy: userId }).returning();
     await db.insert(memberships).values({ agentId: newAgent.id, tenantId, roleId: agentRole.id, memberType: 'agent', status: 'active' });
 
     try {

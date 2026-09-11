@@ -87,6 +87,7 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
         llmProviderId: null,
         isInternal: false,
         isDefault: false,
+        origin: "custom",
         description: null,
         persona: null,
         avatarUrl: null,

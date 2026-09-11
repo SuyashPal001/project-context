@@ -165,6 +165,7 @@ onboardingRoutes.post('/complete', async (c) => {
         description: 'Your AI assistant — answers directly or routes the task to the right specialist.',
         apiKeyId: olmoKey.id,
         isDefault: true,
+        origin: 'built_in',
         createdBy: userId,
         // Olmo's identity + routing prompt, stored on the agent row.
         // chatStream.ts's agentSystemPrompt override replaces the

@@ -14,6 +14,7 @@ export type AgentFormValues = z.infer<typeof agentSchema>;
 
 export type AgentType = "ops" | "support" | "billing" | "custom" | "product_manager" | "analyst" | "project_manager" | "tech_lead" | "architect";
 export type AgentStatus = "active" | "paused" | "retired";
+export type AgentOrigin = "built_in" | "official" | "custom";
 
 export interface Agent {
     id: string;
@@ -25,6 +26,7 @@ export interface Agent {
     llmProviderId: string | null;
     isInternal: boolean;
     isDefault: boolean;
+    origin: AgentOrigin;
     description: string | null;
     persona: PersonaSummary | null;
     avatarUrl: string | null;
