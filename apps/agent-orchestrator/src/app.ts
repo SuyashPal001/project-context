@@ -6,7 +6,7 @@ import { downloadMediaAttachment } from './media.js'
 import { fireToolCallLog } from './events.js'
 import { tasksRouter } from './routes/tasks.js'
 import { pmRouter } from './routes/pm.js'
-import { documentsRouter } from './routes/documents.js'
+import { taskPlanningRouter } from './routes/taskPlanning.js'
 import { chatRouter } from './routes/chat.js'
 import { sessionsRouter } from './routes/sessions.js'
 import { internalRouter, initStudio } from './routes/internal.js'
@@ -33,7 +33,7 @@ app.use('/studio/*', cors({
 app.route('', internalRouter)
 app.route('', tasksRouter)
 app.route('', pmRouter)
-app.route('', documentsRouter)
+app.route('', taskPlanningRouter)
 app.route('', chatRouter)
 app.route('', sessionsRouter)
 app.route('', schedulesRouter)

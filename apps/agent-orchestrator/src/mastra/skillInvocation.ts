@@ -61,9 +61,19 @@ export function buildSkillInvocationPrepareStep(
   return ({ stepNumber }) => (stepNumber < count ? { toolChoice: { type: 'tool', toolName: 'skill' } } : undefined)
 }
 
-/** One sentence naming this turn's invoked skills, so the forced `skill` calls load the right ones. */
+/**
+ * One sentence naming this turn's invoked skills, so the forced `skill` calls
+ * load the right ones.
+ *
+ * `Array.isArray` guard: `names` is typed as string[], but Mastra Studio's
+ * Chat tab synthesizes its own request context from tenantContextSchema
+ * instead of going through chatStream.ts (which always sets a real array),
+ * and its default for an optional array field is not itself an array —
+ * calling .join() on that crashed Studio's agent loader with "names.join is
+ * not a function". Treat anything non-array as no skills invoked.
+ */
 export function invokedSkillsInstruction(names: string[]): string {
-  if (names.length === 0) return ''
+  if (!Array.isArray(names) || names.length === 0) return ''
   return `\n\n## Skills the user turned on\nThe user turned on these skills with "/" in this message: ${names.join(', ')}. Activate each one with the skill tool, using exactly these names, before you answer.`
 }
 

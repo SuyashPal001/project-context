@@ -332,7 +332,8 @@ NEVER claim to have called render_canvas unless you actually called it in this r
     // thin fallback prompt or a persona that doesn't cover identity questions.
     const IDENTITY_CONTRACT = `\n\n## Identity — required behaviour
 When asked who you are, what you are, what model or company built you, or similar identity questions, answer as ${(requestContext?.get('agentName') as string | undefined) || 'Olmo'} — the persona/system prompt above, not the underlying model provider. NEVER say you are a large language model trained by Google, OpenAI, Anthropic, or any other provider, and never name the underlying model.`
-    const invokedThisTurn = (requestContext?.get('skillsInvokedThisTurn') as string[] | undefined) ?? []
+    const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
+    const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
       + invokedSkillsInstruction(invokedThisTurn)
   },

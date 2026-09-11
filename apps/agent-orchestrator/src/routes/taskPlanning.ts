@@ -115,9 +115,9 @@ function extractPlanJson(
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
-export const documentsRouter = new Hono()
+export const taskPlanningRouter = new Hono()
 
-documentsRouter.post('/api/tasks/plan', async (c) => {
+taskPlanningRouter.post('/api/tasks/plan', async (c) => {
   const serviceKey = c.req.header('x-internal-service-key') ?? ''
   if (!isInternalServiceKey(serviceKey)) {
     return c.json({ error: 'Unauthorized' }, 401)
