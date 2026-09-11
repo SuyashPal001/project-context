@@ -108,7 +108,11 @@ export const agentSkills = pgTable('agent_skills', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => ({
-  uniqueSkillVersion: unique().on(t.agentId, t.tenantId, t.name, t.version),
+  // A hand-authored skill (no install) is identified by its name. Active rows
+  // only, so a detached row never blocks re-creating it.
+  activeAuthoredNameUnique: uniqueIndex('agent_skills_agent_authored_name_active_unique')
+    .on(t.agentId, t.tenantId, t.name)
+    .where(sql`install_id is null and status = 'active'`),
   // An installed skill is identified by its install, not its free-text name:
   // two writers used to name the same install differently and both rows got
   // in. Active rows only, so a detached (archived) row never blocks a
