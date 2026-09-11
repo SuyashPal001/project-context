@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, toMastraSkillName, agentBelongsToTenant, recordSkillRuns } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -363,5 +363,35 @@ describe('recordSkillRuns', () => {
   it('does nothing when there are no installs', async () => {
     await recordSkillRuns([], 'tenant-1')
     expect(mockPoolQuery).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveInvokedSkills', () => {
+  const SKILL_ID = '22222222-2222-4222-8222-222222222222'
+
+  it("resolves a picked skill id to this tenant's active install", async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ install_id: 'install-1', skill_id: SKILL_ID, name: 'UGC Ad Production' }] })
+    const result = await resolveInvokedSkills([SKILL_ID], 'tenant-1')
+    expect(result).toEqual([{ installId: 'install-1', skillId: SKILL_ID, name: 'UGC Ad Production' }])
+    const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('si.tenant_id = $1')
+    expect(sql).toContain("si.status = 'active'")
+    expect(params).toEqual(['tenant-1', [SKILL_ID]])
+  })
+
+  it('drops ids that are not uuids without querying, so a forged id never reaches SQL', async () => {
+    const result = await resolveInvokedSkills(['not-a-uuid', "'; drop table skills; --"], 'tenant-1')
+    expect(result).toEqual([])
+    expect(mockPoolQuery).not.toHaveBeenCalled()
+  })
+
+  it('returns nothing, without querying, when nothing was picked', async () => {
+    await expect(resolveInvokedSkills([], 'tenant-1')).resolves.toEqual([])
+    expect(mockPoolQuery).not.toHaveBeenCalled()
+  })
+
+  it('returns an empty list instead of throwing on a database error', async () => {
+    mockPoolQuery.mockRejectedValueOnce(new Error('db down'))
+    await expect(resolveInvokedSkills([SKILL_ID], 'tenant-1')).resolves.toEqual([])
   })
 })

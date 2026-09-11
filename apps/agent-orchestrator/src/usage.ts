@@ -5,6 +5,7 @@ import { getAgentTools } from '@serverless-saas/ai'
 import { createSkill } from '@mastra/core/skills'
 import type { InlineSkill } from '@mastra/core/skills'
 import { CODE_SPEC_IDS } from './mastra/subagents/ids.js'
+import { MAX_INVOKED_SKILLS, type InvokedSkill } from './mastra/skillInvocation.js'
 
 // DDL (run once at deploy time):
 //
@@ -103,6 +104,32 @@ export async function fetchTestSkill(installId: string, tenantId: string): Promi
   } catch (err) {
     console.error('[usage] fetchTestSkill createSkill validation failed:', (err as Error).message)
     return null
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Resolves "/" picks — catalog skill ids sent by the client — to this
+ * tenant's own active installs. The client is never trusted: an id that is
+ * not a uuid, not installed by this tenant, or not active is dropped, so a
+ * forged id cannot reach another tenant's skill.
+ */
+export async function resolveInvokedSkills(skillIds: string[], tenantId: string): Promise<InvokedSkill[]> {
+  const ids = [...new Set(skillIds.filter((id) => UUID_RE.test(id)))].slice(0, MAX_INVOKED_SKILLS)
+  if (!tenantId || ids.length === 0) return []
+  try {
+    const res = await getPool().query<{ install_id: string; skill_id: string; name: string }>(
+      `SELECT si.id AS install_id, s.id AS skill_id, s.name
+       FROM skill_installs si
+       JOIN skills s ON s.id = si.skill_id
+       WHERE si.tenant_id = $1 AND si.status = 'active' AND si.skill_id = ANY($2::uuid[])`,
+      [tenantId, ids],
+    )
+    return res.rows.map((r) => ({ installId: r.install_id, skillId: r.skill_id, name: r.name }))
+  } catch (err) {
+    console.error('[usage] resolveInvokedSkills error:', (err as Error).message)
+    return []
   }
 }
 

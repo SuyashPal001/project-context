@@ -10,8 +10,9 @@ import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage } from '../usage.js'
-import { fetchConversationTestSkillInstallId } from '../persistence.js'
+import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage, resolveInvokedSkills, recordSkillRuns, toMastraSkillName } from '../usage.js'
+import { fetchConversationSkillSettings, saveConversationInvokedSkills } from '../persistence.js'
+import { mergeInvokedSkills } from '../mastra/skillInvocation.js'
 import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
@@ -261,8 +262,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // reads it and composes just that one skill instead of the agent's
     // real attached ones. The agent's persona (below) is unaffected either
     // way — it's a separate concern, read the same regardless of test mode.
-    const [testSkillInstallId, agentPersonaPrompt, agentName, personaPersonality, agentModelSelection, allowedSubAgents] = await Promise.all([
-      fetchConversationTestSkillInstallId(idToken, conversationId),
+    const [skillSettings, agentPersonaPrompt, agentName, personaPersonality, agentModelSelection, allowedSubAgents] = await Promise.all([
+      fetchConversationSkillSettings(idToken, conversationId),
       fetchAgentPersonaPrompt(agentId, tenantId),
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
@@ -272,7 +273,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       }),
       fetchAllowedSubAgents(tenantId),
     ])
-    if (testSkillInstallId) requestContext.set('testSkillInstallId', testSkillInstallId)
+    if (skillSettings.testSkillInstallId) requestContext.set('testSkillInstallId', skillSettings.testSkillInstallId)
     if (agentPersonaPrompt) {
       requestContext.set('agentSystemPrompt', agentPersonaPrompt)
     }
@@ -296,6 +297,23 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // prdAgent → roadmapAgent → taskAgent) is handled by Mastra internally.
     const activeAgent = resolveAgent(agentName ?? '')
     console.log(`[sse:${sessionId}] agent="${agentName}" → ${resolveAgentLabel(activeAgent)} thinkingBudget=${thinkingBudget}`)
+
+    // "/" turns a skill on for this conversation — never attaches it to the
+    // agent. Only Olmo resolves skills, and a Test-in-chat conversation runs
+    // exactly its one skill, so neither loads invoked skills.
+    let skillsInvokedThisTurn: string[] = []
+    if ((activeAgent as unknown) === (platformAgent as unknown) && !skillSettings.testSkillInstallId) {
+      const picked = await resolveInvokedSkills((skillsUsed ?? []).map((s) => s.id), tenantId)
+      const { merged, newlyInvoked } = mergeInvokedSkills(skillSettings.invokedSkills, picked)
+      if (newlyInvoked.length > 0) {
+        saveConversationInvokedSkills(idToken, conversationId, merged)
+        recordSkillRuns(newlyInvoked.map((s) => s.installId), tenantId)
+          .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRuns failed:`, (err as Error).message))
+      }
+      skillsInvokedThisTurn = newlyInvoked.map((s) => toMastraSkillName(s.name))
+      requestContext.set('invokedSkillInstallIds', merged.map((s) => s.installId))
+      requestContext.set('skillsInvokedThisTurn', skillsInvokedThisTurn)
+    }
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 

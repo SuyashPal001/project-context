@@ -26,6 +26,14 @@ export const tenantContextSchema = z.object({
   // Set by chatStream.ts for Test-in-chat conversations (see fetchConversationTestSkillInstallId);
   // read by platformAgent.ts's skills resolver to compose just that one skill.
   testSkillInstallId: z.string().optional(),
+  // Install ids of every skill turned on in this conversation with "/",
+  // already resolved against this tenant's active installs. Set by
+  // chatStream.ts on Olmo's turns; read by platformAgent's skills resolver.
+  invokedSkillInstallIds: z.array(z.string()).optional(),
+  // Mastra skill names (toMastraSkillName) turned on by THIS message. Drives
+  // the forced skill-tool steps and the instruction line naming them; empty
+  // on every later turn of the conversation.
+  skillsInvokedThisTurn: z.array(z.string()).optional(),
   // Live conversation id, carried for tool-call logging.
   sessionId: z.string().optional(),
   // How many delegation boundaries this run is below the user-facing agent.

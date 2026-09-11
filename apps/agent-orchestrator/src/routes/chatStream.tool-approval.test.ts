@@ -52,7 +52,8 @@ vi.mock('../persistence.js', () => ({
   saveUserMessage: vi.fn(),
   saveAssistantMessage: vi.fn(),
   fireArtifactNotification: vi.fn(),
-  fetchConversationTestSkillInstallId: vi.fn().mockResolvedValue(null),
+  fetchConversationSkillSettings: vi.fn().mockResolvedValue({ testSkillInstallId: null, invokedSkills: [] }),
+  saveConversationInvokedSkills: vi.fn(),
   saveGenerationConfirmRequest: vi.fn(),
   updateGenerationConfirmRequest: vi.fn(),
 }))
@@ -100,6 +101,9 @@ vi.mock('../usage.js', () => ({
   fetchAgentModelSelection: vi.fn().mockResolvedValue(null),
   fetchAllowedSubAgents: vi.fn().mockResolvedValue(['pm', 'architect', 'director', 'producer']),
   recordUsage: vi.fn(),
+  resolveInvokedSkills: vi.fn().mockResolvedValue([]),
+  recordSkillRuns: vi.fn().mockResolvedValue(undefined),
+  toMastraSkillName: (raw: string) => raw.toLowerCase(),
 }))
 
 vi.mock('../credits.js', () => ({
