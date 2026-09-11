@@ -4,19 +4,12 @@ import { API_BASE_URL } from '../../types.js'
 
 const MAX_BODY_BYTES = 65_536
 
-// Mirrors MAX_COMPOSED_SKILL_CHARS in ../../usage.ts (itself mirrored by the
-// API's attach route and the import worker). Duplicated rather than imported:
-// usage.ts opens a pg pool and pulls in the database/ai packages at module
-// load, which this tool has no other reason to touch. If that number changes,
-// change it in all four places.
-const MAX_COMPOSED_SKILL_CHARS = 24_000
-
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/
 
 // Mirrors MIN_DESCRIPTION_LENGTH in
 // products/agent-platform/packages/worker-handlers/lib/skillManifest.ts — see
 // that file's comment for the reasoning. Kept in sync by hand, not imported:
-// same cross-package boundary as MAX_COMPOSED_SKILL_CHARS above.
+// the worker package is not a dependency of the orchestrator.
 const MIN_DESCRIPTION_LENGTH = 20
 
 interface CreateSkillResult {
@@ -43,17 +36,8 @@ interface CreateSkillResult {
 // check and still fails at import time in the worker, which does parse it
 // for real and requires non-empty trimmed strings for both fields (plus the
 // same MIN_DESCRIPTION_LENGTH floor on description).
-function validateSkillBody(body: string, name: string): string | null {
+function validateSkillBody(body: string, _name: string): string | null {
   if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) return `SKILL.md must be under ${MAX_BODY_BYTES} bytes`
-  // The composition budget, checked here rather than discovered later. A body
-  // over this never attaches: the import worker's budget check drops the attach
-  // with a log only, after this tool has already told the user the skill will
-  // attach. Rejecting up front makes it a retryable error the agent can fix by
-  // writing something shorter. The cost formula mirrors fetchAgentSkills' —
-  // body plus the "## Skill: <name>\n\n" header it is wrapped in.
-  if (body.length + name.length + 15 > MAX_COMPOSED_SKILL_CHARS) {
-    return `SKILL.md is too long to attach — the body must be under ${MAX_COMPOSED_SKILL_CHARS - name.length - 15} characters. Write a shorter, tighter skill.`
-  }
   const match = FRONTMATTER_RE.exec(body)
   if (!match) return 'SKILL.md must start with a --- YAML frontmatter block'
   const frontmatter = match[1]

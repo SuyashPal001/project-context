@@ -4,9 +4,6 @@ const fetchMock = vi.hoisted(() => vi.fn())
 
 const VALID_BODY = '---\nname: bid-writer\ndescription: Use when writing bids for prospective clients\n---\n\nOpen with the client name.'
 
-/** Mirrors the tool's own copy — see its comment for why it isn't imported. */
-const MAX_COMPOSED_SKILL_CHARS = 24_000
-
 function execContext(over: Record<string, unknown> = {}) {
   const values: Record<string, unknown> = {
     tenantId: 'tenant-1', userId: 'user-1', agentId: 'agent-1',
@@ -74,25 +71,12 @@ describe('create_skill', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  // A body over the 24,000-char composition budget is guaranteed to be dropped
-  // by the import worker's budget check — with a log only, after this tool has
-  // already told the user the skill will attach. Rejecting it here makes it a
-  // retryable error the agent can fix by writing something shorter.
-  it('rejects a body that could never fit the composition budget, retryably', async () => {
-    const body = `---\nname: a\ndescription: b\n---\n\n${'x'.repeat(24_000)}`
+  // Native Mastra skills are loaded on demand, not concatenated into every
+  // prompt, so the old 24,000-character composition budget no longer
+  // measures anything. Only the 64KB SKILL.md size limit remains.
+  it('accepts a long body that is under the 64KB limit', async () => {
+    const body = `---\nname: a\ndescription: Use when writing bids for prospective clients\n---\n\n${'x'.repeat(30_000)}`
     const result = await run({ name: 'Bid Writer', body })
-    expect(result.success).toBe(false)
-    expect(result.retryable).toBe(true)
-    expect(result.error).toMatch(/too long|shorter/i)
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('accepts a body sitting exactly on the composition budget', async () => {
-    const frontmatter = '---\nname: a\ndescription: Use when writing bids for prospective clients\n---\n\n'
-    // body.length + name.length + 15 === MAX_COMPOSED_SKILL_CHARS — the last
-    // size that composes, so the boundary is inclusive rather than off by one.
-    const filler = MAX_COMPOSED_SKILL_CHARS - 'Bid Writer'.length - 15 - frontmatter.length
-    const result = await run({ name: 'Bid Writer', body: frontmatter + 'x'.repeat(filler) })
     expect(result.success).toBe(true)
   })
 

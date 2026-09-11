@@ -6,10 +6,7 @@ const mockAuditInsert = vi.fn().mockReturnValue({ catch: vi.fn() });
 vi.mock('@serverless-saas/database', () => ({
   db: { execute: vi.fn(), insert: vi.fn(() => ({ values: mockAuditInsert })) },
 }));
-vi.mock('./integrations.sync', () => ({ syncToolsAndNotifyRelay: vi.fn() }));
-
 import { db } from '@serverless-saas/database';
-import { syncToolsAndNotifyRelay } from './integrations.sync';
 import { nangoWebhookRoute } from './integrations.nango.webhook';
 
 const SECRET = 'whsec_test';
@@ -81,7 +78,6 @@ describe('POST /integrations/webhooks/nango', () => {
       resource: 'integration',
       metadata: { provider: 'gmail' },
     }));
-    expect(syncToolsAndNotifyRelay).toHaveBeenCalledWith('tenant-1', 'gmail', 'add');
   });
 
   it('falls back to connectionId if endUser is absent', async () => {
@@ -99,7 +95,7 @@ describe('POST /integrations/webhooks/nango', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(syncToolsAndNotifyRelay).toHaveBeenCalledWith('tenant-1', 'gmail', 'add');
+    expect(mockAuditInsert).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
   });
 
   it('ignores a non-google-mail provider without erroring', async () => {
@@ -112,7 +108,6 @@ describe('POST /integrations/webhooks/nango', () => {
     });
     expect(res.status).toBe(200);
     expect(db.execute).not.toHaveBeenCalled();
-    expect(syncToolsAndNotifyRelay).not.toHaveBeenCalled();
   });
 
   it('ignores a failed auth event without writing a row', async () => {
