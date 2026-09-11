@@ -7,13 +7,12 @@ import { roles, rolePermissions, permissions } from '@serverless-saas/database/s
 import { tenants, memberships } from '@serverless-saas/database/schema/tenancy';
 import { subscriptions } from '@serverless-saas/database/schema/billing';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { agents, agentTemplates } from '@serverless-saas/agent-schema/agents';
-import { personas } from '@serverless-saas/agent-schema/personas';
+import { agents } from '@serverless-saas/agent-schema/agents';
 import { apiKeys } from '@serverless-saas/database/schema/access';
-import { eq, isNull, and, desc } from 'drizzle-orm';
+import { eq, isNull, and } from 'drizzle-orm';
 
 import type { AppEnv } from '../types';
-import { buildResearchEngineerPrompt, withUploadGuidance } from '@serverless-saas/agent-api/lib/agentPrompts';
+import { withUploadGuidance } from '@serverless-saas/agent-api/lib/agentPrompts';
 import { grantTrialCredits } from '@serverless-saas/credits';
 
 const onboardingSchema = z.object({
@@ -125,36 +124,14 @@ onboardingRoutes.post('/complete', async (c) => {
         console.error('Audit log write failed:', auditErr);
     }
 
-    // Step 7: Seed default agent (Saarthi) for new tenant
+    // Step 7: Seed Olmo — the only agent a new tenant gets by default. Every
+    // other persona (Research Engineer, Product Manager, Analyst, Project
+    // Manager, Tech Lead, Architect, Director, Producer) lives in the personas
+    // catalog and surfaces on the agents page's Explore tab instead, so a new
+    // tenant starts with exactly one agent and adds the rest on demand.
     // Note: if apiKeys insert fails, agents insert will throw FK error
     // No rollback — acceptable for MVP, add transaction wrapper later
 
-    // Resolve system prompt from active published template (ADR-030).
-    // Falls back to hardcoded string if no published template exists.
-    const [publishedTemplate] = await db
-        .select({
-            systemPrompt: agentTemplates.systemPrompt,
-            model: agentTemplates.model,
-        })
-        .from(agentTemplates)
-        .where(eq(agentTemplates.status, 'published'))
-        .orderBy(desc(agentTemplates.version))
-        .limit(1);
-
-    if (!publishedTemplate) {
-        console.warn('[onboarding] No published agent template found, using fallback prompt');
-    }
-
-    const resolvedSystemPrompt = withUploadGuidance(
-        publishedTemplate
-            ? publishedTemplate.systemPrompt.replace(/\$\{workspaceName\}/g, workspaceName)
-            : buildResearchEngineerPrompt(workspaceName)
-    );
-
-    const resolvedModel = publishedTemplate?.model ?? null;
-
-    // Resolve the agent role's permission strings once, shared across all six
-    // agents seeded below — avoids six identical role_permissions joins.
     const agentRole = (await db.select().from(roles).where(eq(roles.isAgentRole, true)).limit(1))[0];
     const agentRolePermissionRows = agentRole
         ? await db
@@ -165,38 +142,6 @@ onboardingRoutes.post('/complete', async (c) => {
         : [];
     const agentRolePermissionStrings = agentRolePermissionRows.map((p: { resource: string; action: string }) => `${p.resource}:${p.action}`);
 
-    const rawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const keyHash = createHash('sha256').update(rawKey).digest('hex');
-
-    const [researchKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Research Engineer API Key',
-        type: 'agent',
-        keyHash,
-        permissions: agentRolePermissionStrings,
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-
-    const [discoPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'disco')).limit(1);
-    if (!discoPersona) {
-        console.warn('[onboarding] disco persona not found — run the personas seed before onboarding tenants. Creating Research Engineer agent with personaId: null.');
-    }
-
-    const [researchAgent] = await db.insert(agents).values({
-        tenantId,
-        name: 'Research Engineer',
-        type: 'custom',
-        description: 'Answers questions from your uploaded documents and knowledge base. Always retrieves before responding. Cites sources inline.',
-        status: 'active',
-        apiKeyId: researchKey.id,
-        model: resolvedModel,
-        personaId: discoPersona?.id ?? null,
-        createdBy: userId,
-        systemPrompt: resolvedSystemPrompt,
-    }).returning();
-
-    // Seed Olmo — the default router agent every conversation lands on.
     // isDefault: true is what useChatPage.ts's defaultAgent resolution reads;
     // no other seeded agent sets this, so this is the only row that will match.
     const olmoRawKey = `ak_${randomBytes(32).toString('hex')}`;
@@ -210,7 +155,7 @@ onboardingRoutes.post('/complete', async (c) => {
         status: 'active',
         createdBy: userId,
     }).returning();
-    await db.insert(agents).values({
+    const [olmoAgent] = await db.insert(agents).values({
         tenantId,
         name: 'Olmo',
         // agents.type is a Postgres enum without an 'assistant'/'router' member —
@@ -236,207 +181,6 @@ You can answer directly, or delegate to a specialist when the task fits one of t
 For anything else — general questions, research, document Q&A, conversation — answer directly yourself. Do not delegate work you can already do.`),
     }).returning();
 
-    // Seed Product Manager Agent as paused — visible as locked on free plan, activated on upgrade
-    const pmRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const pmKeyHash = createHash('sha256').update(pmRawKey).digest('hex');
-    const [pmKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Product Manager API Key',
-        type: 'agent',
-        keyHash: pmKeyHash,
-        permissions: agentRolePermissionStrings,
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    await db.insert(agents).values({
-        tenantId,
-        name: 'Product Manager',
-        type: 'product_manager',
-        status: 'paused',
-        description: 'Captures intent, asks the one clarifying question that matters, and orchestrates the full PM workflow from discovery to tasks.',
-        apiKeyId: pmKey.id,
-        createdBy: userId,
-        systemPrompt: withUploadGuidance('You are the Product Manager. Capture user intent, ask one clarifying question, load product context, and hand off to the Analyst. Keep every phase aligned.'),
-    }).returning();
-
-    // Seed Analyst Agent
-    const prdRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const prdKeyHash = createHash('sha256').update(prdRawKey).digest('hex');
-    const [prdKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Analyst API Key',
-        type: 'agent',
-        keyHash: prdKeyHash,
-        permissions: agentRolePermissionStrings,
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [analystPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'analyst')).limit(1);
-    if (!analystPersona) {
-        console.warn('[onboarding] analyst persona not found — run the personas seed before onboarding tenants. Creating Analyst agent with personaId: null.');
-    }
-
-    await db.insert(agents).values({
-        tenantId,
-        name: 'Analyst',
-        type: 'analyst',
-        status: 'active',
-        description: 'Drafts complete PRDs — problem, goals, user stories, functional and non-functional requirements, and success metrics. Edits surgically when you push back.',
-        apiKeyId: prdKey.id,
-        personaId: analystPersona?.id ?? null,
-        createdBy: userId,
-        systemPrompt: withUploadGuidance('You are the Analyst. Draft a complete PRD covering problem, goals, user stories, functional and non-functional requirements, and success metrics. Edit surgically on feedback. Auto-save every version.'),
-    }).returning();
-
-    // Seed Project Manager Agent
-    const roadmapRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const roadmapKeyHash = createHash('sha256').update(roadmapRawKey).digest('hex');
-    const [roadmapKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Project Manager API Key',
-        type: 'agent',
-        keyHash: roadmapKeyHash,
-        permissions: agentRolePermissionStrings,
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [pmPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'pm')).limit(1);
-    if (!pmPersona) {
-        console.warn('[onboarding] pm persona not found — run the personas seed before onboarding tenants. Creating Project Manager agent with personaId: null.');
-    }
-
-    await db.insert(agents).values({
-        tenantId,
-        name: 'Project Manager',
-        type: 'project_manager',
-        status: 'active',
-        description: 'Turns an approved PRD into 3–7 milestones with priorities, target dates, and dependencies. Refuses to plan from an unapproved spec.',
-        apiKeyId: roadmapKey.id,
-        personaId: pmPersona?.id ?? null,
-        createdBy: userId,
-        systemPrompt: withUploadGuidance('You are the Project Manager. Turn approved PRDs into 3–7 milestones with priorities, target dates, and dependencies ordered chronologically. Never plan from an unapproved spec.'),
-    }).returning();
-
-    // Seed Tech Lead Agent
-    const taskRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const taskKeyHash = createHash('sha256').update(taskRawKey).digest('hex');
-    const [taskKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Tech Lead API Key',
-        type: 'agent',
-        keyHash: taskKeyHash,
-        permissions: agentRolePermissionStrings,
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [techLeadPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'tech-lead')).limit(1);
-    if (!techLeadPersona) {
-        console.warn('[onboarding] tech-lead persona not found — run the personas seed before onboarding tenants. Creating Tech Lead agent with personaId: null.');
-    }
-
-    await db.insert(agents).values({
-        tenantId,
-        name: 'Tech Lead',
-        type: 'tech_lead',
-        status: 'active',
-        description: 'Decomposes each milestone into 3–7 concrete tasks with acceptance criteria, effort estimates, and priorities. Tasks land on your board, ready to assign.',
-        apiKeyId: taskKey.id,
-        personaId: techLeadPersona?.id ?? null,
-        createdBy: userId,
-        systemPrompt: withUploadGuidance('You are the Tech Lead. Decompose milestones into 3–7 concrete engineering tasks with acceptance criteria, effort estimates, and priorities. Output board-ready tasks.'),
-    }).returning();
-
-    // Seed Architect Agent
-    const archRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const archKeyHash = createHash('sha256').update(archRawKey).digest('hex');
-    const [archKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Architect API Key',
-        type: 'agent',
-        keyHash: archKeyHash,
-        permissions: agentRolePermissionStrings,
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    const [archPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'architect')).limit(1);
-    if (!archPersona) {
-        console.warn('[onboarding] architect persona not found — run the personas seed before onboarding tenants. Creating Architect agent with personaId: null.');
-    }
-
-    await db.insert(agents).values({
-        tenantId,
-        name: 'Architect',
-        type: 'architect',
-        status: 'active',
-        description: 'Knows your migrations, routes, tests, and architectural decisions. Never answers without retrieving. Always cites the file.',
-        apiKeyId: archKey.id,
-        personaId: archPersona?.id ?? null,
-        createdBy: userId,
-        systemPrompt: withUploadGuidance('You are the Architect. Always call retrieve_knowledge before answering any technical question about the codebase. Always cite the file. Say "I don\'t know" when the answer is not in the knowledge base.'),
-    }).returning();
-
-    // Seed Director Agent
-    const [directorPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'director')).limit(1);
-    if (!directorPersona) {
-        console.warn('[onboarding] director persona not found — run the personas seed before onboarding tenants. Creating Director agent with personaId: null.');
-    }
-
-    const directorRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const directorKeyHash = createHash('sha256').update(directorRawKey).digest('hex');
-    const [directorKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Director API Key',
-        type: 'agent',
-        keyHash: directorKeyHash,
-        permissions: agentRolePermissionStrings,
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    await db.insert(agents).values({
-        tenantId,
-        name: 'Director',
-        // agents.type is a Postgres enum (products/agent-platform/packages/schema/agents.ts:20:
-        // 'ops'|'support'|'billing'|'custom'|'product_manager'|'analyst'|'project_manager'|'tech_lead'|'architect').
-        // 'assistant' is NOT a member — it only appears in registry.ts's unrelated, unvalidated
-        // display list. 'custom' is what backfill-agents.ts already uses for every agent it seeds.
-        type: 'custom',
-        status: 'active',
-        description: 'Generates and edits images from a description.',
-        apiKeyId: directorKey.id,
-        personaId: directorPersona?.id ?? null,
-        createdBy: userId,
-        systemPrompt: 'You are Director. Generate and edit images from a description.',
-    }).returning();
-
-    // Seed Producer Agent
-    const [producerPersona] = await db.select({ id: personas.id }).from(personas).where(eq(personas.slug, 'producer')).limit(1);
-    if (!producerPersona) {
-        console.warn('[onboarding] producer persona not found — run the personas seed before onboarding tenants. Creating Producer agent with personaId: null.');
-    }
-
-    const producerRawKey = `ak_${randomBytes(32).toString('hex')}`;
-    const producerKeyHash = createHash('sha256').update(producerRawKey).digest('hex');
-    const [producerKey] = await db.insert(apiKeys).values({
-        tenantId,
-        name: 'Producer API Key',
-        type: 'agent',
-        keyHash: producerKeyHash,
-        permissions: agentRolePermissionStrings,
-        status: 'active',
-        createdBy: userId,
-    }).returning();
-    await db.insert(agents).values({
-        tenantId,
-        name: 'Producer',
-        type: 'custom',
-        status: 'active',
-        description: 'Generates instrumental music clips from a description.',
-        apiKeyId: producerKey.id,
-        personaId: producerPersona?.id ?? null,
-        createdBy: userId,
-        systemPrompt: 'You are Producer. Generate instrumental music from a description.',
-    }).returning();
-
     // Step 6: Provision notification workflows for new tenant (non-fatal)
     try {
         await provisionNotificationWorkflows(db, tenantId, userId);
@@ -445,7 +189,7 @@ For anything else — general questions, research, document Q&A, conversation �
     }
 
     // Step 7: Return response
-    return c.json({ tenantId, agentId: researchAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
+    return c.json({ tenantId, agentId: olmoAgent.id, slug: finalSlug, message: 'Workspace created successfully' }, 201);
 });
 
 export { onboardingRoutes };
