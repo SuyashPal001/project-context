@@ -197,18 +197,30 @@ this one.
 
 1. `/` picks arrive in `skillsUsed`, as today: catalog skill ids sent by the
    client.
-2. Each id is resolved to this tenant's own active install, with the tenant id
-   from the verified token. An id without a matching active install for this
-   tenant is dropped and logged. It never errors and never reaches another
-   tenant's content.
+2. Each id is resolved to this tenant's own install, with the tenant id from the
+   verified token. An id counts as resolved only when the install is active, its
+   pinned version is ready, and its manifest body is non-empty: the same predicate
+   the loader uses, so anything counted, forced, recorded or saved is guaranteed
+   to load. Anything else is dropped. It never reaches another tenant's content.
+   A database error returns `null`, distinct from "nothing resolved".
 3. The resolved installs are added to the conversation's invoked list, stored in
    conversation metadata through the same PATCH that sets `testSkillInstallId`.
    Each entry is `{ installId, skillId, name }`: `installId` is what the resolver
    loads, and `name` is the skill's display name, resolved on the server so the
    composer can label chips without a second lookup.
-4. `fetchConversationTestSkillInstallId` becomes one fetch of the conversation's
-   skill settings: the test skill as before, plus the invoked list. Still one
-   request per turn.
+4. `fetchConversationTestSkillInstallId` becomes `fetchConversationSkillSettings`,
+   one fetch of the conversation's skill settings: the test skill as before, plus
+   the invoked list, plus an `ok` flag. Still one request per turn.
+5. The stored invoked list is never trusted as it is. The conversation PATCH
+   accepts any uuid, so every turn the stored entries are re-resolved by `skillId`
+   through the same tenant-scoped lookup, in parallel with this turn's picks.
+   Forged, foreign or uninstalled entries drop out, and the list is saved back
+   when something was newly invoked or the stored entries changed. Chip order is
+   kept.
+6. If the conversation read fails (`ok: false`) or either lookup returns `null`,
+   the whole `/` step is skipped for that turn: nothing loads, nothing is recorded,
+   nothing is saved. A transient failure can't wipe the list or open the
+   Test-in-chat gate.
 
 **What reaches the model:**
 
@@ -233,7 +245,12 @@ this one.
   thinking budget sends no history (`chatStream.ts:300`, `lastMessages: false`),
   and older turns fall outside Olmo's 20-message window.
 - Resolution is fresh every turn, so an uninstalled skill drops out of active
-  conversations on the next turn.
+  conversations on the next turn. The loader, `fetchInvokedSkills`, re-checks each
+  install tenant-scoped at load time as defense in depth; neither check is to be
+  removed as redundant.
+- The resolver reads invoked skills ONLY from the request-context key that
+  `chatStream` sets after re-resolution. It never falls back to the conversation's
+  stored metadata.
 
 **Composer (`ChatInput.tsx`):**
 
@@ -319,3 +336,13 @@ Done means these are observable on dev after Migration B:
   cleaned up first.
 - Separate memory per agent. Every agent in a workspace shares one memory record
   (`resource: tenantId`).
+
+## Known constraints
+
+- The forced `/` invocation needs Mastra's eager `skill` tool. Mastra 1.64 drops
+  that tool when an on-demand `SkillSearchProcessor` is configured
+  (`suppressEagerSkillTools`). Adding one to Olmo would break `/`: the forced call
+  would target a tool that no longer exists.
+- The `/` path runs only on the SSE chat route. The WebSocket route never resolves
+  `/` picks, the same known gap as the sub-agent control plane's inert WebSocket
+  path.
