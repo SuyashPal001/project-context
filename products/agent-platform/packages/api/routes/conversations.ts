@@ -273,6 +273,16 @@ conversationsRoutes.patch('/:id', async (c) => {
             // fetchConversationTestSkillInstallId in the orchestrator, which reads
             // this same key to compose only the tested skill for this conversation.
             testSkillInstallId: z.string().uuid().nullable().optional(),
+            // Skills turned on in this conversation with "/" — written by the
+            // orchestrator on the turn a skill is invoked, and by the composer
+            // when a chip's X removes one. Never trusted: the orchestrator
+            // re-resolves every entry against this tenant's active installs on
+            // every turn. `name` is chip display text only.
+            invokedSkills: z.array(z.object({
+                installId: z.string().uuid(),
+                skillId: z.string().uuid(),
+                name: z.string().min(1).max(100),
+            })).max(8).nullable().optional(),
         });
 
         const result = schema.safeParse(await c.req.json());
@@ -283,9 +293,9 @@ conversationsRoutes.patch('/:id', async (c) => {
             return c.json({ error: 'No fields provided for update', code: 'VALIDATION_ERROR' }, 400);
         }
 
-        const { folderScope, allowMode, testSkillInstallId, ...rest } = result.data;
+        const { folderScope, allowMode, testSkillInstallId, invokedSkills, ...rest } = result.data;
         const patch: Record<string, unknown> = { ...rest };
-        if (folderScope !== undefined || allowMode !== undefined || testSkillInstallId !== undefined) {
+        if (folderScope !== undefined || allowMode !== undefined || testSkillInstallId !== undefined || invokedSkills !== undefined) {
             // Merge, never overwrite: metadata is shared with whatever else the
             // product stores on a conversation.
             const current = { ...((existing.metadata ?? {}) as Record<string, unknown>) };
@@ -300,6 +310,10 @@ conversationsRoutes.patch('/:id', async (c) => {
             if (testSkillInstallId !== undefined) {
                 if (testSkillInstallId === null) delete current.testSkillInstallId;
                 else current.testSkillInstallId = testSkillInstallId;
+            }
+            if (invokedSkills !== undefined) {
+                if (invokedSkills === null) delete current.invokedSkills;
+                else current.invokedSkills = invokedSkills;
             }
             patch.metadata = current;
         }
