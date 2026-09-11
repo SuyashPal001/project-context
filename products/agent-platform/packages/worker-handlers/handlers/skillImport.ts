@@ -144,6 +144,11 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
     // the import's own success stands regardless.
     if (attachToAgentId) {
       try {
+        // Same 100-char cap as the route (agent-skills.ts) — the worker must
+        // store and match the same value the route would, since either can
+        // reactivate the other's row.
+        const attachName = manifest.name.slice(0, 100);
+
         // The cap counts the agent's *other* attached skills. The 'default'
         // row is the agent's base prompt, not a skill (TRANSITION: migration
         // 0092 deletes those rows; Task 13 removes this filter), and this
@@ -172,14 +177,20 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
           // match nothing.
           //
           // This UPDATE deliberately never renames the row (no `name =`
-          // assignment): the old (agent_id, tenant_id, name, version) unique
-          // constraint still exists and still covers archived rows, so
-          // renaming this row to manifest.name could collide permanently
-          // with an archived row that already holds that name.
+          // assignment) and never touches `version`: the old (agent_id,
+          // tenant_id, name, version) unique constraint still exists and
+          // still covers archived rows, so setting either could collide
+          // permanently with an archived row that already holds that
+          // name/version pair — e.g. an active bid-writer v1 row for this
+          // install plus an archived bid-writer v2 row: reactivating v1 to
+          // version=2 here would raise 23505 forever. agent_skills.version
+          // is only a dedupe tiebreak; installed content resolves from
+          // si.installed_version. The route does the same at
+          // agent-skills.ts (its reactivation `.set(...)` only touches
+          // systemPrompt, status, updatedAt).
           const reactivated = ((await db.execute(sql`
             UPDATE agent_skills s
-            SET status = 'active', system_prompt = ${manifestWithBody.body},
-                version = ${version}, updated_at = now()
+            SET status = 'active', system_prompt = ${manifestWithBody.body}, updated_at = now()
             WHERE s.id = (
               SELECT s2.id FROM agent_skills s2
               JOIN agents a ON a.id = s2.agent_id AND a.tenant_id = ${tenantId}::uuid
@@ -199,20 +210,49 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
             // prior import of the same skill that got archived. The old
             // (agent_id, tenant_id, name, version) unique constraint still
             // covers archived rows, so inserting a fresh row with that same
-            // name/version would collide. Reuse it instead. Both tenant
-            // constraints are independent foreign keys on agent_skills, so
-            // both are checked directly (s.tenant_id) and via the agents
-            // join (a.tenant_id) — a row pairing this tenant with another
-            // tenant's agent matches nothing.
+            // name/version would collide. Reuse it instead.
+            //
+            // The row to update is picked by id from a single-row subselect
+            // (not a bare filtered UPDATE) so that once migration 0092 drops
+            // the old (name, version) constraint, several archived rows
+            // matching the same name/version can no longer all get revived
+            // onto the same install_id at once (which the active-install
+            // partial index would then reject outright, blocking the attach
+            // for good). Both tenant constraints are independent foreign
+            // keys on agent_skills, so both are checked directly
+            // (s2.tenant_id) and via the agents join (a.tenant_id) — a row
+            // pairing this tenant with another tenant's agent matches
+            // nothing. si.tenant_id constrains which install's id gets
+            // written.
+            // Without the EXISTS guard below, a missing active install
+            // (reachable: the API can enqueue this import before the
+            // skill_installs row commits) would leave the scalar
+            // install_id subselect NULL while still reviving the row —
+            // status='active', install_id=NULL, a phantom hand-authored
+            // skill. The guard makes the whole UPDATE match zero rows
+            // instead, so it falls through to the INSERT (which itself
+            // writes nothing without an active install) and the existing
+            // zero-rows warning covers it.
             const archivedReactivated = ((await db.execute(sql`
               UPDATE agent_skills s
-              SET install_id = si.id, system_prompt = ${manifestWithBody.body},
-                  status = 'active', updated_at = now()
-              FROM agents a, skill_installs si
-              WHERE s.agent_id = a.id AND a.tenant_id = ${tenantId}::uuid
-                AND si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
-                AND s.agent_id = ${attachToAgentId}::uuid AND s.tenant_id = ${tenantId}::uuid
-                AND s.name = ${manifest.name} AND s.version = ${version} AND s.status = 'archived'
+              SET install_id = (
+                    SELECT si.id FROM skill_installs si
+                    WHERE si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+                    LIMIT 1
+                  ),
+                  system_prompt = ${manifestWithBody.body}, status = 'active', updated_at = now()
+              WHERE s.id = (
+                SELECT s2.id FROM agent_skills s2
+                JOIN agents a ON a.id = s2.agent_id AND a.tenant_id = ${tenantId}::uuid
+                WHERE s2.agent_id = ${attachToAgentId}::uuid AND s2.tenant_id = ${tenantId}::uuid
+                  AND s2.name = ${attachName} AND s2.version = ${version} AND s2.status = 'archived'
+                ORDER BY s2.created_at ASC
+                LIMIT 1
+              )
+              AND EXISTS (
+                SELECT 1 FROM skill_installs si
+                WHERE si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+              )
               RETURNING s.id
             `)) ?? []) as unknown as { id: string }[];
 
@@ -223,7 +263,7 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
               // has no route in front of it on a queue redelivery.
               const result = await db.execute(sql`
                 INSERT INTO agent_skills (agent_id, tenant_id, name, system_prompt, tools, version, status, install_id)
-                SELECT a.id, a.tenant_id, ${manifest.name}, ${manifestWithBody.body}, '{}', ${version},
+                SELECT a.id, a.tenant_id, ${attachName}, ${manifestWithBody.body}, '{}', ${version},
                        'active', si.id
                 FROM agents a
                 JOIN skill_installs si
