@@ -7,7 +7,7 @@ UPDATE "agents" a SET "system_prompt" = s."system_prompt"
 FROM (
   SELECT DISTINCT ON (agent_id) agent_id, system_prompt
   FROM "agent_skills"
-  WHERE name = 'default' AND status = 'active'
+  WHERE name = 'default' AND install_id IS NULL AND status = 'active'
   ORDER BY agent_id, created_at DESC
 ) s
 WHERE s.agent_id = a.id AND a.system_prompt IS NULL;

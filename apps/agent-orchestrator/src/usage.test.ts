@@ -122,14 +122,34 @@ describe('fetchAgentPersonaPrompt', () => {
     await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBe('You are Olmo.')
     const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
     expect(sql).toContain('FROM agents')
-    expect(sql).not.toContain('agent_skills')
     expect(params).toEqual(['agent-1', 'tenant-1'])
   })
 
-  it('scopes the lookup to the tenant', async () => {
+  // TRANSITION (remove in migration 0092 / PR 2): a tenant onboarded between
+  // applying migration 0091 and deploying the new Lambdas has only a
+  // 'default' agent_skills row and a NULL agents.system_prompt. Without the
+  // COALESCE fallback subquery, its prompt would silently drop until PR 2.
+  it('falls back to the default agent_skills row via a COALESCE subquery, scoped by name and null install_id', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ system_prompt: 'Fallback prompt.' }] })
+    await fetchAgentPersonaPrompt('agent-1', 'tenant-1')
+    const [sql] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('COALESCE(a.system_prompt')
+    expect(sql).toContain('FROM agent_skills s')
+    expect(sql).toContain("s.name = 'default'")
+    expect(sql).toContain('s.install_id IS NULL')
+    expect(sql).toContain("s.status = 'active'")
+  })
+
+  it('scopes both the outer lookup and the fallback subquery to the tenant', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
     await fetchAgentPersonaPrompt('agent-1', 'tenant-1')
-    expect(mockPoolQuery.mock.calls[0][0]).toContain('tenant_id = $2')
+    const [sql] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    // The outer WHERE still scopes to (id, tenant_id) — unchanged.
+    expect(sql).toContain('a.id = $1 AND a.tenant_id = $2')
+    // The fallback subquery independently scopes to the same agent's tenant —
+    // agent_skills carries agent_id and tenant_id as separate foreign keys,
+    // so this must not be left to the outer WHERE alone.
+    expect(sql).toContain('s.agent_id = a.id AND s.tenant_id = a.tenant_id')
   })
 
   it('returns null when the agent has no prompt, so the platform prompt applies', async () => {
@@ -279,11 +299,14 @@ describe('fetchAttachedSkills', () => {
     expect(skills[0].instructions).toBe('Open with the client name.')
   })
 
-  it('excludes the default persona row in the query itself', async () => {
+  it('excludes the default persona row in the query itself, but not a real skill merely named "default"', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
     await fetchAttachedSkills('agent-1', 'tenant-1')
     const sql = mockPoolQuery.mock.calls[0][0] as string
-    expect(sql).toContain("name != 'default'")
+    // The sentinel is name='default' AND install_id IS NULL together — a
+    // bare `name != 'default'` would also hide a real installed skill whose
+    // manifest happens to be named "default".
+    expect(sql).toContain("NOT (name = 'default' AND install_id IS NULL)")
   })
 
   it('scopes the query to the tenant', async () => {
