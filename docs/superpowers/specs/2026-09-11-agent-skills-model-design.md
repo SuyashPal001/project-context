@@ -125,6 +125,7 @@ Sources:
 | Removing an invoked skill | The chip's X removes it from this conversation. An addition to Anthropic's model, kept because the composer shows chips and an unremovable chip confuses |
 | Where the agent's standing skills are managed | The agent page, `AgentSkillSection.tsx`, which gains a detach control |
 | A "Keep for this agent" action on `/` chips | No. Not Anthropic's model |
+| `/` inside a Test-in-chat conversation | Turned off, with a hint to start a normal chat. The orchestrator ignores `skillsUsed` there too |
 | The tool allowlist | Stop every write. Keep the column until the fairness routes stop reading it |
 | The 24,000-character budget | Removed everywhere |
 | The 8-skill cap | Kept per agent, as an abuse limit. The same cap applies to skills invoked in one conversation |
@@ -171,9 +172,10 @@ Sources:
 
 **What reaches the model:**
 
-- A Test-in-chat conversation still loads only its test skill. A `/` pick in a
-  test conversation is recorded on the message but not loaded, because the test's
-  one-skill isolation is the point of that conversation.
+- A Test-in-chat conversation still loads only its test skill. `/` is turned off
+  there (see Composer), and the orchestrator enforces the same rule: in a
+  conversation with `testSkillInstallId` set, `skillsUsed` is neither loaded nor
+  added to the invoked list, even if a client sends it.
 - Otherwise the agent's attached skills stay progressive, and the conversation's
   invoked skills are force-loaded into every turn. A skill both attached and
   invoked appears once.
@@ -188,6 +190,10 @@ Sources:
   PATCH, for this conversation only.
 - The `GET /agents/:id/skills` query that rendered attached skills as chips is
   removed.
+- In a Test-in-chat conversation, `/` does not open the skill picker. A short hint
+  says: "Test chats run one skill. Start a normal chat to combine skills." A test
+  chat exists to show one skill on its own, and a pick that silently does nothing
+  would be worse than no picker.
 
 **Agent page (`AgentSkillSection.tsx`):** lists attached skills, keeps the
 existing attach picker, and gains detach through the existing `DELETE` route.
@@ -228,7 +234,10 @@ Unit tests, no database and no model call:
 
 - Resolving `/` ids is tenant-scoped: another tenant's skill id is dropped.
 - The resolver merges attached and invoked skills without duplicates.
-- Test-in-chat still loads only its one skill.
+- Test-in-chat still loads only its one skill, and ignores a `skillsUsed` sent
+  into a test conversation.
+- The composer does not open the `/` picker in a test conversation, and shows the
+  hint instead.
 - A second attach of the same install is a no-op, from both the route and the
   worker.
 - `fetchAgentPersonaPrompt` reads `agents.system_prompt`.
