@@ -14,7 +14,7 @@ vi.mock("@/lib/api", () => {
 });
 
 import { api, ApiError } from "@/lib/api";
-import { attachSkillToAgent, createSkillFromBody, resolveDefaultAgent, startSkillTestChat } from "./actions";
+import { attachSkillToAgent, createSkillFromBody, detachSkillFromAgent, resolveDefaultAgent, startSkillTestChat } from "./actions";
 import type { Skill } from "./types";
 import type { Agent } from "@/components/platform/agents/types";
 
@@ -135,6 +135,16 @@ describe("startSkillTestChat", () => {
     it("throws NO_ACTIVE_AGENTS without creating a conversation", async () => {
         await expect(startSkillTestChat(makeSkill(), [])).rejects.toThrow("NO_ACTIVE_AGENTS");
         expect(api.post).not.toHaveBeenCalled();
+    });
+});
+
+describe("detachSkillFromAgent", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("DELETEs the agent's skill row by its id", async () => {
+        vi.mocked(api.del).mockResolvedValue(undefined as never);
+        await detachSkillFromAgent("agent-1", "row-1");
+        expect(api.del).toHaveBeenCalledWith("/api/v1/agents/agent-1/skills/row-1");
     });
 });
 

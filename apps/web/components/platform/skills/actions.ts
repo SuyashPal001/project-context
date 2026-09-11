@@ -135,3 +135,12 @@ export async function startSkillTestChat(
 
     return { conversationId: conversation.data.id, agentId: agent.id };
 }
+
+/**
+ * Detaches a skill from an agent: archives its agent_skills row. The install
+ * stays in the tenant's library, and attaching it again reactivates the same
+ * row (see the API's attach route).
+ */
+export async function detachSkillFromAgent(agentId: string, agentSkillId: string): Promise<void> {
+    await api.del(`/api/v1/agents/${agentId}/skills/${agentSkillId}`);
+}
