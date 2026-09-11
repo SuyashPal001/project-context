@@ -4,6 +4,10 @@
 //
 // Pure on purpose: no database or Mastra runtime imports, so the merge and
 // forcing rules are unit-testable without platformAgent's DB singletons.
+// The one exception is `ProcessInputStepArgs` below, a type-only import from
+// @mastra/core/processors — it adds no runtime dependency.
+
+import type { ProcessInputStepArgs } from '@mastra/core/processors'
 
 export interface InvokedSkill {
   installId: string
@@ -34,4 +38,38 @@ export function mergeInvokedSkills(
     newlyInvoked.push(skill)
   }
   return { merged, newlyInvoked }
+}
+
+/**
+ * On the turn skills are invoked, force the first `count` steps to call
+ * Mastra's own `skill` tool, so their instructions are loaded before the
+ * agent answers — the native equivalent of Claude Code's /skill-name. After
+ * that turn nothing is forced: the loaded instructions stay in the
+ * conversation as tool results, and the skills stay in the resolver's set
+ * so the agent can call `skill` again if they fall out of context.
+ *
+ * The parameter is typed as `ProcessInputStepArgs` (Mastra's real
+ * `PrepareStepFunction` argument, from @mastra/core/processors) rather than
+ * the narrower `{ stepNumber: number }` shape this function actually reads,
+ * so the returned function satisfies `prepareStep` at the `stream()` call
+ * site in chatStream.ts without a cast there.
+ */
+export function buildSkillInvocationPrepareStep(
+  count: number,
+): ((args: ProcessInputStepArgs) => { toolChoice: { type: 'tool'; toolName: 'skill' } } | undefined) | undefined {
+  if (count <= 0) return undefined
+  return ({ stepNumber }) => (stepNumber < count ? { toolChoice: { type: 'tool', toolName: 'skill' } } : undefined)
+}
+
+/** One sentence naming this turn's invoked skills, so the forced `skill` calls load the right ones. */
+export function invokedSkillsInstruction(names: string[]): string {
+  if (names.length === 0) return ''
+  return `\n\n## Skills the user turned on\nThe user turned on these skills with "/" in this message: ${names.join(', ')}. Activate each one with the skill tool, using exactly these names, before you answer.`
+}
+
+/** Attached skills first; a skill that is both attached and invoked appears once. */
+export function mergeSkillSets<T extends { name: string }>(attached: T[], invoked: T[]): T[] {
+  const byName = new Map<string, T>()
+  for (const skill of [...attached, ...invoked]) if (!byName.has(skill.name)) byName.set(skill.name, skill)
+  return [...byName.values()]
 }

@@ -12,7 +12,7 @@ import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
 import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage, resolveInvokedSkills, recordSkillRuns, toMastraSkillName } from '../usage.js'
 import { fetchConversationSkillSettings, saveConversationInvokedSkills } from '../persistence.js'
-import { mergeInvokedSkills, type InvokedSkill } from '../mastra/skillInvocation.js'
+import { mergeInvokedSkills, buildSkillInvocationPrepareStep, type InvokedSkill } from '../mastra/skillInvocation.js'
 import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
@@ -367,6 +367,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       ? olmoDelegationOptions({ tenantId, conversationId, agentId })
       : {}
 
+    // Mastra-native: force the built-in skill tool for the first N steps of
+    // the turn that invoked N skills, so their instructions load before the
+    // answer. Undefined on every other turn, so nothing is forced.
+    const skillInvocationPrepareStep = buildSkillInvocationPrepareStep(skillsInvokedThisTurn.length)
+
     let fullText = ''
     let planResult: unknown
     let toolCallCount = 0
@@ -387,6 +392,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         requestContext,
         providerOptions: { 'inference-gateway': { thinkingBudget } },
         ...olmoOptions,
+        ...(skillInvocationPrepareStep ? { prepareStep: skillInvocationPrepareStep } : {}),
       })
 
     turnLoop: while (true) {

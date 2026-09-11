@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -173,6 +173,28 @@ describe('toMastraSkillName', () => {
     const result = toMastraSkillName(raw)
     expect(result.endsWith('-')).toBe(false)
     expect(result.length).toBeLessThanOrEqual(64)
+  })
+})
+
+describe('fetchInvokedSkills', () => {
+  it('resolves each invoked install into a Mastra Skill, tenant-scoped', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ name: 'UGC Ad Production', description: 'Use when making UGC ads.', body: 'Hook in 2 seconds.' }] })
+    const skills = await fetchInvokedSkills(['install-1'], 'tenant-1')
+    expect(skills).toHaveLength(1)
+    expect(skills[0].name).toBe('ugc-ad-production')
+    expect(skills[0].instructions).toBe('Hook in 2 seconds.')
+    expect(mockPoolQuery.mock.calls[0][1]).toEqual(['install-1', 'tenant-1'])
+  })
+
+  it('skips an install that no longer resolves (uninstalled, foreign, not ready)', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await expect(fetchInvokedSkills(['install-gone'], 'tenant-1')).resolves.toEqual([])
+  })
+
+  it('does not record a run: chatStream records one on the invoking turn only', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ name: 'X', description: 'Use when X.', body: 'Do X.' }] })
+    await fetchInvokedSkills(['install-1'], 'tenant-1')
+    expect(mockPoolQuery).toHaveBeenCalledTimes(1)
   })
 })
 

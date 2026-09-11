@@ -141,6 +141,26 @@ export async function resolveInvokedSkills(skillIds: string[], tenantId: string)
 }
 
 /**
+ * The conversation's "/" skills as native Mastra Skills, for platformAgent's
+ * skills resolver. Content is resolved fresh from each pinned install,
+ * tenant-scoped, so an uninstalled or foreign install drops out on the next
+ * turn. Does not record runs — chatStream records one on the invoking turn.
+ */
+export async function fetchInvokedSkills(installIds: string[], tenantId: string): Promise<InlineSkill[]> {
+  const skills: InlineSkill[] = []
+  for (const installId of installIds.slice(0, MAX_INVOKED_SKILLS)) {
+    const content = await resolveInstalledSkillContent(installId, tenantId)
+    if (!content) continue
+    try {
+      skills.push(createSkill({ name: toMastraSkillName(content.name), description: content.description, instructions: content.body }))
+    } catch (err) {
+      console.error('[usage] fetchInvokedSkills createSkill validation failed for', content.name, ':', (err as Error).message)
+    }
+  }
+  return skills
+}
+
+/**
  * Every active skill attached to the agent (excluding "default" — the
  * onboarding bootstrap row holding the agent's base persona, not a real
  * skill; read separately by fetchAgentPersonaPrompt), as native Mastra Skill
