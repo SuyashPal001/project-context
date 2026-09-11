@@ -149,18 +149,24 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
         // reactivate the other's row.
         const attachName = manifest.name.slice(0, 100);
 
-        // The cap counts the agent's *other* attached skills. The 'default'
-        // row is the agent's base prompt, not a skill (TRANSITION: migration
-        // 0092 deletes those rows; Task 13 removes this filter), and this
+        // The cap counts the agent's *other* attached skills, excluding rows
+        // whose install has since been uninstalled (dead installs don't
+        // count against the cap — same predicate the route's GET and cap use).
+        // The 'default' row (name='default' AND install_id IS NULL) is the
+        // agent's base prompt, not a skill (TRANSITION: migration 0092
+        // deletes those rows; Task 13 removes this filter), and this
         // install's own row never counts against its re-attach.
         const countRows = ((await db.execute(sql`
           SELECT count(*)::int AS n
           FROM agent_skills s
+          LEFT JOIN skill_installs si ON si.id = s.install_id AND si.tenant_id = ${tenantId}::uuid
           WHERE s.agent_id = ${attachToAgentId}::uuid AND s.tenant_id = ${tenantId}::uuid
-            AND s.status = 'active' AND s.name <> 'default'
+            AND s.status = 'active'
+            AND NOT (s.name = 'default' AND s.install_id IS NULL)
+            AND (s.install_id IS NULL OR si.status = 'active')
             AND s.install_id IS DISTINCT FROM (
-              SELECT si.id FROM skill_installs si
-              WHERE si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+              SELECT si2.id FROM skill_installs si2
+              WHERE si2.skill_id = ${skillId}::uuid AND si2.tenant_id = ${tenantId}::uuid AND si2.status = 'active'
               LIMIT 1
             )
         `)) ?? []) as unknown as { n: number }[];

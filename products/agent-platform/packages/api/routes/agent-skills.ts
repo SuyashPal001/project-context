@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, desc, sql } from 'drizzle-orm';
+import { and, eq, desc, sql, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
@@ -94,19 +94,44 @@ agentSkillsRoutes.get('/:agentId/skills', async (c) => {
         return c.json({ error: 'Agent not found', code: 'NOT_FOUND' }, 404);
     }
 
+    // Uninstalling a skill (DELETE /skills/:id/install) leaves the agent's
+    // agent_skills row active — the runtime already skips it because it only
+    // loads active installs, but this list must too. Left-join skill_installs,
+    // tenant-scoped, and keep rows with no install (hand-authored) or whose
+    // install is still active.
     const data = await db
-        .select()
+        .select({
+            id: agentSkills.id,
+            agentId: agentSkills.agentId,
+            tenantId: agentSkills.tenantId,
+            name: agentSkills.name,
+            systemPrompt: agentSkills.systemPrompt,
+            tools: agentSkills.tools,
+            config: agentSkills.config,
+            installId: agentSkills.installId,
+            version: agentSkills.version,
+            status: agentSkills.status,
+            createdAt: agentSkills.createdAt,
+            updatedAt: agentSkills.updatedAt,
+        })
         .from(agentSkills)
+        .leftJoin(skillInstalls, and(
+            eq(skillInstalls.id, agentSkills.installId),
+            eq(skillInstalls.tenantId, tenantId),
+        ))
         .where(and(
             eq(agentSkills.agentId, agentId),
             eq(agentSkills.tenantId, tenantId),
             eq(agentSkills.status, 'active'),
+            or(isNull(agentSkills.installId), eq(skillInstalls.status, 'active')),
         ))
         .orderBy(desc(agentSkills.createdAt));
 
     // TRANSITION: the 'default' row is the agent's base prompt, not a skill.
+    // The sentinel is name='default' AND install_id IS NULL — a real skill
+    // manifest named "default" (which carries an installId) is not this row.
     // Migration 0092 deletes those rows; Task 13 removes this filter.
-    return c.json({ data: data.filter((row) => row.name !== 'default') });
+    return c.json({ data: data.filter((row) => !(row.name === 'default' && row.installId === null)) });
 });
 
 // POST /agents/:agentId/skills — create a new skill
@@ -164,13 +189,25 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
             }
         }
 
-        // The cap counts the agent's *other* attached skills. The 'default'
-        // row is its base prompt, not a skill (TRANSITION: removed in Task 13),
-        // and a re-attach never counts the row it reactivates.
+        // The cap counts the agent's *other* attached skills, excluding rows
+        // whose install has been uninstalled (dead installs don't count
+        // against the cap). The 'default' row (name='default' AND
+        // install_id IS NULL) is its base prompt, not a skill (TRANSITION:
+        // removed in Task 13), and a re-attach never counts the row it
+        // reactivates.
         const active = await db.select({ name: agentSkills.name, installId: agentSkills.installId })
             .from(agentSkills)
-            .where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.tenantId, tenantId), eq(agentSkills.status, 'active')));
-        const others = active.filter((s) => s.name !== 'default'
+            .leftJoin(skillInstalls, and(
+                eq(skillInstalls.id, agentSkills.installId),
+                eq(skillInstalls.tenantId, tenantId),
+            ))
+            .where(and(
+                eq(agentSkills.agentId, agentId),
+                eq(agentSkills.tenantId, tenantId),
+                eq(agentSkills.status, 'active'),
+                or(isNull(agentSkills.installId), eq(skillInstalls.status, 'active')),
+            ));
+        const others = active.filter((s) => !(s.name === 'default' && s.installId === null)
             && (install ? s.installId !== install.id : s.name !== result.data.name));
         if (others.length >= MAX_ATTACHED_SKILLS) {
             return c.json({
@@ -223,11 +260,15 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
         const version = result.data.version ?? 1;
 
         // The old [agentId, tenantId, name, version] unique constraint still
-        // covers archived rows. Without this, uninstalling and reinstalling a
-        // skill (a fresh installId, but the same name/version) would insert,
-        // collide with the row the earlier attach left archived, and report
-        // NAME_CONFLICT forever. Reactivate that row instead — relinking it
-        // to the current install (or null for a hand-authored skill).
+        // covers archived rows. POST /skills/:id/install upserts on
+        // (tenant_id, skill_id), so a reinstall keeps the same install id and
+        // the skill_installs row simply comes back live — it does not mint a
+        // fresh installId. This path instead guards a hand-authored skill (no
+        // install) detached and re-created under the same name/version, which
+        // would otherwise insert, collide with the row the earlier attach
+        // left archived, and report NAME_CONFLICT forever. Reactivate that
+        // row instead — relinking it to the current install (or null for a
+        // hand-authored skill).
         const [archived] = await db.select({ id: agentSkills.id })
             .from(agentSkills)
             .where(and(

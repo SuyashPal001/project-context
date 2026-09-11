@@ -430,7 +430,7 @@ describe('handleSkillImport', () => {
     expect(insert).not.toContain('(agent_id, tenant_id, name, version)');
   });
 
-  it("doesn't count the agent's 'default' row or this install toward the cap", async () => {
+  it("doesn't count the agent's 'default' row, a dead install's row, or this install toward the cap", async () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
 
     await handleSkillImport({
@@ -442,8 +442,16 @@ describe('handleSkillImport', () => {
     const count = dbMock.execute.mock.calls
       .map(([q]) => sqlText(q))
       .find((t) => t.includes('SELECT count(*)'));
-    expect(count).toContain("s.name <> 'default'");
+    // The sentinel is name='default' AND install_id IS NULL together — a
+    // real skill manifest named "default" (which carries an install_id) must
+    // not be excluded by a bare `s.name <> 'default'`.
+    expect(count).toContain("NOT (s.name = 'default' AND s.install_id IS NULL)");
     expect(count).toContain('s.install_id IS DISTINCT FROM');
+    // Dead (uninstalled) installs don't count against the cap: left-join
+    // skill_installs, tenant-scoped, and exclude a row whose install isn't
+    // active any more.
+    expect(count).toContain('LEFT JOIN skill_installs si ON si.id = s.install_id AND si.tenant_id =');
+    expect(count).toContain('(s.install_id IS NULL OR si.status = ');
   });
 
   it('has no character budget: a long skill still attaches', async () => {

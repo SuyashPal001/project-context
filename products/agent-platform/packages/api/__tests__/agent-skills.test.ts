@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or, isNull } from 'drizzle-orm';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
 import { skillInstalls, skillVersions } from '@serverless-saas/agent-schema/skills';
@@ -50,6 +50,10 @@ function mockDb(state: DbState = {}) {
     // into this knowing the route's fixed call sequence for the scenario
     // they set up (see comments at each call site below).
     const agentSkillsWhereCalls: unknown[] = [];
+    // Every `leftJoin(skillInstalls, ...)` call against agentSkills — the cap
+    // count and the GET list both join skill_installs to exclude a dead
+    // (uninstalled) install's row. In call order alongside agentSkillsWhereCalls.
+    const agentSkillsJoinCalls: Array<{ table: unknown; on: unknown }> = [];
     let updateCallCount = 0;
 
     dbMock.select.mockImplementation(() => ({
@@ -69,13 +73,28 @@ function mockDb(state: DbState = {}) {
                 return { where: () => ({ limit: async () => rows }) };
             }
             if (table === agentSkills) {
-                // Four query shapes share this table:
-                //  - the cap count: awaited on where() directly -> state.active
-                //  - the GET list: where().orderBy() awaited directly -> state.list
+                // Two query shapes reach agentSkills without a join (unchanged
+                // by Fix 1):
                 //  - the install-scoped existing-row lookup:
                 //    where().orderBy().limit() -> state.existing
                 //  - the archived name+version lookup: where().limit() -> state.archived
+                //
+                // Two more now go through leftJoin(skillInstalls, ...) first,
+                // so a dead install's row is excluded (Fix 1):
+                //  - the cap count: leftJoin().where() awaited directly -> state.active
+                //  - the GET list: leftJoin().where().orderBy() -> state.list
                 return {
+                    leftJoin: (joinTable: unknown, on: unknown) => {
+                        agentSkillsJoinCalls.push({ table: joinTable, on });
+                        return {
+                            where: (whereArg: unknown) => {
+                                agentSkillsWhereCalls.push(whereArg);
+                                return Object.assign(Promise.resolve(state.active ?? []), {
+                                    orderBy: async () => state.list ?? [],
+                                });
+                            },
+                        };
+                    },
                     where: (whereArg: unknown) => {
                         agentSkillsWhereCalls.push(whereArg);
                         return Object.assign(Promise.resolve(state.active ?? []), {
@@ -113,7 +132,7 @@ function mockDb(state: DbState = {}) {
             }),
         }),
     }));
-    return { inserted, updated, agentSkillsWhereCalls };
+    return { inserted, updated, agentSkillsWhereCalls, agentSkillsJoinCalls };
 }
 
 async function request(method: 'GET' | 'POST', body?: unknown, permission = 'create') {
@@ -290,6 +309,24 @@ describe('POST /agents/:agentId/skills — the 8-skill cap', () => {
         const res = await request('POST', { name: 'x', installId: INSTALL_ID.toUpperCase() });
         expect(res.status).toBe(200);
     });
+
+    it('left-joins skill_installs tenant-scoped for the cap count, failing if either predicate is dropped', async () => {
+        const { agentSkillsJoinCalls, agentSkillsWhereCalls } = mockDb({ active: [] });
+        await request('POST', { name: 'x', installId: INSTALL_ID });
+
+        // [0] = the cap count's join and where.
+        expect(agentSkillsJoinCalls[0].table).toBe(skillInstalls);
+        expect(agentSkillsJoinCalls[0].on).toEqual(and(
+            eq(skillInstalls.id, agentSkills.installId),
+            eq(skillInstalls.tenantId, 'tenant-1'),
+        ));
+        expect(agentSkillsWhereCalls[0]).toEqual(and(
+            eq(agentSkills.agentId, 'agent-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+            eq(agentSkills.status, 'active'),
+            or(isNull(agentSkills.installId), eq(skillInstalls.status, 'active')),
+        ));
+    });
 });
 
 describe('POST /agents/:agentId/skills — hand-authored skills', () => {
@@ -344,9 +381,35 @@ describe('GET /agents/:agentId/skills', () => {
     beforeEach(() => vi.clearAllMocks());
 
     it("lists attached skills without the agent's 'default' row", async () => {
-        mockDb({ list: [{ id: 'a', name: 'default' }, { id: 'b', name: 'bid-writer' }] });
+        mockDb({ list: [{ id: 'a', name: 'default', installId: null }, { id: 'b', name: 'bid-writer', installId: INSTALL_ID }] });
         const res = await request('GET', undefined, 'read');
         expect(res.status).toBe(200);
-        expect((await res.json()).data).toEqual([{ id: 'b', name: 'bid-writer' }]);
+        expect((await res.json()).data).toEqual([{ id: 'b', name: 'bid-writer', installId: INSTALL_ID }]);
+    });
+
+    it('keeps a real skill named "default" that carries an installId (the sentinel is name+null installId together)', async () => {
+        mockDb({ list: [{ id: 'a', name: 'default', installId: INSTALL_ID }] });
+        const res = await request('GET', undefined, 'read');
+        expect(res.status).toBe(200);
+        expect((await res.json()).data).toEqual([{ id: 'a', name: 'default', installId: INSTALL_ID }]);
+    });
+
+    it('left-joins skill_installs tenant-scoped and excludes a dead (uninstalled) install, failing if either predicate is dropped', async () => {
+        const { agentSkillsJoinCalls, agentSkillsWhereCalls } = mockDb({ list: [] });
+        await request('GET', undefined, 'read');
+
+        expect(agentSkillsJoinCalls).toHaveLength(1);
+        expect(agentSkillsJoinCalls[0].table).toBe(skillInstalls);
+        expect(agentSkillsJoinCalls[0].on).toEqual(and(
+            eq(skillInstalls.id, agentSkills.installId),
+            eq(skillInstalls.tenantId, 'tenant-1'),
+        ));
+
+        expect(agentSkillsWhereCalls[0]).toEqual(and(
+            eq(agentSkills.agentId, 'agent-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+            eq(agentSkills.status, 'active'),
+            or(isNull(agentSkills.installId), eq(skillInstalls.status, 'active')),
+        ));
     });
 });
