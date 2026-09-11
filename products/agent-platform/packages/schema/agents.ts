@@ -48,6 +48,11 @@ export const agents = pgTable('agents', {
   avatarParams: jsonb('avatar_params').$type<AvatarParams | null>(),
   personaId: uuid('persona_id').references(() => personas.id),
   description: text('description'),
+  // The agent's base prompt. Null means "use the platform prompt"
+  // (agent_templates, via fetchPlatformPrompt). Replaces the 'default'
+  // agent_skills row that used to carry it — see
+  // docs/superpowers/specs/2026-09-11-agent-skills-model-design.md.
+  systemPrompt: text('system_prompt'),
   isInternal: boolean('is_internal').notNull().default(false),
   isDefault: boolean('is_default').notNull().default(false),
   createdBy: uuid('created_by').notNull().references(() => users.id),
