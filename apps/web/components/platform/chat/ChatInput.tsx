@@ -171,6 +171,20 @@ export function ChatInput({
     // draft shows once, as the draft chip.
     const visibleInvokedSkills = (invokedSkills ?? []).filter(s => !pickedSkills.some(p => p.id === s.skillId));
     const testChatHintShownRef = useRef(false);
+    // Single predicate every door into the "/" palette must agree on — the
+    // typed "/" in the textarea, openPalette (the "+" menu and the "@"
+    // cross-hint), the "Use skill" menu item, and the palette's own render
+    // gate below all read this instead of re-deriving it.
+    const canUseSlash = !!agentId && !isTestChat;
+    // Shown once per draft, only when there IS an agentId but this is a
+    // Test-in-chat conversation — the no-agentId widget case stays silent,
+    // it just never opens anything.
+    const showTestChatHint = () => {
+        if (!testChatHintShownRef.current) {
+            toast.info(TEST_CHAT_SKILL_HINT);
+            testChatHintShownRef.current = true;
+        }
+    };
 
     const recorder = useAudioRecorder();
     const uploader = useFileUpload();
@@ -223,6 +237,7 @@ export function ChatInput({
         setContent("");
         setMentionedAgents([]);
         setPickedSkills([]);
+        testChatHintShownRef.current = false;
         uploader.clearAttachments();
         // Safety net: a send can happen with a palette still open (e.g. the Send
         // button clicked directly instead of Enter). Never leave a stale palette
@@ -250,19 +265,14 @@ export function ChatInput({
     // ever sets. Without a literal "/" in the draft the first keystroke fails
     // that regex and closes the palette the user just opened.
     const openPalette = (mode: 'slash' | 'mention' | 'hash', replace?: { start: number; end: number }) => {
-        // The public widget renders this same composer with no agentId. Every
-        // door to the skill palette is gated here, in one place, so a new caller
-        // can't reopen the hole the way the cross-hint did.
+        // canUseSlash is the single predicate every door into the "/" palette
+        // reads — this is one of those doors (the "+" menu and the "@"
+        // cross-hint both call in here). No agentId (the public widget) stays
+        // silent; an agentId but a Test-in-chat conversation says why instead
+        // of opening nothing.
         if (mode === 'slash' && !agentId) return;
-
-        // A Test-in-chat conversation runs exactly one skill; combining
-        // skills there defeats the test. Say so once per draft rather than
-        // opening nothing silently.
-        if (mode === 'slash' && isTestChat) {
-            if (!testChatHintShownRef.current) {
-                toast.info(TEST_CHAT_SKILL_HINT);
-                testChatHintShownRef.current = true;
-            }
+        if (mode === 'slash' && !canUseSlash) {
+            showTestChatHint();
             return;
         }
 
@@ -438,7 +448,7 @@ export function ChatInput({
             />
 
             <div className="relative max-w-3xl mx-auto w-full">
-                {paletteMode === 'slash' && (
+                {paletteMode === 'slash' && canUseSlash && (
                     <SlashPalette
                         ref={paletteRef}
                         query={paletteQuery}
@@ -475,7 +485,7 @@ export function ChatInput({
                             // the textarea, while it's open) — hand focus back once a pick is made.
                             textareaRef.current?.focus();
                         }}
-                        onSwitchToSlash={agentId && !isTestChat ? () => switchPalette('slash') : undefined}
+                        onSwitchToSlash={canUseSlash ? () => switchPalette('slash') : undefined}
                         onClose={() => {
                             setPaletteMode(null);
                             setPaletteQuery('');
@@ -645,24 +655,22 @@ export function ChatInput({
                                     const slashMatch = upToCursor.match(/(?:^|\s)\/(\w*)$/);
                                     const mentionMatch = upToCursor.match(/(?:^|\s)@(\w*)$/);
                                     const hashMatch = upToCursor.match(/(?:^|\s)#(\w*)$/);
-                                    // "/" is gated on agentId, not just handled
-                                    // as a failed attach afterwards: the public
-                                    // widget renders this same composer, and
-                                    // opening the palette there would list the
-                                    // tenant's skill library to an embedded
-                                    // visitor. No agent to attach to, no palette.
-                                    if (slashMatch && agentId && isTestChat) {
-                                        // Same "say so once per draft" rule as the "+" menu door
-                                        // (openPalette) — a Test-in-chat conversation runs exactly
-                                        // one skill, so typing "/" here never opens the palette.
-                                        if (!testChatHintShownRef.current) {
-                                            toast.info(TEST_CHAT_SKILL_HINT);
-                                            testChatHintShownRef.current = true;
-                                        }
+                                    // canUseSlash gates every door into the "/" palette, this
+                                    // typed-trigger path included: the public widget renders
+                                    // this same composer with no agentId and must not open the
+                                    // tenant's skill library to an embedded visitor, and a
+                                    // Test-in-chat conversation runs exactly one skill so "/"
+                                    // shows the hint instead of opening anything. "/" never
+                                    // attaches to the agent either way — it only turns a skill
+                                    // on for this conversation.
+                                    if (slashMatch && agentId && !canUseSlash) {
+                                        // Same "say so once per draft" rule as every other door
+                                        // into this palette (openPalette, showTestChatHint).
+                                        showTestChatHint();
                                         setPaletteMode(null);
                                         setPaletteQuery('');
                                         setPaletteRange(null);
-                                    } else if (slashMatch && agentId) {
+                                    } else if (slashMatch && canUseSlash) {
                                         const query = slashMatch[1];
                                         setPaletteMode('slash');
                                         setPaletteQuery(query);
@@ -692,7 +700,7 @@ export function ChatInput({
                                 // visible door ("+" -> From Drive, drag, paste),
                                 // and the hint line only has room to teach the
                                 // two keys that have no other affordance.
-                                placeholder={agentId && !isTestChat
+                                placeholder={canUseSlash
                                     ? "Ask anything, / for skills, @ for AI employees..."
                                     : "Ask anything, @ for AI employees..."}
                                 className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50 caret-primary"
@@ -730,7 +738,7 @@ export function ChatInput({
                                                     <Bot className="h-4 w-4" />
                                                     <span>Use employee</span>
                                                 </DropdownMenuItem>
-                                                {agentId && !isTestChat && (
+                                                {canUseSlash && (
                                                     <DropdownMenuItem onClick={handleUseSkill} className="gap-2 cursor-pointer py-2">
                                                         <Puzzle className="h-4 w-4" />
                                                         <span>Use skill</span>

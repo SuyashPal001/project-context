@@ -211,6 +211,15 @@ describe('ChatInput conversation skills', () => {
         expect(onRemove).toHaveBeenCalledWith('skill-9');
     });
 
+    it('keeps the existing conversation chip and adds a new one for a different pick', async () => {
+        render(<ChatInput onSend={vi.fn()} agentId="agent-1" invokedSkills={[{ skillId: 'skill-2', installId: 'install-2', name: 'Other Skill' }]} />);
+        await type('/blog');
+        await userEvent.click(screen.getByText('slash-palette'));
+
+        await waitFor(() => expect(screen.getByText('Blog Formatter')).toBeTruthy());
+        expect(screen.getByText('Other Skill')).toBeTruthy();
+    });
+
     it('shows one chip when a draft pick is already on in the conversation', async () => {
         render(<ChatInput onSend={vi.fn()} agentId="agent-1" invokedSkills={[{ skillId: 'skill-1', installId: 'install-1', name: 'Blog Formatter' }]} />);
         await type('/blog');
@@ -251,5 +260,25 @@ describe('ChatInput in a Test-in-chat conversation', () => {
         expect(screen.queryByPlaceholderText(/\/ for skills/)).toBeNull();
         await openAddMenu();
         expect(screen.queryByText('Use skill')).toBeNull();
+    });
+
+    it('hides the "/" cross-hint from "@"', async () => {
+        render(<ChatInput onSend={vi.fn()} agentId="agent-1" isTestChat />);
+        await type('@');
+
+        expect(screen.getByText('mention-palette')).toBeTruthy();
+        expect(screen.queryByText('slash-cross-hint')).toBeNull();
+    });
+
+    it('shows the hint again on the next draft after a normal send', async () => {
+        render(<ChatInput onSend={vi.fn()} agentId="agent-1" isTestChat />);
+        const box = await type('/');
+        expect(toastInfo).toHaveBeenCalledTimes(1);
+
+        await userEvent.clear(box);
+        await userEvent.type(box, 'hello{enter}');
+
+        await type('/');
+        expect(toastInfo).toHaveBeenCalledTimes(2);
     });
 });
