@@ -56,7 +56,8 @@ vi.mock('@/components/platform/skills/actions', () => ({
 
 const toastError = vi.fn();
 const toastSuccess = vi.fn();
-vi.mock('sonner', () => ({ toast: { error: (m: string) => toastError(m), success: (m: string) => toastSuccess(m), info: vi.fn() } }));
+const toastInfo = vi.fn();
+vi.mock('sonner', () => ({ toast: { error: (m: string) => toastError(m), success: (m: string) => toastSuccess(m), info: (m: string) => toastInfo(m) } }));
 
 import { ChatInput } from './ChatInput';
 
@@ -178,19 +179,17 @@ describe('ChatInput trigger routing', () => {
 });
 
 describe('ChatInput skill attach', () => {
-    it('attaches the picked skill to the conversation agent', async () => {
-        attachSkillToAgent.mockResolvedValue(undefined);
+    it('never attaches the picked skill to the agent — it only becomes a draft chip', async () => {
         render(<ChatInput onSend={vi.fn()} agentId="agent-1" />);
         await type('/blog');
 
         await userEvent.click(screen.getByText('slash-palette'));
 
-        await waitFor(() => expect(attachSkillToAgent).toHaveBeenCalledWith('agent-1', SKILL));
-        expect(toastSuccess).toHaveBeenCalledWith('Blog Formatter attached to this agent.');
+        await waitFor(() => expect(screen.getByText('Blog Formatter')).toBeTruthy());
+        expect(attachSkillToAgent).not.toHaveBeenCalled();
     });
 
     it('strips the typed "/query" from the draft on pick', async () => {
-        attachSkillToAgent.mockResolvedValue(undefined);
         render(<ChatInput onSend={vi.fn()} agentId="agent-1" />);
         const box = await type('draft /blog');
 
@@ -198,25 +197,59 @@ describe('ChatInput skill attach', () => {
 
         await waitFor(() => expect((box as HTMLTextAreaElement).value).toBe('draft '));
     });
+});
 
-    it('surfaces a missing install record rather than failing silently', async () => {
-        attachSkillToAgent.mockRejectedValue(new Error('NO_INSTALL_ID'));
-        render(<ChatInput onSend={vi.fn()} agentId="agent-1" />);
-        await type('/');
+describe('ChatInput conversation skills', () => {
+    const INVOKED = { skillId: 'skill-9', installId: 'install-9', name: 'UGC Ad Production' };
 
-        await userEvent.click(screen.getByText('slash-palette'));
+    it('shows a chip for each skill turned on in this conversation, and X removes it from the conversation', async () => {
+        const onRemove = vi.fn();
+        render(<ChatInput onSend={vi.fn()} agentId="agent-1" invokedSkills={[INVOKED]} onRemoveInvokedSkill={onRemove} />);
 
-        await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringContaining('no install record')));
-        expect(toastSuccess).not.toHaveBeenCalled();
+        expect(screen.getByText('UGC Ad Production')).toBeTruthy();
+        await userEvent.click(screen.getByTitle('Dismiss'));
+        expect(onRemove).toHaveBeenCalledWith('skill-9');
     });
 
-    it('reports a generic failure when the attach call rejects', async () => {
-        attachSkillToAgent.mockRejectedValue(new Error('boom'));
-        render(<ChatInput onSend={vi.fn()} agentId="agent-1" />);
-        await type('/');
-
+    it('shows one chip when a draft pick is already on in the conversation', async () => {
+        render(<ChatInput onSend={vi.fn()} agentId="agent-1" invokedSkills={[{ skillId: 'skill-1', installId: 'install-1', name: 'Blog Formatter' }]} />);
+        await type('/blog');
         await userEvent.click(screen.getByText('slash-palette'));
 
-        await waitFor(() => expect(toastError).toHaveBeenCalledWith('Failed to attach skill.'));
+        await waitFor(() => expect(screen.getAllByText('Blog Formatter')).toHaveLength(1));
+    });
+
+    it('sends the draft picks with the message as skillsUsed', async () => {
+        const onSend = vi.fn();
+        render(<ChatInput onSend={onSend} agentId="agent-1" />);
+        const box = await type('/blog');
+        await userEvent.click(screen.getByText('slash-palette'));
+        await userEvent.type(box, 'write me an intro{enter}');
+
+        await waitFor(() => expect(onSend).toHaveBeenCalled());
+        expect(onSend.mock.calls[0][2]).toEqual([{ id: 'skill-1', name: 'Blog Formatter' }]);
+    });
+});
+
+describe('ChatInput in a Test-in-chat conversation', () => {
+    it('does not open the skill palette on "/", and says why', async () => {
+        render(<ChatInput onSend={vi.fn()} agentId="agent-1" isTestChat />);
+        await type('/');
+
+        expect(screen.queryByText('slash-palette')).toBeNull();
+        expect(toastInfo).toHaveBeenCalledWith('Test chats run one skill. Start a normal chat to combine skills.');
+    });
+
+    it('shows the hint once per draft, not once per keystroke', async () => {
+        render(<ChatInput onSend={vi.fn()} agentId="agent-1" isTestChat />);
+        await type('/abc');
+        expect(toastInfo).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not advertise "/" or offer "Use skill"', async () => {
+        render(<ChatInput onSend={vi.fn()} agentId="agent-1" isTestChat />);
+        expect(screen.queryByPlaceholderText(/\/ for skills/)).toBeNull();
+        await openAddMenu();
+        expect(screen.queryByText('Use skill')).toBeNull();
     });
 });

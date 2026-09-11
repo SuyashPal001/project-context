@@ -197,7 +197,14 @@ export interface Conversation {
      *  allowMode: 'ask' (default) shows the ApproveCost card before every
      *  generation tool call; 'auto' skips it — enforced in
      *  confirmGenerationOrDecline, not just hidden client-side. */
-    metadata?: { folderScope?: { prefix: string }; allowMode?: 'ask' | 'auto' } | null;
+    metadata?: {
+        folderScope?: { prefix: string };
+        allowMode?: 'ask' | 'auto';
+        /** Set on a Test-in-chat conversation, which runs exactly this one skill. */
+        testSkillInstallId?: string;
+        /** Skills turned on in this conversation with "/". Never attached to the agent. */
+        invokedSkills?: Array<{ installId: string; skillId: string; name: string }>;
+    } | null;
 }
 
 export interface ConversationsResponse {

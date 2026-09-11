@@ -7,8 +7,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { Attachment } from "@/types/agent-events";
 import { FileText } from "lucide-react";
@@ -30,9 +28,9 @@ import { MentionPalette } from "./MentionPalette";
 import { HashFilePalette } from "./HashFilePalette";
 import { ProviderIcon } from "./ProviderIcon";
 import { Agent } from "../agents/types";
-import { attachSkillToAgent } from "@/components/platform/skills/actions";
 import type { Skill } from "@/components/platform/skills/types";
-import { ApiError } from "@/lib/api";
+
+export const TEST_CHAT_SKILL_HINT = "Test chats run one skill. Start a normal chat to combine skills.";
 
 interface LLMProvider {
     id: string;
@@ -116,10 +114,17 @@ interface ChatInputProps {
     /** Whether generation (image/video/etc) asks for cost confirmation first, or runs unattended. */
     allowMode?: 'ask' | 'auto';
     onAllowModeChange?: (mode: 'ask' | 'auto') => void;
-    /** Agent a "/" skill pick attaches to. Skills attach per-agent, not
-     *  per-message, so without this the "/" palette has nothing to attach to
-     *  and says so rather than silently no-opping. */
+    /** Gates the "/" palette: the public widget renders this composer with
+     *  no agent and must not list the tenant's skill library. A "/" pick
+     *  applies to this conversation only — it never attaches to the agent. */
     agentId?: string;
+    /** Skills turned on in this conversation with "/", read from the
+     *  conversation's metadata so they survive a reload. */
+    invokedSkills?: Array<{ skillId: string; installId: string; name: string }>;
+    /** Removes one skill from this conversation — never from the agent. */
+    onRemoveInvokedSkill?: (skillId: string) => void;
+    /** A Test-in-chat conversation runs exactly one skill, so "/" is off. */
+    isTestChat?: boolean;
 }
 
 export function ChatInput({
@@ -139,6 +144,9 @@ export function ChatInput({
     allowMode,
     onAllowModeChange,
     agentId,
+    invokedSkills,
+    onRemoveInvokedSkill,
+    isTestChat,
 }: ChatInputProps) {
     const [content, setContent] = useState("");
     const [paletteMode, setPaletteMode] = useState<'slash' | 'mention' | 'hash' | null>(null);
@@ -156,28 +164,13 @@ export function ChatInput({
     // `content`, then re-serialized back into "@Name" text at send time so the
     // wire format (and whatever downstream reads it) is unchanged.
     const [mentionedAgents, setMentionedAgents] = useState<Agent[]>([]);
-    // Skills picked via "/" in this draft — purely a visual "it happened"
-    // confirmation. The attach itself already fired (agent-level, via
-    // handleAttachSkill) at selection time; this array never round-trips
-    // into `content` or the send payload.
+    // Skills picked via "/" in this draft. Sent with the message as
+    // skillsUsed; the orchestrator turns them on for this conversation.
     const [pickedSkills, setPickedSkills] = useState<Skill[]>([]);
-    // Locally hidden attached-skill rows — mirrors pickedSkills' dismiss
-    // semantics (SkillChip.tsx): removing the chip never detaches anything,
-    // it only clears the confirmation from view for this session.
-    const [dismissedAttachedIds, setDismissedAttachedIds] = useState<Set<string>>(new Set());
-    const queryClient = useQueryClient();
-
-    // Skills already attached to this agent (via "/" here, "Test in chat" on
-    // the Skills page, or the agent's own picker) — unlike pickedSkills above,
-    // this is not draft state: it's what GET /agents/:id/skills actually
-    // returns, so it survives reload and shows up even when the attach
-    // happened somewhere other than this composer.
-    const { data: attachedSkillsData } = useQuery({
-        queryKey: ["agent-skills", agentId],
-        queryFn: () => api.get<{ data: Array<{ id: string; name: string }> }>(`/api/v1/agents/${agentId}/skills`),
-        enabled: !!agentId,
-    });
-    const attachedSkills = (attachedSkillsData?.data ?? []).filter(s => !dismissedAttachedIds.has(s.id));
+    // A skill already on in this conversation that is also picked in the
+    // draft shows once, as the draft chip.
+    const visibleInvokedSkills = (invokedSkills ?? []).filter(s => !pickedSkills.some(p => p.id === s.skillId));
+    const testChatHintShownRef = useRef(false);
 
     const recorder = useAudioRecorder();
     const uploader = useFileUpload();
@@ -214,6 +207,7 @@ export function ChatInput({
                 setContent("");
                 setMentionedAgents([]);
                 setPickedSkills([]);
+                testChatHintShownRef.current = false;
                 uploader.clearAttachments();
                 recorder.clearPreview();
             } catch (err) {
@@ -261,6 +255,17 @@ export function ChatInput({
         // can't reopen the hole the way the cross-hint did.
         if (mode === 'slash' && !agentId) return;
 
+        // A Test-in-chat conversation runs exactly one skill; combining
+        // skills there defeats the test. Say so once per draft rather than
+        // opening nothing silently.
+        if (mode === 'slash' && isTestChat) {
+            if (!testChatHintShownRef.current) {
+                toast.info(TEST_CHAT_SKILL_HINT);
+                testChatHintShownRef.current = true;
+            }
+            return;
+        }
+
         const base = replace
             ? content.slice(0, replace.start) + content.slice(replace.end)
             : content;
@@ -292,34 +297,6 @@ export function ChatInput({
     // rather than carried over.
     const switchPalette = (mode: 'slash' | 'mention' | 'hash') =>
         openPalette(mode, paletteRange ?? undefined);
-
-    // "/" attaches an installed skill to this conversation's agent — the same
-    // agent-level attach the agent page's picker performs, not a per-message
-    // flag (no such thing exists). So the confirmation is a toast rather than a
-    // composer chip: a removable chip next to the draft would imply the skill
-    // only applies to this one message.
-    const handleAttachSkill = async (skill: Skill) => {
-        // Unreachable via the UI — openPalette gates every door to this palette
-        // on agentId — but the narrowing is needed and a silent no-op would be
-        // worse than a message if a door ever bypasses it.
-        if (!agentId) {
-            toast.error("Open a conversation first — skills attach to its agent.");
-            return;
-        }
-        try {
-            await attachSkillToAgent(agentId, skill);
-            toast.success(`${skill.name} attached to this agent.`);
-            queryClient.invalidateQueries({ queryKey: ["agent-skills", agentId] });
-        } catch (err) {
-            if (err instanceof Error && err.message === "NO_INSTALL_ID") {
-                toast.error("This skill has no install record — reinstall it from the Skills page first.");
-            } else if (err instanceof ApiError && (err.data as { code?: string } | undefined)?.code === "NOT_READY") {
-                toast.error("This skill's content isn't ready yet — try again in a moment.");
-            } else {
-                toast.error("Failed to attach skill.");
-            }
-        }
-    };
 
     // "From Drive" in the "+" menu — links to the same "#" picker rather than
     // a separate dialog (the old DriveFilePicker.tsx was removed, merged into
@@ -466,15 +443,12 @@ export function ChatInput({
                         ref={paletteRef}
                         query={paletteQuery}
                         onSelect={(skill: Skill) => {
-                            // Strip the typed "/query" trigger text — the pick
-                            // becomes a chip below (plus a toast), not text in
-                            // the draft.
+                            // Strip the typed "/query" trigger text — the pick becomes a draft chip below, sent with the message as skillsUsed.
                             setContent(c => {
                                 if (!paletteRange) return c;
                                 return c.slice(0, paletteRange.start) + c.slice(paletteRange.end);
                             });
                             setPickedSkills(prev => prev.some(s => s.id === skill.id) ? prev : [...prev, skill]);
-                            void handleAttachSkill(skill);
                             textareaRef.current?.focus();
                         }}
                         onSwitchToMention={() => switchPalette('mention')}
@@ -501,7 +475,7 @@ export function ChatInput({
                             // the textarea, while it's open) — hand focus back once a pick is made.
                             textareaRef.current?.focus();
                         }}
-                        onSwitchToSlash={agentId ? () => switchPalette('slash') : undefined}
+                        onSwitchToSlash={agentId && !isTestChat ? () => switchPalette('slash') : undefined}
                         onClose={() => {
                             setPaletteMode(null);
                             setPaletteQuery('');
@@ -617,13 +591,13 @@ export function ChatInput({
                         </div>
                     )}
 
-                    {attachedSkills.length > 0 && (
+                    {visibleInvokedSkills.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 px-4 pt-3">
-                            {attachedSkills.map(skill => (
+                            {visibleInvokedSkills.map(skill => (
                                 <SkillChip
-                                    key={skill.id}
-                                    skill={skill}
-                                    onRemove={() => setDismissedAttachedIds(prev => new Set(prev).add(skill.id))}
+                                    key={skill.installId}
+                                    skill={{ id: skill.skillId, name: skill.name }}
+                                    onRemove={() => onRemoveInvokedSkill?.(skill.skillId)}
                                 />
                             ))}
                         </div>
@@ -677,7 +651,18 @@ export function ChatInput({
                                     // opening the palette there would list the
                                     // tenant's skill library to an embedded
                                     // visitor. No agent to attach to, no palette.
-                                    if (slashMatch && agentId) {
+                                    if (slashMatch && agentId && isTestChat) {
+                                        // Same "say so once per draft" rule as the "+" menu door
+                                        // (openPalette) — a Test-in-chat conversation runs exactly
+                                        // one skill, so typing "/" here never opens the palette.
+                                        if (!testChatHintShownRef.current) {
+                                            toast.info(TEST_CHAT_SKILL_HINT);
+                                            testChatHintShownRef.current = true;
+                                        }
+                                        setPaletteMode(null);
+                                        setPaletteQuery('');
+                                        setPaletteRange(null);
+                                    } else if (slashMatch && agentId) {
                                         const query = slashMatch[1];
                                         setPaletteMode('slash');
                                         setPaletteQuery(query);
@@ -707,7 +692,7 @@ export function ChatInput({
                                 // visible door ("+" -> From Drive, drag, paste),
                                 // and the hint line only has room to teach the
                                 // two keys that have no other affordance.
-                                placeholder={agentId
+                                placeholder={agentId && !isTestChat
                                     ? "Ask anything, / for skills, @ for AI employees..."
                                     : "Ask anything, @ for AI employees..."}
                                 className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50 caret-primary"
@@ -745,7 +730,7 @@ export function ChatInput({
                                                     <Bot className="h-4 w-4" />
                                                     <span>Use employee</span>
                                                 </DropdownMenuItem>
-                                                {agentId && (
+                                                {agentId && !isTestChat && (
                                                     <DropdownMenuItem onClick={handleUseSkill} className="gap-2 cursor-pointer py-2">
                                                         <Puzzle className="h-4 w-4" />
                                                         <span>Use skill</span>
