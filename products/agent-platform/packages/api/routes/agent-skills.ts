@@ -72,7 +72,7 @@ async function resolveInstalledSkillManifest(
     const manifest = row.manifest as Record<string, unknown>;
     const body = typeof manifest.body === 'string' && manifest.body.length > 0 ? manifest.body : null;
     if (!body) return null;
-    const name = typeof manifest.name === 'string' && manifest.name.trim().length > 0 ? manifest.name.trim() : null;
+    const name = typeof manifest.name === 'string' && manifest.name.trim().length > 0 ? manifest.name.trim().slice(0, 100) : null;
     return { body, name };
 }
 
@@ -145,6 +145,25 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
     }
 
     try {
+        // Resolved before the cap check so the cap compares against the
+        // canonical (lowercase, DB-verified) install id — zod's .uuid()
+        // accepts an uppercase UUID, Postgres always returns lowercase, and
+        // comparing against the raw client value would let a re-attach at
+        // the cap double-count itself. Resolving first also means a foreign
+        // install id at the cap correctly 404s instead of reporting the cap.
+        let install: { id: string; skillId: string; installedVersion: number } | null = null;
+        let manifest: { body: string; name: string | null } | null = null;
+        if (result.data.installId) {
+            install = await resolveInstall(result.data.installId, tenantId);
+            if (!install) {
+                return c.json({ error: 'Skill install not found', code: 'NOT_FOUND' }, 404);
+            }
+            manifest = await resolveInstalledSkillManifest(install.skillId, install.installedVersion);
+            if (!manifest) {
+                return c.json({ error: 'Skill version has no readable content yet', code: 'NOT_READY' }, 409);
+            }
+        }
+
         // The cap counts the agent's *other* attached skills. The 'default'
         // row is its base prompt, not a skill (TRANSITION: removed in Task 13),
         // and a re-attach never counts the row it reactivates.
@@ -152,7 +171,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
             .from(agentSkills)
             .where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.tenantId, tenantId), eq(agentSkills.status, 'active')));
         const others = active.filter((s) => s.name !== 'default'
-            && (result.data.installId ? s.installId !== result.data.installId : s.name !== result.data.name));
+            && (install ? s.installId !== install.id : s.name !== result.data.name));
         if (others.length >= MAX_ATTACHED_SKILLS) {
             return c.json({
                 error: `This agent already has the maximum of ${MAX_ATTACHED_SKILLS} skills attached. Detach one first.`,
@@ -160,20 +179,16 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
             }, 409);
         }
 
-        if (result.data.installId) {
-            const install = await resolveInstall(result.data.installId, tenantId);
-            if (!install) {
-                return c.json({ error: 'Skill install not found', code: 'NOT_FOUND' }, 404);
-            }
-            const manifest = await resolveInstalledSkillManifest(install.skillId, install.installedVersion);
-            if (!manifest) {
-                return c.json({ error: 'Skill version has no readable content yet', code: 'NOT_READY' }, 409);
-            }
-            const name = manifest.name ?? result.data.name;
-
+        if (install && manifest) {
             // An install is attached at most once per agent. Reuse its row,
-            // active or archived, so a re-attach after a detach reactivates the
-            // same row instead of colliding with it.
+            // active or archived, so a re-attach after a detach reactivates
+            // the same row instead of colliding with it. The name is NOT
+            // touched here: the old [agentId, tenantId, name, version] unique
+            // constraint still covers archived rows, and renaming this row
+            // could collide with an unrelated archived row sitting on the
+            // manifest's name. An installed row is identified by installId
+            // now, so the name is cosmetic until a later migration
+            // normalises it after dropping that constraint.
             const [existing] = await db.select({ id: agentSkills.id })
                 .from(agentSkills)
                 .where(and(
@@ -186,50 +201,82 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
 
             if (existing) {
                 const [updated] = await db.update(agentSkills)
-                    .set({ name, systemPrompt: manifest.body, status: 'active', updatedAt: new Date() })
+                    .set({ systemPrompt: manifest.body, status: 'active', updatedAt: new Date() })
                     .where(and(eq(agentSkills.id, existing.id), eq(agentSkills.tenantId, tenantId)))
                     .returning();
-                db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_updated', resource: 'agent_skill', resourceId: updated.id, metadata: { agentId, name, reason: 'reattach' }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
-                return c.json({ data: updated }, 200);
+                // If the row vanished between the lookup and the update (a
+                // concurrent detach-and-purge), fall through to the insert
+                // path below instead of dereferencing `undefined.id`.
+                if (updated) {
+                    db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_updated', resource: 'agent_skill', resourceId: updated.id, metadata: { agentId, reason: 'reattach' }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+                    return c.json({ data: updated }, 200);
+                }
             }
-
-            const [created] = await db.insert(agentSkills).values({
-                agentId,
-                tenantId,
-                name,
-                systemPrompt: manifest.body,
-                tools: [],
-                config: result.data.config ?? null,
-                version: result.data.version ?? 1,
-                status: 'active',
-                installId: install.id,
-            }).returning();
-            db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_created', resource: 'agent_skill', resourceId: created.id, metadata: { agentId, name }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
-            return c.json({ data: created }, 201);
         }
 
-        if (!result.data.systemPrompt) {
+        if (!install && !result.data.systemPrompt) {
             return c.json({ error: 'systemPrompt is required when installId is omitted', code: 'VALIDATION_ERROR' }, 400);
         }
+
+        const name = install ? (manifest!.name ?? result.data.name) : result.data.name;
+        const systemPrompt = install ? manifest!.body : result.data.systemPrompt!;
+        const version = result.data.version ?? 1;
+
+        // The old [agentId, tenantId, name, version] unique constraint still
+        // covers archived rows. Without this, uninstalling and reinstalling a
+        // skill (a fresh installId, but the same name/version) would insert,
+        // collide with the row the earlier attach left archived, and report
+        // NAME_CONFLICT forever. Reactivate that row instead — relinking it
+        // to the current install (or null for a hand-authored skill).
+        const [archived] = await db.select({ id: agentSkills.id })
+            .from(agentSkills)
+            .where(and(
+                eq(agentSkills.agentId, agentId),
+                eq(agentSkills.tenantId, tenantId),
+                eq(agentSkills.name, name),
+                eq(agentSkills.version, version),
+                eq(agentSkills.status, 'archived'),
+            ))
+            .limit(1);
+
+        if (archived) {
+            const [reactivated] = await db.update(agentSkills)
+                .set({ installId: install ? install.id : null, systemPrompt, status: 'active', updatedAt: new Date() })
+                .where(and(eq(agentSkills.id, archived.id), eq(agentSkills.tenantId, tenantId)))
+                .returning();
+            if (reactivated) {
+                db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_updated', resource: 'agent_skill', resourceId: reactivated.id, metadata: { agentId, name, reason: 'reattach' }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+                return c.json({ data: reactivated }, 200);
+            }
+            // Race: the archived row vanished between the lookup and the
+            // update. Fall through to the insert below.
+        }
+
         const [created] = await db.insert(agentSkills).values({
             agentId,
             tenantId,
-            name: result.data.name,
-            systemPrompt: result.data.systemPrompt,
+            name,
+            systemPrompt,
             tools: [],
             config: result.data.config ?? null,
-            version: result.data.version ?? 1,
+            version,
             status: 'active',
-            installId: null,
+            installId: install ? install.id : null,
         }).returning();
-        db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_created', resource: 'agent_skill', resourceId: created.id, metadata: { agentId, name: result.data.name }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+        db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_created', resource: 'agent_skill', resourceId: created.id, metadata: { agentId, name }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
         return c.json({ data: created }, 201);
     } catch (err: any) {
-        // The driver wraps the pg error under `.cause` (same shape as
-        // userUpsertMiddleware): `err.code` is undefined, `err.cause.code` is '23505'.
+        // The driver (postgres.js) wraps the pg error under `.cause` (same
+        // shape as userUpsertMiddleware): `err.code` is undefined,
+        // `err.cause.code` is '23505'. postgres.js reports the violated
+        // index as `constraint_name`, not `constraint` (node-postgres' key,
+        // and the one this route used to read — which meant the constraint
+        // check below never matched, and a real race always fell through to
+        // NAME_CONFLICT). See apps/api/src/middleware/userUpsert.ts:102-104
+        // for the same fix applied earlier.
         const pgErr = err?.cause ?? err;
         if (pgErr?.code === '23505') {
-            if (pgErr.constraint === ACTIVE_INSTALL_UNIQUE) {
+            if (pgErr.constraint_name === ACTIVE_INSTALL_UNIQUE) {
                 // A concurrent attach of the same install won. The desired end
                 // state already holds, and attachSkillToAgent treats CONFLICT
                 // as success.
