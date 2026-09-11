@@ -183,6 +183,17 @@ this one.
   The attach route (`agent-skills.ts` POST) and the import worker both upsert on
   the install, and both take the row name from the manifest. A second attach of
   the same install is a no-op, not a second row.
+  - **Uninstalling doesn't archive the attachment.** `DELETE /skills/:id/install`
+    deactivates the tenant's `skill_installs` row but leaves every agent's
+    `agent_skills` row for it `status = 'active'`. The runtime already tolerates
+    this — `fetchAttachedSkills` resolves each install fresh and simply skips one
+    that no longer resolves — but the API surfaces must too: `GET
+    /agents/:agentId/skills`, the attach route's cap count, and the worker's cap
+    count all left-join `skill_installs` (tenant-scoped: `si.tenant_id =
+    <tenantId>`) and keep only rows where `install_id IS NULL` (hand-authored) or
+    the join resolves to `si.status = 'active'`. Otherwise a dead install's chip
+    keeps showing on the agent page, counts against the 8-skill cap, and blocks a
+    real re-attach.
 - **Dead weight.** Remove the tool allowlist writes from onboarding,
   `integrations.sync.ts` (including its call to the missing `/update` route) and
   the import worker. Remove `MAX_COMPOSED_SKILL_CHARS` and every check against it.
@@ -190,6 +201,30 @@ this one.
   the row no longer exists. The fairness routes (`ops.fairness.ts:86`,
   `agents.fairness.ts:81`) read the prompt from `agents.system_prompt` instead of
   the `default` row.
+  - `packages/foundation/ai/src/config/bundler.ts`'s `loadActiveSkill` is also a
+    `'default'` reader in spirit — it selects the agent's single highest-version
+    active `agent_skills` row with no name filter at all, so on a pre-migration
+    tenant it can return the `default` row as if it were an attached skill. It is
+    unreachable today: `runMessageRelay`'s `getRuntime` throws before this code
+    path executes, so nothing calls it in production. Left as-is and deferred —
+    not touched by the final-fix wave — but noted here so a future reader of this
+    file doesn't assume it was covered.
+  - **Sentinel, precisely.** The 'default' row is identified by
+    `name = 'default' AND install_id IS NULL` together, never by name alone. A
+    real installed skill whose manifest happens to be named "default" carries a
+    non-null `install_id` and must not be hidden, uncounted, or deleted by a
+    guard that only checks the name.
+  - **Persona-prompt transition fallback.** Between applying migration 0091 (adds
+    `agents.system_prompt`) and every Lambda/orchestrator instance running the
+    new code, a tenant onboarded in that window has only a `default` `agent_skills`
+    row and a NULL `agents.system_prompt`. `fetchAgentPersonaPrompt`
+    (`apps/agent-orchestrator/src/usage.ts`) reads
+    `COALESCE(a.system_prompt, (SELECT s.system_prompt FROM agent_skills s WHERE
+    s.agent_id = a.id AND s.tenant_id = a.tenant_id AND s.name = 'default' AND
+    s.install_id IS NULL AND s.status = 'active' ORDER BY s.created_at DESC LIMIT
+    1))`, both tenant-scoped, so that window's tenants don't silently lose their
+    base prompt. Marked `// TRANSITION (remove in migration 0092 / PR 2)`; Task 13
+    removes it once 0092 has deleted every `default` row everywhere.
 
 ### 2. `/` for a conversation, the composer, and the agent page
 
