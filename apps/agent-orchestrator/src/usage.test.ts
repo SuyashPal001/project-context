@@ -390,8 +390,8 @@ describe('resolveInvokedSkills', () => {
     expect(mockPoolQuery).not.toHaveBeenCalled()
   })
 
-  it('returns an empty list instead of throwing on a database error', async () => {
+  it('returns null instead of throwing on a database error, distinct from "nothing resolved"', async () => {
     mockPoolQuery.mockRejectedValueOnce(new Error('db down'))
-    await expect(resolveInvokedSkills([SKILL_ID], 'tenant-1')).resolves.toEqual([])
+    await expect(resolveInvokedSkills([SKILL_ID], 'tenant-1')).resolves.toBeNull()
   })
 })

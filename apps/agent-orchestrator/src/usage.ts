@@ -114,8 +114,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * tenant's own active installs. The client is never trusted: an id that is
  * not a uuid, not installed by this tenant, or not active is dropped, so a
  * forged id cannot reach another tenant's skill.
+ *
+ * Returns `null` on a database error rather than `[]`. The two are not
+ * interchangeable to callers that also resolve previously-stored entries:
+ * `[]` means "none of these resolved" and is a legitimate signal to prune
+ * the saved list, while `null` means "we don't know" and must never be
+ * treated as proof that a stored entry is gone — see chatStream.ts's "/"
+ * block, which skips saving entirely when either lookup returns `null`.
  */
-export async function resolveInvokedSkills(skillIds: string[], tenantId: string): Promise<InvokedSkill[]> {
+export async function resolveInvokedSkills(skillIds: string[], tenantId: string): Promise<InvokedSkill[] | null> {
   const ids = [...new Set(skillIds.filter((id) => UUID_RE.test(id)))].slice(0, MAX_INVOKED_SKILLS)
   if (!tenantId || ids.length === 0) return []
   try {
@@ -129,7 +136,7 @@ export async function resolveInvokedSkills(skillIds: string[], tenantId: string)
     return res.rows.map((r) => ({ installId: r.install_id, skillId: r.skill_id, name: r.name }))
   } catch (err) {
     console.error('[usage] resolveInvokedSkills error:', (err as Error).message)
-    return []
+    return null
   }
 }
 

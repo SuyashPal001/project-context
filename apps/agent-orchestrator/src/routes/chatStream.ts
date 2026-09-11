@@ -12,7 +12,7 @@ import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
 import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage, resolveInvokedSkills, recordSkillRuns, toMastraSkillName } from '../usage.js'
 import { fetchConversationSkillSettings, saveConversationInvokedSkills } from '../persistence.js'
-import { mergeInvokedSkills } from '../mastra/skillInvocation.js'
+import { mergeInvokedSkills, type InvokedSkill } from '../mastra/skillInvocation.js'
 import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
@@ -150,6 +150,16 @@ export function attachmentFromCanvasToolResult(
     attachment.generation = { creditsUsedMicro: result.creditsUsedMicro, model: result.model }
   }
   return attachment
+}
+
+// True iff the two lists carry the same (installId, name) pairs, regardless
+// of order. A length-only compare misses a forged/stale stored entry that
+// still resolves to a *different* installId or name than what the client had
+// stored — this catches that case so it still triggers a save-back.
+function sameInvokedSkillSet(a: InvokedSkill[], b: InvokedSkill[]): boolean {
+  if (a.length !== b.length) return false
+  const setA = new Set(a.map((s) => `${s.installId}::${s.name}`))
+  return b.every((s) => setA.has(`${s.installId}::${s.name}`))
 }
 
 function extractPlanJson(text: string): Record<string, unknown> | null {
@@ -312,16 +322,35 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         resolveInvokedSkills(skillSettings.invokedSkills.map((s) => s.skillId), tenantId),
         resolveInvokedSkills((skillsUsed ?? []).map((s) => s.id), tenantId),
       ])
-      const { merged, newlyInvoked } = mergeInvokedSkills(storedResolved, picked)
-      const pruned = storedResolved.length !== skillSettings.invokedSkills.length
-      if (newlyInvoked.length > 0 || pruned) saveConversationInvokedSkills(idToken, conversationId, merged)
-      if (newlyInvoked.length > 0) {
-        recordSkillRuns(newlyInvoked.map((s) => s.installId), tenantId)
-          .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRuns failed:`, (err as Error).message))
+      // A database error returns null, not []. Neither lookup's result can be
+      // trusted as "nothing resolved" in that case — unverified stored
+      // entries must not load, and nothing may be saved over the real list,
+      // so a null from either lookup skips the whole rest of the block, same
+      // as a failed conversation read does above.
+      if (storedResolved !== null && picked !== null) {
+        // The resolve query has no ORDER BY, so the resolved rows can come
+        // back in any order — reorder to follow the stored list's own order
+        // (by skillId) before merging, so order alone never looks like a
+        // change to save back.
+        const storedOrder = new Map(skillSettings.invokedSkills.map((s, i) => [s.skillId, i]))
+        const orderedStoredResolved = [...storedResolved].sort(
+          (a, b) => (storedOrder.get(a.skillId) ?? 0) - (storedOrder.get(b.skillId) ?? 0),
+        )
+        const { merged, newlyInvoked } = mergeInvokedSkills(orderedStoredResolved, picked)
+        // A forged/stale stored entry (wrong installId or name) still
+        // resolves — the server-truth row just doesn't match what was
+        // stored — so a length-only compare would miss it; compare the sets
+        // themselves, ignoring order.
+        const pruned = !sameInvokedSkillSet(orderedStoredResolved, skillSettings.invokedSkills)
+        if (newlyInvoked.length > 0 || pruned) saveConversationInvokedSkills(idToken, conversationId, merged)
+        if (newlyInvoked.length > 0) {
+          recordSkillRuns(newlyInvoked.map((s) => s.installId), tenantId)
+            .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRuns failed:`, (err as Error).message))
+        }
+        skillsInvokedThisTurn = newlyInvoked.map((s) => toMastraSkillName(s.name))
+        requestContext.set('invokedSkillInstallIds', merged.map((s) => s.installId))
+        requestContext.set('skillsInvokedThisTurn', skillsInvokedThisTurn)
       }
-      skillsInvokedThisTurn = newlyInvoked.map((s) => toMastraSkillName(s.name))
-      requestContext.set('invokedSkillInstallIds', merged.map((s) => s.installId))
-      requestContext.set('skillsInvokedThisTurn', skillsInvokedThisTurn)
     }
 
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
