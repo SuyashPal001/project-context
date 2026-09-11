@@ -44,6 +44,20 @@ function sqlParams(executed: unknown): unknown[] {
   return chunks.filter((c) => !(c && typeof c === 'object' && Array.isArray((c as { value?: unknown[] }).value)));
 }
 
+// The archived-name UPDATE's `install_id` scalar subselect and its EXISTS
+// guard both query `skill_installs si`, so a whole-statement `.toContain` /
+// `.toMatch` on a filter like `si.tenant_id` is satisfied by either copy —
+// deleting the filter from just one of them, or collapsing the guard to an
+// unscoped `EXISTS (SELECT 1 FROM skill_installs si)`, still passes such an
+// assertion. These pull each subquery's own text out so each can be checked
+// in isolation and neither can hide behind the other.
+function extractExistsGuard(sql: string): string | undefined {
+  return sql.match(/EXISTS\s*\(\s*(SELECT 1 FROM skill_installs si[\s\S]*?)\)\s*$/m)?.[1];
+}
+function extractInstallIdSubselect(sql: string): string | undefined {
+  return sql.match(/install_id\s*=\s*\(\s*(SELECT si\.id FROM skill_installs si[\s\S]*?)\)/)?.[1];
+}
+
 const safeExtractSkillZipMock = vi.hoisted(() => vi.fn());
 vi.mock('../lib/safeSkillZip', async () => {
   const actual = await vi.importActual<typeof import('../lib/safeSkillZip')>('../lib/safeSkillZip');
@@ -553,10 +567,6 @@ describe('handleSkillImport', () => {
     expect(archivedSql).toContain("status = 'archived'");
     expect(archivedSql).toMatch(/a\.tenant_id\s*=/);
     expect(archivedSql).toMatch(/s2\.tenant_id\s*=/);
-    // si.tenant_id appears twice: once picking the install_id to write, once
-    // in the EXISTS guard that refuses to revive the row with no active
-    // install at all.
-    expect(archivedSql).toMatch(/si\.tenant_id\s*=/);
     expect(sqlParams(archivedCall![0])).toContain('tenant-1');
   });
 
@@ -566,7 +576,18 @@ describe('handleSkillImport', () => {
   // (status='active', install_id=NULL). This is reachable — the API can
   // enqueue the import before the skill_installs row commits. The EXISTS
   // guard makes the whole UPDATE match zero rows in that case instead.
-  it("the archived-name UPDATE guards against reviving with a NULL install_id via an EXISTS check", async () => {
+  //
+  // Fix round 2: `si.tenant_id` and `si.status = 'active'` each appear
+  // *twice* in this statement — once in the `install_id` scalar subselect,
+  // once in the EXISTS guard — so asserting on the whole statement's text
+  // is satisfied even if one of the two copies is deleted, or the guard is
+  // collapsed to an unscoped `EXISTS (SELECT 1 FROM skill_installs si)`.
+  // That is a real cross-tenant hole: tenant B's active install of the same
+  // public catalog skill_id would satisfy an unscoped guard while tenant
+  // A's own install_id subselect is NULL, reviving A's archived row with
+  // install_id NULL. `extractExistsGuard` and `extractInstallIdSubselect`
+  // isolate each subquery's own text so neither can hide behind the other.
+  it("the archived-name UPDATE's EXISTS guard, isolated from the rest of the statement, filters by skill, tenant, and active status", async () => {
     const { handleSkillImport } = await import('../handlers/skillImport');
 
     await handleSkillImport({
@@ -579,7 +600,29 @@ describe('handleSkillImport', () => {
       .map(([q]) => sqlText(q))
       .find((t) => t.includes("status = 'archived'"));
     expect(archivedSql).toBeDefined();
-    expect(archivedSql).toContain('EXISTS');
-    expect(archivedSql).toContain("si.status = 'active'");
+    const guard = extractExistsGuard(archivedSql!);
+    expect(guard).toBeDefined();
+    expect(guard).toContain('si.skill_id');
+    expect(guard).toContain('si.tenant_id');
+    expect(guard).toContain("si.status = 'active'");
+  });
+
+  it("the archived-name UPDATE's install_id subselect, isolated from the EXISTS guard, is itself tenant- and status-scoped", async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const archivedSql = dbMock.execute.mock.calls
+      .map(([q]) => sqlText(q))
+      .find((t) => t.includes("status = 'archived'"));
+    expect(archivedSql).toBeDefined();
+    const subselect = extractInstallIdSubselect(archivedSql!);
+    expect(subselect).toBeDefined();
+    expect(subselect).toContain('si.tenant_id');
+    expect(subselect).toContain("si.status = 'active'");
   });
 });
