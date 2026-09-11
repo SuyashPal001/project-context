@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db';
 import { agents } from '@serverless-saas/agent-schema/agents';
@@ -11,12 +11,14 @@ import type { AppEnv } from '@serverless-saas/types';
 
 export const agentSkillsRoutes = new Hono<AppEnv>();
 
-// Mirrors MAX_ATTACHED_SKILLS / MAX_COMPOSED_SKILL_CHARS in the orchestrator's
-// usage.ts. Deliberately duplicated rather than shared: the orchestrator is not
-// a dependency of this Lambda, and a shared package for two integers would cost
-// more than it saves. If either number changes, change both.
+// Abuse ceiling, not a prompt budget: native Mastra skills are listed by name
+// and description and loaded on demand, so an attached skill no longer costs
+// its full body in every prompt. The import worker enforces the same cap.
 const MAX_ATTACHED_SKILLS = 8;
-const MAX_COMPOSED_SKILL_CHARS = 24_000;
+
+// The partial unique index from migration 0091. A 23505 naming it means the
+// same install is already attached; any other 23505 is a name collision.
+const ACTIVE_INSTALL_UNIQUE = 'agent_skills_agent_install_active_unique';
 
 // Verify agent belongs to tenant — used before every operation.
 // Exported so the in-conversation create path (routes/internal/skills.ts) runs
@@ -52,19 +54,26 @@ async function resolveInstall(installId: string, tenantId: string) {
     return install ?? null;
 }
 
-// The body of the *pinned* version, not the latest — an install is npm-style
-// pinned, so the agent must receive the content the tenant actually installed.
-// Only a 'ready' row's manifest was written by a completed import; a
-// pending/failed row's manifest is whatever the previous version left behind.
-async function resolveInstalledSkillBody(skillId: string, version: number): Promise<string | null> {
+// The *pinned* version's manifest, not the latest: an install is npm-style
+// pinned. Only a 'ready' row's manifest was written by a completed import.
+// Returns the body the agent runs on and the manifest's own name, which is
+// the one name an installed skill's row carries. Two writers used to name the
+// same install differently (display name vs manifest name) and both rows got in.
+async function resolveInstalledSkillManifest(
+    skillId: string,
+    version: number,
+): Promise<{ body: string; name: string | null } | null> {
     const [row] = await db
         .select({ manifest: skillVersions.manifest, status: skillVersions.status })
         .from(skillVersions)
         .where(and(eq(skillVersions.skillId, skillId), eq(skillVersions.version, version)))
         .limit(1);
     if (!row || row.status !== 'ready' || !row.manifest || typeof row.manifest !== 'object') return null;
-    const body = (row.manifest as Record<string, unknown>).body;
-    return typeof body === 'string' && body.length > 0 ? body : null;
+    const manifest = row.manifest as Record<string, unknown>;
+    const body = typeof manifest.body === 'string' && manifest.body.length > 0 ? manifest.body : null;
+    if (!body) return null;
+    const name = typeof manifest.name === 'string' && manifest.name.trim().length > 0 ? manifest.name.trim() : null;
+    return { body, name };
 }
 
 // GET /agents/:agentId/skills — list all active skills for agent
@@ -95,7 +104,9 @@ agentSkillsRoutes.get('/:agentId/skills', async (c) => {
         ))
         .orderBy(desc(agentSkills.createdAt));
 
-    return c.json({ data });
+    // TRANSITION: the 'default' row is the agent's base prompt, not a skill.
+    // Migration 0092 deletes those rows; Task 13 removes this filter.
+    return c.json({ data: data.filter((row) => row.name !== 'default') });
 });
 
 // POST /agents/:agentId/skills — create a new skill
@@ -121,6 +132,7 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
         // from its manifest body — the client must not be able to supply (or
         // stale-cache) the content the agent runs on.
         systemPrompt: z.string().min(1).optional(),
+        // Accepted for compatibility; not stored — nothing reads agent_skills.tools.
         tools: z.array(z.string()).optional().default([]),
         config: z.record(z.unknown()).optional(),
         version: z.number().int().positive().optional(),
@@ -132,126 +144,98 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
         return c.json({ error: 'Validation failed', code: 'VALIDATION_ERROR', details: result.error.flatten() }, 400);
     }
 
-    // Declared outside the try block so the catch block's 23505 reconciliation
-    // path can reuse the freshly-resolved value instead of re-deriving it.
-    // Stays undefined only if the try block throws before it's assigned —
-    // the reconciliation path below guards on that explicitly.
-    let systemPrompt: string | undefined;
     try {
-        if (result.data.installId) {
-            const install = await resolveInstall(result.data.installId, tenantId);
-            if (!install) {
-                return c.json({ error: 'Skill install not found', code: 'NOT_FOUND' }, 404);
-            }
-            const body = await resolveInstalledSkillBody(install.skillId, install.installedVersion);
-            if (!body) {
-                return c.json({ error: 'Skill version has no readable content yet', code: 'NOT_READY' }, 409);
-            }
-            systemPrompt = body;
-        } else {
-            if (!result.data.systemPrompt) {
-                return c.json({ error: 'systemPrompt is required when installId is omitted', code: 'VALIDATION_ERROR' }, 400);
-            }
-            systemPrompt = result.data.systemPrompt;
-        }
-
-        const active = await db.select({ name: agentSkills.name, systemPrompt: agentSkills.systemPrompt, version: agentSkills.version })
+        // The cap counts the agent's *other* attached skills. The 'default'
+        // row is its base prompt, not a skill (TRANSITION: removed in Task 13),
+        // and a re-attach never counts the row it reactivates.
+        const active = await db.select({ name: agentSkills.name, installId: agentSkills.installId })
             .from(agentSkills)
             .where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.tenantId, tenantId), eq(agentSkills.status, 'active')));
-
-        // Exclude only the row(s) this attach actually supersedes — same name,
-        // version <= the incoming version. Two active rows can share a name at
-        // different versions (agent_skills is unique on
-        // [agentId, tenantId, name, version], and a re-attach at a new version
-        // doesn't deactivate the old one); the orchestrator dedupes to the
-        // *highest* version per name when composing (usage.ts:82-87), so a
-        // same-name row at a version higher than this attach's will still
-        // compose regardless of what this attach does, and must stay counted.
-        // Only a same-name row at <= this version is what this attach
-        // replaces (via the 23505 -> UPDATE reconcile, or a stale lower
-        // version that no longer matters). Excluding anything more would let
-        // a low-version re-attach hide an existing high-version row's real
-        // composed cost.
-        const incomingVersion = result.data.version ?? 1;
-        const others = active.filter((s) => s.name !== result.data.name || (s.version ?? 1) > incomingVersion);
-
-        // Mirrors the orchestrator's per-skill cost (usage.ts:101): the
-        // composed prompt wraps each skill's trimmed body in a
-        // "## Skill: <name>\n\n" header, so the raw body length under-counts
-        // by name.length + 15. Refused rather than truncated: the prompt
-        // budget is real, and half a skill in the prompt is worse than none.
-        // Failing here makes it visible to whoever is attaching instead of
-        // surfacing later as bad output.
-        const cost = (p: string, n: string) => (p?.trim().length ?? 0) + n.length + 15;
-        const composedChars = others.reduce((n, s) => n + cost(s.systemPrompt ?? '', s.name), 0);
+        const others = active.filter((s) => s.name !== 'default'
+            && (result.data.installId ? s.installId !== result.data.installId : s.name !== result.data.name));
         if (others.length >= MAX_ATTACHED_SKILLS) {
             return c.json({
                 error: `This agent already has the maximum of ${MAX_ATTACHED_SKILLS} skills attached. Detach one first.`,
                 code: 'SKILL_BUDGET_EXCEEDED',
             }, 409);
         }
-        if (composedChars + cost(systemPrompt, result.data.name) > MAX_COMPOSED_SKILL_CHARS) {
-            return c.json({
-                error: `Attaching this skill would exceed the agent's prompt budget of ${MAX_COMPOSED_SKILL_CHARS} characters. Detach a skill first.`,
-                code: 'SKILL_BUDGET_EXCEEDED',
-            }, 409);
+
+        if (result.data.installId) {
+            const install = await resolveInstall(result.data.installId, tenantId);
+            if (!install) {
+                return c.json({ error: 'Skill install not found', code: 'NOT_FOUND' }, 404);
+            }
+            const manifest = await resolveInstalledSkillManifest(install.skillId, install.installedVersion);
+            if (!manifest) {
+                return c.json({ error: 'Skill version has no readable content yet', code: 'NOT_READY' }, 409);
+            }
+            const name = manifest.name ?? result.data.name;
+
+            // An install is attached at most once per agent. Reuse its row,
+            // active or archived, so a re-attach after a detach reactivates the
+            // same row instead of colliding with it.
+            const [existing] = await db.select({ id: agentSkills.id })
+                .from(agentSkills)
+                .where(and(
+                    eq(agentSkills.agentId, agentId),
+                    eq(agentSkills.tenantId, tenantId),
+                    eq(agentSkills.installId, install.id),
+                ))
+                .orderBy(sql`(${agentSkills.status} = 'active') desc`, agentSkills.createdAt)
+                .limit(1);
+
+            if (existing) {
+                const [updated] = await db.update(agentSkills)
+                    .set({ name, systemPrompt: manifest.body, status: 'active', updatedAt: new Date() })
+                    .where(and(eq(agentSkills.id, existing.id), eq(agentSkills.tenantId, tenantId)))
+                    .returning();
+                db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_updated', resource: 'agent_skill', resourceId: updated.id, metadata: { agentId, name, reason: 'reattach' }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+                return c.json({ data: updated }, 200);
+            }
+
+            const [created] = await db.insert(agentSkills).values({
+                agentId,
+                tenantId,
+                name,
+                systemPrompt: manifest.body,
+                tools: [],
+                config: result.data.config ?? null,
+                version: result.data.version ?? 1,
+                status: 'active',
+                installId: install.id,
+            }).returning();
+            db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_created', resource: 'agent_skill', resourceId: created.id, metadata: { agentId, name }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
+            return c.json({ data: created }, 201);
         }
 
+        if (!result.data.systemPrompt) {
+            return c.json({ error: 'systemPrompt is required when installId is omitted', code: 'VALIDATION_ERROR' }, 400);
+        }
         const [created] = await db.insert(agentSkills).values({
             agentId,
             tenantId,
             name: result.data.name,
-            systemPrompt,
-            tools: result.data.tools,
+            systemPrompt: result.data.systemPrompt,
+            tools: [],
             config: result.data.config ?? null,
             version: result.data.version ?? 1,
             status: 'active',
-            installId: result.data.installId ?? null,
+            installId: null,
         }).returning();
-
         db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_created', resource: 'agent_skill', resourceId: created.id, metadata: { agentId, name: result.data.name }, traceId: c.get('traceId') ?? '' }).catch((err: unknown) => console.error('Audit log write failed:', err));
         return c.json({ data: created }, 201);
     } catch (err: any) {
-        // Unique constraint on [agentId, tenantId, name, version]. Driver wraps
-        // the pg error under `.cause` (same shape as userUpsertMiddleware) —
-        // `err.code` is undefined, `err.cause.code` is '23505'.
+        // The driver wraps the pg error under `.cause` (same shape as
+        // userUpsertMiddleware): `err.code` is undefined, `err.cause.code` is '23505'.
         const pgErr = err?.cause ?? err;
         if (pgErr?.code === '23505') {
-            // An installed skill can be re-attached after its pinned install
-            // version was upgraded server-side (v1 -> v3): the client still
-            // writes the same `version` (it's a display/order field, not a
-            // reflection of the install's version), so the insert collides
-            // with the prior attach's row. That row's systemPrompt is now
-            // stale — reconcile it to the freshly-resolved content computed
-            // above rather than reporting a conflict for something the
-            // caller can't actually resolve. Hand-authored skills (no
-            // installId) have no "current version" to reconcile to, so they
-            // keep the original 409 behavior.
-            if (result.data.installId && systemPrompt !== undefined) {
-                const version = result.data.version ?? 1;
-                const [updated] = await db.update(agentSkills)
-                    .set({
-                        systemPrompt,
-                        tools: result.data.tools,
-                        config: result.data.config ?? null,
-                        updatedAt: new Date(),
-                    })
-                    .where(and(
-                        eq(agentSkills.agentId, agentId),
-                        eq(agentSkills.tenantId, tenantId),
-                        eq(agentSkills.name, result.data.name),
-                        eq(agentSkills.version, version),
-                    ))
-                    .returning();
-
-                if (updated) {
-                    db.insert(auditLog).values({ tenantId, actorId: userId ?? 'system', actorType: 'human', action: 'agent_skill_updated', resource: 'agent_skill', resourceId: updated.id, metadata: { agentId, name: result.data.name, reason: 'reattach_after_upgrade' }, traceId: c.get('traceId') ?? '' }).catch((auditErr: unknown) => console.error('Audit log write failed:', auditErr));
-                    return c.json({ data: updated }, 200);
-                }
-                // Race: the conflicting row vanished between the insert
-                // failing and the update running. Fall through to 409.
+            if (pgErr.constraint === ACTIVE_INSTALL_UNIQUE) {
+                // A concurrent attach of the same install won. The desired end
+                // state already holds, and attachSkillToAgent treats CONFLICT
+                // as success.
+                return c.json({ error: 'This skill is already attached to this agent', code: 'CONFLICT' }, 409);
             }
-            return c.json({ error: 'A skill with this name and version already exists', code: 'CONFLICT' }, 409);
+            return c.json({ error: 'Another skill with this name is already attached to this agent', code: 'NAME_CONFLICT' }, 409);
         }
         console.error('Failed to create skill:', err);
         return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
