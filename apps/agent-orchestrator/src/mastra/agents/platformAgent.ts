@@ -352,16 +352,20 @@ When asked who you are, what you are, what model or company built you, or simila
     }
 
     // The agent's attached skills, plus the skills turned on in this
-    // conversation with "/" (already resolved against this tenant's installs
-    // by chatStream.ts). Both are native Mastra skills: listed by name and
-    // description, loaded with the built-in `skill` tool.
+    // conversation with "/". Both are native Mastra skills: listed by name
+    // and description, loaded with the built-in `skill` tool.
     //
     // invokedSkillInstallIds is read here and ONLY here, from requestContext
     // — never from the conversation's stored metadata or any other
-    // client-controlled source. chatStream.ts sets it after re-resolving
-    // every id (stored and newly picked) against this tenant's active
-    // installs for this turn, which is the tenant check. Falling back to a
-    // stored value here would bypass that check.
+    // client-controlled source. Two checks apply, deliberately redundant,
+    // neither removable as "already covered by the other": chatStream.ts
+    // resolves the ids (stored and newly picked) against this tenant's
+    // active, ready installs each turn before setting this key, and
+    // fetchInvokedSkills below re-checks each one again at load time,
+    // tenant-scoped, via resolveInstalledSkillContent — the real load-time
+    // tenant and ready check. Falling back to a stored value here would
+    // bypass chatStream.ts's check; dropping fetchInvokedSkills's own
+    // resolution would bypass the load-time one.
     const invokedIds = (requestContext?.get('invokedSkillInstallIds') as string[] | undefined) ?? []
     const [attached, invoked] = await Promise.all([
       fetchAttachedSkills(agentId, tenantId),

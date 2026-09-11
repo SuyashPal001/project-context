@@ -391,14 +391,35 @@ describe('recordSkillRuns', () => {
 describe('resolveInvokedSkills', () => {
   const SKILL_ID = '22222222-2222-4222-8222-222222222222'
 
-  it("resolves a picked skill id to this tenant's active install", async () => {
-    mockPoolQuery.mockResolvedValueOnce({ rows: [{ install_id: 'install-1', skill_id: SKILL_ID, name: 'UGC Ad Production' }] })
+  it("resolves a picked skill id to this tenant's active, ready install", async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ install_id: 'install-1', skill_id: SKILL_ID, name: 'UGC Ad Production', body: 'Hook in 2 seconds.' }] })
     const result = await resolveInvokedSkills([SKILL_ID], 'tenant-1')
     expect(result).toEqual([{ installId: 'install-1', skillId: SKILL_ID, name: 'UGC Ad Production' }])
     const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
     expect(sql).toContain('si.tenant_id = $1')
     expect(sql).toContain("si.status = 'active'")
     expect(params).toEqual(['tenant-1', [SKILL_ID]])
+  })
+
+  it("requires the pinned version to be ready and carry a body, mirroring resolveInstalledSkillContent", async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await resolveInvokedSkills([SKILL_ID], 'tenant-1')
+    const [sql] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('skill_versions sv')
+    expect(sql).toContain("sv.status = 'ready'")
+    expect(sql).toContain("sv.manifest->>'body'")
+  })
+
+  it('drops a row that is active but not ready — the WHERE clause excludes it, so no row comes back', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    const result = await resolveInvokedSkills([SKILL_ID], 'tenant-1')
+    expect(result).toEqual([])
+  })
+
+  it('drops a resolved row whose pinned version has an empty body', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ install_id: 'install-1', skill_id: SKILL_ID, name: 'X', body: '   ' }] })
+    const result = await resolveInvokedSkills([SKILL_ID], 'tenant-1')
+    expect(result).toEqual([])
   })
 
   it('drops ids that are not uuids without querying, so a forged id never reaches SQL', async () => {

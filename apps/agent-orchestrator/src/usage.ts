@@ -111,9 +111,22 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /**
  * Resolves "/" picks — catalog skill ids sent by the client — to this
- * tenant's own active installs. The client is never trusted: an id that is
- * not a uuid, not installed by this tenant, or not active is dropped, so a
- * forged id cannot reach another tenant's skill.
+ * tenant's own active, loadable installs. The client is never trusted: an id
+ * that is not a uuid, not installed by this tenant, not active, whose pinned
+ * version isn't ready, or whose body is empty is dropped, so a forged id
+ * cannot reach another tenant's skill.
+ *
+ * "Resolved" must mean "loadable": this feeds both `skillsInvokedThisTurn`
+ * (chatStream.ts) and the `prepareStep` forcing count that forces the model
+ * to call Mastra's `skill` tool that many times. `fetchInvokedSkills`'s
+ * loader (via `resolveInstalledSkillContent`) additionally requires
+ * `sv.status = 'ready'` and a non-empty `sv.manifest->>'body'` — if this
+ * query didn't apply the same predicates, a pick that resolves here but
+ * fails to load there would force a `skill` call for a skill that never
+ * materializes, and if the agent has no other skills, Mastra never creates a
+ * `skill` tool at all, so the provider gets a forced call to an undeclared
+ * tool. So this query joins `skill_versions` and mirrors
+ * `resolveInstalledSkillContent`'s conditions exactly.
  *
  * Returns `null` on a database error rather than `[]`. The two are not
  * interchangeable to callers that also resolve previously-stored entries:
@@ -126,14 +139,17 @@ export async function resolveInvokedSkills(skillIds: string[], tenantId: string)
   const ids = [...new Set(skillIds.filter((id) => UUID_RE.test(id)))].slice(0, MAX_INVOKED_SKILLS)
   if (!tenantId || ids.length === 0) return []
   try {
-    const res = await getPool().query<{ install_id: string; skill_id: string; name: string }>(
-      `SELECT si.id AS install_id, s.id AS skill_id, s.name
+    const res = await getPool().query<{ install_id: string; skill_id: string; name: string; body: string | null }>(
+      `SELECT si.id AS install_id, s.id AS skill_id, s.name, sv.manifest->>'body' AS body
        FROM skill_installs si
        JOIN skills s ON s.id = si.skill_id
-       WHERE si.tenant_id = $1 AND si.status = 'active' AND si.skill_id = ANY($2::uuid[])`,
+       JOIN skill_versions sv ON sv.skill_id = si.skill_id AND sv.version = si.installed_version
+       WHERE si.tenant_id = $1 AND si.status = 'active' AND sv.status = 'ready' AND si.skill_id = ANY($2::uuid[])`,
       [tenantId, ids],
     )
-    return res.rows.map((r) => ({ installId: r.install_id, skillId: r.skill_id, name: r.name }))
+    return res.rows
+      .filter((r) => r.body?.trim())
+      .map((r) => ({ installId: r.install_id, skillId: r.skill_id, name: r.name }))
   } catch (err) {
     console.error('[usage] resolveInvokedSkills error:', (err as Error).message)
     return null
