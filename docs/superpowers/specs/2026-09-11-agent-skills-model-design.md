@@ -154,6 +154,22 @@ Rejected as hand-rolled: pasting an invoked skill's full instructions into the
 prompt on every turn. An earlier draft of this spec did that; Mastra's `skill`
 tool already provides it.
 
+Evaluated and not used here: Mastra's editor (`MastraEditor`, already registered
+in `mastra/index.ts`). Editor overrides are keyed by the code agent's id, and all
+tenant agents run through one Mastra agent (`olmo`) with a per-request override,
+so an editor override would change every tenant's agents at once. It cannot hold
+a different prompt per agent row without turning each tenant agent into a stored
+agent. The per-agent prompt is tenant data, so `agents.system_prompt` stays.
+
+The editor did expose a second hand-rolled duplicate, left for its own spec:
+`agent_templates` versions the platform prompt with its own draft / published /
+archived status, and onboarding fills in `${workspaceName}` by hand. The editor
+provides draft and publish versioning, reusable prompt blocks, `{{workspaceName}}`
+template values from request context, and display conditions. A published block
+also "reaches every agent that references its published version", which ends the
+frozen copies noted under Out of scope. Decided 2026-09-11: a separate spec after
+this one.
+
 ## Design
 
 ### 1. Storage
