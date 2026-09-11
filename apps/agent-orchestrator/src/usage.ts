@@ -187,19 +187,19 @@ export async function fetchAttachedSkills(agentId: string, tenantId: string): Pr
 }
 
 /**
- * The agent's base persona only — the "default" agent_skills row every agent
- * gets at onboarding (apps/api/src/routes/onboarding.ts), holding its
- * identity/tone prompt. Used alongside fetchTestSkill for a
- * Test-in-chat conversation: the agent should still sound like itself during
- * a test, just with none of its *other* real attached skills mixed in.
+ * The agent's base prompt, from agents.system_prompt. Null means the
+ * agent uses the platform prompt (platformAgent's fetchPlatformPrompt).
+ * Used by chatStream.ts and mastra/agent.ts as the agentSystemPrompt
+ * override. It used to live on a 'default' agent_skills row; see
+ * docs/superpowers/specs/2026-09-11-agent-skills-model-design.md.
  */
 export async function fetchAgentPersonaPrompt(agentId: string, tenantId: string): Promise<string | null> {
   const p = getPool()
   try {
     const res = await p.query<{ system_prompt: string | null }>(
-      `SELECT system_prompt FROM agent_skills
-       WHERE agent_id = $1 AND tenant_id = $2 AND name = 'default' AND status = 'active'
-       ORDER BY created_at DESC LIMIT 1`,
+      `SELECT system_prompt FROM agents
+       WHERE id = $1 AND tenant_id = $2
+       LIMIT 1`,
       [agentId, tenantId],
     )
     const body = res.rows[0]?.system_prompt?.trim()

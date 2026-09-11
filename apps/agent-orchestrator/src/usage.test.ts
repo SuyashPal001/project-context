@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAttachedSkills, fetchTestSkill, toMastraSkillName, agentBelongsToTenant, recordSkillRuns } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, toMastraSkillName, agentBelongsToTenant, recordSkillRuns } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -113,6 +113,38 @@ describe('fetchAgentMemory', () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
     const result = await fetchAgentMemory('agent-2')
     expect(result).toBeNull()
+  })
+})
+
+describe('fetchAgentPersonaPrompt', () => {
+  it('reads the base prompt from agents.system_prompt, trimmed', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ system_prompt: '  You are Olmo.  ' }] })
+    await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBe('You are Olmo.')
+    const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('FROM agents')
+    expect(sql).not.toContain('agent_skills')
+    expect(params).toEqual(['agent-1', 'tenant-1'])
+  })
+
+  it('scopes the lookup to the tenant', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await fetchAgentPersonaPrompt('agent-1', 'tenant-1')
+    expect(mockPoolQuery.mock.calls[0][0]).toContain('tenant_id = $2')
+  })
+
+  it('returns null when the agent has no prompt, so the platform prompt applies', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ system_prompt: null }] })
+    await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBeNull()
+  })
+
+  it('returns null when the prompt is only whitespace', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ system_prompt: '   ' }] })
+    await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBeNull()
+  })
+
+  it('returns null instead of throwing on a database error', async () => {
+    mockPoolQuery.mockRejectedValueOnce(new Error('db down'))
+    await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBeNull()
   })
 })
 
