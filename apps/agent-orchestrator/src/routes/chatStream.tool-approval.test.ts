@@ -460,4 +460,77 @@ describe('runChatStream — "/" skill invocation gates', () => {
     expect(persistence.saveConversationInvokedSkills).toHaveBeenCalledWith('id-token', 'conv-1', [])
     expect(usage.recordSkillRuns).not.toHaveBeenCalled()
   })
+
+  // chatStream.ts builds `skillInvocationPrepareStep` from the number of
+  // skills invoked this turn (mastra/skillInvocation.js's real
+  // buildSkillInvocationPrepareStep — not mocked in this file) and only
+  // spreads it into the *initial* .stream() call options. A resumed run
+  // rebuilds its tools/steps from whatever options it's given, so carrying
+  // prepareStep into approveToolCall/declineToolCall would force the
+  // just-invoked skill's tool again on every resumed step, not just the
+  // turn's first N. This is test-only per the brief: the production code
+  // (chatStream.ts ~395/458/524-525) already omits it from both resumes.
+  it('passes prepareStep only on the initial stream when a "/" pick resolves, and approveToolCall never sees it', async () => {
+    vi.mocked(persistence.fetchConversationSkillSettings).mockResolvedValue({
+      testSkillInstallId: null, invokedSkills: [], ok: true,
+    })
+    vi.mocked(usage.resolveInvokedSkills).mockImplementation(async (ids: string[]) =>
+      ids.includes(PICKED.skillId) ? [PICKED] : [])
+
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-skill-approve', args: { prompt: 'x' } } }],
+      'run-skill-12',
+    ))
+    approveToolCall.mockResolvedValueOnce(fakeStream(
+      [{ type: 'finish', payload: { output: { usage: {} } } }],
+      'run-skill-12',
+    ))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent, skillsUsed: [{ id: PICKED.skillId, name: PICKED.name }] }))
+    await vi.waitFor(() =>
+      expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({ confirmationId: 'tc-skill-approve' }))
+    )
+    pendingToolApprovals.get('tc-skill-approve')?.resolve({ confirmed: true })
+    await runPromise
+
+    const initialStreamOptions = streamMock.mock.calls[0][1]
+    expect(typeof initialStreamOptions.prepareStep).toBe('function')
+
+    expect(approveToolCall).toHaveBeenCalledTimes(1)
+    expect(approveToolCall.mock.calls[0][0]).not.toHaveProperty('prepareStep')
+    expect(declineToolCall).not.toHaveBeenCalled()
+  })
+
+  it('passes prepareStep only on the initial stream when a "/" pick resolves, and declineToolCall never sees it', async () => {
+    vi.mocked(persistence.fetchConversationSkillSettings).mockResolvedValue({
+      testSkillInstallId: null, invokedSkills: [], ok: true,
+    })
+    vi.mocked(usage.resolveInvokedSkills).mockImplementation(async (ids: string[]) =>
+      ids.includes(PICKED.skillId) ? [PICKED] : [])
+
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-skill-decline', args: { prompt: 'x' } } }],
+      'run-skill-13',
+    ))
+    declineToolCall.mockResolvedValueOnce(fakeStream(
+      [{ type: 'finish', payload: { output: { usage: {} } } }],
+      'run-skill-13',
+    ))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent, skillsUsed: [{ id: PICKED.skillId, name: PICKED.name }] }))
+    await vi.waitFor(() =>
+      expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({ confirmationId: 'tc-skill-decline' }))
+    )
+    pendingToolApprovals.get('tc-skill-decline')?.resolve({ confirmed: false, declineReason: 'nope' })
+    await runPromise
+
+    const initialStreamOptions = streamMock.mock.calls[0][1]
+    expect(typeof initialStreamOptions.prepareStep).toBe('function')
+
+    expect(declineToolCall).toHaveBeenCalledTimes(1)
+    expect(declineToolCall.mock.calls[0][0]).not.toHaveProperty('prepareStep')
+    expect(approveToolCall).not.toHaveBeenCalled()
+  })
 })
