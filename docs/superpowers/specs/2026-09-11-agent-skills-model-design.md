@@ -115,7 +115,7 @@ Sources:
 | Question | Decision |
 |---|---|
 | Where the base prompt lives | `agents.system_prompt`, nullable. Null means the platform prompt, exactly as a missing `default` row does today |
-| What identifies an attached installed skill | Its install. Unique on `(agent_id, install_id)` for active installed rows. The server takes the name from the manifest and ignores the client's |
+| What identifies an attached installed skill | Its install. Unique on `(agent_id, install_id)` for active installed rows. A newly inserted row takes the manifest's name, never the client's. A reactivated row keeps its existing name until migration 0092 normalises names, because renaming it while the old `(agent_id, tenant_id, name, version)` constraint still covers archived rows can collide permanently (found in Task 4's review). An insert that finds an archived row with the same name and version reuses it |
 | What identifies a hand-authored skill | Its name, as today. Only `create_skill` writes these |
 | What `/` means | Turn a skill on for this conversation. It never attaches to the agent |
 | Where invoked skills are stored | On the conversation's metadata, beside `testSkillInstallId` |
