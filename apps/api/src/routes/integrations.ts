@@ -8,7 +8,6 @@ import { features } from '@serverless-saas/database/schema/entitlements';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { hasPermission } from '@serverless-saas/permissions';
 import { UUID_RE } from './integrations.crypto';
-import { syncToolsAndNotifyRelay } from './integrations.sync';
 import { createNangoConnectSession } from './integrations.nango';
 import type { AppEnv } from '../types';
 
@@ -291,7 +290,6 @@ integrationsRoutes.delete('/:idOrProvider', async (c) => {
             metadata: { provider: existing.provider }, traceId: c.get('traceId') ?? '', ipAddress: c.get('clientIp'),
         }).catch((err: Error) => console.error('Audit log write failed:', err));
 
-        void syncToolsAndNotifyRelay(tenantId, existing.provider, 'remove');
         return c.json({ ok: true });
     } catch (err: any) {
         console.error('Failed to disconnect integration:', err);

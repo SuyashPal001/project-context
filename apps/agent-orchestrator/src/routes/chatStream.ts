@@ -10,8 +10,9 @@ import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
-import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage } from '../usage.js'
-import { fetchConversationTestSkillInstallId } from '../persistence.js'
+import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage, resolveInvokedSkills, recordSkillRuns, toMastraSkillName } from '../usage.js'
+import { fetchConversationSkillSettings, saveConversationInvokedSkills } from '../persistence.js'
+import { mergeInvokedSkills, buildSkillInvocationPrepareStep, type InvokedSkill } from '../mastra/skillInvocation.js'
 import { debitChatTurn } from '../credits.js'
 import { buildGatewayModelString } from '../mastra/model.js'
 import { quickGeminiCall } from '../llm/quickCall.js'
@@ -151,6 +152,16 @@ export function attachmentFromCanvasToolResult(
   return attachment
 }
 
+// True iff the two lists carry the same (installId, name) pairs, regardless
+// of order. A length-only compare misses a forged/stale stored entry that
+// still resolves to a *different* installId or name than what the client had
+// stored — this catches that case so it still triggers a save-back.
+function sameInvokedSkillSet(a: InvokedSkill[], b: InvokedSkill[]): boolean {
+  if (a.length !== b.length) return false
+  const setA = new Set(a.map((s) => `${s.installId}::${s.name}`))
+  return b.every((s) => setA.has(`${s.installId}::${s.name}`))
+}
+
 function extractPlanJson(text: string): Record<string, unknown> | null {
   const candidates: string[] = []
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
@@ -261,8 +272,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // reads it and composes just that one skill instead of the agent's
     // real attached ones. The agent's persona (below) is unaffected either
     // way — it's a separate concern, read the same regardless of test mode.
-    const [testSkillInstallId, agentPersonaPrompt, agentName, personaPersonality, agentModelSelection, allowedSubAgents] = await Promise.all([
-      fetchConversationTestSkillInstallId(idToken, conversationId),
+    const [skillSettings, agentPersonaPrompt, agentName, personaPersonality, agentModelSelection, allowedSubAgents] = await Promise.all([
+      fetchConversationSkillSettings(idToken, conversationId),
       fetchAgentPersonaPrompt(agentId, tenantId),
       fetchAgentName(agentId),
       fetchAgentPersonality(agentId),
@@ -272,7 +283,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       }),
       fetchAllowedSubAgents(tenantId),
     ])
-    if (testSkillInstallId) requestContext.set('testSkillInstallId', testSkillInstallId)
+    if (skillSettings.testSkillInstallId) requestContext.set('testSkillInstallId', skillSettings.testSkillInstallId)
     if (agentPersonaPrompt) {
       requestContext.set('agentSystemPrompt', agentPersonaPrompt)
     }
@@ -297,6 +308,51 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const activeAgent = resolveAgent(agentName ?? '')
     console.log(`[sse:${sessionId}] agent="${agentName}" → ${resolveAgentLabel(activeAgent)} thinkingBudget=${thinkingBudget}`)
 
+    // "/" turns a skill on for this conversation — never attaches it to the
+    // agent. Only Olmo resolves skills, a Test-in-chat conversation runs
+    // exactly its one skill, and a failed conversation read (skillSettings.ok
+    // false) must not wipe or falsely gate anything — so all three skip the
+    // whole block. Both the stored entries and this turn's picks are
+    // re-resolved through resolveInvokedSkills, so a forged, foreign, or
+    // no-longer-installed stored entry drops out and the saved list
+    // self-heals instead of permanently filling the 8-skill cap.
+    let skillsInvokedThisTurn: string[] = []
+    if ((activeAgent as unknown) === (platformAgent as unknown) && !skillSettings.testSkillInstallId && skillSettings.ok) {
+      const [storedResolved, picked] = await Promise.all([
+        resolveInvokedSkills(skillSettings.invokedSkills.map((s) => s.skillId), tenantId),
+        resolveInvokedSkills((skillsUsed ?? []).map((s) => s.id), tenantId),
+      ])
+      // A database error returns null, not []. Neither lookup's result can be
+      // trusted as "nothing resolved" in that case — unverified stored
+      // entries must not load, and nothing may be saved over the real list,
+      // so a null from either lookup skips the whole rest of the block, same
+      // as a failed conversation read does above.
+      if (storedResolved !== null && picked !== null) {
+        // The resolve query has no ORDER BY, so the resolved rows can come
+        // back in any order — reorder to follow the stored list's own order
+        // (by skillId) before merging, so order alone never looks like a
+        // change to save back.
+        const storedOrder = new Map(skillSettings.invokedSkills.map((s, i) => [s.skillId, i]))
+        const orderedStoredResolved = [...storedResolved].sort(
+          (a, b) => (storedOrder.get(a.skillId) ?? 0) - (storedOrder.get(b.skillId) ?? 0),
+        )
+        const { merged, newlyInvoked } = mergeInvokedSkills(orderedStoredResolved, picked)
+        // A forged/stale stored entry (wrong installId or name) still
+        // resolves — the server-truth row just doesn't match what was
+        // stored — so a length-only compare would miss it; compare the sets
+        // themselves, ignoring order.
+        const pruned = !sameInvokedSkillSet(orderedStoredResolved, skillSettings.invokedSkills)
+        if (newlyInvoked.length > 0 || pruned) saveConversationInvokedSkills(idToken, conversationId, merged)
+        if (newlyInvoked.length > 0) {
+          recordSkillRuns(newlyInvoked.map((s) => s.installId), tenantId)
+            .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRuns failed:`, (err as Error).message))
+        }
+        skillsInvokedThisTurn = newlyInvoked.map((s) => toMastraSkillName(s.name))
+        requestContext.set('invokedSkillInstallIds', merged.map((s) => s.installId))
+        requestContext.set('skillsInvokedThisTurn', skillsInvokedThisTurn)
+      }
+    }
+
     const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
 
     // Olmo ONLY. The delegation hooks refuse any primitive that is not a
@@ -310,6 +366,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const olmoOptions = (activeAgent as unknown) === (platformAgent as unknown)
       ? olmoDelegationOptions({ tenantId, conversationId, agentId })
       : {}
+
+    // Mastra-native: force the built-in skill tool for the first N steps of
+    // the turn that invoked N skills, so their instructions load before the
+    // answer. Undefined on every other turn, so nothing is forced.
+    const skillInvocationPrepareStep = buildSkillInvocationPrepareStep(skillsInvokedThisTurn.length)
 
     let fullText = ''
     let planResult: unknown
@@ -331,6 +392,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         requestContext,
         providerOptions: { 'inference-gateway': { thinkingBudget } },
         ...olmoOptions,
+        ...(skillInvocationPrepareStep ? { prepareStep: skillInvocationPrepareStep } : {}),
       })
 
     turnLoop: while (true) {

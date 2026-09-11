@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 
 import { encryptCredentials } from './integrations.crypto';
-import { syncToolsAndNotifyRelay } from './integrations.sync';
 import type { AppEnv } from '../types';
 
 // ── Google OAuth callback ─────────────────────────────────────────────────────
@@ -67,7 +66,6 @@ googleOAuthCallbackRoute.get('/google/callback', async (c) => {
         console.error('[google/callback] DB upsert failed:', (err as Error).message); return fail('db_error');
     }
 
-    void syncToolsAndNotifyRelay(tenantId, service, 'add');
     return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=${service}`);
 });
 
@@ -127,7 +125,6 @@ jiraOAuthCallbackRoute.get('/jira/callback', async (c) => {
         console.error('[jira/callback] DB upsert failed:', (err as Error).message); return fail('db_error');
     }
 
-    void syncToolsAndNotifyRelay(tenantId, 'jira', 'add');
     return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=jira`);
 });
 
@@ -190,6 +187,5 @@ zohoOAuthCallbackRoute.get('/zoho/callback', async (c) => {
         console.error('[zoho/callback] DB upsert failed:', (err as Error).message); return fail('db_error');
     }
 
-    void syncToolsAndNotifyRelay(tenantId, service, 'add');
     return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=${service}`);
 });

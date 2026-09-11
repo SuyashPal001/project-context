@@ -5,6 +5,7 @@ import { getAgentTools } from '@serverless-saas/ai'
 import { createSkill } from '@mastra/core/skills'
 import type { InlineSkill } from '@mastra/core/skills'
 import { CODE_SPEC_IDS } from './mastra/subagents/ids.js'
+import { MAX_INVOKED_SKILLS, type InvokedSkill } from './mastra/skillInvocation.js'
 
 // DDL (run once at deploy time):
 //
@@ -89,7 +90,7 @@ async function resolveInstalledSkillContent(installId: string, tenantId: string)
 /**
  * Resolves ONE skill for a Test-in-chat conversation — bypassing
  * agent_skills entirely. Testing a skill must never touch the agent's real,
- * permanent skillset (see fetchConversationTestSkillInstallId in
+ * permanent skillset (see fetchConversationSkillSettings in
  * persistence.ts), so this never reads or writes that table. Records a run
  * immediately since this call IS the run — there is no later composition
  * step to attach it to.
@@ -104,6 +105,75 @@ export async function fetchTestSkill(installId: string, tenantId: string): Promi
     console.error('[usage] fetchTestSkill createSkill validation failed:', (err as Error).message)
     return null
   }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Resolves "/" picks — catalog skill ids sent by the client — to this
+ * tenant's own active, loadable installs. The client is never trusted: an id
+ * that is not a uuid, not installed by this tenant, not active, whose pinned
+ * version isn't ready, or whose body is empty is dropped, so a forged id
+ * cannot reach another tenant's skill.
+ *
+ * "Resolved" must mean "loadable": this feeds both `skillsInvokedThisTurn`
+ * (chatStream.ts) and the `prepareStep` forcing count that forces the model
+ * to call Mastra's `skill` tool that many times. `fetchInvokedSkills`'s
+ * loader (via `resolveInstalledSkillContent`) additionally requires
+ * `sv.status = 'ready'` and a non-empty `sv.manifest->>'body'` — if this
+ * query didn't apply the same predicates, a pick that resolves here but
+ * fails to load there would force a `skill` call for a skill that never
+ * materializes, and if the agent has no other skills, Mastra never creates a
+ * `skill` tool at all, so the provider gets a forced call to an undeclared
+ * tool. So this query joins `skill_versions` and mirrors
+ * `resolveInstalledSkillContent`'s conditions exactly.
+ *
+ * Returns `null` on a database error rather than `[]`. The two are not
+ * interchangeable to callers that also resolve previously-stored entries:
+ * `[]` means "none of these resolved" and is a legitimate signal to prune
+ * the saved list, while `null` means "we don't know" and must never be
+ * treated as proof that a stored entry is gone — see chatStream.ts's "/"
+ * block, which skips saving entirely when either lookup returns `null`.
+ */
+export async function resolveInvokedSkills(skillIds: string[], tenantId: string): Promise<InvokedSkill[] | null> {
+  const ids = [...new Set(skillIds.filter((id) => UUID_RE.test(id)))].slice(0, MAX_INVOKED_SKILLS)
+  if (!tenantId || ids.length === 0) return []
+  try {
+    const res = await getPool().query<{ install_id: string; skill_id: string; name: string; body: string | null }>(
+      `SELECT si.id AS install_id, s.id AS skill_id, s.name, sv.manifest->>'body' AS body
+       FROM skill_installs si
+       JOIN skills s ON s.id = si.skill_id
+       JOIN skill_versions sv ON sv.skill_id = si.skill_id AND sv.version = si.installed_version
+       WHERE si.tenant_id = $1 AND si.status = 'active' AND sv.status = 'ready' AND si.skill_id = ANY($2::uuid[])`,
+      [tenantId, ids],
+    )
+    return res.rows
+      .filter((r) => r.body?.trim())
+      .map((r) => ({ installId: r.install_id, skillId: r.skill_id, name: r.name }))
+  } catch (err) {
+    console.error('[usage] resolveInvokedSkills error:', (err as Error).message)
+    return null
+  }
+}
+
+/**
+ * The conversation's "/" skills as native Mastra Skills, for platformAgent's
+ * skills resolver. Content is resolved fresh from each pinned install,
+ * tenant-scoped, so an uninstalled or foreign install drops out on the next
+ * turn. Does not record runs — chatStream records one on the invoking turn.
+ */
+export async function fetchInvokedSkills(installIds: string[], tenantId: string): Promise<InlineSkill[]> {
+  const skills: InlineSkill[] = []
+  for (const installId of installIds.slice(0, MAX_INVOKED_SKILLS)) {
+    const content = await resolveInstalledSkillContent(installId, tenantId)
+    if (!content) continue
+    try {
+      skills.push(createSkill({ name: toMastraSkillName(content.name), description: content.description, instructions: content.body }))
+    } catch (err) {
+      console.error('[usage] fetchInvokedSkills createSkill validation failed for', content.name, ':', (err as Error).message)
+    }
+  }
+  return skills
 }
 
 /**
@@ -133,7 +203,8 @@ export async function fetchAttachedSkills(agentId: string, tenantId: string): Pr
   const p = getPool()
   const res = await p.query<{ name: string; system_prompt: string | null; install_id: string | null; version: number }>(
     `SELECT name, system_prompt, install_id, version FROM agent_skills
-     WHERE agent_id = $1 AND tenant_id = $2 AND status = 'active' AND name != 'default'
+     WHERE agent_id = $1 AND tenant_id = $2 AND status = 'active'
+       AND NOT (name = 'default' AND install_id IS NULL)
      ORDER BY created_at ASC, id ASC`,
     [agentId, tenantId],
   )
@@ -187,19 +258,29 @@ export async function fetchAttachedSkills(agentId: string, tenantId: string): Pr
 }
 
 /**
- * The agent's base persona only — the "default" agent_skills row every agent
- * gets at onboarding (apps/api/src/routes/onboarding.ts), holding its
- * identity/tone prompt. Used alongside fetchTestSkill for a
- * Test-in-chat conversation: the agent should still sound like itself during
- * a test, just with none of its *other* real attached skills mixed in.
+ * The agent's base prompt, from agents.system_prompt. Null means the
+ * agent uses the platform prompt (platformAgent's fetchPlatformPrompt).
+ * Used by chatStream.ts and mastra/agent.ts as the agentSystemPrompt
+ * override. It used to live on a 'default' agent_skills row; see
+ * docs/superpowers/specs/2026-09-11-agent-skills-model-design.md.
  */
 export async function fetchAgentPersonaPrompt(agentId: string, tenantId: string): Promise<string | null> {
   const p = getPool()
   try {
     const res = await p.query<{ system_prompt: string | null }>(
-      `SELECT system_prompt FROM agent_skills
-       WHERE agent_id = $1 AND tenant_id = $2 AND name = 'default' AND status = 'active'
-       ORDER BY created_at DESC LIMIT 1`,
+      // TRANSITION (remove in migration 0092 / PR 2): a tenant onboarded
+      // between applying migration 0091 and deploying the new Lambdas has
+      // only a 'default' agent_skills row and a NULL agents.system_prompt —
+      // without this fallback its prompt would silently drop until PR 2.
+      `SELECT COALESCE(a.system_prompt, (
+         SELECT s.system_prompt FROM agent_skills s
+         WHERE s.agent_id = a.id AND s.tenant_id = a.tenant_id
+           AND s.name = 'default' AND s.install_id IS NULL AND s.status = 'active'
+         ORDER BY s.created_at DESC LIMIT 1
+       )) AS system_prompt
+       FROM agents a
+       WHERE a.id = $1 AND a.tenant_id = $2
+       LIMIT 1`,
       [agentId, tenantId],
     )
     const body = res.rows[0]?.system_prompt?.trim()

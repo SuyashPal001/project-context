@@ -5,18 +5,16 @@ import { SkillIcon } from "@/components/platform/skills/SkillIcon";
 import type { Skill } from "@/components/platform/skills/types";
 
 interface SkillChipProps {
-    // Only id (icon seed) and name are rendered — accepts a full catalog
-    // Skill (composer "/" pick) or a bare agent_skills row (already-attached,
-    // fetched by agentId — see ChatInput's attachedSkills).
+    // Only id (icon seed) and name are rendered.
     skill: Pick<Skill, "id" | "name">;
     onRemove: () => void;
 }
 
 /**
- * Visual confirmation that a skill was picked via "/" in this draft. The
- * attach itself already happened (agent-level, via handleAttachSkill) the
- * moment the skill was selected — removing this chip only clears the
- * per-draft indicator, it does not detach the skill from the agent.
+ * A skill in the composer: either a "/" pick in this draft, or a skill already
+ * turned on in this conversation. Removing it never touches the agent — a
+ * draft chip is dropped from the message, and a conversation chip is turned
+ * off for this conversation only.
  */
 export function SkillChip({ skill, onRemove }: SkillChipProps) {
     return (

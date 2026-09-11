@@ -23,9 +23,20 @@ export const tenantContextSchema = z.object({
   personaPersonality: z.string().optional(),
   // Per-agent skill override for the base prompt — set by chatStream.ts.
   agentSystemPrompt: z.string().optional(),
-  // Set by chatStream.ts for Test-in-chat conversations (see fetchConversationTestSkillInstallId);
+  // Set by chatStream.ts for Test-in-chat conversations (see fetchConversationSkillSettings);
   // read by platformAgent.ts's skills resolver to compose just that one skill.
   testSkillInstallId: z.string().optional(),
+  // Install ids of every skill turned on in this conversation with "/". Both
+  // the stored entries and this turn's picks are re-resolved against this
+  // tenant's active installs on every turn (resolveInvokedSkills in usage.ts)
+  // before landing here, so a forged, foreign, or no-longer-installed entry
+  // never reaches this list. Set by chatStream.ts on Olmo's turns; read by
+  // platformAgent's skills resolver.
+  invokedSkillInstallIds: z.array(z.string()).optional(),
+  // Mastra skill names (toMastraSkillName) turned on by THIS message. Drives
+  // the forced skill-tool steps and the instruction line naming them; empty
+  // on every later turn of the conversation.
+  skillsInvokedThisTurn: z.array(z.string()).optional(),
   // Live conversation id, carried for tool-call logging.
   sessionId: z.string().optional(),
   // How many delegation boundaries this run is below the user-facing agent.

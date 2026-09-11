@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or, isNull } from 'drizzle-orm';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { agentSkills } from '@serverless-saas/agent-schema/conversations';
 import { skillInstalls, skillVersions } from '@serverless-saas/agent-schema/skills';
 
 const dbMock = vi.hoisted(() => ({ select: vi.fn(), insert: vi.fn(), update: vi.fn() }));
 vi.mock('../db', () => ({ db: dbMock }));
+
+const INSTALL_ID = '11111111-1111-4111-8111-111111111111';
 
 function appWithContext(permissionAction = 'create') {
     const app = new Hono<any>();
@@ -19,510 +21,395 @@ function appWithContext(permissionAction = 'create') {
     return app;
 }
 
-// installRows is what the tenant-scoped skill_installs lookup resolves to —
-// [] models "no such install row for this tenant" (never installed, wrong
-// tenant, or uninstalled), which the route treats identically.
-function mockResolveAgent(installRows: Record<string, unknown>[] = []) {
+interface DbState {
+    /** undefined = a valid active install; null = none for this tenant. */
+    install?: Record<string, unknown> | null;
+    /** undefined = a ready manifest named bid-writer; null = no row. */
+    manifest?: Record<string, unknown> | null;
+    manifestStatus?: string;
+    /** Active rows the cap counts. */
+    active?: Array<{ name: string; installId: string | null }>;
+    /** The agent's existing row for this install, active or archived
+     * (the install-scoped lookup). */
+    existing?: Array<{ id: string }>;
+    /** An archived row sharing this attach's name+version, unrelated to the
+     * install-scoped lookup (the reinstall-under-a-new-install-id path). */
+    archived?: Array<{ id: string }>;
+    /** GET list result. */
+    list?: Array<Record<string, unknown>>;
+    insertError?: unknown;
+    /** 1-based update-call indices that should return zero rows, to model a
+     * row vanishing between lookup and update. */
+    emptyUpdateOnCall?: number[];
+}
+
+function mockDb(state: DbState = {}) {
+    const inserted: Record<string, unknown>[] = [];
+    const updated: Array<{ data: Record<string, unknown>; where: unknown }> = [];
+    // Every `where()` call against agentSkills, in call order. Tests index
+    // into this knowing the route's fixed call sequence for the scenario
+    // they set up (see comments at each call site below).
+    const agentSkillsWhereCalls: unknown[] = [];
+    // Every `leftJoin(skillInstalls, ...)` call against agentSkills — the cap
+    // count and the GET list both join skill_installs to exclude a dead
+    // (uninstalled) install's row. In call order alongside agentSkillsWhereCalls.
+    const agentSkillsJoinCalls: Array<{ table: unknown; on: unknown }> = [];
+    let updateCallCount = 0;
+
     dbMock.select.mockImplementation(() => ({
         from: (table: unknown) => {
             if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
-            if (table === skillInstalls) return { where: () => ({ limit: async () => installRows }) };
-            // Prompt-budget cap check — no active skills attached yet in these tests.
-            if (table === agentSkills) return { where: async () => [] };
+            if (table === skillInstalls) {
+                const rows = state.install === undefined
+                    ? [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 1 }]
+                    : state.install ? [state.install] : [];
+                return { where: () => ({ limit: async () => rows }) };
+            }
+            if (table === skillVersions) {
+                const rows = state.manifest === null ? [] : [{
+                    manifest: state.manifest ?? { name: 'bid-writer', body: 'Open with the client name.' },
+                    status: state.manifestStatus ?? 'ready',
+                }];
+                return { where: () => ({ limit: async () => rows }) };
+            }
+            if (table === agentSkills) {
+                // Two query shapes reach agentSkills without a join (unchanged
+                // by Fix 1):
+                //  - the install-scoped existing-row lookup:
+                //    where().orderBy().limit() -> state.existing
+                //  - the archived name+version lookup: where().limit() -> state.archived
+                //
+                // Two more now go through leftJoin(skillInstalls, ...) first,
+                // so a dead install's row is excluded (Fix 1):
+                //  - the cap count: leftJoin().where() awaited directly -> state.active
+                //  - the GET list: leftJoin().where().orderBy() -> state.list
+                return {
+                    leftJoin: (joinTable: unknown, on: unknown) => {
+                        agentSkillsJoinCalls.push({ table: joinTable, on });
+                        return {
+                            where: (whereArg: unknown) => {
+                                agentSkillsWhereCalls.push(whereArg);
+                                return Object.assign(Promise.resolve(state.active ?? []), {
+                                    orderBy: async () => state.list ?? [],
+                                });
+                            },
+                        };
+                    },
+                    where: (whereArg: unknown) => {
+                        agentSkillsWhereCalls.push(whereArg);
+                        return Object.assign(Promise.resolve(state.active ?? []), {
+                            orderBy: () => Object.assign(Promise.resolve(state.list ?? []), {
+                                limit: async () => state.existing ?? [],
+                            }),
+                            limit: async () => state.archived ?? [],
+                        });
+                    },
+                };
+            }
             throw new Error('unexpected select target');
         },
     }));
+    dbMock.insert.mockImplementation((table: unknown) => ({
+        values: (data: Record<string, unknown>) => ({
+            returning: async () => {
+                if (table !== agentSkills) return [{ id: 'audit-1' }];
+                if (state.insertError) throw state.insertError;
+                inserted.push(data);
+                return [{ id: 'row-new', ...data }];
+            },
+            catch: () => {},
+        }),
+    }));
+    dbMock.update.mockImplementation(() => ({
+        set: (data: Record<string, unknown>) => ({
+            where: (whereArg: unknown) => ({
+                returning: async () => {
+                    updateCallCount += 1;
+                    updated.push({ data, where: whereArg });
+                    if ((state.emptyUpdateOnCall ?? []).includes(updateCallCount)) return [];
+                    return [{ id: 'row-1', ...data }];
+                },
+            }),
+        }),
+    }));
+    return { inserted, updated, agentSkillsWhereCalls, agentSkillsJoinCalls };
 }
 
-describe('POST /agents/:agentId/skills', () => {
+async function request(method: 'GET' | 'POST', body?: unknown, permission = 'create') {
+    const { agentSkillsRoutes } = await import('../routes/agent-skills');
+    const app = appWithContext(permission);
+    app.route('/agents', agentSkillsRoutes);
+    return app.request('/agents/agent-1/skills', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+}
+
+// postgres.js (this repo's driver) reports the violated index as
+// `constraint_name`, not `constraint` — the node-postgres key. See
+// apps/api/src/middleware/userUpsert.ts:102-104 for the same distinction.
+const uniqueViolation = (constraint_name: string) => ({ cause: { code: '23505', constraint_name } });
+
+describe('POST /agents/:agentId/skills — installed skills', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('creates a hand-authored skill with installId null when omitted (existing behavior unchanged)', async () => {
-        mockResolveAgent();
-        dbMock.insert.mockImplementation((table: unknown) => ({
-            values: (data: Record<string, unknown>) => ({
-                returning: async () => (table === agentSkills ? [{ id: 'skill-1', ...data }] : [{ id: 'audit-1' }]),
-                catch: () => {},
-            }),
-        }));
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'Custom Skill', systemPrompt: 'You do X.' }),
-        });
-
+    it("stores the manifest's name, ignoring the name the client sent", async () => {
+        const { inserted } = mockDb();
+        const res = await request('POST', { name: 'Bid Writer (display name)', installId: INSTALL_ID });
         expect(res.status).toBe(201);
-        const body = await res.json();
-        expect(body.data.name).toBe('Custom Skill');
-        expect(body.data.installId).toBeNull();
+        expect(inserted[0]).toMatchObject({ name: 'bid-writer', installId: INSTALL_ID, systemPrompt: 'Open with the client name.' });
     });
 
-    it('accepts installId and stores it on the created row when attaching an installed skill', async () => {
-        const installId = '11111111-1111-4111-8111-111111111111';
-        dbMock.select.mockImplementation(() => ({
-            from: (table: unknown) => {
-                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
-                if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: installId, skillId: 'skill-1', installedVersion: 1 }] }) };
-                if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: '# Body' } }] }) };
-                if (table === agentSkills) return { where: async () => [] };
-                throw new Error('unexpected select target');
-            },
-        }));
-        dbMock.insert.mockImplementation((table: unknown) => ({
-            values: (data: Record<string, unknown>) => ({
-                returning: async () => (table === agentSkills ? [{ id: 'skill-2', ...data }] : [{ id: 'audit-2' }]),
-                catch: () => {},
-            }),
-        }));
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'PDF Tools', installId }),
-        });
-
-        expect(res.status).toBe(201);
-        const body = await res.json();
-        expect(body.data.installId).toBe(installId);
+    it('ignores a client-supplied systemPrompt for an installed skill', async () => {
+        const { inserted } = mockDb();
+        await request('POST', { name: 'x', installId: INSTALL_ID, systemPrompt: 'injected' });
+        expect(inserted[0].systemPrompt).toBe('Open with the client name.');
     });
 
-    it("returns 404 for an installId that isn't this tenant's active install row", async () => {
-        mockResolveAgent([]);
-        dbMock.insert.mockImplementation(() => ({
-            values: () => ({ returning: async () => [{ id: 'skill-3' }], catch: () => {} }),
-        }));
+    it('slices a manifest name over 100 characters, matching the client-name limit', async () => {
+        const longName = 'n'.repeat(150);
+        const { inserted } = mockDb({ manifest: { name: longName, body: 'body' } });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
+        expect(res.status).toBe(201);
+        expect(inserted[0].name).toBe(longName.slice(0, 100));
+    });
 
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
+    it("reactivates the agent's existing row for the install instead of inserting a second, without renaming it", async () => {
+        const { inserted, updated } = mockDb({ existing: [{ id: 'row-1' }] });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
+        expect(res.status).toBe(200);
+        expect(inserted).toHaveLength(0);
+        // Call order for this scenario: [0] cap count, [1] the
+        // install-scoped existing-row lookup. The archived-name/version
+        // lookup and the insert are never reached.
+        expect(updated).toHaveLength(1);
+        expect(updated[0].data).toMatchObject({ status: 'active', systemPrompt: 'Open with the client name.' });
+        expect(updated[0].data).not.toHaveProperty('name');
+    });
 
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: 'PDF Tools',
-                systemPrompt: 'Use the PDF tool.',
-                installId: '99999999-9999-4999-8999-999999999999',
-            }),
-        });
+    it("scopes the existing-row lookup and its reactivation UPDATE to this tenant", async () => {
+        const { updated, agentSkillsWhereCalls } = mockDb({ existing: [{ id: 'row-1' }] });
+        await request('POST', { name: 'x', installId: INSTALL_ID });
 
+        // [0] = cap count's where, [1] = the install-scoped existing-row lookup's where.
+        const existingLookupWhere = agentSkillsWhereCalls[1];
+        expect(existingLookupWhere).toEqual(and(
+            eq(agentSkills.agentId, 'agent-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+            eq(agentSkills.installId, INSTALL_ID),
+        ));
+
+        const updateWhere = updated[0].where;
+        expect(updateWhere).toEqual(and(
+            eq(agentSkills.id, 'row-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+        ));
+    });
+
+    it("returns 404 for an install that isn't this tenant's active install", async () => {
+        mockDb({ install: null });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
         expect(res.status).toBe(404);
-        expect((await res.json()).code).toBe('NOT_FOUND');
-        expect(dbMock.insert).not.toHaveBeenCalled();
-    });
-
-    it('rejects a non-uuid installId', async () => {
-        mockResolveAgent();
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'PDF Tools', systemPrompt: 'Use the PDF tool.', installId: 'not-a-uuid' }),
-        });
-
-        expect(res.status).toBe(400);
-    });
-
-    it('rejects without agents:create permission', async () => {
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext('read');
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'Custom Skill', systemPrompt: 'You do X.' }),
-        });
-
-        expect(res.status).toBe(403);
-    });
-});
-
-describe('POST /agents/:agentId/skills — server-derived system prompt', () => {
-    beforeEach(() => vi.clearAllMocks());
-
-    const INSTALL_ID = '11111111-1111-4111-8111-111111111111';
-    const SKILL_BODY = '# PDF Tools\n\nUse pdftotext before answering.';
-
-    function mockAttach(versionRows: Record<string, unknown>[]) {
-        dbMock.select.mockImplementation(() => ({
-            from: (table: unknown) => {
-                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
-                if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 2 }] }) };
-                if (table === skillVersions) return { where: () => ({ limit: async () => versionRows }) };
-                if (table === agentSkills) return { where: async () => [] };
-                throw new Error('unexpected select target');
-            },
-        }));
-        dbMock.insert.mockImplementation((table: unknown) => ({
-            values: (data: Record<string, unknown>) => ({
-                returning: async () => (table === agentSkills ? [{ id: 'skill-row-1', ...data }] : [{ id: 'audit-1' }]),
-                catch: () => {},
-            }),
-        }));
-    }
-
-    it("stores the installed version's manifest body, ignoring any client-supplied systemPrompt", async () => {
-        mockAttach([{ status: 'ready', manifest: { body: SKILL_BODY } }]);
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'PDF Tools', systemPrompt: 'a short description', installId: INSTALL_ID }),
-        });
-
-        expect(res.status).toBe(201);
-        const body = await res.json();
-        expect(body.data.systemPrompt).toBe(SKILL_BODY);
     });
 
     it('returns 409 NOT_READY when the pinned version has no readable body', async () => {
-        mockAttach([{ status: 'pending', manifest: null }]);
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'PDF Tools', installId: INSTALL_ID }),
-        });
-
+        mockDb({ manifestStatus: 'pending' });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
         expect(res.status).toBe(409);
         expect((await res.json()).code).toBe('NOT_READY');
     });
 
-    it('still requires systemPrompt for a hand-authored skill with no installId', async () => {
-        dbMock.select.mockImplementation(() => ({
-            from: () => ({ where: () => ({ limit: async () => [{ id: 'agent-1' }] }) }),
-        }));
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'Custom Skill' }),
-        });
-
+    it('rejects a non-uuid installId', async () => {
+        mockDb();
+        const res = await request('POST', { name: 'x', installId: 'not-a-uuid' });
         expect(res.status).toBe(400);
-        expect((await res.json()).code).toBe('VALIDATION_ERROR');
+    });
+
+    it('returns 409 CONFLICT when a concurrent attach of the same install wins the race', async () => {
+        mockDb({ insertError: uniqueViolation('agent_skills_agent_install_active_unique') });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
+        expect(res.status).toBe(409);
+        expect((await res.json()).code).toBe('CONFLICT');
+    });
+
+    it('returns 409 NAME_CONFLICT when a different skill already uses the name', async () => {
+        mockDb({ insertError: uniqueViolation('agent_skills_agent_id_tenant_id_name_version_unique') });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
+        expect(res.status).toBe(409);
+        expect((await res.json()).code).toBe('NAME_CONFLICT');
+    });
+
+    it('has no character budget: a long skill attaches', async () => {
+        const { inserted } = mockDb({ manifest: { name: 'long-skill', body: 'x'.repeat(30_000) } });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
+        expect(res.status).toBe(201);
+        expect(inserted).toHaveLength(1);
+    });
+
+    it('falls through to the insert path when the reactivation UPDATE returns no rows (the row vanished between lookup and update)', async () => {
+        const { inserted, updated } = mockDb({ existing: [{ id: 'row-1' }], emptyUpdateOnCall: [1] });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
+        expect(res.status).toBe(201);
+        expect(updated).toHaveLength(1); // the failed reactivate attempt
+        expect(inserted).toHaveLength(1);
+    });
+
+    it('reactivates an archived row with the same name+version instead of inserting, when it belongs to a different (reinstalled) install', async () => {
+        const { inserted, updated, agentSkillsWhereCalls } = mockDb({ archived: [{ id: 'archived-row-1' }] });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
+        expect(res.status).toBe(200);
+        expect(inserted).toHaveLength(0);
+        expect(updated).toHaveLength(1);
+        expect(updated[0].data).toMatchObject({ installId: INSTALL_ID, systemPrompt: 'Open with the client name.', status: 'active' });
+
+        // Call order here: [0] cap count, [1] install-scoped existing-row
+        // lookup (returns none), [2] the archived name+version lookup.
+        const archivedLookupWhere = agentSkillsWhereCalls[2];
+        expect(archivedLookupWhere).toEqual(and(
+            eq(agentSkills.agentId, 'agent-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+            eq(agentSkills.name, 'bid-writer'),
+            eq(agentSkills.version, 1),
+            eq(agentSkills.status, 'archived'),
+        ));
+        expect(updated[0].where).toEqual(and(
+            eq(agentSkills.id, 'archived-row-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+        ));
     });
 });
 
-describe('POST /agents/:agentId/skills — prompt budget caps', () => {
+describe('POST /agents/:agentId/skills — the 8-skill cap', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    // Models the cap-check's select: table === agents resolves the agent,
-    // table === agentSkills (queried without installId/skillInstalls
-    // involvement here) resolves to the tenant's currently-active rows. The
-    // cap-check query has no `.limit()` in the handler, so `.where()` itself
-    // resolves directly to the row array.
-    function mockActiveSkills(rows: Record<string, unknown>[]) {
-        dbMock.select.mockImplementation(() => ({
-            from: (table: unknown) => {
-                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
-                if (table === agentSkills) return { where: async () => rows };
-                throw new Error('unexpected select target');
-            },
-        }));
-        dbMock.insert.mockImplementation((table: unknown) => ({
-            values: (data: Record<string, unknown>) => ({
-                returning: async () => (table === agentSkills ? [{ id: 'new-skill', ...data }] : [{ id: 'audit-1' }]),
-                catch: () => {},
-            }),
-        }));
-    }
+    const others = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `skill-${i}`, installId: `install-${i}` }));
 
-    async function postAttach(body: Record<string, unknown>) {
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        return app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-    }
-
-    it('refuses an attach that would exceed the attached-skill count cap', async () => {
-        // 8 skills already attached — the 9th must be refused, not truncated later.
-        mockActiveSkills(Array.from({ length: 8 }, (_, i) => ({ name: `skill-${i}`, systemPrompt: 'body' })));
-
-        const res = await postAttach({ name: 'ninth', systemPrompt: 'body' });
-
+    it('refuses a ninth skill', async () => {
+        mockDb({ active: others(8) });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
         expect(res.status).toBe(409);
         expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
     });
 
-    it('refuses an attach that would exceed the composed character budget', async () => {
-        mockActiveSkills([{ name: 'huge', systemPrompt: 'x'.repeat(23_900) }]);
-
-        const res = await postAttach({ name: 'small', systemPrompt: 'y'.repeat(500) });
-
-        expect(res.status).toBe(409);
-        expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
-    });
-
-    it('allows an attach that fits inside both caps', async () => {
-        mockActiveSkills([{ name: 'one', systemPrompt: 'short' }]);
-
-        const res = await postAttach({ name: 'two', systemPrompt: 'also short' });
-
+    it("does not count the agent's 'default' row, which is its base prompt", async () => {
+        mockDb({ active: [{ name: 'default', installId: null }, ...others(7)] });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
         expect(res.status).toBe(201);
     });
 
-    it('refuses a set that fits the raw body-length sum but exceeds budget once the orchestrator\'s per-skill header cost is counted', async () => {
-        // The orchestrator composes each skill as "## Skill: <name>\n\n<body>",
-        // costing body.trim().length + name.length + 15 per skill (usage.ts:101).
-        // Only 7 skills are already active — under MAX_ATTACHED_SKILLS (8) — so
-        // the *count* cap cannot fire and it's the character math alone that
-        // decides. 7 active skills at 3,400 chars each (raw sum 23,800) plus a
-        // 100-char attach sums to 23,900 raw — under the 24,000 cap by the old,
-        // header-blind math, so pre-fix code accepts. Once every one of the 8
-        // skills' 2-char name + 15-char header overhead (17 each, 136 total)
-        // is added, the true composed cost is 24,036 — over budget, and
-        // post-fix code must refuse.
-        mockActiveSkills(Array.from({ length: 7 }, (_, i) => ({ name: `s${i}`, systemPrompt: 'x'.repeat(3400) })));
-
-        const res = await postAttach({ name: 's7', systemPrompt: 'y'.repeat(100) });
-
-        expect(res.status).toBe(409);
-        expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
+    it('does not count the install being re-attached against itself', async () => {
+        mockDb({ active: [...others(7), { name: 'bid-writer', installId: INSTALL_ID }], existing: [{ id: 'row-1' }] });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID });
+        expect(res.status).toBe(200);
     });
 
-    it('counts an existing higher-version same-name row against the budget even when the incoming attach is a lower version', async () => {
-        // agent_skills is unique on [agentId, tenantId, name, version], so a
-        // client-supplied version lower than an existing same-name row's
-        // version does not collide with it and would insert a second active
-        // row — it does not replace or supersede the higher-version row. The
-        // orchestrator dedupes composed skills to the *highest* version per
-        // name (usage.ts:82-87), so that existing v3 row still composes
-        // regardless of what this v1 attach does, and must stay counted.
-        // Excluding it (as a same-name-only filter would) hides its real
-        // composed cost and falsely accepts.
-        mockActiveSkills([{ name: 'X', version: 3, systemPrompt: 'a'.repeat(23_950) }]);
+    it('compares the cap against the resolved (lowercase) install id, not the raw client value, for an uppercase installId', async () => {
+        mockDb({ active: [...others(7), { name: 'bid-writer', installId: INSTALL_ID }], existing: [{ id: 'row-1' }] });
+        const res = await request('POST', { name: 'x', installId: INSTALL_ID.toUpperCase() });
+        expect(res.status).toBe(200);
+    });
 
-        const res = await postAttach({ name: 'X', version: 1, systemPrompt: 'b'.repeat(100) });
+    it('left-joins skill_installs tenant-scoped for the cap count, failing if either predicate is dropped', async () => {
+        const { agentSkillsJoinCalls, agentSkillsWhereCalls } = mockDb({ active: [] });
+        await request('POST', { name: 'x', installId: INSTALL_ID });
 
-        expect(res.status).toBe(409);
-        expect((await res.json()).code).toBe('SKILL_BUDGET_EXCEEDED');
+        // [0] = the cap count's join and where.
+        expect(agentSkillsJoinCalls[0].table).toBe(skillInstalls);
+        expect(agentSkillsJoinCalls[0].on).toEqual(and(
+            eq(skillInstalls.id, agentSkills.installId),
+            eq(skillInstalls.tenantId, 'tenant-1'),
+        ));
+        expect(agentSkillsWhereCalls[0]).toEqual(and(
+            eq(agentSkills.agentId, 'agent-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+            eq(agentSkills.status, 'active'),
+            or(isNull(agentSkills.installId), eq(skillInstalls.status, 'active')),
+        ));
     });
 });
 
-describe('POST /agents/:agentId/skills — reconcile stale prompt on 23505 re-attach conflict', () => {
+describe('POST /agents/:agentId/skills — hand-authored skills', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    const INSTALL_ID = '11111111-1111-4111-8111-111111111111';
-    const NEW_BODY = '# PDF Tools v3\n\nUse pdftotext, now with OCR fallback.';
+    it("creates a hand-authored skill with the client's name and prompt", async () => {
+        const { inserted } = mockDb();
+        const res = await request('POST', { name: 'Custom Skill', systemPrompt: 'You do X.' });
+        expect(res.status).toBe(201);
+        expect(inserted[0]).toMatchObject({ name: 'Custom Skill', systemPrompt: 'You do X.', installId: null });
+    });
 
-    function conflictingInsert() {
-        dbMock.insert.mockImplementation((table: unknown) => ({
-            values: () => ({
-                returning: async () => {
-                    if (table === agentSkills) {
-                        const err: any = new Error('duplicate key value violates unique constraint');
-                        err.code = '23505';
-                        throw err;
-                    }
-                    return [{ id: 'audit-1' }];
-                },
-                catch: () => {},
-            }),
-        }));
-    }
+    it('still requires systemPrompt without an installId', async () => {
+        mockDb();
+        const res = await request('POST', { name: 'Custom Skill' });
+        expect(res.status).toBe(400);
+    });
 
-    it('updates the existing row and returns 200 when the conflicting attach carries an installId', async () => {
-        dbMock.select.mockImplementation(() => ({
-            from: (table: unknown) => {
-                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
-                if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 3 }] }) };
-                if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: NEW_BODY } }] }) };
-                if (table === agentSkills) return { where: async () => [] };
-                throw new Error('unexpected select target');
-            },
-        }));
-        conflictingInsert();
+    it('rejects without agents:create permission', async () => {
+        mockDb();
+        const res = await request('POST', { name: 'Custom Skill', systemPrompt: 'You do X.' }, 'read');
+        expect(res.status).toBe(403);
+    });
 
-        const updatedRow = {
-            id: 'existing-skill-1',
-            agentId: 'agent-1',
-            tenantId: 'tenant-1',
-            name: 'PDF Tools',
-            version: 1,
-            systemPrompt: NEW_BODY,
-            tools: [],
-            config: null,
-            installId: INSTALL_ID,
-        };
-        const whereSpy = vi.fn(() => ({ returning: async () => [updatedRow] }));
-        const setSpy = vi.fn(() => ({ where: whereSpy }));
-        dbMock.update.mockImplementation((table: unknown) => {
-            if (table === agentSkills) return { set: setSpy };
-            throw new Error('unexpected update target');
-        });
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'PDF Tools', installId: INSTALL_ID }),
-        });
-
+    it('reactivates an archived hand-authored row with the same name+version instead of inserting', async () => {
+        const { inserted, updated, agentSkillsWhereCalls } = mockDb({ archived: [{ id: 'archived-row-2' }] });
+        const res = await request('POST', { name: 'Custom Skill', systemPrompt: 'You do X.' });
         expect(res.status).toBe(200);
-        const body = await res.json();
-        expect(body.data.systemPrompt).toBe(NEW_BODY);
+        expect(inserted).toHaveLength(0);
+        expect(updated).toHaveLength(1);
+        expect(updated[0].data).toMatchObject({ installId: null, systemPrompt: 'You do X.', status: 'active' });
 
-        // The UPDATE writes the freshly-resolved prompt/tools/config.
-        expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({
-            systemPrompt: NEW_BODY,
-            tools: [],
-            config: null,
-        }));
-
-        // The UPDATE is scoped to exactly the tuple the unique constraint covers:
-        // [agentId, tenantId, name, version] — never a different row.
-        const expectedWhere = and(
+        // Call order for a hand-authored attach: [0] cap count, [1] the
+        // archived name+version lookup — the install-scoped lookup is
+        // skipped entirely (no installId).
+        const archivedLookupWhere = agentSkillsWhereCalls[1];
+        expect(archivedLookupWhere).toEqual(and(
             eq(agentSkills.agentId, 'agent-1'),
             eq(agentSkills.tenantId, 'tenant-1'),
-            eq(agentSkills.name, 'PDF Tools'),
+            eq(agentSkills.name, 'Custom Skill'),
             eq(agentSkills.version, 1),
-        );
-        expect(whereSpy).toHaveBeenCalledWith(expectedWhere);
+            eq(agentSkills.status, 'archived'),
+        ));
+        expect(updated[0].where).toEqual(and(
+            eq(agentSkills.id, 'archived-row-2'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+        ));
     });
+});
 
-    it("excludes the re-attached skill's own current row from both caps so a re-attach at the count cap still reconciles instead of being refused", async () => {
-        // 8 active rows total, one of which is the very row this attach is
-        // re-attaching ('PDF Tools'). Before excluding the row being
-        // replaced, active.length (8) >= MAX_ATTACHED_SKILLS (8) would wrongly
-        // refuse this — a re-attach isn't a new attachment, and the previous
-        // implementation never reached the 23505 -> UPDATE reconcile path at
-        // all for a same-size or larger re-attach at the cap.
-        const activeRows = [
-            ...Array.from({ length: 7 }, (_, i) => ({ name: `other-${i}`, systemPrompt: 'short body' })),
-            { name: 'PDF Tools', systemPrompt: 'the stale body being replaced' },
-        ];
-        dbMock.select.mockImplementation(() => ({
-            from: (table: unknown) => {
-                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
-                if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 3 }] }) };
-                if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: NEW_BODY } }] }) };
-                if (table === agentSkills) return { where: async () => activeRows };
-                throw new Error('unexpected select target');
-            },
-        }));
-        conflictingInsert();
+describe('GET /agents/:agentId/skills', () => {
+    beforeEach(() => vi.clearAllMocks());
 
-        const updatedRow = {
-            id: 'existing-skill-1',
-            agentId: 'agent-1',
-            tenantId: 'tenant-1',
-            name: 'PDF Tools',
-            version: 1,
-            systemPrompt: NEW_BODY,
-            tools: [],
-            config: null,
-            installId: INSTALL_ID,
-        };
-        dbMock.update.mockImplementation((table: unknown) => {
-            if (table === agentSkills) return { set: () => ({ where: () => ({ returning: async () => [updatedRow] }) }) };
-            throw new Error('unexpected update target');
-        });
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'PDF Tools', installId: INSTALL_ID }),
-        });
-
+    it("lists attached skills without the agent's 'default' row", async () => {
+        mockDb({ list: [{ id: 'a', name: 'default', installId: null }, { id: 'b', name: 'bid-writer', installId: INSTALL_ID }] });
+        const res = await request('GET', undefined, 'read');
         expect(res.status).toBe(200);
-        const body = await res.json();
-        expect(body.data.systemPrompt).toBe(NEW_BODY);
+        expect((await res.json()).data).toEqual([{ id: 'b', name: 'bid-writer', installId: INSTALL_ID }]);
     });
 
-    it('falls back to 409 CONFLICT unchanged when the conflicting attach has no installId (hand-authored skill)', async () => {
-        dbMock.select.mockImplementation(() => ({
-            from: (table: unknown) => {
-                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
-                if (table === agentSkills) return { where: async () => [] };
-                throw new Error('unexpected select target');
-            },
-        }));
-        conflictingInsert();
-        dbMock.update.mockImplementation(() => {
-            throw new Error('update should not be called for a hand-authored skill conflict');
-        });
-
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
-
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'Custom Skill', systemPrompt: 'You do X.' }),
-        });
-
-        expect(res.status).toBe(409);
-        expect((await res.json()).code).toBe('CONFLICT');
-        expect(dbMock.update).not.toHaveBeenCalled();
+    it('keeps a real skill named "default" that carries an installId (the sentinel is name+null installId together)', async () => {
+        mockDb({ list: [{ id: 'a', name: 'default', installId: INSTALL_ID }] });
+        const res = await request('GET', undefined, 'read');
+        expect(res.status).toBe(200);
+        expect((await res.json()).data).toEqual([{ id: 'a', name: 'default', installId: INSTALL_ID }]);
     });
 
-    it('falls back to 409 CONFLICT if the reconciling UPDATE matches zero rows (race condition)', async () => {
-        dbMock.select.mockImplementation(() => ({
-            from: (table: unknown) => {
-                if (table === agents) return { where: () => ({ limit: async () => [{ id: 'agent-1' }] }) };
-                if (table === skillInstalls) return { where: () => ({ limit: async () => [{ id: INSTALL_ID, skillId: 'skill-1', installedVersion: 3 }] }) };
-                if (table === skillVersions) return { where: () => ({ limit: async () => [{ status: 'ready', manifest: { body: NEW_BODY } }] }) };
-                if (table === agentSkills) return { where: async () => [] };
-                throw new Error('unexpected select target');
-            },
-        }));
-        conflictingInsert();
-        dbMock.update.mockImplementation((table: unknown) => {
-            if (table === agentSkills) return { set: () => ({ where: () => ({ returning: async () => [] }) }) };
-            throw new Error('unexpected update target');
-        });
+    it('left-joins skill_installs tenant-scoped and excludes a dead (uninstalled) install, failing if either predicate is dropped', async () => {
+        const { agentSkillsJoinCalls, agentSkillsWhereCalls } = mockDb({ list: [] });
+        await request('GET', undefined, 'read');
 
-        const { agentSkillsRoutes } = await import('../routes/agent-skills');
-        const app = appWithContext();
-        app.route('/agents', agentSkillsRoutes);
+        expect(agentSkillsJoinCalls).toHaveLength(1);
+        expect(agentSkillsJoinCalls[0].table).toBe(skillInstalls);
+        expect(agentSkillsJoinCalls[0].on).toEqual(and(
+            eq(skillInstalls.id, agentSkills.installId),
+            eq(skillInstalls.tenantId, 'tenant-1'),
+        ));
 
-        const res = await app.request('/agents/agent-1/skills', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: 'PDF Tools', installId: INSTALL_ID }),
-        });
-
-        expect(res.status).toBe(409);
-        expect((await res.json()).code).toBe('CONFLICT');
+        expect(agentSkillsWhereCalls[0]).toEqual(and(
+            eq(agentSkills.agentId, 'agent-1'),
+            eq(agentSkills.tenantId, 'tenant-1'),
+            eq(agentSkills.status, 'active'),
+            or(isNull(agentSkills.installId), eq(skillInstalls.status, 'active')),
+        ));
     });
 });

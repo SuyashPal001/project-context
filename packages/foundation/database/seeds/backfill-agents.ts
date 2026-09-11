@@ -35,8 +35,6 @@ import { withUploadGuidance } from '../../../../products/agent-platform/packages
 // @ts-ignore — cross-package import; run from repo root with tsx
 import { agents } from '../../../../products/agent-platform/packages/schema/agents';
 // @ts-ignore
-import { agentSkills } from '../../../../products/agent-platform/packages/schema/conversations';
-// @ts-ignore
 import { personas } from '../../../../products/agent-platform/packages/schema/personas';
 // @ts-ignore
 import { apiKeys } from '../schema/access';
@@ -199,16 +197,8 @@ async function run() {
                 personaId,
                 isDefault: def.isDefault ?? false,
                 createdBy: userId,
-            }).returning();
-
-            await db.insert(agentSkills).values({
-                agentId: agent.id,
-                tenantId: tenant.id,
-                name: 'default',
                 systemPrompt: def.systemPrompt,
-                tools: [],
-                status: 'active',
-            });
+            }).returning();
 
             console.log(`  + Created ${def.name}`);
         }

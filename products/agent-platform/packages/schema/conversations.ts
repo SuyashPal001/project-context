@@ -1,5 +1,5 @@
-import { pgTable, uuid, text, timestamp, boolean, integer, jsonb, pgEnum, unique, varchar, decimal, index } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { pgTable, uuid, text, timestamp, boolean, integer, jsonb, pgEnum, unique, varchar, decimal, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
 import { tenants } from '@serverless-saas/database/schema/tenancy';
 import { users } from '@serverless-saas/database/schema/auth';
 import { agents } from './agents';
@@ -109,6 +109,13 @@ export const agentSkills = pgTable('agent_skills', {
   updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
 }, (t) => ({
   uniqueSkillVersion: unique().on(t.agentId, t.tenantId, t.name, t.version),
+  // An installed skill is identified by its install, not its free-text name:
+  // two writers used to name the same install differently and both rows got
+  // in. Active rows only, so a detached (archived) row never blocks a
+  // re-attach. Tasks 4 and 5 reactivate the existing row instead of inserting.
+  activeInstallUnique: uniqueIndex('agent_skills_agent_install_active_unique')
+    .on(t.agentId, t.installId)
+    .where(sql`install_id is not null and status = 'active'`),
 }));
 
 export const agentSkillsRelations = relations(agentSkills, ({ one }) => ({

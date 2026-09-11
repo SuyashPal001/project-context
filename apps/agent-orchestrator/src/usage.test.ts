@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAttachedSkills, fetchTestSkill, toMastraSkillName, agentBelongsToTenant, recordSkillRuns } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -116,6 +116,58 @@ describe('fetchAgentMemory', () => {
   })
 })
 
+describe('fetchAgentPersonaPrompt', () => {
+  it('reads the base prompt from agents.system_prompt, trimmed', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ system_prompt: '  You are Olmo.  ' }] })
+    await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBe('You are Olmo.')
+    const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('FROM agents')
+    expect(params).toEqual(['agent-1', 'tenant-1'])
+  })
+
+  // TRANSITION (remove in migration 0092 / PR 2): a tenant onboarded between
+  // applying migration 0091 and deploying the new Lambdas has only a
+  // 'default' agent_skills row and a NULL agents.system_prompt. Without the
+  // COALESCE fallback subquery, its prompt would silently drop until PR 2.
+  it('falls back to the default agent_skills row via a COALESCE subquery, scoped by name and null install_id', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ system_prompt: 'Fallback prompt.' }] })
+    await fetchAgentPersonaPrompt('agent-1', 'tenant-1')
+    const [sql] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('COALESCE(a.system_prompt')
+    expect(sql).toContain('FROM agent_skills s')
+    expect(sql).toContain("s.name = 'default'")
+    expect(sql).toContain('s.install_id IS NULL')
+    expect(sql).toContain("s.status = 'active'")
+  })
+
+  it('scopes both the outer lookup and the fallback subquery to the tenant', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await fetchAgentPersonaPrompt('agent-1', 'tenant-1')
+    const [sql] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    // The outer WHERE still scopes to (id, tenant_id) — unchanged.
+    expect(sql).toContain('a.id = $1 AND a.tenant_id = $2')
+    // The fallback subquery independently scopes to the same agent's tenant —
+    // agent_skills carries agent_id and tenant_id as separate foreign keys,
+    // so this must not be left to the outer WHERE alone.
+    expect(sql).toContain('s.agent_id = a.id AND s.tenant_id = a.tenant_id')
+  })
+
+  it('returns null when the agent has no prompt, so the platform prompt applies', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ system_prompt: null }] })
+    await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBeNull()
+  })
+
+  it('returns null when the prompt is only whitespace', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ system_prompt: '   ' }] })
+    await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBeNull()
+  })
+
+  it('returns null instead of throwing on a database error', async () => {
+    mockPoolQuery.mockRejectedValueOnce(new Error('db down'))
+    await expect(fetchAgentPersonaPrompt('agent-1', 'tenant-1')).resolves.toBeNull()
+  })
+})
+
 describe('toMastraSkillName', () => {
   it('lowercases and hyphenates', () => {
     expect(toMastraSkillName('UGC Ad Production')).toBe('ugc-ad-production')
@@ -141,6 +193,28 @@ describe('toMastraSkillName', () => {
     const result = toMastraSkillName(raw)
     expect(result.endsWith('-')).toBe(false)
     expect(result.length).toBeLessThanOrEqual(64)
+  })
+})
+
+describe('fetchInvokedSkills', () => {
+  it('resolves each invoked install into a Mastra Skill, tenant-scoped', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ name: 'UGC Ad Production', description: 'Use when making UGC ads.', body: 'Hook in 2 seconds.' }] })
+    const skills = await fetchInvokedSkills(['install-1'], 'tenant-1')
+    expect(skills).toHaveLength(1)
+    expect(skills[0].name).toBe('ugc-ad-production')
+    expect(skills[0].instructions).toBe('Hook in 2 seconds.')
+    expect(mockPoolQuery.mock.calls[0][1]).toEqual(['install-1', 'tenant-1'])
+  })
+
+  it('skips an install that no longer resolves (uninstalled, foreign, not ready)', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await expect(fetchInvokedSkills(['install-gone'], 'tenant-1')).resolves.toEqual([])
+  })
+
+  it('does not record a run: chatStream records one on the invoking turn only', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ name: 'X', description: 'Use when X.', body: 'Do X.' }] })
+    await fetchInvokedSkills(['install-1'], 'tenant-1')
+    expect(mockPoolQuery).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -225,11 +299,14 @@ describe('fetchAttachedSkills', () => {
     expect(skills[0].instructions).toBe('Open with the client name.')
   })
 
-  it('excludes the default persona row in the query itself', async () => {
+  it('excludes the default persona row in the query itself, but not a real skill merely named "default"', async () => {
     mockPoolQuery.mockResolvedValueOnce({ rows: [] })
     await fetchAttachedSkills('agent-1', 'tenant-1')
     const sql = mockPoolQuery.mock.calls[0][0] as string
-    expect(sql).toContain("name != 'default'")
+    // The sentinel is name='default' AND install_id IS NULL together — a
+    // bare `name != 'default'` would also hide a real installed skill whose
+    // manifest happens to be named "default".
+    expect(sql).toContain("NOT (name = 'default' AND install_id IS NULL)")
   })
 
   it('scopes the query to the tenant', async () => {
@@ -331,5 +408,56 @@ describe('recordSkillRuns', () => {
   it('does nothing when there are no installs', async () => {
     await recordSkillRuns([], 'tenant-1')
     expect(mockPoolQuery).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveInvokedSkills', () => {
+  const SKILL_ID = '22222222-2222-4222-8222-222222222222'
+
+  it("resolves a picked skill id to this tenant's active, ready install", async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ install_id: 'install-1', skill_id: SKILL_ID, name: 'UGC Ad Production', body: 'Hook in 2 seconds.' }] })
+    const result = await resolveInvokedSkills([SKILL_ID], 'tenant-1')
+    expect(result).toEqual([{ installId: 'install-1', skillId: SKILL_ID, name: 'UGC Ad Production' }])
+    const [sql, params] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('si.tenant_id = $1')
+    expect(sql).toContain("si.status = 'active'")
+    expect(params).toEqual(['tenant-1', [SKILL_ID]])
+  })
+
+  it("requires the pinned version to be ready and carry a body, mirroring resolveInstalledSkillContent", async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await resolveInvokedSkills([SKILL_ID], 'tenant-1')
+    const [sql] = mockPoolQuery.mock.calls[0] as [string, unknown[]]
+    expect(sql).toContain('skill_versions sv')
+    expect(sql).toContain("sv.status = 'ready'")
+    expect(sql).toContain("sv.manifest->>'body'")
+  })
+
+  it('drops a row that is active but not ready — the WHERE clause excludes it, so no row comes back', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    const result = await resolveInvokedSkills([SKILL_ID], 'tenant-1')
+    expect(result).toEqual([])
+  })
+
+  it('drops a resolved row whose pinned version has an empty body', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ install_id: 'install-1', skill_id: SKILL_ID, name: 'X', body: '   ' }] })
+    const result = await resolveInvokedSkills([SKILL_ID], 'tenant-1')
+    expect(result).toEqual([])
+  })
+
+  it('drops ids that are not uuids without querying, so a forged id never reaches SQL', async () => {
+    const result = await resolveInvokedSkills(['not-a-uuid', "'; drop table skills; --"], 'tenant-1')
+    expect(result).toEqual([])
+    expect(mockPoolQuery).not.toHaveBeenCalled()
+  })
+
+  it('returns nothing, without querying, when nothing was picked', async () => {
+    await expect(resolveInvokedSkills([], 'tenant-1')).resolves.toEqual([])
+    expect(mockPoolQuery).not.toHaveBeenCalled()
+  })
+
+  it('returns null instead of throwing on a database error, distinct from "nothing resolved"', async () => {
+    mockPoolQuery.mockRejectedValueOnce(new Error('db down'))
+    await expect(resolveInvokedSkills([SKILL_ID], 'tenant-1')).resolves.toBeNull()
   })
 })

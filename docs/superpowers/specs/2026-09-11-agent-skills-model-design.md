@@ -115,7 +115,7 @@ Sources:
 | Question | Decision |
 |---|---|
 | Where the base prompt lives | `agents.system_prompt`, nullable. Null means the platform prompt, exactly as a missing `default` row does today |
-| What identifies an attached installed skill | Its install. Unique on `(agent_id, install_id)` for active installed rows. The server takes the name from the manifest and ignores the client's |
+| What identifies an attached installed skill | Its install. Unique on `(agent_id, install_id)` for active installed rows. A newly inserted row takes the manifest's name, never the client's. A reactivated row keeps its existing name until migration 0092 normalises names, because renaming it while the old `(agent_id, tenant_id, name, version)` constraint still covers archived rows can collide permanently (found in Task 4's review). An insert that finds an archived row with the same name and version reuses it |
 | What identifies a hand-authored skill | Its name, as today. Only `create_skill` writes these |
 | What `/` means | Turn a skill on for this conversation. It never attaches to the agent |
 | Where invoked skills are stored | On the conversation's metadata, beside `testSkillInstallId` |
@@ -183,6 +183,17 @@ this one.
   The attach route (`agent-skills.ts` POST) and the import worker both upsert on
   the install, and both take the row name from the manifest. A second attach of
   the same install is a no-op, not a second row.
+  - **Uninstalling doesn't archive the attachment.** `DELETE /skills/:id/install`
+    deactivates the tenant's `skill_installs` row but leaves every agent's
+    `agent_skills` row for it `status = 'active'`. The runtime already tolerates
+    this — `fetchAttachedSkills` resolves each install fresh and simply skips one
+    that no longer resolves — but the API surfaces must too: `GET
+    /agents/:agentId/skills`, the attach route's cap count, and the worker's cap
+    count all left-join `skill_installs` (tenant-scoped: `si.tenant_id =
+    <tenantId>`) and keep only rows where `install_id IS NULL` (hand-authored) or
+    the join resolves to `si.status = 'active'`. Otherwise a dead install's chip
+    keeps showing on the agent page, counts against the 8-skill cap, and blocks a
+    real re-attach.
 - **Dead weight.** Remove the tool allowlist writes from onboarding,
   `integrations.sync.ts` (including its call to the missing `/update` route) and
   the import worker. Remove `MAX_COMPOSED_SKILL_CHARS` and every check against it.
@@ -190,6 +201,30 @@ this one.
   the row no longer exists. The fairness routes (`ops.fairness.ts:86`,
   `agents.fairness.ts:81`) read the prompt from `agents.system_prompt` instead of
   the `default` row.
+  - `packages/foundation/ai/src/config/bundler.ts`'s `loadActiveSkill` is also a
+    `'default'` reader in spirit — it selects the agent's single highest-version
+    active `agent_skills` row with no name filter at all, so on a pre-migration
+    tenant it can return the `default` row as if it were an attached skill. It is
+    unreachable today: `runMessageRelay`'s `getRuntime` throws before this code
+    path executes, so nothing calls it in production. Left as-is and deferred —
+    not touched by the final-fix wave — but noted here so a future reader of this
+    file doesn't assume it was covered.
+  - **Sentinel, precisely.** The 'default' row is identified by
+    `name = 'default' AND install_id IS NULL` together, never by name alone. A
+    real installed skill whose manifest happens to be named "default" carries a
+    non-null `install_id` and must not be hidden, uncounted, or deleted by a
+    guard that only checks the name.
+  - **Persona-prompt transition fallback.** Between applying migration 0091 (adds
+    `agents.system_prompt`) and every Lambda/orchestrator instance running the
+    new code, a tenant onboarded in that window has only a `default` `agent_skills`
+    row and a NULL `agents.system_prompt`. `fetchAgentPersonaPrompt`
+    (`apps/agent-orchestrator/src/usage.ts`) reads
+    `COALESCE(a.system_prompt, (SELECT s.system_prompt FROM agent_skills s WHERE
+    s.agent_id = a.id AND s.tenant_id = a.tenant_id AND s.name = 'default' AND
+    s.install_id IS NULL AND s.status = 'active' ORDER BY s.created_at DESC LIMIT
+    1))`, both tenant-scoped, so that window's tenants don't silently lose their
+    base prompt. Marked `// TRANSITION (remove in migration 0092 / PR 2)`; Task 13
+    removes it once 0092 has deleted every `default` row everywhere.
 
 ### 2. `/` for a conversation, the composer, and the agent page
 
@@ -197,18 +232,30 @@ this one.
 
 1. `/` picks arrive in `skillsUsed`, as today: catalog skill ids sent by the
    client.
-2. Each id is resolved to this tenant's own active install, with the tenant id
-   from the verified token. An id without a matching active install for this
-   tenant is dropped and logged. It never errors and never reaches another
-   tenant's content.
+2. Each id is resolved to this tenant's own install, with the tenant id from the
+   verified token. An id counts as resolved only when the install is active, its
+   pinned version is ready, and its manifest body is non-empty: the same predicate
+   the loader uses, so anything counted, forced, recorded or saved is guaranteed
+   to load. Anything else is dropped. It never reaches another tenant's content.
+   A database error returns `null`, distinct from "nothing resolved".
 3. The resolved installs are added to the conversation's invoked list, stored in
    conversation metadata through the same PATCH that sets `testSkillInstallId`.
    Each entry is `{ installId, skillId, name }`: `installId` is what the resolver
    loads, and `name` is the skill's display name, resolved on the server so the
    composer can label chips without a second lookup.
-4. `fetchConversationTestSkillInstallId` becomes one fetch of the conversation's
-   skill settings: the test skill as before, plus the invoked list. Still one
-   request per turn.
+4. `fetchConversationTestSkillInstallId` becomes `fetchConversationSkillSettings`,
+   one fetch of the conversation's skill settings: the test skill as before, plus
+   the invoked list, plus an `ok` flag. Still one request per turn.
+5. The stored invoked list is never trusted as it is. The conversation PATCH
+   accepts any uuid, so every turn the stored entries are re-resolved by `skillId`
+   through the same tenant-scoped lookup, in parallel with this turn's picks.
+   Forged, foreign or uninstalled entries drop out, and the list is saved back
+   when something was newly invoked or the stored entries changed. Chip order is
+   kept.
+6. If the conversation read fails (`ok: false`) or either lookup returns `null`,
+   the whole `/` step is skipped for that turn: nothing loads, nothing is recorded,
+   nothing is saved. A transient failure can't wipe the list or open the
+   Test-in-chat gate.
 
 **What reaches the model:**
 
@@ -233,7 +280,12 @@ this one.
   thinking budget sends no history (`chatStream.ts:300`, `lastMessages: false`),
   and older turns fall outside Olmo's 20-message window.
 - Resolution is fresh every turn, so an uninstalled skill drops out of active
-  conversations on the next turn.
+  conversations on the next turn. The loader, `fetchInvokedSkills`, re-checks each
+  install tenant-scoped at load time as defense in depth; neither check is to be
+  removed as redundant.
+- The resolver reads invoked skills ONLY from the request-context key that
+  `chatStream` sets after re-resolution. It never falls back to the conversation's
+  stored metadata.
 
 **Composer (`ChatInput.tsx`):**
 
@@ -319,3 +371,13 @@ Done means these are observable on dev after Migration B:
   cleaned up first.
 - Separate memory per agent. Every agent in a workspace shares one memory record
   (`resource: tenantId`).
+
+## Known constraints
+
+- The forced `/` invocation needs Mastra's eager `skill` tool. Mastra 1.64 drops
+  that tool when an on-demand `SkillSearchProcessor` is configured
+  (`suppressEagerSkillTools`). Adding one to Olmo would break `/`: the forced call
+  would target a tool that no longer exists.
+- The `/` path runs only on the SSE chat route. The WebSocket route never resolves
+  `/` picks, the same known gap as the sub-agent control plane's inert WebSocket
+  path.

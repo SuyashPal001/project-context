@@ -2423,9 +2423,16 @@ Run: `pnpm --filter @serverless-saas/database db:generate`
 
 Expected: a new `0092_*.sql` containing `ALTER TABLE "agent_skills" DROP CONSTRAINT "agent_skills_agent_id_tenant_id_name_version_unique";` and `CREATE UNIQUE INDEX IF NOT EXISTS "agent_skills_agent_authored_name_active_unique" ... WHERE install_id is null and status = 'active';`, and nothing else. Anything else is schema drift from someone else's work: stop and report it.
 
-- [ ] **Step 3: Put the data statements first**
+- [ ] **Step 3: Order the statements: data, then the drop, then the rename, then the index**
 
-At the very top of the generated `0092_*.sql`, before the `DROP CONSTRAINT`, insert:
+Amended during Task 4's review. The old `(agent_id, tenant_id, name, version)` constraint also covers archived
+rows, so renaming an installed row to its manifest name while that constraint exists can collide with an
+archived duplicate. Drop the constraint BEFORE renaming. The generated `DROP CONSTRAINT` statement moves to
+sit between the delete and the rename, below.
+
+At the very top of the generated `0092_*.sql`, above the generated `DROP CONSTRAINT`, insert the copy and delete
+statements below. Then move the generated `DROP CONSTRAINT` line to directly after the `DELETE`. The rename and
+archive statements follow it, and the generated `CREATE UNIQUE INDEX` stays last:
 
 ```sql
 -- Any agent onboarded between 0091 and the PR 1 deploy got a 'default' row
@@ -2434,18 +2441,25 @@ UPDATE "agents" a SET "system_prompt" = s."system_prompt"
 FROM (
   SELECT DISTINCT ON (agent_id) agent_id, system_prompt
   FROM "agent_skills"
-  WHERE name = 'default' AND status = 'active'
+  WHERE name = 'default' AND install_id IS NULL AND status = 'active'
   ORDER BY agent_id, created_at DESC
 ) s
 WHERE s.agent_id = a.id AND a.system_prompt IS NULL;
 --> statement-breakpoint
 -- The base prompt now lives on agents.system_prompt. No table references
--- agent_skills.id, so these rows can go.
-DELETE FROM "agent_skills" WHERE name = 'default';
+-- agent_skills.id, so these rows can go. The sentinel is name='default' AND
+-- install_id IS NULL together — a real installed skill whose manifest
+-- happens to be named "default" is not this row and must survive.
+DELETE FROM "agent_skills" WHERE name = 'default' AND install_id IS NULL;
 --> statement-breakpoint
--- Installed rows take their manifest name, the one name the attach paths now
--- write. Skips a rename that would collide under the old constraint, which is
--- still in place at this point.
+-- (The generated `ALTER TABLE "agent_skills" DROP CONSTRAINT
+-- "agent_skills_agent_id_tenant_id_name_version_unique";` goes HERE, followed by
+-- its `--> statement-breakpoint`.)
+--
+-- Installed rows take their manifest name. Task 4's reactivation keeps a row's
+-- existing name, so this is where names are normalised. The old constraint is
+-- already gone at this point; the NOT EXISTS guard stays as a belt-and-braces
+-- skip for any row that would still clash on the same name and version.
 UPDATE "agent_skills" s SET "name" = sv.manifest->>'name', "updated_at" = now()
 FROM "skill_installs" si
 JOIN "skill_versions" sv ON sv.skill_id = si.skill_id AND sv.version = si.installed_version
@@ -2504,23 +2518,33 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Update the tests to the post-migration world**
 
-- In `apps/agent-orchestrator/src/usage.test.ts`, delete the test `'excludes the default persona row in the query itself'`.
+The dead-install predicate (Fix 1's left-join on skill_installs, tenant-scoped, keeping
+`install_id IS NULL OR si.status = 'active'`) is permanent — it stays in GET, the route's
+cap count, and the worker's cap count. Only the TRANSITION `'default'` guard goes here;
+do not strip the join/predicate alongside it.
+
+- In `apps/agent-orchestrator/src/usage.test.ts`:
+  - delete the test `'excludes the default persona row in the query itself, but not a real skill merely named "default"'`;
+  - delete the `fetchAgentPersonaPrompt` COALESCE-fallback tests added by the final-fix wave (`'falls back to the default agent_skills row via a COALESCE subquery...'` and the tenant-scoping assertion on the fallback subquery in `'scopes both the outer lookup and the fallback subquery to the tenant'` — keep that test's outer-WHERE assertion, drop the subquery one).
 - In `products/agent-platform/packages/api/__tests__/agent-skills.test.ts`:
   - delete the test `"does not count the agent's 'default' row, which is its base prompt"`;
+  - delete the test `'keeps a real skill named "default" that carries an installId (the sentinel is name+null installId together)'` (there's no more sentinel to be distinct from);
   - replace the GET test with:
 
 ```ts
     it('lists the attached skills', async () => {
-        mockDb({ list: [{ id: 'b', name: 'bid-writer' }] });
+        mockDb({ list: [{ id: 'b', name: 'bid-writer', installId: null }] });
         const res = await request('GET', undefined, 'read');
         expect(res.status).toBe(200);
-        expect((await res.json()).data).toEqual([{ id: 'b', name: 'bid-writer' }]);
+        expect((await res.json()).data).toEqual([{ id: 'b', name: 'bid-writer', installId: null }]);
     });
 ```
 
+  - keep the join/predicate assertion tests (`'left-joins skill_installs tenant-scoped and excludes a dead (uninstalled) install...'`, for both GET and the cap count) — only drop their `'default'`-guard expectations if any, not the join/predicate ones.
 - In `products/agent-platform/packages/worker-handlers/__tests__/skillImport.test.ts`:
-  - rename the test `"doesn't count the agent's 'default' row or this install toward the cap"` to `"doesn't count this install toward its own cap"`;
-  - change its `expect(count).toContain("s.name <> 'default'")` to `expect(count).not.toContain("'default'")`.
+  - rename the test `"doesn't count the agent's 'default' row, a dead install's row, or this install toward the cap"` to `"doesn't count a dead install's row or this install toward the cap"`;
+  - delete its `expect(count).toContain("NOT (s.name = 'default' AND s.install_id IS NULL)")` assertion, and change it to `expect(count).not.toContain("'default'")`;
+  - keep the `LEFT JOIN skill_installs` and `s.install_id IS DISTINCT FROM` assertions — those predicates are permanent, not part of this guard.
 
 - [ ] **Step 2: Run to verify the worker test fails**
 
@@ -2530,14 +2554,19 @@ Expected: FAIL, because the count SQL still contains `'default'`.
 - [ ] **Step 3: Remove the guards**
 
 - `apps/agent-orchestrator/src/usage.ts`, `fetchAttachedSkills`:
-  - delete ` AND name != 'default'` from the query;
+  - replace `AND NOT (name = 'default' AND install_id IS NULL)` with nothing (delete the line);
   - in the doc comment, delete `(excluding "default" — the onboarding bootstrap row holding the agent's base persona, not a real skill; read separately by fetchAgentPersonaPrompt)`.
+- `apps/agent-orchestrator/src/usage.ts`, `fetchAgentPersonaPrompt` (final-fix wave's TRANSITION fallback):
+  - drop the `COALESCE(a.system_prompt, (SELECT ... FROM agent_skills s ...))` wrapper and go back to selecting `system_prompt` directly off `agents`;
+  - delete the `// TRANSITION (remove in migration 0092 / PR 2)` comment and the paragraph above the function that explains the fallback.
 - `products/agent-platform/packages/api/routes/agent-skills.ts`:
-  - in GET, replace the TRANSITION comment and `data.filter(...)` with `return c.json({ data });`;
-  - in POST, delete `s.name !== 'default' && ` from the `others` filter, and delete the TRANSITION sentence from its comment.
+  - in GET, delete the TRANSITION comment and `.filter(...)` — return the joined/predicated `data` directly: `return c.json({ data });`;
+  - in POST, delete `!(s.name === 'default' && s.installId === null) && ` from the `others` filter (keep the dead-install exclusion and the re-attach exclusion), and delete the TRANSITION sentence from its comment;
+  - leave the reinstall comment above the archived-row lookup as is. It is not a TRANSITION guard, and its "fresh installId" correction must stay.
 - `products/agent-platform/packages/worker-handlers/handlers/skillImport.ts`:
-  - delete ` AND s.name <> 'default'` from the count SQL;
+  - delete `AND NOT (s.name = 'default' AND s.install_id IS NULL)` from the count SQL (keep the `LEFT JOIN skill_installs si ...` and its `(s.install_id IS NULL OR si.status = 'active')` predicate — that's Fix 1, not a TRANSITION guard);
   - delete the TRANSITION sentence from the comment above it.
+- `packages/foundation/database/migrations/0091_rich_rhino.sql` is untouched here — it already shipped with PR 1.
 
 Then:
 

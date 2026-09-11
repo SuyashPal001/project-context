@@ -638,6 +638,13 @@
       "when": 1789070990770,
       "tag": "0090_narrow_doctor_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1789138505163,
+      "tag": "0091_rich_rhino",
+      "breakpoints": true
     }
   ]
 }

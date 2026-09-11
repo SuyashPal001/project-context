@@ -3,7 +3,6 @@ import { sql } from 'drizzle-orm';
 import { createSign, createPrivateKey } from 'crypto';
 import { db } from '@serverless-saas/database';
 import { encryptCredentials } from './integrations.crypto';
-import { syncToolsAndNotifyRelay } from './integrations.sync';
 import { publishToQueue } from '@serverless-saas/queue';
 import type { AppEnv } from '../types';
 
@@ -156,6 +155,5 @@ githubCallbackRoute.get('/github/callback', async (c) => {
         }
     }
 
-    void syncToolsAndNotifyRelay(tenantId, 'github', 'add');
     return c.redirect(`${frontendUrl}/${slug}/dashboard/integrations?connected=github`);
 });

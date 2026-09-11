@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { InvokedSkill } from './mastra/skillInvocation.js'
 
 const API_BASE = process.env.API_BASE_URL ?? ''
 
@@ -55,23 +56,64 @@ export async function fetchConversationAllowMode(idToken: string, conversationId
   }
 }
 
-// Same ownership-check reasoning as fetchConversationAllowMode above: a
-// client-asserted installId on the wire is never trusted directly — this
-// reads it back off the conversation row, scoped to (tenantId, userId)
+export interface ConversationSkillSettings {
+  /** Set only on a Test-in-chat conversation: that conversation runs exactly this one skill. */
+  testSkillInstallId: string | null
+  /** Skills turned on in this conversation with "/". */
+  invokedSkills: InvokedSkill[]
+  /**
+   * True only on a successful read. False on a non-OK response or a thrown
+   * error — callers must treat a false `ok` as "unknown", not "no skills",
+   * so a transient read failure never wipes a conversation's invoked list.
+   */
+  ok: boolean
+}
+
+const EMPTY_SKILL_SETTINGS: ConversationSkillSettings = { testSkillInstallId: null, invokedSkills: [], ok: false }
+
+function isInvokedSkill(v: unknown): v is InvokedSkill {
+  const s = v as Record<string, unknown> | null
+  return !!s && typeof s === 'object'
+    && typeof s.installId === 'string' && typeof s.skillId === 'string' && typeof s.name === 'string'
+}
+
+// Same ownership-check reasoning as fetchConversationAllowMode above: these
+// values are read back off the conversation row, scoped to (tenantId, userId)
 // server-side by GET /conversations/:id, so a stranger's conversationId 404s
-// and falls back to no test skill rather than resolving anything.
-export async function fetchConversationTestSkillInstallId(idToken: string, conversationId: string): Promise<string | null> {
+// and falls back to no skills. Even so, every invoked entry is re-resolved
+// against the tenant's active installs before anything loads it.
+export async function fetchConversationSkillSettings(idToken: string, conversationId: string): Promise<ConversationSkillSettings> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/conversations/${conversationId}`, {
       headers: { 'Authorization': `Bearer ${idToken}` },
     })
-    if (!res.ok) return null
-    const json = await res.json() as { data?: { metadata?: { testSkillInstallId?: string } } }
-    return json.data?.metadata?.testSkillInstallId ?? null
+    if (!res.ok) return EMPTY_SKILL_SETTINGS
+    const json = await res.json() as { data?: { metadata?: { testSkillInstallId?: unknown; invokedSkills?: unknown } } }
+    const metadata = json.data?.metadata ?? {}
+    return {
+      testSkillInstallId: typeof metadata.testSkillInstallId === 'string' ? metadata.testSkillInstallId : null,
+      invokedSkills: Array.isArray(metadata.invokedSkills) ? metadata.invokedSkills.filter(isInvokedSkill) : [],
+      ok: true,
+    }
   } catch (err) {
-    console.error('[persistence] fetchConversationTestSkillInstallId error:', (err as Error).message)
-    return null
+    console.error('[persistence] fetchConversationSkillSettings error:', (err as Error).message)
+    return EMPTY_SKILL_SETTINGS
   }
+}
+
+// Fire-and-forget, like saveUserMessage: the list only has to be there for
+// the NEXT turn, and a lost write means a "/" skill is not remembered, never
+// that something is loaded that shouldn't be.
+export function saveConversationInvokedSkills(idToken: string, conversationId: string, invokedSkills: InvokedSkill[]): void {
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}`, {
+    method: 'PATCH',
+    headers: authHeaders(idToken),
+    body: JSON.stringify({ invokedSkills }),
+  }).then(async (res) => {
+    if (!res.ok) console.error(`[persistence] saveConversationInvokedSkills status: ${res.status} body: ${await res.text().catch(() => '')}`)
+  }).catch((err: Error) => {
+    console.error('[persistence] saveConversationInvokedSkills error:', err.message)
+  })
 }
 
 export function saveUserMessage(

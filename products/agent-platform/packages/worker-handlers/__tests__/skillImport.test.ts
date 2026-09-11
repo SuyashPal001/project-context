@@ -44,6 +44,20 @@ function sqlParams(executed: unknown): unknown[] {
   return chunks.filter((c) => !(c && typeof c === 'object' && Array.isArray((c as { value?: unknown[] }).value)));
 }
 
+// The archived-name UPDATE's `install_id` scalar subselect and its EXISTS
+// guard both query `skill_installs si`, so a whole-statement `.toContain` /
+// `.toMatch` on a filter like `si.tenant_id` is satisfied by either copy —
+// deleting the filter from just one of them, or collapsing the guard to an
+// unscoped `EXISTS (SELECT 1 FROM skill_installs si)`, still passes such an
+// assertion. These pull each subquery's own text out so each can be checked
+// in isolation and neither can hide behind the other.
+function extractExistsGuard(sql: string): string | undefined {
+  return sql.match(/EXISTS\s*\(\s*(SELECT 1 FROM skill_installs si[\s\S]*?)\)\s*$/m)?.[1];
+}
+function extractInstallIdSubselect(sql: string): string | undefined {
+  return sql.match(/install_id\s*=\s*\(\s*(SELECT si\.id FROM skill_installs si[\s\S]*?)\)/)?.[1];
+}
+
 const safeExtractSkillZipMock = vi.hoisted(() => vi.fn());
 vi.mock('../lib/safeSkillZip', async () => {
   const actual = await vi.importActual<typeof import('../lib/safeSkillZip')>('../lib/safeSkillZip');
@@ -260,7 +274,7 @@ describe('handleSkillImport', () => {
     // is indistinguishable from any other zero-row outcome: no row is written.
     dbMock.execute.mockImplementation(async (q: unknown) => {
       const text = sqlText(q);
-      if (text.includes('SELECT name, system_prompt')) return [];
+      if (text.includes('SELECT count(*)')) return [{ n: 0 }];
       if (text.includes('INSERT INTO agent_skills')) return { count: 0 };
       return undefined;
     });
@@ -313,9 +327,7 @@ describe('handleSkillImport', () => {
     // check trips on count alone, independent of composed-char cost.
     dbMock.execute.mockImplementation(async (q: unknown) => {
       const text = sqlText(q);
-      if (text.includes('SELECT name, system_prompt')) {
-        return Array.from({ length: 8 }, (_, i) => ({ name: `existing-${i}`, systemPrompt: 'x', version: 1 }));
-      }
+      if (text.includes('SELECT count(*)')) return [{ n: 8 }];
       return undefined;
     });
 
@@ -337,7 +349,7 @@ describe('handleSkillImport', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     dbMock.execute.mockImplementation(async (q: unknown) => {
       const text = sqlText(q);
-      if (text.includes('SELECT name, system_prompt')) return [];
+      if (text.includes('SELECT count(*)')) return [{ n: 0 }];
       if (text.includes('INSERT INTO agent_skills')) return { count: 0 };
       return undefined;
     });
@@ -360,7 +372,7 @@ describe('handleSkillImport', () => {
     // version's already-committed 'ready' status with 'failed'.
     dbMock.execute.mockImplementation(async (q: unknown) => {
       const text = sqlText(q);
-      if (text.includes('SELECT name, system_prompt')) throw new Error('invalid input syntax for type uuid: "not-a-uuid"');
+      if (text.includes('SELECT count(*)')) throw new Error('invalid input syntax for type uuid: "not-a-uuid"');
       return undefined;
     });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -377,5 +389,248 @@ describe('handleSkillImport', () => {
     expect(executed).not.toContain("status = 'failed'");
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('attach failed'));
     errorSpy.mockRestore();
+  });
+
+  it("reactivates the agent's existing row for this install instead of inserting a second", async () => {
+    dbMock.execute.mockImplementation(async (q: unknown) => {
+      const text = sqlText(q);
+      // Match the reactivation UPDATE specifically (its `ORDER BY (s2.status
+      // = 'active')` tiebreak appears nowhere else), not the archived-name
+      // UPDATE — both statements contain the literal text 'UPDATE agent_skills'.
+      if (text.includes('ORDER BY (s2.status')) return [{ id: 'row-1' }];
+      return undefined;
+    });
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    expect(executed).toContain('UPDATE agent_skills');
+    expect(executed).not.toContain('INSERT INTO agent_skills');
+  });
+
+  it('inserts with ON CONFLICT on the active-install index when no row exists yet', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const insert = dbMock.execute.mock.calls
+      .map(([q]) => sqlText(q))
+      .find((t) => t.includes('INSERT INTO agent_skills'));
+    expect(insert).toContain('ON CONFLICT (agent_id, install_id)');
+    expect(insert).toContain("install_id IS NOT NULL AND status = 'active'");
+    expect(insert).not.toContain('(agent_id, tenant_id, name, version)');
+  });
+
+  it("doesn't count the agent's 'default' row, a dead install's row, or this install toward the cap", async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const count = dbMock.execute.mock.calls
+      .map(([q]) => sqlText(q))
+      .find((t) => t.includes('SELECT count(*)'));
+    // The sentinel is name='default' AND install_id IS NULL together — a
+    // real skill manifest named "default" (which carries an install_id) must
+    // not be excluded by a bare `s.name <> 'default'`.
+    expect(count).toContain("NOT (s.name = 'default' AND s.install_id IS NULL)");
+    expect(count).toContain('s.install_id IS DISTINCT FROM');
+    // Dead (uninstalled) installs don't count against the cap: left-join
+    // skill_installs, tenant-scoped, and exclude a row whose install isn't
+    // active any more.
+    expect(count).toContain('LEFT JOIN skill_installs si ON si.id = s.install_id AND si.tenant_id =');
+    expect(count).toContain("(s.install_id IS NULL OR si.status = 'active')");
+  });
+
+  it('has no character budget: a long skill still attaches', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: `---\nname: long-skill\ndescription: "Use when a sample skill description is needed for testing"\n---\n\n${'x'.repeat(30_000)}` },
+      attachToAgentId: 'agent-1',
+    });
+
+    const executed = dbMock.execute.mock.calls.map(([q]) => sqlText(q)).join('\n');
+    expect(executed).toContain('INSERT INTO agent_skills');
+  });
+
+  // Ruling (a) from Task 4's review: the reactivation UPDATE must never
+  // rename the row, because the old (agent_id, tenant_id, name, version)
+  // unique constraint still covers archived rows — renaming here could
+  // collide permanently with an archived row that already holds that name.
+  it('the reactivation UPDATE never assigns name', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const reactivateSql = dbMock.execute.mock.calls
+      .map(([q]) => sqlText(q))
+      .find((t) => t.includes('ORDER BY (s2.status'));
+    expect(reactivateSql).toBeDefined();
+    expect(reactivateSql).not.toMatch(/name\s*=/);
+  });
+
+  // Fix round 1, IMPORTANT 1: the same old (agent_id, tenant_id, name,
+  // version) constraint means setting `version` on this UPDATE can also
+  // collide permanently — an active v1 row for this install plus an
+  // archived v2 row would make reactivating v1 to version=2 raise 23505 on
+  // every retry. agent_skills.version is a dedupe tiebreak only.
+  it('the reactivation UPDATE never assigns version', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const reactivateSql = dbMock.execute.mock.calls
+      .map(([q]) => sqlText(q))
+      .find((t) => t.includes('ORDER BY (s2.status'));
+    expect(reactivateSql).toBeDefined();
+    expect(reactivateSql).not.toMatch(/version\s*=/);
+  });
+
+  // Fix round 1, IMPORTANT 2: nothing previously proved the reactivation
+  // UPDATE's tenant filters were load-bearing — deleting `a.tenant_id` from
+  // its subselect still passed every test. Assert on the literal SQL text
+  // (all three joins constrain by tenant) and on the actual bound value.
+  it('the reactivation UPDATE constrains by tenant on the agent, the row itself, and the install', async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const reactivateCall = dbMock.execute.mock.calls
+      .find(([q]) => sqlText(q).includes('ORDER BY (s2.status'));
+    expect(reactivateCall).toBeDefined();
+    const reactivateSql = sqlText(reactivateCall![0]);
+    expect(reactivateSql).toMatch(/a\.tenant_id\s*=/);
+    expect(reactivateSql).toMatch(/s2\.tenant_id\s*=/);
+    expect(reactivateSql).toMatch(/si\.tenant_id\s*=/);
+    expect(sqlParams(reactivateCall![0])).toContain('tenant-1');
+  });
+
+  // Ruling (b): when the reactivation UPDATE touches zero rows (no row for
+  // this install yet), a second UPDATE reuses an ARCHIVED row that already
+  // holds this exact name and version, before ever reaching the INSERT.
+  // Minor 5: the reactivation UPDATE must run (and be found to touch zero
+  // rows) strictly before the archived-name UPDATE — assert that ordering
+  // by call index, not just presence.
+  it('reuses an archived same-name-and-version row when the reactivation UPDATE returns no rows, and never inserts', async () => {
+    dbMock.execute.mockImplementation(async (q: unknown) => {
+      const text = sqlText(q);
+      if (text.includes("status = 'archived'")) return [{ id: 'archived-row' }];
+      return undefined;
+    });
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const calls = dbMock.execute.mock.calls.map(([q]) => sqlText(q));
+    const reactivateIdx = calls.findIndex((t) => t.includes('ORDER BY (s2.status'));
+    const archivedIdx = calls.findIndex((t) => t.includes("status = 'archived'"));
+    expect(reactivateIdx).toBeGreaterThanOrEqual(0);
+    expect(archivedIdx).toBeGreaterThan(reactivateIdx);
+    expect(calls.join('\n')).not.toContain('INSERT INTO agent_skills');
+  });
+
+  it("the archived-name UPDATE's SQL contains status = 'archived', both tenant constraints, and binds the tenant", async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const archivedCall = dbMock.execute.mock.calls
+      .find(([q]) => sqlText(q).includes("status = 'archived'"));
+    expect(archivedCall).toBeDefined();
+    const archivedSql = sqlText(archivedCall![0]);
+    expect(archivedSql).toContain("status = 'archived'");
+    expect(archivedSql).toMatch(/a\.tenant_id\s*=/);
+    expect(archivedSql).toMatch(/s2\.tenant_id\s*=/);
+    expect(sqlParams(archivedCall![0])).toContain('tenant-1');
+  });
+
+  // Fix round 1, new problem found in review: a scalar install_id subselect
+  // with no matching active skill_installs row evaluates to NULL, which
+  // would silently revive the archived row as a phantom hand-authored skill
+  // (status='active', install_id=NULL). This is reachable — the API can
+  // enqueue the import before the skill_installs row commits. The EXISTS
+  // guard makes the whole UPDATE match zero rows in that case instead.
+  //
+  // Fix round 2: `si.tenant_id` and `si.status = 'active'` each appear
+  // *twice* in this statement — once in the `install_id` scalar subselect,
+  // once in the EXISTS guard — so asserting on the whole statement's text
+  // is satisfied even if one of the two copies is deleted, or the guard is
+  // collapsed to an unscoped `EXISTS (SELECT 1 FROM skill_installs si)`.
+  // That is a real cross-tenant hole: tenant B's active install of the same
+  // public catalog skill_id would satisfy an unscoped guard while tenant
+  // A's own install_id subselect is NULL, reviving A's archived row with
+  // install_id NULL. `extractExistsGuard` and `extractInstallIdSubselect`
+  // isolate each subquery's own text so neither can hide behind the other.
+  it("the archived-name UPDATE's EXISTS guard, isolated from the rest of the statement, filters by skill, tenant, and active status", async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const archivedSql = dbMock.execute.mock.calls
+      .map(([q]) => sqlText(q))
+      .find((t) => t.includes("status = 'archived'"));
+    expect(archivedSql).toBeDefined();
+    const guard = extractExistsGuard(archivedSql!);
+    expect(guard).toBeDefined();
+    expect(guard).toContain('si.skill_id');
+    expect(guard).toContain('si.tenant_id');
+    expect(guard).toContain("si.status = 'active'");
+  });
+
+  it("the archived-name UPDATE's install_id subselect, isolated from the EXISTS guard, is itself tenant- and status-scoped", async () => {
+    const { handleSkillImport } = await import('../handlers/skillImport');
+
+    await handleSkillImport({
+      tenantId: 'tenant-1', skillId: 'skill-1', skillVersionId: 'version-1', version: 1,
+      source: { type: 'authored', body: '---\nname: bid-writer\ndescription: "Use when a sample skill description is needed for testing"\n---\n\nBody.' },
+      attachToAgentId: 'agent-1',
+    });
+
+    const archivedSql = dbMock.execute.mock.calls
+      .map(([q]) => sqlText(q))
+      .find((t) => t.includes("status = 'archived'"));
+    expect(archivedSql).toBeDefined();
+    const subselect = extractInstallIdSubselect(archivedSql!);
+    expect(subselect).toBeDefined();
+    expect(subselect).toContain('si.tenant_id');
+    expect(subselect).toContain("si.status = 'active'");
   });
 });

@@ -78,7 +78,7 @@ export async function handleOpsRunFairness(c: Context<AppEnv>) {
 
     try {
         const [agent] = await db
-            .select({ id: agents.id, tenantId: agents.tenantId, description: agents.description })
+            .select({ id: agents.id, tenantId: agents.tenantId, description: agents.description, systemPrompt: agents.systemPrompt })
             .from(agents).where(eq(agents.id, agentId)).limit(1);
         if (!agent) return c.json({ error: 'Agent not found' }, 404);
 
@@ -88,6 +88,7 @@ export async function handleOpsRunFairness(c: Context<AppEnv>) {
 
         const texts = [
             agent.description ?? '',
+            agent.systemPrompt ?? '',
             ...skills.map((s: { systemPrompt: string; tools: string[] }) => s.systemPrompt),
             ...skills.flatMap((s: { systemPrompt: string; tools: string[] }) => s.tools),
         ];

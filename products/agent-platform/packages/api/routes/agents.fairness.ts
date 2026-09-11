@@ -74,14 +74,14 @@ agentFairnessRoutes.post('/:agentId/fairness/run', async (c) => {
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
 
   const agentId = c.req.param('agentId');
-  const [agent] = await db.select({ id: agents.id, description: agents.description })
+  const [agent] = await db.select({ id: agents.id, description: agents.description, systemPrompt: agents.systemPrompt })
     .from(agents).where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId))).limit(1);
   if (!agent) return c.json({ error: 'Agent not found' }, 404);
 
   const skills = await db.select({ systemPrompt: agentSkills.systemPrompt, tools: agentSkills.tools })
     .from(agentSkills).where(and(eq(agentSkills.agentId, agentId), eq(agentSkills.tenantId, tenantId)));
 
-  const texts = [agent.description ?? '', ...skills.map((s: { systemPrompt: string; tools: string[] }) => s.systemPrompt), ...skills.flatMap((s: { systemPrompt: string; tools: string[] }) => s.tools)];
+  const texts = [agent.description ?? '', agent.systemPrompt ?? '', ...skills.map((s: { systemPrompt: string; tools: string[] }) => s.systemPrompt), ...skills.flatMap((s: { systemPrompt: string; tools: string[] }) => s.tools)];
 
   const checkResults: FairnessCheckResult[] = [
     checkDemographicLanguage(texts),

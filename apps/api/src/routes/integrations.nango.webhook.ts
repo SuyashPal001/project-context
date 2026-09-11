@@ -3,7 +3,6 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { sql } from 'drizzle-orm';
 import { db } from '@serverless-saas/database';
 import { auditLog } from '@serverless-saas/database/schema/audit';
-import { syncToolsAndNotifyRelay } from './integrations.sync';
 import type { AppEnv } from '../types';
 
 export const nangoWebhookRoute = new Hono<AppEnv>();
@@ -97,6 +96,5 @@ nangoWebhookRoute.post('/webhooks/nango', async (c) => {
         metadata: { provider: internalProvider }, traceId: c.get('traceId') ?? '',
     }).catch((err: Error) => console.error('Audit log write failed:', err));
 
-    void syncToolsAndNotifyRelay(tenantId, internalProvider, 'add');
     return c.json({ received: true });
 });

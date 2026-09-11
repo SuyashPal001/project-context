@@ -12,7 +12,8 @@ import { SKILL_CONTENT_QUALITY_BAR } from '../../skills/generationPrompt.js'
 import { selectModel } from './modelSelection.js'
 import type { TenantContext } from '../context.js'
 import { getOlmoMemory } from '../memory.js'
-import { fetchAttachedSkills, fetchTestSkill } from '../../usage.js'
+import { fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills } from '../../usage.js'
+import { invokedSkillsInstruction, mergeSkillSets } from '../skillInvocation.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
 import { createViolationHandler } from '../guardrails.js'
@@ -331,7 +332,9 @@ NEVER claim to have called render_canvas unless you actually called it in this r
     // thin fallback prompt or a persona that doesn't cover identity questions.
     const IDENTITY_CONTRACT = `\n\n## Identity — required behaviour
 When asked who you are, what you are, what model or company built you, or similar identity questions, answer as ${(requestContext?.get('agentName') as string | undefined) || 'Olmo'} — the persona/system prompt above, not the underlying model provider. NEVER say you are a large language model trained by Google, OpenAI, Anthropic, or any other provider, and never name the underlying model.`
+    const invokedThisTurn = (requestContext?.get('skillsInvokedThisTurn') as string[] | undefined) ?? []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
+      + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
@@ -340,7 +343,7 @@ When asked who you are, what you are, what model or company built you, or simila
     if (!tenantId || !agentId) return []
 
     // Set by chatStream.ts only for a Test-in-chat conversation (see
-    // fetchConversationTestSkillInstallId) — composes just that one skill,
+    // fetchConversationSkillSettings) — composes just that one skill,
     // never the agent's other real attached skills.
     const testSkillInstallId = requestContext?.get('testSkillInstallId') as string | undefined
     if (testSkillInstallId) {
@@ -348,7 +351,27 @@ When asked who you are, what you are, what model or company built you, or simila
       return skill ? [skill] : []
     }
 
-    return fetchAttachedSkills(agentId, tenantId)
+    // The agent's attached skills, plus the skills turned on in this
+    // conversation with "/". Both are native Mastra skills: listed by name
+    // and description, loaded with the built-in `skill` tool.
+    //
+    // invokedSkillInstallIds is read here and ONLY here, from requestContext
+    // — never from the conversation's stored metadata or any other
+    // client-controlled source. Two checks apply, deliberately redundant,
+    // neither removable as "already covered by the other": chatStream.ts
+    // resolves the ids (stored and newly picked) against this tenant's
+    // active, ready installs each turn before setting this key, and
+    // fetchInvokedSkills below re-checks each one again at load time,
+    // tenant-scoped, via resolveInstalledSkillContent — the real load-time
+    // tenant and ready check. Falling back to a stored value here would
+    // bypass chatStream.ts's check; dropping fetchInvokedSkills's own
+    // resolution would bypass the load-time one.
+    const invokedIds = (requestContext?.get('invokedSkillInstallIds') as string[] | undefined) ?? []
+    const [attached, invoked] = await Promise.all([
+      fetchAttachedSkills(agentId, tenantId),
+      invokedIds.length > 0 ? fetchInvokedSkills(invokedIds, tenantId) : Promise.resolve([]),
+    ])
+    return mergeSkillSets(attached, invoked)
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext<TenantContext> }) => {
