@@ -36,14 +36,11 @@ export interface SkillImportPayload {
   attachToAgentId?: string;
 }
 
-// Mirrors MAX_ATTACHED_SKILLS / MAX_COMPOSED_SKILL_CHARS in
-// products/agent-platform/packages/api/routes/agent-skills.ts (which itself
-// mirrors the orchestrator's usage.ts). This raw-SQL insert bypasses that
-// route's guard entirely, so it has to re-enforce the same caps or it becomes
-// the one attach path that can push an agent past them. Deliberately
-// duplicated rather than shared — see the route file's comment.
+// Same abuse ceiling as the API's attach route
+// (products/agent-platform/packages/api/routes/agent-skills.ts). This raw-SQL
+// attach has no route in front of it, so it enforces the cap itself.
+// Deliberately duplicated rather than shared — see the route file's comment.
 const MAX_ATTACHED_SKILLS = 8;
-const MAX_COMPOSED_SKILL_CHARS = 24_000;
 
 interface ExtractedPackage {
   entries: SafeSkillEntry[];
@@ -134,9 +131,9 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
     // the version becomes usable, the parsed body is already in hand, and the
     // attach survives the user closing the tab.
     //
-    // agent_skills is unique on (agent_id, tenant_id, name, version) — the
-    // version must be the one just imported, or a legitimate re-attach of a
-    // later version collides with this row.
+    // An install is attached at most once per agent, enforced by the partial
+    // unique index agent_skills_agent_install_active_unique on
+    // (agent_id, install_id) WHERE install_id IS NOT NULL AND status = 'active'.
     // Given its own try/catch: the import above already fully succeeded (S3
     // writes done, version 'ready', skills.latest_version bumped,
     // skill_import_completed audited). A malformed attachToAgentId (not
@@ -147,61 +144,104 @@ export async function handleSkillImport(body: Record<string, unknown>): Promise<
     // the import's own success stands regardless.
     if (attachToAgentId) {
       try {
-        // Same budget check as the API's attach route (see MAX_ATTACHED_SKILLS
-        // comment above). This raw insert has no route in front of it, so the
-        // check has to happen here or the cap has no enforcement on this path.
-        const existing = ((await db.execute(sql`
-          SELECT name, system_prompt AS "systemPrompt", version
-          FROM agent_skills
-          WHERE agent_id = ${attachToAgentId}::uuid AND tenant_id = ${tenantId}::uuid AND status = 'active'
-        `)) ?? []) as { name: string; systemPrompt: string | null; version: number | null }[];
+        // The cap counts the agent's *other* attached skills. The 'default'
+        // row is the agent's base prompt, not a skill (TRANSITION: migration
+        // 0092 deletes those rows; Task 13 removes this filter), and this
+        // install's own row never counts against its re-attach.
+        const countRows = ((await db.execute(sql`
+          SELECT count(*)::int AS n
+          FROM agent_skills s
+          WHERE s.agent_id = ${attachToAgentId}::uuid AND s.tenant_id = ${tenantId}::uuid
+            AND s.status = 'active' AND s.name <> 'default'
+            AND s.install_id IS DISTINCT FROM (
+              SELECT si.id FROM skill_installs si
+              WHERE si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+              LIMIT 1
+            )
+        `)) ?? []) as unknown as { n: number }[];
+        const otherCount = Number(countRows[0]?.n ?? 0);
 
-        // Exclude only the row(s) this attach supersedes — same name, version
-        // <= the incoming version — mirroring the route's exclusion. A
-        // same-name row at a higher version still composes regardless of this
-        // attach and must stay counted.
-        const others = existing.filter((s) => s.name !== manifest.name || (s.version ?? 1) > version);
-
-        // Mirrors the orchestrator's per-skill cost: the composed prompt wraps
-        // each skill's trimmed body in a "## Skill: <name>\n\n" header, so the
-        // raw body length under-counts by name.length + 15.
-        const cost = (p: string, n: string) => (p?.trim().length ?? 0) + n.length + 15;
-        const composedChars = others.reduce((n, s) => n + cost(s.systemPrompt ?? '', s.name), 0);
-        const newCost = cost(manifestWithBody.body, manifest.name);
-
-        if (others.length >= MAX_ATTACHED_SKILLS || composedChars + newCost > MAX_COMPOSED_SKILL_CHARS) {
-          console.log(`[skillImport] attach skipped: budget exceeded agentId=${attachToAgentId} skillId=${skillId} version=${version}`);
+        if (otherCount >= MAX_ATTACHED_SKILLS) {
+          console.log(`[skillImport] attach skipped: agent already has ${MAX_ATTACHED_SKILLS} skills agentId=${attachToAgentId} skillId=${skillId} version=${version}`);
         } else {
-          // The agents join is a security constraint, not a convenience:
-          // agent_skills.agent_id and agent_skills.tenant_id are independent
-          // foreign keys, so nothing in the schema stops a row pairing tenant
-          // A with tenant B's agent — which would compose A's text into B's
-          // system prompt on B's next turn. Selecting a.id FROM agents WHERE
-          // a.tenant_id = tenantId makes a mismatched pair write zero rows
-          // instead. The route ahead of this checks the same thing; this is
-          // the last line, because this raw insert has no route in front of it
-          // on a queue redelivery.
-          const result = await db.execute(sql`
-            INSERT INTO agent_skills (agent_id, tenant_id, name, system_prompt, tools, version, status, install_id)
-            SELECT a.id, a.tenant_id, ${manifest.name}, ${manifestWithBody.body}, '{}', ${version},
-                   'active', si.id
-            FROM agents a
-            JOIN skill_installs si
-              ON si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
-            WHERE a.id = ${attachToAgentId}::uuid AND a.tenant_id = ${tenantId}::uuid
-            ON CONFLICT (agent_id, tenant_id, name, version) DO NOTHING
-          `);
-          // Zero rows affected means one of three things: the ON CONFLICT
-          // no-op (a benign redelivery); no active skill_installs row yet for
-          // this skill (the API can enqueue the import before the install row
-          // commits); or the agent does not belong to this tenant, which is
-          // the cross-tenant case the join above refuses. All three are a
-          // silent no-attach unless logged.
-          const affected = (result as unknown as { count?: number; length?: number })?.count
-            ?? (result as unknown as { length?: number })?.length
-            ?? 0;
-          if (affected === 0) {
-            console.warn(`[skillImport] attach affected 0 rows (agent not in tenant, no matching active skill_installs row, or already attached): agentId=${attachToAgentId} tenantId=${tenantId} skillId=${skillId} version=${version}`);
+          // An install is attached at most once per agent. Reuse its existing
+          // row, active or archived, so a re-import or a re-attach after a
+          // detach reactivates it. Both joins are tenant constraints:
+          // agent_skills.agent_id and tenant_id are independent foreign keys,
+          // so a row pairing this tenant with another tenant's agent must
+          // match nothing.
+          //
+          // This UPDATE deliberately never renames the row (no `name =`
+          // assignment): the old (agent_id, tenant_id, name, version) unique
+          // constraint still exists and still covers archived rows, so
+          // renaming this row to manifest.name could collide permanently
+          // with an archived row that already holds that name.
+          const reactivated = ((await db.execute(sql`
+            UPDATE agent_skills s
+            SET status = 'active', system_prompt = ${manifestWithBody.body},
+                version = ${version}, updated_at = now()
+            WHERE s.id = (
+              SELECT s2.id FROM agent_skills s2
+              JOIN agents a ON a.id = s2.agent_id AND a.tenant_id = ${tenantId}::uuid
+              JOIN skill_installs si ON si.id = s2.install_id
+                AND si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+              WHERE s2.agent_id = ${attachToAgentId}::uuid AND s2.tenant_id = ${tenantId}::uuid
+              ORDER BY (s2.status = 'active') DESC, s2.created_at ASC
+              LIMIT 1
+            )
+            RETURNING s.id
+          `)) ?? []) as unknown as { id: string }[];
+
+          if (reactivated.length === 0) {
+            // No row exists yet for this install. But an ARCHIVED row may
+            // already hold this exact name and version — left over from a
+            // detach under the old, pre-install_id attach path, or from a
+            // prior import of the same skill that got archived. The old
+            // (agent_id, tenant_id, name, version) unique constraint still
+            // covers archived rows, so inserting a fresh row with that same
+            // name/version would collide. Reuse it instead. Both tenant
+            // constraints are independent foreign keys on agent_skills, so
+            // both are checked directly (s.tenant_id) and via the agents
+            // join (a.tenant_id) — a row pairing this tenant with another
+            // tenant's agent matches nothing.
+            const archivedReactivated = ((await db.execute(sql`
+              UPDATE agent_skills s
+              SET install_id = si.id, system_prompt = ${manifestWithBody.body},
+                  status = 'active', updated_at = now()
+              FROM agents a, skill_installs si
+              WHERE s.agent_id = a.id AND a.tenant_id = ${tenantId}::uuid
+                AND si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+                AND s.agent_id = ${attachToAgentId}::uuid AND s.tenant_id = ${tenantId}::uuid
+                AND s.name = ${manifest.name} AND s.version = ${version} AND s.status = 'archived'
+              RETURNING s.id
+            `)) ?? []) as unknown as { id: string }[];
+
+            if (archivedReactivated.length === 0) {
+              // The agents join is a security constraint, not a convenience:
+              // selecting a.id FROM agents WHERE a.tenant_id = tenantId makes a
+              // mismatched agent/tenant pair write zero rows. This raw insert
+              // has no route in front of it on a queue redelivery.
+              const result = await db.execute(sql`
+                INSERT INTO agent_skills (agent_id, tenant_id, name, system_prompt, tools, version, status, install_id)
+                SELECT a.id, a.tenant_id, ${manifest.name}, ${manifestWithBody.body}, '{}', ${version},
+                       'active', si.id
+                FROM agents a
+                JOIN skill_installs si
+                  ON si.skill_id = ${skillId}::uuid AND si.tenant_id = ${tenantId}::uuid AND si.status = 'active'
+                WHERE a.id = ${attachToAgentId}::uuid AND a.tenant_id = ${tenantId}::uuid
+                ON CONFLICT (agent_id, install_id) WHERE install_id IS NOT NULL AND status = 'active' DO NOTHING
+              `);
+              // Zero rows affected means one of three things: the ON CONFLICT
+              // no-op (a benign redelivery), no active skill_installs row yet
+              // for this skill, or an agent outside this tenant, which the join
+              // refuses. All three are a silent no-attach unless logged.
+              const affected = (result as unknown as { count?: number; length?: number })?.count
+                ?? (result as unknown as { length?: number })?.length
+                ?? 0;
+              if (affected === 0) {
+                console.warn(`[skillImport] attach affected 0 rows (agent not in tenant, no matching active skill_installs row, or already attached): agentId=${attachToAgentId} tenantId=${tenantId} skillId=${skillId} version=${version}`);
+              }
+            }
           }
         }
       } catch (attachErr) {
