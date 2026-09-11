@@ -301,7 +301,7 @@ export function ThinkingIndicator({
     if (isRetrying) {
         return (
             <div className="flex items-center gap-4 animate-in fade-in duration-300 pt-1">
-                <AgentOrb size={60} liveState="thinking" isLoading avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
+                <AgentOrb size={32} liveState="thinking" isLoading avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
                 <div className="h-6 overflow-hidden">
                     <div
                         className="transition-transform duration-500 ease-in-out"
@@ -327,7 +327,7 @@ export function ThinkingIndicator({
 
     return (
         <div className="flex items-start gap-4">
-            <AgentOrb size={60} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity} avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
+            <AgentOrb size={32} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity} avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
             <div className={hasToolActivity ? "flex-1 pt-1" : "flex-1 pt-1.5"}>
                 <LiveTrace
                     isStreaming={isStreaming}
