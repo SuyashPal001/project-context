@@ -120,7 +120,7 @@ Sources:
 | What `/` means | Turn a skill on for this conversation. It never attaches to the agent |
 | Where invoked skills are stored | On the conversation's metadata, beside `testSkillInstallId` |
 | How attached skills reach the model | Progressively: name and description, loaded when relevant |
-| How invoked skills reach the model | Force-loaded: full instructions in every turn of that conversation |
+| How invoked skills reach the model | Natively. They join the resolver's skill set for the whole conversation, and on the invoking turn `prepareStep` forces the first step (one step per invoked skill) to call Mastra's own `skill` tool. The loaded instructions then stay in the conversation as a tool result. Nothing is pasted into the prompt by hand |
 | What the composer shows | Chips for skills invoked in this conversation. Never the agent's standing set, never `default` |
 | Removing an invoked skill | The chip's X removes it from this conversation. An addition to Anthropic's model, kept because the composer shows chips and an unremovable chip confuses |
 | Where the agent's standing skills are managed | The agent page, `AgentSkillSection.tsx`, which gains a detach control |
@@ -129,6 +129,30 @@ Sources:
 | The tool allowlist | Stop every write. Keep the column until the fairness routes stop reading it |
 | The 24,000-character budget | Removed everywhere |
 | The 8-skill cap | Kept per agent, as an abuse limit. The same cap applies to skills invoked in one conversation |
+
+## What is Mastra-native and what is ours
+
+Checked against the installed `@mastra/core@1.64.0`, per the CLAUDE.md rule.
+
+Native, used as-is: the per-request `skills` resolver, `createSkill()`, the
+built-in `skill` / `skill_read` / `skill_search` tools (`workspace-*.js`,
+`createSkillTool`), the per-call `prepareStep` and `toolChoice` options
+(`agent.types.d.ts:548`, `:562`; `processors/index.d.ts:210-216`), and Memory
+keeping tool results in the thread.
+
+Ours, because Mastra has no equivalent for them:
+- Resolving a client-sent skill id to this tenant's install. It is tenant data
+  and a security boundary.
+- The conversation's invoked-skill list. Mastra keeps loaded-skill thread state
+  only inside `SkillSearchProcessor`, which requires a `Workspace`; our skills
+  are agent-level and come through the resolver. The list also drives the
+  composer chips.
+- The one line naming which skills were invoked, so the forced `skill` call loads
+  the right ones.
+
+Rejected as hand-rolled: pasting an invoked skill's full instructions into the
+prompt on every turn. An earlier draft of this spec did that; Mastra's `skill`
+tool already provides it.
 
 ## Design
 
@@ -176,9 +200,22 @@ Sources:
   there (see Composer), and the orchestrator enforces the same rule: in a
   conversation with `testSkillInstallId` set, `skillsUsed` is neither loaded nor
   added to the invoked list, even if a client sends it.
-- Otherwise the agent's attached skills stay progressive, and the conversation's
-  invoked skills are force-loaded into every turn. A skill both attached and
-  invoked appears once.
+- Otherwise the resolver returns the agent's attached skills plus the
+  conversation's invoked skills, deduplicated by install. Both kinds are native
+  Mastra skills (`createSkill`), listed to the model by name and description.
+- On the turn a skill is invoked, the `stream()` call passes a `prepareStep` that
+  returns `toolChoice: { type: 'tool', toolName: 'skill' }` for step numbers below
+  the count of skills invoked that turn, and nothing after. One line in that
+  turn's instructions names the invoked skills, so the forced `skill` calls load
+  the right ones. Mastra's `skill` tool (`{ name }`) resolves against this
+  request's skills and returns the instructions.
+- After that turn nothing is forced. Mastra's own docs: "Loading is stateless. The
+  instructions remain in the conversation as a tool result, and the agent can call
+  `skill` again if they leave the context after compaction." That is Anthropic's
+  "stays in context". The invoked skill stays in the resolver's set for the rest of
+  the conversation, so it can be re-loaded. That matters here: a turn with no
+  thinking budget sends no history (`chatStream.ts:300`, `lastMessages: false`),
+  and older turns fall outside Olmo's 20-message window.
 - Resolution is fresh every turn, so an uninstalled skill drops out of active
   conversations on the next turn.
 
@@ -234,6 +271,9 @@ Unit tests, no database and no model call:
 
 - Resolving `/` ids is tenant-scoped: another tenant's skill id is dropped.
 - The resolver merges attached and invoked skills without duplicates.
+- On an invoking turn, `prepareStep` forces `toolChoice` to `skill` for exactly as
+  many steps as skills were invoked, and returns nothing on later steps and on
+  turns with no invocation.
 - Test-in-chat still loads only its one skill, and ignores a `skillsUsed` sent
   into a test conversation.
 - The composer does not open the `/` picker in a test conversation, and shows the
