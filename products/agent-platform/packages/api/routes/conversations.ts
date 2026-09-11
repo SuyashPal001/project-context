@@ -270,7 +270,7 @@ conversationsRoutes.patch('/:id', async (c) => {
             allowMode: z.enum(['ask', 'auto']).nullable().optional(),
             // Set by startSkillTestChat (web) at creation time; cleared (null) when
             // the user dismisses the test-skill chip in ChatInput — see
-            // fetchConversationTestSkillInstallId in the orchestrator, which reads
+            // fetchConversationSkillSettings in the orchestrator, which reads
             // this same key to compose only the tested skill for this conversation.
             testSkillInstallId: z.string().uuid().nullable().optional(),
             // Skills turned on in this conversation with "/" — written by the

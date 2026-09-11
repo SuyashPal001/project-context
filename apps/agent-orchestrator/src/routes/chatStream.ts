@@ -299,14 +299,23 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     console.log(`[sse:${sessionId}] agent="${agentName}" → ${resolveAgentLabel(activeAgent)} thinkingBudget=${thinkingBudget}`)
 
     // "/" turns a skill on for this conversation — never attaches it to the
-    // agent. Only Olmo resolves skills, and a Test-in-chat conversation runs
-    // exactly its one skill, so neither loads invoked skills.
+    // agent. Only Olmo resolves skills, a Test-in-chat conversation runs
+    // exactly its one skill, and a failed conversation read (skillSettings.ok
+    // false) must not wipe or falsely gate anything — so all three skip the
+    // whole block. Both the stored entries and this turn's picks are
+    // re-resolved through resolveInvokedSkills, so a forged, foreign, or
+    // no-longer-installed stored entry drops out and the saved list
+    // self-heals instead of permanently filling the 8-skill cap.
     let skillsInvokedThisTurn: string[] = []
-    if ((activeAgent as unknown) === (platformAgent as unknown) && !skillSettings.testSkillInstallId) {
-      const picked = await resolveInvokedSkills((skillsUsed ?? []).map((s) => s.id), tenantId)
-      const { merged, newlyInvoked } = mergeInvokedSkills(skillSettings.invokedSkills, picked)
+    if ((activeAgent as unknown) === (platformAgent as unknown) && !skillSettings.testSkillInstallId && skillSettings.ok) {
+      const [storedResolved, picked] = await Promise.all([
+        resolveInvokedSkills(skillSettings.invokedSkills.map((s) => s.skillId), tenantId),
+        resolveInvokedSkills((skillsUsed ?? []).map((s) => s.id), tenantId),
+      ])
+      const { merged, newlyInvoked } = mergeInvokedSkills(storedResolved, picked)
+      const pruned = storedResolved.length !== skillSettings.invokedSkills.length
+      if (newlyInvoked.length > 0 || pruned) saveConversationInvokedSkills(idToken, conversationId, merged)
       if (newlyInvoked.length > 0) {
-        saveConversationInvokedSkills(idToken, conversationId, merged)
         recordSkillRuns(newlyInvoked.map((s) => s.installId), tenantId)
           .catch((err) => console.warn(`[sse:${sessionId}] recordSkillRuns failed:`, (err as Error).message))
       }

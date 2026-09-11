@@ -340,7 +340,7 @@ When asked who you are, what you are, what model or company built you, or simila
     if (!tenantId || !agentId) return []
 
     // Set by chatStream.ts only for a Test-in-chat conversation (see
-    // fetchConversationTestSkillInstallId) — composes just that one skill,
+    // fetchConversationSkillSettings) — composes just that one skill,
     // never the agent's other real attached skills.
     const testSkillInstallId = requestContext?.get('testSkillInstallId') as string | undefined
     if (testSkillInstallId) {

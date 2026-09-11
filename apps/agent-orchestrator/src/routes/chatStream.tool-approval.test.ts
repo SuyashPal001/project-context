@@ -142,6 +142,8 @@ vi.mock('../llm/quickCall.js', () => ({
 
 import { runChatStream, type ChatStreamOpts } from './chatStream.js'
 import { pendingToolApprovals } from '../types.js'
+import * as persistence from '../persistence.js'
+import * as usage from '../usage.js'
 
 function baseOpts(overrides: Partial<ChatStreamOpts>): ChatStreamOpts {
   return {
@@ -295,5 +297,91 @@ describe('runChatStream — Olmo-only delegation options', () => {
       maxSteps: 20,
       delegation: streamOpts.delegation,
     })
+  })
+})
+
+describe('runChatStream — "/" skill invocation gates', () => {
+  const STORED = { installId: 'install-stored', skillId: 'skill-stored', name: 'Stored Skill' }
+  const PICKED = { installId: 'install-picked', skillId: 'skill-picked', name: 'Picked Skill' }
+
+  function finishOnly(runId: string) {
+    return fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], runId)
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pendingToolApprovals.clear()
+    agents.current = 'olmo'
+    // Re-establish defaults every time: a prior test's mockImplementation on
+    // these two would otherwise leak forward — vi.clearAllMocks() only clears
+    // call history, not a previously-set implementation.
+    vi.mocked(persistence.fetchConversationSkillSettings).mockResolvedValue({ testSkillInstallId: null, invokedSkills: [], ok: true })
+    vi.mocked(persistence.saveConversationInvokedSkills).mockReturnValue(undefined)
+    vi.mocked(usage.resolveInvokedSkills).mockResolvedValue([])
+    vi.mocked(usage.recordSkillRuns).mockResolvedValue(undefined)
+  })
+
+  it('Test-in-chat: does not resolve or save, even when the request carries skillsUsed', async () => {
+    vi.mocked(persistence.fetchConversationSkillSettings).mockResolvedValue({
+      testSkillInstallId: 'install-t', invokedSkills: [], ok: true,
+    })
+    streamMock.mockResolvedValueOnce(finishOnly('run-skill-1'))
+    await runChatStream(baseOpts({ sendEvent: vi.fn(), skillsUsed: [{ id: PICKED.skillId, name: PICKED.name }] }))
+    expect(usage.resolveInvokedSkills).not.toHaveBeenCalled()
+    expect(persistence.saveConversationInvokedSkills).not.toHaveBeenCalled()
+  })
+
+  it('Olmo only: does not resolve or save when activeAgent is not platformAgent', async () => {
+    agents.current = 'other'
+    streamMock.mockResolvedValueOnce(finishOnly('run-skill-2'))
+    await runChatStream(baseOpts({ sendEvent: vi.fn(), skillsUsed: [{ id: PICKED.skillId, name: PICKED.name }] }))
+    expect(usage.resolveInvokedSkills).not.toHaveBeenCalled()
+    expect(persistence.saveConversationInvokedSkills).not.toHaveBeenCalled()
+  })
+
+  it('read failure (ok: false): does not resolve or save', async () => {
+    vi.mocked(persistence.fetchConversationSkillSettings).mockResolvedValue({
+      testSkillInstallId: null, invokedSkills: [], ok: false,
+    })
+    streamMock.mockResolvedValueOnce(finishOnly('run-skill-3'))
+    await runChatStream(baseOpts({ sendEvent: vi.fn(), skillsUsed: [{ id: PICKED.skillId, name: PICKED.name }] }))
+    expect(usage.resolveInvokedSkills).not.toHaveBeenCalled()
+    expect(persistence.saveConversationInvokedSkills).not.toHaveBeenCalled()
+  })
+
+  it('saves nothing when every stored entry still resolves and nothing new was picked', async () => {
+    vi.mocked(persistence.fetchConversationSkillSettings).mockResolvedValue({
+      testSkillInstallId: null, invokedSkills: [STORED], ok: true,
+    })
+    vi.mocked(usage.resolveInvokedSkills).mockImplementation(async (ids: string[]) =>
+      ids.includes(STORED.skillId) ? [STORED] : [])
+    streamMock.mockResolvedValueOnce(finishOnly('run-skill-4'))
+    await runChatStream(baseOpts({ sendEvent: vi.fn() }))
+    expect(persistence.saveConversationInvokedSkills).not.toHaveBeenCalled()
+  })
+
+  it('saves the merged list when this turn picks a new skill', async () => {
+    vi.mocked(persistence.fetchConversationSkillSettings).mockResolvedValue({
+      testSkillInstallId: null, invokedSkills: [], ok: true,
+    })
+    vi.mocked(usage.resolveInvokedSkills).mockImplementation(async (ids: string[]) =>
+      ids.includes(PICKED.skillId) ? [PICKED] : [])
+    streamMock.mockResolvedValueOnce(finishOnly('run-skill-5'))
+    await runChatStream(baseOpts({ sendEvent: vi.fn(), skillsUsed: [{ id: PICKED.skillId, name: PICKED.name }] }))
+    expect(persistence.saveConversationInvokedSkills).toHaveBeenCalledWith('id-token', 'conv-1', [PICKED])
+    expect(usage.recordSkillRuns).toHaveBeenCalledWith([PICKED.installId], 'tenant-1')
+  })
+
+  it('saves the pruned list when a stored entry no longer resolves', async () => {
+    vi.mocked(persistence.fetchConversationSkillSettings).mockResolvedValue({
+      testSkillInstallId: null, invokedSkills: [STORED], ok: true,
+    })
+    // Neither the stored id nor an (absent) picked id resolves to anything —
+    // the stored skill was uninstalled/deactivated since it was saved.
+    vi.mocked(usage.resolveInvokedSkills).mockResolvedValue([])
+    streamMock.mockResolvedValueOnce(finishOnly('run-skill-6'))
+    await runChatStream(baseOpts({ sendEvent: vi.fn() }))
+    expect(persistence.saveConversationInvokedSkills).toHaveBeenCalledWith('id-token', 'conv-1', [])
+    expect(usage.recordSkillRuns).not.toHaveBeenCalled()
   })
 })

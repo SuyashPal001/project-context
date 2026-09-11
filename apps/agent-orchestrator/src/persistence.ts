@@ -61,9 +61,15 @@ export interface ConversationSkillSettings {
   testSkillInstallId: string | null
   /** Skills turned on in this conversation with "/". */
   invokedSkills: InvokedSkill[]
+  /**
+   * True only on a successful read. False on a non-OK response or a thrown
+   * error — callers must treat a false `ok` as "unknown", not "no skills",
+   * so a transient read failure never wipes a conversation's invoked list.
+   */
+  ok: boolean
 }
 
-const EMPTY_SKILL_SETTINGS: ConversationSkillSettings = { testSkillInstallId: null, invokedSkills: [] }
+const EMPTY_SKILL_SETTINGS: ConversationSkillSettings = { testSkillInstallId: null, invokedSkills: [], ok: false }
 
 function isInvokedSkill(v: unknown): v is InvokedSkill {
   const s = v as Record<string, unknown> | null
@@ -87,6 +93,7 @@ export async function fetchConversationSkillSettings(idToken: string, conversati
     return {
       testSkillInstallId: typeof metadata.testSkillInstallId === 'string' ? metadata.testSkillInstallId : null,
       invokedSkills: Array.isArray(metadata.invokedSkills) ? metadata.invokedSkills.filter(isInvokedSkill) : [],
+      ok: true,
     }
   } catch (err) {
     console.error('[persistence] fetchConversationSkillSettings error:', (err as Error).message)

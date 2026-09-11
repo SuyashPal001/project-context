@@ -90,7 +90,7 @@ async function resolveInstalledSkillContent(installId: string, tenantId: string)
 /**
  * Resolves ONE skill for a Test-in-chat conversation — bypassing
  * agent_skills entirely. Testing a skill must never touch the agent's real,
- * permanent skillset (see fetchConversationTestSkillInstallId in
+ * permanent skillset (see fetchConversationSkillSettings in
  * persistence.ts), so this never reads or writes that table. Records a run
  * immediately since this call IS the run — there is no later composition
  * step to attach it to.

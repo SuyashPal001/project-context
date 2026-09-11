@@ -14,7 +14,7 @@ function ok(metadata: unknown) {
 describe('fetchConversationSkillSettings', () => {
   it('reads the test skill and the invoked list off the conversation', async () => {
     fetchMock.mockResolvedValueOnce(ok({ testSkillInstallId: 'install-t', invokedSkills: [SKILL] }))
-    await expect(fetchConversationSkillSettings('token', 'conv-1')).resolves.toEqual({ testSkillInstallId: 'install-t', invokedSkills: [SKILL] })
+    await expect(fetchConversationSkillSettings('token', 'conv-1')).resolves.toEqual({ testSkillInstallId: 'install-t', invokedSkills: [SKILL], ok: true })
     expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/conversations/conv-1')
   })
 
@@ -24,14 +24,14 @@ describe('fetchConversationSkillSettings', () => {
     expect(result.invokedSkills).toEqual([SKILL])
   })
 
-  it('returns empty settings for a conversation that is not the caller\'s (404)', async () => {
+  it('returns empty settings, with ok: false, for a conversation that is not the caller\'s (404)', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 404 })
-    await expect(fetchConversationSkillSettings('token', 'conv-1')).resolves.toEqual({ testSkillInstallId: null, invokedSkills: [] })
+    await expect(fetchConversationSkillSettings('token', 'conv-1')).resolves.toEqual({ testSkillInstallId: null, invokedSkills: [], ok: false })
   })
 
-  it('returns empty settings on a network error', async () => {
+  it('returns empty settings, with ok: false, on a network error', async () => {
     fetchMock.mockRejectedValueOnce(new Error('down'))
-    await expect(fetchConversationSkillSettings('token', 'conv-1')).resolves.toEqual({ testSkillInstallId: null, invokedSkills: [] })
+    await expect(fetchConversationSkillSettings('token', 'conv-1')).resolves.toEqual({ testSkillInstallId: null, invokedSkills: [], ok: false })
   })
 })
 
