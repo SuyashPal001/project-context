@@ -1,4 +1,4 @@
-import { PostgresStore, PgVector } from '@mastra/pg'
+import { PostgresStore, PostgresStoreVNext, PgVector } from '@mastra/pg'
 import { Memory } from '@mastra/memory'
 import pg from 'pg'
 import dns from 'dns/promises'
@@ -62,16 +62,21 @@ function makePool(max: number): pg.Pool {
   })
 }
 
-let store: PostgresStore | null = null
+let store: PostgresStoreVNext | null = null
 let vector: PgVector | null = null
 let memory: Memory | null = null
 // Separate from `memory` above — Olmo's instance differs in scope, not wiring.
 // See getOlmoMemory().
 let olmoMemory: Memory | null = null
 
-export function getMastraStore(): PostgresStore {
+export function getMastraStore(): PostgresStoreVNext {
   if (!store) {
-    store = new PostgresStore({ id: 'mastra-pg-store', pool: makePool(5), schemaName: 'mastra' })
+    store = new PostgresStoreVNext({
+      id: 'mastra-pg-store',
+      pool: makePool(5),
+      schemaName: 'mastra',
+      observability: { pool: makePool(3), schemaName: 'mastra' },
+    })
   }
   return store
 }

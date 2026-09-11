@@ -24,7 +24,7 @@ import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 const app = new Hono()
 
 app.use('/studio/*', cors({
-  origin: 'https://projectcontext.co',
+  origin: ['https://projectcontext.co', 'https://studio.projectcontext.co'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'x-mastra-client-type'],
   credentials: true,
