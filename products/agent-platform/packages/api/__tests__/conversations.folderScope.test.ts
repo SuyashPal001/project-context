@@ -31,11 +31,12 @@ function appWithContext() {
 }
 
 /**
- * The handler makes two differently-shaped selects: the ownership/metadata
- * lookup (from → where → limit) and the response read (from → innerJoin →
- * leftJoin → where → limit). One mock serves both by exposing every link.
+ * The handler makes two differently-shaped selects: the ownership lookup
+ * (from → where → limit, no `metadata` any more — Fix 4 merges in SQL against
+ * the live column instead of reading it here) and the response read (from →
+ * innerJoin → leftJoin → where → limit).
  */
-function mockDb(db: any, existingMetadata: unknown) {
+function mockDb(db: any) {
     const setSpy = vi.fn().mockReturnValue({ where: async () => undefined });
     db.update.mockReturnValue({ set: setSpy });
 
@@ -43,8 +44,8 @@ function mockDb(db: any, existingMetadata: unknown) {
     db.select.mockImplementation(() => {
         const isFirst = call++ === 0;
         const rows = isFirst
-            ? [{ id: 'conv-1', metadata: existingMetadata }]
-            : [{ id: 'conv-1', metadata: existingMetadata, agent: { id: 'a1', name: 'A', type: 'platform', persona: null } }];
+            ? [{ id: 'conv-1' }]
+            : [{ id: 'conv-1', metadata: {}, agent: { id: 'a1', name: 'A', type: 'platform', persona: null } }];
         const terminal = { where: () => ({ limit: async () => rows }) };
         return {
             from: () => ({
@@ -56,10 +57,10 @@ function mockDb(db: any, existingMetadata: unknown) {
     return setSpy;
 }
 
-async function patch(body: unknown, existingMetadata: unknown = null) {
+async function patch(body: unknown) {
     const { db } = await import('@serverless-saas/database/client');
     vi.clearAllMocks();
-    const setSpy = mockDb(db, existingMetadata);
+    const setSpy = mockDb(db);
     const { conversationsRoutes } = await import('../routes/conversations');
     const app = appWithContext();
     app.route('/conversations', conversationsRoutes);
@@ -71,30 +72,51 @@ async function patch(body: unknown, existingMetadata: unknown = null) {
     return { res, setSpy };
 }
 
+// The metadata value handed to .set() is a drizzle SQL fragment (Fix 4: an
+// in-SQL merge, `coalesce(metadata, '{}'::jsonb) || <patch> - 'key'...`), not
+// a plain object — this renders that fragment back to a plain string so the
+// tests can assert on its shape instead of comparing it to a JS object.
+function renderSql(expr: any): string {
+    if (expr && Array.isArray(expr.value)) return expr.value.join('');
+    if (expr && Array.isArray(expr.queryChunks)) return expr.queryChunks.map(renderSql).join('');
+    if (typeof expr === 'string') return expr;
+    return '';
+}
+
 describe('PATCH /conversations/:id — folderScope grant', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('persists a prefix under metadata.folderScope', async () => {
+    it('persists a prefix under metadata.folderScope via a SQL merge against the live column', async () => {
         const { res, setSpy } = await patch({ folderScope: { prefix: 'new/' } });
         expect(res.status).toBe(200);
-        expect(setSpy.mock.calls[0][0].metadata).toEqual({ folderScope: { prefix: 'new/' } });
+        const metadata = setSpy.mock.calls[0][0].metadata;
+        expect(Array.isArray(metadata?.queryChunks)).toBe(true);
+        const rendered = renderSql(metadata);
+        expect(rendered).toContain('coalesce(');
+        expect(rendered).toContain(JSON.stringify({ folderScope: { prefix: 'new/' } }));
+        expect(rendered).not.toContain(' - ');
     });
 
-    it('clears the grant when given null', async () => {
-        const { res, setSpy } = await patch({ folderScope: null }, { folderScope: { prefix: 'old/' } });
+    it('clears the grant when given null by removing the key in SQL', async () => {
+        const { res, setSpy } = await patch({ folderScope: null });
         expect(res.status).toBe(200);
-        expect(setSpy.mock.calls[0][0].metadata).toEqual({});
+        const rendered = renderSql(setSpy.mock.calls[0][0].metadata);
+        expect(rendered).toContain('coalesce(');
+        expect(rendered).toContain(' - folderScope');
     });
 
-    it('merges into metadata rather than overwriting it', async () => {
-        // Losing an unrelated key here would silently destroy whatever else the
-        // product later stores on a conversation.
-        const { setSpy } = await patch({ folderScope: { prefix: 'new/' } }, { pinned: true });
-        expect(setSpy.mock.calls[0][0].metadata).toEqual({ pinned: true, folderScope: { prefix: 'new/' } });
+    it('merges other set keys and removed keys into one SQL expression, never overwriting the whole object', async () => {
+        // A JS read-merge-write here would silently destroy whatever else the
+        // product stores on a conversation if it changed concurrently — Fix 4
+        // merges in SQL against the live column instead.
+        const { setSpy } = await patch({ folderScope: { prefix: 'new/' }, allowMode: null });
+        const rendered = renderSql(setSpy.mock.calls[0][0].metadata);
+        expect(rendered).toContain(JSON.stringify({ folderScope: { prefix: 'new/' } }));
+        expect(rendered).toContain(' - allowMode');
     });
 
     it('leaves metadata untouched when folderScope is not part of the patch', async () => {
-        const { setSpy } = await patch({ title: 'Renamed' }, { pinned: true });
+        const { setSpy } = await patch({ title: 'Renamed' });
         expect(setSpy.mock.calls[0][0]).not.toHaveProperty('metadata');
     });
 

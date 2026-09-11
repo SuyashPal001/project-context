@@ -253,9 +253,7 @@ conversationsRoutes.patch('/:id', async (c) => {
     const scope = and(eq(conversations.id, id), eq(conversations.tenantId, tenantId), eq(conversations.userId, userId));
 
     try {
-        // metadata comes back on the ownership check so a folderScope patch can
-        // merge into it without a second round trip.
-        const [existing] = await db.select({ id: conversations.id, metadata: conversations.metadata })
+        const [existing] = await db.select({ id: conversations.id })
             .from(conversations).where(scope).limit(1);
         if (!existing) return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
 
@@ -296,26 +294,36 @@ conversationsRoutes.patch('/:id', async (c) => {
         const { folderScope, allowMode, testSkillInstallId, invokedSkills, ...rest } = result.data;
         const patch: Record<string, unknown> = { ...rest };
         if (folderScope !== undefined || allowMode !== undefined || testSkillInstallId !== undefined || invokedSkills !== undefined) {
-            // Merge, never overwrite: metadata is shared with whatever else the
-            // product stores on a conversation.
-            const current = { ...((existing.metadata ?? {}) as Record<string, unknown>) };
+            // Merge in SQL, not read-merge-write: the orchestrator now writes
+            // metadata (invokedSkills) on every "/" turn, so a JS
+            // read-then-write here could clobber a concurrent write to a
+            // different key (or vice versa) — last writer wins on the whole
+            // object instead of per key. `||` merges the keys being set;
+            // `- 'key'` removes each key whose value came in as null.
+            const setFields: Record<string, unknown> = {};
+            const removeKeys: string[] = [];
             if (folderScope !== undefined) {
-                if (folderScope === null) delete current.folderScope;
-                else current.folderScope = folderScope;
+                if (folderScope === null) removeKeys.push('folderScope');
+                else setFields.folderScope = folderScope;
             }
             if (allowMode !== undefined) {
-                if (allowMode === null) delete current.allowMode;
-                else current.allowMode = allowMode;
+                if (allowMode === null) removeKeys.push('allowMode');
+                else setFields.allowMode = allowMode;
             }
             if (testSkillInstallId !== undefined) {
-                if (testSkillInstallId === null) delete current.testSkillInstallId;
-                else current.testSkillInstallId = testSkillInstallId;
+                if (testSkillInstallId === null) removeKeys.push('testSkillInstallId');
+                else setFields.testSkillInstallId = testSkillInstallId;
             }
             if (invokedSkills !== undefined) {
-                if (invokedSkills === null) delete current.invokedSkills;
-                else current.invokedSkills = invokedSkills;
+                if (invokedSkills === null) removeKeys.push('invokedSkills');
+                else setFields.invokedSkills = invokedSkills;
             }
-            patch.metadata = current;
+
+            let metadataExpr = sql`(coalesce(${conversations.metadata}, '{}'::jsonb) || ${JSON.stringify(setFields)}::jsonb)`;
+            for (const key of removeKeys) {
+                metadataExpr = sql`(${metadataExpr} - ${key})`;
+            }
+            patch.metadata = metadataExpr;
         }
 
         await db.update(conversations).set({ ...patch, updatedAt: new Date() }).where(scope);
