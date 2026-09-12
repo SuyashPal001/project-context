@@ -61,6 +61,7 @@ export function AgentSkillSection({ agent, agentId, isLoading }: AgentSkillSecti
 
     const name = agent?.name ?? "";
     const description = agentDescription(name, agent?.description);
+    const isBuiltIn = agent?.origin === "built_in";
 
     const capabilities: CapabilityItem[] = isSupervisor(name)
         ? [SUPERVISOR_CAPABILITY, ...BASE_CAPABILITIES]
@@ -121,12 +122,16 @@ export function AgentSkillSection({ agent, agentId, isLoading }: AgentSkillSecti
                         <div>
                             <h3 className="text-sm font-semibold">Skills library</h3>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                                Skills this agent can use in every conversation. It loads one when it's relevant.
+                                {isBuiltIn
+                                    ? "The built-in platform agent doesn't take permanent skill attachments here. Try a skill against it from the skills library instead."
+                                    : "Skills this agent can use in every conversation. It loads one when it's relevant."}
                             </p>
                         </div>
-                        <Button size="sm" variant="outline" onClick={() => setAttachOpen(true)}>
-                            Attach from library
-                        </Button>
+                        {!isBuiltIn && (
+                            <Button size="sm" variant="outline" onClick={() => setAttachOpen(true)}>
+                                Attach from library
+                            </Button>
+                        )}
                     </div>
                     {attached.length === 0 ? (
                         <p className="text-xs text-muted-foreground">No skills attached yet.</p>
@@ -135,15 +140,17 @@ export function AgentSkillSection({ agent, agentId, isLoading }: AgentSkillSecti
                             {attached.map((skill) => (
                                 <li key={skill.id} className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-4 py-2">
                                     <span className="text-sm font-medium">{skill.name}</span>
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        aria-label={`Detach ${skill.name}`}
-                                        disabled={detach.isPending}
-                                        onClick={() => detach.mutate(skill.id)}
-                                    >
-                                        Detach
-                                    </Button>
+                                    {!isBuiltIn && (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            aria-label={`Detach ${skill.name}`}
+                                            disabled={detach.isPending}
+                                            onClick={() => detach.mutate(skill.id)}
+                                        >
+                                            Detach
+                                        </Button>
+                                    )}
                                 </li>
                             ))}
                         </ul>
