@@ -13,16 +13,16 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { AgentDetail } from "@/components/platform/agents/types";
+import { getAgentOriginLabel } from "@/components/platform/agents/agentOriginLabel";
 
 import { AgentIdentityCard } from "./AgentIdentityCard";
 import { AgentInfoCard } from "./AgentInfoCard";
 import { AgentSkillSection } from "./AgentSkillSection";
 import { AgentCoreFilesSection } from "./AgentCoreFilesSection";
 
-const typeColors: Record<string, string> = {
-    ops: "bg-secondary text-muted-foreground",
-    support: "bg-secondary text-muted-foreground",
-    billing: "bg-secondary text-muted-foreground",
+const originColors: Record<string, string> = {
+    built_in: "bg-secondary text-muted-foreground",
+    official: "bg-secondary text-muted-foreground",
     custom: "bg-secondary text-muted-foreground",
 };
 
@@ -97,8 +97,8 @@ export default function AgentDetailPage() {
                         ) : (
                             <div className="flex items-center gap-3">
                                 <h1 className="text-2xl font-bold tracking-tight">{agent?.name}</h1>
-                                <Badge variant="secondary" className={typeColors[agent?.type || ""]}>
-                                    {agent?.type}
+                                <Badge variant="secondary" className={originColors[agent?.origin || ""]}>
+                                    {agent ? getAgentOriginLabel(agent) : ""}
                                 </Badge>
                                 <Badge variant="outline" className={statusColors[agent?.status || ""]}>
                                     {agent?.status}
