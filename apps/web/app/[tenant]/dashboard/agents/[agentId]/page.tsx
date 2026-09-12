@@ -17,6 +17,7 @@ import { getAgentOriginLabel } from "@/components/platform/agents/agentOriginLab
 
 import { AgentIdentityCard } from "./AgentIdentityCard";
 import { AgentInfoCard } from "./AgentInfoCard";
+import { AgentInstructionsCard } from "./AgentInstructionsCard";
 import { AgentSkillSection } from "./AgentSkillSection";
 import { AgentCoreFilesSection } from "./AgentCoreFilesSection";
 
@@ -142,6 +143,11 @@ export default function AgentDetailPage() {
                 />
 
                 <AgentInfoCard
+                    agent={agent}
+                    isLoading={isLoadingAgent}
+                />
+
+                <AgentInstructionsCard
                     agent={agent}
                     isLoading={isLoadingAgent}
                 />

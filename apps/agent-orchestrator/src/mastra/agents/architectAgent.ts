@@ -9,7 +9,10 @@ import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 const ARCHITECT_DESCRIPTION = 'Technical architect with full knowledge of this codebase — answers system-design and codebase questions by retrieving indexed migrations, routes, tests, and architectural patterns before answering.'
 
 const architectInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-  const base = `You are the technical architect for this engineering team.
+  // Per-agent override takes precedence over the hardcoded default below — same
+  // pattern as platformAgent.ts. Set by chatStream.ts from agents.systemPrompt.
+  const override = requestContext?.get('agentSystemPrompt') as string | undefined
+  const defaultInstructions = `You are the technical architect for this engineering team.
 You have deep knowledge of this codebase through indexed
 migrations, routes, tests, and architectural patterns.
 
@@ -34,6 +37,7 @@ You know about:
 - API surface: all route handlers and their contracts
 - System behavior: all test files and what they protect
 - Patterns: CLAUDE.md architectural decisions and rules`
+  const base = override ?? defaultInstructions
   // Persona personality is a layer composed ahead of the base prompt, never a
   // replacement for it — see platformAgent.ts for the same pattern.
   const persona = requestContext?.get('personaPersonality') as string | undefined

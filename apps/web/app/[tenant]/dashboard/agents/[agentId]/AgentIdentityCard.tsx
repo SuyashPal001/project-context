@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
@@ -11,22 +11,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
 import { ImageUpload } from "@/components/platform/ImageUpload";
 import type { AgentDetail } from "@/components/platform/agents/types";
-import type { PersonaSummary } from "@/components/platform/personas/types";
 import { AvatarBuilderModal } from "@/components/platform/agents/avatar-builder/AvatarBuilderModal";
 import type { AvatarParams } from "@/components/platform/agents/avatar-builder/avatarParams";
 import { BrandingLockedOverlay } from "./BrandingLockedOverlay";
 import { OlmoMark } from "@/components/platform/OlmoMark";
-
-const NO_PERSONA_VALUE = "__none__";
 
 interface AgentIdentityCardProps {
     agent: AgentDetail | undefined;
@@ -46,29 +36,23 @@ export function AgentIdentityCard({
     tenantSlug,
 }: AgentIdentityCardProps) {
     const queryClient = useQueryClient();
-    const [form, setForm] = React.useState<{ name: string; avatarUrl: string; avatarFileId: string | null; avatarParams: AvatarParams | null; personaId: string | null }>({ name: "", avatarUrl: "", avatarFileId: null, avatarParams: null, personaId: null });
+    const [form, setForm] = React.useState<{ name: string; avatarUrl: string; avatarFileId: string | null; avatarParams: AvatarParams | null }>({ name: "", avatarUrl: "", avatarFileId: null, avatarParams: null });
     const [isDirty, setIsDirty] = React.useState(false);
     const [isBuilderOpen, setIsBuilderOpen] = React.useState(false);
 
-    const { data: personasData } = useQuery<{ personas: PersonaSummary[] }>({
-        queryKey: ["personas"],
-        queryFn: () => api.get<{ personas: PersonaSummary[] }>("/api/v1/agents/personas"),
-    });
-
     React.useEffect(() => {
         if (agent) {
-            setForm({ name: agent.name ?? "", avatarUrl: agent.avatarUrl ?? "", avatarFileId: agent.avatarFileId ?? null, avatarParams: agent.avatarParams ?? null, personaId: agent.persona?.id ?? null });
+            setForm({ name: agent.name ?? "", avatarUrl: agent.avatarUrl ?? "", avatarFileId: agent.avatarFileId ?? null, avatarParams: agent.avatarParams ?? null });
             setIsDirty(false);
         }
     }, [agent]);
 
     const updateMutation = useMutation({
-        mutationFn: (values: { name: string; avatarFileId: string | null; avatarParams: AvatarParams | null; personaId: string | null }) =>
+        mutationFn: (values: { name: string; avatarFileId: string | null; avatarParams: AvatarParams | null }) =>
             api.patch(`/api/v1/agents/${agentId}`, {
                 name: values.name || undefined,
                 avatarFileId: values.avatarFileId,
                 avatarParams: values.avatarParams,
-                personaId: values.personaId,
             }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["agents", agentId] });
@@ -178,34 +162,6 @@ export function AgentIdentityCard({
                                         disabled={!isOwner}
                                         placeholder="Agent name"
                                     />
-                                )}
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <Label className="text-xs text-muted-foreground uppercase tracking-wider">Persona</Label>
-                                {agent?.origin === "built_in" ? (
-                                    <p className="text-sm text-muted-foreground">The built-in agent doesn't take a persona.</p>
-                                ) : (
-                                    <Select
-                                        value={form.personaId ?? NO_PERSONA_VALUE}
-                                        onValueChange={(value) => {
-                                            setForm((f) => ({ ...f, personaId: value === NO_PERSONA_VALUE ? null : value }));
-                                            setIsDirty(true);
-                                        }}
-                                        disabled={!isOwner}
-                                    >
-                                        <SelectTrigger className="w-full">
-                                            <SelectValue placeholder="No persona" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value={NO_PERSONA_VALUE}>No persona</SelectItem>
-                                            {personasData?.personas.map((persona) => (
-                                                <SelectItem key={persona.id} value={persona.id}>
-                                                    {persona.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
                                 )}
                             </div>
 

@@ -10,7 +10,10 @@ import { generateVideo } from '../tools/generateVideo.js'
 const DIRECTOR_DESCRIPTION = 'Generates and edits images from a text description.'
 
 const directorInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-  const base = `You are Director — an image generation specialist. You create and edit images from descriptions.
+  // Per-agent override takes precedence over the hardcoded default below — same
+  // pattern as platformAgent.ts. Set by chatStream.ts from agents.systemPrompt.
+  const override = requestContext?.get('agentSystemPrompt') as string | undefined
+  const defaultInstructions = `You are Director — an image generation specialist. You create and edit images from descriptions.
 
 ## Rules
 - Call generate_image for a new image from a text description.
@@ -35,6 +38,7 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
   - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - "CONFIRM_BUSY": another generation confirmation is already awaiting the user's decision in this conversation — do not retry immediately; wait for the user to resolve it, or ask them directly.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.`
+  const base = override ?? defaultInstructions
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }

@@ -13,7 +13,10 @@ import { clarityBeforeDelegateScorer } from '../scorers/clarityBeforeDelegate.js
 const PM_DESCRIPTION = 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.'
 
 const pmInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-  const base = `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
+  // Per-agent override takes precedence over the hardcoded default below — same
+  // pattern as platformAgent.ts. Set by chatStream.ts from agents.systemPrompt.
+  const override = requestContext?.get('agentSystemPrompt') as string | undefined
+  const defaultInstructions = `You are Saarthi PM — a product management supervisor. You orchestrate the full PM lifecycle by delegating to specialist agents. You never generate PRD content, roadmap milestones, or tasks yourself.
 
 ## Your specialist agents
 - prdAgent: Writes, drafts, and saves PRDs. Delegate when the user wants a PRD, product spec, or requirements document.
@@ -39,6 +42,7 @@ const pmInstructions = async ({ requestContext }: { requestContext?: RequestCont
 - Never return raw JSON to the user
 - Never write PRD content, milestones, or tasks yourself — always delegate
 - If the request is ambiguous, ask ONE clarifying question before delegating`
+  const base = override ?? defaultInstructions
   // Persona personality is a layer composed ahead of the base prompt, never a
   // replacement for it — see platformAgent.ts for the same pattern.
   const persona = requestContext?.get('personaPersonality') as string | undefined

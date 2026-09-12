@@ -47,6 +47,9 @@ export interface AgentDetail extends Agent {
     // identity form must round-trip this id unchanged on saves that don't touch the
     // avatar, since avatarUrl alone can't reconstruct it.
     avatarFileId: string | null;
+    // Read-only for now — not in PATCH /agents/:id's schema yet. Who can edit this
+    // (creator-only vs tenant owner/admin) is still undecided.
+    systemPrompt: string | null;
 }
 
 export interface Workflow {

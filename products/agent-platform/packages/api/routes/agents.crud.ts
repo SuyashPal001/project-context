@@ -97,6 +97,7 @@ export async function handleGetAgent(c: Context<AppEnv>) {
             model: agents.model, status: agents.status, apiKeyId: agents.apiKeyId,
             llmProviderId: agents.llmProviderId, avatarFileId: agents.avatarFileId, avatarParams: agents.avatarParams, description: agents.description,
             isInternal: agents.isInternal, isDefault: agents.isDefault, origin: agents.origin, createdBy: agents.createdBy, personaId: agents.personaId,
+            systemPrompt: agents.systemPrompt,
             createdAt: agents.createdAt, updatedAt: agents.updatedAt,
             persona: {
                 id: personas.id, slug: personas.slug, name: personas.name, tagline: personas.tagline,

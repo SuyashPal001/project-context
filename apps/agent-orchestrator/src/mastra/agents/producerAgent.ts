@@ -8,7 +8,10 @@ import { generateSong } from '../tools/generateSong.js'
 const PRODUCER_DESCRIPTION = 'Generates instrumental music clips from a text description.'
 
 const producerInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
-  const base = `You are Producer — an instrumental music generation specialist.
+  // Per-agent override takes precedence over the hardcoded default below — same
+  // pattern as platformAgent.ts. Set by chatStream.ts from agents.systemPrompt.
+  const override = requestContext?.get('agentSystemPrompt') as string | undefined
+  const defaultInstructions = `You are Producer — an instrumental music generation specialist.
 
 ## Rules
 - Call generate_song for a new instrumental clip from a mood/genre/style description.
@@ -24,6 +27,7 @@ const producerInstructions = async ({ requestContext }: { requestContext?: Reque
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.
 - Never invent a fileId — only use one an earlier tool result actually gave you.
 - Never restate a tool result's fileId, name, fileType, or size in your reply text — the UI already renders an attachment card with that information. Reply with plain conversational text only.`
+  const base = override ?? defaultInstructions
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
