@@ -240,16 +240,20 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
         return c.json({ error: 'The built-in agent cannot be retired', code: 'BUILT_IN_AGENT_PROTECTED' }, 409);
     }
 
-    // Olmo's name and avatar are part of its identity across every tenant —
-    // same reason onboarding.ts hardcodes the name and never sets an
-    // avatarFileId. The UI already hides these controls for a built-in
-    // agent (AgentIdentityCard.tsx); this is the server-side backstop.
-    // Silently dropped rather than erroring, so a persona edit on the same
-    // PATCH still goes through.
+    // Olmo's name, avatar, and persona are part of its identity across every
+    // tenant — same reason onboarding.ts hardcodes the name, never sets an
+    // avatarFileId, and never sets a personaId. A personaId here would make
+    // fetchAgentPersonality() (apps/agent-orchestrator/src/usage.ts) start
+    // layering that persona's personality ahead of Olmo's own routing
+    // prompt — origin itself is unaffected (only set at creation), but the
+    // agent's behavior would silently drift. The UI already hides these
+    // controls for a built-in agent (AgentIdentityCard.tsx); this is the
+    // server-side backstop. Silently dropped rather than erroring the PATCH.
     if (existing.origin === 'built_in') {
         delete result.data.name;
         delete result.data.avatarFileId;
         delete result.data.avatarParams;
+        delete result.data.personaId;
     }
 
     // Retiring via PATCH is the same "Fire" action as DELETE — must carry the

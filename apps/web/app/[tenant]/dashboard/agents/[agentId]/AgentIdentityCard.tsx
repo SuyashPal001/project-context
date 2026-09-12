@@ -182,26 +182,30 @@ export function AgentIdentityCard({
 
                             <div className="space-y-1.5">
                                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Persona</Label>
-                                <Select
-                                    value={form.personaId ?? NO_PERSONA_VALUE}
-                                    onValueChange={(value) => {
-                                        setForm((f) => ({ ...f, personaId: value === NO_PERSONA_VALUE ? null : value }));
-                                        setIsDirty(true);
-                                    }}
-                                    disabled={!isOwner}
-                                >
-                                    <SelectTrigger className="w-full">
-                                        <SelectValue placeholder="No persona" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value={NO_PERSONA_VALUE}>No persona</SelectItem>
-                                        {personasData?.personas.map((persona) => (
-                                            <SelectItem key={persona.id} value={persona.id}>
-                                                {persona.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                {agent?.origin === "built_in" ? (
+                                    <p className="text-sm text-muted-foreground">The built-in agent doesn't take a persona.</p>
+                                ) : (
+                                    <Select
+                                        value={form.personaId ?? NO_PERSONA_VALUE}
+                                        onValueChange={(value) => {
+                                            setForm((f) => ({ ...f, personaId: value === NO_PERSONA_VALUE ? null : value }));
+                                            setIsDirty(true);
+                                        }}
+                                        disabled={!isOwner}
+                                    >
+                                        <SelectTrigger className="w-full">
+                                            <SelectValue placeholder="No persona" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={NO_PERSONA_VALUE}>No persona</SelectItem>
+                                            {personasData?.personas.map((persona) => (
+                                                <SelectItem key={persona.id} value={persona.id}>
+                                                    {persona.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
                             </div>
 
                             {isOwner && isDirty && (
