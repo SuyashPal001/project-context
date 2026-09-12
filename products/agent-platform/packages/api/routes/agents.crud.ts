@@ -249,6 +249,9 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
     // agent's behavior would silently drift. The UI already hides these
     // controls for a built-in agent (AgentIdentityCard.tsx); this is the
     // server-side backstop. Silently dropped rather than erroring the PATCH.
+    // model/llmProviderId are deliberately NOT dropped here — users choosing
+    // which model powers even the built-in agent is a real, wanted feature
+    // (ChatInput.tsx's "Mind" picker), not identity drift.
     if (existing.origin === 'built_in') {
         delete result.data.name;
         delete result.data.avatarFileId;

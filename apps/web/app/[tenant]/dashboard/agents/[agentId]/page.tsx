@@ -19,19 +19,6 @@ import { AgentInfoCard } from "./AgentInfoCard";
 import { AgentSkillSection } from "./AgentSkillSection";
 import { AgentCoreFilesSection } from "./AgentCoreFilesSection";
 
-interface LLMProvider {
-    id: string;
-    provider: string;
-    model: string;
-    displayName: string;
-    isDefault: boolean;
-    status: string;
-}
-
-interface LLMProvidersResponse {
-    providers: LLMProvider[];
-}
-
 const typeColors: Record<string, string> = {
     ops: "bg-secondary text-muted-foreground",
     support: "bg-secondary text-muted-foreground",
@@ -58,13 +45,6 @@ export default function AgentDetailPage() {
         queryKey: ["agents", agentId],
         queryFn: () => api.get<AgentDetail>(`/api/v1/agents/${agentId}`),
     });
-
-    const { data: providersData } = useQuery<LLMProvidersResponse>({
-        queryKey: ["llm-providers"],
-        queryFn: () => api.get<LLMProvidersResponse>("/api/v1/llm-providers"),
-    });
-
-    const providers = providersData?.providers || [];
 
     const startChatMutation = useMutation({
         mutationFn: () =>
@@ -163,7 +143,6 @@ export default function AgentDetailPage() {
 
                 <AgentInfoCard
                     agent={agent}
-                    providers={providers}
                     isLoading={isLoadingAgent}
                 />
 
