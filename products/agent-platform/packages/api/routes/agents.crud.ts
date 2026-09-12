@@ -232,6 +232,26 @@ export async function handleUpdateAgent(c: Context<AppEnv>) {
     }).safeParse(body);
     if (!result.success) return c.json({ error: result.error.errors[0].message }, 400);
 
+    // The built-in agent (Olmo) is seeded once per tenant with nothing to
+    // re-seed it — retiring it would strand the tenant with zero active
+    // agents. Block it here rather than in the UI, since this is the only
+    // path that can flip status.
+    if (result.data.status === 'retired' && existing.origin === 'built_in') {
+        return c.json({ error: 'The built-in agent cannot be retired', code: 'BUILT_IN_AGENT_PROTECTED' }, 409);
+    }
+
+    // Olmo's name and avatar are part of its identity across every tenant —
+    // same reason onboarding.ts hardcodes the name and never sets an
+    // avatarFileId. The UI already hides these controls for a built-in
+    // agent (AgentIdentityCard.tsx); this is the server-side backstop.
+    // Silently dropped rather than erroring, so a persona edit on the same
+    // PATCH still goes through.
+    if (existing.origin === 'built_in') {
+        delete result.data.name;
+        delete result.data.avatarFileId;
+        delete result.data.avatarParams;
+    }
+
     // Retiring via PATCH is the same "Fire" action as DELETE — must carry the
     // same dependency check, or PATCH status:retired trivially bypasses it.
     if (result.data.status === 'retired' && existing.status !== 'retired' && body.force !== true) {

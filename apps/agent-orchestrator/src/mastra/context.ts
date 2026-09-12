@@ -8,10 +8,15 @@ export const tenantContextSchema = z.object({
   agentId:  z.string().optional().default(''),
   userId:   z.string().optional().default(''),
   // Set by fetchAgentName() at each call site — the conversation's bound
-  // agent row name (e.g. "Olmo"), lowercased-compared to gate delegation so
-  // it only activates for the Olmo row, not every row falling through to
-  // platformAgent's fallback. See mastra/agents/olmoDelegates.ts.
+  // agent row name (e.g. "Olmo"), display/logging only.
   agentName: z.string().optional(),
+  // Set by fetchAgentOrigin() at each call site — true when the bound agent
+  // row is `agents.origin = 'built_in'`. This, not agentName, gates
+  // delegation (resolveDelegates/hostAllows/maxDepthForHost): a tenant can
+  // rename their built-in agent from Agent Identity, and origin survives
+  // that rename while a name comparison would not. See
+  // mastra/agents/olmoDelegates.ts.
+  isBuiltInAgent: z.boolean().optional(),
   // Set by fetchAgentContext.ts after a retrieve call; read by selectModel to
   // force private-only routing for restricted (CASA/KYC) content.
   maxDataSensitivity: z.string().optional(),

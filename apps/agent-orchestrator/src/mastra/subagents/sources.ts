@@ -15,9 +15,6 @@ import type { Agent } from '@mastra/core/agent'
  */
 export const OLMO_HOST_MAX_DEPTH = 1
 
-/** The host row that may delegate at all. Lowercased comparison. */
-const OLMO_HOST = 'olmo'
-
 /**
  * The unconditional, always-registered code specs. This is exactly the set
  * `assertMatchesCodeSpecIds` checks against `ids.ts`'s `CODE_SPEC_IDS` — see
@@ -186,18 +183,24 @@ export function getSpecByAgentId(agentId: string): SubAgentSpec | undefined {
  * Depth is read from the HOST's spec, not the delegate's: maxDepth says how
  * deep that agent may delegate. A specialist with maxDepth 0 therefore
  * receives an empty delegate map and has nothing to call.
+ *
+ * `isBuiltInAgent` — the row's `agents.origin === 'built_in'` — is the source
+ * of truth for the platform host's depth, not its name. A tenant can rename
+ * their built-in agent (Agent Identity's Name field); a name comparison here
+ * would silently zero out delegation the moment they did.
  */
-export function maxDepthForHost(agentName: string): number {
+export function maxDepthForHost(agentName: string, isBuiltInAgent?: boolean): number {
   const name = agentName.toLowerCase().trim()
-  if (name === OLMO_HOST) return OLMO_HOST_MAX_DEPTH
+  if (isBuiltInAgent) return OLMO_HOST_MAX_DEPTH
   return getSpec(name)?.maxDepth ?? 0
 }
 
 /**
- * Which host may see which spec. Today: Olmo sees all of them and nobody else
- * sees any — the gate that stops every custom agent row falling through
- * platformAgent and inheriting Olmo's delegates.
+ * Which host may see which spec. Today: the built-in agent sees all of them
+ * and nobody else sees any — the gate that stops every custom agent row
+ * falling through platformAgent and inheriting the built-in agent's
+ * delegates. Keyed off `origin`, not name — see maxDepthForHost's comment.
  */
-export function hostAllows(agentName: string, _spec: SubAgentSpec): boolean {
-  return agentName.toLowerCase().trim() === OLMO_HOST
+export function hostAllows(isBuiltInAgent: boolean | undefined, _spec: SubAgentSpec): boolean {
+  return isBuiltInAgent === true
 }

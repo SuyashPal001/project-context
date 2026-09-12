@@ -387,6 +387,23 @@ export async function fetchAgentName(agentId: string): Promise<string | null> {
   return name
 }
 
+// origin is set once at creation and never updated by any PATCH route — safe to cache forever, unlike name.
+const agentOriginCache = new Map<string, string>()
+
+export async function fetchAgentOrigin(agentId: string): Promise<string | null> {
+  if (!agentId) return null
+  const cached = agentOriginCache.get(agentId)
+  if (cached !== undefined) return cached
+  const p = getPool()
+  const res = await p.query<{ origin: string }>(
+    'SELECT origin FROM agents WHERE id = $1 LIMIT 1',
+    [agentId],
+  )
+  const origin = res.rows[0]?.origin ?? null
+  if (origin) agentOriginCache.set(agentId, origin)
+  return origin
+}
+
 /**
  * The sub-agent ids this tenant may use: every platform-owned spec, plus any
  * published template this tenant owns. Ownership only — install rows are not

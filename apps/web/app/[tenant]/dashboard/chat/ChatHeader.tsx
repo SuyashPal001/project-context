@@ -44,7 +44,7 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
                         ? <PanelLeftOpen className="h-4 w-4" />
                         : <PanelLeftClose className="h-4 w-4" />}
                 </Button>
-                <PersonaAvatar persona={selectedConversation.agent?.persona} avatarUrl={selectedConversation.agent?.avatarUrl} size={36} className="rounded-full" icon={getAgentTypeIcon(selectedConversation.agent?.type)} isDefault={selectedConversation.agent?.isDefault} />
+                <PersonaAvatar persona={selectedConversation.agent?.persona} avatarUrl={selectedConversation.agent?.avatarUrl} size={36} className="rounded-full" icon={getAgentTypeIcon(selectedConversation.agent?.type)} isDefault={selectedConversation.agent?.origin === "built_in"} />
                 <div>
                     <div className="flex items-center gap-2">
                         <h2 className="font-semibold text-base tracking-tight truncate max-w-[200px] sm:max-w-[400px]">

@@ -22,13 +22,14 @@ export function resolveDelegates(
 ): Record<string, Agent> {
   const ctx = requestContext
   const agentName = ((ctx?.get('agentName') as string | undefined) ?? '').toLowerCase().trim()
+  const isBuiltInAgent = ctx?.get('isBuiltInAgent') as boolean | undefined
   const depth = (ctx?.get('delegationDepth') as number | undefined) ?? 0
   const allowed = ctx?.get('allowedSubAgents') as string[] | undefined
 
-  if (depth >= maxDepthForHost(agentName)) return {}
+  if (depth >= maxDepthForHost(agentName, isBuiltInAgent)) return {}
 
   const specs = listSpecs()
-    .filter(spec => hostAllows(agentName, spec))
+    .filter(spec => hostAllows(isBuiltInAgent, spec))
     // An entitlement-gated spec is absent, not present-and-blocked. `allowed`
     // being undefined means the source is unconfigured — fail open, since a
     // silently missing capability looks to the user like Olmo doing the job

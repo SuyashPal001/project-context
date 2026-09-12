@@ -32,11 +32,14 @@ interface AgentOrbProps {
      * animating. Only set this where the avatar is genuinely reacting to a
      * live chat stream — the currently-streaming message row, nowhere else. */
     liveState?: PersonaAnimationState;
-    /** The seeded default agent (Olmo) never gets a persona or avatarUrl —
-     * it's the platform's own agent, not a per-tenant hire — so render the
-     * theme-aware brand mark instead of falling through to the generic
-     * canvas orb below. Checked before avatarUrl/persona so it wins even if
-     * either is ever set. */
+    /** True when the agent is the built-in platform agent (agents.origin ===
+     * 'built_in', i.e. Olmo) — every call site derives this from `origin`,
+     * not `agents.isDefault` (a separate column with separate semantics: which
+     * agent a new conversation defaults to). The built-in agent never gets a
+     * persona or avatarUrl of its own — it's the platform's agent, not a
+     * per-tenant hire — so render the theme-aware brand mark instead of
+     * falling through to the generic canvas orb below. Checked before
+     * avatarUrl/persona so it wins even if either is ever set. */
     isDefault?: boolean;
 }
 

@@ -10,9 +10,10 @@ vi.mock('../usage.js', () => ({
   fetchAgentPersonality: vi.fn(async () => 'You are the Visual Design Director.'),
   fetchAgentPersonaPrompt: vi.fn(async () => 'Persona prompt override'),
   fetchAgentName: vi.fn(async () => 'Olmo'),
+  fetchAgentOrigin: vi.fn(async () => 'built_in'),
 }))
 
-import { fetchAgentPersonality, fetchAgentPersonaPrompt, fetchAgentName } from '../usage.js'
+import { fetchAgentPersonality, fetchAgentPersonaPrompt, fetchAgentName, fetchAgentOrigin } from '../usage.js'
 import { createTenantAgent } from './agent.js'
 
 describe('createTenantAgent — background-task path persona/skill parity with chat', () => {
@@ -49,7 +50,9 @@ describe('createTenantAgent — background-task path persona/skill parity with c
     await agent.generate('route this task')
 
     expect(fetchAgentName).toHaveBeenCalledWith('agent-1')
+    expect(fetchAgentOrigin).toHaveBeenCalledWith('agent-1')
     const [, options] = mockGenerate.mock.calls[0]
     expect(options.requestContext.get('agentName')).toBe('Olmo')
+    expect(options.requestContext.get('isBuiltInAgent')).toBe(true)
   })
 })

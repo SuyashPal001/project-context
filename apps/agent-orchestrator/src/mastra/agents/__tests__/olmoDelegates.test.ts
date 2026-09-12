@@ -8,9 +8,10 @@ import { directorAgentDelegate } from '../directorAgent.js'
 import { producerAgentDelegate } from '../producerAgent.js'
 
 describe('buildOlmoDelegates', () => {
-  it('returns all four delegates when agentName is "olmo" (exact)', () => {
+  it('returns all four delegates when isBuiltInAgent is true', () => {
     const requestContext = new RequestContext<TenantContext>()
     requestContext.set('agentName', 'Olmo')
+    requestContext.set('isBuiltInAgent', true)
     const delegates = buildOlmoDelegates({ requestContext })
     expect(Object.keys(delegates).sort()).toEqual(['architect', 'director', 'pm', 'producer'])
     expect(delegates.pm).toBe(pmAgentDelegate)
@@ -22,17 +23,19 @@ describe('buildOlmoDelegates', () => {
   it('returns no delegates once the depth ceiling is reached', () => {
     const requestContext = new RequestContext<TenantContext>()
     requestContext.set('agentName', 'Olmo')
+    requestContext.set('isBuiltInAgent', true)
     requestContext.set('delegationDepth', 1)
     expect(buildOlmoDelegates({ requestContext })).toEqual({})
   })
 
-  it('is case-insensitive on agentName', () => {
+  it('gates on isBuiltInAgent, not the (renamed or differently-cased) agent name', () => {
     const requestContext = new RequestContext<TenantContext>()
-    requestContext.set('agentName', 'OLMO')
+    requestContext.set('agentName', 'Ogo')
+    requestContext.set('isBuiltInAgent', true)
     expect(Object.keys(buildOlmoDelegates({ requestContext }))).toHaveLength(4)
   })
 
-  it('returns no delegates for a different row name (e.g. Research Engineer)', () => {
+  it('returns no delegates for a different row, even one named "Olmo"', () => {
     const requestContext = new RequestContext<TenantContext>()
     requestContext.set('agentName', 'Research Engineer')
     expect(buildOlmoDelegates({ requestContext })).toEqual({})

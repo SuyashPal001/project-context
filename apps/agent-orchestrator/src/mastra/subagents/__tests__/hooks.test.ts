@@ -226,6 +226,7 @@ describe('the real Olmo delegate map through the hooks', () => {
   it('admits every delegate resolveDelegates returns for Olmo, applying its own spec', async () => {
     const olmoCtx = new RequestContext<TenantContext>()
     olmoCtx.set('agentName', 'Olmo')
+    olmoCtx.set('isBuiltInAgent', true)
     const delegates = resolveDelegates({ requestContext: olmoCtx })
     expect(Object.keys(delegates).length).toBeGreaterThan(0)
 

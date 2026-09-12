@@ -112,13 +112,14 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
 
       // 2. Identity. Mastra hands the sub-agent a near-complete copy of the
       // parent's context (agent-Dp3vcrIx.cjs:35119 excludes only four internal
-      // keys). `agentName` is rewritten to the delegate's spec id — that is
-      // what resolveDelegates gates on. No current delegate calls
-      // resolveDelegates (only platformAgent's `agents:` resolver does), so
-      // this is not closing a live loop; it stops a delegate that later gains
-      // a dynamic `agents:` resolver from inheriting agentName='olmo' and
-      // with it Olmo's delegate map. `subAgentId` carries the same spec id for
-      // any future delegate-scoped skills resolver to read.
+      // keys). `agentName` is rewritten to the delegate's spec id, and
+      // `isBuiltInAgent` — what resolveDelegates actually gates on — is
+      // forced false. No current delegate calls resolveDelegates (only
+      // platformAgent's `agents:` resolver does), so this is not closing a
+      // live loop; it stops a delegate that later gains a dynamic `agents:`
+      // resolver from inheriting the host's built-in flag and with it its
+      // delegate map. `subAgentId` carries the same spec id for any future
+      // delegate-scoped skills resolver to read.
       //
       // `agentId` is deliberately left UNCHANGED — it keeps the HOST's real
       // agent UUID. The delegates' own tools (generateImage.ts:36,
@@ -142,6 +143,7 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
       // by design; `allowedSubAgents` surviving in particular is correct and
       // load-bearing for resolveDelegates' entitlement filter.
       ctx.set('agentName', spec.id)
+      ctx.set('isBuiltInAgent', false)
       ctx.set('subAgentId', spec.id)
       ctx.set('agentSystemPrompt', '')
       ctx.set('personaPersonality', '')

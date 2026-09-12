@@ -46,16 +46,19 @@ describe('code spec source', () => {
     expect(() => buildAgentIdIndex([pm, twin])).toThrow(/already used by spec "pm"/)
   })
 
-  it('gives the olmo host a depth of 1 and every other host 0', () => {
-    expect(maxDepthForHost('olmo')).toBe(OLMO_HOST_MAX_DEPTH)
+  it('gives the built-in host a depth of 1 and every other host 0', () => {
+    expect(maxDepthForHost('olmo', true)).toBe(OLMO_HOST_MAX_DEPTH)
     expect(maxDepthForHost('research engineer')).toBe(0)
     expect(maxDepthForHost('')).toBe(0)
+    // A renamed built-in row still gets the host depth — origin, not name, gates it.
+    expect(maxDepthForHost('ogo', true)).toBe(OLMO_HOST_MAX_DEPTH)
   })
 
-  it('allows every registered spec for the olmo host only', () => {
+  it('allows every registered spec for the built-in host only', () => {
     const director = getSpec('director')!
-    expect(hostAllows('olmo', director)).toBe(true)
-    expect(hostAllows('director', director)).toBe(false)
+    expect(hostAllows(true, director)).toBe(true)
+    expect(hostAllows(false, director)).toBe(false)
+    expect(hostAllows(undefined, director)).toBe(false)
   })
 
   it('rejects a fallback pointing at itself', () => {

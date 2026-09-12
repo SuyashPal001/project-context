@@ -159,7 +159,7 @@ export function WelcomeView({ agent, firstName, onSelectPill, onSend, children, 
         <div className="flex flex-col flex-1 min-h-0">
             <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 text-center">
                 <div className="mb-6">
-                    <AgentOrb size={96} state="idle" avatarUrl={agent?.avatarUrl} persona={agent?.persona} liveState={avatarLiveState} isDefault={agent?.isDefault} />
+                    <AgentOrb size={96} state="idle" avatarUrl={agent?.avatarUrl} persona={agent?.persona} liveState={avatarLiveState} isDefault={agent?.origin === "built_in"} />
                 </div>
 
                 <h2 className="text-2xl font-bold tracking-tight mb-1">

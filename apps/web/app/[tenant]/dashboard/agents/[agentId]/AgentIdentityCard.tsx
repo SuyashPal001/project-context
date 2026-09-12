@@ -126,43 +126,58 @@ export function AgentIdentityCard({
                         <div className={cn("space-y-6", !brandingEnabled && "opacity-40 pointer-events-none select-none")}>
                             <div className="space-y-1.5">
                                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Agent Avatar</Label>
-                                <ImageUpload
-                                    value={form.avatarUrl}
-                                    fallbackText={initials}
-                                    onChange={(url) => {
-                                        // Remove passes "" here — also clear avatarFileId, otherwise
-                                        // Save persists the old file id unchanged (the preview clears
-                                        // locally but the removal never reaches the server).
-                                        setForm(prev => ({ ...prev, avatarUrl: url, avatarParams: null, avatarFileId: url ? prev.avatarFileId : null }));
-                                        setIsDirty(true);
-                                    }}
-                                    onFileIdChange={(fileId) => {
-                                        setForm(prev => ({ ...prev, avatarFileId: fileId }));
-                                    }}
-                                    disabled={!isOwner}
-                                />
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={!isOwner}
-                                    onClick={() => setIsBuilderOpen(true)}
-                                >
-                                    Build Avatar
-                                </Button>
+                                {agent?.origin === "built_in" ? (
+                                    <div className="flex items-center gap-4">
+                                        <div className="h-20 w-20 shrink-0 rounded-full overflow-hidden bg-muted border-2 border-border flex items-center justify-center">
+                                            <span className="text-xl font-bold text-muted-foreground uppercase">{initials}</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">The built-in agent uses the platform's brand mark and can't be given a custom avatar.</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <ImageUpload
+                                            value={form.avatarUrl}
+                                            fallbackText={initials}
+                                            onChange={(url) => {
+                                                // Remove passes "" here — also clear avatarFileId, otherwise
+                                                // Save persists the old file id unchanged (the preview clears
+                                                // locally but the removal never reaches the server).
+                                                setForm(prev => ({ ...prev, avatarUrl: url, avatarParams: null, avatarFileId: url ? prev.avatarFileId : null }));
+                                                setIsDirty(true);
+                                            }}
+                                            onFileIdChange={(fileId) => {
+                                                setForm(prev => ({ ...prev, avatarFileId: fileId }));
+                                            }}
+                                            disabled={!isOwner}
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={!isOwner}
+                                            onClick={() => setIsBuilderOpen(true)}
+                                        >
+                                            Build Avatar
+                                        </Button>
+                                    </>
+                                )}
                             </div>
 
                             <div className="space-y-1.5">
                                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Name</Label>
-                                <Input
-                                    value={form.name}
-                                    onChange={(e) => {
-                                        setForm((f) => ({ ...f, name: e.target.value }));
-                                        setIsDirty(true);
-                                    }}
-                                    disabled={!isOwner}
-                                    placeholder="Agent name"
-                                />
+                                {agent?.origin === "built_in" ? (
+                                    <p className="text-sm">{form.name}</p>
+                                ) : (
+                                    <Input
+                                        value={form.name}
+                                        onChange={(e) => {
+                                            setForm((f) => ({ ...f, name: e.target.value }));
+                                            setIsDirty(true);
+                                        }}
+                                        disabled={!isOwner}
+                                        placeholder="Agent name"
+                                    />
+                                )}
                             </div>
 
                             <div className="space-y-1.5">

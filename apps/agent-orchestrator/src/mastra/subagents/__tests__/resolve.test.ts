@@ -10,13 +10,18 @@ function ctx(entries: Partial<TenantContext>): RequestContext<TenantContext> {
 }
 
 describe('resolveDelegates', () => {
-  it('returns every spec for the olmo host at depth 0', () => {
-    const delegates = resolveDelegates({ requestContext: ctx({ agentName: 'Olmo' }) })
+  it('returns every spec for the built-in host at depth 0', () => {
+    const delegates = resolveDelegates({ requestContext: ctx({ agentName: 'Olmo', isBuiltInAgent: true }) })
+    expect(Object.keys(delegates).sort()).toEqual(['architect', 'director', 'pm', 'producer'])
+  })
+
+  it('returns every spec for a renamed built-in host — origin gates, not name', () => {
+    const delegates = resolveDelegates({ requestContext: ctx({ agentName: 'Ogo', isBuiltInAgent: true }) })
     expect(Object.keys(delegates).sort()).toEqual(['architect', 'director', 'pm', 'producer'])
   })
 
   it('returns an empty map once depth has reached the host ceiling', () => {
-    expect(resolveDelegates({ requestContext: ctx({ agentName: 'Olmo', delegationDepth: 1 }) })).toEqual({})
+    expect(resolveDelegates({ requestContext: ctx({ agentName: 'Olmo', isBuiltInAgent: true, delegationDepth: 1 }) })).toEqual({})
   })
 
   it('returns an empty map for a delegate host, which cannot re-delegate', () => {
@@ -31,12 +36,12 @@ describe('resolveDelegates', () => {
     // No code spec sets requiresEntitlement today, so this asserts the filter
     // is inert rather than wrong: an allowed set that omits everything must
     // still return the ungated specs.
-    const delegates = resolveDelegates({ requestContext: ctx({ agentName: 'Olmo', allowedSubAgents: [] }) })
+    const delegates = resolveDelegates({ requestContext: ctx({ agentName: 'Olmo', isBuiltInAgent: true, allowedSubAgents: [] }) })
     expect(Object.keys(delegates).sort()).toEqual(['architect', 'director', 'pm', 'producer'])
   })
 
   it('fails open when the allowed set is unset', () => {
-    expect(Object.keys(resolveDelegates({ requestContext: ctx({ agentName: 'Olmo' }) }))).toHaveLength(4)
+    expect(Object.keys(resolveDelegates({ requestContext: ctx({ agentName: 'Olmo', isBuiltInAgent: true }) }))).toHaveLength(4)
   })
 
   it('returns an empty map when the context itself is undefined', () => {

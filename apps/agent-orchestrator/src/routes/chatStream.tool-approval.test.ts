@@ -97,6 +97,7 @@ vi.mock('../mastra/cost.js', () => ({
 vi.mock('../usage.js', () => ({
   fetchAgentPersonaPrompt: vi.fn().mockResolvedValue(null),
   fetchAgentName: vi.fn().mockResolvedValue('test-agent'),
+  fetchAgentOrigin: vi.fn().mockResolvedValue('custom'),
   fetchAgentPersonality: vi.fn().mockResolvedValue(null),
   fetchAgentModelSelection: vi.fn().mockResolvedValue(null),
   fetchAllowedSubAgents: vi.fn().mockResolvedValue(['pm', 'architect', 'director', 'producer']),

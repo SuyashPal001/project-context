@@ -90,7 +90,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         <>
             <EmployeeCard
                 href={`/${tenantSlug}/dashboard/agents/${agent.id}`}
-                avatar={<PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" isDefault={agent.isDefault} />}
+                avatar={<PersonaAvatar persona={agent.persona} avatarUrl={agent.avatarUrl} size={44} className="rounded-2xl" isDefault={agent.origin === "built_in"} />}
                 name={agent.name}
                 subtitle={
                     <span className="inline-flex items-center gap-1.5">
