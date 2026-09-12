@@ -34,7 +34,13 @@ export function AgentInfoCard({ agent, isLoading }: AgentInfoCardProps) {
                         </div>
                         <div className="flex gap-2">
                             <dt className="text-muted-foreground w-24 shrink-0">Created by</dt>
-                            <dd className="text-foreground">{agent?.createdByName ?? "Unknown"}</dd>
+                            <dd className="text-foreground">
+                                {/* createdBy on the built-in agent is just whoever happened to
+                                    trigger tenant onboarding, not someone who actually
+                                    configured it — showing their name here would misattribute
+                                    it once other teammates join and see the same agent. */}
+                                {agent?.origin === "built_in" ? "Platform" : agent?.createdByName ?? "Unknown"}
+                            </dd>
                         </div>
                     </dl>
                 )}
