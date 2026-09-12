@@ -24,6 +24,7 @@ import type { PersonaSummary } from "@/components/platform/personas/types";
 import { AvatarBuilderModal } from "@/components/platform/agents/avatar-builder/AvatarBuilderModal";
 import type { AvatarParams } from "@/components/platform/agents/avatar-builder/avatarParams";
 import { BrandingLockedOverlay } from "./BrandingLockedOverlay";
+import { OlmoMark } from "@/components/platform/OlmoMark";
 
 const NO_PERSONA_VALUE = "__none__";
 
@@ -127,9 +128,9 @@ export function AgentIdentityCard({
                             <div className="space-y-1.5">
                                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Agent Avatar</Label>
                                 {agent?.origin === "built_in" ? (
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-20 w-20 shrink-0 rounded-full overflow-hidden bg-muted border-2 border-border flex items-center justify-center">
-                                            <span className="text-xl font-bold text-muted-foreground uppercase">{initials}</span>
+                                    <div className="space-y-2">
+                                        <div className="h-20 w-20 shrink-0 rounded-full overflow-hidden bg-secondary border-2 border-border flex items-center justify-center">
+                                            <OlmoMark height={40} centered />
                                         </div>
                                         <p className="text-xs text-muted-foreground">The built-in agent uses the platform's brand mark and can't be given a custom avatar.</p>
                                     </div>
