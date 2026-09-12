@@ -124,7 +124,7 @@ export function AgentIdentityCard({
                     </div>
                 ) : (
                     <div className="relative">
-                        <div className={cn("space-y-6", !brandingEnabled && "opacity-40 pointer-events-none select-none")}>
+                        <div className={cn("space-y-6", !brandingEnabled && agent?.origin !== "built_in" && "opacity-40 pointer-events-none select-none")}>
                             <div className="space-y-1.5">
                                 <Label className="text-xs text-muted-foreground uppercase tracking-wider">Agent Avatar</Label>
                                 {agent?.origin === "built_in" ? (
@@ -225,7 +225,7 @@ export function AgentIdentityCard({
                             )}
                         </div>
 
-                        {!brandingEnabled && <BrandingLockedOverlay tenantSlug={tenantSlug} />}
+                        {!brandingEnabled && agent?.origin !== "built_in" && <BrandingLockedOverlay tenantSlug={tenantSlug} />}
                         <AvatarBuilderModal
                             open={isBuilderOpen}
                             onOpenChange={setIsBuilderOpen}

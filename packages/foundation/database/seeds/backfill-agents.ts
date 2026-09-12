@@ -53,7 +53,7 @@ const generateKey = () => {
     return { raw, hash: createHash('sha256').update(raw).digest('hex') };
 };
 
-const DEFAULT_AGENTS: { name: string; description: string; systemPrompt: string; personaSlug?: string; isDefault?: boolean }[] = [
+const DEFAULT_AGENTS: { name: string; description: string; systemPrompt: string; personaSlug?: string; isDefault?: boolean; origin?: 'built_in' | 'custom' }[] = [
     {
         name: 'Olmo',
         description: 'Your AI assistant — answers directly or routes the task to the right specialist.',
@@ -67,6 +67,7 @@ You can answer directly, or delegate to a specialist when the task fits one of t
 
 For anything else — general questions, research, document Q&A, conversation — answer directly yourself. Do not delegate work you can already do.`),
         isDefault: true,
+        origin: 'built_in',
     },
     {
         name: 'PM Agent',
@@ -196,6 +197,7 @@ async function run() {
                 apiKeyId: key.id,
                 personaId,
                 isDefault: def.isDefault ?? false,
+                origin: def.origin ?? 'custom',
                 createdBy: userId,
                 systemPrompt: def.systemPrompt,
             }).returning();
