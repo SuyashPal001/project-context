@@ -92,4 +92,36 @@ describe('validateVerbatimTokens', () => {
     const draft = 'Anything at all, even unrelated text.'
     expect(validateVerbatimTokens(brief, draft)).toBeNull()
   })
+
+  // Regression: a UUID appearing in both a "verified" summary line and the
+  // per-logo catalog (N=2) must appear N times correctly in the draft. The old
+  // Set+includes check passed as long as one correct occurrence existed — the
+  // corrupted second occurrence was invisible to it.
+  it('catches a corrupted second occurrence when the same UUID appears twice in the brief', () => {
+    const uuid = '96e6a49a-98bb-4a08-aebe-aa167a9c9c75'
+    const corrupted = '96e6a49a-98bb-4a08-aebe-aa167a9c7c75' // 9c75 -> 7c75
+    const brief = [
+      `Verified partner IDs: Podglomerate ${uuid}`,
+      `| Podglomerate | ${uuid} | https://cdn.example.com/logo.png |`,
+    ].join('\n')
+    // Draft is correct in the summary, corrupted in the table
+    const draft = [
+      `- Podglomerate: \`${uuid}\``,
+      `| Podglomerate | \`${corrupted}\` |`,
+    ].join('\n')
+    expect(validateVerbatimTokens(brief, draft)).toMatch(/missing or altered/)
+  })
+
+  it('accepts a draft where a UUID appearing twice in the brief also appears twice correctly', () => {
+    const uuid = '96e6a49a-98bb-4a08-aebe-aa167a9c9c75'
+    const brief = [
+      `Verified: Podglomerate ${uuid}`,
+      `| Podglomerate | ${uuid} |`,
+    ].join('\n')
+    const draft = [
+      `- Podglomerate: \`${uuid}\``,
+      `| Podglomerate | \`${uuid}\` |`,
+    ].join('\n')
+    expect(validateVerbatimTokens(brief, draft)).toBeNull()
+  })
 })
