@@ -57,7 +57,7 @@ function ChatPage() {
     const {
         tenantSlug, conversationId, conversationIdRef, firstName,
         isChatSidebarCollapsed, toggleChatSidebar,
-        providers, activeAgents,
+        providers, activeAgents, isLoadingAgents,
         conversations, isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
         isDeleteDialogOpen, setIsDeleteDialogOpen,
@@ -291,13 +291,19 @@ function ChatPage() {
     useEffect(() => {
         const seededPrompt = searchParams.get('prompt');
         if (!seededPrompt || seededPromptFiredRef.current || conversationId) return;
+        // handleNewChat() with no agentId falls back to activeAgents[0] — on a
+        // fresh /chat visit (no react-query cache yet) that array is still []
+        // while the ['agents'] query is in flight, so firing before it
+        // resolves hit the "No active agents available" branch instead of
+        // ever finding Olmo. Wait for it to settle first.
+        if (isLoadingAgents) return;
         seededPromptFiredRef.current = true;
         // searchParams.get already URL-decodes — decoding again here would
         // throw on a prompt containing a literal '%' character.
         setPendingFirstMessage(seededPrompt);
         handleNewChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchParams, conversationId]);
+    }, [searchParams, conversationId, isLoadingAgents]);
 
     const noopActivity = useCallback(() => {}, []);
 

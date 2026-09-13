@@ -57,7 +57,7 @@ export function useChatPage() {
     });
     const providers = providersData?.providers ?? [];
 
-    const { data: agentsData } = useQuery<{ data: Agent[] }>({
+    const { data: agentsData, isLoading: isLoadingAgents } = useQuery<{ data: Agent[] }>({
         queryKey: ['agents'],
         queryFn: () => api.get('/api/v1/agents'),
     });
@@ -210,7 +210,7 @@ export function useChatPage() {
     return {
         tenantSlug, conversationId, conversationIdRef, firstName,
         isChatSidebarCollapsed, toggleChatSidebar,
-        providers, activeAgents,
+        providers, activeAgents, isLoadingAgents,
         conversations, isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
         isDeleteDialogOpen, setIsDeleteDialogOpen,
