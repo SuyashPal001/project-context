@@ -366,9 +366,21 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         }, [queryClient]),
     });
 
-    // Cancel any in-flight stream when navigating to a different conversation
+    // Cancel any in-flight stream when SWITCHING to a different conversation —
+    // deliberately not a cleanup function, which would also fire on a plain
+    // unmount (navigating to another page entirely). That previously aborted
+    // the fetch on any navigation away from /chat, and the orchestrator's SSE
+    // route can't tell that apart from the user clicking Stop (both are just
+    // "client disconnected" to it) — it discards the whole in-flight turn
+    // rather than persisting the reply (see chatStream.ts's isStreamClosed
+    // guard). Leaving the page should let the agent keep working; only an
+    // actual conversation switch should cancel it.
+    const prevConversationIdRef = useRef(conversationId);
+    useEffect(() => {
+        if (prevConversationIdRef.current !== conversationId) cancel();
+        prevConversationIdRef.current = conversationId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => { return () => { cancel(); }; }, [conversationId]);
+    }, [conversationId]);
 
     const sendMessage = async (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
