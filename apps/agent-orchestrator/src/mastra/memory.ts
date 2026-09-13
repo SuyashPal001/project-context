@@ -213,6 +213,9 @@ export function getMastraMemory(): Memory {
       semanticRecall: {
         topK: 3,
         messageRange: 2,
+        // gemini-embedding-001 produces 3072-dim vectors; ivfflat (Mastra's
+        // default) hard-limits at 2000. HNSW has no such restriction.
+        indexConfig: { type: 'hnsw' },
       },
       workingMemory: {
         enabled: true,
@@ -276,6 +279,9 @@ export function getOlmoMemory(): Memory {
         messageRange: 2,
         // Security boundary — see the note above. Not a tuning knob.
         scope: 'thread',
+        // gemini-embedding-001 produces 3072-dim vectors; ivfflat hard-limits
+        // at 2000. HNSW has no such restriction.
+        indexConfig: { type: 'hnsw' },
       },
       workingMemory: {
         enabled: true,
