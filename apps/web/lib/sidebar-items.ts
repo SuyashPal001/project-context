@@ -16,6 +16,7 @@ import {
     Palette,
     KanbanSquare,
     LayoutList,
+    Brain,
 
 } from "lucide-react";
 import React from 'react';
@@ -93,6 +94,7 @@ export function getSettingsPanelItems(
     // Workspace is visible to every role — matches the pre-panel behaviour.
     const items: SidebarItem[] = [
         { label: "Workspace", href: `${base}/settings/workspace`, icon: Building2 },
+        { label: "Memory", href: `${base}/settings/memory`, icon: Brain },
     ];
 
     // Everything below was admin/owner-only before the panel existed. Keep it
