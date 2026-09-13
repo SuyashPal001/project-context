@@ -257,9 +257,13 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         </button>
                     ))}
                     {question.allowSkip && (
-                        <div className="text-sm text-muted-foreground px-3 py-1">
-                            {question.options.length + 1}. Something else
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => freeTextRef.current?.focus()}
+                            className="w-full text-left rounded-xl px-3 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        >
+                            {question.options.length + 1}. Something else — type below
+                        </button>
                     )}
                 </div>
 
