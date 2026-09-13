@@ -74,10 +74,10 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'generate-video': { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video' },
   'generate-song': { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' },
   'edit-image': { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image' },
-  'create_skill': {
+  'save_skill': {
     resourceType: 'skill_creation',
     subject: 'create',
-    label: 'Create skill',
+    label: 'Save skill',
     buildPreview: (args) => (typeof args.body === 'string' ? buildSkillPreview(args.body) : undefined),
   },
 }

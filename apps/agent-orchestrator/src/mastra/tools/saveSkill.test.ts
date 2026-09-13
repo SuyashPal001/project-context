@@ -16,12 +16,12 @@ function execContext(over: Record<string, unknown> = {}) {
 // Two-arg call — matches this repo's actual createTool execute convention
 // (see generateVideo.test.ts), not a single merged {context, ...} object.
 async function run(args: Record<string, unknown>, ctx = execContext()) {
-  const { createSkillTool } = await import('./createSkill.js')
+  const { saveSkillTool } = await import('./saveSkill.js')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (createSkillTool as any).execute(args, ctx)
+  return (saveSkillTool as any).execute(args, ctx)
 }
 
-describe('create_skill', () => {
+describe('save_skill', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.stubGlobal('fetch', fetchMock)
@@ -151,8 +151,8 @@ describe('create_skill', () => {
   // come only from execContext.requestContext. A future edit adding any of
   // them back to the input schema should fail this test loudly.
   it('exposes only name, description and body on the input schema — never identifiers from the session', async () => {
-    const { createSkillInputSchema } = await import('./createSkill.js')
-    const keys = Object.keys(createSkillInputSchema.shape)
+    const { saveSkillInputSchema } = await import('./saveSkill.js')
+    const keys = Object.keys(saveSkillInputSchema.shape)
     expect(keys.sort()).toEqual(['body', 'description', 'name'])
     expect(keys).not.toContain('tenantId')
     expect(keys).not.toContain('userId')
@@ -161,18 +161,18 @@ describe('create_skill', () => {
   })
 })
 
-describe('createSkillTool.requireApproval', () => {
+describe('saveSkillTool.requireApproval', () => {
   const liveCtx = { requestContext: { sendEvent: () => {} } }
 
   it('requires approval for a valid draft in a live session', async () => {
-    const { createSkillTool } = await import('./createSkill.js')
-    const result = await (createSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: VALID_BODY }, liveCtx)
+    const { saveSkillTool } = await import('./saveSkill.js')
+    const result = await (saveSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: VALID_BODY }, liveCtx)
     expect(result).toBe(true)
   })
 
   it('skips approval for an invalid draft (no frontmatter)', async () => {
-    const { createSkillTool } = await import('./createSkill.js')
-    const result = await (createSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: 'no frontmatter here' }, liveCtx)
+    const { saveSkillTool } = await import('./saveSkill.js')
+    const result = await (saveSkillTool.requireApproval as (input: unknown, ctx: unknown) => Promise<boolean>)({ name: 'x', body: 'no frontmatter here' }, liveCtx)
     expect(result).toBe(false)
   })
 
@@ -181,8 +181,8 @@ describe('createSkillTool.requireApproval', () => {
   // never handle the tool-call-approval chunk — pausing there would suspend
   // the run for 24h instead of letting execute()'s own guard error out.
   it('skips approval when there is no live session, even for a valid draft', async () => {
-    const { createSkillTool } = await import('./createSkill.js')
-    const fn = createSkillTool.requireApproval as (input: unknown, ctx?: unknown) => Promise<boolean>
+    const { saveSkillTool } = await import('./saveSkill.js')
+    const fn = saveSkillTool.requireApproval as (input: unknown, ctx?: unknown) => Promise<boolean>
     expect(await fn({ name: 'x', body: VALID_BODY }, {})).toBe(false)
     expect(await fn({ name: 'x', body: VALID_BODY }, { requestContext: {} })).toBe(false)
     expect(await fn({ name: 'x', body: VALID_BODY })).toBe(false)

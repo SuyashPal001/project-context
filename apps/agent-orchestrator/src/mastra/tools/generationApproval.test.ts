@@ -57,7 +57,7 @@ describe('shouldRequireApproval', () => {
 describe('GENERATION_APPROVAL_METADATA', () => {
   it('has an entry for every gated tool id', () => {
     expect(Object.keys(GENERATION_APPROVAL_METADATA).sort()).toEqual(
-      ['create_skill', 'edit-image', 'generate-image', 'generate-song', 'generate-video'].sort(),
+      ['edit-image', 'generate-image', 'generate-song', 'generate-video', 'save_skill'].sort(),
     )
   })
 
@@ -65,8 +65,8 @@ describe('GENERATION_APPROVAL_METADATA', () => {
     expect(GENERATION_APPROVAL_METADATA['generate-image'].buildPreview).toBeUndefined()
   })
 
-  it('create_skill builds a preview from args.body', () => {
-    const preview = GENERATION_APPROVAL_METADATA['create_skill'].buildPreview?.({ body: 'line one\nline two', name: 'x' })
+  it('save_skill builds a preview from args.body', () => {
+    const preview = GENERATION_APPROVAL_METADATA['save_skill'].buildPreview?.({ body: 'line one\nline two', name: 'x' })
     expect(preview).toContain('line one')
   })
 })

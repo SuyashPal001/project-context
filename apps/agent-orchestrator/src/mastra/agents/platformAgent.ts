@@ -28,7 +28,8 @@ import { requestUploadTool } from '../tools/requestUpload.js'
 import { renderCanvas } from '../tools/renderCanvas.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
-import { createSkillTool } from '../tools/createSkill.js'
+import { draftSkillTool } from '../tools/draftSkill.js'
+import { saveSkillTool } from '../tools/saveSkill.js'
 import { buildOlmoDelegates } from './olmoDelegates.js'
 
 // ---------------------------------------------------------------------------
@@ -174,10 +175,12 @@ export const SERVER_TOOLS = {
   render_canvas: renderCanvas,
   analyze_audio: analyzeAudioTool,
   analyze_video: analyzeVideoTool,
-  // User-triggered only — the tool description tells the model never to call
-  // this on its own initiative. See createSkill.ts for the confirm-gate and
-  // tenantId/userId/agentId/conversationId provenance rules.
-  create_skill: createSkillTool,
+  // Two-step, user-triggered only — the tool descriptions tell the model
+  // never to call either on its own initiative. draft_skill has no approval
+  // gate (nothing to show yet); save_skill does. See saveSkill.ts for the
+  // confirm-gate and tenantId/userId/agentId/conversationId provenance rules.
+  draft_skill: draftSkillTool,
+  save_skill: saveSkillTool,
   // Folder scope: the agent is granted a handle to a folder, not its contents.
   // list_folder is the manifest — names and types only, no bytes read.
   list_folder: listFolderTool,
@@ -269,21 +272,23 @@ const systemPromptScrubber = new SystemPromptScrubber({
 // model:        AI SDK connector routes through Inference Gateway at INFERENCE_GATEWAY_URL.
 // ---------------------------------------------------------------------------
 
-// create_skill's own description already says "You write the file" — this
+// draft_skill/save_skill's own descriptions already say what they need — this
 // restates it as a hard rule because the model has ask_clarifying_questions
-// available too, and nothing else stops it from using that tool to push
-// raw SKILL.md/YAML authorship onto the user instead of drafting it. A
+// available too, and nothing else stops it from using that tool to push raw
+// SKILL.md/YAML authorship onto the user instead of drafting it. A
 // non-technical user asked to hand-write frontmatter is a broken, scary
 // interaction, not a legitimate clarification.
 //
-// Shared with the web modal's Generate path (SKILL_SYSTEM_PROMPT in
-// generationPrompt.ts) via SKILL_CONTENT_QUALITY_BAR — a skill Olmo writes
-// unprompted in chat is held to the same content bar as one generated
-// through the dashboard modal. The authorship rule below (agent writes the
-// file, never the user) is a separate concern from content quality and
-// stays inline.
+// Shared with SKILL_CONTENT_QUALITY_BAR (skills/generationPrompt.ts) — kept
+// for now as the one other place this bar is asserted, though its own
+// SKILL_SYSTEM_PROMPT/buildSkillPrompt caller (the old dashboard "Create
+// skill" modal) no longer exists in the web app.
 export const SKILL_CREATION_CONTRACT = `\n\n## Skill creation — required behaviour
-When the user asks you to save something as a skill, YOU write the complete SKILL.md body yourself from the conversation so far — frontmatter, instructions, everything — and call create_skill with it. NEVER call ask_clarifying_questions to ask the user to write or paste the skill's markdown/YAML content themselves; that is your job, not theirs. It is fine to ask a short clarifying question about scope or naming, but never to ask them to produce the file.
+When the user asks to create or save a skill:
+1. Get a NAME from the user first. Never invent one yourself — if they haven't given one, ask (via ask_clarifying_questions or directly).
+2. Gather a BRIEF — what the skill should teach an agent — via ask_clarifying_questions if they haven't already given you enough. NEVER ask the user to write or paste SKILL.md/YAML content themselves; that is draft_skill's job, not theirs.
+3. Call draft_skill with the name and the full brief. It drafts and validates the SKILL.md itself — you do not write the description or body by hand.
+4. Show the user the returned draft. Only after they approve (or ask for it to be saved) do you call save_skill with that same name/description/body — never an unreviewed draft, never one you rewrote yourself.
 
 ## Skill content quality — required behaviour
 ${SKILL_CONTENT_QUALITY_BAR}`

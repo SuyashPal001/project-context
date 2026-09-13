@@ -1,18 +1,9 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { API_BASE_URL } from '../../types.js'
+import { validateSkillBody } from '../lib/skillValidation.js'
 
-const MAX_BODY_BYTES = 65_536
-
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/
-
-// Mirrors MIN_DESCRIPTION_LENGTH in
-// products/agent-platform/packages/worker-handlers/lib/skillManifest.ts — see
-// that file's comment for the reasoning. Kept in sync by hand, not imported:
-// the worker package is not a dependency of the orchestrator.
-const MIN_DESCRIPTION_LENGTH = 20
-
-interface CreateSkillResult {
+interface SaveSkillResult {
   success: boolean
   message?: string
   error?: string
@@ -21,73 +12,33 @@ interface CreateSkillResult {
   skillId?: string
 }
 
-/**
- * Validates the frontmatter contract `parseSkillManifest` enforces in the
- * import worker. Checked here so a malformed draft is a tool error the agent
- * can fix on the spot, rather than a `failed` version row the user discovers
- * minutes later on the Skills page.
- */
-// Best-effort mirror of parseSkillManifest, not a full re-implementation: the
-// worker module isn't importable from here (see task brief), so this checks
-// the delimiter, the two required keys, and the description length floor by
-// regex rather than by running a real YAML.parse. A body with a
-// `name:`/`description:` line present but broken YAML elsewhere in the
-// frontmatter (bad indentation, an unterminated quote, etc.) passes this
-// check and still fails at import time in the worker, which does parse it
-// for real and requires non-empty trimmed strings for both fields (plus the
-// same MIN_DESCRIPTION_LENGTH floor on description).
-function validateSkillBody(body: string, _name: string): string | null {
-  if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) return `SKILL.md must be under ${MAX_BODY_BYTES} bytes`
-  const match = FRONTMATTER_RE.exec(body)
-  if (!match) return 'SKILL.md must start with a --- YAML frontmatter block'
-  const frontmatter = match[1]
-  if (!/^name:\s*\S/m.test(frontmatter)) return "SKILL.md frontmatter is missing required field 'name'"
-  const descriptionMatch = /^description:\s*(\S.*)$/m.exec(frontmatter)
-  if (!descriptionMatch) return "SKILL.md frontmatter is missing required field 'description'"
-  const description = descriptionMatch[1].trim()
-  if (description.length < MIN_DESCRIPTION_LENGTH) {
-    return `SKILL.md frontmatter 'description' is too short to be useful (${description.length} chars, minimum ${MIN_DESCRIPTION_LENGTH}) — write a real sentence saying when an agent should use this skill`
-  }
-  // Weak but cheap proxy for "states when to use it" vs. "summarizes what it
-  // does" — the two read differently to a human, but the only mechanical
-  // signal available without an LLM pass is whether the sentence bothers to
-  // say "when" at all. Mirrors the same floor in skillManifest.ts.
-  if (!/\bwhen\b/i.test(description)) {
-    return `SKILL.md frontmatter 'description' should say when to use this skill, not just what it does — start with "Use when..." and name the trigger`
-  }
-  return null
-}
-
 // Exported separately (rather than inlined into createTool's config) so a
 // test can assert on its shape directly: this is the security boundary the
 // API route's permission check depends on. tenantId/userId/agentId/
 // conversationId must never appear here — they come only from
 // execContext.requestContext (the authenticated session), never from
 // anything the model can name.
-export const createSkillInputSchema = z.object({
-  name: z.string().min(1).max(100).describe('Human-readable skill name, e.g. "Bid Writer"'),
-  description: z.string().max(2000).optional().describe('One line on what the skill is for'),
-  body: z.string().min(1).describe('The complete SKILL.md, frontmatter included'),
+export const saveSkillInputSchema = z.object({
+  name: z.string().min(1).max(100).describe('Human-readable skill name, e.g. "Bid Writer" — the same name the user gave you, not the frontmatter kebab-case one.'),
+  description: z.string().max(2000).optional().describe('One line on what the skill is for — copy this from the draft\'s own frontmatter description, do not write a new one.'),
+  body: z.string().min(1).describe('The complete, already-validated SKILL.md from draft_skill\'s output — do not edit it unless the user asked for a change.'),
 })
 
-export const createSkillTool = createTool({
-  id: 'create_skill',
-  description: `Save a reusable skill for this workspace from what you have learned in this conversation.
+export const saveSkillTool = createTool({
+  id: 'save_skill',
+  description: `Persist a validated SKILL.md draft as a reusable skill for this workspace. Requires calling draft_skill first — never write a SKILL.md body yourself and pass it here.
 
-Call this ONLY when the user explicitly asks for it — "save that as a skill", "/create-skill", "remember this as a skill". Never call it on your own initiative.
+Call this ONLY after the user has seen the draft_skill output and approved it, or asked for it to be saved — "save that as a skill", "/create-skill", "looks good, save it". Never call it on your own initiative, and never on an unreviewed draft.
 
-You write the file. \`body\` must be a complete SKILL.md:
-- Start with a YAML frontmatter block delimited by --- lines, containing name (lowercase kebab-case) and description (one sentence saying when an agent should use this skill, at least 20 characters).
-- After the closing ---, write instructions addressed to the agent that will follow them: when the skill applies, concrete steps, exact phrasings and formats, and what to avoid.
-
-The user is shown the draft and must approve it. The skill applies from their next message, not this reply.`,
-  inputSchema: createSkillInputSchema,
+The user is shown the draft again and must approve. The skill applies from their next message, not this reply.`,
+  inputSchema: saveSkillInputSchema,
   // Unconditional gate, mirroring today's alwaysAsk: true — this tool never
   // checks isUnlimited/resolveRate (creating a skill is free; a human still
   // must see it). Two reasons to skip the pause:
   //   1. An invalid draft — nothing meaningful to show on a card, and
   //      execute() rejects it immediately anyway (validateSkillBody runs
-  //      there unchanged).
+  //      there unchanged). Shouldn't happen given draft_skill already
+  //      validated it, but a user-edited body could reintroduce an issue.
   //   2. No live SSE session — same liveness check shouldRequireApproval
   //      makes, and the same one execute()'s hard guard below makes. Paths
   //      that never handle the `tool-call-approval` chunk (index.ts's
@@ -126,13 +77,6 @@ The user is shown the draft and must approve it. The skill applies from their ne
       }
     }
 
-    // DELETE the old confirmGenerationOrDecline call and its CONFIRM_BUSY
-    // branch entirely — approval already happened (or was skipped because
-    // the draft was invalid, in which case execute() already returned
-    // above) before this line runs. The card's preview/PII note are now
-    // built once, in chatStream.ts, from GENERATION_APPROVAL_METADATA's
-    // create_skill.buildPreview — not recomputed here.
-
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/internal/skills`, {
         method: 'POST',
@@ -164,7 +108,7 @@ The user is shown the draft and must approve it. The skill applies from their ne
           : `Saved "${name}" as a skill. This agent doesn't take permanent skill attachments — turn it on anytime with "/${name}" in chat, or attach it permanently to a custom AI employee.`,
       }
     } catch (err) {
-      console.error('[create_skill] failed:', (err as Error).message)
+      console.error('[save_skill] failed:', (err as Error).message)
       return { success: false, error: 'The skill could not be saved.', retryable: true }
     }
   },

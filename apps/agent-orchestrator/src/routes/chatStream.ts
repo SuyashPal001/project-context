@@ -469,7 +469,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const approvalMessageId = crypto.randomUUID()
 
           const preview = meta.buildPreview?.(args)
-          const piiNote = toolName === 'create_skill' && typeof args.body === 'string' ? detectSkillPii(args.body) : ''
+          const piiNote = toolName === 'save_skill' && typeof args.body === 'string' ? detectSkillPii(args.body) : ''
           const label = piiNote ? `${meta.label}${piiNote}` : meta.label
 
           sendEvent('generation_confirm_request', {
@@ -519,8 +519,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // The live `requestContext` must be passed back in on resume. Mastra
           // rehydrates a resumed run from its persisted snapshot, and
           // RequestContext.toJSON() drops every function value — including
-          // `sendEvent`, which createSkill.ts's live-session guard requires.
-          // Without this, approving a create_skill draft resumes with no
+          // `sendEvent`, which saveSkill.ts's live-session guard requires.
+          // Without this, approving a save_skill draft resumes with no
           // sendEvent and the skill is never saved.
           currentStream = confirmed
             ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, ...olmoOptions })
