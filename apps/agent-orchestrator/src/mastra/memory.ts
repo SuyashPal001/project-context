@@ -162,15 +162,15 @@ const WORKING_MEMORY_TEMPLATE = `# Tenant Context
 // pinned 'thread' here and silently stripped cross-conversation memory from
 // all three standalone agents.
 //
-// Observational Memory's own `scope` is pinned to 'resource' for the same
-// reason — this instance exists specifically for cross-conversation memory,
-// and OM's default `scope: 'thread'` would make its observation log
-// per-conversation-only, none of which would carry forward the way
-// workingMemory/semanticRecall already do here. Mastra marks resource scope
-// experimental and it disables async buffering (the Observer runs
-// synchronously instead of pre-buffering), but that's the accepted tradeoff
-// for OM to actually deliver the same cross-conversation benefit this
-// instance was built for.
+// Observational Memory's own `scope` is pinned to 'thread' — Mastra's
+// default and the well-tested path — deliberately, for now. The eventual
+// goal is 'resource' (matching semanticRecall/workingMemory above, so OM's
+// observation log also carries across conversations instead of resetting
+// per-thread), but resource scope is marked experimental by Mastra, disables
+// async buffering, and processes a tenant's entire unobserved backlog across
+// all threads together on first activation. Prove OM out at 'thread' scope
+// first, then graduate to 'resource' once validated — don't skip straight to
+// the experimental path.
 export function getMastraMemory(): Memory {
   if (memory) return memory
 
@@ -191,8 +191,8 @@ export function getMastraMemory(): Memory {
       observationalMemory: {
         enabled: true,
         model: memoryModel,
-        scope: 'resource',
-        retrieval: { vector: true },
+        scope: 'thread',
+        retrieval: { vector: true, scope: 'thread' },
       },
     },
   })
