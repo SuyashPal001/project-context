@@ -226,12 +226,14 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
     return c.json({ ok: false, error: 'questionIndex out of range' }, 400, corsHeaders)
   }
 
-  // 2000 was too tight for legitimate use — a clarification like Olmo's
-  // "what should this skill teach me?" invites pasting a whole draft
-  // SKILL.md or brief, which routinely runs several thousand characters.
-  // 8000 keeps a real bound (still well under create_skill's 65536-byte
-  // MAX_BODY_BYTES) while covering that case.
-  const MAX_FREE_TEXT_LEN = 8000
+  // 2000, then 8000, both proved too tight for legitimate use — a
+  // clarification like Olmo's "what should this skill teach me?" invites
+  // pasting a whole draft SKILL.md, and real ones routinely run past 8000
+  // characters (a genuine example hit 9455 and still got rejected). 40000
+  // keeps a real bound while comfortably covering that case, staying well
+  // under save_skill's 65536-byte MAX_BODY_BYTES so there's still headroom
+  // for the draft agent's frontmatter wrapping.
+  const MAX_FREE_TEXT_LEN = 40_000
   if (typeof body.freeText === 'string' && body.freeText.length > MAX_FREE_TEXT_LEN) {
     return c.json({ ok: false, error: `freeText too long (max ${MAX_FREE_TEXT_LEN} characters)` }, 400, corsHeaders)
   }
@@ -336,12 +338,14 @@ sessionsRouter.post('/api/chat/upload', async (c) => {
     return c.json({ ok: false, error: 'upload_not_found' }, 404, corsHeaders)
   }
 
-  // 2000 was too tight for legitimate use — a clarification like Olmo's
-  // "what should this skill teach me?" invites pasting a whole draft
-  // SKILL.md or brief, which routinely runs several thousand characters.
-  // 8000 keeps a real bound (still well under create_skill's 65536-byte
-  // MAX_BODY_BYTES) while covering that case.
-  const MAX_FREE_TEXT_LEN = 8000
+  // 2000, then 8000, both proved too tight for legitimate use — a
+  // clarification like Olmo's "what should this skill teach me?" invites
+  // pasting a whole draft SKILL.md, and real ones routinely run past 8000
+  // characters (a genuine example hit 9455 and still got rejected). 40000
+  // keeps a real bound while comfortably covering that case, staying well
+  // under save_skill's 65536-byte MAX_BODY_BYTES so there's still headroom
+  // for the draft agent's frontmatter wrapping.
+  const MAX_FREE_TEXT_LEN = 40_000
   if (typeof body.freeText === 'string' && body.freeText.length > MAX_FREE_TEXT_LEN) {
     return c.json({ ok: false, error: `freeText too long (max ${MAX_FREE_TEXT_LEN} characters)` }, 400, corsHeaders)
   }
