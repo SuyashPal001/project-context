@@ -226,9 +226,14 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
     return c.json({ ok: false, error: 'questionIndex out of range' }, 400, corsHeaders)
   }
 
-  const MAX_FREE_TEXT_LEN = 2000
+  // 2000 was too tight for legitimate use — a clarification like Olmo's
+  // "what should this skill teach me?" invites pasting a whole draft
+  // SKILL.md or brief, which routinely runs several thousand characters.
+  // 8000 keeps a real bound (still well under create_skill's 65536-byte
+  // MAX_BODY_BYTES) while covering that case.
+  const MAX_FREE_TEXT_LEN = 8000
   if (typeof body.freeText === 'string' && body.freeText.length > MAX_FREE_TEXT_LEN) {
-    return c.json({ ok: false, error: 'freeText too long' }, 400, corsHeaders)
+    return c.json({ ok: false, error: `freeText too long (max ${MAX_FREE_TEXT_LEN} characters)` }, 400, corsHeaders)
   }
 
   if (body.files !== undefined && (!Array.isArray(body.files) || body.files.length > 20 || body.files.some(
@@ -331,9 +336,14 @@ sessionsRouter.post('/api/chat/upload', async (c) => {
     return c.json({ ok: false, error: 'upload_not_found' }, 404, corsHeaders)
   }
 
-  const MAX_FREE_TEXT_LEN = 2000
+  // 2000 was too tight for legitimate use — a clarification like Olmo's
+  // "what should this skill teach me?" invites pasting a whole draft
+  // SKILL.md or brief, which routinely runs several thousand characters.
+  // 8000 keeps a real bound (still well under create_skill's 65536-byte
+  // MAX_BODY_BYTES) while covering that case.
+  const MAX_FREE_TEXT_LEN = 8000
   if (typeof body.freeText === 'string' && body.freeText.length > MAX_FREE_TEXT_LEN) {
-    return c.json({ ok: false, error: 'freeText too long' }, 400, corsHeaders)
+    return c.json({ ok: false, error: `freeText too long (max ${MAX_FREE_TEXT_LEN} characters)` }, 400, corsHeaders)
   }
 
   const skipped = body.skipped === true
