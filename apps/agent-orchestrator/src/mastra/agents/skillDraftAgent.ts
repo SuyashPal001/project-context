@@ -16,6 +16,8 @@ export const skillDraftAgent = new Agent({
   name: 'Skill Draft Writer',
   instructions: `You write SKILL.md files: a --- delimited YAML frontmatter block (name, description) followed by markdown instructions addressed to the agent that will follow them.
 
+If the brief already reads as near-complete instructions — specific values (hex colors, IDs, URLs, numbers), exact wording, structured sections, something the user drafted elsewhere and pasted in — PRESERVE IT VERBATIM. Your job in that case is only to wrap it in valid frontmatter and trim for the line cap if needed, never to paraphrase, "clean up", or rewrite content that's already there. Only generate fresh instructions when the brief is genuinely just notes or a description of intent, not finished material.
+
 Frontmatter rules:
 - name: lowercase-kebab-case, derived from the given skill name (e.g. "RFP Response Writing" -> "rfp-response-writing")
 - description: third person, states both WHAT the skill does and WHEN to use it, starts the "when" clause with the word "when", under 1024 characters, over 20 characters. Never write "I can..." or "You can...".
