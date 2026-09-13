@@ -1,7 +1,6 @@
 import { Download, Package, Plus, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { SkillFilesPanel } from "./SkillFilesPanel";
 import { SkillIcon } from "./SkillIcon";
@@ -46,14 +45,14 @@ export function SkillDetailContent({
     const visibilityStatus = skillVisibilityStatus(skill);
 
     return (
-        <div className="space-y-6">
-            <div className="space-y-3">
-                <div className="flex items-start justify-between gap-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="max-h-[35%] shrink-0 space-y-2 overflow-y-auto overscroll-contain px-4 py-3 sm:px-6 sm:py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                         <SkillIcon seed={skill.id} className="h-14 w-14 rounded-lg border border-border shrink-0" />
                         <div className="min-w-0 space-y-0.5">
-                            <div className="flex items-center gap-2">
-                                <h1 className="text-2xl font-bold tracking-tight text-foreground truncate">{skill.name}</h1>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                <h1 className="truncate text-xl font-bold tracking-tight text-foreground sm:text-2xl" title={skill.name}>{skill.name}</h1>
                                 {skill.installed && (
                                     <span className="text-sm text-green-600 dark:text-green-500 shrink-0">
                                         {skill.installedVersion !== skill.latestVersion
@@ -103,31 +102,21 @@ export function SkillDetailContent({
             </div>
 
             {importFailed && skill.failureReason && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+                <div className="mx-4 mb-3 max-h-24 shrink-0 overflow-y-auto rounded-lg border border-destructive/30 bg-destructive/5 p-3 sm:mx-6">
                     <p className="text-sm font-medium text-destructive mb-1">Import failed</p>
                     <p className="text-sm text-destructive/90">{skill.failureReason}</p>
                 </div>
             )}
 
-            <Tabs defaultValue="skill-md">
-                <TabsList className="w-fit gap-1 rounded-full bg-muted p-1">
-                    <TabsTrigger
-                        value="skill-md"
-                        className="rounded-full px-4 py-1.5 text-sm font-medium data-[state=active]:bg-foreground data-[state=active]:text-background data-[state=active]:shadow-none"
-                    >
-                        SKILL.md
-                    </TabsTrigger>
-                </TabsList>
-                <TabsContent value="skill-md" className="pt-4">
-                    <SkillOverview skill={skill} files={files} filesLoading={filesLoading} />
-                </TabsContent>
-            </Tabs>
+            <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6">
+                <SkillOverview skill={skill} files={files} filesLoading={filesLoading} />
+            </div>
 
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-4 sm:pb-4">
                 {isOwner && skill.visibility === "private" && hasReadyVersion ? (
                     <Button variant="ghost" onClick={onPublish}>Publish</Button>
                 ) : <span />}
-                <div className="flex items-center gap-2">
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                     {skill.installed ? (
                         <>
                             <Button variant="outline" onClick={onUninstall}>Uninstall</Button>

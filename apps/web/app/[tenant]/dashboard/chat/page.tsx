@@ -2,7 +2,7 @@
 
 import { useCallback, Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { PLANS } from "@/components/platform/billing/PlanSelectorDialog";
 import { OlmoMark } from "@/components/platform/OlmoMark";
@@ -52,6 +52,7 @@ const EMPTY_STATE_LIBRARY_TABS = [
 
 function ChatPage() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const folderId = parseFolderId(searchParams.get('folderId'));
     const page = useChatPage();
     const {
@@ -277,6 +278,25 @@ function ChatPage() {
         }
         setPendingAllowMode(null);
     }, [pendingFirstMessage, conversationId, isLoadingMessages, messages.length, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // A caller (e.g. the Skills page's "+ Create skill" button) can seed the
+    // very first message via ?prompt= on a fresh /chat URL, same idea as the
+    // empty-state composer's own onSend below — queue it as pendingFirstMessage
+    // and let handleNewChat's default agent pick it up. Guarded by a ref (not
+    // just clearing the param) so a re-render before the router.replace lands
+    // never queues it twice.
+    const seededPromptFiredRef = useRef(false);
+    useEffect(() => {
+        const seededPrompt = searchParams.get('prompt');
+        if (!seededPrompt || seededPromptFiredRef.current || conversationId) return;
+        seededPromptFiredRef.current = true;
+        // searchParams.get already URL-decodes — decoding again here would
+        // throw on a prompt containing a literal '%' character.
+        setPendingFirstMessage(seededPrompt);
+        handleNewChat();
+        router.replace(`/${tenantSlug}/dashboard/chat`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams, conversationId]);
 
     const noopActivity = useCallback(() => {}, []);
 

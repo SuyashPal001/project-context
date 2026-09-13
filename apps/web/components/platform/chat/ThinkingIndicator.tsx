@@ -310,7 +310,7 @@ export function ThinkingIndicator({
                         {WARMUP_STEPS.map((step) => (
                             <div key={step} className="flex items-center gap-2 h-6">
                                 <PulsingDots />
-                                <span className="text-sm text-primary/80 font-mono">
+                                <span className="shimmer-text text-sm text-shimmer-accent-80 font-mono">
                                     {step}
                                 </span>
                             </div>

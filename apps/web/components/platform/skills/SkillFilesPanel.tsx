@@ -195,8 +195,8 @@ function FileContentViewer({ skillId, path, skillBody }: { skillId: string; path
     };
 
     return (
-        <div className="flex min-w-0 flex-col">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 py-3">
                 <span className="truncate text-sm font-medium text-foreground" title={path}>{path}</span>
                 <div className="flex shrink-0 items-center gap-1">
                     <button
@@ -217,7 +217,7 @@ function FileContentViewer({ skillId, path, skillBody }: { skillId: string; path
                     </button>
                 </div>
             </div>
-            <div className="max-h-[420px] overflow-y-auto p-4">
+            <div key={path} role="region" aria-label={`${path} content`} tabIndex={0} className="min-h-0 flex-1 overflow-auto overscroll-contain p-4 text-sm leading-relaxed">
                 {!isSkillMd && isLoading ? (
                     <div className="space-y-2">
                         <Skeleton className="h-4 w-full" />
@@ -273,20 +273,32 @@ export function SkillFilesPanel({ skill, files, filesLoading = false }: { skill:
     }
 
     return (
-        <div className="grid overflow-hidden rounded-xl border border-border md:grid-cols-[220px_1fr]">
-            <div className="max-h-[480px] overflow-y-auto border-b border-border p-2 md:border-b-0 md:border-r">
-                {tree.map((node) => (
-                    <FileTreeRow
-                        key={node.path}
-                        node={node}
-                        depth={0}
-                        selectedPath={selectedPath}
-                        onSelect={setExplicitPath}
-                        collapsed={collapsed}
-                        onToggle={toggleFolder}
-                    />
-                ))}
-            </div>
+        <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border", files.length > 1 && "md:grid md:grid-cols-[220px_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]")}>
+            {files.length > 1 && <>
+                <div className="shrink-0 border-b border-border p-2 md:hidden">
+                    <select
+                        aria-label="Select skill file"
+                        value={selectedPath}
+                        onChange={(event) => setExplicitPath(event.target.value)}
+                        className="w-full min-w-0 rounded-md border border-border bg-background px-2 py-2 text-sm text-foreground"
+                    >
+                        {files.map((file) => <option key={file.fileName} value={file.fileName}>{file.fileName}</option>)}
+                    </select>
+                </div>
+                <div className="hidden min-h-0 overflow-y-auto overscroll-contain border-r border-border p-2 md:block">
+                    {tree.map((node) => (
+                        <FileTreeRow
+                            key={node.path}
+                            node={node}
+                            depth={0}
+                            selectedPath={selectedPath}
+                            onSelect={setExplicitPath}
+                            collapsed={collapsed}
+                            onToggle={toggleFolder}
+                        />
+                    ))}
+                </div>
+            </>}
             {selectedPath && <FileContentViewer skillId={skill.id} path={selectedPath} skillBody={skill.body} />}
         </div>
     );

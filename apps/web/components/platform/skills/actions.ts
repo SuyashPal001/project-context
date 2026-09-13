@@ -41,16 +41,6 @@ export async function createSkillFromUrl(name: string, description: string, url:
     await api.post("/api/v1/skills", { name, description, source: { type: "url", url } });
 }
 
-/**
- * Creates a skill from a SKILL.md body written in the app (see
- * CreateSkillDialog). The server treats it as an 'authored' source and runs it
- * through the same import worker a zip goes through, so it lands `pending` and
- * flips to `ready` a moment later — the page already polls for that.
- */
-export async function createSkillFromBody(name: string, description: string, body: string): Promise<void> {
-    await api.post("/api/v1/skills", { name, description, source: { type: "authored", body } });
-}
-
 export async function publishSkill(skillId: string): Promise<void> {
     await api.post(`/api/v1/skills/${skillId}/publish`);
 }

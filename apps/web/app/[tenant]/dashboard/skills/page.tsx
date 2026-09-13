@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,10 +9,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SkillCard, skillImportState } from "@/components/platform/skills/SkillCard";
 import { SkillDetailModal } from "@/components/platform/skills/SkillDetailModal";
-import { CreateSkillDialog } from "@/components/platform/skills/CreateSkillDialog";
 import { installSkill, listSkills } from "@/components/platform/skills/actions";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
+
+// Seeds the chat composer's auto-sent first message (page.tsx's
+// pendingFirstMessage flow) so Olmo, not a form, gathers the brief and
+// writes the SKILL.md itself via its create_skill tool.
+const CREATE_SKILL_PROMPT = "I want to create a new skill for this workspace. Ask me what it should teach you, then write and save it.";
 
 // An import stuck "pending" past this is treated the same as a failure —
 // the background job either died or will never finish, and there's no
@@ -37,9 +42,11 @@ function isDeadOrStuck(skill: Skill): boolean {
 
 export default function SkillsPage() {
     const queryClient = useQueryClient();
+    const router = useRouter();
+    const params = useParams();
+    const tenantSlug = params.tenant as string;
     const { tenantId } = useTenant();
     const [tab, setTab] = useState<"mine" | "explore">("mine");
-    const [createOpen, setCreateOpen] = useState(false);
     const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
     // Last known dead/stuck state per skill, so we only toast on a live
     // transition into that state (not for a skill that was already dead
@@ -118,7 +125,7 @@ export default function SkillsPage() {
                     <h1 className="text-3xl font-bold tracking-tight text-foreground">Skills</h1>
                     <p className="text-muted-foreground mt-2">Create, install, and share reusable skill packages</p>
                 </div>
-                <Button onClick={() => setCreateOpen(true)}>+ Create skill</Button>
+                <Button onClick={() => router.push(`/${tenantSlug}/dashboard/chat?prompt=${encodeURIComponent(CREATE_SKILL_PROMPT)}`)}>+ Create skill</Button>
             </div>
 
             <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
@@ -168,12 +175,6 @@ export default function SkillsPage() {
                     </div>
                 </div>
             )}
-
-            <CreateSkillDialog
-                open={createOpen}
-                onOpenChange={setCreateOpen}
-                onCreated={() => queryClient.invalidateQueries({ queryKey: ["skills"] })}
-            />
 
             <SkillDetailModal
                 skillId={selectedSkillId}
