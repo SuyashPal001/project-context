@@ -2,7 +2,7 @@ import { createStep, createWorkflow } from '@mastra/core/workflows'
 import { z } from 'zod'
 
 import { skillDraftAgent } from '../agents/skillDraftAgent.js'
-import { validateSkillBody } from '../lib/skillValidation.js'
+import { validateSkillBody, validateVerbatimTokens } from '../lib/skillValidation.js'
 
 // A failed draft costs one small skillDraftAgent call, not a full
 // platformAgent turn — but still bounded, so a persistently-invalid draft
@@ -55,7 +55,11 @@ const draftAndValidateStep = createStep({
       return { name, brief, draft, error: `Draft generation failed: ${(err as Error).message}`, valid: false }
     }
 
-    const validationError = validateSkillBody(newDraft, name)
+    // Format checks first (cheap, regex-only); verbatim-token diffing only
+    // runs once the draft is already well-formed, since there's no point
+    // diffing IDs inside a draft that's about to fail for missing
+    // frontmatter anyway.
+    const validationError = validateSkillBody(newDraft, name) ?? validateVerbatimTokens(brief, newDraft)
     return { name, brief, draft: newDraft, error: validationError ?? undefined, valid: !validationError }
   },
 })

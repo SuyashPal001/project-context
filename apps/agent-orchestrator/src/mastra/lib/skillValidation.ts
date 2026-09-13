@@ -106,3 +106,44 @@ export function validateSkillBody(body: string, name: string): string | null {
 
   return null
 }
+
+// UUID-like tokens (8-4-4-4-12 hex) are exact identifiers — asset IDs,
+// install IDs, etc. — that must never be paraphrased, "corrected", or
+// hallucinated. Observed in practice: skillDraftAgent.ts's explicit
+// "preserve verbatim" instruction alone was not enough — a real draft
+// transposed one digit in one ID and cross-contaminated a fragment of a
+// different ID into another, despite the instruction. This is not an
+// open-ended judgment call the model can be trusted with; it's a mechanical
+// diff, so it's checked mechanically.
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
+const URL_RE = /https?:\/\/\S+/g
+// Trailing punctuation a URL is often followed by in prose ("...system.",
+// "(see URL)") that a greedy \S+ match would otherwise swallow.
+const TRAILING_PUNCT_RE = /[)\].,;:`]+$/
+
+/**
+ * Checks that every UUID-like identifier and URL in the brief survives
+ * byte-identical in the draft. Only meaningful when the caller has the
+ * original brief in scope (skillDraftWorkflow.ts) — save_skill's final
+ * safety check has no brief to compare against, so this is not part of
+ * validateSkillBody.
+ */
+export function validateVerbatimTokens(brief: string, draft: string): string | null {
+  const uuids = new Set(brief.match(UUID_RE) ?? [])
+  for (const uuid of uuids) {
+    if (!draft.includes(uuid)) {
+      return `An identifier from the brief is missing or altered in the draft: "${uuid}" does not appear byte-for-byte. Do not paraphrase, retype, or "correct" any ID, URL, hex color, or other exact value from the brief — copy it character-for-character.`
+    }
+  }
+
+  const urls = new Set(
+    Array.from(brief.match(URL_RE) ?? [], (u) => u.replace(TRAILING_PUNCT_RE, '')).filter(Boolean),
+  )
+  for (const url of urls) {
+    if (!draft.includes(url)) {
+      return `A URL from the brief is missing or altered in the draft: "${url}" does not appear byte-for-byte. Copy every URL character-for-character.`
+    }
+  }
+
+  return null
+}
