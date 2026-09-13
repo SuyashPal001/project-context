@@ -19,7 +19,6 @@ import { AgentIdentityCard } from "./AgentIdentityCard";
 import { AgentInfoCard } from "./AgentInfoCard";
 import { AgentInstructionsCard } from "./AgentInstructionsCard";
 import { AgentSkillSection } from "./AgentSkillSection";
-import { AgentCoreFilesSection } from "./AgentCoreFilesSection";
 
 const originColors: Record<string, string> = {
     built_in: "bg-secondary text-muted-foreground",
@@ -161,7 +160,6 @@ export default function AgentDetailPage() {
                     isLoading={isLoadingAgent}
                 />
 
-                <AgentCoreFilesSection agentId={agentId} />
             </div>
         </PermissionGate>
     );

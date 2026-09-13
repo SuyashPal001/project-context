@@ -11,8 +11,7 @@ export const agentCoreFilesRoutes = new Hono<AppEnv>();
 // The 4 locked sections + the always-locked identity summary. Their content
 // is composed into the runtime prompt server-side (see agent-orchestrator's
 // fetchAgentPersonality) but is never sent to the tenant-facing client —
-// official personas keep their prompt authorship proprietary. Only
-// MEMORY.md (agentMemories, via ./agent-memory.ts) is tenant-visible.
+// official personas keep their prompt authorship proprietary.
 const LOCKED_FILE_NAMES = ['AGENTS.md', 'BOOTSTRAP.md', 'IDENTITY.md', 'SOUL.md', 'USER.md'] as const;
 
 // GET /agents/:agentId/core-files — locked file list, no content ever returned

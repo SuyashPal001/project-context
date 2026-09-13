@@ -7,7 +7,6 @@ import { llmProviders } from '@serverless-saas/database/schema/integrations';
 import { handleEnsureReady, handleAgentStatus } from './agents.health';
 import { handleListAgents, handleGetAgent, handleCreateAgent, handleUpdateAgent, handleDeleteAgent } from './agents.crud';
 import { agentFairnessRoutes } from './agents.fairness';
-import { agentMemoryRoutes } from './agent-memory';
 import { agentCoreFilesRoutes } from './agent-core-files';
 
 export const agentsRoutes = new Hono<AppEnv>();
@@ -50,9 +49,6 @@ agentsRoutes.delete('/:id', handleDeleteAgent);
 
 // Fairness
 agentsRoutes.route('/', agentFairnessRoutes);
-
-// Memory (MEMORY.md — tenant-editable Core Files tab)
-agentsRoutes.route('/', agentMemoryRoutes);
 
 // Core Files (locked file list — content never leaves the server)
 agentsRoutes.route('/', agentCoreFilesRoutes);
