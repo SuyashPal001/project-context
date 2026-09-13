@@ -61,7 +61,14 @@ export function AgentSkillSection({ agent, agentId, isLoading }: AgentSkillSecti
 
     const name = agent?.name ?? "";
     const description = agentDescription(name, agent?.description);
-    const isBuiltIn = agent?.origin === "built_in";
+    // While `agent` is still loading, agent?.origin is undefined, so this
+    // would otherwise evaluate false and briefly render the custom-agent
+    // branch (Attach button included) for every agent, built-in or not,
+    // until the real data arrives. Defaulting to true during that window
+    // means the wrong flash — if any — is the extra-restrictive one (no
+    // Attach button momentarily on a custom agent) rather than the platform
+    // agent briefly claiming a capability it doesn't have.
+    const isBuiltIn = isLoading || agent?.origin === "built_in";
 
     const capabilities: CapabilityItem[] = isSupervisor(name)
         ? [SUPERVISOR_CAPABILITY, ...BASE_CAPABILITIES]
