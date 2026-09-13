@@ -181,6 +181,7 @@ export function Sidebar() {
     // menu, and matching it here would swap the nav on a page the panel omits.
     const settingsRoutePrefixes = [
         `/${tenantSlug || ''}/dashboard/settings/workspace`,
+        `/${tenantSlug || ''}/dashboard/settings/memory`,
         `/${tenantSlug || ''}/dashboard/settings/members`,
         `/${tenantSlug || ''}/dashboard/settings/roles`,
         `/${tenantSlug || ''}/dashboard/integrations`,
