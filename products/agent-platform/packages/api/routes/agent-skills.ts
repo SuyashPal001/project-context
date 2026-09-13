@@ -26,7 +26,7 @@ const ACTIVE_INSTALL_UNIQUE = 'agent_skills_agent_install_active_unique';
 // keys, so an unvalidated pair is a cross-tenant write.
 export async function resolveAgent(agentId: string, tenantId: string) {
     const [agent] = await db
-        .select({ id: agents.id })
+        .select({ id: agents.id, origin: agents.origin })
         .from(agents)
         .where(and(eq(agents.id, agentId), eq(agents.tenantId, tenantId)))
         .limit(1);
@@ -143,8 +143,21 @@ agentSkillsRoutes.post('/:agentId/skills', async (c) => {
 
     const agentId = c.req.param('agentId');
 
-    if (!await resolveAgent(agentId, tenantId)) {
+    const targetAgent = await resolveAgent(agentId, tenantId);
+    if (!targetAgent) {
         return c.json({ error: 'Agent not found', code: 'NOT_FOUND' }, 404);
+    }
+    // The platform's built-in assistant (Olmo) is shared across every AI
+    // employee that falls through to it — a skill attached here would be
+    // permanent and tenant-wide, not scoped to one specialist. It only ever
+    // reaches skills ephemerally, via "/" per conversation. Mirrors
+    // AgentSkillSection.tsx's read-only state for this same agent, and
+    // internal/skills.ts's matching check on the chat-creation path.
+    if (targetAgent.origin === 'built_in') {
+        return c.json({
+            error: "The built-in platform agent doesn't take permanent skill attachments. Attach this skill to a custom AI employee instead, or use \"/\" to turn it on for one conversation.",
+            code: 'BUILT_IN_AGENT',
+        }, 403);
     }
 
     const schema = z.object({

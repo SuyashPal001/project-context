@@ -140,17 +140,21 @@ export function AgentSkillSection({ agent, agentId, isLoading }: AgentSkillSecti
                             {attached.map((skill) => (
                                 <li key={skill.id} className="flex items-center justify-between rounded-lg border border-border bg-muted/10 px-4 py-2">
                                     <span className="text-sm font-medium">{skill.name}</span>
-                                    {!isBuiltIn && (
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            aria-label={`Detach ${skill.name}`}
-                                            disabled={detach.isPending}
-                                            onClick={() => detach.mutate(skill.id)}
-                                        >
-                                            Detach
-                                        </Button>
-                                    )}
+                                    {/* Detach stays available even for the built-in agent
+                                        (isBuiltIn) — it should never gain a new permanent
+                                        attachment, but if one exists (e.g. from before the
+                                        backend gate landed), there must be a way to remove
+                                        it. Only the "Attach from library" button above is
+                                        hidden for isBuiltIn. */}
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        aria-label={`Detach ${skill.name}`}
+                                        disabled={detach.isPending}
+                                        onClick={() => detach.mutate(skill.id)}
+                                    >
+                                        Detach
+                                    </Button>
                                 </li>
                             ))}
                         </ul>

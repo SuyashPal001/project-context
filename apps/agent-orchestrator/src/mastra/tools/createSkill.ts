@@ -151,12 +151,17 @@ The user is shown the draft and must approve it. The skill applies from their ne
         return { success: false, error, retryable: false }
       }
 
-      const { data } = await res.json() as { data: { skillId: string } }
+      const { data } = await res.json() as { data: { skillId: string; attached: boolean } }
       return {
         success: true,
         skillId: data.skillId,
         // Skills load once at stream start, so this reply cannot use it.
-        message: `Saved "${name}" as a skill. It will attach to this agent once processing finishes, and takes effect from your next message.`,
+        // `attached` is false only for the built-in platform agent (Olmo) —
+        // internal/skills.ts deliberately skips attaching there, since Olmo
+        // is shared tenant-wide and never takes a permanent skill.
+        message: data.attached
+          ? `Saved "${name}" as a skill. It will attach to this agent once processing finishes, and takes effect from your next message.`
+          : `Saved "${name}" as a skill. This agent doesn't take permanent skill attachments — turn it on anytime with "/${name}" in chat, or attach it permanently to a custom AI employee.`,
       }
     } catch (err) {
       console.error('[create_skill] failed:', (err as Error).message)

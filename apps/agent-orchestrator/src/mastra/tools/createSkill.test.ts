@@ -27,7 +27,7 @@ describe('create_skill', () => {
     vi.stubGlobal('fetch', fetchMock)
     process.env.INTERNAL_SERVICE_KEY = 'test-key'
     process.env.API_BASE_URL = 'https://api.test'
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: { skillId: 'skill-1', installId: 'install-1' } }), { status: 202 }))
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: { skillId: 'skill-1', installId: 'install-1', attached: true } }), { status: 202 }))
   })
 
   it('rejects a body with no frontmatter without calling the API', async () => {
@@ -118,6 +118,18 @@ describe('create_skill', () => {
     const result = await run({ name: 'Bid Writer', body: VALID_BODY })
     expect(result.message).toMatch(/next message/i)
     expect(result.message).not.toMatch(/\battached\b/i)
+  })
+
+  // The built-in platform agent (Olmo) never gets a permanent attach —
+  // internal/skills.ts signals this back as attached: false. The chat
+  // reply must say so plainly instead of the normal "attach to this agent"
+  // copy, which would be false for this agent.
+  it('tells the user the built-in agent does not take a permanent attachment', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: { skillId: 'skill-1', installId: 'install-1', attached: false } }), { status: 202 }))
+    const result = await run({ name: 'Bid Writer', body: VALID_BODY })
+    expect(result.success).toBe(true)
+    expect(result.message).toMatch(/doesn't take permanent skill attachments/i)
+    expect(result.message).not.toMatch(/attach to this agent/i)
   })
 
   it('surfaces a quota rejection as a plain message', async () => {

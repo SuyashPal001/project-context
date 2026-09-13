@@ -129,10 +129,17 @@ internalSkillsRoute.post('/', async (c) => {
       tenantId, skillId: skill.id, installedVersion: 1, status: 'active',
     }).returning();
 
+    // The built-in platform agent (Olmo) never takes a permanent attachment
+    // — it's shared across every AI employee that falls through to it, so a
+    // skill created mid-conversation with it stays saved and available (via
+    // "/" or attaching to a custom employee) but is NOT auto-attached here.
+    // A custom employee's own conversation still gets the normal auto-attach
+    // below. Mirrors agent-skills.ts's matching check on the manual attach
+    // endpoint.
     await createVersionAndEnqueue({
       tenantId, skillId: skill.id, version: 1,
       source: { type: 'authored', body },
-      attachToAgentId: agentId,
+      attachToAgentId: agent.origin === 'built_in' ? undefined : agentId,
     });
 
     db.insert(auditLog).values({
@@ -149,7 +156,10 @@ internalSkillsRoute.post('/', async (c) => {
     // not turn a completed creation into a 500 whose retry makes a duplicate.
     await store.complete(idempotencyKey).catch(() => {});
 
-    return c.json({ data: { skillId: skill.id, installId: install.id } }, 202);
+    // attached tells the orchestrator's create_skill tool which success
+    // message to show — "attach to this agent" is false for the built-in
+    // agent, since createVersionAndEnqueue above skipped the attach for it.
+    return c.json({ data: { skillId: skill.id, installId: install.id, attached: agent.origin !== 'built_in' } }, 202);
   } catch (err) {
     console.error('Failed to create skill from conversation:', err);
     // Release the claim so a retry of the same message isn't stuck behind a
