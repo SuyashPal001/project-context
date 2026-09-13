@@ -1,5 +1,6 @@
 import { PostgresStore, PostgresStoreVNext, PgVector } from '@mastra/pg'
-import { Memory } from '@mastra/memory'
+import { Memory, Extractor } from '@mastra/memory'
+import { z } from 'zod'
 import pg from 'pg'
 import dns from 'dns/promises'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -148,6 +149,35 @@ const WORKING_MEMORY_TEMPLATE = `# Tenant Context
 - [Decision 2]
 `
 
+// OM extractor feeding the future tenant-level memory UI (see
+// project_agent_memory_ui_design memory note). Distinct from workingMemory
+// above: workingMemory is small fixed-shape state the agent itself edits via
+// tool calls every turn; this extractor is OM's own follow-up structured-output
+// call, run automatically after each observation, that pulls a growing,
+// categorized list of durable facts out of the compressed observation log —
+// no agent tool call involved. Buckets mirror the Profile/Topics/Areas/Projects
+// shape from the Claude.ai Memory settings screenshot the redesign is modeled on.
+// @mastra/memory bundles its own zod@4.4.3 internally, distinct from this
+// repo's zod@3.24 dependency — Extractor's `schema` field types against that
+// internal v4 ZodType, which our v3 schema doesn't structurally satisfy even
+// though both are ordinary zod schemas at runtime. Cast at this boundary
+// rather than bumping the whole app to zod v4.
+const tenantMemorySchema = z.object({
+  topics: z.array(z.string()).optional().describe('Recurring subjects the tenant cares about (e.g. "pricing strategy", "onboarding flow")'),
+  areas: z.array(z.string()).optional().describe('Product/business areas referenced across conversations (e.g. "billing", "mobile app")'),
+  projects: z.array(z.string()).optional().describe('Named projects, features, or initiatives mentioned (e.g. "Q3 roadmap", "auth migration")'),
+})
+
+const tenantMemoryExtractor = new Extractor({
+  name: 'Tenant memory',
+  instructions:
+    'Extract durable, reusable facts about this tenant\'s product, team, and working ' +
+    'preferences that should carry into future conversations. Do not extract one-off ' +
+    'task details or anything already captured in working memory (tech stack, PRD/plan ' +
+    'IDs, communication style). Update or drop fields when new information supersedes them.',
+  schema: tenantMemorySchema as any,
+})
+
 // Singleton Memory instance — shared across all tenants.
 // Isolation is enforced per-request via resourceId (MASTRA_RESOURCE_ID_KEY)
 // set on the RequestContext before each generate() call.
@@ -193,6 +223,9 @@ export function getMastraMemory(): Memory {
         model: memoryModel,
         scope: 'thread',
         retrieval: { vector: true, scope: 'thread' },
+        observation: {
+          extract: [tenantMemoryExtractor],
+        },
       },
     },
   })
