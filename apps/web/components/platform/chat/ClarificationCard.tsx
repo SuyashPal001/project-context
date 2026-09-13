@@ -231,6 +231,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                     )}
                 </div>
 
+                {question.options.length > 0 && (
                 <div className="flex flex-col gap-1.5">
                     {question.options.map((opt, i) => (
                         <button
@@ -266,6 +267,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         </button>
                     )}
                 </div>
+                )}
 
                 <AttachmentStrip attachments={files} pendingUpload={pendingUpload} onRemove={(fileId) => {
                     if (!busy) setFilesByQuestion(prev => ({ ...prev, [pageIndex]: files.filter(file => file.fileId !== fileId) }));
