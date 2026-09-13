@@ -54,6 +54,11 @@ infra/terraform/**/terraform.tfvars
 !CLAUDE.md
 !ONBOARDING.md
 !LAUNCH-CHECKLIST.md
+# SKILL.md files are the actual instruction content for Mastra Workspace
+# skills (apps/agent-orchestrator/skills/**) — the blanket *.md rule above
+# silently untracked every one of them, which is how skill folders drifted
+# between environments with zero git history (found 2026-09-13).
+!apps/agent-orchestrator/skills/**/SKILL.md
 
 # Temp SAM build artifacts
 apps/**/package.original.json
