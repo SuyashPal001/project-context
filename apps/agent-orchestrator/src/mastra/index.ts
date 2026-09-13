@@ -38,6 +38,7 @@ import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { taskWorkflow } from './workflows/taskWorkflow.js'
 import { pmWorkflow } from './workflows/pmWorkflow.js'
 import { taskExecutionPlanWorkflow } from './workflows/taskExecutionPlanWorkflow.js'
+import { skillDraftWorkflow } from './workflows/skillDraftWorkflow.js'
 import { prdWorkspace } from './workspace/prdWorkspace.js'
 
 // ---------------------------------------------------------------------------
@@ -126,6 +127,7 @@ export const mastra = new Mastra({
     tasks: taskWorkflow,
     'pm-workflow': pmWorkflow, // Primary PM orchestration flow (workflow-first architecture)
     'task-execution-plan': taskExecutionPlanWorkflow,
+    'skill-draft': skillDraftWorkflow,
   },
   storage: getMastraStore(),
   scheduler: {
