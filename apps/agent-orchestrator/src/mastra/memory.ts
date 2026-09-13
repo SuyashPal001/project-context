@@ -3,6 +3,7 @@ import { Memory } from '@mastra/memory'
 import pg from 'pg'
 import dns from 'dns/promises'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
+import { memoryModel } from './model.js'
 
 // Separate pg.Pool for Mastra
 // Does NOT use our Drizzle connection
@@ -160,6 +161,16 @@ const WORKING_MEMORY_TEMPLATE = `# Tenant Context
 // precisely so the two concerns cannot be conflated again. An earlier pass
 // pinned 'thread' here and silently stripped cross-conversation memory from
 // all three standalone agents.
+//
+// Observational Memory's own `scope` is pinned to 'resource' for the same
+// reason — this instance exists specifically for cross-conversation memory,
+// and OM's default `scope: 'thread'` would make its observation log
+// per-conversation-only, none of which would carry forward the way
+// workingMemory/semanticRecall already do here. Mastra marks resource scope
+// experimental and it disables async buffering (the Observer runs
+// synchronously instead of pre-buffering), but that's the accepted tradeoff
+// for OM to actually deliver the same cross-conversation benefit this
+// instance was built for.
 export function getMastraMemory(): Memory {
   if (memory) return memory
 
@@ -176,6 +187,12 @@ export function getMastraMemory(): Memory {
       workingMemory: {
         enabled: true,
         template: WORKING_MEMORY_TEMPLATE,
+      },
+      observationalMemory: {
+        enabled: true,
+        model: memoryModel,
+        scope: 'resource',
+        retrieval: { vector: true },
       },
     },
   })

@@ -36,6 +36,10 @@ export const liteModel = gateway(process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-fl
 // x-data-classification header forces OllamaAdapter — never hits cloud providers.
 export const privateModel = gatewayPrivate(process.env.MASTRA_PRIVATE_MODEL ?? 'ollama/llama3.2')
 
+// Background model for Observational Memory's Observer/Reflector — kept off
+// gemini-2.5-flash (Mastra's own OM default), which retires 2026-10-16.
+export const memoryModel = gateway(process.env.MASTRA_MEMORY_MODEL ?? 'gemini-3-flash')
+
 // Builds a model connector from an arbitrary model string at request time — used
 // when a user has picked a specific model via the chat UI's model picker, rather
 // than one of the three module-level constants above.
