@@ -128,20 +128,45 @@ const TRAILING_PUNCT_RE = /[)\].,;:`]+$/
  * safety check has no brief to compare against, so this is not part of
  * validateSkillBody.
  */
+/** Count non-overlapping occurrences of `needle` in `haystack`. */
+function countOccurrences(haystack: string, needle: string): number {
+  let count = 0
+  let pos = 0
+  while ((pos = haystack.indexOf(needle, pos)) !== -1) {
+    count++
+    pos += needle.length
+  }
+  return count
+}
+
 export function validateVerbatimTokens(brief: string, draft: string): string | null {
-  const uuids = new Set(brief.match(UUID_RE) ?? [])
-  for (const uuid of uuids) {
-    if (!draft.includes(uuid)) {
-      return `An identifier from the brief is missing or altered in the draft: "${uuid}" does not appear byte-for-byte. Do not paraphrase, retype, or "correct" any ID, URL, hex color, or other exact value from the brief — copy it character-for-character.`
+  // Build a frequency map so that a UUID appearing N times in the brief must
+  // appear at least N times in the draft. A plain Set + draft.includes() check
+  // was not sufficient: when the same ID appears in both a summary line and the
+  // per-logo catalog, a draft with one correct occurrence and one corrupted
+  // occurrence passes draft.includes() via the correct one, hiding the
+  // corruption in the other.
+  const briefUuids = brief.match(UUID_RE) ?? []
+  const uuidCounts = new Map<string, number>()
+  for (const uuid of briefUuids) {
+    uuidCounts.set(uuid.toLowerCase(), (uuidCounts.get(uuid.toLowerCase()) ?? 0) + 1)
+  }
+  for (const [uuid, needed] of uuidCounts) {
+    const found = countOccurrences(draft.toLowerCase(), uuid)
+    if (found < needed) {
+      return `An identifier from the brief is missing or altered in the draft: "${uuid}" appears ${needed} time(s) in the brief but only ${found} correct occurrence(s) in the draft. Do not paraphrase, retype, or "correct" any ID, URL, hex color, or other exact value from the brief — copy it character-for-character.`
     }
   }
 
-  const urls = new Set(
-    Array.from(brief.match(URL_RE) ?? [], (u) => u.replace(TRAILING_PUNCT_RE, '')).filter(Boolean),
-  )
-  for (const url of urls) {
-    if (!draft.includes(url)) {
-      return `A URL from the brief is missing or altered in the draft: "${url}" does not appear byte-for-byte. Copy every URL character-for-character.`
+  const briefUrls = Array.from(brief.match(URL_RE) ?? [], (u) => u.replace(TRAILING_PUNCT_RE, '')).filter(Boolean)
+  const urlCounts = new Map<string, number>()
+  for (const url of briefUrls) {
+    urlCounts.set(url, (urlCounts.get(url) ?? 0) + 1)
+  }
+  for (const [url, needed] of urlCounts) {
+    const found = countOccurrences(draft, url)
+    if (found < needed) {
+      return `A URL from the brief is missing or altered in the draft: "${url}" appears ${needed} time(s) in the brief but only ${found} correct occurrence(s) in the draft. Copy every URL character-for-character.`
     }
   }
 
