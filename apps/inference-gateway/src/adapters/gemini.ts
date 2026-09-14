@@ -41,7 +41,7 @@ type GeminiPart =
   | { functionCall: { name: string; args: unknown }; thoughtSignature?: string }
   | { functionResponse: { name: string; response: unknown } }
 
-type GeminiContent = { role: string; parts: GeminiPart[] }
+type GeminiContent = { role?: string; parts: GeminiPart[] }
 
 // tool_call.id encoding: `gs.<base64url(signature)>.<index>` when a signature
 // is present, or `call_<id>_<index>` when not. `gs.` prefix chosen to avoid
@@ -96,7 +96,9 @@ function toGeminiContents(messages: OpenAIMessage[]): {
       if (systemInstruction) {
         (systemInstruction.parts[0] as { text: string }).text += '\n' + text
       } else {
-        systemInstruction = { role: 'user', parts: [{ text }] }
+        // No `role` — Gemini 3.x rejects role on systemInstruction with 400
+        // INVALID_ARGUMENT. 2.5 tolerated `role: 'user'`.
+        systemInstruction = { parts: [{ text }] } as GeminiContent
       }
       continue
     }
@@ -146,7 +148,12 @@ function sanitizeSchema(schema: unknown): unknown {
   const obj = schema as Record<string, unknown>
   const out: Record<string, unknown> = {}
   for (const [key, val] of Object.entries(obj)) {
-    if (key === '$schema' || key === 'propertyNames') continue
+    // Gemini's function-declaration schema is a strict OpenAPI subset that
+    // rejects `default`, `$schema`, `propertyNames`, `additionalProperties`,
+    // `examples`, `title` and JSON-Schema draft keywords like `const`, `enum`
+    // on non-strings — with an opaque 400 INVALID_ARGUMENT. Strip them.
+    if (key === '$schema' || key === 'propertyNames' || key === 'default'
+        || key === 'additionalProperties' || key === 'examples' || key === 'title') continue
     if (key === 'type' && Array.isArray(val)) {
       const nonNull = (val as string[]).filter((t) => t !== 'null')
       out.type = nonNull[0] ?? 'string'
@@ -161,8 +168,30 @@ function sanitizeSchema(schema: unknown): unknown {
         out.nullable = true
         continue
       }
+      // Multi-branch anyOf (e.g. Mastra's resumeData union of string/number/
+      // object/array). Gemini's function-declaration schema rejects `anyOf`
+      // in tool parameters with an opaque 400 INVALID_ARGUMENT (permitted in
+      // responseSchema, not in Tool.functionDeclarations). Collapse to the
+      // first concrete branch — for resumeData that resolves to `type:string`,
+      // which is what the downstream Mastra path expects (the value is
+      // JSON.parsed at the resume site regardless of declared shape).
+      if (nonNull.length > 1) {
+        const first = sanitizeSchema(nonNull[0]) as Record<string, unknown>
+        Object.assign(out, first)
+        if (val.length !== nonNull.length) out.nullable = true
+        continue
+      }
     }
     out[key] = sanitizeSchema(val)
+  }
+  // Gemini rejects `required` entries that don't name a declared property
+  // with 400 INVALID_ARGUMENT ("property is not defined"). Mastra's own tool
+  // schemas hit this (e.g. render_canvas declares required=[title,content]
+  // but only exposes content+type). Filter out phantoms.
+  if (Array.isArray(out.required) && out.properties && typeof out.properties === 'object') {
+    const props = out.properties as Record<string, unknown>
+    out.required = (out.required as unknown[]).filter((r) => typeof r === 'string' && r in props)
+    if ((out.required as unknown[]).length === 0) delete out.required
   }
   return out
 }
@@ -227,7 +256,14 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): Record<string, unknown> {
   if (openaiReq.top_p !== undefined) generationConfig.topP = openaiReq.top_p
   if ((openaiReq as unknown as Record<string, unknown>).thinkingBudget !== undefined) {
     const thinkingBudget = (openaiReq as unknown as Record<string, unknown>).thinkingBudget as number
-    generationConfig.thinkingConfig = { thinkingBudget, includeThoughts: thinkingBudget > 0 }
+    // Gemini 3.x rejects `thinkingBudget: 0` with a generic 400 INVALID_ARGUMENT
+    // — thinking isn't disable-able on that model line, unlike 2.5-flash-lite.
+    // Bisected against gemini-3.6-flash on 2026-09-14: removing this field flips
+    // the same request from 400 → 200. The orchestrator already picks liteModel
+    // when it wants "no thinking", so omitting the field is safe.
+    if (thinkingBudget > 0) {
+      generationConfig.thinkingConfig = { thinkingBudget, includeThoughts: true }
+    }
   }
   const req: Record<string, unknown> = { contents }
   if (systemInstruction) req.systemInstruction = systemInstruction
@@ -316,6 +352,15 @@ export class GeminiAdapter implements ProviderAdapter {
 
     if (!resp.ok) {
       const text = await resp.text()
+      if (resp.status === 400) {
+        // Google returns an opaque "Request contains an invalid argument" —
+        // useful detail (e.g. "property is not defined") only comes back on
+        // some field classes. Log the response verbatim on one line; if the
+        // message is generic, dump the outbound body via `writeFile` from a
+        // temporary edit and curl direct at generativelanguage.googleapis.com
+        // to bisect (systemInstruction / tools / generationConfig).
+        console.error('[gemini-adapter] 400 response body:', text.replace(/\s+/g, ' ').slice(0, 2000))
+      }
       throw new AdapterError(resp.status, `Gemini API ${resp.status}: ${text.slice(0, 300)}`)
     }
 
