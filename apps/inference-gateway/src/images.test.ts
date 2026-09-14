@@ -73,38 +73,7 @@ describe('generateImage — no-Ollama-fallback invariant', () => {
     else process.env.GEMINI_API_KEY = origGeminiKey
   })
 
-  it('gemini success → no vertex call', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => okBody })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const result = await generateImage(req)
-
-    expect(result).toEqual({ imageBase64: 'QUJD', mimeType: 'image/png' })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0][0]).toContain('generativelanguage.googleapis.com')
-    expect(geminiImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
-    expect(vertexImageBreaker.onSuccess).not.toHaveBeenCalled()
-    expect(vertexImageBreaker.onFailure).not.toHaveBeenCalled()
-  })
-
-  it('gemini failure + vertex success → falls back correctly', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'gemini boom' })
-      .mockResolvedValueOnce({ ok: true, json: async () => okBody })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const result = await generateImage(req)
-
-    expect(result).toEqual({ imageBase64: 'QUJD', mimeType: 'image/png' })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock.mock.calls[0][0]).toContain('generativelanguage.googleapis.com')
-    expect(fetchMock.mock.calls[1][0]).toContain('aiplatform.googleapis.com')
-    expect(geminiImageBreaker.onFailure).toHaveBeenCalledTimes(1)
-    expect(vertexImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
-  })
-
-  it('gemini circuit open → skips straight to vertex', async () => {
-    vi.mocked(geminiImageBreaker.isAvailable).mockReturnValue(false)
+  it('vertex success → no gemini call', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => okBody })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -113,15 +82,46 @@ describe('generateImage — no-Ollama-fallback invariant', () => {
     expect(result).toEqual({ imageBase64: 'QUJD', mimeType: 'image/png' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toContain('aiplatform.googleapis.com')
-    // Circuit was already open — never attempted, so no failure to record.
-    expect(geminiImageBreaker.onFailure).not.toHaveBeenCalled()
     expect(vertexImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
+    expect(geminiImageBreaker.onSuccess).not.toHaveBeenCalled()
+    expect(geminiImageBreaker.onFailure).not.toHaveBeenCalled()
   })
 
-  it('both gemini and vertex fail → throws cleanly with both reasons, no further fallback', async () => {
+  it('vertex failure + gemini success → falls back correctly', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'gemini boom' })
-      .mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'vertex boom' })
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'vertex boom' })
+      .mockResolvedValueOnce({ ok: true, json: async () => okBody })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateImage(req)
+
+    expect(result).toEqual({ imageBase64: 'QUJD', mimeType: 'image/png' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0][0]).toContain('aiplatform.googleapis.com')
+    expect(fetchMock.mock.calls[1][0]).toContain('generativelanguage.googleapis.com')
+    expect(vertexImageBreaker.onFailure).toHaveBeenCalledTimes(1)
+    expect(geminiImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('vertex circuit open → skips straight to gemini', async () => {
+    vi.mocked(vertexImageBreaker.isAvailable).mockReturnValue(false)
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => okBody })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateImage(req)
+
+    expect(result).toEqual({ imageBase64: 'QUJD', mimeType: 'image/png' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toContain('generativelanguage.googleapis.com')
+    // Circuit was already open — never attempted, so no failure to record.
+    expect(vertexImageBreaker.onFailure).not.toHaveBeenCalled()
+    expect(geminiImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('both vertex and gemini fail → throws cleanly with both reasons, no further fallback', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'vertex boom' })
+      .mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'gemini boom' })
     vi.stubGlobal('fetch', fetchMock)
 
     let caught: Error | undefined
@@ -132,26 +132,32 @@ describe('generateImage — no-Ollama-fallback invariant', () => {
     }
 
     expect(caught).toBeDefined()
-    expect(caught!.message).toMatch(/gemini boom/i)
     expect(caught!.message).toMatch(/vertex boom/i)
-    // Exactly the two calls (gemini, vertex) — no third ("ollama" or
+    expect(caught!.message).toMatch(/gemini boom/i)
+    // Exactly the two calls (vertex, gemini) — no third ("ollama" or
     // otherwise) fallback call was ever made.
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(geminiImageBreaker.onFailure).toHaveBeenCalledTimes(1)
     expect(vertexImageBreaker.onFailure).toHaveBeenCalledTimes(1)
+    expect(geminiImageBreaker.onFailure).toHaveBeenCalledTimes(1)
   })
 
-  it('no GEMINI_API_KEY configured → skips straight to vertex', async () => {
+  it('no GEMINI_API_KEY configured after vertex failure → throws cleanly, never calls gemini', async () => {
     delete process.env.GEMINI_API_KEY
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => okBody })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'vertex boom' })
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await generateImage(req)
+    let caught: Error | undefined
+    try {
+      await generateImage(req)
+    } catch (e) {
+      caught = e as Error
+    }
 
-    expect(result).toEqual({ imageBase64: 'QUJD', mimeType: 'image/png' })
+    expect(caught).toBeDefined()
+    expect(caught!.message).toMatch(/vertex boom/i)
+    expect(caught!.message).toMatch(/GEMINI_API_KEY/)
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0][0]).toContain('aiplatform.googleapis.com')
-    expect(vertexImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
     expect(geminiImageBreaker.onFailure).not.toHaveBeenCalled()
     expect(geminiImageBreaker.onSuccess).not.toHaveBeenCalled()
   })

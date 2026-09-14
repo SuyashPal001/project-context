@@ -96,40 +96,37 @@ export async function generateImage(req: ImageGenerationRequest): Promise<ImageG
     throw new UnsupportedImageModelError(`Unsupported image model: ${req.model}`)
   }
 
-  // Order deliberately Gemini-API-key first, Vertex second — the current
-  // Vertex project 404s on gemini-3-pro-image-preview with a hallucinated
-  // redirect to non-existent version numbers (gemini-3.5/3.6/3.7-flash),
-  // eating a ~90s timeout per attempt before falling through. The
-  // API-key path is fast when available. Vertex stays as the fallback
-  // for the day the project's Model Garden access is sorted out.
-  let geminiFailureReason: string | null = null
+  let vertexFailureReason: string | null = null
 
-  if (process.env.GEMINI_API_KEY && geminiImageBreaker.isAvailable()) {
+  if (vertexImageBreaker.isAvailable()) {
     try {
-      const result = await callGeminiApiKeyImageModel(req)
-      geminiImageBreaker.onSuccess()
+      const result = await callVertexImageModel(req)
+      vertexImageBreaker.onSuccess()
       return result
-    } catch (geminiErr) {
-      geminiImageBreaker.onFailure()
-      geminiFailureReason = (geminiErr as Error).message
-      console.warn('[images] gemini API key failed, trying Vertex fallback:', geminiFailureReason)
+    } catch (vertexErr) {
+      vertexImageBreaker.onFailure()
+      vertexFailureReason = (vertexErr as Error).message
+      console.warn('[images] vertex failed, trying gemini API key fallback:', vertexFailureReason)
     }
   } else {
-    geminiFailureReason = !process.env.GEMINI_API_KEY ? 'no GEMINI_API_KEY configured' : 'circuit open'
-    console.warn('[images] gemini API key skipped, trying Vertex fallback:', geminiFailureReason)
+    vertexFailureReason = 'circuit open'
+    console.warn('[images] vertex circuit open, trying gemini API key fallback')
   }
 
-  if (!vertexImageBreaker.isAvailable()) {
-    throw new Error(`Gemini API key image generation unavailable (${geminiFailureReason}) and Vertex circuit is open`)
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error(`Vertex image generation unavailable (${vertexFailureReason}) and no GEMINI_API_KEY fallback configured`)
+  }
+  if (!geminiImageBreaker.isAvailable()) {
+    throw new Error(`Vertex image generation unavailable (${vertexFailureReason}) and Gemini API key circuit is open`)
   }
 
   try {
-    const result = await callVertexImageModel(req)
-    vertexImageBreaker.onSuccess()
+    const result = await callGeminiApiKeyImageModel(req)
+    geminiImageBreaker.onSuccess()
     return result
-  } catch (vertexErr) {
-    vertexImageBreaker.onFailure()
-    throw new Error(`Gemini API key image generation failed (${geminiFailureReason}); Vertex fallback also failed (${(vertexErr as Error).message})`)
+  } catch (geminiErr) {
+    geminiImageBreaker.onFailure()
+    throw new Error(`Vertex image generation failed (${vertexFailureReason}); Gemini API key fallback also failed (${(geminiErr as Error).message})`)
   }
 }
 

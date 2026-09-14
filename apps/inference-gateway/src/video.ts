@@ -5,11 +5,7 @@ import { requestsTotal, latency } from './metrics.js'
 
 const VIDEO_MODEL_ALLOWLIST = new Set(['gemini-omni-1.1-flash'])
 
-// Read at call time, not module load — the test suite sets these in
-// beforeEach() so a captured-at-import constant would always be empty in tests
-// regardless of setup, and callers configuring env at boot vs first-request
-// see the same value either way.
-const getProject  = () => process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
+const PROJECT  = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
 const LOCATION = process.env.VERTEX_LOCATION ?? 'us-central1'
 const _auth    = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' })
 
@@ -90,7 +86,7 @@ async function downloadGcsVideo(uri: string): Promise<Buffer> {
 
 async function callVertexVeoModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
   const token    = await getToken()
-  const startUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${getProject()}/locations/${LOCATION}/publishers/google/models/${VEO_MODEL}:predictLongRunning`
+  const startUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${VEO_MODEL}:predictLongRunning`
 
   const startRes = await fetch(startUrl, {
     method: 'POST',
@@ -159,40 +155,37 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
     throw new UnsupportedVideoModelError(`Unsupported video model: ${req.model}`)
   }
 
-  // Order deliberately Gemini-API-key first, Vertex Veo second — matches
-  // images.ts's reordering for the same reason (Vertex project is currently
-  // 404ing on Gemini models, eating a ~200s timeout per attempt). Vertex Veo
-  // stays as the fallback for when the project's model access is restored.
-  let geminiFailureReason: string | null = null
+  let vertexFailureReason: string | null = null
 
-  if (process.env.GEMINI_API_KEY && geminiVideoBreaker.isAvailable()) {
+  if (vertexVideoBreaker.isAvailable() && PROJECT) {
     try {
-      const result = await callGeminiApiKeyVideoModel(req)
-      geminiVideoBreaker.onSuccess()
+      const result = await callVertexVeoModel(req)
+      vertexVideoBreaker.onSuccess()
       return result
-    } catch (geminiErr) {
-      geminiVideoBreaker.onFailure()
-      geminiFailureReason = (geminiErr as Error).message
-      console.warn('[video] Gemini API key failed, trying Vertex Veo fallback:', geminiFailureReason)
+    } catch (vertexErr) {
+      vertexVideoBreaker.onFailure()
+      vertexFailureReason = (vertexErr as Error).message
+      console.warn('[video] Vertex Veo failed, trying Gemini API key fallback:', vertexFailureReason)
     }
   } else {
-    geminiFailureReason = !process.env.GEMINI_API_KEY ? 'no GEMINI_API_KEY configured' : 'circuit open'
-    console.warn('[video] Gemini API key skipped, trying Vertex Veo fallback:', geminiFailureReason)
+    vertexFailureReason = vertexVideoBreaker.isAvailable() ? 'no PROJECT configured' : 'circuit open'
+    console.warn('[video] Vertex Veo skipped, trying Gemini API key fallback:', vertexFailureReason)
   }
 
-  const project = getProject()
-  if (!vertexVideoBreaker.isAvailable() || !project) {
-    const vertexReason = !project ? 'no PROJECT configured' : 'circuit open'
-    throw new Error(`Gemini API key video generation unavailable (${geminiFailureReason}) and Vertex Veo also unavailable (${vertexReason})`)
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error(`Vertex Veo unavailable (${vertexFailureReason}) and no GEMINI_API_KEY fallback configured`)
+  }
+  if (!geminiVideoBreaker.isAvailable()) {
+    throw new Error(`Vertex Veo unavailable (${vertexFailureReason}) and Gemini video circuit is open`)
   }
 
   try {
-    const result = await callVertexVeoModel(req)
-    vertexVideoBreaker.onSuccess()
+    const result = await callGeminiApiKeyVideoModel(req)
+    geminiVideoBreaker.onSuccess()
     return result
-  } catch (vertexErr) {
-    vertexVideoBreaker.onFailure()
-    throw new Error(`Gemini API key video generation failed (${geminiFailureReason}); Vertex Veo fallback also failed (${(vertexErr as Error).message})`)
+  } catch (geminiErr) {
+    geminiVideoBreaker.onFailure()
+    throw new Error(`Vertex Veo failed (${vertexFailureReason}); Gemini API key fallback also failed (${(geminiErr as Error).message})`)
   }
 }
 
