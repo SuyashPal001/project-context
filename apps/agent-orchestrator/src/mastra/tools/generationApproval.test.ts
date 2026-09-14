@@ -57,8 +57,29 @@ describe('shouldRequireApproval', () => {
 describe('GENERATION_APPROVAL_METADATA', () => {
   it('has an entry for every gated tool id', () => {
     expect(Object.keys(GENERATION_APPROVAL_METADATA).sort()).toEqual(
-      ['edit-image', 'generate-image', 'generate-song', 'generate-video', 'save_skill'].sort(),
+      [
+        'edit-image', 'edit_image',
+        'generate-image', 'generate_image',
+        'generate-song', 'generate_song',
+        'generate-video', 'generate_video',
+        'save_skill',
+      ].sort(),
     )
+  })
+
+  // directorAgent/producerAgent register generation tools under underscored
+  // keys ('generate_image') even though the tool `id` is hyphenated
+  // ('generate-image'), because the KEY is what the model calls the tool.
+  // The `tool-call-approval` chunk that bubbles up from a delegate carries the
+  // delegate's key, not the tool id — so without both forms mapped here,
+  // chatStream.ts's approval branch falls into its "unmapped tool" fallback
+  // and its resumeStream() crashes with "not suspended" because Olmo itself
+  // never suspended.
+  it('maps the underscored delegate keys to the same metadata as the hyphenated tool ids', () => {
+    expect(GENERATION_APPROVAL_METADATA['generate_image']).toBe(GENERATION_APPROVAL_METADATA['generate-image'])
+    expect(GENERATION_APPROVAL_METADATA['edit_image']).toBe(GENERATION_APPROVAL_METADATA['edit-image'])
+    expect(GENERATION_APPROVAL_METADATA['generate_video']).toBe(GENERATION_APPROVAL_METADATA['generate-video'])
+    expect(GENERATION_APPROVAL_METADATA['generate_song']).toBe(GENERATION_APPROVAL_METADATA['generate-song'])
   })
 
   it('generate-image has no preview builder', () => {

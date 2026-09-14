@@ -64,16 +64,35 @@ const MUSIC_MODEL = 'lyria-002'
  * not derivable from the model's raw args) nor `createSkill`'s computed
  * preview/PII note, so chatStream.ts rebuilds them here at forward time.
  */
+// Both hyphenated (tool `id`) and underscored (delegate registration key) forms
+// are listed for each generation tool because either can arrive as the
+// `toolName` on a `tool-call-approval` chunk: Olmo's direct tool map is keyed
+// on the tool's `id` ('generate-image'), but directorAgent/producerAgent
+// register the same tools under underscored keys ('generate_image') so the
+// model calls them by that name (see directorAgent.ts's comment). Without both
+// forms, delegate-triggered approvals fall through to chatStream.ts's
+// "unmapped tool" fallback, which then crashes with `resumeStream() cannot
+// resume tool call ... because it is not suspended` — Olmo has no suspension
+// of its own to resume when the pause lives inside a delegate.
+const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Generate image' }
+const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video' }
+const songGen = { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' }
+const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image' }
+
 export const GENERATION_APPROVAL_METADATA: Record<string, {
   resourceType: string
   subject: string
   label: string
   buildPreview?: (args: Record<string, unknown>) => string | undefined
 }> = {
-  'generate-image': { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Generate image' },
-  'generate-video': { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video' },
-  'generate-song': { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' },
-  'edit-image': { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image' },
+  'generate-image': imageGen,
+  'generate_image': imageGen,
+  'generate-video': videoGen,
+  'generate_video': videoGen,
+  'generate-song': songGen,
+  'generate_song': songGen,
+  'edit-image': imageEdit,
+  'edit_image': imageEdit,
   'save_skill': {
     resourceType: 'skill_creation',
     subject: 'create',
