@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { MessagesResponse } from "@/components/platform/chat/types";
+import { findPendingRequestMessage } from "@/components/platform/chat/pendingRequests";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -194,15 +195,17 @@ function ChatPage() {
     // is the only input surface (see MessageThread's takeover overlay) — the normal
     // composer stays hidden so it doesn't sit directly underneath as a second,
     // redundant input, and so the overlay can expand into the freed space.
-    const awaitingClarificationReply = messages[messages.length - 1]?.clarificationRequest?.status === 'pending';
+    // Same back-from-the-end scan MessageThread's overlays use — the request is
+    // attached to the assistant turn it interrupted, not necessarily the last row.
+    const awaitingClarificationReply = !!findPendingRequestMessage(messages, 'clarificationRequest');
 
     // Mirrors awaitingClarificationReply: ApproveCost is the only input surface while a
     // generation confirm request is pending, so the normal composer stays hidden.
-    const awaitingGenerationConfirmReply = messages[messages.length - 1]?.generationConfirmRequest?.status === 'pending';
+    const awaitingGenerationConfirmReply = !!findPendingRequestMessage(messages, 'generationConfirmRequest');
 
     // Mirrors awaitingClarificationReply: UploadRequestCard is the only input
     // surface while an upload request is pending.
-    const awaitingUploadReply = messages[messages.length - 1]?.uploadRequest?.status === 'pending';
+    const awaitingUploadReply = !!findPendingRequestMessage(messages, 'uploadRequest');
 
     useEffect(() => {
         if (isLoadingMessages) return; // wait for messages to actually reflect `conversationId` before seeding or dispatching

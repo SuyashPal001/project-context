@@ -375,6 +375,35 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     const skillInvocationPrepareStep = buildSkillInvocationPrepareStep(skillsInvokedThisTurn.length)
 
     let fullText = ''
+    // Three different producers write into fullText: the parent (Olmo) agent's
+    // own tokens, a delegated sub-agent's tokens, and tool-result summaries
+    // injected as synthetic text. Concatenating them blindly glues unrelated
+    // sentences together with no separator at the seam ("...working on.Okay,
+    // Google Ads it is." / "PBXGlobalHere are the ad visuals..."). appendText
+    // inserts a paragraph break whenever the producer changes and returns the
+    // exact string to stream, so the live delta the browser renders and the
+    // fullText that gets persisted can never disagree about where the breaks
+    // are. Every text append must go through it.
+    let lastTextSource: string | null = null
+    const appendText = (source: string, text: string): string => {
+      // Empty deltas are dropped rather than forwarded (callers skip sendEvent on
+      // ''): the 'delta' event carries nothing but `text` and `conversationId` —
+      // the browser mints the turn's messageId itself (useChat.ts), so an empty
+      // delta establishes no state there and forwarding it only risks pushing an
+      // empty assistant row. lastTextSource is deliberately left untouched too:
+      // a producer that emitted no characters hasn't taken over the seam.
+      if (!text) return ''
+      const needsSeparator =
+        lastTextSource !== null &&
+        lastTextSource !== source &&
+        fullText.length > 0 &&
+        !/\s$/.test(fullText) &&
+        !text.startsWith('\n')
+      lastTextSource = source
+      const out = needsSeparator ? `\n\n${text}` : text
+      fullText += out
+      return out
+    }
     let planResult: unknown
     let toolCallCount = 0
     let reasoningText = ''
@@ -404,8 +433,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       switch (part.type) {
         case 'text-delta': {
           const text = (part.payload?.text ?? part.textDelta ?? '') as string
-          fullText += text
-          sendEvent('delta', { text, conversationId })
+          const out = appendText('parent', text)
+          if (out) sendEvent('delta', { text: out, conversationId })
           break
         }
         // Extended-thinking trace — never part of fullText/the persisted message,
@@ -424,10 +453,27 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         // Text streamed from a delegated sub-agent
         case 'agent-execution-event-text-delta': {
           const text = (part.payload?.textDelta ?? part.payload?.text ?? '') as string
-          if (text) {
-            fullText += text
-            sendEvent('delta', { text, conversationId })
-          }
+          // Keyed per delegate where the payload identifies one, so two
+          // sub-agents speaking back to back are separated too — not just
+          // parent-vs-delegate.
+          // Identity fields only — never a per-chunk value like a step/run id,
+          // which would key a different "source" for every token and break the
+          // text apart mid-sentence.
+          // primitiveId is what the delegation hooks key a sub-agent by (see
+          // olmoDelegationOptions); toolCallId/runId identify the delegation
+          // *call* and stay constant for its whole run, so they still separate
+          // two back-to-back delegates when no name is carried. Falling through
+          // to a constant would key both as the same source and glue their text
+          // together — the exact seam this function exists to break.
+          const delegate = (part.payload?.agentId
+            ?? part.payload?.agentName
+            ?? part.payload?.name
+            ?? part.payload?.primitiveId
+            ?? part.payload?.toolCallId
+            ?? part.payload?.runId
+            ?? '') as string
+          const out = appendText(delegate ? `delegate:${delegate}` : 'delegate', text)
+          if (out) sendEvent('delta', { text: out, conversationId })
           break
         }
         case 'tool-call': {
@@ -545,8 +591,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           // Inject summary as synthetic text when route_to_officer returns one
           if (resolvedToolName === 'route_to_officer' && typeof result.summary === 'string' && result.summary) {
-            fullText += result.summary
-            sendEvent('delta', { text: result.summary, conversationId })
+            // Keyed by toolCallId, not just the tool name, so two summaries from
+            // the same tool in one turn are still separated from each other.
+            const out = appendText(`tool:${resolvedToolName}:${toolCallId}`, result.summary)
+            if (out) sendEvent('delta', { text: out, conversationId })
           }
 
           // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes.

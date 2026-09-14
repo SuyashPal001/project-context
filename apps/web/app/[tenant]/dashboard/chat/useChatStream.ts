@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useChat } from '@/hooks/useChat';
 import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
-import type { ToolCall, CompletedToolCall, Message, MessagesResponse, ArtifactRef, MessageAttachment } from '@/components/platform/chat/types';
+import type { ToolCall, CompletedToolCall, Message, MessagePart, MessagesResponse, ArtifactRef, MessageAttachment } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
 import type { ClarificationRequest, ClarificationQuestion, UploadRequest } from '@/components/platform/chat/types';
 import type { Attachment } from '@/types/agent-events';
@@ -37,6 +37,115 @@ export function mapStreamAttachments(
 }
 const sortByDate = (a: Message, b: Message) =>
     new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+
+// --- Ordered message parts (see MessagePart in components/platform/chat/types) ---
+//
+// sortByDate can only order whole messages, and an assistant turn's createdAt is
+// stamped once at its first token and never moves. So anything that arrives
+// mid-turn (a clarifying question) could never be ordered against the text that
+// came before and after it while both lived in separate message objects. These
+// helpers record arrival order inside the turn instead.
+
+/** Appends streamed text to the turn's open text part, or opens a new one. */
+function appendTextPart(parts: MessagePart[] | undefined, delta: string, seq: number): MessagePart[] {
+    const list = parts ? [...parts] : [];
+    const last = list[list.length - 1];
+    // Growing the open text part in place (rather than pushing one part per
+    // token) is what keeps character-by-character streaming cheap: the parts
+    // array identity changes, but its length and every earlier part's `seq`
+    // key stay stable, so React reconciles the same nodes.
+    if (last && last.type === 'text') {
+        list[list.length - 1] = { ...last, text: last.text + delta };
+        return list;
+    }
+    list.push({ seq, type: 'text', text: delta });
+    return list;
+}
+
+/**
+ * Squares the turn's text parts with the authoritative `fullText` from the
+ * 'done' event. Normally they already agree (the same deltas built both), but
+ * if the relay's final text diverges from what was streamed, the part list is
+ * dropped so MessageItem falls back to rendering `content` — correct text
+ * always wins over correct ordering.
+ */
+function reconcileParts(parts: MessagePart[] | undefined, fullText: string): MessagePart[] | undefined {
+    if (!parts || parts.length === 0) return undefined;
+    if (!fullText) return parts;
+    const lastTextIdx = parts.map(p => p.type).lastIndexOf('text');
+    if (lastTextIdx < 0) return parts;
+    const prefix = parts
+        .slice(0, lastTextIdx)
+        .reduce((acc, p) => (p.type === 'text' ? acc + p.text : acc), '');
+    const lastText = parts[lastTextIdx];
+    if (lastText.type !== 'text') return parts;
+    if (prefix + lastText.text === fullText) return parts;
+    if (!fullText.startsWith(prefix)) return undefined;
+    const next = [...parts];
+    next[lastTextIdx] = { ...lastText, text: fullText.slice(prefix.length) };
+    return next;
+}
+
+/**
+ * Whether this message is already blocking on an in-turn request the user
+ * hasn't resolved. Both a pending clarification and a pending upload render as
+ * a full-panel `absolute inset-0` takeover in MessageThread, so a message that
+ * hosted one of each at once would stack two overlays on top of each other —
+ * hence a message may host at most one *unresolved* request at a time.
+ */
+function hasUnresolvedRequest(m: Message): boolean {
+    return m.clarificationRequest?.status === 'pending' || m.uploadRequest?.status === 'pending';
+}
+
+/**
+ * Attaches a clarification/upload request to the assistant turn it interrupted,
+ * as the next part after whatever text has arrived so far. That's what puts the
+ * resolved summary card back at the point the question was actually asked: text
+ * written after the answer opens a new text part BELOW it, instead of merging
+ * into one blob that sorts above the card.
+ *
+ * `turnMessageId` is this turn's assistant message id (useChat mints it on the
+ * first event of the turn, request events included), so the request lands on the
+ * right message even when it is the FIRST event of the turn and no row exists
+ * yet — the row is created here with that id, and the turn's later text-deltas
+ * reconcile into it rather than into a second, disconnected message.
+ *
+ * A message already blocking on an unresolved request of the *other* kind can't
+ * host this one (two stacked overlays), so that case falls back to a placeholder
+ * message of its own. A *resolved* request of the same kind is replaced: the
+ * message holds exactly one object per kind (that's what chat/page.tsx's answer
+ * handlers mutate), and the superseded part renders nothing once its id stops
+ * matching — which is what lets a second clarification round stay inline in the
+ * same turn instead of splitting the turn across two rows.
+ */
+function attachInTurnRequest(
+    data: Message[],
+    turnMessageId: string | undefined,
+    conversationId: string,
+    patch: Pick<Message, 'clarificationRequest'> | Pick<Message, 'uploadRequest'>,
+    part: MessagePart,
+): Message[] {
+    const idx = turnMessageId
+        ? data.findIndex(m => m.id === turnMessageId)
+        : data.findIndex(m => m.isStreaming === true && m.role === 'assistant');
+    if (idx >= 0 && !hasUnresolvedRequest(data[idx])) {
+        const next = [...data];
+        next[idx] = { ...next[idx], ...patch, parts: [...(next[idx].parts ?? []), part] };
+        return next;
+    }
+    const msg: Message = {
+        // Only adopt the turn id when no row for it exists yet; a blocked
+        // existing turn must not be overwritten by its own placeholder.
+        id: idx < 0 && turnMessageId ? turnMessageId : crypto.randomUUID(),
+        conversationId,
+        role: 'assistant',
+        content: '',
+        createdAt: new Date().toISOString(),
+        ...patch,
+        parts: [part],
+    };
+    return [...data, msg];
+}
 
 interface Params {
     conversationId: string | null;
@@ -92,6 +201,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // since ThinkingIndicator (which used to own this timer) gets unmounted
     // by MessageThread the instant isStreaming flips false.
     const streamStartRef = useRef<number | null>(null);
+    // Monotonic counter handing every message part its arrival-order `seq`
+    // (also its React key). Reset per turn in sendMessage — parts only ever
+    // sort within a single message.
+    const partSeqRef = useRef(0);
 
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>, result?: Record<string, unknown>) => {
         const call = activeToolCalls.get(toolCallId);
@@ -129,9 +242,14 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 const data = old ? [...old.data] : [];
                 const idx = data.findIndex(m => m.id === messageId);
                 if (idx >= 0) {
-                    data[idx] = { ...data[idx], content: data[idx].content + delta, isStreaming: true };
+                    const prevParts = data[idx].parts;
+                    const nextParts = appendTextPart(prevParts, delta, partSeqRef.current + 1);
+                    // The seq is only actually consumed when a NEW text part was
+                    // opened — appending into the open one reuses its seq.
+                    if (nextParts.length !== (prevParts?.length ?? 0)) partSeqRef.current++;
+                    data[idx] = { ...data[idx], content: data[idx].content + delta, parts: nextParts, isStreaming: true };
                 } else {
-                    data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: delta, createdAt: new Date().toISOString(), isStreaming: true });
+                    data.push({ id: messageId, conversationId: conversationIdRef.current!, role: 'assistant', content: delta, parts: [{ seq: ++partSeqRef.current, type: 'text', text: delta }], createdAt: new Date().toISOString(), isStreaming: true });
                 }
                 return { data: [...data].sort(sortByDate) };
             });
@@ -189,12 +307,16 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 const atts = attachmentsRaw && Array.isArray(attachmentsRaw) && attachmentsRaw.length > 0
                     ? { attachments: mapStreamAttachments(attachmentsRaw as Array<{ fileId: string; name: string; type: string; size?: number; generation?: MessageAttachment['generation'] }>) }
                     : {};
+                // planResult replaces the rendered body with its own summary, so the
+                // streamed part list no longer describes what's on screen — drop it
+                // and let MessageItem render the legacy way.
+                const settleParts = (m: Message) => ({ parts: planResult ? undefined : reconcileParts(m.parts, fullText || m.content) });
                 if (idx >= 0) {
-                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
+                    data[idx] = { ...data[idx], content: fullText || data[idx].content, isStreaming: false, ...settleParts(data[idx]), ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
                 } else {
                     const zIdx = data.findIndex(m => m.isStreaming === true);
                     if (zIdx >= 0) {
-                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
+                        data[zIdx] = { ...data[zIdx], isStreaming: false, content: fullText || data[zIdx].content, ...settleParts(data[zIdx]), ...plan, ...aref, ...trace, ...cites, ...followUps, ...atts };
                     } else if (fullText || 'attachments' in atts) {
                         // A tool-only turn (e.g. generate_image with no narrated text) still
                         // has to land here — gating on fullText alone silently dropped the
@@ -331,37 +453,38 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             });
         }, [queryClient]),
 
-        onClarificationRequired: useCallback((clarificationId: string, questions: ClarificationQuestion[]) => {
+        onClarificationRequired: useCallback((clarificationId: string, questions: ClarificationQuestion[], turnMessageId: string) => {
             // A malformed/empty payload would leave ClarificationCard indexing an empty
             // array (request.questions[pageIndex]) and crash — skip building the card.
             if (questions.length === 0) return;
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const request: ClarificationRequest = { id: clarificationId, questions, status: 'pending' };
-                const msg: Message = {
-                    id: crypto.randomUUID(),
-                    conversationId: conversationIdRef.current!,
-                    role: 'assistant',
-                    content: '',
-                    createdAt: new Date().toISOString(),
-                    clarificationRequest: request,
-                };
-                return old ? { data: [...old.data, msg] } : { data: [msg] };
+                const seq = ++partSeqRef.current;
+                const data = attachInTurnRequest(
+                    old ? [...old.data] : [],
+                    turnMessageId,
+                    conversationIdRef.current!,
+                    { clarificationRequest: request },
+                    { seq, type: 'clarification', clarificationId },
+                );
+                return { data };
             });
         }, [queryClient]),
 
-        onUploadRequired: useCallback((uploadId: string, prompt: string, minFiles: number, maxFiles: number) => {
+        onUploadRequired: useCallback((uploadId: string, prompt: string, minFiles: number, maxFiles: number, turnMessageId: string) => {
             if (!prompt) return;
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const request: UploadRequest = { id: uploadId, prompt, minFiles, maxFiles, status: 'pending' };
-                const msg: Message = {
-                    id: crypto.randomUUID(),
-                    conversationId: conversationIdRef.current!,
-                    role: 'assistant',
-                    content: '',
-                    createdAt: new Date().toISOString(),
-                    uploadRequest: request,
-                };
-                return old ? { data: [...old.data, msg] } : { data: [msg] };
+                const seq = ++partSeqRef.current;
+                // Same in-turn attachment as onClarificationRequired above.
+                const data = attachInTurnRequest(
+                    old ? [...old.data] : [],
+                    turnMessageId,
+                    conversationIdRef.current!,
+                    { uploadRequest: request },
+                    { seq, type: 'upload', uploadId },
+                );
+                return { data };
             });
         }, [queryClient]),
     });
@@ -422,6 +545,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         setWarmupMessage(null);
         setHasSentFirstMessage(true);
         streamStartRef.current = Date.now();
+        partSeqRef.current = 0;
         setReasoningText('');
         await sendChatMessage(content, enriched, skillsUsed);
     };

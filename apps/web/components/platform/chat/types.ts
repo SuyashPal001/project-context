@@ -156,12 +156,48 @@ export interface CompletedTrace {
     reasoningElapsedSec?: number;
 }
 
+/**
+ * One ordered piece of a streaming assistant turn.
+ *
+ * A turn is not just "text, then cards": the agent can write text, stop to ask
+ * a clarifying question, and then keep writing after it's answered. Modelling
+ * the turn as `content: string` plus one `clarificationRequest` field rendered
+ * in a fixed template slot can only ever produce "all the text, then the card"
+ * (or the reverse) — never the card at the point it was actually asked. So the
+ * stream handler (useChatStream) also records what it received, in arrival
+ * order, as `Message.parts`, each tagged with a monotonic `seq` assigned at
+ * receipt time, and MessageItem renders that list directly.
+ *
+ * Request parts carry only the id: the request object itself stays on the
+ * message (`clarificationRequest` / `uploadRequest`), which is what the answer
+ * handlers in chat/page.tsx mutate, so there is exactly one source of truth for
+ * its status/answers. A part whose id no longer matches renders nothing.
+ *
+ * `tool_call` exists so the model covers everything that lands in a turn, but
+ * is not populated today — live tool calls render through LiveTrace /
+ * TraceSummary as a collapsed summary above the text, deliberately, and moving
+ * them inline is a UX change rather than an ordering fix.
+ *
+ * Parts are live-stream-only. The reconcile refetch in useChatStream's onDone
+ * replaces the cache with the server's copy, which has no parts (nor any
+ * clarification rows — those are client-only), and rendering falls back to the
+ * plain `content` string.
+ */
+export type MessagePart =
+    | { seq: number; type: 'text'; text: string }
+    | { seq: number; type: 'tool_call'; toolCallId: string }
+    | { seq: number; type: 'clarification'; clarificationId: string }
+    | { seq: number; type: 'upload'; uploadId: string };
+
 export interface Message {
     id: string;
     conversationId: string;
     role: MessageRole;
     content: string;
     createdAt: string;
+    /** Ordered arrival-order view of this turn — see MessagePart. When present,
+     *  MessageItem renders from it instead of the fixed per-field template. */
+    parts?: MessagePart[];
     toolCalls?: ToolCall[];
     approvalRequest?: ApprovalRequest;
     generationConfirmRequest?: GenerationConfirmRequest;

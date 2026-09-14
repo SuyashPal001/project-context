@@ -27,8 +27,12 @@ export interface UseChatOptions {
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
     onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string) => void;
-    onClarificationRequired?: (clarificationId: string, questions: ClarificationQuestion[]) => void;
-    onUploadRequired?: (uploadId: string, prompt: string, minFiles: number, maxFiles: number) => void;
+    // turnMessageId is the id the assistant message for THIS turn has (or will
+    // have once its first text-delta lands) — see the clarification_request /
+    // upload_request cases below. Passing it lets the request be attached to
+    // that exact message even when it arrives before any text.
+    onClarificationRequired?: (clarificationId: string, questions: ClarificationQuestion[], turnMessageId: string) => void;
+    onUploadRequired?: (uploadId: string, prompt: string, minFiles: number, maxFiles: number, turnMessageId: string) => void;
 }
 
 export interface UseChatReturn {
@@ -365,19 +369,32 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                         }
 
                         case 'clarification_request': {
+                            // Establish this turn's message id here if no delta has
+                            // arrived yet. The relay's 'delta' events carry no
+                            // messageId (see chatStream.ts's sendEvent('delta', ...)),
+                            // so this id is minted client-side and reused by every
+                            // later delta and by 'done' — meaning a request that is
+                            // the FIRST event of a turn can still be attached to the
+                            // same message the turn's text will land in, instead of a
+                            // disconnected placeholder.
+                            if (!currentMessageId) currentMessageId = crypto.randomUUID();
                             onClarificationRequiredRef.current?.(
                                 payload.clarificationId as string,
                                 (payload.questions as ClarificationQuestion[]) ?? [],
+                                currentMessageId,
                             );
                             break;
                         }
 
                         case 'upload_request': {
+                            // Same turn-message-id establishment as clarification above.
+                            if (!currentMessageId) currentMessageId = crypto.randomUUID();
                             onUploadRequiredRef.current?.(
                                 payload.uploadId as string,
                                 payload.prompt as string,
                                 payload.minFiles as number,
                                 payload.maxFiles as number,
+                                currentMessageId,
                             );
                             break;
                         }

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Terminal, Info, RotateCcw, Pencil, Check, X } from "lucide-react";
-import { Message, PlanResult, ToolCall, CompletedToolCall } from "./types";
+import { Message, MessagePart, PlanResult, ToolCall, CompletedToolCall } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import ReactMarkdown from 'react-markdown';
@@ -134,6 +134,44 @@ export function MessageItem({
     // streaming) — two avatars for one turn.
     const hasDisplayedContent = messageHasDisplayedContent(message);
 
+    // Ordered arrival-order render (see MessagePart in types.ts). When a turn
+    // carries parts, its text/clarification/upload pieces render in the order
+    // they were received rather than in the fixed template slots below, which
+    // is the only way a clarification answered mid-turn can sit between the
+    // text that preceded it and the text that followed. planResult turns
+    // render their own summary instead of the streamed text, so they stay on
+    // the legacy path (useChatStream's onDone drops their parts).
+    const parts: MessagePart[] | undefined = isAssistant && !message.planResult ? message.parts : undefined;
+    const hasParts = !!parts && parts.length > 0;
+
+    // Built once and placed either by the parts list (in arrival order) or by
+    // the legacy fixed slots at the bottom — never both.
+    // Pending requests render as a panel-wide takeover overlay (see
+    // MessageThread) instead of inline, which is why both are null while pending.
+    const clarificationCard = message.clarificationRequest && message.clarificationRequest.status !== 'pending' ? (
+        <ClarificationCard
+            request={message.clarificationRequest}
+            onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
+                message.id,
+                message.clarificationRequest!.id,
+                answer.questionIndex,
+                { selectedIndex: answer.selectedIndex, selectedIndices: answer.selectedIndices, freeText: answer.freeText, skipped: answer.skipped },
+                allAnswered,
+            ) ?? Promise.resolve(true)}
+        />
+    ) : null;
+
+    const uploadCard = message.uploadRequest && message.uploadRequest.status !== 'pending' ? (
+        <UploadRequestCard
+            request={message.uploadRequest}
+            onAnswer={(answer) => onUploadAnswer?.(
+                message.id,
+                message.uploadRequest!.id,
+                answer,
+            ) ?? Promise.resolve(true)}
+        />
+    ) : null;
+
     // Nothing to show for this row at all — skip it entirely rather than
     // rendering an empty avatar+label block. Only applies to assistant
     // placeholders; a genuinely empty user message can't happen (the
@@ -184,7 +222,44 @@ export function MessageItem({
                     />
                 )}
 
-                {isUser && isEditing ? (
+                {hasParts ? (
+                    <div className="w-full flex flex-col gap-2 min-w-0">
+                        {parts!.map((part, i) => {
+                            if (part.type === 'text') {
+                                // The last text part of a still-streaming turn is the
+                                // open one — it keeps StreamingMessage's live cursor
+                                // and auto-scroll; earlier, closed parts are static.
+                                const isOpen = !!message.isStreaming && i === parts!.length - 1;
+                                if (!part.text.trim() && !isOpen) return null;
+                                return (
+                                    <div key={part.seq} className="text-sm relative min-w-0 break-words text-foreground/90 leading-[1.75] w-full">
+                                        {isOpen ? (
+                                            <StreamingMessage isStreaming content={part.text} />
+                                        ) : (
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={chatMarkdownComponents}>
+                                                {part.text}
+                                            </ReactMarkdown>
+                                        )}
+                                    </div>
+                                );
+                            }
+                            // Request parts hold only the id — the request itself lives
+                            // on the message (that's what the answer handlers mutate),
+                            // so a part whose id no longer matches renders nothing.
+                            if (part.type === 'clarification') {
+                                return message.clarificationRequest?.id === part.clarificationId
+                                    ? <div key={part.seq} className="w-full">{clarificationCard}</div>
+                                    : null;
+                            }
+                            if (part.type === 'upload') {
+                                return message.uploadRequest?.id === part.uploadId
+                                    ? <div key={part.seq} className="w-full">{uploadCard}</div>
+                                    : null;
+                            }
+                            return null;
+                        })}
+                    </div>
+                ) : isUser && isEditing ? (
                     <div className="w-full flex flex-col gap-2" style={{ maxWidth: '75%' }}>
                         <textarea
                             ref={editTextareaRef}
@@ -313,34 +388,12 @@ export function MessageItem({
                     />
                 )}
 
-                {/* Pending clarification requests render as a panel-wide takeover overlay
-                    (see MessageThread) instead of inline here — only the resolved
-                    "N answer(s)" summary stays in the normal message flow. */}
-                {message.clarificationRequest && message.clarificationRequest.status !== 'pending' && (
-                    <ClarificationCard
-                        request={message.clarificationRequest}
-                        onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
-                            message.id,
-                            message.clarificationRequest!.id,
-                            answer.questionIndex,
-                            { selectedIndex: answer.selectedIndex, selectedIndices: answer.selectedIndices, freeText: answer.freeText, skipped: answer.skipped },
-                            allAnswered,
-                        ) ?? Promise.resolve(true)}
-                    />
-                )}
-
-                {/* Same "resolved summary stays inline, pending takes over as an
-                    overlay" split as clarification above. */}
-                {message.uploadRequest && message.uploadRequest.status !== 'pending' && (
-                    <UploadRequestCard
-                        request={message.uploadRequest}
-                        onAnswer={(answer) => onUploadAnswer?.(
-                            message.id,
-                            message.uploadRequest!.id,
-                            answer,
-                        ) ?? Promise.resolve(true)}
-                    />
-                )}
+                {/* Fixed-slot fallback for messages with no part list (a message
+                    reloaded from the server, or one whose parts couldn't be
+                    reconciled). When parts exist these same cards are placed by
+                    the parts list above, at the point they were received. */}
+                {!hasParts && clarificationCard}
+                {!hasParts && uploadCard}
 
                 {message.toolCalls && message.toolCalls.length > 0 && (
                     <div className="w-full mt-2">

@@ -9,6 +9,7 @@ import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
+import { findPendingRequestMessage } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
 import { UploadRequestCard } from "./UploadRequestCard";
 import { ApproveCost } from "@/components/platform/credits/ApproveCost";
@@ -103,10 +104,28 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     const lastMessage = messages[messages.length - 1];
     // The pending clarification takes over the panel (see the overlay render below)
     // instead of rendering inline — MessageItem deliberately skips it while pending.
-    const pendingClarificationMessage = lastMessage?.clarificationRequest?.status === 'pending' ? lastMessage : undefined;
-    const pendingGenerationConfirmMessage = lastMessage?.generationConfirmRequest?.status === 'pending' ? lastMessage : undefined;
-    const pendingUploadMessage = lastMessage?.uploadRequest?.status === 'pending' ? lastMessage : undefined;
+    // Scanned back from the end rather than read off the last row: a clarification
+    // is attached to the assistant turn it interrupted, which need not be the last
+    // message in the list (see findPendingRequestMessage).
+    const pendingClarificationMessage = findPendingRequestMessage(messages, 'clarificationRequest');
+    const pendingGenerationConfirmMessage = findPendingRequestMessage(messages, 'generationConfirmRequest');
+    const pendingUploadMessage = findPendingRequestMessage(messages, 'uploadRequest');
     const awaitingReply = pendingClarificationMessage !== undefined || pendingUploadMessage !== undefined;
+    // The three overlays below are each a full-panel `absolute inset-0 z-40`
+    // takeover, so two of them pending at once (an upload request raised while a
+    // clarification is still unanswered — parallel tool calls in one step, or a
+    // delegate asking while the parent waits) would stack two backdrops and two
+    // cards on top of each other, with the lower one unreachable. Exactly one
+    // renders: the earliest-asked still-pending request, i.e. the one the user
+    // was asked to answer first. The others reappear as soon as it resolves.
+    const overlayCandidates: Array<{ kind: 'clarification' | 'generationConfirm' | 'upload'; message: Message }> = [
+        ...(pendingClarificationMessage ? [{ kind: 'clarification' as const, message: pendingClarificationMessage }] : []),
+        ...(pendingGenerationConfirmMessage ? [{ kind: 'generationConfirm' as const, message: pendingGenerationConfirmMessage }] : []),
+        ...(pendingUploadMessage ? [{ kind: 'upload' as const, message: pendingUploadMessage }] : []),
+    ];
+    const activeOverlay = overlayCandidates.length > 0
+        ? overlayCandidates.reduce((a, b) => (messages.indexOf(a.message) <= messages.indexOf(b.message) ? a : b)).kind
+        : null;
     // Whether onDelta has already created a row for the turn currently in
     // progress. Before that (tool calls/reasoning firing with no text yet),
     // the trailing ThinkingIndicator below owns the live status display —
@@ -393,7 +412,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 )}
             </div>
         </div>
-        {pendingClarificationMessage && (
+        {activeOverlay === 'clarification' && pendingClarificationMessage && (
             // Anchored toward the bottom of the panel (near where ChatInput sits just
             // below this wrapper) rather than dead-center, so it reads as the next
             // step in the conversation instead of a modal dropped in empty space.
@@ -411,7 +430,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 />
             </div>
         )}
-        {pendingGenerationConfirmMessage && (
+        {activeOverlay === 'generationConfirm' && pendingGenerationConfirmMessage && (
             // Same "anchored toward the bottom" takeover wrapper as the clarification
             // overlay above — ApproveCost is the only input surface while a generation
             // confirm request is pending.
@@ -426,7 +445,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 />
             </div>
         )}
-        {pendingUploadMessage && (
+        {activeOverlay === 'upload' && pendingUploadMessage && (
             // Same anchored takeover wrapper as clarification/generation-confirm above.
             <div className="absolute inset-0 z-40 flex items-end justify-center pb-10 bg-background/90 backdrop-blur-md px-4">
                 <UploadRequestCard
