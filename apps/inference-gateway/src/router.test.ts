@@ -19,6 +19,19 @@ describe('getAdapterChain', () => {
     const names = chain.map((a) => (a as { adapterName?: string }).adapterName);
     expect(names).not.toContain('openrouter');
   });
+
+  it('tries Gemini API before Vertex on the default (Gemini) chain', () => {
+    // See images.ts/video.ts — Vertex 404ing on the project was silently eating
+    // undici's headers-timeout on every chat turn before the Gemini API fallback
+    // ran, killing mid-conversation state.
+    const chain = getAdapterChain('gemini-2.5-flash');
+    const names = chain.map((a) => (a as { adapterName?: string }).adapterName);
+    const geminiIdx = names.indexOf('gemini');
+    const vertexIdx = names.indexOf('vertex');
+    if (geminiIdx !== -1) expect(geminiIdx).toBeLessThan(vertexIdx);
+    expect(vertexIdx).toBeGreaterThan(-1);
+    expect(names[names.length - 1]).toBe('ollama');
+  });
 });
 
 describe('getPrivateOnlyChain', () => {

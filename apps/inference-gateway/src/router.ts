@@ -60,18 +60,26 @@ const openrouterCB = new CircuitBreakerAdapter(openrouterAdapter, openrouterBrea
  *
  * Fallback order:
  *   openrouter/* → OpenRouter only (user explicitly picked this model — no silent substitution)
- *   gemini-*     → Vertex AI (ADC) → Gemini API key → Ollama
+ *   gemini-*     → Gemini API key → Vertex AI (ADC) → Ollama
  *   claude-*     → Anthropic → Ollama
  *   ollama/*     → Ollama only (local — nowhere to fall back to)
+ *
+ * Gemini-first order mirrors images.ts/video.ts (commit 8eaa77f2): while the
+ * Vertex project is 404ing on gemini-2.5-flash and hallucinating redirects to
+ * non-existent gemini-3.5/3.6/3.7-flash, every chat call was eating undici's
+ * headers-timeout before the Gemini API key fallback ran — killing whole turns
+ * mid-conversation and destroying the model's working memory continuity. Vertex
+ * stays as the second tier for when the project's Model Garden access is fixed.
  */
 export function getAdapterChain(model: string | undefined): ProviderAdapter[] {
   const m = model ?? '';
   if (m.startsWith('openrouter/')) return [openrouterCB];
   if (m.startsWith('claude'))  return [anthropicCB, ollamaCB];
   if (m.startsWith('ollama/')) return [ollamaCB];
-  // Gemini models: Vertex AI (ADC) first, then direct Gemini API key, then Ollama
-  const chain: ProviderAdapter[] = [vertexCB];
+  // Gemini models: direct Gemini API key first, then Vertex AI (ADC), then Ollama
+  const chain: ProviderAdapter[] = [];
   if (geminiAdapter.isAvailable()) chain.push(geminiCB);
+  chain.push(vertexCB);
   chain.push(ollamaCB);
   return chain;
 }
