@@ -120,6 +120,11 @@ export async function startSkillTestChat(
 
     const conversation = await api.post<{ data: { id: string } }>("/api/v1/conversations", {
         agentId: agent.id,
+        // Otherwise this lands the user on an indistinguishable-from-any-other
+        // "Hi, I'm Olmo" welcome screen with no indication this conversation
+        // only has one skill active — the title is the one cheap, always-visible
+        // signal ChatHeader already renders for any conversation.
+        title: `Testing: ${skill.name}`,
         metadata: { testSkillInstallId: skill.installId },
     });
 

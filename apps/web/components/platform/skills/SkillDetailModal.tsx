@@ -97,7 +97,10 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
         setIsTesting(true);
         try {
             const { conversationId } = await startSkillTestChat(skill, agentsData?.data ?? []);
-            toast.success(`${skill.name} attached to this agent.`);
+            // NOT an attach — startSkillTestChat deliberately never touches the
+            // agent's real skillset (see its own doc comment). Saying "attached"
+            // here was flatly wrong and told the user something happened that didn't.
+            toast.success(`Opening a test chat with only "${skill.name}" active.`);
             onOpenChange(false);
             router.push(`/${tenantSlug}/dashboard/chat?conversationId=${conversationId}`);
         } catch (err) {
