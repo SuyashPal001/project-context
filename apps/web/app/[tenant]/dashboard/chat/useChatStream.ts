@@ -8,6 +8,7 @@ import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/p
 import type { ToolCall, CompletedToolCall, Message, MessagePart, MessagesResponse, ArtifactRef, MessageAttachment } from '@/components/platform/chat/types';
 import type { Conversation } from '@/components/platform/chat/types';
 import type { ClarificationRequest, ClarificationQuestion, UploadRequest } from '@/components/platform/chat/types';
+import { normalizeMessages } from '@/components/platform/chat/normalizeMessages';
 import type { Attachment } from '@/types/agent-events';
 import type { ChatStreamEventType } from '@/components/platform/personas/usePersonaAnimationState';
 
@@ -94,7 +95,8 @@ function reconcileParts(parts: MessagePart[] | undefined, fullText: string): Mes
  * hence a message may host at most one *unresolved* request at a time.
  */
 function hasUnresolvedRequest(m: Message): boolean {
-    return m.clarificationRequest?.status === 'pending' || m.uploadRequest?.status === 'pending';
+    return (m.clarificationRequests ?? []).some(r => r.status === 'pending')
+        || (m.uploadRequests ?? []).some(r => r.status === 'pending');
 }
 
 /**
@@ -112,17 +114,24 @@ function hasUnresolvedRequest(m: Message): boolean {
  *
  * A message already blocking on an unresolved request of the *other* kind can't
  * host this one (two stacked overlays), so that case falls back to a placeholder
- * message of its own. A *resolved* request of the same kind is replaced: the
- * message holds exactly one object per kind (that's what chat/page.tsx's answer
- * handlers mutate), and the superseded part renders nothing once its id stops
- * matching — which is what lets a second clarification round stay inline in the
- * same turn instead of splitting the turn across two rows.
+ * message of its own. A resolved request of the same kind is APPENDED next to,
+ * never replaced: a turn that asks three times keeps all three request objects
+ * (and three parts), so each round's resolved card keeps rendering at its own
+ * position. Replacing them — the original shape — left the two earlier parts
+ * pointing at ids that no longer existed, and their cards silently vanished.
  */
+function appendRequest(m: Message, kind: 'clarification' | 'upload', request: ClarificationRequest | UploadRequest): Partial<Message> {
+    return kind === 'clarification'
+        ? { clarificationRequests: [...(m.clarificationRequests ?? []), request as ClarificationRequest] }
+        : { uploadRequests: [...(m.uploadRequests ?? []), request as UploadRequest] };
+}
+
 function attachInTurnRequest(
     data: Message[],
     turnMessageId: string | undefined,
     conversationId: string,
-    patch: Pick<Message, 'clarificationRequest'> | Pick<Message, 'uploadRequest'>,
+    kind: 'clarification' | 'upload',
+    request: ClarificationRequest | UploadRequest,
     part: MessagePart,
 ): Message[] {
     const idx = turnMessageId
@@ -130,10 +139,10 @@ function attachInTurnRequest(
         : data.findIndex(m => m.isStreaming === true && m.role === 'assistant');
     if (idx >= 0 && !hasUnresolvedRequest(data[idx])) {
         const next = [...data];
-        next[idx] = { ...next[idx], ...patch, parts: [...(next[idx].parts ?? []), part] };
+        next[idx] = { ...next[idx], ...appendRequest(next[idx], kind, request), parts: [...(next[idx].parts ?? []), part] };
         return next;
     }
-    const msg: Message = {
+    const base: Message = {
         // Only adopt the turn id when no row for it exists yet; a blocked
         // existing turn must not be overwritten by its own placeholder.
         id: idx < 0 && turnMessageId ? turnMessageId : crypto.randomUUID(),
@@ -141,10 +150,9 @@ function attachInTurnRequest(
         role: 'assistant',
         content: '',
         createdAt: new Date().toISOString(),
-        ...patch,
         parts: [part],
     };
-    return [...data, msg];
+    return [...data, { ...base, ...appendRequest(base, kind, request) }];
 }
 
 interface Params {
@@ -345,7 +353,11 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                         queryKey: ['messages', conversationId],
                         queryFn: () => api.get<MessagesResponse>(`/api/v1/conversations/${conversationId}/messages`),
                     }).then(fresh => {
-                        const idx = fresh.data.findIndex(m => m.id === messageId);
+                        // The server still stores one clarification/upload request
+                        // per message row — lift it into the client's per-round
+                        // list shape before it reaches the cache.
+                        const normalized = normalizeMessages(fresh.data);
+                        const idx = normalized.findIndex(m => m.id === messageId);
                         if (idx < 0) {
                             if (attempt < 4) setTimeout(() => reconcile(attempt + 1), 2000);
                             return;
@@ -353,7 +365,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                         // The DB only stores the {elapsedSec, toolCallCount} summary of
                         // completedTrace, not the detailed per-call cards this `trace`
                         // object carries — re-merge the full client trace back on.
-                        const data = [...fresh.data];
+                        const data = [...normalized];
                         if (hadTrace) data[idx] = { ...data[idx], ...trace };
                         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], { data });
                     }).catch(() => {
@@ -464,7 +476,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                     old ? [...old.data] : [],
                     turnMessageId,
                     conversationIdRef.current!,
-                    { clarificationRequest: request },
+                    'clarification',
+                    request,
                     { seq, type: 'clarification', clarificationId },
                 );
                 return { data };
@@ -481,7 +494,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                     old ? [...old.data] : [],
                     turnMessageId,
                     conversationIdRef.current!,
-                    { uploadRequest: request },
+                    'upload',
+                    request,
                     { seq, type: 'upload', uploadId },
                 );
                 return { data };

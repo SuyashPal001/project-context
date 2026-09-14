@@ -9,7 +9,7 @@ import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
-import { findPendingRequestMessage } from "./pendingRequests";
+import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
 import { UploadRequestCard } from "./UploadRequestCard";
 import { ApproveCost } from "@/components/platform/credits/ApproveCost";
@@ -106,11 +106,13 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // instead of rendering inline — MessageItem deliberately skips it while pending.
     // Scanned back from the end rather than read off the last row: a clarification
     // is attached to the assistant turn it interrupted, which need not be the last
-    // message in the list (see findPendingRequestMessage).
-    const pendingClarificationMessage = findPendingRequestMessage(messages, 'clarificationRequest');
-    const pendingGenerationConfirmMessage = findPendingRequestMessage(messages, 'generationConfirmRequest');
-    const pendingUploadMessage = findPendingRequestMessage(messages, 'uploadRequest');
-    const awaitingReply = pendingClarificationMessage !== undefined || pendingUploadMessage !== undefined;
+    // message in the list (see findPendingClarification). A turn can hold
+    // several rounds of the same kind — these return the one still pending (if
+    // any), never an already-resolved round whose card renders inline instead.
+    const pendingClarification = findPendingClarification(messages);
+    const pendingGenerationConfirm = findPendingGenerationConfirm(messages);
+    const pendingUpload = findPendingUpload(messages);
+    const awaitingReply = pendingClarification !== undefined || pendingUpload !== undefined;
     // The three overlays below are each a full-panel `absolute inset-0 z-40`
     // takeover, so two of them pending at once (an upload request raised while a
     // clarification is still unanswered — parallel tool calls in one step, or a
@@ -119,9 +121,9 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     // renders: the earliest-asked still-pending request, i.e. the one the user
     // was asked to answer first. The others reappear as soon as it resolves.
     const overlayCandidates: Array<{ kind: 'clarification' | 'generationConfirm' | 'upload'; message: Message }> = [
-        ...(pendingClarificationMessage ? [{ kind: 'clarification' as const, message: pendingClarificationMessage }] : []),
-        ...(pendingGenerationConfirmMessage ? [{ kind: 'generationConfirm' as const, message: pendingGenerationConfirmMessage }] : []),
-        ...(pendingUploadMessage ? [{ kind: 'upload' as const, message: pendingUploadMessage }] : []),
+        ...(pendingClarification ? [{ kind: 'clarification' as const, message: pendingClarification.message }] : []),
+        ...(pendingGenerationConfirm ? [{ kind: 'generationConfirm' as const, message: pendingGenerationConfirm.message }] : []),
+        ...(pendingUpload ? [{ kind: 'upload' as const, message: pendingUpload.message }] : []),
     ];
     const activeOverlay = overlayCandidates.length > 0
         ? overlayCandidates.reduce((a, b) => (messages.indexOf(a.message) <= messages.indexOf(b.message) ? a : b)).kind
@@ -412,17 +414,17 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 )}
             </div>
         </div>
-        {activeOverlay === 'clarification' && pendingClarificationMessage && (
+        {activeOverlay === 'clarification' && pendingClarification && (
             // Anchored toward the bottom of the panel (near where ChatInput sits just
             // below this wrapper) rather than dead-center, so it reads as the next
             // step in the conversation instead of a modal dropped in empty space.
             <div className="absolute inset-0 z-40 flex items-end justify-center pb-6 bg-background/90 backdrop-blur-sm px-4">
                 <ClarificationCard
-                    key={pendingClarificationMessage.clarificationRequest!.id}
-                    request={pendingClarificationMessage.clarificationRequest!}
+                    key={pendingClarification.request.id}
+                    request={pendingClarification.request}
                     onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
-                        pendingClarificationMessage.id,
-                        pendingClarificationMessage.clarificationRequest!.id,
+                        pendingClarification.message.id,
+                        pendingClarification.request.id,
                         answer.questionIndex,
                         { selectedIndex: answer.selectedIndex, selectedIndices: answer.selectedIndices, freeText: answer.freeText, skipped: answer.skipped, files: answer.files },
                         allAnswered,
@@ -430,30 +432,30 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                 />
             </div>
         )}
-        {activeOverlay === 'generationConfirm' && pendingGenerationConfirmMessage && (
+        {activeOverlay === 'generationConfirm' && pendingGenerationConfirm && (
             // Same "anchored toward the bottom" takeover wrapper as the clarification
             // overlay above — ApproveCost is the only input surface while a generation
             // confirm request is pending.
             <div className="absolute inset-0 z-40 flex items-end justify-center pb-10 bg-background/90 backdrop-blur-md px-4">
                 <ApproveCost
-                    label={pendingGenerationConfirmMessage.generationConfirmRequest!.label}
-                    resourceType={toCreditResourceType(pendingGenerationConfirmMessage.generationConfirmRequest!.resourceType)}
-                    subject={pendingGenerationConfirmMessage.generationConfirmRequest!.subject}
-                    preview={pendingGenerationConfirmMessage.generationConfirmRequest!.preview}
-                    onApprove={() => onGenerationConfirm?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id)}
-                    onCancel={(reason) => onGenerationDecline?.(pendingGenerationConfirmMessage.id, pendingGenerationConfirmMessage.generationConfirmRequest!.id, reason)}
+                    label={pendingGenerationConfirm.request.label}
+                    resourceType={toCreditResourceType(pendingGenerationConfirm.request.resourceType)}
+                    subject={pendingGenerationConfirm.request.subject}
+                    preview={pendingGenerationConfirm.request.preview}
+                    onApprove={() => onGenerationConfirm?.(pendingGenerationConfirm.message.id, pendingGenerationConfirm.request.id)}
+                    onCancel={(reason) => onGenerationDecline?.(pendingGenerationConfirm.message.id, pendingGenerationConfirm.request.id, reason)}
                 />
             </div>
         )}
-        {activeOverlay === 'upload' && pendingUploadMessage && (
+        {activeOverlay === 'upload' && pendingUpload && (
             // Same anchored takeover wrapper as clarification/generation-confirm above.
             <div className="absolute inset-0 z-40 flex items-end justify-center pb-10 bg-background/90 backdrop-blur-md px-4">
                 <UploadRequestCard
-                    key={pendingUploadMessage.uploadRequest!.id}
-                    request={pendingUploadMessage.uploadRequest!}
+                    key={pendingUpload.request.id}
+                    request={pendingUpload.request}
                     onAnswer={(answer) => onUploadAnswer?.(
-                        pendingUploadMessage.id,
-                        pendingUploadMessage.uploadRequest!.id,
+                        pendingUpload.message.id,
+                        pendingUpload.request.id,
                         answer,
                     ) ?? Promise.resolve(true)}
                 />

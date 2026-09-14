@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Terminal, Info, RotateCcw, Pencil, Check, X } from "lucide-react";
-import { Message, MessagePart, PlanResult, ToolCall, CompletedToolCall } from "./types";
+import { ClarificationRequest, Message, MessagePart, PlanResult, ToolCall, CompletedToolCall, UploadRequest } from "./types";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import ReactMarkdown from 'react-markdown';
@@ -38,8 +38,8 @@ export function messageHasDisplayedContent(message: Message): boolean {
         message.artifactRef ||
         message.planResult ||
         (message.toolCalls && message.toolCalls.length > 0) ||
-        (message.clarificationRequest && message.clarificationRequest.status !== 'pending') ||
-        (message.uploadRequest && message.uploadRequest.status !== 'pending')
+        (message.clarificationRequests ?? []).some(r => r.status !== 'pending') ||
+        (message.uploadRequests ?? []).some(r => r.status !== 'pending')
     );
 }
 
@@ -144,33 +144,35 @@ export function MessageItem({
     const parts: MessagePart[] | undefined = isAssistant && !message.planResult ? message.parts : undefined;
     const hasParts = !!parts && parts.length > 0;
 
-    // Built once and placed either by the parts list (in arrival order) or by
-    // the legacy fixed slots at the bottom — never both.
+    // One card per request ROUND — a turn can ask several times (see
+    // Message.clarificationRequests), and each round's card is placed either by
+    // the parts list (in arrival order, matched on its own id) or by the legacy
+    // fixed slots at the bottom — never both.
     // Pending requests render as a panel-wide takeover overlay (see
-    // MessageThread) instead of inline, which is why both are null while pending.
-    const clarificationCard = message.clarificationRequest && message.clarificationRequest.status !== 'pending' ? (
+    // MessageThread) instead of inline, which is why they're skipped here.
+    const renderClarificationCard = (request: ClarificationRequest) => request.status === 'pending' ? null : (
         <ClarificationCard
-            request={message.clarificationRequest}
+            request={request}
             onAnswer={(answer, allAnswered) => onClarificationAnswer?.(
                 message.id,
-                message.clarificationRequest!.id,
+                request.id,
                 answer.questionIndex,
                 { selectedIndex: answer.selectedIndex, selectedIndices: answer.selectedIndices, freeText: answer.freeText, skipped: answer.skipped },
                 allAnswered,
             ) ?? Promise.resolve(true)}
         />
-    ) : null;
+    );
 
-    const uploadCard = message.uploadRequest && message.uploadRequest.status !== 'pending' ? (
+    const renderUploadCard = (request: UploadRequest) => request.status === 'pending' ? null : (
         <UploadRequestCard
-            request={message.uploadRequest}
+            request={request}
             onAnswer={(answer) => onUploadAnswer?.(
                 message.id,
-                message.uploadRequest!.id,
+                request.id,
                 answer,
             ) ?? Promise.resolve(true)}
         />
-    ) : null;
+    );
 
     // Nothing to show for this row at all — skip it entirely rather than
     // rendering an empty avatar+label block. Only applies to assistant
@@ -243,17 +245,20 @@ export function MessageItem({
                                     </div>
                                 );
                             }
-                            // Request parts hold only the id — the request itself lives
+                            // Request parts hold only the id — the request objects live
                             // on the message (that's what the answer handlers mutate),
-                            // so a part whose id no longer matches renders nothing.
+                            // one entry per round, so each part resolves its OWN round
+                            // by id and a part matching no entry renders nothing.
                             if (part.type === 'clarification') {
-                                return message.clarificationRequest?.id === part.clarificationId
-                                    ? <div key={part.seq} className="w-full">{clarificationCard}</div>
+                                const request = message.clarificationRequests?.find(r => r.id === part.clarificationId);
+                                return request
+                                    ? <div key={part.seq} className="w-full">{renderClarificationCard(request)}</div>
                                     : null;
                             }
                             if (part.type === 'upload') {
-                                return message.uploadRequest?.id === part.uploadId
-                                    ? <div key={part.seq} className="w-full">{uploadCard}</div>
+                                const request = message.uploadRequests?.find(r => r.id === part.uploadId);
+                                return request
+                                    ? <div key={part.seq} className="w-full">{renderUploadCard(request)}</div>
                                     : null;
                             }
                             return null;
@@ -392,8 +397,12 @@ export function MessageItem({
                     reloaded from the server, or one whose parts couldn't be
                     reconciled). When parts exist these same cards are placed by
                     the parts list above, at the point they were received. */}
-                {!hasParts && clarificationCard}
-                {!hasParts && uploadCard}
+                {!hasParts && (message.clarificationRequests ?? []).map(request => (
+                    <div key={request.id} className="w-full">{renderClarificationCard(request)}</div>
+                ))}
+                {!hasParts && (message.uploadRequests ?? []).map(request => (
+                    <div key={request.id} className="w-full">{renderUploadCard(request)}</div>
+                ))}
 
                 {message.toolCalls && message.toolCalls.length > 0 && (
                     <div className="w-full mt-2">

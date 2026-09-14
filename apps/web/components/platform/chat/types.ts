@@ -168,10 +168,16 @@ export interface CompletedTrace {
  * order, as `Message.parts`, each tagged with a monotonic `seq` assigned at
  * receipt time, and MessageItem renders that list directly.
  *
- * Request parts carry only the id: the request object itself stays on the
- * message (`clarificationRequest` / `uploadRequest`), which is what the answer
+ * Request parts carry only the id: the request objects themselves stay on the
+ * message (`clarificationRequests` / `uploadRequests`), which is what the answer
  * handlers in chat/page.tsx mutate, so there is exactly one source of truth for
- * its status/answers. A part whose id no longer matches renders nothing.
+ * each one's status/answers. A part whose id matches no entry renders nothing.
+ *
+ * Those two fields are LISTS, one entry per round, precisely because a single
+ * turn can ask several times ("which repo?" → answer → work → "which branch?"
+ * → answer → work). They were single objects once; each new round overwrote the
+ * previous one, so every earlier round's part stopped matching and its resolved
+ * card silently vanished from the transcript.
  *
  * `tool_call` exists so the model covers everything that lands in a turn, but
  * is not populated today — live tool calls render through LiveTrace /
@@ -201,8 +207,13 @@ export interface Message {
     toolCalls?: ToolCall[];
     approvalRequest?: ApprovalRequest;
     generationConfirmRequest?: GenerationConfirmRequest;
-    clarificationRequest?: ClarificationRequest;
-    uploadRequest?: UploadRequest;
+    /** Every clarification round raised during this turn, in the order they
+     *  were asked — see the note above MessagePart. At most one entry is ever
+     *  'pending'; the rest are resolved rounds kept so their summary cards keep
+     *  rendering at their own positions. */
+    clarificationRequests?: ClarificationRequest[];
+    /** Same as clarificationRequests, for upload requests. */
+    uploadRequests?: UploadRequest[];
     isStreaming?: boolean;
     attachments?: MessageAttachment[];
     planResult?: PlanResult;

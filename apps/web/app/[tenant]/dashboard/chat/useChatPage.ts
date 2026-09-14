@@ -8,6 +8,7 @@ import { greetingName } from "@/lib/greetingName";
 import { useSidebar } from '@/components/platform/SidebarContext';
 import { useTenant } from '@/app/[tenant]/tenant-provider';
 import { toast } from 'sonner';
+import { normalizeMessages } from '@/components/platform/chat/normalizeMessages';
 import type { PillType } from '@/components/platform/chat/WizardView';
 import type { Conversation, ConversationsResponse, MessagesResponse } from '@/components/platform/chat/types';
 import type { Agent } from '@/components/platform/agents/types';
@@ -85,7 +86,10 @@ export function useChatPage() {
         queryKey: ['messages', conversationId],
         queryFn: async () => {
             const res = await api.get<MessagesResponse>(`/api/v1/conversations/${conversationId}/messages`);
-            const sorted = [...res.data].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            // The API persists a single clarification_request / upload_request
+            // per message row; the client models them as per-round lists (see
+            // Message.clarificationRequests) — normalize on the way in.
+            const sorted = normalizeMessages(res.data).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
             return { ...res, data: sorted };
         },
         enabled: !!conversationId,

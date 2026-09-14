@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { MessagesResponse } from "@/components/platform/chat/types";
-import { findPendingRequestMessage } from "@/components/platform/chat/pendingRequests";
+import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "@/components/platform/chat/pendingRequests";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -197,15 +197,15 @@ function ChatPage() {
     // redundant input, and so the overlay can expand into the freed space.
     // Same back-from-the-end scan MessageThread's overlays use — the request is
     // attached to the assistant turn it interrupted, not necessarily the last row.
-    const awaitingClarificationReply = !!findPendingRequestMessage(messages, 'clarificationRequest');
+    const awaitingClarificationReply = !!findPendingClarification(messages);
 
     // Mirrors awaitingClarificationReply: ApproveCost is the only input surface while a
     // generation confirm request is pending, so the normal composer stays hidden.
-    const awaitingGenerationConfirmReply = !!findPendingRequestMessage(messages, 'generationConfirmRequest');
+    const awaitingGenerationConfirmReply = !!findPendingGenerationConfirm(messages);
 
     // Mirrors awaitingClarificationReply: UploadRequestCard is the only input
     // surface while an upload request is pending.
-    const awaitingUploadReply = !!findPendingRequestMessage(messages, 'uploadRequest');
+    const awaitingUploadReply = !!findPendingUpload(messages);
 
     useEffect(() => {
         if (isLoadingMessages) return; // wait for messages to actually reflect `conversationId` before seeding or dispatching
@@ -414,13 +414,26 @@ function ChatPage() {
             tracker.delete(clarificationId);
             clarificationAnswersRef.current.delete(clarificationId);
             queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
-                old ? { data: old.data.map(m => m.id === messageId ? { ...m, clarificationRequest: m.clarificationRequest ? { ...m.clarificationRequest, status: finalStatus, answeredAt: new Date().toISOString(), answers } : undefined } : m) } : old
+                old ? { data: old.data.map(m => m.id === messageId ? {
+                    ...m,
+                    // A turn can hold several clarification rounds — update only
+                    // the one this answer belongs to, by id, and leave the other
+                    // rounds' resolved cards untouched.
+                    clarificationRequests: m.clarificationRequests?.map(r => r.id === clarificationId
+                        ? { ...r, status: finalStatus, answeredAt: new Date().toISOString(), answers }
+                        : r),
+                } : m) } : old
             );
         } else {
             // Persist partial progress in the local cache so the card can restore
             // from it if a reload happens before all questions are answered.
             queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
-                old ? { data: old.data.map(m => m.id === messageId ? { ...m, clarificationRequest: m.clarificationRequest ? { ...m.clarificationRequest, answers: { ...m.clarificationRequest.answers, [questionIndex]: answer } } : undefined } : m) } : old
+                old ? { data: old.data.map(m => m.id === messageId ? {
+                    ...m,
+                    clarificationRequests: m.clarificationRequests?.map(r => r.id === clarificationId
+                        ? { ...r, answers: { ...r.answers, [questionIndex]: answer } }
+                        : r),
+                } : m) } : old
             );
         }
         return true;
@@ -436,13 +449,14 @@ function ChatPage() {
             old ? {
                 data: old.data.map(m => m.id === messageId ? {
                     ...m,
-                    uploadRequest: m.uploadRequest ? {
-                        ...m.uploadRequest,
+                    // Same per-round targeting as handleClarificationAnswer above.
+                    uploadRequests: m.uploadRequests?.map(r => r.id === uploadId ? {
+                        ...r,
                         status: answer.skipped ? 'skipped' as const : 'answered' as const,
                         answeredAt: new Date().toISOString(),
                         files: answer.files.map(f => ({ fileId: f.fileId, name: f.name, type: f.type })),
                         freeText: answer.freeText,
-                    } : undefined,
+                    } : r),
                 } : m),
             } : old
         );
