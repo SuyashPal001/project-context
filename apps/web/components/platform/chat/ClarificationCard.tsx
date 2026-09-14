@@ -27,12 +27,15 @@ interface ClarificationCardProps {
     // Chevron nav lets the user jump straight to the last page and submit out
     // of order, so "last page" alone is not a safe signal that the backend's
     // full answer set is complete.
-    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }, allAnswered: boolean) => Promise<boolean>;
+    onAnswer: (answer: { questionIndex: number; selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }, allAnswered: boolean) => Promise<boolean>;
 }
 
 export function ClarificationCard({ request, onAnswer }: ClarificationCardProps) {
     const [pageIndex, setPageIndex] = useState(0);
     const [selectedByQuestion, setSelectedByQuestion] = useState<Record<number, number>>({});
+    // Only populated for multiSelect questions — parallel to selectedByQuestion,
+    // never both set for the same question index.
+    const [selectedIndicesByQuestion, setSelectedIndicesByQuestion] = useState<Record<number, Set<number>>>({});
     const [freeTextByQuestion, setFreeTextByQuestion] = useState<Record<number, string>>({});
     // Which question indices have actually been submitted (via Continue/Submit
     // or Skip) at least once — independent of `pageIndex`, since free chevron
@@ -86,15 +89,18 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
         const entries = Object.entries(request.answers ?? {});
         if (entries.length === 0) return;
         const newSelected: Record<number, number> = {};
+        const newSelectedIndices: Record<number, Set<number>> = {};
         const newFreeText: Record<number, string> = {};
         const newAnswered = new Set<number>();
         for (const [qiStr, a] of entries) {
             const qi = Number(qiStr);
             newAnswered.add(qi);
             if (a.selectedIndex !== undefined) newSelected[qi] = a.selectedIndex;
+            if (a.selectedIndices?.length) newSelectedIndices[qi] = new Set(a.selectedIndices);
             if (a.freeText) newFreeText[qi] = a.freeText;
         }
         setSelectedByQuestion(newSelected);
+        setSelectedIndicesByQuestion(newSelectedIndices);
         setFreeTextByQuestion(newFreeText);
         setAnsweredIndices(newAnswered);
         const firstUnanswered = request.questions.findIndex((_, i) => !newAnswered.has(i));
@@ -132,9 +138,11 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                             const a = answers[i];
                             const answerText = a?.skipped || !a
                                 ? 'Skipped'
-                                : a.selectedIndex !== undefined
-                                    ? q.options[a.selectedIndex]?.label ?? 'Skipped'
-                                    : a.freeText || 'Skipped';
+                                : a.selectedIndices?.length
+                                    ? a.selectedIndices.map((idx) => q.options[idx]?.label).filter(Boolean).join(', ') || 'Skipped'
+                                    : a.selectedIndex !== undefined
+                                        ? q.options[a.selectedIndex]?.label ?? 'Skipped'
+                                        : a.freeText || 'Skipped';
                             return (
                                 <div key={i} className="flex flex-col gap-1.5">
                                     <div className="text-sm font-medium">{q.prompt}</div>
@@ -152,8 +160,24 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     const total = request.questions.length;
     const question = request.questions[pageIndex];
     const selectedIndex = selectedByQuestion[pageIndex];
+    const multiSelect = question.multiSelect;
+    const selectedIndices = selectedIndicesByQuestion[pageIndex] ?? new Set<number>();
+    const multiSelectSatisfied = !!multiSelect && selectedIndices.size >= multiSelect.min;
+    const toggleOption = (i: number) => {
+        setSelectedIndicesByQuestion(prev => {
+            const current = new Set(prev[pageIndex] ?? []);
+            if (current.has(i)) {
+                current.delete(i);
+            } else {
+                if (multiSelect && current.size >= multiSelect.max) return prev; // at cap — no-op
+                current.add(i);
+            }
+            return { ...prev, [pageIndex]: current };
+        });
+    };
     const freeText = currentFreeText;
     const isLast = pageIndex === total - 1;
+    const hasAnswer = multiSelect ? multiSelectSatisfied : selectedIndex !== undefined;
 
     // Check whether accepting `pageIndex` would complete the full
     // set. Computed synchronously (not from the setState updater) since the
@@ -166,15 +190,16 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
     };
 
     const commitCurrent = async () => {
-        if (busyRef.current || (selectedIndex === undefined && !freeText.trim() && !files.length)) return;
+        if (busyRef.current || (!hasAnswer && !freeText.trim() && !files.length)) return;
         const trimmedFreeText = freeText.trim();
-        // Send whichever of selectedIndex/freeText are actually present — a user
-        // can click an option AND add free text, and both should reach the
-        // backend rather than one silently overwriting the other.
+        // Send whichever of selectedIndex/selectedIndices/freeText are actually
+        // present — a user can click option(s) AND add free text, and both
+        // should reach the backend rather than one silently overwriting the other.
         const answer = {
             questionIndex: pageIndex,
             ...(files.length ? { files } : {}),
-            ...(selectedIndex !== undefined ? { selectedIndex } : {}),
+            ...(multiSelect ? { selectedIndices: Array.from(selectedIndices).sort((a, b) => a - b) } : {}),
+            ...(!multiSelect && selectedIndex !== undefined ? { selectedIndex } : {}),
             ...(trimmedFreeText ? { freeText: trimmedFreeText } : {}),
         };
         const allAnswered = wouldCompleteAnswers();
@@ -231,32 +256,57 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                     )}
                 </div>
 
+                {multiSelect && (
+                    <div className="text-xs text-muted-foreground -mt-1">
+                        {multiSelect.min === multiSelect.max
+                            ? `Select exactly ${multiSelect.min}`
+                            : `Select ${multiSelect.min}-${multiSelect.max}`}
+                        {' · '}{selectedIndices.size} selected
+                    </div>
+                )}
                 {question.options.length > 0 && (
                 <div className="flex flex-col gap-1.5">
-                    {question.options.map((opt, i) => (
+                    {question.options.map((opt, i) => {
+                        const isChecked = multiSelect ? selectedIndices.has(i) : selectedIndex === i;
+                        const atCapUnselected = !!multiSelect && !isChecked && selectedIndices.size >= multiSelect.max;
+                        return (
                         <button
                             key={opt.label}
                             type="button"
-                            onClick={() => setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
+                            disabled={atCapUnselected}
+                            onClick={() => multiSelect ? toggleOption(i) : setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
                             className={cn(
-                                "w-full text-left rounded-xl px-3 py-2.5 border transition-colors",
+                                "w-full text-left rounded-xl px-3 py-2.5 border transition-colors flex items-start gap-2.5",
                                 // bg-muted and bg-card are the same literal color in dark mode
                                 // (see globals.css) — bg-muted/* over bg-card is invisible at any
                                 // opacity. bg-accent is this codebase's actual "neutral hover/active"
                                 // token and is a genuinely different lightness value.
-                                selectedIndex === i
+                                isChecked
                                     ? "border-primary/40 bg-primary/5"
-                                    : i === 0 && selectedIndex === undefined
-                                        ? "border-transparent bg-accent/60 hover:bg-accent"
-                                        : "border-transparent hover:bg-accent"
+                                    : atCapUnselected
+                                        ? "border-transparent opacity-40 cursor-not-allowed"
+                                        : i === 0 && !multiSelect && selectedIndex === undefined
+                                            ? "border-transparent bg-accent/60 hover:bg-accent"
+                                            : "border-transparent hover:bg-accent"
                             )}
                         >
-                            <div className="text-sm font-medium">{i + 1}. {opt.label}</div>
-                            {opt.rationale && (
-                                <div className="text-xs text-muted-foreground mt-0.5">{opt.rationale}</div>
+                            {multiSelect && (
+                                <span className={cn(
+                                    "mt-0.5 h-4 w-4 shrink-0 rounded border flex items-center justify-center",
+                                    isChecked ? "border-primary bg-primary" : "border-border",
+                                )}>
+                                    {isChecked && <span className="h-1.5 w-1.5 rounded-[1px] bg-primary-foreground" />}
+                                </span>
                             )}
+                            <div className="min-w-0">
+                                <div className="text-sm font-medium">{i + 1}. {opt.label}</div>
+                                {opt.rationale && (
+                                    <div className="text-xs text-muted-foreground mt-0.5">{opt.rationale}</div>
+                                )}
+                            </div>
                         </button>
-                    ))}
+                        );
+                    })}
                     {question.allowSkip && (
                         <button
                             type="button"
@@ -298,7 +348,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
-                                if (!busy && (selectedIndex !== undefined || freeText.trim() || files.length)) commitCurrent();
+                                if (!busy && (hasAnswer || freeText.trim() || files.length)) commitCurrent();
                                 return;
                             }
                             // Escape-to-skip only applies while the field reads as the
@@ -327,7 +377,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         <button
                             type="button"
                             onClick={commitCurrent}
-                            disabled={(selectedIndex === undefined && !freeText.trim() && !files.length) || busy}
+                            disabled={(!hasAnswer && !freeText.trim() && !files.length) || busy}
                             className={cn(
                                 "bg-primary text-primary-foreground disabled:opacity-40 flex items-center justify-center",
                                 freeText.trim()

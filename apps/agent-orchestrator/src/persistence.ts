@@ -169,13 +169,17 @@ export interface ClarificationQuestion {
   options: Array<{ label: string; rationale?: string }>
   allowFreeText?: boolean
   allowSkip?: boolean
+  /** When set, the question expects `min`-`max` options selected together
+   *  (e.g. "select exactly 3 partner logos") rather than one — the UI
+   *  renders toggleable checkboxes instead of a single-pick list. */
+  multiSelect?: { min: number; max: number }
 }
 
 export interface ClarificationRequestPayload {
   id: string
   questions: ClarificationQuestion[]
   status: 'pending' | 'answered' | 'skipped'
-  answers?: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>
+  answers?: Record<number, { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>
   answeredAt?: string
 }
 

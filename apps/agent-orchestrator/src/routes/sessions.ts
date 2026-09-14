@@ -197,7 +197,7 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
 
-  let body: { clarificationId?: unknown; files?: unknown; questionIndex?: unknown; selectedIndex?: unknown; freeText?: unknown; skipped?: unknown }
+  let body: { clarificationId?: unknown; files?: unknown; questionIndex?: unknown; selectedIndex?: unknown; selectedIndices?: unknown; freeText?: unknown; skipped?: unknown }
   try { body = await c.req.json() } catch { return c.json({ ok: false, error: 'invalid_body' }, 400, corsHeaders) }
 
   const clarificationId = typeof body.clarificationId === 'string' ? body.clarificationId.trim() : ''
@@ -248,13 +248,18 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   const answer: ClarificationAnswer = {
     files: (body.files as ClarificationAnswer['files'])?.map(({ fileId, name, type }) => ({ fileId, name, type })),
     questionIndex,
-    // selectedIndex isn't bounds-checked here — this layer doesn't know the
-    // target question's option count (only `expectedCount`, the question
-    // total). askClarifyingQuestions.ts's optional chaining on
-    // `questions[a.questionIndex]?.options[a.selectedIndex]?.label` already
-    // degrades an out-of-range value to `undefined` rather than crashing.
+    // selectedIndex/selectedIndices aren't bounds-checked here — this layer
+    // doesn't know the target question's option count (only `expectedCount`,
+    // the question total) or its multiSelect min/max. askClarifyingQuestions.ts's
+    // optional chaining on `questions[a.questionIndex]?.options[a.selectedIndex]?.label`
+    // already degrades an out-of-range value to `undefined` rather than crashing.
     selectedIndex: typeof body.selectedIndex === 'number' && Number.isInteger(body.selectedIndex) && body.selectedIndex >= 0
       ? body.selectedIndex
+      : undefined,
+    selectedIndices: Array.isArray(body.selectedIndices) && body.selectedIndices.every(
+      (i) => typeof i === 'number' && Number.isInteger(i) && i >= 0,
+    )
+      ? body.selectedIndices
       : undefined,
     freeText: typeof body.freeText === 'string' ? body.freeText : undefined,
     skipped: body.skipped === true,

@@ -50,7 +50,7 @@ interface MessageItemProps {
     isNewExchange?: boolean;
     onApprove?: (messageId: string, approvalId: string) => void;
     onDismiss?: (messageId: string, approvalId: string) => void;
-    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
+    onClarificationAnswer?: (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean }, allAnswered?: boolean) => void;
     onUploadAnswer?: (messageId: string, uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     creatingPlanId: string | null;
     planErrors: Record<string, string>;
@@ -323,7 +323,7 @@ export function MessageItem({
                             message.id,
                             message.clarificationRequest!.id,
                             answer.questionIndex,
-                            { selectedIndex: answer.selectedIndex, freeText: answer.freeText, skipped: answer.skipped },
+                            { selectedIndex: answer.selectedIndex, selectedIndices: answer.selectedIndices, freeText: answer.freeText, skipped: answer.skipped },
                             allAnswered,
                         ) ?? Promise.resolve(true)}
                     />

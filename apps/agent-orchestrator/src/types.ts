@@ -100,6 +100,8 @@ export interface ClarificationAnswer {
     files?: { fileId: string; name: string; type: string }[];
   questionIndex: number
   selectedIndex?: number
+  /** Set when the question is multiSelect — parallel to selectedIndex, never both. */
+  selectedIndices?: number[]
   freeText?: string
   skipped?: boolean
 }

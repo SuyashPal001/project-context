@@ -14,7 +14,9 @@ export const askClarifyingQuestionsTool = createTool({
   description:
     'Pause and ask the user one or more multiple-choice clarifying questions before proceeding ' +
     'with an ambiguous or underspecified request. Use this instead of guessing when the user\'s ' +
-    'intent could reasonably resolve to more than one distinct output.',
+    'intent could reasonably resolve to more than one distinct output. ' +
+    'Set multiSelect on a question when the user must pick several options together (e.g. ' +
+    '"select exactly 3 partner logos") — without it, the UI only lets them pick one option.',
   inputSchema: z.object({
     questions: z.array(z.object({
       prompt: z.string().describe('The question to ask'),
@@ -24,6 +26,10 @@ export const askClarifyingQuestionsTool = createTool({
       })).min(0).optional().default([]),
       allowFreeText: z.boolean().optional().default(true),
       allowSkip: z.boolean().optional().default(true),
+      multiSelect: z.object({
+        min: z.number().int().min(1).describe('Minimum options the user must select'),
+        max: z.number().int().min(1).describe('Maximum options the user may select'),
+      }).optional().describe('Set this when the question needs several options picked together, not one — e.g. min:3, max:3 for "select exactly 3".'),
     })).min(1),
   }),
   execute: async (inputData, execContext) => {
@@ -53,7 +59,7 @@ export const askClarifyingQuestionsTool = createTool({
 
     if (sessionId) sessionActiveClarification.set(sessionId, clarificationId)
 
-    const answers = await new Promise<Array<{ questionIndex: number; selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>>((resolve) => {
+    const answers = await new Promise<Array<{ questionIndex: number; selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>>((resolve) => {
       const timer = setTimeout(() => {
         // Timeout still returns whatever the user had already answered before
         // going idle, rather than discarding partial progress as a full blank.
@@ -66,9 +72,9 @@ export const askClarifyingQuestionsTool = createTool({
         // permanently invisible orphan once the agent produces a later message.
         if (pending?.messageId && pending?.conversationId && pending?.idToken) {
           const allSkipped = collected.length === 0 || collected.every((a) => a.skipped === true)
-          const answersMap: Record<number, { selectedIndex?: number; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }> = {}
+          const answersMap: Record<number, { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }> = {}
           for (const a of collected) {
-            answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, freeText: a.freeText, skipped: a.skipped, files: a.files }
+            answersMap[a.questionIndex] = { selectedIndex: a.selectedIndex, selectedIndices: a.selectedIndices, freeText: a.freeText, skipped: a.skipped, files: a.files }
           }
           updateClarificationRequest(pending.idToken, pending.conversationId, pending.messageId, {
             status: allSkipped ? 'skipped' : 'answered',
@@ -98,6 +104,7 @@ export const askClarifyingQuestionsTool = createTool({
         selectedLabel: a.selectedIndex !== undefined
           ? inputData.questions[a.questionIndex]?.options[a.selectedIndex]?.label
           : undefined,
+        selectedLabels: a.selectedIndices?.map((idx) => inputData.questions[a.questionIndex]?.options[idx]?.label).filter((l): l is string => !!l),
         files: a.files,
         freeText: a.freeText,
         skipped: a.skipped ?? false,

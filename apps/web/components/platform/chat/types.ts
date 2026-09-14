@@ -45,11 +45,16 @@ export interface ClarificationQuestion {
     options: ClarificationOption[];
     allowFreeText?: boolean;
     allowSkip?: boolean;
+    /** When set, the question expects min-max options selected together
+     *  (e.g. "select exactly 3 partner logos") — renders as checkboxes. */
+    multiSelect?: { min: number; max: number };
 }
 
 export interface ClarificationAnswer {
     files?: { fileId: string; name: string; type: string }[];
     selectedIndex?: number;
+    /** Set when the question is multiSelect — parallel to selectedIndex, never both. */
+    selectedIndices?: number[];
     freeText?: string;
     skipped?: boolean;
 }

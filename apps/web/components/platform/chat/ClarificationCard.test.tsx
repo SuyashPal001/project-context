@@ -44,3 +44,49 @@ it('does not count a failed answer as complete and preserves its files for retry
     fireEvent.click(screen.getByText('Submit'));
     await waitFor(() => expect(onAnswer).toHaveBeenLastCalledWith({ questionIndex: 1, selectedIndex: 0 }, false));
 });
+
+describe('multiSelect', () => {
+    const multiRequest = { id: 'q2', status: 'pending' as const, questions: [
+        { prompt: 'Pick 3 logos', allowSkip: true, multiSelect: { min: 3, max: 3 }, options: [
+            { label: 'Invercorp' }, { label: 'Burger King' }, { label: 'Disney' }, { label: 'Liquid Life' },
+        ] },
+    ] };
+
+    it('keeps Submit disabled until min is reached, then submits selectedIndices', async () => {
+        const onAnswer = vi.fn().mockResolvedValue(true);
+        render(<ClarificationCard request={multiRequest} onAnswer={onAnswer} />);
+        expect((screen.getByText('Submit') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByText('1. Invercorp'));
+        expect((screen.getByText('Submit') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByText('3. Disney'));
+        expect((screen.getByText('Submit') as HTMLButtonElement).disabled).toBe(true);
+        fireEvent.click(screen.getByText('4. Liquid Life'));
+        expect((screen.getByText('Submit') as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.click(screen.getByText('Submit'));
+        await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ questionIndex: 0, selectedIndices: [0, 2, 3] }, true));
+    });
+
+    it('toggles a selection off on a second click', async () => {
+        const onAnswer = vi.fn().mockResolvedValue(true);
+        render(<ClarificationCard request={multiRequest} onAnswer={onAnswer} />);
+        fireEvent.click(screen.getByText('1. Invercorp'));
+        fireEvent.click(screen.getByText('1. Invercorp'));
+        fireEvent.click(screen.getByText('2. Burger King'));
+        fireEvent.click(screen.getByText('3. Disney'));
+        fireEvent.click(screen.getByText('4. Liquid Life'));
+        expect((screen.getByText('Submit') as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.click(screen.getByText('Submit'));
+        await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ questionIndex: 0, selectedIndices: [1, 2, 3] }, true));
+    });
+
+    it('blocks selecting a 4th option once at max', async () => {
+        const onAnswer = vi.fn().mockResolvedValue(true);
+        render(<ClarificationCard request={multiRequest} onAnswer={onAnswer} />);
+        fireEvent.click(screen.getByText('1. Invercorp'));
+        fireEvent.click(screen.getByText('2. Burger King'));
+        fireEvent.click(screen.getByText('3. Disney'));
+        fireEvent.click(screen.getByText('4. Liquid Life')); // 4th click while already at max — should no-op
+        fireEvent.click(screen.getByText('Submit'));
+        await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ questionIndex: 0, selectedIndices: [0, 1, 2] }, true));
+    });
+});
