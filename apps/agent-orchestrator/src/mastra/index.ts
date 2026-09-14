@@ -33,6 +33,8 @@ import { pmAgent } from './agents/pmAgent.js'
 import { roadmapAgent } from './agents/roadmapAgent.js'
 import { taskAgent } from './agents/taskAgent.js'
 import { architectAgent } from './agents/architectAgent.js'
+import { directorAgent } from './agents/directorAgent.js'
+import { producerAgent } from './agents/producerAgent.js'
 
 import { roadmapWorkflow } from './workflows/roadmapWorkflow.js'
 import { taskWorkflow } from './workflows/taskWorkflow.js'
@@ -115,6 +117,8 @@ export const mastra = new Mastra({
     pm: pmAgent, // Routing supervisor — classifies intent before pmWorkflow starts
     roadmap: roadmapAgent,
     task: taskAgent,
+    director: directorAgent,
+    producer: producerAgent,
 
   },
   workflows: {
