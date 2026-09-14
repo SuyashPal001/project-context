@@ -102,7 +102,11 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
             // here was flatly wrong and told the user something happened that didn't.
             toast.success(`Opening a test chat with only "${skill.name}" active.`);
             onOpenChange(false);
-            router.push(`/${tenantSlug}/dashboard/chat?conversationId=${conversationId}`);
+            // ?id= directly, not ?conversationId= — useChatPage's own
+            // normalization redirect keeps only `id` and would silently drop
+            // `prompt` before the seed effect in chat/page.tsx ever sees it.
+            const seedPrompt = `Read the "${skill.name}" skill you have loaded and help me test it — walk me through a realistic example and ask me for whatever input you need.`;
+            router.push(`/${tenantSlug}/dashboard/chat?id=${conversationId}&prompt=${encodeURIComponent(seedPrompt)}`);
         } catch (err) {
             if (err instanceof Error && err.message === "NO_ACTIVE_AGENTS") {
                 toast.error("No active agents available. Please create one first.");

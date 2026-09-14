@@ -2,7 +2,7 @@
 
 import { useCallback, Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { PLANS } from "@/components/platform/billing/PlanSelectorDialog";
 import { OlmoMark } from "@/components/platform/OlmoMark";
@@ -52,6 +52,7 @@ const EMPTY_STATE_LIBRARY_TABS = [
 
 function ChatPage() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const folderId = parseFolderId(searchParams.get('folderId'));
     const page = useChatPage();
     const {
@@ -278,19 +279,42 @@ function ChatPage() {
         setPendingAllowMode(null);
     }, [pendingFirstMessage, conversationId, isLoadingMessages, messages.length, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // A caller (e.g. the Skills page's "+ Create skill" button) can seed the
-    // very first message via ?prompt= on a fresh /chat URL, same idea as the
-    // empty-state composer's own onSend below — queue it as pendingFirstMessage
-    // and let handleNewChat's default agent pick it up. No router.replace here
-    // to strip the param: createConversation's own onSuccess already
-    // router.push()es to a fresh `?id=...` query string, which drops `prompt`
-    // on its own — an extra navigation call racing that one only risked
-    // clobbering it before the conversation existed. Guarded by a ref so a
-    // re-render before that push lands never queues it twice.
+    // A caller (e.g. the Skills page's "+ Create skill" button, or
+    // SkillDetailModal's "Test in chat") can seed the very first message via
+    // ?prompt= on a /chat URL — same idea as the empty-state composer's own
+    // onSend below — queue it as pendingFirstMessage. Two shapes:
+    //   - No ?id= yet: let handleNewChat's default agent create one first
+    //     (create_skill flow). No router.replace to strip the param —
+    //     createConversation's own onSuccess already router.push()es to a
+    //     fresh `?id=...`, which drops `prompt` on its own.
+    //   - ?id= already present (Test in chat — the conversation exists
+    //     before navigation): just queue the send once its messages have
+    //     settled empty. Note: this must arrive as ?id=, not
+    //     ?conversationId= — useChatPage's own ?conversationId= -> ?id=
+    //     normalization (its own router.replace) keeps only `id`, silently
+    //     dropping `prompt` before this effect ever sees it.
+    // Guarded by a ref so a re-render before either path settles never
+    // queues it twice.
     const seededPromptFiredRef = useRef(false);
     useEffect(() => {
         const seededPrompt = searchParams.get('prompt');
-        if (!seededPrompt || seededPromptFiredRef.current || conversationId) return;
+        if (!seededPrompt || seededPromptFiredRef.current) return;
+        // searchParams.get already URL-decodes — decoding again here would
+        // throw on a prompt containing a literal '%' character.
+        if (conversationId) {
+            if (isLoadingMessages) return;
+            seededPromptFiredRef.current = true;
+            // An existing conversation may already have messages (e.g. the
+            // param survived a back-navigation) — never inject into one that
+            // isn't actually fresh.
+            if (messages.length === 0) setPendingFirstMessage(seededPrompt);
+            // No onSuccess push to piggyback on here (unlike the create-skill
+            // path below) — this conversation already existed, so strip the
+            // param ourselves once consumed, or a reload would leave a stale
+            // ?prompt= sitting in the address bar indefinitely.
+            router.replace(`/${tenantSlug}/dashboard/chat?id=${conversationId}`);
+            return;
+        }
         // handleNewChat() with no agentId falls back to activeAgents[0] — on a
         // fresh /chat visit (no react-query cache yet) that array is still []
         // while the ['agents'] query is in flight, so firing before it
@@ -298,12 +322,10 @@ function ChatPage() {
         // ever finding Olmo. Wait for it to settle first.
         if (isLoadingAgents) return;
         seededPromptFiredRef.current = true;
-        // searchParams.get already URL-decodes — decoding again here would
-        // throw on a prompt containing a literal '%' character.
         setPendingFirstMessage(seededPrompt);
         handleNewChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchParams, conversationId, isLoadingAgents]);
+    }, [searchParams, conversationId, isLoadingAgents, isLoadingMessages, messages.length]);
 
     const noopActivity = useCallback(() => {}, []);
 
