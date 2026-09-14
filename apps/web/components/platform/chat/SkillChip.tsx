@@ -7,7 +7,11 @@ import type { Skill } from "@/components/platform/skills/types";
 interface SkillChipProps {
     // Only id (icon seed) and name are rendered.
     skill: Pick<Skill, "id" | "name">;
-    onRemove: () => void;
+    // Omit entirely to render a locked chip with no remove button — used for
+    // a Test-in-chat conversation, where the whole point is that exactly this
+    // one skill stays active; removing it would silently lie about what
+    // chatStream.ts actually does (it forces testSkillInstallId regardless).
+    onRemove?: () => void;
 }
 
 /**
@@ -21,14 +25,16 @@ export function SkillChip({ skill, onRemove }: SkillChipProps) {
         <div className="flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-secondary border border-border text-xs w-fit">
             <SkillIcon seed={skill.id} className="h-5 w-5 rounded-full shrink-0" />
             <span className="font-medium text-foreground truncate max-w-[160px]">{skill.name}</span>
-            <button
-                type="button"
-                onClick={onRemove}
-                title="Dismiss"
-                className="h-4 w-4 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive shrink-0"
-            >
-                <X className="w-3 h-3" />
-            </button>
+            {onRemove && (
+                <button
+                    type="button"
+                    onClick={onRemove}
+                    title="Dismiss"
+                    className="h-4 w-4 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive shrink-0"
+                >
+                    <X className="w-3 h-3" />
+                </button>
+            )}
         </div>
     );
 }

@@ -607,7 +607,7 @@ export function ChatInput({
                                 <SkillChip
                                     key={skill.installId}
                                     skill={{ id: skill.skillId, name: skill.name }}
-                                    onRemove={() => onRemoveInvokedSkill?.(skill.skillId)}
+                                    onRemove={isTestChat ? undefined : () => onRemoveInvokedSkill?.(skill.skillId)}
                                 />
                             ))}
                         </div>

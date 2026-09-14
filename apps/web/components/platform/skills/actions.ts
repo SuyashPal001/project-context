@@ -125,7 +125,16 @@ export async function startSkillTestChat(
         // only has one skill active — the title is the one cheap, always-visible
         // signal ChatHeader already renders for any conversation.
         title: `Testing: ${skill.name}`,
-        metadata: { testSkillInstallId: skill.installId },
+        metadata: {
+            testSkillInstallId: skill.installId,
+            // ChatInput already renders invokedSkills as SkillChips and already
+            // disables the "/" picker via isTestChat (chatInputSkillTrigger) —
+            // that whole mechanism just had nothing to render, because
+            // chatStream.ts deliberately never populates invokedSkills for a
+            // test chat (it forces testSkillInstallId regardless). Seeding it
+            // here at creation makes the existing chip UI show the locked skill.
+            invokedSkills: [{ installId: skill.installId, skillId: skill.id, name: skill.name }],
+        },
     });
 
     return { conversationId: conversation.data.id, agentId: agent.id };

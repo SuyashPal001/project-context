@@ -118,18 +118,31 @@ describe("resolveDefaultAgent", () => {
 describe("startSkillTestChat", () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it("creates a conversation with the default agent then attaches the skill", async () => {
-        vi.mocked(api.post)
-            .mockResolvedValueOnce({ data: { id: "conv-1" } })
-            .mockResolvedValueOnce({});
+    // Test-in-chat is conversation-scoped only — it never attaches to the
+    // agent (see startSkillTestChat's own doc comment). A single POST to
+    // /conversations carries everything: a real title (ChatHeader shows it
+    // instead of the generic "Chat with Olmo"), testSkillInstallId (read by
+    // chatStream.ts to force just this skill's body into the turn), and a
+    // seeded invokedSkills entry (so ChatInput renders the locked SkillChip
+    // that's already there for real attached skills — no separate code path).
+    it("creates a conversation scoped to exactly this skill, with no separate attach call", async () => {
+        vi.mocked(api.post).mockResolvedValueOnce({ data: { id: "conv-1" } });
 
         const result = await startSkillTestChat(makeSkill(), [makeAgent()]);
 
         expect(result).toEqual({ conversationId: "conv-1", agentId: "agent-1" });
-        expect(api.post).toHaveBeenNthCalledWith(1, "/api/v1/conversations", { agentId: "agent-1" });
-        expect(api.post).toHaveBeenNthCalledWith(2, "/api/v1/agents/agent-1/skills", {
-            name: "PDF Tools",
-            installId: "11111111-1111-4111-8111-111111111111",
+        expect(api.post).toHaveBeenCalledTimes(1);
+        expect(api.post).toHaveBeenCalledWith("/api/v1/conversations", {
+            agentId: "agent-1",
+            title: "Testing: PDF Tools",
+            metadata: {
+                testSkillInstallId: "11111111-1111-4111-8111-111111111111",
+                invokedSkills: [{
+                    installId: "11111111-1111-4111-8111-111111111111",
+                    skillId: "22222222-2222-4222-8222-222222222222",
+                    name: "PDF Tools",
+                }],
+            },
         });
     });
 
