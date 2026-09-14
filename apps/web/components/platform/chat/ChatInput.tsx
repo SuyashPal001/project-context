@@ -538,6 +538,13 @@ export function ChatInput({
                     (motion-safe:), so generating briefly shows the unspun conic
                     layer rather than the linear one — an acceptable tradeoff for a
                     state that's transient by definition. */}
+                {/* Persistent, not toast-triggered — the toast (showTestChatHint) only
+                    fires if the user tries "/" first; this is visible from the start,
+                    outside the composer's own rounded border, explaining why the chip
+                    inside it has no remove button. */}
+                {isTestChat && (
+                    <div className="px-4 pb-2 text-xs text-muted-foreground">{TEST_CHAT_SKILL_HINT}</div>
+                )}
                 {(() => {
                     const isGenerating = isLoading || isStreaming;
                     const isActive = isGenerating || content.trim().length > 0 || mentionedAgents.length > 0;
@@ -602,7 +609,7 @@ export function ChatInput({
                     )}
 
                     {visibleInvokedSkills.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
+                        <div className="flex flex-wrap gap-1.5 px-4 pt-3">
                             {visibleInvokedSkills.map(skill => (
                                 <SkillChip
                                     key={skill.installId}
@@ -610,12 +617,6 @@ export function ChatInput({
                                     onRemove={isTestChat ? undefined : () => onRemoveInvokedSkill?.(skill.skillId)}
                                 />
                             ))}
-                            {/* Persistent, not toast-triggered — the toast (showTestChatHint)
-                                only fires if the user tries "/" first; this is visible from
-                                the start, explaining why the chip above has no remove button. */}
-                            {isTestChat && (
-                                <span className="text-xs text-muted-foreground">{TEST_CHAT_SKILL_HINT}</span>
-                            )}
                         </div>
                     )}
 
