@@ -51,6 +51,12 @@ function isDirectorDelegateTool(toolName: string): boolean {
 function isProducerDelegateTool(toolName: string): boolean {
   return toolName === 'agent-producer' || toolName === 'agent_producer';
 }
+function isPmDelegateTool(toolName: string): boolean {
+  return toolName === 'agent-pm' || toolName === 'agent_pm';
+}
+function isArchitectDelegateTool(toolName: string): boolean {
+  return toolName === 'agent-architect' || toolName === 'agent_architect';
+}
 
 // generateImage.ts/editImage.ts/generateSong.ts/generateVideo.ts return
 // `refused: true, refusalReason` (or `insufficientCredits: true`) on any
@@ -191,6 +197,8 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
         if (isVideoGenTool(toolName)) return { prefix: 'Generating video...', highlight: '' };
         if (isDirectorDelegateTool(toolName)) return { prefix: 'Generating visual', highlight: query ? ` — ${q}` : '...' };
         if (isProducerDelegateTool(toolName)) return { prefix: 'Generating audio', highlight: query ? ` — ${q}` : '...' };
+        if (isPmDelegateTool(toolName)) return { prefix: 'Building plan', highlight: query ? ` — ${q}` : '...' };
+        if (isArchitectDelegateTool(toolName)) return { prefix: 'Designing architecture', highlight: query ? ` — ${q}` : '...' };
     }
 
     if (toolName === 'web_search' || toolName === 'browser') return { prefix: 'Searched the web for ', highlight: q };
@@ -211,6 +219,10 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
     if (isImageGenTool(toolName)) return { prefix: toolName.includes('edit') ? 'Image edited' : 'Image generated', highlight: '' };
     if (isSongGenTool(toolName)) return { prefix: 'Song generated', highlight: '' };
     if (isVideoGenTool(toolName)) return { prefix: 'Video generated', highlight: '' };
+    if (isDirectorDelegateTool(toolName)) return { prefix: 'Visual created', highlight: query ? ` — ${q}` : '' };
+    if (isProducerDelegateTool(toolName)) return { prefix: 'Audio created', highlight: query ? ` — ${q}` : '' };
+    if (isPmDelegateTool(toolName)) return { prefix: 'Plan built', highlight: query ? ` — ${q}` : '' };
+    if (isArchitectDelegateTool(toolName)) return { prefix: 'Architecture designed', highlight: query ? ` — ${q}` : '' };
 
     const friendly = toolName.replace(/_/g, ' ').toLowerCase();
     return { prefix: done ? `Used ${friendly}` : `Using ${friendly}`, highlight: query ? ` — ${q}` : '' };

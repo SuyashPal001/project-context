@@ -256,7 +256,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
             emitStreamEvent('tool_call');
-            const query = String(args?.query ?? args?.filename ?? args?.subject ?? '');
+            const query = String(args?.query ?? args?.filename ?? args?.subject ?? args?.prompt ?? '');
             setActiveToolCalls(prev => { const next = new Map(prev); next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query }); return next; });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
             // Only open canvas when an actual save tool fires — this is the definitive signal
