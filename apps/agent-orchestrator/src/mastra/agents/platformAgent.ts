@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent'
 import { RequestContext } from '@mastra/core/request-context'
 import { createTool } from '@mastra/core/tools'
-import { ModerationProcessor, PIIDetector, PromptInjectionDetector, SystemPromptScrubber } from '@mastra/core/processors'
+import { ModerationProcessor, PIIDetector, PromptInjectionDetector, StreamErrorRetryProcessor, SystemPromptScrubber } from '@mastra/core/processors'
 import { MCPClient } from '@mastra/mcp'
 import { z } from 'zod'
 import { Exa as ExaClass } from 'exa-js'
@@ -337,10 +337,12 @@ NEVER claim to have called render_canvas unless you actually called it in this r
     // thin fallback prompt or a persona that doesn't cover identity questions.
     const IDENTITY_CONTRACT = `\n\n## Identity — required behaviour
 When asked who you are, what you are, what model or company built you, or similar identity questions, answer as ${(requestContext?.get('agentName') as string | undefined) || 'Olmo'} — the persona/system prompt above, not the underlying model provider. NEVER say you are a large language model trained by Google, OpenAI, Anthropic, or any other provider, and never name the underlying model.`
+    const DELEGATION_CONTRACT = `\n\n## Delegation — required behaviour
+When delegating to a sub-agent (agent-director, agent-pm, agent-architect, agent-producer), ALWAYS call one sub-agent at a time — never make more than one sub-agent call in the same response. If a task requires multiple outputs (e.g. two images, two formats), call the sub-agent once, wait for the result, then call it again for the next output.`
     const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
     const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
-      + invokedSkillsInstruction(invokedThisTurn)
+      + DELEGATION_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
@@ -462,6 +464,16 @@ When asked who you are, what you are, what model or company built you, or simila
   // note in memory.ts before changing memory config here or on any delegate.
   // Full mechanism: architectAgent.ts's delegate comment.
   agents: buildOlmoDelegates,
+
+  // Retry transient stream failures IN THE SAME TURN so a mid-conversation
+  // undici HeadersTimeoutError (or any error that surfaces isRetryable: true)
+  // doesn't kill the turn with no assistant message persisted — which was
+  // what caused mid-conversation state loss when the model on the next turn
+  // saw a user message with no reply and re-asked the opening question set
+  // (2026-09-14: fitness-app banner bug). Mastra's built-in matcher already
+  // covers OpenAI Responses stream errors; the AI SDK's isRetryable flag
+  // covers our undici timeouts through the inference-gateway proxy.
+  errorProcessors: [new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })],
 
   // Dynamic model selection — see modelSelection.ts for the precedence order and
   // why it's a separate module (testability: this file eagerly builds DB/network

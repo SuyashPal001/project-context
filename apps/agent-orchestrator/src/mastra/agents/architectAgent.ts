@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent'
+import { StreamErrorRetryProcessor } from '@mastra/core/processors'
 import { RequestContext } from '@mastra/core/request-context'
 
 import { tenantContextSchema, type TenantContext } from '../context.js'
@@ -7,6 +8,8 @@ import { architectMemory } from '../memory.architect.js'
 import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 
 const ARCHITECT_DESCRIPTION = 'Technical architect with full knowledge of this codebase — answers system-design and codebase questions by retrieving indexed migrations, routes, tests, and architectural patterns before answering.'
+
+const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })
 
 const architectInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
   // Per-agent override takes precedence over the hardcoded default below — same
@@ -37,7 +40,7 @@ You know about:
 - API surface: all route handlers and their contracts
 - System behavior: all test files and what they protect
 - Patterns: CLAUDE.md architectural decisions and rules`
-  const base = override ?? defaultInstructions
+  const base = override || defaultInstructions
   // Persona personality is a layer composed ahead of the base prompt, never a
   // replacement for it — see platformAgent.ts for the same pattern.
   const persona = requestContext?.get('personaPersonality') as string | undefined
@@ -53,6 +56,7 @@ export const architectAgent = new Agent({
   tools: { retrieve_knowledge: retrieveKnowledge },
   model: selectModel,
   memory: architectMemory,
+  errorProcessors: [streamErrorRetry()],
 })
 
 // Used only as Olmo's delegate (see mastra/agents/olmoDelegates.ts). No `memory`
@@ -93,4 +97,5 @@ export const architectAgentDelegate = new Agent({
   requestContextSchema: tenantContextSchema,
   tools: { retrieve_knowledge: retrieveKnowledge },
   model: selectModel,
+  errorProcessors: [streamErrorRetry()],
 })

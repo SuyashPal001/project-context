@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent'
+import { StreamErrorRetryProcessor } from '@mastra/core/processors'
 import type { RequestContext } from '@mastra/core/request-context'
 import { tenantContextSchema, type TenantContext } from '../context.js'
 import { selectModel } from './modelSelection.js'
@@ -6,6 +7,8 @@ import { getMastraMemory } from '../memory.js'
 import { generateSong } from '../tools/generateSong.js'
 
 const PRODUCER_DESCRIPTION = 'Generates instrumental music clips from a text description.'
+
+const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })
 
 const producerInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
   // Per-agent override takes precedence over the hardcoded default below — same
@@ -27,7 +30,7 @@ const producerInstructions = async ({ requestContext }: { requestContext?: Reque
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.
 - Never invent a fileId — only use one an earlier tool result actually gave you.
 - Never restate a tool result's fileId, name, fileType, or size in your reply text — the UI already renders an attachment card with that information. Reply with plain conversational text only.`
-  const base = override ?? defaultInstructions
+  const base = override || defaultInstructions
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
@@ -41,6 +44,7 @@ export const producerAgent = new Agent({
   model: selectModel,
   memory: getMastraMemory(),
   tools: { generate_song: generateSong },
+  errorProcessors: [streamErrorRetry()],
 })
 
 // Used only as Olmo's delegate — no `memory:` of its own. Note this does NOT
@@ -59,4 +63,5 @@ export const producerAgentDelegate = new Agent({
   requestContextSchema: tenantContextSchema,
   model: selectModel,
   tools: { generate_song: generateSong },
+  errorProcessors: [streamErrorRetry()],
 })

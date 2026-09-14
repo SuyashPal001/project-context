@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent'
+import { StreamErrorRetryProcessor } from '@mastra/core/processors'
 import type { RequestContext } from '@mastra/core/request-context'
 import { tenantContextSchema, type TenantContext } from '../context.js'
 import { selectModel } from './modelSelection.js'
@@ -6,6 +7,8 @@ import { getMastraMemory } from '../memory.js'
 import { generateImage } from '../tools/generateImage.js'
 import { editImage } from '../tools/editImage.js'
 import { generateVideo } from '../tools/generateVideo.js'
+
+const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })
 
 const DIRECTOR_DESCRIPTION = 'Generates and edits images from a text description.'
 
@@ -38,7 +41,7 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
   - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - "CONFIRM_BUSY": another generation confirmation is already awaiting the user's decision in this conversation — do not retry immediately; wait for the user to resolve it, or ask them directly.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.`
-  const base = override ?? defaultInstructions
+  const base = override || defaultInstructions
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
@@ -54,6 +57,7 @@ export const directorAgent = new Agent({
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
   tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo },
+  errorProcessors: [streamErrorRetry()],
 })
 
 // Used only as Olmo's delegate — no `memory:` of its own. Note this does NOT
@@ -72,4 +76,5 @@ export const directorAgentDelegate = new Agent({
   requestContextSchema: tenantContextSchema,
   model: selectModel,
   tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo },
+  errorProcessors: [streamErrorRetry()],
 })

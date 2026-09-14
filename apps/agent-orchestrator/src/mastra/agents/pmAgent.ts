@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent'
+import { StreamErrorRetryProcessor } from '@mastra/core/processors'
 import { RequestContext } from '@mastra/core/request-context'
 import { tenantContextSchema, type TenantContext } from '../context.js'
 import { selectModel } from './modelSelection.js'
@@ -11,6 +12,8 @@ import { delegationAccuracyScorer } from '../scorers/delegationAccuracy.js'
 import { clarityBeforeDelegateScorer } from '../scorers/clarityBeforeDelegate.js'
 
 const PM_DESCRIPTION = 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.'
+
+const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })
 
 const pmInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
   // Per-agent override takes precedence over the hardcoded default below — same
@@ -42,7 +45,7 @@ const pmInstructions = async ({ requestContext }: { requestContext?: RequestCont
 - Never return raw JSON to the user
 - Never write PRD content, milestones, or tasks yourself — always delegate
 - If the request is ambiguous, ask ONE clarifying question before delegating`
-  const base = override ?? defaultInstructions
+  const base = override || defaultInstructions
   // Persona personality is a layer composed ahead of the base prompt, never a
   // replacement for it — see platformAgent.ts for the same pattern.
   const persona = requestContext?.get('personaPersonality') as string | undefined
@@ -71,6 +74,7 @@ export const pmAgent = new Agent({
   tools: { fetchAgentContext },
   agents: { prdAgent, roadmapAgent, taskAgent },
   scorers: pmScorers,
+  errorProcessors: [streamErrorRetry()],
 })
 
 // Used only as Olmo's delegate — no `memory:` of its own. Note this does NOT
@@ -102,4 +106,5 @@ export const pmAgentDelegate = new Agent({
   tools: { fetchAgentContext },
   agents: { prdAgent, roadmapAgent, taskAgent },
   scorers: pmScorers,
+  errorProcessors: [streamErrorRetry()],
 })
