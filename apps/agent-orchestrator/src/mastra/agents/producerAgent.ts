@@ -8,7 +8,7 @@ import { generateSong } from '../tools/generateSong.js'
 
 const PRODUCER_DESCRIPTION = 'Generates instrumental music clips from a text description.'
 
-const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })
+const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
 const producerInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
   // Per-agent override takes precedence over the hardcoded default below — same

@@ -8,7 +8,7 @@ import { generateImage } from '../tools/generateImage.js'
 import { editImage } from '../tools/editImage.js'
 import { generateVideo } from '../tools/generateVideo.js'
 
-const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })
+const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
 const DIRECTOR_DESCRIPTION = 'Generates and edits images from a text description.'
 

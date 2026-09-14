@@ -9,7 +9,7 @@ import { retrieveKnowledge } from '../tools/retrieveKnowledge.js'
 
 const ARCHITECT_DESCRIPTION = 'Technical architect with full knowledge of this codebase — answers system-design and codebase questions by retrieving indexed migrations, routes, tests, and architectural patterns before answering.'
 
-const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })
+const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
 const architectInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
   // Per-agent override takes precedence over the hardcoded default below — same

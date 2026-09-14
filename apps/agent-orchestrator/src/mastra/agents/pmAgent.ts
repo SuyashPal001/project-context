@@ -13,7 +13,7 @@ import { clarityBeforeDelegateScorer } from '../scorers/clarityBeforeDelegate.js
 
 const PM_DESCRIPTION = 'PM supervisor that orchestrates PRD generation, roadmap planning, and task breakdown by delegating to specialist agents.'
 
-const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })
+const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
 const pmInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
   // Per-agent override takes precedence over the hardcoded default below — same

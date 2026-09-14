@@ -476,7 +476,7 @@ When you call agent-director (image/video) or agent-producer (audio) and get a r
   // (2026-09-14: fitness-app banner bug). Mastra's built-in matcher already
   // covers OpenAI Responses stream errors; the AI SDK's isRetryable flag
   // covers our undici timeouts through the inference-gateway proxy.
-  errorProcessors: [new StreamErrorRetryProcessor({ maxRetries: 2, delayMs: 1000 })],
+  errorProcessors: [new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })],
 
   // Dynamic model selection — see modelSelection.ts for the precedence order and
   // why it's a separate module (testability: this file eagerly builds DB/network
