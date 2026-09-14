@@ -27,14 +27,41 @@ const DEFAULT_MODEL = process.env.VERTEX_MODEL ?? 'gemini-2.5-flash';
 // OpenAI → Gemini translation (mirrors vertex.ts — kept local to avoid coupling)
 // ---------------------------------------------------------------------------
 
+// Gemini 3.x attaches `thoughtSignature` — an opaque base64 string carrying
+// the model's private reasoning state — to functionCall parts (and to `thought`
+// text parts). The API rejects follow-up turns that replay the assistant's
+// functionCall without echoing that signature back verbatim ("Function call is
+// missing a thought_signature in functionCall parts", HTTP 400). We smuggle
+// it through the OpenAI-compat protocol via tool_call.id (see encodeToolCallId
+// / decodeToolCallId below) because OpenAI's schema has no field for it.
 type GeminiPart =
-  | { text: string }
+  | { text: string; thoughtSignature?: string }
   | { inlineData: { mimeType: string; data: string } }
   | { fileData: { mimeType: string; fileUri: string } }
-  | { functionCall: { name: string; args: unknown } }
+  | { functionCall: { name: string; args: unknown }; thoughtSignature?: string }
   | { functionResponse: { name: string; response: unknown } }
 
 type GeminiContent = { role: string; parts: GeminiPart[] }
+
+// tool_call.id encoding: `gs.<base64url(signature)>.<index>` when a signature
+// is present, or `call_<id>_<index>` when not. `gs.` prefix chosen to avoid
+// colliding with OpenAI's own `call_` and any hypothetical future prefixes.
+function encodeToolCallId(index: number, streamId: string, signature: string | undefined): string {
+  if (!signature) return `call_${streamId}_${index}`
+  const b64 = Buffer.from(signature, 'utf8').toString('base64url')
+  return `gs.${b64}.${index}`
+}
+
+function decodeToolCallSignature(toolCallId: string): string | undefined {
+  if (!toolCallId.startsWith('gs.')) return undefined
+  const [, b64] = toolCallId.split('.')
+  if (!b64) return undefined
+  try {
+    return Buffer.from(b64, 'base64url').toString('utf8')
+  } catch {
+    return undefined
+  }
+}
 
 export function toGeminiParts(content: string | OpenAIContentPart[] | null): GeminiPart[] {
   if (content === null) return []
@@ -92,9 +119,15 @@ function toGeminiContents(messages: OpenAIMessage[]): {
     }
 
     if (msg.role === 'assistant' && msg.tool_calls?.length) {
-      const parts: GeminiPart[] = msg.tool_calls.map((tc) => ({
-        functionCall: { name: tc.function.name, args: safeParseJSON(tc.function.arguments) },
-      }))
+      // Echo the thoughtSignature back on each functionCall part — see
+      // encodeToolCallId/decodeToolCallSignature notes above and the 400
+      // "Function call is missing a thought_signature" error this fixes.
+      const parts: GeminiPart[] = msg.tool_calls.map((tc): GeminiPart => {
+        const signature = decodeToolCallSignature(tc.id)
+        const part: GeminiPart = { functionCall: { name: tc.function.name, args: safeParseJSON(tc.function.arguments) } }
+        if (signature) (part as { thoughtSignature?: string }).thoughtSignature = signature
+        return part
+      })
       if (msg.content) parts.unshift({ text: typeof msg.content === 'string' ? msg.content : '' })
       contents.push({ role: 'model', parts })
       continue
@@ -330,7 +363,7 @@ export class GeminiAdapter implements ProviderAdapter {
           const parts = ((candidate?.content as Record<string, unknown>)?.parts ?? []) as GeminiPart[]
 
           for (const part of parts) {
-            const p = part as { text?: string; thought?: boolean; functionCall?: { name: string; args: unknown } }
+            const p = part as { text?: string; thought?: boolean; functionCall?: { name: string; args: unknown }; thoughtSignature?: string }
             if (p.text && p.thought) {
               if (!ttftFired) { latency.observe({ adapter: 'gemini', metric: 'ttft' }, Date.now() - t0); ttftFired = true }
               res.write(`data: ${JSON.stringify(makeStreamChunk(id, modelName, { reasoning_content: p.text }))}\n\n`)
@@ -341,7 +374,10 @@ export class GeminiAdapter implements ProviderAdapter {
             } else if (p.functionCall) {
               if (!ttftFired) { latency.observe({ adapter: 'gemini', metric: 'ttft' }, Date.now() - t0); ttftFired = true }
               hasToolCalls = true
-              const callId = `call_${id}_${toolCallIndex}`
+              // Encode thoughtSignature into the tool_call.id — it is round-tripped
+              // back in toGeminiContents() above, without which Gemini 3.x rejects
+              // the follow-up turn with HTTP 400.
+              const callId = encodeToolCallId(toolCallIndex, id, p.thoughtSignature)
               res.write(`data: ${JSON.stringify(makeStreamChunk(id, modelName, {
                 tool_calls: [{
                   index: toolCallIndex, id: callId, type: 'function',
