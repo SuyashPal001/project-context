@@ -348,7 +348,7 @@ export function MessageItem({
                             <ToolCallCard
                                 key={tool.id}
                                 toolName={tool.toolName}
-                                query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
+                                query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? tool.arguments?.task ?? '')}
                                 status={tool.isLoading ? 'loading' : 'done'}
                             />
                         ))}

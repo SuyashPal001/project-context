@@ -39,6 +39,19 @@ function isMediaGenTool(toolName: string): boolean {
   return isImageGenTool(toolName) || isSongGenTool(toolName) || isVideoGenTool(toolName);
 }
 
+// Olmo delegates to these subagents (registered as 'agent-<id>', see
+// sources.ts) for a whole image/video/audio turn — their own
+// generate_image/generate_video/generate_song calls never reach this card as
+// separate tool-call events, so without this the delegate badge just shows
+// bouncing dots with zero visual for however long the subagent's turn takes.
+// Matching on the delegate name lets the same media skeleton stand in.
+function isDirectorDelegateTool(toolName: string): boolean {
+  return toolName === 'agent-director' || toolName === 'agent_director';
+}
+function isProducerDelegateTool(toolName: string): boolean {
+  return toolName === 'agent-producer' || toolName === 'agent_producer';
+}
+
 // generateImage.ts/editImage.ts/generateSong.ts/generateVideo.ts return
 // `refused: true, refusalReason` (or `insufficientCredits: true`) on any
 // failure, with no `fileId` — the model doesn't reliably relay that in its
@@ -74,8 +87,8 @@ function ToolIcon({ toolName }: { toolName: string }) {
     || toolName === 'save-tasks' || toolName === 'saveTasks'
     || toolName?.startsWith('agent-prd') || toolName?.startsWith('agent-roadmap') || toolName?.startsWith('agent-task')
     || toolName?.startsWith('workflow-prd');
-  const isImage = isImageGenTool(toolName);
-  const isSong = isSongGenTool(toolName);
+  const isImage = isImageGenTool(toolName) || isDirectorDelegateTool(toolName);
+  const isSong = isSongGenTool(toolName) || isProducerDelegateTool(toolName);
   const isVideo = isVideoGenTool(toolName);
 
   if (isVideo) return (
@@ -162,7 +175,8 @@ function ToolIcon({ toolName }: { toolName: string }) {
 
 function toolLabel(toolName: string, query: string, status: 'loading' | 'done'): { prefix: string; highlight: string } {
     const done = status === 'done';
-    const q = query ? `"${query}"` : '';
+    const truncatedQuery = query.length > 60 ? `${query.slice(0, 60)}…` : query;
+    const q = query ? `"${truncatedQuery}"` : '';
 
     if (status === 'loading') {
         if (toolName === 'web_search') return { prefix: 'Searching the web for ', highlight: q };
@@ -175,6 +189,8 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
         if (isImageGenTool(toolName)) return { prefix: toolName.includes('edit') ? 'Editing image...' : 'Generating image...', highlight: '' };
         if (isSongGenTool(toolName)) return { prefix: 'Generating song...', highlight: '' };
         if (isVideoGenTool(toolName)) return { prefix: 'Generating video...', highlight: '' };
+        if (isDirectorDelegateTool(toolName)) return { prefix: 'Generating visual', highlight: query ? ` — ${q}` : '...' };
+        if (isProducerDelegateTool(toolName)) return { prefix: 'Generating audio', highlight: query ? ` — ${q}` : '...' };
     }
 
     if (toolName === 'web_search' || toolName === 'browser') return { prefix: 'Searched the web for ', highlight: q };
@@ -222,7 +238,9 @@ export function ToolCallCard({ toolName, query, status, results, result }: ToolC
   // it lands. 'image' / 'audio' / 'video' picks the tile styling
   // (TYPE_STYLES/TYPE_BADGES already define all three) — song results render
   // as an audio attachment, video results as a video attachment.
-  const mediaSkeletonType = isImageGenTool(toolName) ? 'image' : isSongGenTool(toolName) ? 'audio' : isVideoGenTool(toolName) ? 'video' : null;
+  const mediaSkeletonType = (isImageGenTool(toolName) || isDirectorDelegateTool(toolName)) ? 'image'
+    : (isSongGenTool(toolName) || isProducerDelegateTool(toolName)) ? 'audio'
+    : isVideoGenTool(toolName) ? 'video' : null;
   const showMediaSkeleton = status === 'loading' && mediaSkeletonType !== null;
 
   return (
