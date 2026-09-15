@@ -1,8 +1,38 @@
 # Media Generation
 
-**Status: in the pipeline. Not built.** Nothing described here ships today. This
-document records the product framing and the design decisions taken so far, so
-that the eventual spec starts from settled ground rather than from scratch.
+## Creative library handoff — 2026-09-15
+
+The first creative-library milestone adds optional Templates, Avatars,
+Products, and Audio selections to Olmo's free-text composer. Selections persist as a draft,
+render as visual pills in the composer and sent message, and reach the agent as
+a structured creative brief. Preset and uploaded assets, hover previews,
+multilingual Cartesia voice previews, and the new-conversation handoff are
+covered. At the latest checkpoint, the web suite passed 337 tests, TypeScript,
+the production build, and an independent Astra review.
+
+The remaining product work is the production pipeline:
+
+1. Import product metadata and images from pasted product URLs.
+2. Generate full narration with the selected voice and language; Cartesia is
+   currently used only for library previews.
+3. Turn the selected avatar reference and narration into presenter video.
+4. Generate the script and shot plan, render scenes, and assemble narration,
+   captions, music, product shots, and transitions into a final MP4.
+5. Add generation progress, preview, regeneration, download, and version
+   history UI.
+6. Configure production provider credentials, credits, limits, retries, and
+   generation pricing.
+7. Run the creative-brief harness against the live orchestrator and verify one
+   complete real generation.
+
+The next milestone should be one vertical slice: submit a creative brief,
+generate its script and storyboard, and render one real keyframe. This proves
+the orchestration and asset path before implementing full video assembly.
+
+**Media-generation status: in the pipeline. Not built.** The creative-library
+handoff above exists, while the generation architecture described below has not
+shipped. This document records the product framing and settled design decisions
+so the eventual spec starts from known ground.
 
 ## What this platform is
 

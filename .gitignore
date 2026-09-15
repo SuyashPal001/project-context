@@ -52,6 +52,7 @@ infra/terraform/**/terraform.tfvars
 *.md
 !README.md
 !CLAUDE.md
+!AGENTS.md
 !ONBOARDING.md
 !LAUNCH-CHECKLIST.md
 # SKILL.md files are the actual instruction content for Mastra Workspace
