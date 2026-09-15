@@ -48,4 +48,11 @@ describe('delegate variants omit their own memory config', () => {
   it('pmAgentDelegate keeps the same description and sub-agent delegation as pmAgent', () => {
     expect(pmAgentDelegate.getDescription()).toBe(pmAgent.getDescription())
   })
+
+  it('directorAgent and directorAgentDelegate both expose retrieve_template', async () => {
+    const standaloneTools = await directorAgent.listTools()
+    const delegateTools = await directorAgentDelegate.listTools()
+    expect(Object.keys(standaloneTools)).toContain('retrieve_template')
+    expect(Object.keys(delegateTools)).toContain('retrieve_template')
+  })
 })
