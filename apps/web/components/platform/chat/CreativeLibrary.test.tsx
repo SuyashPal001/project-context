@@ -27,7 +27,7 @@ describe('creative library', () => {
     it('selects a typed template without inventing customer claims', () => {
         const { onSelect } = renderLibrary('templates');
         fireEvent.click(screen.getByRole('button', { name: /Testimonial/ }));
-        expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ kind: 'template', id: 'testimonial', prompt: expect.stringContaining('Do not invent customer quotes') }));
+        expect(onSelect).toHaveBeenCalledWith({ kind: 'template', id: 'testimonial', title: 'Testimonial', category: 'Social proof', image: '/creative/templates/testimonial.png' });
     });
 
     it('attaches a selected presenter preset as a still image', async () => {

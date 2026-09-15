@@ -19,7 +19,7 @@ const productAttachment = { fileId: 'product-file', name: 'serum.png', type: 'im
 
 function completeBrief(): CreativeBrief {
     return {
-        template: { kind: 'template', id: 'demo', title: 'Product Demo', category: 'Demonstration', prompt: 'Show the product in use.', image: '/creative/templates/product-demo.png' },
+        template: { kind: 'template', id: 'demo', title: 'Product Demo', category: 'Demonstration', image: '/creative/templates/product-demo.png' },
         avatar: { kind: 'avatar', id: 'arjun', name: 'Arjun', role: 'Tech presenter', tone: 'Clear', attachment: avatarAttachment },
         product: { kind: 'product-image', id: 'product-file', name: 'serum.png', attachment: productAttachment },
         voice: { kind: 'voice', id: 'nandi-id', name: 'Nandi', tagline: 'Poised narrator', language: 'hi', languageLabel: 'Hindi' },
@@ -28,9 +28,9 @@ function completeBrief(): CreativeBrief {
 
 describe('creative brief', () => {
     it('keeps one selection per field and replaces only that field', () => {
-        const first = updateCreativeBrief(createEmptyCreativeBrief(), { kind: 'template', id: 'one', title: 'One', category: 'Demo', prompt: 'One', image: '/creative/templates/one.png' });
+        const first = updateCreativeBrief(createEmptyCreativeBrief(), { kind: 'template', id: 'one', title: 'One', category: 'Demo', image: '/creative/templates/one.png' });
         const withAvatar = updateCreativeBrief(first, { kind: 'avatar', id: 'arjun', name: 'Arjun', role: 'Host', tone: 'Clear', attachment: avatarAttachment });
-        const replaced = updateCreativeBrief(withAvatar, { kind: 'template', id: 'two', title: 'Two', category: 'UGC', prompt: 'Two', image: '/creative/templates/two.png' });
+        const replaced = updateCreativeBrief(withAvatar, { kind: 'template', id: 'two', title: 'Two', category: 'UGC', image: '/creative/templates/two.png' });
         expect(replaced.template?.id).toBe('two');
         expect(replaced.avatar?.id).toBe('arjun');
     });
@@ -92,6 +92,26 @@ describe('creative brief', () => {
 
     it('counts a pending recording alongside deduplicated creative attachments', () => {
         expect(countCreativeBriefAttachments([avatarAttachment], completeBrief(), true)).toBe(3);
+    });
+
+    it('still parses a historical message annotation that carries the old prompt field', () => {
+        // Simulates a chat message persisted before this change shipped — its
+        // JSON still has `prompt` on the template selection. isTemplateSelection
+        // must accept this without requiring `prompt`, or every past templated
+        // message stops rendering the moment this ships.
+        const legacyBrief = {
+            template: { kind: 'template', id: 'demo', title: 'Product Demo', category: 'Demonstration', prompt: 'Show it.', image: '/creative/templates/product-demo.png' },
+            avatar: null, product: null, voice: null,
+        };
+        const encoded = encodeURIComponent(JSON.stringify({ direction: 'Make an ad', brief: legacyBrief })).replaceAll('-', '%2D');
+        const content = `some direction text\n\n<!-- olmo-creative-brief:v1:${encoded} -->`;
+
+        const parsed = parseCreativeBriefPresentation(content);
+
+        expect(parsed).not.toBeNull();
+        expect(parsed!.brief.template).toEqual(
+            expect.objectContaining({ id: 'demo', title: 'Product Demo', category: 'Demonstration' }),
+        );
     });
 
     it('restores valid drafts and discards malformed persisted values', () => {

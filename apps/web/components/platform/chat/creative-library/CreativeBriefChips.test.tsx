@@ -32,7 +32,7 @@ describe('CreativeBriefChips', () => {
     it('renders compact visual pills for all four creative selections', () => {
         const attachment = { fileId: 'file-1', name: 'product.jpg', type: 'image/jpeg', size: 100 };
         const brief = {
-            template: { kind: 'template' as const, id: 'demo', title: 'Product Demo', category: 'Demonstration', prompt: 'Show it.', image: '/creative/templates/product-demo.png' },
+            template: { kind: 'template' as const, id: 'demo', title: 'Product Demo', category: 'Demonstration', image: '/creative/templates/product-demo.png' },
             avatar: { kind: 'avatar' as const, id: 'mira', name: 'Mira', role: 'Creator', tone: 'Casual', image: '/creative/avatars/everyday-creator.jpg', attachment: { ...attachment, fileId: 'avatar-1', name: 'mira.jpg' } },
             product: { kind: 'product-image' as const, id: 'file-1', name: 'product.jpg', attachment },
             voice: { kind: 'voice' as const, id: 'lauren', name: 'Lauren', language: 'en', languageLabel: 'English' },
