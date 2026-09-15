@@ -11,6 +11,7 @@
  * Run with: pnpm --filter @serverless-saas/agent-api db:seed:creative-templates
  */
 
+import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 
 export interface TemplateSeed {
@@ -172,7 +173,10 @@ async function run() {
   }
 }
 
-run().catch((err) => {
-  console.error('[seed:creative-templates] failed', err);
-  process.exit(1);
-});
+const isEntrypoint = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isEntrypoint) {
+  run().catch((err) => {
+    console.error('[seed:creative-templates] failed', err);
+    process.exit(1);
+  });
+}
