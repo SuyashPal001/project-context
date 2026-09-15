@@ -12,6 +12,7 @@
  */
 import 'dotenv/config'
 import { randomUUID } from 'crypto'
+import { pathToFileURL } from 'url'
 import { RequestContext, MASTRA_RESOURCE_ID_KEY, MASTRA_THREAD_ID_KEY } from '@mastra/core/request-context'
 import { platformAgent } from '../src/mastra/index.js'
 import { getMCPClientForTenant } from '../src/mastra/tools.js'
@@ -26,8 +27,8 @@ const TEST_USER_ID   = '708f9d64-bfa0-477a-9cb5-f4f238bbeba3'
 // the harness we skip the DB round-trip and pass them explicitly.
 const ALLOWED_DELEGATES = ['agent-director', 'agent-pm', 'agent-architect', 'agent-producer']
 
-async function main() {
-  const message = process.argv.slice(2).join(' ') || 'Delegate to the Director agent and generate a small image of a red apple on a white background.'
+export async function runDirectorHarness(defaultMessage?: string) {
+  const message = process.argv.slice(2).join(' ') || defaultMessage || 'Delegate to the Director agent and generate a small image of a red apple on a white background.'
   const conversationId = randomUUID()
   const sessionId = `test-director-${Date.now()}`
 
@@ -140,4 +141,6 @@ async function main() {
   process.exit(1)
 }
 
-main().catch(err => { console.error('\n[testDirector] fatal:', err); process.exit(1) })
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  runDirectorHarness().catch(err => { console.error('\n[testDirector] fatal:', err); process.exit(1) })
+}
