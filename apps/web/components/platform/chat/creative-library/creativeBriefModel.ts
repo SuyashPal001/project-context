@@ -7,7 +7,6 @@ export interface TemplateSelection {
     id: string;
     title: string;
     category: string;
-    prompt: string;
     image: string;
 }
 
