@@ -129,20 +129,29 @@ export async function truncateMastraThread(conversationId: string, fromTimestamp
 // Working-memory template shared by the memory instances below. Extracted so
 // Olmo's dedicated instance and the shared one cannot drift apart on content
 // while deliberately differing on scope.
-const WORKING_MEMORY_TEMPLATE = `# Tenant Context
-- Product Name:
+const WORKING_MEMORY_TEMPLATE = `# Brand Context
+- Brand Name:
 - Industry:
-- Tech Stack:
-- Team Size:
-- Current Phase: [PRD | Roadmap | Tasks | Done]
-- Active PRD ID:
-- Active Plan ID:
+- Brand Voice / Tone:
+- Default Aspect Ratio:
+- Default Duration:
+- Standing Exclusions: [e.g. no competitor branding, no identifiable people]
+
+# Active Job
+- Active Template ID:
+- Casting Choice: [library avatar | uploaded reference | generated character]
+- Locked Reference Artifact IDs:
+- Production Plan Status: [analysis | casting | plan drafted | plan approved | rendering | overlay | done]
 
 # User Preferences
-- PRD Style: [technical | business | brief]
-- Milestone Detail: [detailed | summary]
-- Preferred Priority Scheme: [conservative | aggressive]
+- Casting Source: [library-first | always-generate]
+- Deep Analysis Default: [skip when contract covers it | always run]
+- Approval Mode: [per-gate | approve-plan-once]
 - Communication Style: [formal | casual]
+
+# Credit Status
+- Plan Tier:
+- Credit Balance:
 
 # Key Decisions
 - [Decision 1]
