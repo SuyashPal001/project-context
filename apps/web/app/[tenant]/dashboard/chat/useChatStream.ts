@@ -534,12 +534,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         setIsPreparingMessage(true);
         const displayContent = creativeMessageDisplayText(content);
 
-        // Auto-generate title for new conversations
-        if (!selectedConversation?.title && messages.length === 0 && displayContent.trim()) {
-            const words = displayContent.trim().split(/\s+/);
-            const title = words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
-            api.patch(`/api/v1/conversations/${conversationId}`, { title }).catch(console.error);
-        }
+        // Title is generated server-side (chatStream.ts) from the first
+        // message's content once the agent's reply is known — this flag just
+        // tells the orchestrator this is that first turn.
+        const isFirstMessage = !selectedConversation?.title && messages.length === 0 && displayContent.trim().length > 0;
 
         // Show the user's turn immediately. Resolving presigned attachment URLs
         // can take long enough for the empty-conversation welcome screen to flash
@@ -579,7 +577,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             // useChat marks the transport as streaming synchronously before its
             // first await, so control passes directly from preparation to the
             // existing streaming state without enabling the composer between.
-            const streamPromise = sendChatMessage(content, enriched, skillsUsed);
+            const streamPromise = sendChatMessage(content, enriched, skillsUsed, isFirstMessage);
             isPreparingMessageRef.current = false;
             setIsPreparingMessage(false);
             await streamPromise;

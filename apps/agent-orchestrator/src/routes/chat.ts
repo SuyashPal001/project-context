@@ -97,6 +97,7 @@ chatRouter.post('/api/chat', async (c) => {
     ? rawSkillsUsed.filter((s): s is { id: string; name: string } =>
         !!s && typeof s === 'object' && typeof (s as any).id === 'string' && typeof (s as any).name === 'string')
     : []
+  const isFirstMessage = (body as Record<string, unknown>).isFirstMessage === true
 
   if (!conversationId || (!rawMessage && attachments.length === 0)) {
     return c.json({ error: 'conversationId and message or attachments are required' }, 400)
@@ -315,7 +316,7 @@ chatRouter.post('/api/chat', async (c) => {
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream,
     isStreamClosed: () => streamClosed,
-    folderId, folderPrefix, allowMode, skillsUsed,
+    folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
   })
 
   const origin = getAllowedOrigin(c.req.header('Origin'))

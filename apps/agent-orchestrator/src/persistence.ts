@@ -104,6 +104,18 @@ export async function fetchConversationSkillSettings(idToken: string, conversati
 // Fire-and-forget, like saveUserMessage: the list only has to be there for
 // the NEXT turn, and a lost write means a "/" skill is not remembered, never
 // that something is loaded that shouldn't be.
+export function saveConversationTitle(idToken: string, conversationId: string, title: string): void {
+  fetch(`${API_BASE}/api/v1/conversations/${conversationId}`, {
+    method: 'PATCH',
+    headers: authHeaders(idToken),
+    body: JSON.stringify({ title }),
+  }).then(async (res) => {
+    if (!res.ok) console.error(`[persistence] saveConversationTitle status: ${res.status} body: ${await res.text().catch(() => '')}`)
+  }).catch((err: Error) => {
+    console.error('[persistence] saveConversationTitle error:', err.message)
+  })
+}
+
 export function saveConversationInvokedSkills(idToken: string, conversationId: string, invokedSkills: InvokedSkill[]): void {
   fetch(`${API_BASE}/api/v1/conversations/${conversationId}`, {
     method: 'PATCH',

@@ -20,7 +20,9 @@ import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
 import { pendingToolApprovals, sessionActiveToolApprovals } from '../types.js'
 import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/generationApproval.js'
-import { saveGenerationConfirmRequest, updateGenerationConfirmRequest } from '../persistence.js'
+import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle } from '../persistence.js'
+import { generateText } from 'ai'
+import { liteModel } from '../mastra/model.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
   const prompt = `Based on this conversation turn, generate exactly 3 short, natural follow-up questions the user might want to ask next.
@@ -43,6 +45,14 @@ JSON array:`
   const parsed = JSON.parse(match[0])
   if (!Array.isArray(parsed)) return []
   return parsed.filter((s: unknown) => typeof s === 'string').slice(0, 3)
+}
+
+async function generateTitle(userMessage: string): Promise<string> {
+  const result = await generateText({
+    model: liteModel,
+    prompt: `Generate a short conversation title (max 6 words, no quotes, no trailing punctuation) summarizing this user message:\n\n${userMessage.slice(0, 400)}\n\nTitle:`,
+  })
+  return result.text.trim().replace(/^["']|["']$/g, '').slice(0, 255)
 }
 
 export interface ChatStreamOpts {
@@ -69,6 +79,10 @@ export interface ChatStreamOpts {
   folderPrefix?: string
   allowMode?: 'ask' | 'auto'
   skillsUsed?: Array<{ id: string; name: string }>
+  // Client already knows whether this is the first message of the
+  // conversation (its own local message list) — cheaper than a DB round
+  // trip here to re-derive it.
+  isFirstMessage?: boolean
 }
 
 type ContentPart =
@@ -184,7 +198,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     message, displayMessage, attachments, conversationId, tenantId,
     internalUserId, idToken, agentId, sessionId, startTime,
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed,
-    folderId, folderPrefix, allowMode, skillsUsed,
+    folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
   } = opts
 
   // Heartbeat while any tool call is in flight — see sendHeartbeat's doc
@@ -661,6 +675,19 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             } catch {
               suggestedFollowUps = []
             }
+          }
+
+          // Title generation is fire-and-forget: never let it block the
+          // 'done' event, and let saveConversationTitle's own error handling
+          // absorb failures — a missing title just falls back to the
+          // frontend's "Chat with {agent}" default.
+          if (isFirstMessage) {
+            Promise.race([
+              generateTitle(message),
+              new Promise<string>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+            ]).then((title) => {
+              if (title) saveConversationTitle(idToken, conversationId, title)
+            }).catch(() => {})
           }
 
           sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, suggestedFollowUps: suggestedFollowUps.length > 0 ? suggestedFollowUps : undefined, attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined })

@@ -36,7 +36,7 @@ export interface UseChatOptions {
 }
 
 export interface UseChatReturn {
-    sendMessage: (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => Promise<void>;
+    sendMessage: (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean) => Promise<void>;
     sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
     sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined', reason?: string) => Promise<boolean>;
     sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }) => Promise<boolean>;
@@ -72,11 +72,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const parserRef = useRef(new SSEParser());
-    const sendMessageRef = useRef<((text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => Promise<void>) | null>(null);
+    const sendMessageRef = useRef<((text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean) => Promise<void>) | null>(null);
 
     const retryStartRef = useRef<number | null>(null);
     const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const pendingRetryPayloadRef = useRef<{ text: string; attachments?: Attachment[]; skillsUsed?: Array<{ id: string; name: string }> } | null>(null);
+    const pendingRetryPayloadRef = useRef<{ text: string; attachments?: Attachment[]; skillsUsed?: Array<{ id: string; name: string }>; isFirstMessage?: boolean } | null>(null);
 
     // Keep latest option callbacks in refs so they never stale-close over props.
     const onDeltaRef = useRef(onDelta);
@@ -132,6 +132,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                         pendingRetryPayloadRef.current.text,
                         pendingRetryPayloadRef.current.attachments,
                         pendingRetryPayloadRef.current.skillsUsed,
+                        pendingRetryPayloadRef.current.isFirstMessage,
                     );
                 }
             }, RETRY_INTERVAL_MS);
@@ -150,7 +151,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         setIsStreaming(false);
     }, [clearRetry]);
 
-    const sendMessage = useCallback(async (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => {
+    const sendMessage = useCallback(async (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean) => {
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
@@ -158,7 +159,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
-        pendingRetryPayloadRef.current = { text, attachments, skillsUsed };
+        pendingRetryPayloadRef.current = { text, attachments, skillsUsed, isFirstMessage };
 
         let { accessToken: token, idToken } = getAuthTokens();
 
@@ -189,6 +190,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 conversationId: conversationIdRef.current,
                 attachments,
                 ...(skillsUsed && skillsUsed.length > 0 ? { skillsUsed } : {}),
+                ...(isFirstMessage ? { isFirstMessage: true } : {}),
                 ...(folderIdRef.current ? { folderId: folderIdRef.current } : {}),
                 ...(folderPrefixRef.current ? { folderPrefix: folderPrefixRef.current } : {}),
                 ...(allowModeRef.current ? { allowMode: allowModeRef.current } : {}),
@@ -424,7 +426,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                     window.location.href = '/auth/login';
                     return;
                 }
-                await sendMessageRef.current?.(text, attachments).catch(console.error);
+                await sendMessageRef.current?.(text, attachments, skillsUsed, isFirstMessage).catch(console.error);
                 return;
             }
         } catch (err: unknown) {
