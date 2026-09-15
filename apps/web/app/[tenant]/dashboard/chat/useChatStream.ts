@@ -11,6 +11,7 @@ import type { ClarificationRequest, ClarificationQuestion, UploadRequest } from 
 import { normalizeMessages } from '@/components/platform/chat/normalizeMessages';
 import type { Attachment } from '@/types/agent-events';
 import type { ChatStreamEventType } from '@/components/platform/personas/usePersonaAnimationState';
+import { buildCreativeBriefMessage, creativeMessageDisplayText, parseCreativeBriefPresentation } from '@/components/platform/chat/creative-library/creativeBrief';
 
 // Relay emits tool names using the JS variable name as key (e.g. savePRD, not save-prd)
 // normTool lowercases and replaces _ with - so savePRD → saveprd, save-prd → save-prd
@@ -182,6 +183,12 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     const [agentTimedOut, setAgentTimedOut] = useState(false);
     const [warmupMessage, setWarmupMessage] = useState<string | null>(null);
     const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
+    // Attachment URLs are resolved before useChat starts its stream. Keep that
+    // interval visible to callers so the optimistic row cannot be edited or
+    // submitted twice while its original request is still being prepared.
+    // The ref closes the same-tick gap before React commits the state update.
+    const [isPreparingMessage, setIsPreparingMessage] = useState(false);
+    const isPreparingMessageRef = useRef(false);
     const [activeToolCalls, setActiveToolCalls] = useState<Map<string, ToolCall>>(new Map());
     const [completedToolCalls, setCompletedToolCalls] = useState<CompletedToolCall[]>([]);
     // Mirrors completedToolCalls synchronously — onDone is a useCallback that
@@ -521,30 +528,22 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
     const sendMessage = async (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => {
         if (!content.trim() && (!attachments || attachments.length === 0)) return;
+        if (isStreaming || isPreparingMessageRef.current) return;
+
+        isPreparingMessageRef.current = true;
+        setIsPreparingMessage(true);
+        const displayContent = creativeMessageDisplayText(content);
 
         // Auto-generate title for new conversations
-        if (!selectedConversation?.title && messages.length === 0 && content.trim()) {
-            const words = content.trim().split(/\s+/);
+        if (!selectedConversation?.title && messages.length === 0 && displayContent.trim()) {
+            const words = displayContent.trim().split(/\s+/);
             const title = words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '');
             api.patch(`/api/v1/conversations/${conversationId}`, { title }).catch(console.error);
         }
 
-        // Enrich media/doc attachments with presigned S3 URLs for the relay
-        let enriched = attachments;
-        if (attachments && attachments.length > 0) {
-            const PRESIGN_TYPES = ['image/', 'video/', 'audio/', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-            enriched = await Promise.all(attachments.map(async att => {
-                if (PRESIGN_TYPES.some(t => att.type?.startsWith(t) || att.type === t)) {
-                    try {
-                        const { presignedUrl } = await api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(att.fileId)}/presigned-url`);
-                        return { ...att, presignedUrl };
-                    } catch { return att; }
-                }
-                return att;
-            }));
-        }
-
-        // Optimistic user message
+        // Show the user's turn immediately. Resolving presigned attachment URLs
+        // can take long enough for the empty-conversation welcome screen to flash
+        // between navigation and the first message without this optimistic insert.
         queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old => {
             const msg: Message = {
                 id: crypto.randomUUID(), conversationId: conversationId!, role: 'user', content,
@@ -554,14 +553,40 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             };
             return { data: [...(old?.data ?? []), msg].sort(sortByDate) };
         });
-
-        setEventError(null);
-        setWarmupMessage(null);
         setHasSentFirstMessage(true);
-        streamStartRef.current = Date.now();
-        partSeqRef.current = 0;
-        setReasoningText('');
-        await sendChatMessage(content, enriched, skillsUsed);
+
+        try {
+            // Enrich media/doc attachments with presigned S3 URLs for the relay.
+            let enriched = attachments;
+            if (attachments && attachments.length > 0) {
+                const PRESIGN_TYPES = ['image/', 'video/', 'audio/', 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+                enriched = await Promise.all(attachments.map(async att => {
+                    if (PRESIGN_TYPES.some(t => att.type?.startsWith(t) || att.type === t)) {
+                        try {
+                            const { presignedUrl } = await api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(att.fileId)}/presigned-url`);
+                            return { ...att, presignedUrl };
+                        } catch { return att; }
+                    }
+                    return att;
+                }));
+            }
+
+            setEventError(null);
+            setWarmupMessage(null);
+            streamStartRef.current = Date.now();
+            partSeqRef.current = 0;
+            setReasoningText('');
+            // useChat marks the transport as streaming synchronously before its
+            // first await, so control passes directly from preparation to the
+            // existing streaming state without enabling the composer between.
+            const streamPromise = sendChatMessage(content, enriched, skillsUsed);
+            isPreparingMessageRef.current = false;
+            setIsPreparingMessage(false);
+            await streamPromise;
+        } finally {
+            isPreparingMessageRef.current = false;
+            setIsPreparingMessage(false);
+        }
     };
 
     // Truncate app DB + Mastra memory from fromTimestamp onward, then optimistically
@@ -579,7 +604,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     };
 
     const regenerate = async (assistantMessage: Message) => {
-        if (isStreaming) return;
+        if (isStreaming || isPreparingMessageRef.current) return;
         // Find the user message immediately before this assistant message
         const currentMessages = queryClient.getQueryData<MessagesResponse>(['messages', conversationIdRef.current]);
         const msgList = currentMessages?.data ?? [];
@@ -599,13 +624,24 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     };
 
     const editAndResubmit = async (userMessage: Message, newContent: string) => {
-        if (isStreaming) return;
+        if (isStreaming || isPreparingMessageRef.current) return;
+        const presentation = parseCreativeBriefPresentation(userMessage.content);
+        const content = presentation
+            ? buildCreativeBriefMessage(newContent, presentation.brief)
+            : newContent;
+        const attachments = userMessage.attachments?.map(a => ({
+            fileId: a.fileId ?? a.id,
+            name: a.name,
+            type: a.type,
+            size: a.size,
+            previewUrl: a.previewUrl,
+        }));
         await truncateFrom(userMessage.createdAt);
-        await sendMessage(newContent);
+        await sendMessage(content, attachments, userMessage.skillsUsed);
     };
 
     return {
-        sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isRetrying,
+        sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isPreparingMessage, isRetrying,
         activeToolCalls, completedToolCalls, reasoningText,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
         lastStreamEvent, regenerate, editAndResubmit,

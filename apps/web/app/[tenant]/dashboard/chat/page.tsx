@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, Suspense, useEffect, useRef, useState } from "react";
+import { useCallback, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
@@ -11,6 +11,7 @@ import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
 import { ChatTimelineNavigator } from "@/components/platform/chat/ChatTimelineNavigator";
 import { ChatInput } from "@/components/platform/chat/ChatInput";
+import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import { WelcomeView } from "@/components/platform/chat/WelcomeView";
 import { WizardView } from "@/components/platform/chat/WizardView";
 import { AgentSelector } from "@/components/platform/chat/AgentSelector";
@@ -20,9 +21,10 @@ import { ChatHeader } from "./ChatHeader";
 import { usePersonaAnimationState } from "@/components/platform/personas/usePersonaAnimationState";
 import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
+import { shouldShowConversationWelcome } from "./conversationWelcomeState";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useVoice } from "@/hooks/useVoice";
-import { MessageSquare, Plus, RefreshCw, PanelLeftClose, PanelLeftOpen, Calculator, LayoutTemplate, UserRound, Package, Music, Zap } from "lucide-react";
+import { MessageSquare, RefreshCw, PanelLeftClose, PanelLeftOpen, Calculator, Check, LayoutTemplate, UserRound, Package, Music, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -30,7 +32,7 @@ import { CreditsPanel } from "@/components/platform/credits/CreditsPanel";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import type { MessagesResponse } from "@/components/platform/chat/types";
+import type { Message, MessagesResponse } from "@/components/platform/chat/types";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "@/components/platform/chat/pendingRequests";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -38,6 +40,24 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { parseFolderId } from "@/lib/folderScope";
+import { CreativeLibrary } from '@/components/platform/chat/CreativeLibrary';
+import { CreativeBriefChips } from '@/components/platform/chat/creative-library/CreativeBriefChips';
+import {
+    buildCreativeBriefMessage,
+    countCreativeBriefAttachments,
+    mergeCreativeBriefAttachments,
+} from '@/components/platform/chat/creative-library/creativeBrief';
+import {
+    fieldForTab,
+    isCreativeBriefStarted,
+    tabForField,
+    updateCreativeBrief,
+    type CreativeBriefField,
+    type CreativeLibraryTab,
+    type CreativeSelection,
+} from '@/components/platform/chat/creative-library/creativeBriefModel';
+import { useCreativeBriefDraft } from '@/components/platform/chat/creative-library/useCreativeBriefDraft';
+import type { Attachment } from '@/types/agent-events';
 
 // Category shortcuts under the no-conversation-selected composer — Templates
 // (proven ad-structure starting points), Avatars, Products, Audio. No "Browse"
@@ -60,7 +80,7 @@ function ChatPage() {
         tenantSlug, conversationId, conversationIdRef, firstName,
         isChatSidebarCollapsed, toggleChatSidebar,
         providers, activeAgents, isLoadingAgents,
-        conversations, isLoadingConversations, isErrorConversations,
+        isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
         isDeleteDialogOpen, setIsDeleteDialogOpen,
         agentSelectorOpen, setAgentSelectorOpen,
@@ -170,7 +190,7 @@ function ChatPage() {
         handleCanvasUpdate,
         openCanvas,
     });
-    const { sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
+    const { sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isPreparingMessage, isRetrying, activeToolCalls, completedToolCalls, reasoningText, eventError, warmupMessage, agentTimedOut, hasSentFirstMessage, lastStreamEvent, regenerate, editAndResubmit } = stream;
 
     const { state: animationState, onStreamEvent } = usePersonaAnimationState();
     const [decayedState, setDecayedState] = useState<typeof animationState>('idle');
@@ -263,19 +283,71 @@ function ChatPage() {
     // Cleared immediately after firing so a later empty (0-message) conversation
     // load never re-sends it.
     const [pendingFirstMessage, setPendingFirstMessage] = useState<string | null>(null);
+    const [pendingFirstAttachments, setPendingFirstAttachments] = useState<Attachment[] | undefined>();
     // Allow-mode toggled in that same pre-conversation composer — allowMode is
     // stored on the conversation row, so there's nothing to PATCH until one
     // exists. Held here and applied once, same as pendingFirstMessage above.
     const [pendingAllowMode, setPendingAllowMode] = useState<'ask' | 'auto' | null>(null);
+    const [pendingCreativeBrief, setPendingCreativeBrief] = useState(false);
     // Which library tab (Templates/Avatars/Products/Audio) is expanded under the
     // no-conversation-selected composer. Null collapses the panel.
-    const [activeEmptyStateTab, setActiveEmptyStateTab] = useState<string | null>(null);
+    const [activeEmptyStateTab, setActiveEmptyStateTab] = useState<CreativeLibraryTab | null>(null);
+    const creativeDraftStorageKey = `olmo:creative-brief:${tenantSlug}`;
+    const { creativeBrief, setCreativeBrief, clearCreativeBrief } = useCreativeBriefDraft(creativeDraftStorageKey);
+    const creativeBriefStarted = isCreativeBriefStarted(creativeBrief);
+    const stagedFirstMessage = useMemo<Message | null>(() => pendingFirstMessage !== null && conversationId && messages.length === 0
+        ? {
+            id: `pending-first-message:${conversationId}`,
+            conversationId,
+            role: 'user',
+            content: pendingFirstMessage,
+            createdAt: new Date().toISOString(),
+            attachments: pendingFirstAttachments?.map((attachment, index) => ({
+                id: `pending-attachment:${index}:${attachment.fileId}`,
+                fileId: attachment.fileId,
+                name: attachment.name,
+                type: attachment.type,
+                size: attachment.size,
+                previewUrl: attachment.previewUrl,
+            })),
+        }
+        : null, [conversationId, messages.length, pendingFirstAttachments, pendingFirstMessage]);
+    const displayedMessages = stagedFirstMessage ? [stagedFirstMessage] : messages;
+    const showConversationWelcome = shouldShowConversationWelcome({
+        hasSentFirstMessage,
+        messageCount: messages.length,
+        isLoadingMessages,
+        hasPendingFirstMessage: pendingFirstMessage !== null,
+    });
+
+    const selectCreativeAsset = (selection: CreativeSelection) => {
+        setCreativeBrief(current => updateCreativeBrief(current, selection));
+    };
+
+    const removeCreativeAsset = (field: CreativeBriefField) => {
+        setCreativeBrief(current => ({ ...current, [field]: null }));
+    };
+
+    const validateCreativeBrief = ({ attachments, pendingAudio }: { attachments: Attachment[]; pendingAudio: boolean }) => {
+        if (!creativeBriefStarted) return true;
+        if (countCreativeBriefAttachments(attachments, creativeBrief, pendingAudio) > MAX_ATTACHMENTS_PER_MESSAGE) {
+            toast.error(`You can attach up to ${MAX_ATTACHMENTS_PER_MESSAGE} files.`);
+            return false;
+        }
+        return true;
+    };
 
     useEffect(() => {
-        if (!pendingFirstMessage) return;
+        if (pendingFirstMessage === null) return;
         if (!conversationId || isLoadingMessages || messages.length > 0) return;
-        sendMessage(pendingFirstMessage);
+        sendMessage(pendingFirstMessage, pendingFirstAttachments);
         setPendingFirstMessage(null);
+        setPendingFirstAttachments(undefined);
+        if (pendingCreativeBrief) {
+            clearCreativeBrief();
+            setActiveEmptyStateTab(null);
+            setPendingCreativeBrief(false);
+        }
         if (pendingAllowMode && pendingAllowMode !== 'ask') {
             setAllowMode.mutate(pendingAllowMode);
         }
@@ -333,8 +405,9 @@ function ChatPage() {
     const noopActivity = useCallback(() => {}, []);
 
     useEffect(() => {
-        (window as any).__openCanvas = openCanvas;
-        return () => { delete (window as any).__openCanvas; };
+        const canvasWindow = window as Window & { __openCanvas?: typeof openCanvas };
+        canvasWindow.__openCanvas = openCanvas;
+        return () => { delete canvasWindow.__openCanvas; };
     }, [openCanvas]);
 
     const handleApprove = useCallback(async (messageId: string, approvalId: string) => {
@@ -529,23 +602,23 @@ function ChatPage() {
                                     toggleCanvas={toggleCanvas}
                                     onArchive={() => setIsDeleteDialogOpen(true)}
                                 />
-                                {!hasSentFirstMessage && messages.length === 0 && !isLoadingMessages ? (
+                                {showConversationWelcome ? (
                                     activePill !== null ? (
                                         <WizardView pill={activePill} onBack={() => setActivePill(null)} onSubmit={(prompt) => sendMessage(prompt)}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
                                         </WizardView>
                                     ) : (
                                         <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={(text) => setInputPrefill(text)} avatarLiveState={displayState}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
                                         </WelcomeView>
                                     )
                                 ) : (
                                     <>
-                                        <MessageThread messages={messages} isLoading={isLoadingMessages} isTyping={isStreaming || isRetrying} isStreaming={isStreaming} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onGenerationConfirm={handleGenerationConfirm} onGenerationDecline={handleGenerationDecline} onClarificationAnswer={handleClarificationAnswer} onUploadAnswer={handleUploadAnswer} onFollowUpSelect={(text) => { if (!isStreaming) sendMessage(text); }} onRegenerate={regenerate} onEditAndResubmit={editAndResubmit} agentAvatarUrl={selectedConversation.agent?.avatarUrl} agentPersona={selectedConversation.agent?.persona} agentIsDefault={selectedConversation.agent?.origin === "built_in"} agentName={selectedConversation.agent?.name} avatarLiveState={displayState} />
-                                        <ChatTimelineNavigator messages={messages} />
+                                        <MessageThread messages={displayedMessages} isLoading={isLoadingMessages} isTyping={isStreaming || isPreparingMessage || isRetrying || stagedFirstMessage !== null} isStreaming={isStreaming || isPreparingMessage} isRetrying={isRetrying} activeToolCalls={Array.from(activeToolCalls.values())} completedToolCalls={completedToolCalls} reasoningText={reasoningText} error={eventError} warmupMessage={warmupMessage} onApprove={handleApprove} onDismiss={handleDismiss} onGenerationConfirm={handleGenerationConfirm} onGenerationDecline={handleGenerationDecline} onClarificationAnswer={handleClarificationAnswer} onUploadAnswer={handleUploadAnswer} onFollowUpSelect={(text) => { if (!isStreaming && !isPreparingMessage) sendMessage(text); }} onRegenerate={regenerate} onEditAndResubmit={editAndResubmit} agentAvatarUrl={selectedConversation.agent?.avatarUrl} agentPersona={selectedConversation.agent?.persona} agentIsDefault={selectedConversation.agent?.origin === "built_in"} agentName={selectedConversation.agent?.name} avatarLiveState={displayState} />
+                                        <ChatTimelineNavigator messages={displayedMessages} />
                                         {!awaitingClarificationReply && !awaitingGenerationConfirmReply && !awaitingUploadReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                                <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={false} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...allowModeProps} {...skillProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
+                                                <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...allowModeProps} {...skillProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                             </div>
                                         )}
                                     </>
@@ -618,18 +691,37 @@ function ChatPage() {
                                     <h1 className="text-3xl font-bold tracking-tight mb-8">{firstName ? `Hi ${firstName}, what are we creating today?` : "What are we creating today?"}</h1>
                                     <div className="w-full">
                                         <ChatInput
-                                            onSend={(text) => { setPendingFirstMessage(text); handleNewChat(); }}
+                                            onSend={(text, attachments) => {
+                                                const message = creativeBriefStarted ? buildCreativeBriefMessage(text, creativeBrief) : text;
+                                                const mergedAttachments = creativeBriefStarted ? mergeCreativeBriefAttachments(attachments, creativeBrief) : attachments;
+                                                setPendingFirstMessage(message);
+                                                setPendingFirstAttachments(mergedAttachments);
+                                                setPendingCreativeBrief(creativeBriefStarted);
+                                                handleNewChat();
+                                                // Keep the pre-conversation composer intact. A successful
+                                                // creation replaces this view; a failure remains fully editable.
+                                                return false;
+                                            }}
                                             onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined}
                                             onMediaClick={(t) => toast.info(`Adding ${t}...`)}
-                                            isLoading={false}
+                                            isLoading={createConversation.isPending}
                                             isStreaming={false}
                                             agentId={activeAgents[0]?.id}
                                             allowMode={pendingAllowMode ?? 'ask'}
                                             onAllowModeChange={setPendingAllowMode}
+                                            hasSupplementalContent={creativeBriefStarted}
+                                            supplementalContent={
+                                                <CreativeBriefChips
+                                                    brief={creativeBrief}
+                                                    onEdit={(field) => setActiveEmptyStateTab(tabForField(field))}
+                                                    onRemove={removeCreativeAsset}
+                                                />
+                                            }
+                                            beforeSend={validateCreativeBrief}
                                             {...modelChangeProps}
                                         />
                                     </div>
-                                    <div className="flex items-center gap-2 -mt-2 flex-wrap justify-center">
+                                    <div className="-mt-2 flex flex-wrap items-center justify-center gap-2">
                                         {EMPTY_STATE_LIBRARY_TABS.map((tab) => (
                                             <button
                                                 key={tab.id}
@@ -642,16 +734,12 @@ function ChatPage() {
                                                         : "bg-card border-border text-muted-foreground hover:text-foreground"
                                                 )}
                                             >
-                                                <tab.icon className="h-4 w-4" />
+                                                {creativeBrief[fieldForTab(tab.id)] ? <Check className="h-4 w-4" /> : <tab.icon className="h-4 w-4" />}
                                                 {tab.label}
                                             </button>
                                         ))}
                                     </div>
-                                    {activeEmptyStateTab && (
-                                        <div className="w-full mt-6 rounded-2xl border border-border bg-muted/30 p-10 text-sm text-muted-foreground">
-                                            {EMPTY_STATE_LIBRARY_TABS.find((t) => t.id === activeEmptyStateTab)?.label} library — coming soon.
-                                        </div>
-                                    )}
+                                    {activeEmptyStateTab && <CreativeLibrary tab={activeEmptyStateTab} brief={creativeBrief} onSelect={selectCreativeAsset} />}
                                 </div>
                                 <div className="flex-1 min-h-0" />
                             </div>

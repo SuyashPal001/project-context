@@ -6,7 +6,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Attachment } from "@/types/agent-events";
 import { FileText } from "lucide-react";
@@ -96,7 +96,8 @@ function isDroppableFile(file: File): boolean {
 }
 
 interface ChatInputProps {
-    onSend: (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => void;
+    /** Return false when the caller has staged the send but needs this draft kept until an external handoff succeeds. */
+    onSend: (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => void | boolean | Promise<void>;
     onStop?: () => void;
     onVoiceClick?: () => void;
     onMediaClick?: (type: 'file' | 'video' | 'audio') => void;
@@ -107,6 +108,12 @@ interface ChatInputProps {
     providers?: LLMProvider[];
     onModelChange?: (providerId: string) => void;
     prefill?: string;
+    /** Additional structured draft data owned by the parent, such as a creative brief. */
+    hasSupplementalContent?: boolean;
+    /** Visual controls for supplemental draft data, rendered inside the composer. */
+    supplementalContent?: ReactNode;
+    /** Runs before draft state is cleared. Return false to keep the draft intact. */
+    beforeSend?: (draft: { attachments: Attachment[]; pendingAudio: boolean }) => boolean;
     /** Folder this conversation's agent may read, if one was granted from Drive. */
     folderPrefix?: string;
     onRevokeFolder?: () => void;
@@ -138,6 +145,9 @@ export function ChatInput({
     providers,
     onModelChange,
     prefill,
+    hasSupplementalContent = false,
+    supplementalContent,
+    beforeSend,
     folderPrefix,
     onRevokeFolder,
     isRevokingFolder,
@@ -205,6 +215,8 @@ export function ChatInput({
             return;
         }
 
+        if (beforeSend && !beforeSend({ attachments: uploader.attachments, pendingAudio: Boolean(recorder.audioPreview) })) return;
+
         // Mention chips aren't part of `content` — re-serialize them back into
         // the "@Name" text the backend/agent prompt already knows how to read,
         // so switching to chip UI doesn't change the wire format.
@@ -217,7 +229,8 @@ export function ChatInput({
                     recorder.audioPreview.blob,
                     recorder.audioPreview.url,
                 );
-                onSend(contentWithMentions, [...uploader.attachments, voiceAttachment], pickedSkills.length > 0 ? pickedSkills.map(s => ({ id: s.id, name: s.name })) : undefined);
+                const accepted = onSend(contentWithMentions, [...uploader.attachments, voiceAttachment], pickedSkills.length > 0 ? pickedSkills.map(s => ({ id: s.id, name: s.name })) : undefined);
+                if (accepted === false) return;
                 setContent("");
                 setMentionedAgents([]);
                 setPickedSkills([]);
@@ -231,9 +244,10 @@ export function ChatInput({
             return;
         }
 
-        if ((!content.trim() && mentionedAgents.length === 0 && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading) return;
+        if ((!content.trim() && mentionedAgents.length === 0 && uploader.attachments.length === 0 && !hasSupplementalContent) || disabled || isLoading || uploader.isUploading) return;
 
-        onSend(contentWithMentions, uploader.attachments.length > 0 ? uploader.attachments : undefined, pickedSkills.length > 0 ? pickedSkills.map(s => ({ id: s.id, name: s.name })) : undefined);
+        const accepted = onSend(contentWithMentions, uploader.attachments.length > 0 ? uploader.attachments : undefined, pickedSkills.length > 0 ? pickedSkills.map(s => ({ id: s.id, name: s.name })) : undefined);
+        if (accepted === false) return;
         setContent("");
         setMentionedAgents([]);
         setPickedSkills([]);
@@ -418,10 +432,12 @@ export function ChatInput({
         }
     }, [prefill]);
 
+    const addComposeAttachment = uploader.addAttachment;
     useEffect(() => {
-        (window as any).__addComposeAttachment = uploader.addAttachment;
-        return () => { delete (window as any).__addComposeAttachment; };
-    }, [uploader.addAttachment]);
+        const composeWindow = window as Window & { __addComposeAttachment?: typeof addComposeAttachment };
+        composeWindow.__addComposeAttachment = addComposeAttachment;
+        return () => { delete composeWindow.__addComposeAttachment; };
+    }, [addComposeAttachment]);
 
     // Files chosen in Drive and handed over via "Start session".
     useEffect(() => {
@@ -547,7 +563,7 @@ export function ChatInput({
                 )}
                 {(() => {
                     const isGenerating = isLoading || isStreaming;
-                    const isActive = isGenerating || content.trim().length > 0 || mentionedAgents.length > 0;
+                    const isActive = isGenerating || content.trim().length > 0 || mentionedAgents.length > 0 || hasSupplementalContent;
                     return (
                 <div className={cn("relative rounded-[29px] overflow-hidden", isActive ? "p-px" : "p-0")}>
                     {isActive && (
@@ -629,6 +645,12 @@ export function ChatInput({
                                     onRemove={() => setPickedSkills(prev => prev.filter(s => s.id !== skill.id))}
                                 />
                             ))}
+                        </div>
+                    )}
+
+                    {supplementalContent && (
+                        <div className="flex flex-wrap gap-2 px-4 pt-3">
+                            {supplementalContent}
                         </div>
                     )}
 
@@ -911,11 +933,12 @@ export function ChatInput({
                                     ) : (
                                         <button
                                             onClick={handleSend}
-                                            disabled={(!content.trim() && mentionedAgents.length === 0 && uploader.attachments.length === 0) || disabled || isLoading || uploader.isUploading}
+                                            disabled={(!content.trim() && mentionedAgents.length === 0 && uploader.attachments.length === 0 && !hasSupplementalContent) || disabled || isLoading || uploader.isUploading}
+                                            aria-label="Send message"
                                             title="Enter to send, Shift+Enter for a new line"
                                             className={cn(
                                                 "h-8 w-8 flex items-center justify-center rounded-full transition-all active:scale-95 shadow-sm",
-                                                (content.trim() || mentionedAgents.length > 0 || uploader.attachments.length > 0)
+                                                (content.trim() || mentionedAgents.length > 0 || uploader.attachments.length > 0 || hasSupplementalContent)
                                                     ? "bg-gradient-to-br from-[#E69DB8] to-[#F2A679] text-background"
                                                     : "bg-muted text-muted-foreground opacity-40"
                                             )}

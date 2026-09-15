@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 // Same rationale as chatInputFolderScope.test.tsx: ChatInput drags in uploads,
 // audio recording and palettes on mount, none of which matter for pinning
@@ -45,5 +45,32 @@ describe('ChatInput allow-mode dropdown', () => {
     it('shows "Auto" as the trigger label when set to auto', () => {
         render(<ChatInput onSend={vi.fn()} allowMode="auto" onAllowModeChange={vi.fn()} />);
         expect(screen.getByText('Auto')).toBeTruthy();
+    });
+
+    it('keeps a supplemental draft when validation rejects the send', () => {
+        const onSend = vi.fn();
+        const beforeSend = vi.fn(() => false);
+        render(<ChatInput onSend={onSend} hasSupplementalContent beforeSend={beforeSend} />);
+
+        const send = screen.getByRole('button', { name: 'Send message' });
+        expect((send as HTMLButtonElement).disabled).toBe(false);
+        fireEvent.click(send);
+        expect(beforeSend).toHaveBeenCalledOnce();
+        expect(onSend).not.toHaveBeenCalled();
+    });
+
+    it('preserves edits when an external handoff rejects and the user retries', () => {
+        const onSend = vi.fn(() => false);
+        render(<ChatInput onSend={onSend} hasSupplementalContent beforeSend={() => true} />);
+        const composer = screen.getByRole('textbox');
+        const send = screen.getByRole('button', { name: 'Send message' });
+
+        fireEvent.change(composer, { target: { value: 'First direction' } });
+        fireEvent.click(send);
+        expect(composer).toHaveProperty('value', 'First direction');
+
+        fireEvent.change(composer, { target: { value: 'Updated direction' } });
+        fireEvent.click(send);
+        expect(onSend).toHaveBeenLastCalledWith('Updated direction', undefined, undefined);
     });
 });

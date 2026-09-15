@@ -22,6 +22,8 @@ import { GeneratedAssetCard } from "./GeneratedAssetCard";
 import { CitationStrip } from "./CitationStrip";
 import { FollowUpChips } from "./FollowUpChips";
 import { SkillIcon } from "@/components/platform/skills/SkillIcon";
+import { CreativeBriefChips } from "./creative-library/CreativeBriefChips";
+import { creativeBriefAttachmentIds, parseCreativeBriefPresentation } from "./creative-library/creativeBrief";
 
 // Whether this message renders anything at all — mirrors the same criteria
 // MessageItem uses internally (see hasDisplayedContent below), but exported
@@ -96,16 +98,20 @@ export function MessageItem({
     const isAssistant = message.role === 'assistant';
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system' || message.role === 'tool';
+    const creativePresentation = isUser ? parseCreativeBriefPresentation(message.content) : null;
+    const userContent = creativePresentation?.direction ?? message.content;
+    const hiddenCreativeAttachmentIds = creativePresentation ? creativeBriefAttachmentIds(creativePresentation.brief) : new Set<string>();
+    const visibleAttachments = message.attachments?.filter(file => !file.fileId || !hiddenCreativeAttachmentIds.has(file.fileId));
 
     const [userExpanded, setUserExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editContent, setEditContent] = useState('');
     const editTextareaRef = useRef<HTMLTextAreaElement>(null);
     const USER_TRUNCATE_LEN = 280;
-    const isLongUserMessage = isUser && message.content.length > USER_TRUNCATE_LEN;
+    const isLongUserMessage = isUser && userContent.length > USER_TRUNCATE_LEN;
     const displayedUserContent = isLongUserMessage && !userExpanded
-        ? message.content.slice(0, USER_TRUNCATE_LEN) + '…'
-        : message.content;
+        ? userContent.slice(0, USER_TRUNCATE_LEN) + '…'
+        : userContent;
 
     if (isSystem) {
         return (
@@ -332,7 +338,7 @@ export function MessageItem({
                         {isUser && !isStreaming && onEditAndResubmit && (
                             <button
                                 type="button"
-                                onClick={() => { setEditContent(message.content); setIsEditing(true); }}
+                                onClick={() => { setEditContent(userContent); setIsEditing(true); }}
                                 className="absolute -top-2 -left-8 opacity-0 group-hover/msg:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-muted text-muted-foreground/60 hover:text-foreground"
                                 title="Edit message"
                             >
@@ -348,6 +354,12 @@ export function MessageItem({
                                 {userExpanded ? 'Show less' : 'Show more'}
                             </button>
                         )}
+                    </div>
+                )}
+
+                {creativePresentation && (
+                    <div className="mt-2 flex max-w-full justify-end">
+                        <CreativeBriefChips brief={creativePresentation.brief} readOnly />
                     </div>
                 )}
 
@@ -373,12 +385,12 @@ export function MessageItem({
                     </div>
                 )}
 
-                {message.attachments && message.attachments.length > 0 && (
+                {visibleAttachments && visibleAttachments.length > 0 && (
                     <div className={cn(
                         "flex flex-wrap gap-2 mt-2",
                         isUser ? "justify-end" : "justify-start"
                     )}>
-                        {message.attachments.map((file, index) => {
+                        {visibleAttachments.map((file, index) => {
                             const url = (file.fileId ? freshUrls[file.fileId] : null) || file.previewUrl || null;
                             return <GeneratedAssetCard key={file.id ?? `att-${index}`} file={file} url={url} createdAt={message.createdAt} />;
                         })}
