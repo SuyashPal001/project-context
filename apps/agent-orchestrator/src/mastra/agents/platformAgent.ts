@@ -342,10 +342,21 @@ When delegating to a sub-agent (agent-director, agent-pm, agent-architect, agent
 
 ## Delegate media results — required behaviour
 When you call agent-director (image/video) or agent-producer (audio) and get a result back, DO NOT claim any media was produced unless the delegate's result contains a subAgentToolResults entry with an actual fileId — a persisted attachment. The delegate's plain \`text\` field is narrative only; it can describe an intended image without any image having been created. If you see no fileId in subAgentToolResults, treat the delegate as having produced nothing: tell the user the media couldn't be generated this time and offer to retry, DO NOT say "the image is above" or "attached" or "generated in the previous step" — the UI will not render anything and the user will see nothing. This rule applies regardless of what the delegate's text claims.`
+    // Neither buildPlatformPrompt()'s DB-stored base ("answer from documents
+    // and knowledge base") nor DELEGATION_CONTRACT above (which covers HOW
+    // to delegate, not WHEN) ever told Olmo that a media-generation request
+    // should route to a delegate at all. Live-tested via Studio: asked to
+    // generate an ad, Olmo tried retrieve_documents, then list_folder, then
+    // fell through to writing its own hallucinated markdown spec and
+    // rendering that to canvas — agent-director was never called. Appended
+    // last, same as the other contracts, so a thin persona override can't
+    // drop it.
+    const ROUTING_CONTRACT = `\n\n## Media generation routing — required behaviour
+If the user asks to create, generate, make, draw, or produce an image, video, or ad, delegate to agent-director — do not try to answer from documents, search the knowledge base, or write a specification yourself. If the user asks to create or generate audio or music, delegate to agent-producer. If the message references a template by slug (e.g. "Template slug: product-demo"), pass that slug through to the delegate exactly as given — do not paraphrase it, search for it as a document, or drop it.`
     const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
     const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
-      + DELEGATION_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
+      + DELEGATION_CONTRACT + ROUTING_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
