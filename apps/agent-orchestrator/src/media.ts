@@ -90,15 +90,28 @@ export async function extractVideoFrames(
 // (index.ts) so the two stay in sync — filtered separately here rather than
 // downloaded, since the whole point is to skip synchronous processing.
 export function buildAttachmentNote(attachments: Attachment[]): string {
+  // Images ride into the model as raw inline pixels (buildMastraMessage below) with
+  // no accompanying identifier — without this note the model has no real fileId to
+  // cite and hallucinates a placeholder (e.g. "input_file_0.png") when a downstream
+  // tool like edit_image needs a sourceFileId for an image it can plainly see.
+  const imageAttachments = attachments.filter(
+    (a) => a.type?.startsWith('image/') && !!a.fileId
+  )
   const understandableAttachments = attachments.filter(
     (a) => (a.type?.startsWith('audio/') || a.type?.startsWith('video/')) && !!a.fileId
   )
-  if (understandableAttachments.length === 0) return ''
-  return '<attachments>\n' + understandableAttachments.map((a) => {
-    const kind = a.type?.startsWith('audio/') ? 'audio' : 'video'
-    const tool = kind === 'audio' ? 'analyze_audio' : 'analyze_video'
-    return `- ${kind}: "${a.name ?? a.fileId ?? 'attachment'}" (fileId: ${a.fileId}) — call ${tool} if you need to understand its content`
-  }).join('\n') + '\n</attachments>\n\n'
+  if (imageAttachments.length === 0 && understandableAttachments.length === 0) return ''
+  const lines = [
+    ...imageAttachments.map((a) =>
+      `- image: "${a.name ?? a.fileId ?? 'attachment'}" (fileId: ${a.fileId}) — shown inline above; pass this exact fileId as sourceFileId to edit_image if you need to modify it`
+    ),
+    ...understandableAttachments.map((a) => {
+      const kind = a.type?.startsWith('audio/') ? 'audio' : 'video'
+      const tool = kind === 'audio' ? 'analyze_audio' : 'analyze_video'
+      return `- ${kind}: "${a.name ?? a.fileId ?? 'attachment'}" (fileId: ${a.fileId}) — call ${tool} if you need to understand its content`
+    }),
+  ]
+  return '<attachments>\n' + lines.join('\n') + '\n</attachments>\n\n'
 }
 
 export async function downloadMediaAttachment(att: Attachment, sessionId: string): Promise<DownloadedMedia | DownloadedMedia[] | null> {
