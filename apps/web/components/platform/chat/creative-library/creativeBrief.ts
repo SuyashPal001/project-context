@@ -29,7 +29,7 @@ export function buildCreativeBriefMessage(direction: string, brief: CreativeBrie
     const lines = [
         trimmedDirection ? `User direction:\n${trimmedDirection}` : null,
         'Creative brief:',
-        brief.template ? `- Template: ${brief.template.title} (${brief.template.category})\n  ${brief.template.prompt}` : null,
+        brief.template ? `- Template: ${brief.template.title} (${brief.template.category})\n  Template slug: ${brief.template.id}` : null,
         brief.avatar ? `- Avatar: ${brief.avatar.name} · ${brief.avatar.role} · ${brief.avatar.tone}\n  Use the attached still image as the presenter reference.` : null,
         product ? `- Product: ${product}${brief.product?.kind === 'product-image' ? '\n  Use the attached product image as the visual reference.' : '\n  Treat the URL as a source to inspect; verify product details before making claims.'}` : null,
         brief.voice ? `- Voice: ${brief.voice.name}${brief.voice.tagline ? ` · ${brief.voice.tagline}` : ''}\n  Voice ID: ${brief.voice.id}\n  Narration language: ${brief.voice.languageLabel} (${brief.voice.language})` : null,
@@ -111,7 +111,7 @@ function isAttachment(value: unknown): value is Attachment {
 
 function isTemplateSelection(value: unknown): value is NonNullable<CreativeBrief['template']> {
     return isRecord(value) && value.kind === 'template' && hasString(value, 'id') && hasString(value, 'title')
-        && hasString(value, 'category') && hasString(value, 'prompt') && isTrustedCreativeImage(value.image);
+        && hasString(value, 'category') && isTrustedCreativeImage(value.image);
 }
 
 function isAvatarSelection(value: unknown): value is NonNullable<CreativeBrief['avatar']> {

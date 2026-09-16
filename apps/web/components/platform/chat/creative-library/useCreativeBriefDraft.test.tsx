@@ -15,7 +15,7 @@ beforeEach(() => sessionStorage.clear());
 describe('useCreativeBriefDraft', () => {
     it('restores without overwriting the saved draft during Strict Mode effect replay', async () => {
         const saved = updateCreativeBrief(createEmptyCreativeBrief(), {
-            kind: 'template', id: 'demo', title: 'Product Demo', category: 'Demonstration', prompt: 'Show it.', image: '/creative/templates/product-demo.png',
+            kind: 'template', id: 'demo', title: 'Product Demo', category: 'Demonstration', image: '/creative/templates/product-demo.png',
         });
         sessionStorage.setItem('creative:test', JSON.stringify(saved));
 

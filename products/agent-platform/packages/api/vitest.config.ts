@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     name: 'agent-api',
     environment: 'node',
-    include: ['__tests__/**/*.test.ts'],
+    include: ['__tests__/**/*.test.ts', 'seeds/**/*.test.ts'],
     setupFiles: ['./__tests__/setup.ts'],
   },
 })

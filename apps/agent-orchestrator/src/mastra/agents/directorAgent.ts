@@ -7,6 +7,7 @@ import { getMastraMemory } from '../memory.js'
 import { generateImage } from '../tools/generateImage.js'
 import { editImage } from '../tools/editImage.js'
 import { generateVideo } from '../tools/generateVideo.js'
+import { retrieveTemplate } from '../tools/retrieveTemplate.js'
 
 const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
@@ -17,6 +18,10 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
   // pattern as platformAgent.ts. Set by chatStream.ts from agents.systemPrompt.
   const override = requestContext?.get('agentSystemPrompt') as string | undefined
   const defaultInstructions = `You are Director — an image generation specialist. You create and edit images from descriptions.
+
+## Templates
+- If the creative brief references a template by slug, call retrieve_template with that slug BEFORE calling generate_image or generate_video. Use the returned clonePrompt, negativePrompt, cloneNotes, excludeInClone, technical, and scenes as your source of truth for structure and constraints — not just the brief's free text.
+- If retrieve_template returns { found: false }, tell the user the referenced template could not be found and ask them to pick again — do not invent a structure or proceed as if a contract existed.
 
 ## Rules
 - ANY request to make, generate, create, produce, draft, mock up or show an image REQUIRES you to call the generate_image tool. Narrative replies alone ("Here is the image with X, Y, Z...") are not allowed — the UI renders nothing unless a tool actually ran. If you did not call generate_image this turn, you did not produce an image.
@@ -58,7 +63,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -77,6 +82,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate },
   errorProcessors: [streamErrorRetry()],
 })

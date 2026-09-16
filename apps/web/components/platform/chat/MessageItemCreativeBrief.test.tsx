@@ -19,7 +19,7 @@ vi.stubGlobal('ResizeObserver', class ResizeObserver {
 describe('MessageItem creative brief presentation', () => {
     it('shows the user direction and previewable read-only pills instead of the internal brief', async () => {
         const brief: CreativeBrief = {
-            template: { kind: 'template', id: 'demo', title: 'Product Demo', category: 'Demonstration', prompt: 'Show the product.', image: '/creative/templates/product-demo.png' },
+            template: { kind: 'template', id: 'demo', title: 'Product Demo', category: 'Demonstration', image: '/creative/templates/product-demo.png' },
             avatar: { kind: 'avatar', id: 'mira', name: 'Mira', role: 'Creator', tone: 'Casual', image: '/creative/avatars/everyday-creator.jpg', attachment: { fileId: 'avatar-file', name: 'mira.jpg', type: 'image/jpeg', size: 100 } },
             product: null,
             voice: { kind: 'voice', id: 'lauren', name: 'Lauren', language: 'en', languageLabel: 'English' },
