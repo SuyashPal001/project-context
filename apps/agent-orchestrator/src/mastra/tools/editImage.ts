@@ -31,7 +31,10 @@ export const editImage = createTool({
   description: 'Edits an existing image (from a file already in the conversation) using Gemini 3 Pro Image, given an editing instruction. Use when the user asks Director to modify, edit, or change an image that already exists.',
   inputSchema: z.object({
     prompt: z.string().describe('Instruction describing how to edit the source image'),
-    sourceFileId: z.string().describe('fileId of the source image already present in the conversation'),
+    // files.id is a real Postgres uuid — rejecting non-uuid shapes here catches a
+    // hallucinated placeholder (e.g. "input_file_0.png") at the schema boundary
+    // instead of round-tripping to the API's presigned-url lookup for a 404.
+    sourceFileId: z.string().uuid().describe('fileId (uuid) of the source image already present in the conversation'),
     sourceMimeType: z.string().describe('MIME type of the source image, e.g. image/png'),
   }),
   outputSchema,

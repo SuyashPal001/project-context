@@ -35,7 +35,7 @@ function ctx(values: Record<string, string>) {
 }
 const baseCtx = () => ctx({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok' })
 
-const baseInput = { prompt: 'make it blue', sourceFileId: 'src1', sourceMimeType: 'image/png' }
+const baseInput = { prompt: 'make it blue', sourceFileId: '11111111-1111-4111-8111-111111111111', sourceMimeType: 'image/png' }
 
 beforeEach(() => {
   // resetAllMocks (not clearAllMocks) — clearAllMocks only wipes call
@@ -147,6 +147,17 @@ describe('editImage tool', () => {
     expect(global.fetch).not.toHaveBeenCalled()
     expect(spendCredits).not.toHaveBeenCalled()
     expect(result).toEqual({ refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' })
+  })
+
+  it('rejects a non-uuid sourceFileId at the schema boundary without calling resolveSourceImage or the gateway', async () => {
+    global.fetch = vi.fn()
+
+    const result = await editImage.execute!({ ...baseInput, sourceFileId: 'input_file_0.png' } as never, baseCtx())
+
+    expect(resolveSourceImage).not.toHaveBeenCalled()
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect((result as { validationErrors?: unknown }).validationErrors).toBeDefined()
   })
 
   it('returns SOURCE_IMAGE_TOO_LARGE without calling the gateway when the source exceeds the byte cap', async () => {
