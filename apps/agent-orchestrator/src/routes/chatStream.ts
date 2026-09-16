@@ -8,6 +8,7 @@ import { runWithGuardrailContext } from '../mastra/guardrails.js'
 import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
+import { redactReasoningText } from '../mastra/reasoningRedaction.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
 import { calculateCostUsd, persistCost } from '../mastra/cost.js'
 import { fetchAgentPersonaPrompt, fetchAgentName, fetchAgentOrigin, fetchAgentPersonality, fetchAgentModelSelection, fetchAllowedSubAgents, recordUsage, resolveInvokedSkills, recordSkillRuns, toMastraSkillName } from '../usage.js'
@@ -455,8 +456,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         // just forwarded live for the "thinking it through" UI. See thinkingBudget
         // above and includeThoughts in the inference-gateway Vertex/Gemini adapters.
         case 'reasoning-delta': {
-          const text = (part.payload?.text ?? part.delta ?? part.textDelta ?? '') as string
-          if (text) {
+          const rawText = (part.payload?.text ?? part.delta ?? part.textDelta ?? '') as string
+          if (rawText) {
+            // Redacted before both the persisted trace and the live UI event —
+            // see reasoningRedaction.ts for why the prompt-level instruction
+            // alone isn't a guarantee.
+            const text = redactReasoningText(rawText)
             reasoningText += text
             if (reasoningStartMs === null) reasoningStartMs = Date.now()
             reasoningLastMs = Date.now()
