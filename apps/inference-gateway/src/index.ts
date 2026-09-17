@@ -338,12 +338,14 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
       let tFirstChunk = 0;
       let completionTokens = 0;
       let promptTokens = 0;
+      let cachedTokens = 0;
       for await (const chunk of streamResult.stream) {
         if (!tFirstChunk) tFirstChunk = Date.now();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const meta = (chunk as any).usageMetadata;
         if (meta?.candidatesTokenCount) completionTokens = meta.candidatesTokenCount;
         if (meta?.promptTokenCount) promptTokens = meta.promptTokenCount;
+        if (meta?.cachedContentTokenCount) cachedTokens = meta.cachedContentTokenCount;
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
       res.write('data: [DONE]\n\n');
@@ -357,7 +359,7 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
       console.log(
         `[gateway] done adapter=vertex model=${nativeModelName}` +
         ` ttft=${ttft !== null ? ttft + 'ms' : 'n/a'} tok/s=${tokPerSec}` +
-        ` prompt_tokens=${promptTokens} completion_tokens=${completionTokens} total_ms=${totalMs}`,
+        ` prompt_tokens=${promptTokens} completion_tokens=${completionTokens} cached_tokens=${cachedTokens} total_ms=${totalMs}`,
       );
     } else {
       const t0 = Date.now();
@@ -367,7 +369,7 @@ async function handleNativeGemini(req: IncomingMessage, res: ServerResponse): Pr
       console.log(
         `[gateway] done adapter=vertex model=${nativeModelName} (non-stream)` +
         ` prompt_tokens=${meta?.promptTokenCount ?? 0} completion_tokens=${meta?.candidatesTokenCount ?? 0}` +
-        ` total_ms=${Date.now() - t0}`,
+        ` cached_tokens=${meta?.cachedContentTokenCount ?? 0} total_ms=${Date.now() - t0}`,
       );
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result.response));

@@ -226,11 +226,15 @@ function safeParseJSON(s: string | undefined): Record<string, unknown> {
 }
 
 function makeUsage(meta: Record<string, number> | undefined): OpenAIUsage {
-  return {
+  const usage: OpenAIUsage = {
     prompt_tokens: meta?.promptTokenCount ?? 0,
     completion_tokens: meta?.candidatesTokenCount ?? 0,
     total_tokens: meta?.totalTokenCount ?? 0,
   }
+  if (typeof meta?.cachedContentTokenCount === 'number' && meta.cachedContentTokenCount > 0) {
+    usage.prompt_tokens_details = { cached_tokens: meta.cachedContentTokenCount }
+  }
+  return usage
 }
 
 function makeStreamChunk(

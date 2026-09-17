@@ -59,6 +59,12 @@ export interface OpenAIUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  // Present only when Gemini reports a cache hit (implicit or explicit
+  // cachedContents) — mirrors OpenAI's own prompt_tokens_details.cached_tokens
+  // shape so downstream telemetry doesn't need a Gemini-specific field name.
+  // Telemetry only: cost.ts's calculateCostUsd() does not read this and still
+  // charges the full input rate on the whole prompt regardless of cache hits.
+  prompt_tokens_details?: { cached_tokens: number };
 }
 
 export interface OpenAIChoiceMessage {
