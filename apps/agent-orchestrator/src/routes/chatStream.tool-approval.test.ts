@@ -131,6 +131,7 @@ vi.mock('../mastra/memory.js', () => ({
   getMastraMemory: vi.fn().mockReturnValue({}),
   getOlmoMemory: vi.fn().mockReturnValue({}),
   truncateMastraThread: vi.fn().mockResolvedValue(0),
+  countThreadMessages: vi.fn().mockResolvedValue(0),
   embedder: {},
   resolvedDbHost: 'localhost',
   isNeonDb: false,
