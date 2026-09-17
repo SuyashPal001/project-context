@@ -237,6 +237,73 @@ describe('runChatStream — tool-call-approval round trip', () => {
   })
 })
 
+describe('runChatStream — delegate-produced attachments', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    pendingToolApprovals.clear()
+    agents.current = 'other'
+  })
+
+  it('unwraps a fileId from a delegate wrapper\'s subAgentToolResults into the done event\'s attachments', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-director-1',
+            toolName: 'agent-director',
+            result: {
+              text: 'Here is Scene 1 of your video ad.',
+              subAgentToolResults: [
+                { toolName: 'retrieve_template', result: { templateId: 't1' } },
+                { toolName: 'generate_video', result: { fileId: 'vid-1', name: 'clip.mp4', fileType: 'video/mp4', size: 2740710, creditsUsedMicro: '400000', model: 'gemini-omni-1.1-flash' } },
+              ],
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-director-1',
+    ))
+
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({
+      attachments: [
+        expect.objectContaining({ fileId: 'vid-1', name: 'clip.mp4', type: 'video/mp4', size: 2740710, generation: { creditsUsedMicro: '400000', model: 'gemini-omni-1.1-flash' } }),
+      ],
+    }))
+  })
+
+  it('does not add an attachment when the delegate produced no fileId anywhere', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-director-2',
+            toolName: 'agent-director',
+            result: {
+              text: 'The generation could not be started at this time.',
+              subAgentToolResults: [
+                { toolName: 'generate_video', result: { refused: true, refusalReason: 'GENERATION_FAILED' } },
+              ],
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-director-2',
+    ))
+
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({ attachments: undefined }))
+  })
+})
+
 describe('runChatStream — Olmo-only delegation options', () => {
   beforeEach(() => {
     vi.clearAllMocks()

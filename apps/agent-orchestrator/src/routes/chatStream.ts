@@ -656,6 +656,25 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // user-uploaded ones, so multiple canvas outputs in one turn all survive.
           const canvasAttachment = attachmentFromCanvasToolResult(normName, result)
           if (canvasAttachment) pendingAttachments.push(canvasAttachment)
+
+          // A delegate wrapper's own tool-result (toolName agent-director/
+          // agent-producer) never carries fileId at the top level — the real
+          // generate_image/generate_video/edit_image result lives nested in
+          // subAgentToolResults (see includeSubAgentToolResultsInModelContext
+          // in subagents/hooks.ts, which puts it there for Olmo to read). Without
+          // this unwrap, a delegate-produced attachment never reaches the SSE
+          // `done` event or saveAssistantMessage — the file exists in S3 and the
+          // tenant is charged, but the UI never gets an attachment card for it.
+          // Confirmed live 2026-09-17: a real generate_video result was silently
+          // dropped this way.
+          if (Array.isArray(result.subAgentToolResults)) {
+            for (const entry of result.subAgentToolResults as Array<{ toolName?: unknown; result?: unknown }>) {
+              const innerName = typeof entry.toolName === 'string' ? entry.toolName.toLowerCase().replace(/_/g, '-') : ''
+              const innerResult = (entry.result ?? {}) as Record<string, unknown>
+              const innerAttachment = attachmentFromCanvasToolResult(innerName, innerResult)
+              if (innerAttachment) pendingAttachments.push(innerAttachment)
+            }
+          }
           break
         }
         case 'finish': {
