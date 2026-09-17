@@ -7,6 +7,7 @@ import { olmoDelegationOptions } from '../mastra/subagents/streamOptions.js'
 import { runWithGuardrailContext } from '../mastra/guardrails.js'
 import { runFairnessCheck } from '../fairness/index.js'
 import { getMCPClientForTenant } from '../mastra/tools.js'
+import { countThreadMessages } from '../mastra/memory.js'
 import { getThinkingBudget } from '../mastra/thinking.js'
 import { redactReasoningText } from '../mastra/reasoningRedaction.js'
 import { applyFolderScope, folderScopeLine } from '../folderScopeContext.js'
@@ -287,7 +288,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // reads it and composes just that one skill instead of the agent's
     // real attached ones. The agent's persona (below) is unaffected either
     // way — it's a separate concern, read the same regardless of test mode.
-    const [skillSettings, agentPersonaPrompt, agentName, agentOrigin, personaPersonality, agentModelSelection, allowedSubAgents] = await Promise.all([
+    const [skillSettings, agentPersonaPrompt, agentName, agentOrigin, personaPersonality, agentModelSelection, allowedSubAgents, threadMessageCount] = await Promise.all([
       fetchConversationSkillSettings(idToken, conversationId),
       fetchAgentPersonaPrompt(agentId, tenantId),
       fetchAgentName(agentId),
@@ -298,6 +299,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         return null
       }),
       fetchAllowedSubAgents(tenantId),
+      countThreadMessages(conversationId),
     ])
     if (skillSettings.testSkillInstallId) requestContext.set('testSkillInstallId', skillSettings.testSkillInstallId)
     if (agentPersonaPrompt) {
@@ -370,7 +372,25 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       }
     }
 
-    const memoryOptions = thinkingBudget === 0 ? { lastMessages: false as const } : undefined
+    // Semantic recall is a pgvector similarity search over the thread's stored
+    // messages (measured 2.7–5.4s per turn in mastra_ai_spans). It's dead weight
+    // when either (a) the model isn't reasoning anyway — thinkingBudget === 0
+    // means a conversational turn where recall content wouldn't be used, or
+    // (b) the thread has ≤20 messages, so the loaded `lastMessages: 20` window
+    // already contains everything recall could return. Gate both. Keep the
+    // pre-existing `lastMessages: false` for budget=0 turns so we don't reload
+    // history for pure greetings either.
+    const SEMANTIC_RECALL_MIN_MESSAGES = 20
+    const disableRecall = thinkingBudget === 0 || threadMessageCount <= SEMANTIC_RECALL_MIN_MESSAGES
+    const memoryOptions =
+      thinkingBudget === 0
+        ? { lastMessages: false as const, semanticRecall: false as const }
+        : disableRecall
+          ? { semanticRecall: false as const }
+          : undefined
+    if (disableRecall) {
+      console.log(`[sse:${sessionId}] semantic-recall gated off (budget=${thinkingBudget}, threadMessages=${threadMessageCount})`)
+    }
 
     // Olmo ONLY. The delegation hooks refuse any primitive that is not a
     // registered sub-agent spec, so handing them to another agent that

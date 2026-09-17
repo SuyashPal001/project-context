@@ -112,6 +112,24 @@ function getMastraQueryPool(): pg.Pool {
   return _mastraQueryPool
 }
 
+// Count messages in a Mastra thread. Used by chatStream.ts to skip semantic
+// recall on short threads: with `lastMessages: 20`, a recall lookup over a
+// ≤20-message thread can only return content already in the loaded window,
+// so the pgvector similarity search (measured 2.7–5.4s per turn) is dead
+// weight. Returns 0 on error — callers treat "unknown" as "short" and
+// short-circuit recall the same way, which errs toward faster responses.
+export async function countThreadMessages(threadId: string): Promise<number> {
+  try {
+    const res = await getMastraQueryPool().query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM mastra.mastra_messages WHERE thread_id = $1`,
+      [threadId],
+    )
+    return Number(res.rows[0]?.count ?? 0)
+  } catch {
+    return 0
+  }
+}
+
 // Delete all Mastra messages for a thread that were created at or after fromTimestamp.
 // Uses memory.deleteMessages() so vector embeddings are also cleaned up.
 export async function truncateMastraThread(conversationId: string, fromTimestamp: Date): Promise<number> {
