@@ -2,20 +2,16 @@ import { describe, it, expect } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
 import type { TenantContext } from '../../context.js'
 import { buildOlmoDelegates } from '../olmoDelegates.js'
-import { pmAgentDelegate } from '../pmAgent.js'
-import { architectAgentDelegate } from '../architectAgent.js'
 import { directorAgentDelegate } from '../directorAgent.js'
 import { producerAgentDelegate } from '../producerAgent.js'
 
 describe('buildOlmoDelegates', () => {
-  it('returns all four delegates when isBuiltInAgent is true', () => {
+  it('returns both delegates when isBuiltInAgent is true', () => {
     const requestContext = new RequestContext<TenantContext>()
     requestContext.set('agentName', 'Olmo')
     requestContext.set('isBuiltInAgent', true)
     const delegates = buildOlmoDelegates({ requestContext })
-    expect(Object.keys(delegates).sort()).toEqual(['architect', 'director', 'pm', 'producer'])
-    expect(delegates.pm).toBe(pmAgentDelegate)
-    expect(delegates.architect).toBe(architectAgentDelegate)
+    expect(Object.keys(delegates).sort()).toEqual(['director', 'producer'])
     expect(delegates.director).toBe(directorAgentDelegate)
     expect(delegates.producer).toBe(producerAgentDelegate)
   })
@@ -32,7 +28,7 @@ describe('buildOlmoDelegates', () => {
     const requestContext = new RequestContext<TenantContext>()
     requestContext.set('agentName', 'Ogo')
     requestContext.set('isBuiltInAgent', true)
-    expect(Object.keys(buildOlmoDelegates({ requestContext }))).toHaveLength(4)
+    expect(Object.keys(buildOlmoDelegates({ requestContext }))).toHaveLength(2)
   })
 
   it('returns no delegates for a different row, even one named "Olmo"', () => {

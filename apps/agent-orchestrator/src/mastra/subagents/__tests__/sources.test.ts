@@ -4,8 +4,8 @@ import { NEGATIVE_CLAUSE } from '../spec.js'
 import { CODE_SPEC_IDS } from '../ids.js'
 
 describe('code spec source', () => {
-  it('registers the four existing delegates', () => {
-    expect(listSpecs().map(s => s.id).sort()).toEqual(['architect', 'director', 'pm', 'producer'])
+  it('registers the two existing delegates', () => {
+    expect(listSpecs().map(s => s.id).sort()).toEqual(['director', 'producer'])
   })
 
   it('gives every spec a description with a negative clause', () => {
@@ -41,9 +41,9 @@ describe('code spec source', () => {
   })
 
   it('rejects two specs whose Agents share an id', () => {
-    const pm = getSpec('pm')!
-    const twin = { ...getSpec('director')!, build: pm.build }
-    expect(() => buildAgentIdIndex([pm, twin])).toThrow(/already used by spec "pm"/)
+    const producer = getSpec('producer')!
+    const twin = { ...getSpec('director')!, build: producer.build }
+    expect(() => buildAgentIdIndex([producer, twin])).toThrow(/already used by spec "producer"/)
   })
 
   it('gives the built-in host a depth of 1 and every other host 0', () => {
@@ -62,18 +62,18 @@ describe('code spec source', () => {
   })
 
   it('rejects a fallback pointing at itself', () => {
-    const self = { ...getSpec('pm')!, fallback: 'pm' }
+    const self = { ...getSpec('director')!, fallback: 'director' }
     expect(() => assertRegistryValid([self])).toThrow(/itself/)
   })
 
   it('rejects a fallback pointing at an unregistered id', () => {
-    const dangling = { ...getSpec('pm')!, fallback: 'ghost' }
+    const dangling = { ...getSpec('director')!, fallback: 'ghost' }
     expect(() => assertRegistryValid([dangling])).toThrow(/ghost/)
   })
 
   it('rejects duplicate ids', () => {
-    const pm = getSpec('pm')!
-    expect(() => assertRegistryValid([pm, pm])).toThrow(/duplicate/i)
+    const director = getSpec('director')!
+    expect(() => assertRegistryValid([director, director])).toThrow(/duplicate/i)
   })
 
   it('passes when SPECS ids exactly match CODE_SPEC_IDS', () => {
@@ -81,12 +81,12 @@ describe('code spec source', () => {
   })
 
   it('throws when a code spec id is missing from SPECS', () => {
-    const withoutPm = listSpecs().filter(s => s.id !== 'pm')
-    expect(() => assertMatchesCodeSpecIds(withoutPm, CODE_SPEC_IDS)).toThrow(/pm/)
+    const withoutDirector = listSpecs().filter(s => s.id !== 'director')
+    expect(() => assertMatchesCodeSpecIds(withoutDirector, CODE_SPEC_IDS)).toThrow(/director/)
   })
 
   it('throws when SPECS has an id not in CODE_SPEC_IDS', () => {
-    const withExtra = [...listSpecs(), { ...getSpec('pm')!, id: 'stylist' }]
+    const withExtra = [...listSpecs(), { ...getSpec('director')!, id: 'stylist' }]
     expect(() => assertMatchesCodeSpecIds(withExtra, CODE_SPEC_IDS)).toThrow(/stylist/)
   })
 })
@@ -102,7 +102,7 @@ describe('smoke stub registration behind SUBAGENT_SMOKE_STUB', () => {
     try {
       const fresh = await import('../sources.js')
       const ids = fresh.listSpecs().map((s) => s.id).sort()
-      expect(ids).toEqual(['architect', 'director', 'pm', 'producer', 'smoke'])
+      expect(ids).toEqual(['director', 'producer', 'smoke'])
       expect(fresh.getSpec('smoke')?.id).toBe('smoke')
       // The stub's own Agent id must resolve too, or a smoke delegation is
       // refused exactly like the four real ones were.

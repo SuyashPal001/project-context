@@ -21,13 +21,13 @@ describe('fetchAllowedSubAgents', () => {
   it('returns the code spec ids plus any rows', async () => {
     const query = vi.fn().mockResolvedValue({ rows: [{ name: 'stylist' }] })
     const allowed = await fetchAllowedSubAgents('t1', { query } as never)
-    expect(allowed).toEqual(expect.arrayContaining(['pm', 'architect', 'director', 'producer', 'stylist']))
+    expect(allowed).toEqual(expect.arrayContaining(['director', 'producer', 'stylist']))
   })
 
   it('returns the code spec ids when the query fails, so a DB blip does not silently strip capability', async () => {
     const query = vi.fn().mockRejectedValue(new Error('pool down'))
     expect((await fetchAllowedSubAgents('t1', { query } as never)).sort())
-      .toEqual(['architect', 'director', 'pm', 'producer'])
+      .toEqual(['director', 'producer'])
   })
 
   it('fails open when acquiring the pool itself throws, instead of rejecting', async () => {
@@ -35,7 +35,7 @@ describe('fetchAllowedSubAgents', () => {
     // throwing pool constructor rejected the call — and on SSE, the whole
     // Promise.all and the turn with it.
     await expect(fetchAllowedSubAgents('t1')).resolves.toEqual(
-      expect.arrayContaining(['architect', 'director', 'pm', 'producer']),
+      expect.arrayContaining(['director', 'producer']),
     )
   })
 })

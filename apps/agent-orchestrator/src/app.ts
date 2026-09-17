@@ -4,13 +4,9 @@ import { MastraServer } from '@mastra/hono'
 import { mastra } from './mastra/index.js'
 import { downloadMediaAttachment } from './media.js'
 import { fireToolCallLog } from './events.js'
-import { tasksRouter } from './routes/tasks.js'
-import { pmRouter } from './routes/pm.js'
-import { taskPlanningRouter } from './routes/taskPlanning.js'
 import { chatRouter } from './routes/chat.js'
 import { sessionsRouter } from './routes/sessions.js'
 import { internalRouter, initStudio } from './routes/internal.js'
-import { schedulesRouter } from './routes/schedules.js'
 import { explanationRouter } from './routes/explanation.js'
 import { skillsRouter } from './routes/skills.js'
 import { ingestRoute } from './routes/ingest.js'
@@ -32,12 +28,8 @@ app.use('/studio/*', cors({
 }))
 
 app.route('', internalRouter)
-app.route('', tasksRouter)
-app.route('', pmRouter)
-app.route('', taskPlanningRouter)
 app.route('', chatRouter)
 app.route('', sessionsRouter)
-app.route('', schedulesRouter)
 app.route('', explanationRouter)
 app.route('', skillsRouter)
 app.route('', ingestRoute)

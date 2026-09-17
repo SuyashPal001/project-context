@@ -1,6 +1,4 @@
 import { defineSubAgent, SubAgentSpecError, type SubAgentSpec } from './spec.js'
-import { pmAgentDelegate } from '../agents/pmAgent.js'
-import { architectAgentDelegate } from '../agents/architectAgent.js'
 import { directorAgentDelegate } from '../agents/directorAgent.js'
 import { producerAgentDelegate } from '../agents/producerAgent.js'
 import { BACKGROUND_TASKS_ENABLED } from '../backgroundTasks.js'
@@ -22,22 +20,6 @@ export const OLMO_HOST_MAX_DEPTH = 1
  * in here.
  */
 const CODE_SPECS: SubAgentSpec[] = [
-  defineSubAgent({
-    id: 'pm',
-    build: () => pmAgentDelegate as unknown as Agent,
-    description: 'Breaks a product ask into a PRD, roadmap and tasks. Not for generating images, video or audio, and not for writing code.',
-    tags: ['product', 'planning'],
-    maxSteps: 12,
-    estimatedCredits: 2_000,
-  }),
-  defineSubAgent({
-    id: 'architect',
-    build: () => architectAgentDelegate as unknown as Agent,
-    description: 'Designs technical approaches and reviews system structure. Not for generating media, and not for product prioritisation.',
-    tags: ['engineering'],
-    maxSteps: 12,
-    estimatedCredits: 2_000,
-  }),
   defineSubAgent({
     id: 'director',
     build: () => directorAgentDelegate as unknown as Agent,
