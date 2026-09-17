@@ -19,6 +19,15 @@ import type {
   OpenAIToolCall,
   OpenAIUsage,
 } from '../types';
+import {
+  computePrefixHash,
+  getCachedName,
+  evictCachedName,
+  primeCache,
+  shouldTryCache,
+  isStaleCacheError,
+  SERVER_CACHE_TTL_SECONDS,
+} from '../contextCache.js';
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_MODEL = process.env.VERTEX_MODEL ?? 'gemini-2.5-flash';
@@ -274,6 +283,80 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): Record<string, unknown> {
 }
 
 // ---------------------------------------------------------------------------
+// Context caching helpers — see contextCache.ts for the shared map/eviction
+// logic. This file owns the direct-Gemini-API shape of create + reference.
+// ---------------------------------------------------------------------------
+
+/**
+ * Rewrite an outgoing generateContent body to reference an existing cached
+ * content name instead of resending the systemInstruction + tools inline.
+ * Google errors if you reference a cache AND resend fields already in it —
+ * so both fields are dropped. `contents` and `generationConfig` are kept.
+ */
+function withCachedContentRef(body: Record<string, unknown>, cacheName: string): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...body, cachedContent: cacheName }
+  delete out.systemInstruction
+  delete out.tools
+  return out
+}
+
+/**
+ * POST /v1beta/cachedContents to prime an entry. Returns the handle + TTL
+ * actually granted by Google (which can be less than what we asked for).
+ * Called only from primeCache()'s fire-and-forget path — must NOT block a
+ * user turn.
+ */
+async function createCachedContent(
+  apiKey: string,
+  modelName: string,
+  systemInstruction: unknown,
+  tools: unknown,
+): Promise<{ name: string; ttlSeconds: number }> {
+  const body: Record<string, unknown> = {
+    model: `models/${modelName}`,
+    ttl: `${SERVER_CACHE_TTL_SECONDS}s`,
+  }
+  if (systemInstruction) body.systemInstruction = systemInstruction
+  if (tools) body.tools = tools
+
+  const resp = await fetch(`${GEMINI_BASE}/cachedContents?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new Error(`cachedContents.create ${resp.status}: ${text.slice(0, 200)}`)
+  }
+  const data = await resp.json() as { name?: string; expireTime?: string }
+  if (!data.name) throw new Error('cachedContents.create returned no name')
+
+  // Google returns expireTime as an RFC 3339 timestamp — derive granted TTL
+  // from it rather than trusting our own requested value, since the server
+  // may cap it below what we asked for (project quotas vary).
+  let ttlSeconds = SERVER_CACHE_TTL_SECONDS
+  if (data.expireTime) {
+    const secondsLeft = Math.floor((new Date(data.expireTime).getTime() - Date.now()) / 1000)
+    if (secondsLeft > 0) ttlSeconds = secondsLeft
+  }
+  return { name: data.name, ttlSeconds }
+}
+
+/**
+ * Rough estimator for the shouldTryCache() gate. We can't call countTokens
+ * without another round trip; instead we sum the characters in the
+ * systemInstruction and tools JSON — the two fields the cache will hold.
+ * Under-counts things like base64 images (which cost more tokens than chars
+ * suggest), but for text-heavy prompts this is accurate enough to keep us
+ * from wasting create() calls on obviously-too-small prefixes.
+ */
+function estimateCacheableChars(systemInstruction: unknown, tools: unknown): number {
+  const sys = systemInstruction ? JSON.stringify(systemInstruction).length : 0
+  const t = tools ? JSON.stringify(tools).length : 0
+  return sys + t
+}
+
+// ---------------------------------------------------------------------------
 // Adapter
 // ---------------------------------------------------------------------------
 
@@ -307,15 +390,52 @@ export class GeminiAdapter implements ProviderAdapter {
 
   private async handleNonStream(modelName: string, body: Record<string, unknown>, res: ServerResponse): Promise<void> {
     const url = `${GEMINI_BASE}/models/${modelName}:generateContent?key=${this.apiKey}`
-    const resp = await fetch(url, {
+
+    // Context-cache lookup — see contextCache.ts. On hit, we send a rewritten
+    // body without systemInstruction/tools; on stale-cache 403 we evict and
+    // retry once with the original body, so the user turn cannot fail because
+    // of a dead cache handle. On miss we send the original body and fire-
+    // and-forget a create() so the NEXT turn with the same prefix hits.
+    const hash = computePrefixHash(modelName, body.systemInstruction, body.tools)
+    const cachedName = getCachedName('gemini', hash)
+    let requestBody: Record<string, unknown> = body
+    let cacheUsed = false
+    if (cachedName) {
+      requestBody = withCachedContentRef(body, cachedName)
+      cacheUsed = true
+    }
+
+    let resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     })
+
+    if (!resp.ok && cacheUsed) {
+      const text = await resp.text()
+      if (isStaleCacheError(resp.status, text)) {
+        console.warn(`[gemini-adapter] stale cache reference, evicting and retrying uncached: ${text.slice(0, 120)}`)
+        evictCachedName('gemini', hash)
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        cacheUsed = false
+      } else {
+        throw new AdapterError(resp.status, `Gemini API ${resp.status}: ${text.slice(0, 300)}`)
+      }
+    }
 
     if (!resp.ok) {
       const text = await resp.text()
       throw new AdapterError(resp.status, `Gemini API ${resp.status}: ${text.slice(0, 300)}`)
+    }
+
+    // Cache-miss and large-enough prefix → prime for next turn. Deduplicated
+    // by hash inside primeCache, so this is safe under concurrent misses.
+    if (!cacheUsed && shouldTryCache(estimateCacheableChars(body.systemInstruction, body.tools))) {
+      primeCache('gemini', hash, () => createCachedContent(this.apiKey, modelName, body.systemInstruction, body.tools))
     }
 
     const data = await resp.json() as Record<string, unknown>
@@ -344,11 +464,49 @@ export class GeminiAdapter implements ProviderAdapter {
 
   private async handleStream(modelName: string, body: Record<string, unknown>, res: ServerResponse): Promise<void> {
     const url = `${GEMINI_BASE}/models/${modelName}:streamGenerateContent?alt=sse&key=${this.apiKey}`
-    const resp = await fetch(url, {
+
+    // Same cache-lookup / stale-retry / fire-and-forget-prime pattern as
+    // handleNonStream above — see comments there. The retry-once path is
+    // safe here specifically because we haven't written any streaming
+    // headers yet: the first fetch() returned before res.writeHead was called.
+    const hash = computePrefixHash(modelName, body.systemInstruction, body.tools)
+    const cachedName = getCachedName('gemini', hash)
+    let requestBody: Record<string, unknown> = body
+    let cacheUsed = false
+    if (cachedName) {
+      requestBody = withCachedContentRef(body, cachedName)
+      cacheUsed = true
+    }
+
+    let resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     })
+
+    if (!resp.ok && cacheUsed) {
+      const text = await resp.text()
+      if (isStaleCacheError(resp.status, text)) {
+        console.warn(`[gemini-adapter] stale cache reference (stream), evicting and retrying uncached: ${text.slice(0, 120)}`)
+        evictCachedName('gemini', hash)
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        cacheUsed = false
+      } else {
+        // Non-stale-cache error: fall through to the existing 400/error path
+        // below by constructing an equivalent non-ok Response. Since we've
+        // already consumed the body, throw with the status intact — the
+        // outer error handler in index.ts translates that.
+        throw new AdapterError(resp.status, `Gemini API ${resp.status}: ${text.slice(0, 300)}`)
+      }
+    }
+
+    if (!cacheUsed && shouldTryCache(estimateCacheableChars(body.systemInstruction, body.tools))) {
+      primeCache('gemini', hash, () => createCachedContent(this.apiKey, modelName, body.systemInstruction, body.tools))
+    }
 
     if (!resp.ok) {
       const text = await resp.text()

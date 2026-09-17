@@ -22,6 +22,15 @@ const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-pl
 
 import type { ProviderAdapter } from './base';
 import { latency } from '../metrics.js';
+import {
+  computePrefixHash,
+  getCachedName,
+  evictCachedName,
+  primeCache,
+  shouldTryCache,
+  isStaleCacheError,
+  SERVER_CACHE_TTL_SECONDS,
+} from '../contextCache.js';
 import type {
   OpenAIContentPart,
   OpenAIMessage,
@@ -365,6 +374,77 @@ function buildGeminiRequest(openaiReq: OpenAIRequest): GenerateContentRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Context caching helpers — see contextCache.ts. Vertex's cachedContents
+// endpoint lives under aiplatform.googleapis.com and returns
+// fully-qualified names ("projects/.../locations/.../cachedContents/xxx"),
+// distinct from the direct-Gemini-API shape ("cachedContents/xxx"). Same
+// shared cache map, disjoint stores per provider so the two name shapes
+// can't collide.
+//
+// NOTE: currently zero live traffic hits this adapter — router.ts:68-76
+// puts geminiCB first for every gemini-* model due to a Vertex 404 bug on
+// this project's Model Garden access. This code is here so that if/when
+// that fix lands and traffic flips back, cross-conversation caching works
+// on Vertex too. Structurally identical to gemini.ts's caching path; not
+// verified in live traffic against Vertex specifically.
+// ---------------------------------------------------------------------------
+
+function withCachedContentRefV(request: GenerateContentRequest, cacheName: string): GenerateContentRequest {
+  // Drop systemInstruction + tools — they're in the cache. Contents +
+  // generationConfig stay. Types on GenerateContentRequest don't expose
+  // cachedContent on this SDK version, so cast the field on assignment.
+  const out = { ...request } as GenerateContentRequest & { cachedContent?: string };
+  delete (out as { systemInstruction?: unknown }).systemInstruction;
+  delete (out as { tools?: unknown }).tools;
+  out.cachedContent = cacheName;
+  return out;
+}
+
+async function createCachedContentV(
+  modelName: string,
+  systemInstruction: unknown,
+  tools: unknown,
+): Promise<{ name: string; ttlSeconds: number }> {
+  const client = await _auth.getClient();
+  const tokenResp = await client.getAccessToken();
+  const token = tokenResp.token;
+
+  const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/cachedContents`;
+  const body: Record<string, unknown> = {
+    // Vertex expects the fully-qualified model resource path here.
+    model: `projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${modelName}`,
+    ttl: `${SERVER_CACHE_TTL_SECONDS}s`,
+  };
+  if (systemInstruction) body.systemInstruction = systemInstruction;
+  if (tools) body.tools = tools;
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`vertex cachedContents.create ${resp.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await resp.json() as { name?: string; expireTime?: string };
+  if (!data.name) throw new Error('vertex cachedContents.create returned no name');
+
+  let ttlSeconds = SERVER_CACHE_TTL_SECONDS;
+  if (data.expireTime) {
+    const secondsLeft = Math.floor((new Date(data.expireTime).getTime() - Date.now()) / 1000);
+    if (secondsLeft > 0) ttlSeconds = secondsLeft;
+  }
+  return { name: data.name, ttlSeconds };
+}
+
+function estimateCacheableCharsV(systemInstruction: unknown, tools: unknown): number {
+  const sys = systemInstruction ? JSON.stringify(systemInstruction).length : 0;
+  const t = tools ? JSON.stringify(tools).length : 0;
+  return sys + t;
+}
+
+// ---------------------------------------------------------------------------
 // Adapter implementation
 // ---------------------------------------------------------------------------
 
@@ -396,7 +476,38 @@ export class VertexAdapter implements ProviderAdapter {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async handleNonStream(model: any, request: GenerateContentRequest, modelName: string, res: ServerResponse): Promise<void> {
-    const result = await model.generateContent(request);
+    // Cache lookup + stale-retry + fire-and-forget-prime. Same pattern as
+    // gemini.ts's handleNonStream — see contextCache.ts for the shared map.
+    const hash = computePrefixHash(modelName, request.systemInstruction, request.tools);
+    const cachedName = getCachedName('vertex', hash);
+    let effectiveRequest: GenerateContentRequest = request;
+    let cacheUsed = false;
+    if (cachedName) {
+      effectiveRequest = withCachedContentRefV(request, cachedName);
+      cacheUsed = true;
+    }
+
+    let result;
+    try {
+      result = await model.generateContent(effectiveRequest);
+    } catch (err) {
+      const msg = (err as Error).message ?? '';
+      // The SDK typically throws with an HTTP status embedded in the message.
+      // Match on the stale-cache signature and retry uncached once.
+      if (cacheUsed && isStaleCacheError(403, msg)) {
+        console.warn(`[vertex-adapter] stale cache reference, evicting and retrying uncached: ${msg.slice(0, 120)}`);
+        evictCachedName('vertex', hash);
+        result = await model.generateContent(request);
+        cacheUsed = false;
+      } else {
+        throw err;
+      }
+    }
+
+    if (!cacheUsed && shouldTryCache(estimateCacheableCharsV(request.systemInstruction, request.tools))) {
+      primeCache('vertex', hash, () => createCachedContentV(modelName, request.systemInstruction, request.tools));
+    }
+
     const response = buildNonStreamingResponse(result, modelName);
 
     console.log(
@@ -419,22 +530,55 @@ export class VertexAdapter implements ProviderAdapter {
 
     const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${modelName}:streamGenerateContent?alt=sse`;
 
+    // Cache lookup + stale-retry + fire-and-forget-prime. Same pattern as
+    // gemini.ts. Retry happens before any writeHead, so we can safely
+    // re-fetch with the original body on stale-cache errors.
+    const hash = computePrefixHash(modelName, request.systemInstruction, request.tools);
+    const cachedName = getCachedName('vertex', hash);
+    let effectiveRequest: GenerateContentRequest = request;
+    let cacheUsed = false;
+    if (cachedName) {
+      effectiveRequest = withCachedContentRefV(request, cachedName);
+      cacheUsed = true;
+    }
+
     let vertexRes: Response;
     try {
       vertexRes = await fetch(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
-        body: JSON.stringify(request),
+        body: JSON.stringify(effectiveRequest),
       });
     } catch (initErr) {
       console.error(`[vertex-adapter] streamGenerateContent fetch error: ${initErr instanceof Error ? initErr.message : JSON.stringify(initErr)}`);
       throw initErr;
     }
 
+    if (!vertexRes.ok && cacheUsed) {
+      const errText = await vertexRes.text();
+      if (isStaleCacheError(vertexRes.status, errText)) {
+        console.warn(`[vertex-adapter] stale cache reference (stream), evicting and retrying uncached: ${errText.slice(0, 120)}`);
+        evictCachedName('vertex', hash);
+        vertexRes = await fetch(url, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'Accept-Encoding': 'identity' },
+          body: JSON.stringify(request),
+        });
+        cacheUsed = false;
+      } else {
+        console.error(`[vertex-adapter] streamGenerateContent error ${vertexRes.status}: ${errText}`);
+        throw new Error(`Vertex AI streaming failed: ${vertexRes.status} ${errText}`);
+      }
+    }
+
     if (!vertexRes.ok) {
       const errText = await vertexRes.text();
       console.error(`[vertex-adapter] streamGenerateContent error ${vertexRes.status}: ${errText}`);
       throw new Error(`Vertex AI streaming failed: ${vertexRes.status} ${errText}`);
+    }
+
+    if (!cacheUsed && shouldTryCache(estimateCacheableCharsV(request.systemInstruction, request.tools))) {
+      primeCache('vertex', hash, () => createCachedContentV(modelName, request.systemInstruction, request.tools));
     }
 
     res.writeHead(200, {
