@@ -377,17 +377,22 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // when either (a) the model isn't reasoning anyway — thinkingBudget === 0
     // means a conversational turn where recall content wouldn't be used, or
     // (b) the thread has ≤20 messages, so the loaded `lastMessages: 20` window
-    // already contains everything recall could return. Gate both. Keep the
-    // pre-existing `lastMessages: false` for budget=0 turns so we don't reload
-    // history for pure greetings either.
+    // already contains everything recall could return. Gate only semantic
+    // recall, never lastMessages. A `lastMessages: false` gate for budget=0
+    // turns used to also apply here on the theory that a short/conversational
+    // turn never needs history — but COST_CONFIRMATION_CONTRACT's plan-approval
+    // flow (35a8d30c) depends on Olmo seeing its own prior "here's the plan"
+    // turn to recognize a short reply like "approve"/"yes"/"go" as an
+    // affirmative. Every canonical approval word is short enough to hit
+    // thinkingBudget === 0 (see thinking.ts's CONVERSATIONAL set and length<15
+    // check), so stripping history on exactly those turns silently broke
+    // delegation on approval — confirmed live 2026-09-17. History loading is
+    // cheap relative to the model call itself (cheaper still with response
+    // caching), so keep it always; only semantic recall's separate pgvector
+    // query is worth gating off.
     const SEMANTIC_RECALL_MIN_MESSAGES = 20
     const disableRecall = thinkingBudget === 0 || threadMessageCount <= SEMANTIC_RECALL_MIN_MESSAGES
-    const memoryOptions =
-      thinkingBudget === 0
-        ? { lastMessages: false as const, semanticRecall: false as const }
-        : disableRecall
-          ? { semanticRecall: false as const }
-          : undefined
+    const memoryOptions = disableRecall ? { semanticRecall: false as const } : undefined
     if (disableRecall) {
       console.log(`[sse:${sessionId}] semantic-recall gated off (budget=${thinkingBudget}, threadMessages=${threadMessageCount})`)
     }
