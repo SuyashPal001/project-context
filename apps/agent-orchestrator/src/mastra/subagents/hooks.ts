@@ -61,6 +61,17 @@ export function buildDelegationConfig(host: DelegationHost, deps: HookDeps = {})
   const lookup = deps.lookup ?? getSpecByAgentId
 
   return {
+    // Without this, Mastra's default toModelOutput maps a delegate's result
+    // to `{ type: 'text', value: result.text }` — the parent model never sees
+    // subAgentToolResults at all. DELEGATION_CONTRACT (platformAgent.ts)
+    // explicitly tells Olmo to check subAgentToolResults for a real fileId
+    // before claiming media was produced; with the default mapping that field
+    // is always absent, so Olmo always concludes "nothing was produced" even
+    // when the delegate's tool call (e.g. edit_image) fully succeeded, was
+    // charged, and left a real file in S3 the user never sees. Confirmed live
+    // 2026-09-17: edit_image returned a real fileId, Olmo still reported
+    // failure because this was unset.
+    includeSubAgentToolResultsInModelContext: true,
     // If a hook throws, fail the delegation. The default ('warn') proceeds
     // with the original prompt and result — which for a credit hook means
     // work done and nobody billed, silently. Hook throws are also recorded on
