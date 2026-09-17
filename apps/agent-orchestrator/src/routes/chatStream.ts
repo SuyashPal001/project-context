@@ -168,6 +168,30 @@ export function attachmentFromCanvasToolResult(
   return attachment
 }
 
+const FILE_ID_PATTERN = /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g
+
+/**
+ * Assistant text persisted to messages.content is the leak vector for a
+ * fabricated-attachment class of bug: a fileId mentioned in prose (e.g. "File
+ * ID: <uuid> was generated and attached above") reads as an authoritative
+ * fact to a future turn's model once it's back in context via lastMessages —
+ * even when messages.attachments never actually recorded that file (a
+ * plumbing gap fixed in e69504b8, an upload failure, etc). Confirmed live
+ * 2026-09-17: Olmo cited a real-but-orphaned fileId from an earlier turn's
+ * text as if it were a fresh attachment, with zero tool call that turn.
+ * The attachments column (not prose) is the only source of truth for what is
+ * actually attached, so any raw UUID in the text that isn't one of this
+ * turn's real attachment fileIds gets redacted before persisting — with a
+ * marker that reads as "don't trust this" to a future model, rather than
+ * silently vanishing or (worse) staying verbatim.
+ */
+export function redactUnverifiedFileIds(text: string, attachments: AttachmentPayload[]): string {
+  const verified = new Set(attachments.map((a) => a.fileId.toLowerCase()))
+  return text.replace(FILE_ID_PATTERN, (match) =>
+    verified.has(match.toLowerCase()) ? match : '[unverified reference removed]'
+  )
+}
+
 // True iff the two lists carry the same (installId, name) pairs, regardless
 // of order. A length-only compare misses a forged/stale stored entry that
 // still resolves to a *different* installId or name than what the client had
@@ -759,7 +783,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
             ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
             : null
-          saveAssistantMessage(idToken, conversationId, fullText, assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
+          saveAssistantMessage(idToken, conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
 
           // FREE-AI Sutra 1 — non-blocking, runs after client already received `done`

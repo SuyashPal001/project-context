@@ -47,7 +47,7 @@ vi.mock('../../llm/quickCall.js', () => ({}))
 vi.mock('@serverless-saas/ai', () => ({}))
 vi.mock('@serverless-saas/database', () => ({ db: {} }))
 
-import { buildMastraMessage, attachmentFromCanvasToolResult } from '../chatStream.js'
+import { buildMastraMessage, attachmentFromCanvasToolResult, redactUnverifiedFileIds } from '../chatStream.js'
 import { downloadMediaAttachment } from '../../media.js'
 import type { Attachment } from '../../types.js'
 
@@ -218,5 +218,41 @@ describe('attachmentFromCanvasToolResult — generate-video', () => {
       fileId: 'f1', name: 'clip.mp4', type: 'video/mp4', size: 100,
       generation: { creditsUsedMicro: '50000', model: 'gemini-omni-1.1-flash' },
     })
+  })
+})
+
+describe('redactUnverifiedFileIds', () => {
+  it('leaves a fileId untouched when it matches one of this turn\'s real attachments', () => {
+    const text = 'Here is your video (File ID: cab95b20-548e-485f-ae0d-952f10c878d1).'
+    const attachments = [{ fileId: 'cab95b20-548e-485f-ae0d-952f10c878d1', name: 'clip.mp4', type: 'video/mp4', size: 100 }]
+    expect(redactUnverifiedFileIds(text, attachments)).toBe(text)
+  })
+
+  it('redacts a fileId that is not among this turn\'s real attachments', () => {
+    const text = 'The video (File ID: cab95b20-548e-485f-ae0d-952f10c878d1) was generated and attached above.'
+    expect(redactUnverifiedFileIds(text, [])).toBe(
+      'The video (File ID: [unverified reference removed]) was generated and attached above.'
+    )
+  })
+
+  it('is case-insensitive when matching a verified fileId', () => {
+    const text = 'File ID: CAB95B20-548E-485F-AE0D-952F10C878D1'
+    const attachments = [{ fileId: 'cab95b20-548e-485f-ae0d-952f10c878d1', name: 'clip.mp4', type: 'video/mp4', size: 100 }]
+    expect(redactUnverifiedFileIds(text, attachments)).toBe(text)
+  })
+
+  it('redacts multiple unverified ids while leaving verified ones alone', () => {
+    const verifiedId = 'cab95b20-548e-485f-ae0d-952f10c878d1'
+    const staleId = '2d44ed61-e5f5-4e15-8caa-93dae332d3bc'
+    const text = `Scene 1: ${verifiedId}. Also here's an old one: ${staleId}.`
+    const attachments = [{ fileId: verifiedId, name: 'clip.mp4', type: 'video/mp4', size: 100 }]
+    expect(redactUnverifiedFileIds(text, attachments)).toBe(
+      `Scene 1: ${verifiedId}. Also here's an old one: [unverified reference removed].`
+    )
+  })
+
+  it('leaves text with no UUID-shaped substrings unchanged', () => {
+    const text = 'The plan looks good, ready to proceed.'
+    expect(redactUnverifiedFileIds(text, [])).toBe(text)
   })
 })
