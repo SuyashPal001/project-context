@@ -12,6 +12,26 @@ const CONVERSATIONAL = new Set([
   'sounds good', 'perfect', 'alright', 'understood', 'noted',
 ])
 
+// Approval-shaped short replies — see COST_CONFIRMATION_CONTRACT in
+// platformAgent.ts, which explicitly treats these words as a valid approval
+// of a just-proposed media-generation plan and requires the model's very
+// next action to be a delegate call. Recognizing "the prior turn proposed a
+// plan, this message affirms it, therefore delegate now" is a multi-step
+// inference that needs real reasoning room — and it lands exactly on the
+// shortest, most conversational-looking messages this file's zero-budget
+// fast path exists to catch. Checked before that fast path so these never
+// get budget=0. Confirmed live 2026-09-17: "approve" (7 chars, and also in
+// CONVERSATIONAL via "yes"-shaped overlap) hit budget=0, and with zero
+// reasoning tokens the model shortcut straight to the prompt's own
+// honest-failure fallback text instead of executing the delegation
+// imperative — even though message history correctly showed the pending
+// plan (e4bf557d fixed that half; this is the other half).
+const APPROVAL_SIGNALS = new Set([
+  'yes', 'go', 'approve', 'approved', 'ok', 'okay', 'sure', 'looks good',
+  'perfect', 'alright', 'sounds good', 'go ahead', "let's go", 'do it',
+  'proceed', 'confirmed', 'confirm',
+])
+
 const COMPLEX_KEYWORDS = [
   'analyze', 'analysis', 'plan', 'planning', 'prd', 'roadmap',
   'compare', 'comparison', 'evaluate', 'evaluation', 'architecture',
@@ -23,6 +43,10 @@ const COMPLEX_KEYWORDS = [
 
 export function getThinkingBudget(message: string): number {
   const lower = message.trim().toLowerCase()
+
+  // Approval-shaped replies always get at least default thinking, even
+  // though several of these words also appear in CONVERSATIONAL below.
+  if (APPROVAL_SIGNALS.has(lower)) return 1024
 
   // Very short or purely conversational
   if (lower.length < 15 || CONVERSATIONAL.has(lower)) return 0
