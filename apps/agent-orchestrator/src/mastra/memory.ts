@@ -159,7 +159,6 @@ const WORKING_MEMORY_TEMPLATE = `# Brand Context
 - Active Template ID:
 - Casting Choice: [library avatar | uploaded reference | generated character]
 - Locked Reference Artifact IDs:
-- Production Plan Status: [analysis | casting | plan drafted | plan approved | rendering | overlay | done]
 
 # User Preferences
 - Casting Source: [library-first | always-generate]
