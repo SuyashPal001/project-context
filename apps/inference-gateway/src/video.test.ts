@@ -211,4 +211,35 @@ describe('generateVideo — Gemini API first, Vertex Veo fallback', () => {
     const body = JSON.parse(init.body as string)
     expect(body.response_format).toMatchObject({ aspect_ratio: '9:16', duration: '6s' })
   })
+
+  it('rejects a duration outside Veo\'s 4-8s range when falling back to Veo', async () => {
+    delete process.env.GEMINI_API_KEY
+    vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
+    process.env.VERTEX_PROJECT = 'proj'
+    const fetchSpy = vi.fn()
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await expect(generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 9 }))
+      .rejects.toThrow(/durationSeconds must be a whole number of seconds in 4\.\.8/)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('passes the caller\'s aspect ratio to Veo instead of hardcoding 16:9', async () => {
+    delete process.env.GEMINI_API_KEY
+    vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
+    process.env.VERTEX_PROJECT = 'proj'
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url).includes('predictLongRunning')) {
+        return new Response(JSON.stringify({ name: 'op1' }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ done: true, response: { videos: [{ bytesBase64Encoded: 'QUJD', mimeType: 'video/mp4' }] } }), { status: 200 })
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await generateVideo({ ...req, aspectRatio: '9:16', durationSeconds: 6 })
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.parameters).toMatchObject({ aspectRatio: '9:16' })
+  })
 })

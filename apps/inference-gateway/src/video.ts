@@ -35,6 +35,27 @@ function validateOmniDuration(durationSeconds: number): void {
   }
 }
 
+const VEO_MIN_DURATION_SECONDS = 4
+const VEO_MAX_DURATION_SECONDS = 8
+
+// Veo 2 (veo-2.0-generate-001) has no duration parameter on predictLongRunning
+// in this API version — it always renders its own default length. Validating
+// here rejects an out-of-range request before spending a call, but does not
+// yet control the actual output duration. Revisit once Veo exposes a real
+// duration parameter, or drop this validation if Veo's fixed output length
+// is confirmed acceptable for every caller.
+function validateVeoDuration(durationSeconds: number): void {
+  if (
+    !Number.isInteger(durationSeconds) ||
+    durationSeconds < VEO_MIN_DURATION_SECONDS ||
+    durationSeconds > VEO_MAX_DURATION_SECONDS
+  ) {
+    throw new Error(
+      `durationSeconds must be a whole number of seconds in ${VEO_MIN_DURATION_SECONDS}..${VEO_MAX_DURATION_SECONDS}, got ${durationSeconds}`,
+    )
+  }
+}
+
 export interface VideoGenerationRequest {
   model: string
   prompt: string
@@ -112,6 +133,7 @@ async function downloadGcsVideo(uri: string): Promise<Buffer> {
 }
 
 async function callVertexVeoModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
+  validateVeoDuration(req.durationSeconds)
   const token    = await getToken()
   const startUrl = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${getProject()}/locations/${LOCATION}/publishers/google/models/${VEO_MODEL}:predictLongRunning`
 
@@ -120,7 +142,7 @@ async function callVertexVeoModel(req: VideoGenerationRequest): Promise<VideoGen
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       instances:  [{ prompt: req.prompt }],
-      parameters: { aspectRatio: '16:9', sampleCount: 1 },
+      parameters: { aspectRatio: req.aspectRatio, sampleCount: 1 },
     }),
     signal: AbortSignal.timeout(30_000),
   })
