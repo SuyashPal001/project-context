@@ -232,4 +232,13 @@ describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
     expect(body.input).toBe(req.prompt)
   })
 
+  it('keeps the wire-level model id in the allowlist unnamespaced — only the credit rate subject is namespaced', async () => {
+    process.env.GEMINI_API_KEY = 'key'
+    vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => okBody }))
+
+    await expect(generateVideo({ ...req, model: 'gemini-omni-1.1-flash', aspectRatio: '16:9', durationSeconds: 8 }))
+      .resolves.not.toBeUndefined()
+  })
+
 })

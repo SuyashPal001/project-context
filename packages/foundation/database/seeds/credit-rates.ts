@@ -29,6 +29,22 @@ const RATES = [
   // cheapest (lite, no-audio) tier plus margin — it is NOT true per-second metering, and a
   // longer or audio-bearing clip can still cost more than this charges. Fixing that requires
   // the gateway to report duration; flag before enabling longer or audio-bearing video output.
+  { resourceType: 'video_generation', subject: 'google/gemini-omni-1.1-flash',
+    pricingSchema: { per_call_micro: 400_000 } },
+  // Superseded by the 'google/gemini-omni-1.1-flash' row above, per
+  // docs/media-generation/README.md's namespaced-model-id convention.
+  // generateVideo.ts now looks up rates under the namespaced subject.
+  // Do not remove this row until confirming no other code (reporting queries,
+  // dashboards) still references the bare subject string.
+  //
+  // PRICING NOT RE-EVALUATED HERE: this comment block already warned the
+  // original per_call_micro assumed "cheapest, no-audio, ~8s" and said to
+  // flag before enabling longer or audio-bearing output. This plan enables
+  // up to 10s and dialogue (audio is always on for Omni, unconditionally —
+  // see Task 7/8's gateway work). The namespaced row above copies the same
+  // price verbatim — re-pricing is a deliberate follow-up, not silently
+  // skipped; do not treat this row's number as validated for the new
+  // capability range.
   { resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
     pricingSchema: { per_call_micro: 400_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can

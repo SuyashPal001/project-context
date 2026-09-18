@@ -76,7 +76,7 @@ export function detectSkillPii(body: string): string {
 }
 
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
-const VIDEO_MODEL = 'gemini-omni-1.1-flash'
+const VIDEO_MODEL = 'google/gemini-omni-1.1-flash'
 const MUSIC_MODEL = 'lyria-002'
 
 /**
