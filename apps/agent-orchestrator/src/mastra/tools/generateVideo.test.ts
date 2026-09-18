@@ -194,6 +194,20 @@ describe('generateVideo tool', () => {
     expect(spendCredits).not.toHaveBeenCalled()
   })
 
+  it('refuses SOURCE_IMAGE_UNAVAILABLE for animate_frame when idToken is missing, without charging or calling the gateway', async () => {
+    const ctxNoIdToken = ctx({ tenantId: 't1', agentId: 'a1', conversationId: 'c1' })
+    global.fetch = vi.fn() as unknown as typeof fetch
+
+    const result = await generateVideo.execute!(
+      { mode: 'animate_frame', prompt: 'x', aspectRatio: '16:9', durationSeconds: 8, startImageFileId: 'img1' } as never,
+      ctxNoIdToken,
+    )
+
+    expect(result).toEqual({ refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE', jobId: expect.any(String) })
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
   it('resolves startImageFileId to a presigned URL and forwards it as imageUri', async () => {
     const fetchSpy = vi.fn(async (url: string) => {
       if (String(url).includes('presigned-url')) {
@@ -242,7 +256,7 @@ describe('generateVideo tool', () => {
       } as never,
       baseCtx(),
     )
-    expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' })
+    expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED', jobId: expect.any(String) })
     expect(global.fetch).not.toHaveBeenCalled()
   })
 
@@ -256,7 +270,21 @@ describe('generateVideo tool', () => {
       } as never,
       baseCtx(),
     )
-    expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' })
+    expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED', jobId: expect.any(String) })
+  })
+
+  it('refuses when the prompt contains a curly/smart-quoted line that does not match approvedDialogue', async () => {
+    const result = await generateVideo.execute!(
+      {
+        mode: 'text_to_video',
+        prompt: 'A creator speaking to camera, saying “Try our new serum today.”',
+        aspectRatio: '16:9', durationSeconds: 8,
+        approvedDialogue: 'Try our NEW serum today!',
+      } as never,
+      baseCtx(),
+    )
+    expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED', jobId: expect.any(String) })
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 
   it('proceeds when the quoted line exactly matches approvedDialogue', async () => {

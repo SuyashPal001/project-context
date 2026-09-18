@@ -47,8 +47,12 @@ const inputSchema = z.object({
 // every quoted span matches the approved line. A first-match-only check would
 // let a second, unapproved quoted phrase slip through undetected if the first
 // one happened to match.
+// Matches straight ASCII double-quotes (the expected/primary case) and also
+// curly/smart double-quotes (U+201C/U+201D) as defense in depth — a model
+// that renders smart quotes instead of straight ones shouldn't be able to
+// bypass the dialogue-approval gate below.
 function extractQuotedSpans(prompt: string): string[] {
-  return [...prompt.matchAll(/"([^"]+)"/g)].map((m) => m[1])
+  return [...prompt.matchAll(/"([^"]+)"|“([^”]+)”/g)].map((m) => m[1] ?? m[2])
 }
 
 export const generateVideo = createTool({
@@ -62,19 +66,10 @@ export const generateVideo = createTool({
     const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue } =
       inputData as z.infer<typeof inputSchema>
 
-    // Content/dialogue approval gate — enforced in tool code, not prose.
-    // Director's own instructions (see TEMPLATE_CLONING_SECTION in
-    // directorAgent.ts) restrict double-quote marks in the prompt to spoken
-    // dialogue only, but this check does NOT trust that rule to always hold —
-    // a fresh implementer subagent working on Director's instructions later,
-    // or a future edit, could reintroduce a stray quoted phrase. So every
-    // quoted span in the prompt is checked, and any mismatch refuses before
-    // any charge or gateway call happens.
-    const quotedSpans = extractQuotedSpans(prompt)
-    if (quotedSpans.some((span) => span !== approvedDialogue)) {
-      return { refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' }
-    }
-
+    // jobId is derived purely from execContext (no charge or gateway call
+    // involved), so it's safe to compute it before the dialogue gate below —
+    // this lets every refusal path, including DIALOGUE_NOT_APPROVED, report a
+    // jobId without disturbing the charge-before-call ordering.
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined ?? ''
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
@@ -91,25 +86,47 @@ export const generateVideo = createTool({
     const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
     const jobId = `${conversationId ?? sessionId}:${toolCallId}`
 
+    // Content/dialogue approval gate — enforced in tool code, not prose.
+    // Director's own instructions (see TEMPLATE_CLONING_SECTION in
+    // directorAgent.ts) restrict double-quote marks in the prompt to spoken
+    // dialogue only, but this check does NOT trust that rule to always hold —
+    // a fresh implementer subagent working on Director's instructions later,
+    // or a future edit, could reintroduce a stray quoted phrase. So every
+    // quoted span in the prompt is checked, and any mismatch refuses before
+    // any charge or gateway call happens.
+    const quotedSpans = extractQuotedSpans(prompt)
+    if (quotedSpans.some((span) => span !== approvedDialogue)) {
+      return { refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED', jobId }
+    }
+
     let imageUri: string | undefined
-    if ((mode === 'animate_frame' || mode === 'composite_references') && idToken) {
+    if (mode === 'animate_frame' || mode === 'composite_references') {
+      if (!idToken) {
+        // No idToken means fetchPresignedUrl below can never succeed — without
+        // this check the tool would silently skip image resolution, proceed to
+        // charge full price, and hand back a text-only result the user
+        // believes is product-conditioned. Refuse before any charge happens,
+        // same as every other failure in this resolution block.
+        return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE', jobId }
+      }
       const referenceFileId = startImageFileId ?? referenceFileIds?.[0]
       if (referenceFileId) {
         try {
           imageUri = await fetchPresignedUrl(referenceFileId, idToken)
         } catch (err) {
           console.error(`[session:${sessionId}] generateVideo: failed to resolve reference image ${referenceFileId}:`, (err as Error).message)
-          return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }
+          return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE', jobId }
         }
       }
     }
 
     // Charge BEFORE the vendor call — docs/media-generation/README.md's
-    // settled rule. An attempt counter appended after any refund keeps a
-    // retried tool call under the same toolCallId from being charged twice
-    // (refundVideoCharge's `${chargeKey}:refund` scheme consumes the debit
-    // key, so a bare re-execution under an unchanged key would otherwise
-    // silently skip charging on retry).
+    // settled rule. `attempt` is hardcoded to 0 for now, so chargeKey today
+    // only guarantees a distinct key per toolCallId — it does NOT yet prevent
+    // a refunded-then-retried call from being charged twice. Incrementing
+    // `attempt` on retry (so a bare re-execution under the same toolCallId
+    // gets a fresh key after a refund) is deferred, per Task 7's original
+    // plan text — not implemented here.
     const attempt = 0
     const chargeKey = `video:${jobId}:${attempt}`
     let charged = false
@@ -144,6 +161,18 @@ export const generateVideo = createTool({
       const res = await fetch(`${GATEWAY_URL}/v1/video/generations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+        // No imageMimeType field: the presigned-url resolution above
+        // (fetchPresignedUrl, mediaCache.ts) only returns the URL string —
+        // apps/api's GET /files/:id/presigned-url route never returns the
+        // file's content type, and this codebase has no established pattern
+        // for guessing mime type from a URL/filename extension (the
+        // extension derivation near the video-upload path below reads it off
+        // a real mimeType returned by the gateway, not off a URL). Rather
+        // than fabricate a guess, this is left unset; the gateway's
+        // stageImageForOmni (apps/inference-gateway/src/video.ts) falls back
+        // to 'image/jpeg' when imageMimeType is absent. Fixing this for real
+        // requires either the presigned-url route or storageService to
+        // surface the stored file's content type.
         body: JSON.stringify({ model: GATEWAY_MODEL_ID, prompt, task, aspectRatio, durationSeconds, imageUri }),
         // Must stay strictly larger than the gateway's own upstream timeout
         // (240s in apps/inference-gateway/src/video.ts) — otherwise this
