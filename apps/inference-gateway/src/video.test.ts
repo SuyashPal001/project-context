@@ -207,7 +207,7 @@ describe('generateVideo — Gemini API first, Vertex Veo fallback', () => {
 
     await generateVideo({ ...req, aspectRatio: '9:16', durationSeconds: 6 })
 
-    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
     const body = JSON.parse(init.body as string)
     expect(body.response_format).toMatchObject({ aspect_ratio: '9:16', duration: '6s' })
   })
