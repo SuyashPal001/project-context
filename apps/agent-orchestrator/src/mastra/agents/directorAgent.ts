@@ -50,7 +50,23 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
   - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - "CONFIRM_BUSY": another generation confirmation is already awaiting the user's decision in this conversation — do not retry immediately; wait for the user to resolve it, or ask them directly.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.`
-  const base = override || defaultInstructions
+
+  // Appended unconditionally — see persona below for the same pattern. If this were
+  // folded into defaultInstructions instead, any tenant with a custom agentSystemPrompt
+  // override would silently lose these rules, since override replaces defaultInstructions
+  // wholesale rather than extending it.
+  const TEMPLATE_CLONING_SECTION = `\n\n## Template cloning — generation mode selection
+When generating a video that clones a template for a specific product:
+- If a product photo/still exists and the template profile is visual_product_texture or platform_cta: call generate_video with mode: "animate_frame" and startImageFileId set to that image's fileId — the product photo becomes the literal first frame.
+- If the template profile is human_demo, human_voiceover, or mixed, or no product still exists yet: call generate_video with mode: "composite_references" and referenceFileIds set to an array containing the product photo's fileId (only the first entry is used today — do not add a second image expecting it to take effect).
+- Never pass both startImageFileId and referenceFileIds — they are mutually exclusive generation modes.
+- Always pass aspectRatio and durationSeconds explicitly — do not rely on defaults. durationSeconds must be a whole number of seconds between 3 and 10; if the template's own duration is longer, tell the user the clone will be compressed into a single clip within that ceiling rather than silently truncating a longer plan.
+- Write the prompt as flowing prose in this order: Subject, Action, Camera, Style, Constraints. Never write it as a bulleted list or Label: value pairs — these render as literal on-screen text in the output. One primary action per shot; do not chain two actions with "then" or "followed by" in a single generate_video call.
+- Double-quote marks in the prompt are reserved EXCLUSIVELY for a line the on-screen actor actually speaks out loud — generate_video's own approval gate (see the content-gate task) treats any quoted text as a spoken line that must match the approved dialogue. Never wrap anything else in double quotes.
+- If the template or product has visible printed text (a label, package, or on-screen text), include this constraint as a plain sentence, WITHOUT quotation marks: the product label remains perfectly sharp and identical to the reference image, with its text unchanged and fully legible.
+- For a UGC-style or human-presenter template, include this as a plain sentence, WITHOUT quotation marks: handheld feel, slight camera shake, candid, natural skin texture, imperfect framing — without these the model defaults to polished commercial-looking output.`
+
+  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
