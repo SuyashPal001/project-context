@@ -187,4 +187,49 @@ describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
     expect(body.response_format).toMatchObject({ aspect_ratio: '9:16', duration: '6s' })
   })
 
+  it('sends a multimodal input array with a Files-API-staged image part when imageUri is set', async () => {
+    process.env.GEMINI_API_KEY = 'key'
+    vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+    const stagedUri = 'https://generativelanguage.googleapis.com/v1beta/files/abc123'
+    const fetchSpy = vi.fn(async (url: RequestInfo | URL) => {
+      const urlStr = String(url)
+      if (urlStr.includes('/upload/v1beta/files')) {
+        return new Response(JSON.stringify({ file: { uri: stagedUri } }), { status: 200 })
+      }
+      if (urlStr === 'https://example.com/product.jpg') {
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+      }
+      return new Response(JSON.stringify(okBody), { status: 200 })
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await generateVideo({
+      ...req, aspectRatio: '9:16', durationSeconds: 6,
+      task: 'image_to_video', imageUri: 'https://example.com/product.jpg',
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(3)
+    const [, init] = fetchSpy.mock.calls[2] as unknown as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.input).toEqual([
+      { type: 'text', text: req.prompt },
+      { type: 'image', uri: stagedUri, mime_type: 'image/jpeg' },
+    ])
+    expect(body.generation_config.video_config.task).toBe('image_to_video')
+  })
+
+  it('still sends a bare string input for text_to_video (no regression)', async () => {
+    process.env.GEMINI_API_KEY = 'key'
+    vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify(okBody), { status: 200 }))
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 8 })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.input).toBe(req.prompt)
+  })
+
 })

@@ -62,6 +62,8 @@ export interface VideoGenerationRequest {
   task: 'text_to_video' | 'edit' | 'extend' | 'image_to_video'
   aspectRatio: '16:9' | '9:16'
   durationSeconds: number
+  imageUri?: string
+  imageMimeType?: string
 }
 
 export type VideoGenerationResult =
@@ -84,15 +86,58 @@ export function classifyInteractionsVideoResponse(interactionResponse: any): Vid
   return { videoBase64: videoBlock.data, mimeType: videoBlock.mime_type ?? 'video/mp4' }
 }
 
+// Gemini's API-key path (generativelanguage.googleapis.com) does not fetch
+// arbitrary third-party HTTPS URLs for multimodal image input — confirmed by
+// documented-behavior review in Task 4's spike (not yet live-verified; see
+// apps/inference-gateway/scratch/image-conditioning-spike.md). Its only image
+// input paths are inline base64 or a URI from Gemini's own Files API. This
+// downloads the presigned source URL's bytes and re-uploads them to the
+// Files API, mirroring Vertex Veo's own gs:// staging requirement.
+async function stageImageForOmni(sourceUrl: string, mimeType: string): Promise<string> {
+  const key = process.env.GEMINI_API_KEY ?? ''
+  const imageRes = await fetch(sourceUrl, { signal: AbortSignal.timeout(30_000) })
+  if (!imageRes.ok) throw new Error(`Failed to fetch source image for staging: ${imageRes.status}`)
+  const imageBytes = await imageRes.arrayBuffer()
+
+  const boundary = `boundary-${Date.now()}`
+  const metadata = JSON.stringify({ file: { display_name: `omni-condition-${Date.now()}` } })
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: ${mimeType}\r\n\r\n`
+  const bodyBuffer = Buffer.concat([
+    Buffer.from(body, 'utf-8'),
+    Buffer.from(imageBytes),
+    Buffer.from(`\r\n--${boundary}--`, 'utf-8'),
+  ])
+
+  const uploadRes = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${key}`, {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body: bodyBuffer,
+    signal: AbortSignal.timeout(60_000),
+  })
+  if (!uploadRes.ok) throw new Error(`Gemini Files API upload failed: ${uploadRes.status} ${await uploadRes.text()}`)
+  const uploadJson = await uploadRes.json() as { file: { uri: string } }
+  return uploadJson.file.uri
+}
+
 async function callGeminiApiKeyVideoModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
   const key = process.env.GEMINI_API_KEY ?? ''
   const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${key}`
+  const input = req.imageUri
+    ? [
+        { type: 'text', text: req.prompt },
+        { type: 'image', uri: await stageImageForOmni(req.imageUri, req.imageMimeType ?? 'image/jpeg'), mime_type: req.imageMimeType ?? 'image/jpeg' },
+      ]
+    : req.prompt
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: req.model,
-      input: req.prompt,
+      input,
       response_format: {
         type: 'video',
         resolution: '720p',
