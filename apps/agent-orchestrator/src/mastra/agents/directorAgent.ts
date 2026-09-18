@@ -8,6 +8,8 @@ import { generateImage } from '../tools/generateImage.js'
 import { editImage } from '../tools/editImage.js'
 import { generateVideo } from '../tools/generateVideo.js'
 import { retrieveTemplate } from '../tools/retrieveTemplate.js'
+import { analyzeVideoTool } from '../tools/analyzeVideo.js'
+import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 
 const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
@@ -63,7 +65,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -82,6 +84,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool },
   errorProcessors: [streamErrorRetry()],
 })
