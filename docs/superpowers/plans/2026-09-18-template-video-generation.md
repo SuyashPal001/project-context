@@ -17,11 +17,14 @@
 - Model ids are namespaced `vendor/model` (e.g. `google/gemini-omni-1.1-flash`) wherever they appear — tool input, credit-rate subject, `files` provenance.
 - The orchestrator gains no new credentials — reuse the existing presign/upload/confirm path (`fetchPresignedUrl` in `src/mastra/tools/mediaCache.js`), never add a direct S3/GCS client.
 - Per-backend limits (duration, aspect ratio) are hard-validated and rejected outside range — never silently clamped.
-- **Phase 1 tasks (11+) do not start until the Phase 0.5 checkpoint (Task 10) passes.** This is a hard gate, not a suggestion.
+- **Phase 1 tasks (9+) do not start until the Phase 0.5 checkpoint (Task 8) passes.** This is a hard gate, not a suggestion.
+- **Execution order note (post third-party review):** Task 6 (credit-rate namespacing) must land before Task 7 (`generateVideo.ts` rework) — Task 7 switches the rate-lookup subject to the namespaced id, and if that row doesn't exist yet, `resolveRate` returns null, which makes both the approval gate and the charge silently no-op. The tasks are already numbered in the correct order below — execute in numeric order and this is automatically satisfied.
 
 ---
 
 ## Phase 0: gateway image-conditioning + planner
+
+**Test convention note (post third-party review):** `apps/inference-gateway/src/video.test.ts` already establishes a convention every new test below must follow: `vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body }))` (plain mock objects, not real `Response` instances), with an existing `afterEach(() => vi.unstubAllGlobals())` already in the file. Where a task's snippet below shows `global.fetch = vi.fn(async () => new Response(...))`, use the file's actual established pattern instead — a direct `global.fetch =` assignment is not restored by the existing `afterEach` and will leak between tests.
 
 ### Task 1: Add aspect ratio and duration as real wire parameters to the Gemini Omni call
 
@@ -542,21 +545,175 @@ git add apps/inference-gateway/src/video.ts apps/inference-gateway/src/video.tes
 git commit -m "feat(gateway): support image-conditioned video generation on Gemini Omni Flash"
 ```
 
-### Task 6: Rework `generateVideo.ts` — mode schema, image reference resolution, charge-before-call, deterministic job id, namespaced model id
+### Task 6: Migrate the credit rate to the namespaced model id, everywhere it's referenced
+
+**This task must land before Task 7** — Task 7 switches the rate-lookup subject to `google/gemini-omni-1.1-flash`; if that row doesn't exist, both the approval gate and the charge silently no-op.
+
+**Files:**
+- Modify: `packages/foundation/database/seeds/credit-rates.ts`
+- Modify: `apps/agent-orchestrator/src/mastra/tools/generationApproval.ts` (its own hardcoded `VIDEO_MODEL` constant, line ~79, feeding `GENERATION_APPROVAL_METADATA`'s `videoGen` entry, line ~100 — confirmed via source read: this is a THIRD site with the bare subject, independent of `generateVideo.ts`'s own constant, and it's what `chatStream.ts` uses to price/label the approval card. Missing this site means the approval card shows a price for the OLD subject while Task 7's tool charges the NEW one.)
+- Create: `packages/foundation/database/scripts/2026-09-18-namespace-video-generation-rate.ts` (this package's real scripts directory — confirmed via source read: `packages/foundation/database/migrations/` holds only `.sql` files; one-off TS scripts live in `packages/foundation/database/scripts/`)
+- Test: `apps/inference-gateway/src/video.test.ts`
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: a namespaced `video_generation` credit rate row (`google/gemini-omni-1.1-flash`) that Task 7's `generateVideo.ts` rewrite looks up; `generationApproval.ts`'s `VIDEO_MODEL` constant also namespaced so the approval card and the actual charge agree.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// apps/inference-gateway/src/video.test.ts
+it('keeps the wire-level model id in the allowlist unnamespaced — only the credit rate subject is namespaced', async () => {
+  process.env.GEMINI_API_KEY = 'key'
+  vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => okBody }))
+
+  await expect(generateVideo({ ...req, model: 'gemini-omni-1.1-flash', aspectRatio: '16:9', durationSeconds: 8 }))
+    .resolves.not.toBeUndefined()
+})
+```
+
+(`generateVideo` is async — a synchronous `.not.toThrow()` assertion never actually exercises it; this documents the intentional split — bare wire id, namespaced credit subject — as a real assertion, since it's easy for a future change to "helpfully" namespace the allowlist too and break every real request.)
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `cd apps/inference-gateway && npx vitest run src/video.test.ts -t "unnamespaced"`
+Expected: This actually passes already, since `VIDEO_MODEL_ALLOWLIST` isn't touched by this task — confirm it passes for the right reason (the allowlist still has the bare id), not vacuously.
+
+- [ ] **Step 3: Add the new namespaced credit rate row**
+
+In `packages/foundation/database/seeds/credit-rates.ts`, add alongside the existing row (do not remove or rename the old one yet):
+
+```ts
+{ resourceType: 'video_generation', subject: 'google/gemini-omni-1.1-flash',
+  pricingSchema: { per_call_micro: 400_000 } },
+```
+
+Add a code comment above the OLD row noting it's superseded, and flag the pricing question this phase doesn't resolve:
+
+```ts
+// Superseded by the 'google/gemini-omni-1.1-flash' row below, per
+// docs/media-generation/README.md's namespaced-model-id convention.
+// generateVideo.ts now looks up rates under the namespaced subject.
+// Do not remove this row until confirming no other code (reporting queries,
+// dashboards) still references the bare subject string.
+//
+// PRICING NOT RE-EVALUATED HERE: this comment block already warned the
+// original per_call_micro assumed "cheapest, no-audio, ~8s" and said to
+// flag before enabling longer or audio-bearing output. This plan enables
+// up to 10s and dialogue (audio is always on for Omni, unconditionally —
+// see Task 7/8's gateway work). The namespaced row below copies the same
+// price verbatim — re-pricing is a deliberate follow-up, not silently
+// skipped; do not treat this row's number as validated for the new
+// capability range.
+{ resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
+  pricingSchema: { per_call_micro: 400_000 } },
+```
+
+- [ ] **Step 4: Namespace `generationApproval.ts`'s own model constant**
+
+In `apps/agent-orchestrator/src/mastra/tools/generationApproval.ts`, change:
+
+```ts
+const VIDEO_MODEL = 'gemini-omni-1.1-flash'
+```
+
+to:
+
+```ts
+const VIDEO_MODEL = 'google/gemini-omni-1.1-flash'
+```
+
+This is the constant feeding `GENERATION_APPROVAL_METADATA`'s `videoGen` entry (`{ resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video' }`) — the approval card's own price lookup. It must move in the same commit as the seed row, or the card prices against a subject with no matching rate.
+
+- [ ] **Step 5: Write and run a real migration for deployed environments**
+
+`seedCreditRates` dedupes on `(resourceType, subject, version)` — a genuinely new `subject` value IS picked up by a reseed (this task's earlier draft said otherwise; corrected here). A one-off migration script is still the right tool for an immediate deploy that shouldn't wait on the next full reseed cycle:
+
+```ts
+// packages/foundation/database/scripts/2026-09-18-namespace-video-generation-rate.ts
+import { db } from '../client.js'
+import { creditRates } from '../schema/index.js'
+import { and, eq } from 'drizzle-orm'
+
+async function main() {
+  const existing = await db.query.creditRates.findFirst({
+    where: and(eq(creditRates.resourceType, 'video_generation'), eq(creditRates.subject, 'google/gemini-omni-1.1-flash')),
+  })
+  if (existing) {
+    console.log('already migrated, nothing to do')
+    return
+  }
+  const old = await db.query.creditRates.findFirst({
+    where: and(eq(creditRates.resourceType, 'video_generation'), eq(creditRates.subject, 'gemini-omni-1.1-flash')),
+  })
+  if (!old) {
+    console.error('no existing gemini-omni-1.1-flash rate found — insert manually with the correct pricingSchema')
+    process.exit(1)
+  }
+  await db.insert(creditRates).values({
+    resourceType: 'video_generation',
+    subject: 'google/gemini-omni-1.1-flash',
+    pricingSchema: old.pricingSchema,
+    version: 1,
+    isActive: true,
+  })
+  console.log('inserted namespaced video_generation rate')
+}
+
+main()
+```
+
+(`version`/`isActive` are set explicitly rather than left to schema defaults — `credit_rates`'s unique constraint is on `(resourceType, subject, version)`, and `resolveRate` filters on `is_active`, so both must be right for this row to actually resolve.)
+
+Run against dev: `cd packages/foundation/database && pnpm exec tsx scripts/2026-09-18-namespace-video-generation-rate.ts`
+
+- [ ] **Step 6: Run test to verify it passes**
+
+Run: `cd apps/inference-gateway && npx vitest run src/video.test.ts`
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add packages/foundation/database/seeds/credit-rates.ts packages/foundation/database/scripts/2026-09-18-namespace-video-generation-rate.ts apps/agent-orchestrator/src/mastra/tools/generationApproval.ts apps/inference-gateway/src/video.test.ts
+git commit -m "feat(credits): add namespaced google/gemini-omni-1.1-flash video_generation rate"
+```
+
+### Task 7: Rework `generateVideo.ts` — mode schema, image reference resolution, charge-before-call, deterministic job id, namespaced model id
 
 **Files:**
 - Modify: `apps/agent-orchestrator/src/mastra/tools/generateVideo.ts` (full rewrite of the file's body)
 - Test: `apps/agent-orchestrator/src/mastra/tools/generateVideo.test.ts`
 
 **Interfaces:**
-- Consumes: the gateway's new `VideoGenerationRequest` shape (Tasks 1, 3, 5); `fetchPresignedUrl(fileId, idToken, signal?)` from `src/mastra/tools/mediaCache.js` (existing).
+- Consumes: the gateway's new `VideoGenerationRequest` shape (Tasks 1, 3, 5); `fetchPresignedUrl(fileId, idToken, signal?)` from `src/mastra/tools/mediaCache.js` (existing); the namespaced credit rate row from Task 6 (must exist before this task runs, or the rate lookup returns null and every generation is silently unbilled/ungated).
 - Produces: `generateVideo`'s `inputSchema` gains `mode`, `startImageFileId`, `referenceFileIds`, `aspectRatio`, `durationSeconds`; its `outputSchema` gains `jobId`. Task 12 (content gate) reads the tool's `mode`/`prompt` inputs directly — no new shared type needed beyond what's defined here.
+
+**Scope note:** `referenceFileIds` accepts up to 3 in the schema (matching the spec's placeholder cap), but this task's `execute` only resolves and forwards `referenceFileIds?.[0]` — the gateway has no multi-image request path yet (Task 5 only added a single `imageUri` field). Sending more than one reference id is accepted by the schema but only the first is actually used; Task 12's Director instructions must not imply multi-image compositing works today (see Task 12's note).
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `apps/agent-orchestrator/src/mastra/tools/generateVideo.test.ts`, alongside the existing tests (update the existing tests' calls to include `mode: 'text_to_video', aspectRatio: '16:9' as const, durationSeconds: 8` in their input objects, since `mode` is now required):
+Add to `apps/agent-orchestrator/src/mastra/tools/generateVideo.test.ts`, alongside the existing tests. `mode` is now required, and this rewrite changes call ordering and result shape — the following **four existing tests need real changes**, not just an added `mode` field, or they will fail after this task for reasons unrelated to what they're actually testing:
+- `'does not charge when the gateway refuses'` — still valid, but its input object needs `mode`/`aspectRatio`/`durationSeconds` added.
+- `'returns insufficientCredits when spendCredits throws after a successful generation'` — the expected result now includes `jobId`; update the `toEqual` to `{ insufficientCredits: true, jobId: expect.any(String) }`. Also note: charge-before-call means this now throws BEFORE the gateway fetch, not after — update the test's `global.fetch`/`vi.stubGlobal` setup so it isn't asserting a fetch call that no longer happens first.
+- `'returns GENERATION_FAILED without charging when a non-refused gateway response is missing videoBase64'` — this response is now DISCOVERED after a charge already happened (charge-before-call), so it must now assert a refund call too: add `expect(spendCredits).toHaveBeenCalledTimes(2)` and a `kind: 'refund'` assertion, matching the existing `'refunds when the post-charge upload fails'` test's pattern.
+- `'requireApproval delegates to shouldRequireApproval with video_generation/VIDEO_MODEL'` — the expected subject changes from `'gemini-omni-1.1-flash'` to `'google/gemini-omni-1.1-flash'`.
 
 ```ts
+it('mints a distinct chargeKey per toolCallId, so a second video in the same conversation is not free', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ videoBase64: 'QUJD', mimeType: 'video/mp4' }) }))
+  ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+
+  const ctxA = { requestContext: baseCtx().requestContext, agent: { toolCallId: 'call-1' } } as never
+  const ctxB = { requestContext: baseCtx().requestContext, agent: { toolCallId: 'call-2' } } as never
+  await generateVideo.execute!({ mode: 'text_to_video', prompt: 'x', aspectRatio: '16:9', durationSeconds: 8 } as never, ctxA)
+  await generateVideo.execute!({ mode: 'text_to_video', prompt: 'y', aspectRatio: '16:9', durationSeconds: 8 } as never, ctxB)
+
+  const chargeKeys = spendCredits.mock.calls.map((call: unknown[]) => (call[0] as { key: string }).key)
+  expect(new Set(chargeKeys).size).toBe(2)
+})
+
 it('rejects animate_frame without startImageFileId', async () => {
   await expect(
     generateVideo.execute!({ mode: 'animate_frame', prompt: 'x', aspectRatio: '16:9', durationSeconds: 8 } as never, baseCtx()),
@@ -679,9 +836,15 @@ export const generateVideo = createTool({
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
-    // toolCallId lives directly on execContext, not requestContext — confirmed
-    // against @mastra/core's AgentToolExecutionContext type.
-    const toolCallId = execContext?.toolCallId ?? 'unknown'
+    // toolCallId lives on execContext.agent.toolCallId, not execContext.toolCallId
+    // and not requestContext — confirmed against @mastra/core's
+    // AgentToolExecutionContext type (dist/tools/types.d.ts). Reading the wrong
+    // location silently returns 'unknown' every time, which makes chargeKey
+    // constant per conversation — spendCredits is idempotent on that key, so
+    // every video generation after the first in the same conversation would be
+    // free. This was caught by review before implementation; do not read
+    // toolCallId from anywhere except execContext.agent.toolCallId.
+    const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
     const jobId = `${conversationId ?? sessionId}:${toolCallId}`
 
     let imageUri: string | undefined
@@ -797,142 +960,57 @@ git add apps/agent-orchestrator/src/mastra/tools/generateVideo.ts apps/agent-orc
 git commit -m "feat(orchestrator): image-conditioned generate_video with charge-before-call and namespaced model id"
 ```
 
-### Task 7: Migrate the credit rate to the namespaced model id, everywhere it's referenced
-
-**Files:**
-- Modify: `packages/foundation/database/seeds/credit-rates.ts`
-- Modify: `apps/inference-gateway/src/video.ts` (`VIDEO_MODEL_ALLOWLIST`)
-- Test: `apps/inference-gateway/src/video.test.ts`, `apps/agent-orchestrator/src/mastra/tools/generateVideo.test.ts` (already covered by Task 6's namespaced-id test)
-
-**Interfaces:**
-- Consumes: nothing new.
-- Produces: a deployed-environment migration path for the new `google/gemini-omni-1.1-flash` rate row, and confirmation the gateway's allowlist still matches the bare id `generateVideo.ts` sends on the wire (Task 6 sends `GATEWAY_MODEL_ID = 'gemini-omni-1.1-flash'`, the bare id — the allowlist does NOT need to change, since the wire-level model id stays bare; only the **credit rate subject** and **tool-facing model id** are namespaced). This task exists to make that split explicit and add the new rate row.
-
-- [ ] **Step 1: Write the failing test**
-
-```ts
-// apps/inference-gateway/src/video.test.ts
-it('keeps the wire-level model id in the allowlist unnamespaced — only the credit rate subject is namespaced', () => {
-  expect(() => generateVideo({ ...req, model: 'gemini-omni-1.1-flash', aspectRatio: '16:9', durationSeconds: 8 }))
-    .not.toThrow(UnsupportedVideoModelError)
-})
-```
-
-(This documents the intentional split as a test, since it's easy for a future change to "helpfully" namespace the allowlist too and break every real request.)
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `cd apps/inference-gateway && npx vitest run src/video.test.ts -t "unnamespaced"`
-Expected: This actually passes already if Tasks 1-3 didn't touch `VIDEO_MODEL_ALLOWLIST` — confirm it passes for the right reason (the allowlist still has the bare id), not because the test is vacuous. If it fails, something in Tasks 1-3 accidentally changed the allowlist — fix that regression first.
-
-- [ ] **Step 3: Add the new namespaced credit rate row**
-
-In `packages/foundation/database/seeds/credit-rates.ts`, add alongside the existing row (do not remove or rename the old one yet):
-
-```ts
-{ resourceType: 'video_generation', subject: 'google/gemini-omni-1.1-flash',
-  pricingSchema: { per_call_micro: 400_000 } },
-```
-
-Add a code comment above the OLD row noting it's superseded:
-
-```ts
-// Superseded by the 'google/gemini-omni-1.1-flash' row below, per
-// docs/media-generation/README.md's namespaced-model-id convention.
-// generateVideo.ts now looks up rates under the namespaced subject.
-// Do not remove this row until confirming no other code (reporting queries,
-// dashboards) still references the bare subject string.
-{ resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
-  pricingSchema: { per_call_micro: 400_000 } },
-```
-
-- [ ] **Step 4: Write and run a real migration for deployed environments**
-
-`seedCreditRates` only inserts a row if one doesn't already exist for that subject (confirmed in the current seed script) — a deployed environment that's already been seeded once will not pick up the new row from a reseed. Write a one-off migration script:
-
-Create `packages/foundation/database/migrations/scripts/2026-09-18-namespace-video-generation-rate.ts`:
-
-```ts
-import { getDb } from '../client.js' // adjust to the actual exported client helper in this package
-import { creditRates } from '../schema/index.js' // adjust to the actual credit_rates table export
-
-async function main() {
-  const db = getDb()
-  const existing = await db.query.creditRates.findFirst({
-    where: (r, { eq, and }) => and(eq(r.resourceType, 'video_generation'), eq(r.subject, 'google/gemini-omni-1.1-flash')),
-  })
-  if (existing) {
-    console.log('already migrated, nothing to do')
-    return
-  }
-  const old = await db.query.creditRates.findFirst({
-    where: (r, { eq, and }) => and(eq(r.resourceType, 'video_generation'), eq(r.subject, 'gemini-omni-1.1-flash')),
-  })
-  if (!old) {
-    console.error('no existing gemini-omni-1.1-flash rate found — insert manually with the correct pricingSchema')
-    process.exit(1)
-  }
-  await db.insert(creditRates).values({
-    resourceType: 'video_generation',
-    subject: 'google/gemini-omni-1.1-flash',
-    pricingSchema: old.pricingSchema,
-  })
-  console.log('inserted namespaced video_generation rate')
-}
-
-main()
-```
-
-(Adjust the exact `getDb`/schema import paths to match this package's real exports — check `packages/foundation/database/client.ts` and `schema/index.ts` for the actual names before running.)
-
-Run against dev: `cd packages/foundation/database && pnpm exec tsx migrations/scripts/2026-09-18-namespace-video-generation-rate.ts`
-
-- [ ] **Step 5: Run test to verify it passes**
-
-Run: `cd apps/inference-gateway && npx vitest run src/video.test.ts`
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add packages/foundation/database/seeds/credit-rates.ts packages/foundation/database/migrations/scripts/2026-09-18-namespace-video-generation-rate.ts apps/inference-gateway/src/video.test.ts
-git commit -m "feat(credits): add namespaced google/gemini-omni-1.1-flash video_generation rate"
-```
-
 ---
 
 ## Phase 0.5: mandatory checkpoint — verify the approval gate actually fires
 
-**This is not a code task owned by this plan.** It is a go/no-go gate. Do not start Task 11 onward until this passes.
+**This is not a code task owned by this plan.** It is a go/no-go gate. Do not start Task 9 onward until this passes.
 
 ### Task 8: Verify (or fix) delegate-nested approval resume for `generate_video`
 
 **Files:**
-- Read: `apps/agent-orchestrator/src/mastra/tools/generationApproval.ts` (the `delegationDepth > 0` bypass)
+- Modify: `apps/agent-orchestrator/src/mastra/tools/generationApproval.ts` (the `delegationDepth > 0` bypass)
 - Read: project memory `project_delegate_network_migration` for full history
-- Test: a new integration-style test exercising the exact call shape this skill needs
+- Test: `apps/agent-orchestrator/src/mastra/tools/generationApproval.test.ts` (the automatable half only — see below)
 
-- [ ] **Step 1: Write a test that currently must fail (proving the gap is real)**
+**Important scope correction:** the real question — does `agent.approveToolCall({ runId, toolCallId })` actually resume a delegate's suspended tool call and execute it — needs a live `Agent.stream()` run with a real `runId`, a live SSE `sendEvent` (`shouldRequireApproval` returns `false` outright without `sendEvent`/`sessionId`/`userId` present), a real memory store, and a real model call end to end. **This is not something a vitest unit test in this codebase can exercise** — there is no mockable seam for "does Mastra's internal resume machinery actually re-execute a suspended nested tool call." Do not write a test file claiming to prove this; it would either not compile against real Mastra internals or would only prove the mock behaves the way the mock was written, which proves nothing new.
 
-Add a test — e.g. `apps/agent-orchestrator/src/mastra/tools/__tests__/delegateApprovalResume.test.ts` — that:
-1. Temporarily removes (via a test-only monkeypatch or a feature-flag param, not a permanent code change) the `delegationDepth > 0 → return false` bypass in `shouldRequireApproval`.
-2. Drives a real `directorAgentDelegate` tool call for `generate_video` with `requireApproval` forced `true`.
-3. Asserts the approval card (`tool-call-approval` chunk) is emitted AND that calling `approveToolCall({ runId, toolCallId })` afterward actually resumes and executes the tool (a real `fileId` comes back), not an empty/no-op result.
+- [ ] **Step 1: Write the automatable part** — a unit test confirming the bypass itself, so its exact current behavior is pinned before anything changes:
 
-This test is expected to currently demonstrate the failure mode documented in `project_delegate_network_migration` (if it's still broken) or to newly pass (if Mastra's `approveToolCall` now genuinely resumes delegate-nested calls, per the "CORRECTION" note in that memory file that this was never actually retested).
-
-- [ ] **Step 2: Run it and record the actual result** — this is real information the codebase currently lacks. Update `project_delegate_network_migration`'s project memory with the outcome either way.
-
-- [ ] **Step 3a: If it resumes correctly** — remove the `delegationDepth > 0` bypass in `generationApproval.ts` (it existed only to route around the now-confirmed-fixed limitation). Run the full `generationApproval.test.ts` and `generateVideo.test.ts` suites to confirm nothing else depended on the bypass. Commit this fix on its own:
-
-```bash
-git add apps/agent-orchestrator/src/mastra/tools/generationApproval.ts
-git commit -m "fix(orchestrator): remove delegationDepth approval bypass — Mastra resume confirmed working"
+```ts
+// apps/agent-orchestrator/src/mastra/tools/generationApproval.test.ts (add alongside existing tests)
+it('currently returns false for any delegate-issued call, regardless of rate/tenant state — the known bypass', async () => {
+  isUnlimited.mockResolvedValue(false)
+  resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 100_000 } })
+  const result = await shouldRequireApproval(
+    { resourceType: 'video_generation', subject: 'google/gemini-omni-1.1-flash' },
+    { requestContext: { tenantId: 't1', sendEvent: vi.fn(), sessionId: 's1', userId: 'u1', delegationDepth: 1 } },
+  )
+  expect(result).toBe(false)
+})
 ```
 
-- [ ] **Step 3b: If it does not resume correctly** — this is a real, separate bug fix outside this plan's scope (`project_delegate_network_migration`'s domain). Do not proceed to Task 9. Escalate: this plan's Phase 1 cannot ship until that fix lands, full stop, per the design spec's Phase 0.5.
+Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generationApproval.test.ts -t "known bypass"`
+Expected: PASS today — this documents current behavior, not a fix.
 
-- [ ] **Step 4: Only once Task 8 resolves to 3a** — proceed to Phase 1.
+- [ ] **Step 2: Perform the real verification live, manually, against a running orchestrator** — this is a required manual step, not optional, and not something a later automated CI run substitutes for:
+  1. In a local/dev environment with the orchestrator running, temporarily comment out the `delegationDepth > 0` early-return in `shouldRequireApproval`.
+  2. Drive a real chat turn that causes Olmo to delegate to `directorAgentDelegate` for a `generate_video` call with a real rate configured (so `requireApproval` evaluates true).
+  3. Observe whether the approval card renders and, after approving it, whether the video actually generates (a real `fileId` comes back) — or whether it silently no-ops per the failure mode `project_delegate_network_migration` documents.
+  4. Revert the temporary comment-out regardless of outcome — Step 1's test is what pins current behavior in the codebase, not a live edit left in place.
+
+- [ ] **Step 3: Record the outcome in `project_delegate_network_migration`'s project memory** — this is real information the codebase currently lacks (that memory file explicitly notes this was never actually retested).
+
+- [ ] **Step 4a: If it resumes correctly** — remove the `delegationDepth > 0` bypass in `generationApproval.ts` for real this time (not the temporary comment-out from Step 2). Update Step 1's test to assert the NEW behavior (`requireApproval` no longer forced `false` at depth > 0). Run the full `generationApproval.test.ts` and `generateVideo.test.ts` suites to confirm nothing else depended on the bypass. Commit:
+
+```bash
+git add apps/agent-orchestrator/src/mastra/tools/generationApproval.ts apps/agent-orchestrator/src/mastra/tools/generationApproval.test.ts
+git commit -m "fix(orchestrator): remove delegationDepth approval bypass — Mastra resume confirmed working live"
+```
+
+- [ ] **Step 4b: If it does not resume correctly** — this is a real, separate bug fix outside this plan's scope (`project_delegate_network_migration`'s domain). Do not proceed to Task 9. Escalate: this plan's Phase 1 cannot ship until that fix lands, full stop, per the design spec's Phase 0.5. Report this back rather than attempting a workaround inside this plan.
+
+- [ ] **Step 5: Only once Task 8 resolves to 4a** — proceed to Phase 1.
 
 ---
 
@@ -950,16 +1028,20 @@ git commit -m "fix(orchestrator): remove delegationDepth approval bypass — Mas
 
 - [ ] **Step 1: Write the failing test**
 
+`Agent` has no public `.tools` property — confirmed against `@mastra/core`'s `agent.d.ts`, which exposes only an async `listTools({ requestContext })` method. Use that, not a direct property read:
+
 ```ts
 import { describe, it, expect } from 'vitest'
 import { directorAgent, directorAgentDelegate } from '../directorAgent.js'
 
 describe('directorAgent tool registration', () => {
-  it('has analyze_video and analyze_audio registered, needed for template-video-generation', () => {
-    expect(Object.keys(directorAgent.tools ?? {})).toEqual(
+  it('has analyze_video and analyze_audio registered, needed for template-video-generation', async () => {
+    const directorTools = await directorAgent.listTools()
+    const delegateTools = await directorAgentDelegate.listTools()
+    expect(Object.keys(directorTools)).toEqual(
       expect.arrayContaining(['analyze_video', 'analyze_audio']),
     )
-    expect(Object.keys(directorAgentDelegate.tools ?? {})).toEqual(
+    expect(Object.keys(delegateTools)).toEqual(
       expect.arrayContaining(['analyze_video', 'analyze_audio']),
     )
   })
@@ -1078,9 +1160,14 @@ git commit -m "feat(orchestrator): register retrieve_template on Olmo for templa
 - Consumes: nothing new in code — this is a prompt-text addition appended in the same layered-contract style as the existing blocks (`CLARIFICATION_CONTRACT`, `ROUTING_CONTRACT`, etc.), appended to the final composed instructions the same way those are.
 - Produces: Olmo's behavior for template-video-generation conversations — intake, brief, aspect-ratio lock, and the user-facing half of the content gate.
 
-- [ ] **Step 1: Locate the exact append point**
+- [ ] **Step 1: The exact append point** (confirmed by reading the file directly — `platformAgent.ts:366-367`, `+`-concatenation, not template-literal interpolation):
 
-Find where the existing contracts (`CLARIFICATION_CONTRACT`, `CODE_BLOCK_CONTRACT`, `CANVAS_CONTRACT`, `IDENTITY_CONTRACT`, `DELEGATION_CONTRACT`, `ROUTING_CONTRACT`, `COST_CONFIRMATION_CONTRACT`, `THINKING_STYLE_CONTRACT`) are concatenated into the final returned instructions string (further down in the same `instructions:` function than the excerpt already read — find the `return` statement that joins `composed` with all the `*_CONTRACT` constants).
+```ts
+return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
+  + DELEGATION_CONTRACT + ROUTING_CONTRACT + COST_CONFIRMATION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
+```
+
+Note this real statement includes `SKILL_CREATION_CONTRACT` and a trailing `invokedSkillsInstruction(invokedThisTurn)` call that no excerpt read earlier in this project showed — do not reconstruct this line from memory or from an earlier partial read; open the file and edit this exact statement in place.
 
 - [ ] **Step 2: Add the new contract constant**
 
@@ -1095,13 +1182,12 @@ When the user wants to clone/recreate a reference ad's structure onto their own 
 6. State known limits plainly when delivering the result: product identity will read as recognizably similar, not pixel-exact; a template with multiple distinct scenes is compressed into one clip today, not a multi-shot series.`
 ```
 
-- [ ] **Step 3: Append it in the final instructions composition**, in the same style as the other contracts (append order doesn't matter functionally since each is independent, but keep it near `ROUTING_CONTRACT`/`COST_CONFIRMATION_CONTRACT` for readability):
+- [ ] **Step 3: Insert it into the real return statement from Step 1**, after `COST_CONFIRMATION_CONTRACT`:
 
 ```ts
-return `${composed}${CLARIFICATION_CONTRACT}${CODE_BLOCK_CONTRACT}${CANVAS_CONTRACT}${IDENTITY_CONTRACT}${DELEGATION_CONTRACT}${ROUTING_CONTRACT}${COST_CONFIRMATION_CONTRACT}${TEMPLATE_VIDEO_CONTRACT}${THINKING_STYLE_CONTRACT}` // + whatever else the real return statement already includes — insert TEMPLATE_VIDEO_CONTRACT into the existing chain, don't replace it
+return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
+  + DELEGATION_CONTRACT + ROUTING_CONTRACT + COST_CONFIRMATION_CONTRACT + TEMPLATE_VIDEO_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
 ```
-
-(Read the actual current `return` statement before editing — insert `TEMPLATE_VIDEO_CONTRACT` into the existing concatenation chain in place, do not reconstruct the whole return line from scratch, since it likely includes more than what's shown in the excerpt already read, such as the skill-invocation blocks further down in the function.)
 
 - [ ] **Step 4: Manual verification** (no automated test for prompt wording, per this codebase's existing pattern) — run the orchestrator locally, start a chat as Olmo, and send a message like "clone this ad for my brand" with a template slug, confirming the response asks for a product photo and doesn't skip straight to generation.
 
@@ -1119,24 +1205,43 @@ git commit -m "feat(orchestrator): add TEMPLATE_VIDEO_CONTRACT for template clon
 - Test: none new (prompt text, same as Task 11 — verify manually)
 
 **Interfaces:**
-- Consumes: the `mode`/`startImageFileId`/`referenceFileIds` fields Task 6 added to `generate_video`'s schema.
+- Consumes: the `mode`/`startImageFileId`/`referenceFileIds` fields Task 7 added to `generate_video`'s schema.
 - Produces: Director's own instructions know which `mode` to pick per template profile.
 
-- [ ] **Step 1: Add a new `## Template cloning` section to `defaultInstructions`**, inserted after the existing `## Templates` section (which already covers calling `retrieve_template`):
+**Note on `referenceFileIds` (per Task 7's scope note):** only the first entry is actually forwarded to the gateway today. Do not instruct Director to rely on more than one reference image taking effect — the rule below asks for "the product photo" as the reference, not a list.
+
+**Important — do not put this inside `defaultInstructions` itself.** `directorInstructions`'s actual composition is:
+```ts
+const base = override || defaultInstructions
+const persona = requestContext?.get('personaPersonality') as string | undefined
+return persona ? `${persona}\n\n${base}` : base
+```
+`base` becomes `override` (a per-tenant `agentSystemPrompt`) whenever one is set, which **completely discards** `defaultInstructions` — anything added only inside that string silently vanishes for those tenants. Append the new section unconditionally instead, the same way `persona` is layered on unconditionally.
+
+- [ ] **Step 1: Add the new section as its own constant, appended after `base` regardless of which branch produced it**:
 
 ```ts
-## Template cloning — generation mode selection
+const TEMPLATE_CLONING_SECTION = `\n\n## Template cloning — generation mode selection
 When generating a video that clones a template for a specific product:
 - If a product photo/still exists and the template profile is visual_product_texture or platform_cta: call generate_video with mode: "animate_frame" and startImageFileId set to that image's fileId — the product photo becomes the literal first frame.
-- If the template profile is human_demo, human_voiceover, or mixed, or no product still exists yet: call generate_video with mode: "composite_references" and referenceFileIds including the product photo (and a presenter reference image if one was generated).
+- If the template profile is human_demo, human_voiceover, or mixed, or no product still exists yet: call generate_video with mode: "composite_references" and referenceFileIds set to an array containing the product photo's fileId (only the first entry is used today — do not add a second image expecting it to take effect).
 - Never pass both startImageFileId and referenceFileIds — they are mutually exclusive generation modes.
 - Always pass aspectRatio and durationSeconds explicitly — do not rely on defaults. durationSeconds must be a whole number of seconds between 3 and 10; if the template's own duration is longer, tell the user the clone will be compressed into a single clip within that ceiling rather than silently truncating a longer plan.
 - Write the prompt as flowing prose in this order: Subject, Action, Camera, Style, Constraints. Never write it as a bulleted list or Label: value pairs — these render as literal on-screen text in the output. One primary action per shot; do not chain two actions with "then" or "followed by" in a single generate_video call.
-- If the template or product has visible printed text (a label, package, or on-screen text), include this exact clause in the prompt: "the product label remains perfectly sharp and identical to the reference image, with its text unchanged and fully legible."
-- For a UGC-style or human-presenter template, include: "handheld feel, slight camera shake, candid, natural skin texture, imperfect framing" — without these the model defaults to polished commercial-looking output.
+- Double-quote marks in the prompt are reserved EXCLUSIVELY for a line the on-screen actor actually speaks out loud — generate_video's own approval gate (see the content-gate task) treats any quoted text as a spoken line that must match the approved dialogue. Never wrap anything else in double quotes.
+- If the template or product has visible printed text (a label, package, or on-screen text), include this constraint as a plain sentence, WITHOUT quotation marks: the product label remains perfectly sharp and identical to the reference image, with its text unchanged and fully legible.
+- For a UGC-style or human-presenter template, include this as a plain sentence, WITHOUT quotation marks: handheld feel, slight camera shake, candid, natural skin texture, imperfect framing — without these the model defaults to polished commercial-looking output.`
 ```
 
-- [ ] **Step 2: Manual verification** — trigger a template-clone generation via Olmo→Director locally and confirm the `generate_video` call Director makes uses the expected `mode` for a known template profile.
+Then change the composition to:
+
+```ts
+const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION
+const persona = requestContext?.get('personaPersonality') as string | undefined
+return persona ? `${persona}\n\n${base}` : base
+```
+
+- [ ] **Step 2: Manual verification** — trigger a template-clone generation via Olmo→Director locally, INCLUDING once with a tenant that has a custom `agentSystemPrompt` override configured, and confirm the `generate_video` call Director makes uses the expected `mode` for a known template profile in both cases.
 
 - [ ] **Step 3: Commit**
 
@@ -1155,7 +1260,7 @@ git commit -m "feat(orchestrator): add template-cloning generation-mode rules to
 - Consumes: nothing new from other tasks.
 - Produces: `generate_video`'s `inputSchema` gains an optional `approvedDialogue: string` field; a mismatch between it and any quoted spoken line in `prompt` refuses the call before the gateway is ever hit.
 
-This is the "enforced in tool code, not prose" mechanism the spec requires. Scope: rather than a hash/token infrastructure, the tool does a direct string check — if the prompt contains a quoted line (matching `"..."`, the convention Director's own prompt-writing rules already use for spoken dialogue per Task 12), that exact quoted text must match the `approvedDialogue` field byte-for-byte, or the tool refuses. This makes it structurally impossible for Director to generate a spoken line the user never literally saw and approved, without requiring new shared infrastructure.
+This is the "enforced in tool code, not prose" mechanism the spec requires. Scope: rather than a hash/token infrastructure, the tool does a direct string check — Task 12 already restricts double-quote marks in the prompt to spoken dialogue only, but the check here does NOT trust that rule to always hold (a fresh implementer subagent working on Director's instructions later, or a future edit, could reintroduce a stray quoted phrase). So the check is: extract EVERY quoted span in the prompt, not just the first — if any span doesn't exactly match `approvedDialogue`, refuse. This is robust even if a prompt ends up with more than one quoted substring (an early version of Task 12's own label-hold/realism clauses was quoted in this plan's first draft and would have broken a first-match-only check — fixed here by checking all spans, not just one).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1172,6 +1277,19 @@ it('refuses when the prompt contains a quoted line that does not match approvedD
   )
   expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' })
   expect(global.fetch).not.toHaveBeenCalled()
+})
+
+it('refuses when the prompt has two quoted spans and only one matches approvedDialogue', async () => {
+  const result = await generateVideo.execute!(
+    {
+      mode: 'text_to_video',
+      prompt: 'A creator says "Try our new serum today." while a sign reads "50% off this week."',
+      aspectRatio: '16:9', durationSeconds: 8,
+      approvedDialogue: 'Try our new serum today.',
+    } as never,
+    baseCtx(),
+  )
+  expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' })
 })
 
 it('proceeds when the quoted line exactly matches approvedDialogue', async () => {
@@ -1223,12 +1341,11 @@ const inputSchema = z.object({
 }).refine(/* existing refinements unchanged */)
 ```
 
-Add a pure helper and the check at the top of `execute`, before the image-resolution step:
+Add a pure helper and the check at the top of `execute`, before the image-resolution step. Extracts ALL quoted spans, not just the first — a prompt is only clean if every quoted span is the approved line:
 
 ```ts
-function extractQuotedLine(prompt: string): string | null {
-  const match = prompt.match(/"([^"]+)"/)
-  return match ? match[1] : null
+function extractQuotedSpans(prompt: string): string[] {
+  return [...prompt.matchAll(/"([^"]+)"/g)].map((m) => m[1])
 }
 ```
 
@@ -1237,12 +1354,12 @@ execute: async (inputData, execContext) => {
   const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue } =
     inputData as z.infer<typeof inputSchema>
 
-  const quotedLine = extractQuotedLine(prompt)
-  if (quotedLine !== null && quotedLine !== approvedDialogue) {
+  const quotedSpans = extractQuotedSpans(prompt)
+  if (quotedSpans.some((span) => span !== approvedDialogue)) {
     return { refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' }
   }
 
-  // ... rest of execute unchanged from Task 6
+  // ... rest of execute unchanged from Task 7
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
