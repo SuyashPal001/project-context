@@ -48,6 +48,12 @@ describe('SERVER_TOOLS', () => {
     expect(Object.keys(SERVER_TOOLS)).toContain('retrieve_documents')
   })
 
+  it('registers retrieve_template so Olmo can resolve a template during intake without delegating', async () => {
+    const { SERVER_TOOLS } = await import('../agents/platformAgent.js')
+
+    expect(Object.keys(SERVER_TOOLS)).toContain('retrieve_template')
+  })
+
   it('exposes retrieval alongside the web research tools', async () => {
     const { SERVER_TOOLS } = await import('../agents/platformAgent.js')
 
@@ -67,6 +73,7 @@ describe('SERVER_TOOLS', () => {
       'render_canvas',
       'request_upload',
       'retrieve_documents',
+      'retrieve_template',
       'save_skill',
       'start_task',
       'web_fetch',
