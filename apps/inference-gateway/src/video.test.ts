@@ -68,10 +68,12 @@ describe('classifyInteractionsVideoResponse', () => {
 })
 
 describe('generateVideo — Gemini API first, Vertex Veo fallback', () => {
-  const req: { model: string; prompt: string; task: 'text_to_video' } = {
+  const req = {
     model: 'gemini-omni-1.1-flash',
     prompt: 'a calm sunrise over mountains',
-    task: 'text_to_video',
+    task: 'text_to_video' as const,
+    aspectRatio: '16:9' as const,
+    durationSeconds: 8,
   }
   const okBody = {
     steps: [{ content: [{ type: 'video', data: 'QUJD', mime_type: 'video/mp4' }] }],
@@ -184,5 +186,29 @@ describe('generateVideo — Gemini API first, Vertex Veo fallback', () => {
     expect(caught).toBeDefined()
     expect(caught!.message).toMatch(/circuit open/i)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a duration outside the 3-10s Omni range before calling the gateway', async () => {
+    process.env.GEMINI_API_KEY = 'key'
+    vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+    const fetchSpy = vi.fn()
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await expect(generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 11 }))
+      .rejects.toThrow(/durationSeconds must be a whole number of seconds in 3\.\.10/)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('sends aspect_ratio and duration on the Interactions request_format', async () => {
+    process.env.GEMINI_API_KEY = 'key'
+    vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify(okBody), { status: 200 }))
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await generateVideo({ ...req, aspectRatio: '9:16', durationSeconds: 6 })
+
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.response_format).toMatchObject({ aspect_ratio: '9:16', duration: '6s' })
   })
 })

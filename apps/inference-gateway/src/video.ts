@@ -20,10 +20,27 @@ const VEO_MODEL            = 'veo-2.0-generate-001'
 const VERTEX_TIMEOUT_MS    = 200_000
 const POLL_INTERVAL_MS     = 5_000
 
+const OMNI_MIN_DURATION_SECONDS = 3
+const OMNI_MAX_DURATION_SECONDS = 10
+
+function validateOmniDuration(durationSeconds: number): void {
+  if (
+    !Number.isInteger(durationSeconds) ||
+    durationSeconds < OMNI_MIN_DURATION_SECONDS ||
+    durationSeconds > OMNI_MAX_DURATION_SECONDS
+  ) {
+    throw new Error(
+      `durationSeconds must be a whole number of seconds in ${OMNI_MIN_DURATION_SECONDS}..${OMNI_MAX_DURATION_SECONDS}, got ${durationSeconds}`,
+    )
+  }
+}
+
 export interface VideoGenerationRequest {
   model: string
   prompt: string
-  task: 'text_to_video' | 'edit' | 'extend'
+  task: 'text_to_video' | 'edit' | 'extend' | 'image_to_video'
+  aspectRatio: '16:9' | '9:16'
+  durationSeconds: number
 }
 
 export type VideoGenerationResult =
@@ -55,7 +72,13 @@ async function callGeminiApiKeyVideoModel(req: VideoGenerationRequest): Promise<
     body: JSON.stringify({
       model: req.model,
       input: req.prompt,
-      response_format: { type: 'video', resolution: '720p', delivery: 'inline' },
+      response_format: {
+        type: 'video',
+        resolution: '720p',
+        delivery: 'inline',
+        aspect_ratio: req.aspectRatio,
+        duration: `${req.durationSeconds}s`,
+      },
       generation_config: { video_config: { task: req.task } },
     }),
     signal: AbortSignal.timeout(240_000),
@@ -158,6 +181,7 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
   if (!VIDEO_MODEL_ALLOWLIST.has(req.model)) {
     throw new UnsupportedVideoModelError(`Unsupported video model: ${req.model}`)
   }
+  validateOmniDuration(req.durationSeconds)
 
   // Order deliberately Gemini-API-key first, Vertex Veo second — matches
   // images.ts's reordering for the same reason (Vertex project is currently
