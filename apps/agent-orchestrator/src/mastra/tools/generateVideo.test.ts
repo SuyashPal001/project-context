@@ -232,6 +232,60 @@ describe('generateVideo tool', () => {
     expect(callOrder[0]).toBe('charge')
   })
 
+  it('refuses when the prompt contains a quoted line that does not match approvedDialogue', async () => {
+    const result = await generateVideo.execute!(
+      {
+        mode: 'text_to_video',
+        prompt: 'A creator speaking to camera, saying "Try our new serum today."',
+        aspectRatio: '16:9', durationSeconds: 8,
+        approvedDialogue: 'Try our NEW serum today!',
+      } as never,
+      baseCtx(),
+    )
+    expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' })
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('refuses when the prompt has two quoted spans and only one matches approvedDialogue', async () => {
+    const result = await generateVideo.execute!(
+      {
+        mode: 'text_to_video',
+        prompt: 'A creator says "Try our new serum today." while a sign reads "50% off this week."',
+        aspectRatio: '16:9', durationSeconds: 8,
+        approvedDialogue: 'Try our new serum today.',
+      } as never,
+      baseCtx(),
+    )
+    expect(result).toEqual({ refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' })
+  })
+
+  it('proceeds when the quoted line exactly matches approvedDialogue', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+
+    const result = await generateVideo.execute!(
+      {
+        mode: 'text_to_video',
+        prompt: 'A creator speaking to camera, saying "Try our new serum today."',
+        aspectRatio: '16:9', durationSeconds: 8,
+        approvedDialogue: 'Try our new serum today.',
+      } as never,
+      baseCtx(),
+    ) as { refused?: boolean }
+    expect(result.refused).toBeUndefined()
+  })
+
+  it('proceeds without approvedDialogue when the prompt has no quoted line', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+
+    const result = await generateVideo.execute!(
+      { mode: 'text_to_video', prompt: 'A calm sunrise over mountains, no dialogue.', aspectRatio: '16:9', durationSeconds: 8 } as never,
+      baseCtx(),
+    ) as { refused?: boolean }
+    expect(result.refused).toBeUndefined()
+  })
+
   it('uses a namespaced model id for the rate lookup and result', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })

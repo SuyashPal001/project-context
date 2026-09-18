@@ -34,6 +34,7 @@ const inputSchema = z.object({
   durationSeconds: z.number().int().min(3).max(10),
   startImageFileId: z.string().optional().describe('Required for animate_frame — an existing files row to use as the literal first frame'),
   referenceFileIds: z.array(z.string()).min(1).max(3).optional().describe('Required for composite_references — identity-anchor images the model builds a new scene around'),
+  approvedDialogue: z.string().optional().describe('The exact spoken line the user approved, if the prompt includes quoted dialogue — required to match a quoted line in prompt byte-for-byte'),
 }).refine(
   (v) => (v.mode === 'animate_frame') === (v.startImageFileId !== undefined),
   { message: 'startImageFileId is required for animate_frame and only for animate_frame' },
@@ -41,6 +42,14 @@ const inputSchema = z.object({
   (v) => (v.mode === 'composite_references') === (v.referenceFileIds !== undefined),
   { message: 'referenceFileIds is required for composite_references and only for composite_references' },
 )
+
+// Extracts EVERY quoted span, not just the first — a prompt is only clean if
+// every quoted span matches the approved line. A first-match-only check would
+// let a second, unapproved quoted phrase slip through undetected if the first
+// one happened to match.
+function extractQuotedSpans(prompt: string): string[] {
+  return [...prompt.matchAll(/"([^"]+)"/g)].map((m) => m[1])
+}
 
 export const generateVideo = createTool({
   id: 'generate-video',
@@ -50,8 +59,22 @@ export const generateVideo = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds } =
+    const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue } =
       inputData as z.infer<typeof inputSchema>
+
+    // Content/dialogue approval gate — enforced in tool code, not prose.
+    // Director's own instructions (see TEMPLATE_CLONING_SECTION in
+    // directorAgent.ts) restrict double-quote marks in the prompt to spoken
+    // dialogue only, but this check does NOT trust that rule to always hold —
+    // a fresh implementer subagent working on Director's instructions later,
+    // or a future edit, could reintroduce a stray quoted phrase. So every
+    // quoted span in the prompt is checked, and any mismatch refuses before
+    // any charge or gateway call happens.
+    const quotedSpans = extractQuotedSpans(prompt)
+    if (quotedSpans.some((span) => span !== approvedDialogue)) {
+      return { refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' }
+    }
+
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined ?? ''
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
