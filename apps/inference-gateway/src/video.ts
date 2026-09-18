@@ -132,6 +132,9 @@ async function downloadGcsVideo(uri: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer())
 }
 
+// Not currently called from generateVideo() — selectBackend has only the
+// Gemini Omni branch today. Kept implemented and tested so wiring in a real
+// Vertex Veo branch later is a one-line change to selectBackend, not new code.
 async function callVertexVeoModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
   validateVeoDuration(req.durationSeconds)
   const token    = await getToken()
@@ -194,8 +197,21 @@ async function callVertexVeoModel(req: VideoGenerationRequest): Promise<VideoGen
 }
 
 // ---------------------------------------------------------------------------
-// Unified generateVideo — Vertex Veo first, Gemini Interactions fallback
+// selectBackend — capability-based routing. One real branch today
+// (Gemini Omni Flash). Never falls back to a different vendor on failure or
+// missing config — that is the cross-vendor substitution
+// docs/media-generation/README.md forbids. A caller who needs Gemini and
+// can't get it sees an error, not a Veo result it never asked for.
 // ---------------------------------------------------------------------------
+
+type VideoBackend = 'gemini-omni' | 'vertex-veo'
+
+export class VideoBackendUnavailableError extends Error {}
+
+function selectBackend(model: string): VideoBackend {
+  if (model === 'gemini-omni-1.1-flash') return 'gemini-omni'
+  throw new VideoBackendUnavailableError(`No backend registered for model: ${model}`)
+}
 
 export class UnsupportedVideoModelError extends Error {}
 
@@ -205,41 +221,30 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
   }
   validateOmniDuration(req.durationSeconds)
 
-  // Order deliberately Gemini-API-key first, Vertex Veo second — matches
-  // images.ts's reordering for the same reason (Vertex project is currently
-  // 404ing on Gemini models, eating a ~200s timeout per attempt). Vertex Veo
-  // stays as the fallback for when the project's model access is restored.
-  let geminiFailureReason: string | null = null
+  const backend = selectBackend(req.model)
 
-  if (process.env.GEMINI_API_KEY && geminiVideoBreaker.isAvailable()) {
+  if (backend === 'gemini-omni') {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new VideoBackendUnavailableError('Gemini Omni unavailable: no GEMINI_API_KEY configured')
+    }
+    if (!geminiVideoBreaker.isAvailable()) {
+      throw new VideoBackendUnavailableError('Gemini Omni unavailable: circuit open')
+    }
     try {
       const result = await callGeminiApiKeyVideoModel(req)
       geminiVideoBreaker.onSuccess()
       return result
-    } catch (geminiErr) {
+    } catch (err) {
       geminiVideoBreaker.onFailure()
-      geminiFailureReason = (geminiErr as Error).message
-      console.warn('[video] Gemini API key failed, trying Vertex Veo fallback:', geminiFailureReason)
+      throw err
     }
-  } else {
-    geminiFailureReason = !process.env.GEMINI_API_KEY ? 'no GEMINI_API_KEY configured' : 'circuit open'
-    console.warn('[video] Gemini API key skipped, trying Vertex Veo fallback:', geminiFailureReason)
   }
 
-  const project = getProject()
-  if (!vertexVideoBreaker.isAvailable() || !project) {
-    const vertexReason = !project ? 'no PROJECT configured' : 'circuit open'
-    throw new Error(`Gemini API key video generation unavailable (${geminiFailureReason}) and Vertex Veo also unavailable (${vertexReason})`)
-  }
-
-  try {
-    const result = await callVertexVeoModel(req)
-    vertexVideoBreaker.onSuccess()
-    return result
-  } catch (vertexErr) {
-    vertexVideoBreaker.onFailure()
-    throw new Error(`Gemini API key video generation failed (${geminiFailureReason}); Vertex Veo fallback also failed (${(vertexErr as Error).message})`)
-  }
+  // Unreachable today — selectBackend only ever returns 'gemini-omni' — kept
+  // so adding a second real backend later is additive, not a rewrite of this
+  // dispatch. See docs/superpowers/specs/2026-09-18-template-video-generation-design.md
+  // Phase 0 for the planned shape of a second branch.
+  throw new VideoBackendUnavailableError(`Backend not implemented: ${backend}`)
 }
 
 // ---------------------------------------------------------------------------

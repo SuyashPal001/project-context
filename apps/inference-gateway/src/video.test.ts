@@ -67,7 +67,7 @@ describe('classifyInteractionsVideoResponse', () => {
   })
 })
 
-describe('generateVideo — Gemini API first, Vertex Veo fallback', () => {
+describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
   const req = {
     model: 'gemini-omni-1.1-flash',
     prompt: 'a calm sunrise over mountains',
@@ -123,58 +123,33 @@ describe('generateVideo — Gemini API first, Vertex Veo fallback', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('no GEMINI_API_KEY → skips straight to Vertex Veo', async () => {
+  it('does not fall back to Veo on a Gemini failure — surfaces the error instead', async () => {
+    process.env.GEMINI_API_KEY = 'key'
+    vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+    process.env.VERTEX_PROJECT = 'proj'
+    vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url).includes('generativelanguage')) return new Response('boom', { status: 500 })
+      throw new Error('Veo should never be called on a Gemini failure')
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await expect(generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 8 }))
+      .rejects.toThrow(/Gemini API video generation failed/)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('errors, rather than substituting a vendor, when Gemini is unconfigured', async () => {
     delete process.env.GEMINI_API_KEY
-    // First fetch = Veo predictLongRunning (returns operation name).
-    // Second fetch = Veo poll (returns done with inline video).
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ name: 'operations/veo-1' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ done: true, response: { videos: [{ bytesBase64Encoded: 'QUJD', mimeType: 'video/mp4' }] } }) })
-    vi.stubGlobal('fetch', fetchMock)
+    const fetchSpy = vi.fn(() => { throw new Error('no backend should be called') })
+    global.fetch = fetchSpy as unknown as typeof fetch
 
-    const result = await generateVideo(req)
-
-    expect(result).toEqual({ videoBase64: 'QUJD', mimeType: 'video/mp4' })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock.mock.calls[0][0]).toContain('aiplatform.googleapis.com')
-    expect(vertexVideoBreaker.onSuccess).toHaveBeenCalledTimes(1)
-    expect(geminiVideoBreaker.onFailure).not.toHaveBeenCalled()
+    await expect(generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 8 }))
+      .rejects.toThrow(/no GEMINI_API_KEY configured/)
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('gemini failure → falls back to Vertex Veo', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'gemini boom' })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ name: 'operations/veo-2' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ done: true, response: { videos: [{ bytesBase64Encoded: 'ZGVm', mimeType: 'video/mp4' }] } }) })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const result = await generateVideo(req)
-
-    expect(result).toEqual({ videoBase64: 'ZGVm', mimeType: 'video/mp4' })
-    expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(fetchMock.mock.calls[0][0]).toContain('generativelanguage.googleapis.com')
-    expect(fetchMock.mock.calls[1][0]).toContain('aiplatform.googleapis.com')
-    expect(geminiVideoBreaker.onFailure).toHaveBeenCalledTimes(1)
-    expect(vertexVideoBreaker.onSuccess).toHaveBeenCalledTimes(1)
-  })
-
-  it('both gemini and vertex fail → throws with both reasons', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'gemini boom' })
-      .mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'vertex boom' })
-    vi.stubGlobal('fetch', fetchMock)
-
-    let caught: Error | undefined
-    try { await generateVideo(req) } catch (e) { caught = e as Error }
-
-    expect(caught).toBeDefined()
-    expect(caught!.message).toMatch(/gemini boom/i)
-    expect(caught!.message).toMatch(/vertex boom/i)
-    expect(geminiVideoBreaker.onFailure).toHaveBeenCalledTimes(1)
-    expect(vertexVideoBreaker.onFailure).toHaveBeenCalledTimes(1)
-  })
-
-  it('gemini circuit open + vertex circuit open → throws without calling either', async () => {
+  it('gemini circuit open → throws without calling fetch', async () => {
     vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(false)
     vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(false)
     const fetchMock = vi.fn()
@@ -212,34 +187,4 @@ describe('generateVideo — Gemini API first, Vertex Veo fallback', () => {
     expect(body.response_format).toMatchObject({ aspect_ratio: '9:16', duration: '6s' })
   })
 
-  it('rejects a duration outside Veo\'s 4-8s range when falling back to Veo', async () => {
-    delete process.env.GEMINI_API_KEY
-    vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
-    process.env.VERTEX_PROJECT = 'proj'
-    const fetchSpy = vi.fn()
-    global.fetch = fetchSpy as unknown as typeof fetch
-
-    await expect(generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 9 }))
-      .rejects.toThrow(/durationSeconds must be a whole number of seconds in 4\.\.8/)
-    expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
-  it('passes the caller\'s aspect ratio to Veo instead of hardcoding 16:9', async () => {
-    delete process.env.GEMINI_API_KEY
-    vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
-    process.env.VERTEX_PROJECT = 'proj'
-    const fetchSpy = vi.fn(async (url: string) => {
-      if (String(url).includes('predictLongRunning')) {
-        return new Response(JSON.stringify({ name: 'op1' }), { status: 200 })
-      }
-      return new Response(JSON.stringify({ done: true, response: { videos: [{ bytesBase64Encoded: 'QUJD', mimeType: 'video/mp4' }] } }), { status: 200 })
-    })
-    global.fetch = fetchSpy as unknown as typeof fetch
-
-    await generateVideo({ ...req, aspectRatio: '9:16', durationSeconds: 6 })
-
-    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
-    const body = JSON.parse(init.body as string)
-    expect(body.parameters).toMatchObject({ aspectRatio: '9:16' })
-  })
 })
