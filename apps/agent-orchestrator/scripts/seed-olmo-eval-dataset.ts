@@ -54,6 +54,32 @@ async function listCandidates() {
 
 async function createFromCurated(path: string) {
   const items: Array<{ category: string; input: string }> = JSON.parse(readFileSync(path, 'utf-8'))
+
+  const validCategories = Object.keys(CATEGORY_TO_SCORER_ID)
+  items.forEach((item, index) => {
+    if (!validCategories.includes(item.category)) {
+      throw new Error(
+        `Item ${index} has unknown category "${item.category}" — expected one of: ${validCategories.join(', ')}`,
+      )
+    }
+    if (typeof item.input !== 'string' || item.input.trim().length === 0) {
+      throw new Error(`Item ${index} (category "${item.category}") has an empty or non-string input`)
+    }
+  })
+
+  // Idempotency guard: this is a human-curated, review-then-commit workflow —
+  // running --create twice must fail loudly rather than silently duplicating
+  // the dataset (run-olmo-baseline.ts's .find() would then pick an arbitrary
+  // one of the duplicates).
+  const { datasets } = await mastra.datasets.list({})
+  if (datasets.some((d) => d.name === 'olmo-contract-regression')) {
+    throw new Error(
+      'A dataset named "olmo-contract-regression" already exists. Delete it first via Studio, ' +
+        'or choose a different name, before re-running --create. This script never adds to or ' +
+        'overwrites an existing dataset.',
+    )
+  }
+
   const dataset = await mastra.datasets.create({ name: 'olmo-contract-regression' })
   await dataset.addItems({
     items: items.map((item) => ({
