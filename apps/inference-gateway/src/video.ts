@@ -93,26 +93,49 @@ export function classifyInteractionsVideoResponse(interactionResponse: any): Vid
 // input paths are inline base64 or a URI from Gemini's own Files API. This
 // downloads the presigned source URL's bytes and re-uploads them to the
 // Files API, mirroring Vertex Veo's own gs:// staging requirement.
+
+// Narrow allowlist: whatever Gemini's caller passes as `mime_type` on the
+// eventual generate call MUST match what we tell the Files API here, and
+// Gemini only accepts these three for image input. Anything else canonicalises
+// to jpeg — a wrong mimeType annotation on the image part previously caused
+// Google to treat the whole multipart body as one JSON metadata blob and
+// respond "Metadata part is too large".
+const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
+function canonicalizeImageMime(mime: string | undefined): 'image/jpeg' | 'image/png' | 'image/webp' {
+  const m = (mime ?? '').toLowerCase().split(';')[0].trim()
+  if (m === 'image/jpg') return 'image/jpeg'
+  return (ALLOWED_IMAGE_MIME.has(m) ? m : 'image/jpeg') as 'image/jpeg' | 'image/png' | 'image/webp'
+}
+function canonicalFilename(mime: 'image/jpeg' | 'image/png' | 'image/webp'): 'ref.jpg' | 'ref.png' | 'ref.webp' {
+  return mime === 'image/png' ? 'ref.png' : mime === 'image/webp' ? 'ref.webp' : 'ref.jpg'
+}
+
 async function stageImageForOmni(sourceUrl: string, mimeType: string): Promise<string> {
   const key = process.env.GEMINI_API_KEY ?? ''
   const imageRes = await fetch(sourceUrl, { signal: AbortSignal.timeout(30_000) })
   if (!imageRes.ok) throw new Error(`Failed to fetch source image for staging: ${imageRes.status}`)
   const imageBytes = await imageRes.arrayBuffer()
 
+  const canonicalMime = canonicalizeImageMime(mimeType)
+  const displayName = canonicalFilename(canonicalMime)
   const boundary = `boundary-${Date.now()}`
-  const metadata = JSON.stringify({ file: { display_name: `omni-condition-${Date.now()}` } })
+  const metadata = JSON.stringify({ file: { display_name: displayName } })
   const body =
     `--${boundary}\r\n` +
     `Content-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
     `--${boundary}\r\n` +
-    `Content-Type: ${mimeType}\r\n\r\n`
+    `Content-Type: ${canonicalMime}\r\n\r\n`
   const bodyBuffer = Buffer.concat([
     Buffer.from(body, 'utf-8'),
     Buffer.from(imageBytes),
     Buffer.from(`\r\n--${boundary}--`, 'utf-8'),
   ])
 
-  const uploadRes = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${key}`, {
+  // `uploadType=multipart` is required — without it, the Files API doesn't
+  // parse the multipart/related body and returns "Metadata part is too large"
+  // as if the whole raw payload (image bytes and all) were a single metadata
+  // JSON blob. Content-Type alone is not enough on this endpoint.
+  const uploadRes = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=multipart&key=${key}`, {
     method: 'POST',
     headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
     body: bodyBuffer,

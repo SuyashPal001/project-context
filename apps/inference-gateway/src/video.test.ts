@@ -216,6 +216,17 @@ describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
       { type: 'image', uri: stagedUri, mime_type: 'image/jpeg' },
     ])
     expect(body.generation_config.video_config.task).toBe('image_to_video')
+
+    // Regression: the Files API upload MUST carry uploadType=multipart on the
+    // URL, a canonical `ref.<ext>` display_name (not a caller-controlled or
+    // timestamped one), and a canonicalised image Content-Type — without
+    // these, Google returns "Metadata part is too large" and the whole video
+    // path 503s.
+    const [uploadUrl, uploadInit] = fetchSpy.mock.calls[1] as unknown as [string, RequestInit]
+    expect(String(uploadUrl)).toContain('uploadType=multipart')
+    const uploadBody = Buffer.isBuffer(uploadInit.body) ? uploadInit.body.toString('utf-8', 0, 400) : String(uploadInit.body).slice(0, 400)
+    expect(uploadBody).toContain('"display_name":"ref.jpg"')
+    expect(uploadBody).toContain('Content-Type: image/jpeg')
   })
 
   it('still sends a bare string input for text_to_video (no regression)', async () => {
