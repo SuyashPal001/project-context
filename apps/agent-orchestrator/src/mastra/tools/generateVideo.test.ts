@@ -326,4 +326,27 @@ describe('generateVideo tool', () => {
     expect(resolveRate).toHaveBeenCalledWith('video_generation', 'google/gemini-omni-1.1-flash')
     expect(result.model).toBe('google/gemini-omni-1.1-flash')
   })
+
+  it('passes actorId as undefined (never empty string) to spendCredits when the caller has no agentId in requestContext', async () => {
+    // Regression test: an empty string is neither null nor undefined, so it
+    // bypasses spendCredits' own `actorId ?? null` safety net and reaches
+    // Postgres as `''::uuid`, which throws "invalid input syntax for type
+    // uuid" and aborts the charge before the gateway is ever called. This
+    // is exactly what happened when driven from a caller (e.g. a minimal
+    // test harness) that doesn't populate agentId on requestContext.
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+
+    const ctxNoAgentId = ctx({ tenantId: 't1', conversationId: 'c1', idToken: 'tok' })
+    await generateVideo.execute!(
+      { mode: 'text_to_video', prompt: 'x', aspectRatio: '16:9', durationSeconds: 8 } as never,
+      ctxNoAgentId,
+    )
+
+    expect(spendCredits).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: undefined }),
+    )
+    const [call] = spendCredits.mock.calls
+    expect((call[0] as { actorId?: unknown }).actorId).not.toBe('')
+  })
 })

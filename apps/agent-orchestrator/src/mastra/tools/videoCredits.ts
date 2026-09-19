@@ -3,7 +3,7 @@ import { shortestExpiresAt } from '../../credits.js'
 import { getPool } from '../../usage.js'
 
 export async function refundVideoCharge(
-  tenantId: string, agentId: string, chargeKey: string,
+  tenantId: string, agentId: string | undefined, chargeKey: string,
   rateId: string | null, rateVersion: number | null,
 ): Promise<void> {
   try {

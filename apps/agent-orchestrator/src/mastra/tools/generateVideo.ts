@@ -71,7 +71,17 @@ export const generateVideo = createTool({
     // this lets every refusal path, including DIALOGUE_NOT_APPROVED, report a
     // jobId without disturbing the charge-before-call ordering.
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
-    const agentId = execContext?.requestContext?.get('agentId') as string | undefined ?? ''
+    // Left undefined (not defaulted to '') when the caller's requestContext
+    // doesn't set agentId — spendCredits' own actorId param does `?? null`
+    // internally, so undefined becomes a real SQL NULL and casts cleanly to
+    // ::uuid. An empty string is neither null nor undefined, so it would
+    // bypass that safety net and hit Postgres as `''::uuid`, which throws
+    // "invalid input syntax for type uuid" and aborts the whole charge
+    // before the gateway is ever called — this is exactly what happened
+    // when driven from a caller that doesn't populate agentId (confirmed
+    // live via Mastra Studio's minimal test harness, but the same crash
+    // would hit any real caller with the same gap).
+    const agentId = execContext?.requestContext?.get('agentId') as string | undefined
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
