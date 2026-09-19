@@ -48,8 +48,10 @@ export async function shouldRequireApproval(
   // note for that plan. Until then this bypass runs delegate-issued
   // generations without the cost card — the direct (Olmo-called) generation
   // path still shows and gates on it.
-  const delegationDepth = (rc?.delegationDepth as number | undefined) ?? 0
-  if (delegationDepth > 0) return false
+  // TEMPORARY: delegate-approval bypass disabled to test whether the resume
+  // actually fails end-to-end. Restore after test.
+  // const delegationDepth = (rc?.delegationDepth as number | undefined) ?? 0
+  // if (delegationDepth > 0) return false
 
   const rate = await resolveRate(opts.resourceType, opts.subject)
   if (!rate) return false

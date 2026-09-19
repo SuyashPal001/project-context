@@ -494,6 +494,9 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     for await (const part of currentStream.fullStream as AsyncIterable<any>) {
       if (isStreamClosed()) break turnLoop
 
+      // TEMP INSTRUMENTATION — task 8 delegate approval test
+      console.log(`[task8:${sessionId}] chunk type=${part.type}${part.payload?.toolName ? ` toolName=${part.payload.toolName}` : ''}${part.payload?.toolCallId ? ` toolCallId=${part.payload.toolCallId}` : ''}${part.payload?.agentId ? ` agentId=${part.payload.agentId}` : ''}`)
+
       switch (part.type) {
         case 'text-delta': {
           const text = (part.payload?.text ?? part.textDelta ?? '') as string
@@ -636,9 +639,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // `sendEvent`, which saveSkill.ts's live-session guard requires.
           // Without this, approving a save_skill draft resumes with no
           // sendEvent and the skill is never saved.
+          console.log(`[task8:${sessionId}] BEFORE ${confirmed ? 'approveToolCall' : 'declineToolCall'} runId=${runId} toolCallId=${toolCallId} toolName=${toolName} args=${JSON.stringify(args).slice(0, 400)} olmoOptionsKeys=${Object.keys(olmoOptions).join(',')}`)
           currentStream = confirmed
             ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, ...olmoOptions })
             : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? 'Declined by user', requestContext, ...olmoOptions })
+          console.log(`[task8:${sessionId}] AFTER ${confirmed ? 'approve' : 'decline'}ToolCall newRunId=${currentStream?.runId ?? 'none'} hasFullStream=${!!currentStream?.fullStream}`)
           continue turnLoop
         }
         case 'tool-result': {
