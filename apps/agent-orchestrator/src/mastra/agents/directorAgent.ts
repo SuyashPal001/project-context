@@ -35,7 +35,7 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
   - "SAFETY" or another content-policy reason from Gemini: tell the user their request was declined for content policy reasons — do not retry, do not describe it as a technical error.
   - "GENERATION_FAILED": tell the user image generation failed due to a temporary issue — they can try again.
   - "STORAGE_FAILED": tell the user the image WAS generated successfully but could not be saved (likely a storage limit) — this is not a content refusal.
-  - "SOURCE_IMAGE_UNAVAILABLE" or "SOURCE_IMAGE_TOO_LARGE": tell the user the source image for the edit couldn't be used, and why.
+  - "SOURCE_IMAGE_UNAVAILABLE" or "SOURCE_IMAGE_TOO_LARGE": tell the user the source or reference image couldn't be used, and why — this applies whether it came from an edit_image call or a generate_image call with referenceFileIds.
   - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - "CONFIRM_BUSY": another generation confirmation is already awaiting the user's decision in this conversation — do not retry immediately; wait for the user to resolve it, or ask them directly.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.
@@ -59,7 +59,7 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
   const TEMPLATE_CLONING_SECTION = `\n\n## Template cloning — generation mode selection
 When generating a video that clones a template for a specific product:
 - If a product photo/still exists and the template profile is visual_product_texture or platform_cta: call generate_video with mode: "animate_frame" and startImageFileId set to that image's fileId — the product photo becomes the literal first frame.
-- If the template profile is human_demo, human_voiceover, or mixed, or no product still exists yet: call generate_video with mode: "composite_references" and referenceFileIds set to an array containing the product photo's fileId (only the first entry is used today — do not add a second image expecting it to take effect).
+- If the template profile is human_demo, human_voiceover, or mixed, or no product still exists yet: call generate_video with mode: "composite_references" and referenceFileIds set to an array containing the product photo's fileId (only the first entry is used today for generate_video specifically — do not add a second image expecting it to take effect on a video call. generate_image's own referenceFileIds, used for UGC character work below, is a separate field on a separate tool and does use every entry).
 - Never pass both startImageFileId and referenceFileIds — they are mutually exclusive generation modes.
 - Always pass aspectRatio and durationSeconds explicitly — do not rely on defaults. durationSeconds must be a whole number of seconds between 3 and 10; if the template's own duration is longer, tell the user the clone will be compressed into a single clip within that ceiling rather than silently truncating a longer plan.
 - Write the prompt as flowing prose in this order: Subject, Action, Camera, Style, Constraints. Never write it as a bulleted list or Label: value pairs — these render as literal on-screen text in the output. One primary action per shot; do not chain two actions with "then" or "followed by" in a single generate_video call.
@@ -69,7 +69,23 @@ When generating a video that clones a template for a specific product:
 - Whenever your prompt includes a quoted spoken line (dialogue the on-screen creator says), you MUST pass that exact same text in the approvedDialogue field. If Olmo's delegation to you did not include an approved line for dialogue you're about to write, do not invent one — ask Olmo (by returning a refused: true-shaped explanation in your reply) rather than guessing at wording the user never saw.
 - After a successful generate_video call that included approvedDialogue, call analyze_audio on the returned fileId (mode: "deep" for a full transcript) and compare the transcript to approvedDialogue. If they differ in a way that changes meaning (a wrong brand name, a dropped claim, a garbled word) — not just minor transcription noise — tell the user plainly that the spoken line came out differently than approved, quote both versions, and ask whether to accept it or retry. Do not present a mismatched result as if it matched.`
 
-  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION
+  const UGC_CHARACTER_SECTION = `\n\n## UGC character generation — cast sheet, storyboard, and per-beat rendering
+When Olmo delegates a UGC-style ad build with no template to clone:
+- Cast sheet: call generate_image with referenceFileIds set to the product photo's fileId (one entry), producing one image showing the presenter in 3 emotional states, product views, and a scale line-up. Do not pass identityAnchor on this call — the terse tag and style-lock text don't exist yet.
+- After the cast sheet succeeds, Olmo will give you a terseTag and styleLock string to use on every later call this conversation — always pass both as identityAnchor on every subsequent generate_image/generate_video call for an on-camera beat. Never reword either string; pass them exactly as given.
+- If a generate_image or generate_video call returns refusalReason "IDENTITY_ANCHOR_MISSING": this means your own prompt text didn't contain the terseTag or styleLock string exactly as given — no credits were charged, but the retry still triggers a fresh cost-confirmation card for the user, same as any other call. Re-read the exact strings Olmo gave you and include both verbatim in the prompt before retrying; do not guess at a rewording.
+- If a generate_image or edit_image call returns refusalReason "SOURCE_IMAGE_UNAVAILABLE" or "SOURCE_IMAGE_TOO_LARGE" for a reference/product image (not just an edit source): tell Olmo the reference image(s) couldn't be used or were too large — do not retry with the same references.
+- Per-beat mode table:
+  - On-camera beat still: generate_image with referenceFileIds set to the cast sheet's fileId and identityAnchor set.
+  - On-camera beat video: generate_video with mode "animate_frame", startImageFileId set to that beat's approved still, and identityAnchor set.
+  - B-roll beat (hands/product only, no presenter): generate_image with no referenceFileIds (or edit_image on the real product photo), and no identityAnchor. generate_video for this beat also uses mode "animate_frame" off that still — never mode "composite_references" with the cast sheet on a b-roll beat.
+- Every still and every video render triggers its own separate cost confirmation — this is expected, do not treat repeated approval cards as an error.
+- Frame prompts for stills should describe a frozen mid-moment (e.g. "about to speak to camera," "mid-pour") and end with a plain, UNQUOTED sentence describing paused-frame quality — never wrap this in quotation marks, since generate_video's dialogue gate refuses any quoted span that isn't an approved spoken line, and most beats here have none.
+- Realism modifiers for on-camera beats (handheld feel, slight camera shake, candid, natural skin texture, imperfect framing) must also be written as plain UNQUOTED sentences, same reason.
+- Wordmark handling: spell the brand name letter-by-letter in the still's prompt. After generating, call analyze_image on the result with a question like "Does this image spell {brand} correctly? Answer yes or give the exact text as rendered." If the answer indicates a mismatch, tell Olmo plainly rather than silently retrying — a fresh paid regeneration always needs a new user-visible approval, per the existing rule against retrying a failed result without fresh confirmation.
+- Post-generation QA for any on-camera beat with spoken dialogue: same as template cloning — call analyze_audio (mode "deep") on the result and compare to approvedDialogue, flagging any meaningful mismatch rather than presenting it as matching.`
+
+  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
