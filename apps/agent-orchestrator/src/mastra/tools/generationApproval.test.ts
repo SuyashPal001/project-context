@@ -53,14 +53,14 @@ describe('shouldRequireApproval', () => {
     expect(isUnlimited).not.toHaveBeenCalled()
   })
 
-  it('currently returns false for any delegate-issued call, regardless of rate/tenant state — the known bypass', async () => {
+  it('requires approval for delegate-issued calls (suspend→approve→resume works end-to-end, verified against mastra_span_events 2026-09-19)', async () => {
     isUnlimited.mockResolvedValue(false)
     resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 100_000 } })
     const result = await shouldRequireApproval(
       { resourceType: 'video_generation', subject: 'google/gemini-omni-1.1-flash' },
       { requestContext: { tenantId: 't1', sendEvent: vi.fn(), sessionId: 's1', userId: 'u1', delegationDepth: 1 } },
     )
-    expect(result).toBe(false)
+    expect(result).toBe(true)
   })
 })
 

@@ -29,30 +29,6 @@ export async function shouldRequireApproval(
   const allowMode = rc?.allowMode as string | undefined
   if (allowMode === 'auto') return false
 
-  // Skip the approval card when the tool is being called from inside a
-  // delegate (Director/Producer/etc). The `tool-call-approval` chunk does
-  // propagate up to Olmo's outer stream (Mastra docs say approvals surface at
-  // the top-level supervisor), and chatStream.ts's tool-call-approval branch
-  // renders the card + waits fine — but the subsequent
-  // `agent.approveToolCall({ runId: olmoStream.runId, toolCallId })` fails to
-  // resume the delegate's suspended tool call in this version. The resumed
-  // stream returns immediately without executing the tool: gateway sees no
-  // image request, no credit debit, no upload. User approves the card, then
-  // Olmo tells them "the image couldn't be generated" — the DELEGATE_MEDIA
-  // guardrail firing on an empty subAgentToolResults.
-  //
-  // Proper fix is to migrate Olmo→delegate wiring off `Agent.stream()` +
-  // `agents:` and onto Mastra's `Agent.network()` primitive, whose
-  // `approveNetworkToolCall(toolCallId, { runId, memory })` is designed for
-  // delegate-nested resumes. See project_delegate_network_migration memory
-  // note for that plan. Until then this bypass runs delegate-issued
-  // generations without the cost card — the direct (Olmo-called) generation
-  // path still shows and gates on it.
-  // TEMPORARY: delegate-approval bypass disabled to test whether the resume
-  // actually fails end-to-end. Restore after test.
-  // const delegationDepth = (rc?.delegationDepth as number | undefined) ?? 0
-  // if (delegationDepth > 0) return false
-
   const rate = await resolveRate(opts.resourceType, opts.subject)
   if (!rate) return false
 
