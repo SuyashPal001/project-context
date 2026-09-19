@@ -27,6 +27,11 @@ export interface ImageGenerationRequest {
   prompt: string
   sourceImageBase64?: string
   sourceMimeType?: string
+  // New: N identity/style-anchor reference images, pushed as additional
+  // inline parts after any single sourceImageBase64. Capped at 3 by the
+  // caller (generateImage.ts's Zod schema) — this gateway function itself
+  // does not re-enforce a cap, it just forwards whatever array it's given.
+  sourceImages?: Array<{ base64: string; mimeType: string }>
 }
 
 export type ImageGenerationResult =
@@ -46,10 +51,13 @@ export function classifyGeminiImageResponse(geminiResponse: any): ImageGeneratio
   return { imageBase64: imagePart.inlineData.data, mimeType: imagePart.inlineData.mimeType }
 }
 
-function buildGeminiImageRequest(req: ImageGenerationRequest) {
+export function buildGeminiImageRequest(req: ImageGenerationRequest) {
   const parts: Array<Record<string, unknown>> = [{ text: req.prompt }]
   if (req.sourceImageBase64 && req.sourceMimeType) {
     parts.push({ inlineData: { mimeType: req.sourceMimeType, data: req.sourceImageBase64 } })
+  }
+  for (const img of req.sourceImages ?? []) {
+    parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } })
   }
   return {
     contents: [{ role: 'user', parts }],
