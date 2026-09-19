@@ -35,6 +35,10 @@ const inputSchema = z.object({
   startImageFileId: z.string().optional().describe('Required for animate_frame — an existing files row to use as the literal first frame'),
   referenceFileIds: z.array(z.string()).min(1).max(3).optional().describe('Required for composite_references — identity-anchor images the model builds a new scene around'),
   approvedDialogue: z.string().optional().describe('The exact spoken line the user approved, if the prompt includes quoted dialogue — required to match a quoted line in prompt byte-for-byte'),
+  identityAnchor: z.object({
+    terseTag: z.string(),
+    styleLock: z.string(),
+  }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code.'),
 }).refine(
   (v) => (v.mode === 'animate_frame') === (v.startImageFileId !== undefined),
   { message: 'startImageFileId is required for animate_frame and only for animate_frame' },
@@ -63,7 +67,7 @@ export const generateVideo = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue } =
+    const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor } =
       inputData as z.infer<typeof inputSchema>
 
     // jobId is derived purely from execContext (no charge or gateway call
@@ -107,6 +111,10 @@ export const generateVideo = createTool({
     const quotedSpans = extractQuotedSpans(prompt)
     if (quotedSpans.some((span) => span !== approvedDialogue)) {
       return { refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED', jobId }
+    }
+
+    if (identityAnchor && (!prompt.includes(identityAnchor.terseTag) || !prompt.includes(identityAnchor.styleLock))) {
+      return { refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING', jobId }
     }
 
     let imageUri: string | undefined
