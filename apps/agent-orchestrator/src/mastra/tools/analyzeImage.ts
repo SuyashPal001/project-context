@@ -29,7 +29,9 @@ export const analyzeImageTool = createTool({
 
     try {
       const presignedUrl = await fetchPresignedUrl(inputData.fileId, idToken, controller.signal)
-      const imageRes = await fetch(presignedUrl, { signal: controller.signal })
+      const url = new URL(presignedUrl)
+      url.searchParams.delete('x-amz-checksum-mode')
+      const imageRes = await fetch(url.toString(), { signal: controller.signal })
       if (!imageRes.ok) return { success: false, error: `failed to fetch image: ${imageRes.status}` }
       const mimeType = imageRes.headers.get('content-type') ?? 'image/png'
       const base64 = Buffer.from(await imageRes.arrayBuffer()).toString('base64')

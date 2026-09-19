@@ -72,6 +72,14 @@ export const generateImage = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
 
+    // Not a refusal — referenceFileIds without identityAnchor is legitimate
+    // (e.g. a non-cast-sheet reference), but it's also exactly what an
+    // accidentally-omitted identityAnchor looks like. Flag it so a trace
+    // review can spot omissions.
+    if (referenceFileIds?.length && !identityAnchor) {
+      console.warn(`[session:${sessionId}] generateImage: referenceFileIds set with no identityAnchor — verify this omission was intentional`)
+    }
+
     let sourceImages: Array<{ base64: string; mimeType: string }> = []
     if (referenceFileIds?.length) {
       if (!idToken) return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }

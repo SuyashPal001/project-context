@@ -117,6 +117,13 @@ export const generateVideo = createTool({
       return { refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING', jobId }
     }
 
+    // Not a refusal — a reference image without identityAnchor is legitimate
+    // (e.g. a b-roll beat), but it's also exactly what an accidentally-omitted
+    // identityAnchor looks like. Flag it so a trace review can spot omissions.
+    if ((startImageFileId || referenceFileIds?.length) && !identityAnchor) {
+      console.warn(`[session:${sessionId}] generateVideo: reference image set with no identityAnchor — verify this omission was intentional`)
+    }
+
     let imageUri: string | undefined
     if (mode === 'animate_frame' || mode === 'composite_references') {
       if (!idToken) {
