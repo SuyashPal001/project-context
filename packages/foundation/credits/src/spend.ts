@@ -48,15 +48,35 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
  * still rolls back the whole call, unchanged.
  */
 export async function spendCredits(i: SpendInput): Promise<bigint> {
-  const result = await db.execute(sql`
-    select * from spend_credits(
-      ${i.tenantId}::uuid, ${i.amountMicro.toString()}::bigint, ${i.key}, ${i.kind},
-      ${i.actorId ?? null}::uuid, ${i.actorType ?? null}::actor_type,
-      ${i.rateId ?? null}::uuid, ${i.rateVersion ?? null}::integer,
-      ${i.jobId ?? null}::uuid, ${i.jobType ?? null},
-      ${i.grantType ?? null}, ${i.expiresAt?.toISOString() ?? null}::timestamptz, ${i.reason ?? null}
-    )
-  `);
+  let result;
+  try {
+    result = await db.execute(sql`
+      select * from spend_credits(
+        ${i.tenantId}::uuid, ${i.amountMicro.toString()}::bigint, ${i.key}, ${i.kind},
+        ${i.actorId ?? null}::uuid, ${i.actorType ?? null}::actor_type,
+        ${i.rateId ?? null}::uuid, ${i.rateVersion ?? null}::integer,
+        ${i.jobId ?? null}::uuid, ${i.jobType ?? null},
+        ${i.grantType ?? null}, ${i.expiresAt?.toISOString() ?? null}::timestamptz, ${i.reason ?? null}
+      )
+    `);
+  } catch (err) {
+    const cause = (err as { cause?: unknown }).cause as Record<string, unknown> | undefined;
+    console.error('[spendCredits] db.execute failed', {
+      wrapperMessage: (err as Error).message?.slice(0, 200),
+      causeMessage: cause?.message,
+      code: cause?.code,
+      detail: cause?.detail,
+      hint: cause?.hint,
+      where: cause?.where,
+      schema: cause?.schema_name ?? cause?.schema,
+      table: cause?.table_name ?? cause?.table,
+      constraint: cause?.constraint_name ?? cause?.constraint,
+      severity: cause?.severity,
+      routine: cause?.routine,
+      input: { tenantId: i.tenantId, amountMicro: i.amountMicro.toString(), kind: i.kind, keyLen: i.key.length, jobType: i.jobType, rateId: i.rateId, rateVersion: i.rateVersion },
+    });
+    throw err;
+  }
   const [row] = rowsOf(result);
   if (row.insufficient) {
     throw new InsufficientCreditsError();
