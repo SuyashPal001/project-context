@@ -18,6 +18,9 @@ vi.mock('@serverless-saas/credits', () => ({
 vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 
+const { resolveSourceImage } = vi.hoisted(() => ({ resolveSourceImage: vi.fn() }))
+vi.mock('../../media.js', () => ({ resolveSourceImage }))
+
 const { shouldRequireApproval } = vi.hoisted(() => ({
   shouldRequireApproval: vi.fn(),
 }))
@@ -176,5 +179,65 @@ describe('generateImage tool', () => {
       tenantId: 't1', amountMicro: 50_000n, kind: 'refund', grantType: 'refund', expiresAt: null,
     }))
     expect(result).toEqual({ refused: true, refusalReason: 'STORAGE_FAILED' })
+  })
+
+  it('refuses before any charge when the prompt is missing the identityAnchor terseTag', async () => {
+    const result = await generateImage.execute!(
+      {
+        prompt: 'A woman making coffee, wearing a cardigan.', // missing the exact terseTag string
+        identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light' },
+      } as never,
+      baseCtx(),
+    )
+    expect(result).toEqual({ refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING' })
+    expect(spendCredits).not.toHaveBeenCalled()
+  })
+
+  it('refuses before any charge when the prompt is missing the identityAnchor styleLock', async () => {
+    const result = await generateImage.execute!(
+      {
+        prompt: 'the woman in the yellow cardigan making coffee', // missing styleLock text
+        identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light, 35mm lens' },
+      } as never,
+      baseCtx(),
+    )
+    expect(result).toEqual({ refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING' })
+  })
+
+  it('resolves referenceFileIds and sends them as sourceImages when both identityAnchor strings are present', async () => {
+    resolveSourceImage.mockResolvedValue({ base64: 'AAAA', mimeType: 'image/png' })
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'ZZZZ', mimeType: 'image/png' }), { status: 200 })) as unknown as ReturnType<typeof vi.fn>
+    global.fetch = fetchMock as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 10 })
+
+    const result = await generateImage.execute!(
+      {
+        prompt: 'the woman in the yellow cardigan making coffee, warm morning light, 35mm lens',
+        referenceFileIds: ['11111111-1111-1111-1111-111111111111'],
+        identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light, 35mm lens' },
+      } as never,
+      baseCtx(),
+    )
+    expect(resolveSourceImage).toHaveBeenCalledWith('tok', '11111111-1111-1111-1111-111111111111', 'image/png', 'c1')
+    const sentBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
+    expect(sentBody.sourceImages).toEqual([{ base64: 'AAAA', mimeType: 'image/png' }])
+    expect((result as { fileId?: string }).fileId).toBe('f1')
+  })
+
+  // Regression test mirroring generateVideo.test.ts's existing "actorId:
+  // undefined" test (~line 330) for the identical class of bug: agentId must
+  // stay undefined, not '', or spendCredits' actorId hits Postgres as
+  // ''::uuid and throws before any charge. This guards Step 3's agentId fix
+  // above from being silently reverted later.
+  it('passes agentId as undefined (not empty string) to spendCredits when requestContext has no agentId set', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    await generateImage.execute!(
+      { prompt: 'a red bicycle' } as never,
+      ctx({ tenantId: 't1', conversationId: 'c1', idToken: 'tok' }), // no agentId key set
+    )
+
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ actorId: undefined }))
   })
 })

@@ -3,11 +3,21 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
+import { resolveSourceImage } from '../../media.js'
 import { refundImageCharge } from './imageCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
+
+const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024 // matches editImage.ts's existing per-file cap
+// Aggregate cap across ALL resolved references in one call. The gateway's
+// HTTP body-read limit (apps/inference-gateway/src/index.ts:180) is 40MB
+// total, sized for one base64-inflated image — three references at the
+// per-file cap above could inflate to ~80MB combined and 413 after the user
+// already approved cost. 25MB decoded total leaves headroom under the
+// gateway's 40MB raw-body cap once JSON/base64 overhead is included.
+const MAX_TOTAL_REFERENCE_BYTES = 25 * 1024 * 1024
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
@@ -23,27 +33,70 @@ const outputSchema = z.object({
 
 export const generateImage = createTool({
   id: 'generate-image',
-  description: 'Generates a new image from a text prompt using Gemini 3 Pro Image. Use when the user asks Director to create, draw, or generate an image.',
+  description: 'Generates a new image from a text prompt using Gemini 3 Pro Image, optionally anchored on 1-3 reference images for identity/style consistency. Use when the user asks Director to create, draw, or generate an image.',
   inputSchema: z.object({
     prompt: z.string().describe('Full description of the image to generate'),
+    referenceFileIds: z.array(z.string().uuid()).min(1).max(3).optional()
+      .describe('Existing files rows used as identity/style anchors — the model composes a new image informed by all of them.'),
+    identityAnchor: z.object({
+      terseTag: z.string(),
+      styleLock: z.string(),
+    }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code. Required whenever referenceFileIds includes a cast sheet.'),
   }),
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    const { prompt } = inputData as { prompt: string }
+    const { prompt, referenceFileIds, identityAnchor } = inputData as {
+      prompt: string
+      referenceFileIds?: string[]
+      identityAnchor?: { terseTag: string; styleLock: string }
+    }
+
+    // Identity-anchor gate — enforced in tool code, not prose, mirroring
+    // generateVideo.ts's extractQuotedSpans/approvedDialogue check. Refuses
+    // before any charge or gateway call.
+    if (identityAnchor && (!prompt.includes(identityAnchor.terseTag) || !prompt.includes(identityAnchor.styleLock))) {
+      return { refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING' }
+    }
+
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
-    const agentId = execContext?.requestContext?.get('agentId') as string | undefined ?? ''
+    // Left undefined, not defaulted to '' — matches generateVideo.ts's fix
+    // for the same field: spendCredits' actorId param does `?? null`
+    // internally, so undefined casts cleanly to ::uuid, but '' hits Postgres
+    // as ''::uuid and throws, aborting the whole charge before the gateway
+    // is ever called. generateImage.ts's PRE-EXISTING `?? ''` on this same
+    // line was a real, separate latent bug — fixed here.
+    const agentId = execContext?.requestContext?.get('agentId') as string | undefined
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
+
+    let sourceImages: Array<{ base64: string; mimeType: string }> = []
+    if (referenceFileIds?.length) {
+      if (!idToken) return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }
+      let totalBytes = 0
+      for (const fileId of referenceFileIds) {
+        const source = await resolveSourceImage(idToken, fileId, 'image/png', sessionId)
+        if (!source) return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }
+        const decodedBytes = Buffer.byteLength(source.base64, 'base64')
+        if (decodedBytes > MAX_REFERENCE_IMAGE_BYTES) {
+          return { refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' }
+        }
+        totalBytes += decodedBytes
+        if (totalBytes > MAX_TOTAL_REFERENCE_BYTES) {
+          return { refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' }
+        }
+        sourceImages.push(source)
+      }
+    }
 
     let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {
       const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: IMAGE_MODEL, prompt }),
+        body: JSON.stringify({ model: IMAGE_MODEL, prompt, ...(sourceImages.length ? { sourceImages } : {}) }),
         signal: AbortSignal.timeout(90_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
