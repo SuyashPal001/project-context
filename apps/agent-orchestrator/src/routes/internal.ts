@@ -316,8 +316,34 @@ internalRouter.post('/internal/expire-tool-approvals', async (c) => {
 // Security relies on relay port 3001 not being publicly exposed.
 // Put NGINX in front with IP allowlist if external access is needed.
 
+// Studio has no auth session, so it never carries tenantId/isBuiltInAgent on
+// the RequestContext. platformAgent's `tools:` resolver then falls to the
+// no-tenant SERVER_TOOLS-only branch, and subagents/sources.ts's hostAllows()
+// returns [] — the inspector panel shows Sub-agents "Off" and a Tools count
+// unrelated to what real Olmo chat turns see. The prod path (chatStream.ts)
+// is the source of truth for those keys and stays untouched; Studio requests
+// (identified by `x-mastra-client-type: studio`) inherit a fixed proxy dev
+// tenant here so the panel matches prod. mergeRequestContext is where
+// createContextMiddleware builds the RequestContext for every Studio request
+// (see @mastra/hono/dist/index.js line 281) — overriding it is the only
+// point where injected defaults survive; a preceding Hono middleware is
+// overwritten by that same c.set('requestContext', ...) call.
+const STUDIO_PROXY_TENANT_ID = '5953599a-f345-4990-b747-853c4af2deba'
+
+class StudioMastraServer extends MastraServer {
+  protected mergeRequestContext(options: {
+    paramsRequestContext?: Record<string, unknown>
+    bodyRequestContext?: Record<string, unknown>
+  }) {
+    const rc = super.mergeRequestContext(options)
+    if (!rc.get('tenantId')) rc.set('tenantId', STUDIO_PROXY_TENANT_ID)
+    if (rc.get('isBuiltInAgent') === undefined) rc.set('isBuiltInAgent', true)
+    return rc
+  }
+}
+
 export async function initStudio(app: Hono): Promise<void> {
-  const studioServer = new MastraServer({ app, mastra, prefix: '/studio' })
+  const studioServer = new StudioMastraServer({ app, mastra, prefix: '/studio' })
   await studioServer.init()
   console.log('[studio] Mastra Studio API mounted at /studio')
 }
