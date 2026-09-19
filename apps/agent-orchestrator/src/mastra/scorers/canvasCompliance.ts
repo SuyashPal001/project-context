@@ -27,7 +27,7 @@ export const canvasComplianceScorer = createScorer({
   description: 'Long-form replies must call render_canvas before a short chat reply',
   type: 'agent',
 }).generateScore(({ run }) => {
-  const output = run.output as MastraDBMessageLike[]
+  const output = run.output as unknown as MastraDBMessageLike[]
   const trajectory = extractTrajectory(run.output as any)
   const calledCanvas = trajectory.steps.some(
     (step) => step.stepType === 'tool_call' && step.name === CANVAS_TOOL_NAME,

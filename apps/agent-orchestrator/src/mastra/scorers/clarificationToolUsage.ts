@@ -25,7 +25,7 @@ export const clarificationToolUsageScorer = createScorer({
   description: 'Clarifying questions must use ask_clarifying_questions, never plain-text prose',
   type: 'agent',
 }).generateScore(({ run }) => {
-  const output = run.output as MastraDBMessageLike[]
+  const output = run.output as unknown as MastraDBMessageLike[]
   if (hasStrayQuestion(output)) return 0
 
   const requiresClarification = Boolean((run.groundTruth as ClarificationGroundTruth | undefined)?.requiresClarification)
