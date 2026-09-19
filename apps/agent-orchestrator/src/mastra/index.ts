@@ -20,6 +20,7 @@ import { directorAgent } from './agents/directorAgent.js'
 import { producerAgent } from './agents/producerAgent.js'
 
 import { skillDraftWorkflow } from './workflows/skillDraftWorkflow.js'
+import { canvasComplianceScorer, clarificationToolUsageScorer, noProviderDisclosureScorer } from './scorers/index.js'
 
 // ---------------------------------------------------------------------------
 // Mastra instance — registered at startup with storage and platformAgent.
@@ -36,6 +37,11 @@ export const mastra = new Mastra({
   workflows: {
     documentIngestion: ingestionWorkflow,
     'skill-draft': skillDraftWorkflow,
+  },
+  scorers: {
+    canvasCompliance: canvasComplianceScorer,
+    clarificationToolUsage: clarificationToolUsageScorer,
+    noProviderDisclosure: noProviderDisclosureScorer,
   },
   storage: getMastraStore(),
   scheduler: {
