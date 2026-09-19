@@ -210,14 +210,24 @@ export const generateVideo = createTool({
       return { refused: true, refusalReason: 'GENERATION_FAILED', jobId }
     }
 
+    // Distinguish "no session to save into" (expected for a caller with no
+    // real conversation/auth — e.g. Mastra Studio's test harness, which has
+    // no browser session) from "a real upload attempt failed" (a genuine
+    // storage/network/auth problem worth investigating). Both used to
+    // collapse into the same STORAGE_FAILED code, which cost real debugging
+    // time chasing a "storage outage" that was actually just a missing
+    // session — see generateVideo.test.ts for the regression test.
+    if (!conversationId || !idToken) {
+      if (charged) await refundVideoCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'NO_SESSION_CONTEXT', jobId }
+    }
+
     const buffer = Buffer.from(genResult.videoBase64, 'base64')
     const extension = (genResult.mimeType ?? 'video/mp4').split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'mp4'
-    const attachment = conversationId && idToken
-      ? await uploadGeneratedFile(idToken, {
-          conversationId, title: 'Generated Video', content: buffer,
-          contentType: genResult.mimeType, extension,
-        })
-      : null
+    const attachment = await uploadGeneratedFile(idToken, {
+      conversationId, title: 'Generated Video', content: buffer,
+      contentType: genResult.mimeType, extension,
+    })
 
     if (!attachment) {
       if (charged) await refundVideoCharge(tenantId, agentId, chargeKey, rateId, rateVersion)

@@ -349,4 +349,26 @@ describe('generateVideo tool', () => {
     const [call] = spendCredits.mock.calls
     expect((call[0] as { actorId?: unknown }).actorId).not.toBe('')
   })
+
+  it('returns NO_SESSION_CONTEXT (not STORAGE_FAILED) when conversationId/idToken are absent, without attempting an upload', async () => {
+    // A caller with no real session (e.g. a test harness with no browser
+    // session) never reaches uploadGeneratedFile at all -- this must be
+    // distinguishable from a genuine upload failure, which used to collapse
+    // into the same STORAGE_FAILED code and cost real debugging time
+    // chasing a "storage outage" that was actually just a missing session.
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    const query = vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-100000', expires_at: null }] })
+    getPool.mockReturnValue({ query })
+
+    const ctxNoSession = ctx({ tenantId: 't1', agentId: 'a1' })
+    const result = await generateVideo.execute!(
+      { mode: 'text_to_video', prompt: 'x', aspectRatio: '16:9', durationSeconds: 8 } as never,
+      ctxNoSession,
+    )
+
+    expect(result).toEqual({ refused: true, refusalReason: 'NO_SESSION_CONTEXT', jobId: expect.any(String) })
+    expect(uploadGeneratedFile).not.toHaveBeenCalled()
+    expect(spendCredits).toHaveBeenCalledTimes(2)
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund' }))
+  })
 })
