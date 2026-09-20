@@ -101,6 +101,67 @@ describe('generateNarration tool', () => {
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ kind: 'refund', jobType: 'narration_generation' }))
   })
 
+  it('passes an optional language field through to the gateway request body', async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    global.fetch = vi.fn(async (_url, init) => {
+      capturedBody = JSON.parse((init as RequestInit).body as string)
+      return new Response(JSON.stringify({ audioBase64: 'QUJD', mimeType: 'audio/wav', durationSeconds: 12.5 }), { status: 200 })
+    }) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'narration.wav', type: 'audio/wav', size: 3 })
+
+    await generateNarration.execute!({ script: 'Namaste', voiceId: 'v1', language: 'hi' } as never, baseCtx())
+
+    expect(capturedBody).toMatchObject({ model: 'sonic-3.5', transcript: 'Namaste', voiceId: 'v1', language: 'hi' })
+  })
+
+  it('omits language from the gateway request body when not given', async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    global.fetch = vi.fn(async (_url, init) => {
+      capturedBody = JSON.parse((init as RequestInit).body as string)
+      return new Response(JSON.stringify({ audioBase64: 'QUJD', mimeType: 'audio/wav', durationSeconds: 12.5 }), { status: 200 })
+    }) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'narration.wav', type: 'audio/wav', size: 3 })
+
+    await generateNarration.execute!({ script: 'Hello world', voiceId: 'v1' } as never, baseCtx())
+
+    expect(capturedBody).not.toHaveProperty('language')
+  })
+
+  it('returns model: sonic-3.5 in the success result', async () => {
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ audioBase64: 'QUJD', mimeType: 'audio/wav', durationSeconds: 12.5 }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'narration.wav', type: 'audio/wav', size: 3 })
+
+    const result = await generateNarration.execute!({ script: 'Hello world', voiceId: 'v1' } as never, baseCtx())
+
+    expect(result).toMatchObject({ model: 'sonic-3.5' })
+  })
+
+  it('refuses with INVALID_DURATION and refunds when the gateway returns a zero/garbage durationSeconds', async () => {
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ audioBase64: 'QUJD', mimeType: 'audio/wav', durationSeconds: 0 }), { status: 200 })) as unknown as typeof fetch
+    ;(getPool as ReturnType<typeof vi.fn>).mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-30000', expires_at: null }] }) })
+
+    const result = await generateNarration.execute!({ script: 'Hello', voiceId: 'v1' } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: 'INVALID_DURATION' })
+    expect(uploadGeneratedFile).not.toHaveBeenCalled()
+    expect(spendCredits).toHaveBeenCalledTimes(2)
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund', jobType: 'narration_generation' }))
+  })
+
+  it('refuses with INVALID_DURATION for a near-zero durationSeconds below the 0.5s floor', async () => {
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ audioBase64: 'QUJD', mimeType: 'audio/wav', durationSeconds: 0.1 }), { status: 200 })) as unknown as typeof fetch
+    ;(getPool as ReturnType<typeof vi.fn>).mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-30000', expires_at: null }] }) })
+
+    const result = await generateNarration.execute!({ script: 'Hello', voiceId: 'v1' } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: 'INVALID_DURATION' })
+  })
+
   it('does not default agentId to empty string when absent from requestContext', async () => {
     ;(spendCredits as ReturnType<typeof vi.fn>).mockImplementation(async (args) => {
       expect(args.actorId).toBeUndefined()

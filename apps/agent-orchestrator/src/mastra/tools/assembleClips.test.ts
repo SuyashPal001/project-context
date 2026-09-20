@@ -74,6 +74,13 @@ describe('assembleClips tool', () => {
     expect(parsed.success).toBe(false)
   })
 
+  it('rejects a negative targetDurationSeconds at the schema level', () => {
+    // Regression guard: a negative value would otherwise reach ffmpeg's -t
+    // flag unclamped.
+    const parsed = inputSchema.safeParse({ clipFileIds: ['a'], aspectRatio: '9:16', targetDurationSeconds: -5 })
+    expect(parsed.success).toBe(false)
+  })
+
   it('refuses with SOURCE_UNAVAILABLE if a clip cannot be downloaded, before running ffmpeg', async () => {
     downloadToSessionCache.mockRejectedValueOnce(new Error('too large'))
 

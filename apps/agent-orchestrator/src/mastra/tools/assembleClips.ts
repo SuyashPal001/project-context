@@ -38,7 +38,7 @@ const outputSchema = z.object({
 // `pnpm type-check` in an earlier task and had to be fixed in review; don't repeat it.
 export const inputSchema = z.object({
   clipFileIds: z.array(z.string()).min(1).max(3),
-  targetDurationSeconds: z.number().optional().describe(
+  targetDurationSeconds: z.number().positive().optional().describe(
     'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align this clip total to a separate audio track\'s length.'
   ),
   aspectRatio: z.enum(['16:9', '9:16']),
@@ -134,6 +134,10 @@ export const assembleClips = createTool({
       // complex (-filter_complex) filtering on the same output stream. When a
       // target duration is set, concat writes to an intermediate [cat] label
       // and tpad consumes that to produce the final [outv].
+      // Note: stop_duration below pads BY the target amount (not TO it) — the
+      // trailing -t flag is what truncates the result to the actual target
+      // duration. Correct only because both are present; dropping -t while
+      // keeping tpad as-is would silently produce an over-long output.
       const concatLabel = targetDurationSeconds !== undefined ? '[cat]' : '[outv]'
       let filterComplex = `${filterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=0${concatLabel}`
       if (targetDurationSeconds !== undefined) {

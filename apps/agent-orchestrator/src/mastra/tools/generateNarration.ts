@@ -19,6 +19,7 @@ const outputSchema = z.object({
   insufficientCredits: z.boolean().optional(),
   creditsUsedMicro: z.string().optional(),
   jobId: z.string().optional(),
+  model: z.string().optional(),
 })
 
 export const inputSchema = z.object({
@@ -26,6 +27,7 @@ export const inputSchema = z.object({
     'The full narration script — one continuous read, not pre-split into clip-sized segments. ~500 characters is roughly 30-35 seconds of speech at typical ad pacing, matching this skill\'s 30s ceiling.'
   ),
   voiceId: z.string().describe('A Cartesia voice id, from the existing curated voice list.'),
+  language: z.string().optional().describe('BCP-47 or ISO language code for the narration read (e.g. "hi", "ja", "es"). Omit for English.'),
 })
 
 export const generateNarration = createTool({
@@ -36,7 +38,7 @@ export const generateNarration = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'narration_generation', subject: SPEECH_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    const { script, voiceId } = inputData as z.infer<typeof inputSchema>
+    const { script, voiceId, language } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, never '' — see generateVideo.ts's identical comment:
@@ -85,7 +87,7 @@ export const generateNarration = createTool({
       const res = await fetch(`${GATEWAY_URL}/v1/audio/speech`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: SPEECH_MODEL, transcript: script, voiceId }),
+        body: JSON.stringify({ model: SPEECH_MODEL, transcript: script, voiceId, ...(language ? { language } : {}) }),
         signal: AbortSignal.timeout(60_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
@@ -105,6 +107,16 @@ export const generateNarration = createTool({
       console.error(`[session:${sessionId}] generateNarration: gateway returned a non-refused response with no audioBase64/durationSeconds`)
       if (charged) await refundNarrationCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
       return { refused: true, refusalReason: 'GENERATION_FAILED', jobId }
+    }
+
+    // A zero/garbage durationSeconds is a malformed response, not a valid short
+    // clip — left unchecked it flows into downstream clipCount math
+    // (Math.ceil(duration/10)) as 0, surfacing only much later as an
+    // assemble_clips min(1) rejection after the paid board gate has already run.
+    if (!(genResult.durationSeconds > 0.5)) {
+      console.error(`[session:${sessionId}] generateNarration: gateway returned an invalid durationSeconds (${genResult.durationSeconds})`)
+      if (charged) await refundNarrationCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'INVALID_DURATION', jobId }
     }
 
     if (!conversationId || !idToken) {
@@ -127,6 +139,7 @@ export const generateNarration = createTool({
       fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       durationSeconds: genResult.durationSeconds,
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
+      model: SPEECH_MODEL,
       jobId,
     }
   },
