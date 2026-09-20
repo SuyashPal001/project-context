@@ -56,6 +56,9 @@ export function detectSkillPii(body: string): string {
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
 const VIDEO_MODEL = 'google/gemini-omni-1.1-flash'
 const MUSIC_MODEL = 'lyria-002'
+const NARRATION_MODEL = 'sonic-3.5'
+const LIPSYNC_MODEL = 'fal-ai/latentsync'
+const ASSEMBLY_SUBJECT = 'ffmpeg-local'
 
 /**
  * Rebuilds the approval card's display fields from a bare
@@ -78,6 +81,9 @@ const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label
 const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video' }
 const songGen = { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' }
 const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image' }
+const narrationGen = { resourceType: 'narration_generation', subject: NARRATION_MODEL, label: 'Generate narration' }
+const lipsyncGen = { resourceType: 'lipsync_generation', subject: LIPSYNC_MODEL, label: 'Lip-sync video' }
+const assemblyGen = { resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT, label: 'Assemble clips' }
 
 export const GENERATION_APPROVAL_METADATA: Record<string, {
   resourceType: string
@@ -93,6 +99,11 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'generate_song': songGen,
   'edit-image': imageEdit,
   'edit_image': imageEdit,
+  'generate-narration': narrationGen,
+  'generate_narration': narrationGen,
+  'lipsync': lipsyncGen,
+  'assemble-clips': assemblyGen,
+  'assemble_clips': assemblyGen,
   'save_skill': {
     resourceType: 'skill_creation',
     subject: 'create',

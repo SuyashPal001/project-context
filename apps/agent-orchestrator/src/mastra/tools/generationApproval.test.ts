@@ -72,6 +72,9 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'generate-image', 'generate_image',
         'generate-song', 'generate_song',
         'generate-video', 'generate_video',
+        'generate-narration', 'generate_narration',
+        'lipsync',
+        'assemble-clips', 'assemble_clips',
         'save_skill',
       ].sort(),
     )
@@ -123,5 +126,24 @@ describe('detectSkillPii', () => {
   it('names detected types when PII is present', () => {
     const note = detectSkillPii('contact me at a@b.com')
     expect(note).toContain('personal data detected')
+  })
+})
+
+describe('GENERATION_APPROVAL_METADATA — talking-head tools', () => {
+  it('registers generate_narration under both hyphenated and underscored keys', () => {
+    expect(GENERATION_APPROVAL_METADATA['generate-narration']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['generate_narration']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['generate-narration'].resourceType).toBe('narration_generation')
+  })
+
+  it('registers lipsync', () => {
+    expect(GENERATION_APPROVAL_METADATA['lipsync']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['lipsync'].resourceType).toBe('lipsync_generation')
+  })
+
+  it('registers assemble_clips under both hyphenated and underscored keys', () => {
+    expect(GENERATION_APPROVAL_METADATA['assemble-clips']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['assemble_clips']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['assemble-clips'].resourceType).toBe('clip_assembly')
   })
 })
