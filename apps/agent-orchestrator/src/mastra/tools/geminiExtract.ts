@@ -18,7 +18,7 @@ function buildExtractionPrompt(documentType: string): string {
 
 function makeGatewayBody(imageBase64: string, safeMime: string, prompt: string): string {
   return JSON.stringify({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.6-flash',
     temperature: 0.1,
     max_tokens: 12288,
     messages: [{
@@ -60,7 +60,7 @@ export async function geminiExtract(imageBase64: string, mimeType: string, docum
         tenantId,
         agentId: 'gemini-extract',
         workflowId: 'document-ingestion',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         inputTokens: result.usage.prompt_tokens ?? 0,
         outputTokens: result.usage.completion_tokens ?? 0,
       })
