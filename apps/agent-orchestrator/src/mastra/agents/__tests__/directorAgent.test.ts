@@ -38,4 +38,31 @@ describe('directorAgent instructions', () => {
     expect(text).toContain('## Motion craft')
     expect(text).toContain('## Talking-head generation')
   })
+
+  it('talking-head section never tells Director to read narration data from its own working memory, and covers the sub-3s clip floor / aspectRatio findings', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const talkingHeadStart = text.indexOf('## Talking-head generation')
+    expect(talkingHeadStart).toBeGreaterThanOrEqual(0)
+    const talkingHeadSection = text.slice(talkingHeadStart)
+
+    // Regression guard for review finding 1: Director-as-delegate has no
+    // memory of its own, so it cannot "read from working memory" — it must
+    // rely on values restated in Olmo's delegation message.
+    expect(talkingHeadSection).not.toContain('from working memory')
+    expect(talkingHeadSection).toContain('Olmo gave you in this delegation message')
+
+    // Finding 4: front-loading must never produce a sub-3-second clip.
+    expect(talkingHeadSection).toContain('NEVER let any clip')
+    expect(talkingHeadSection).toContain('below 3 seconds')
+
+    // Finding 5: Assembly bullet must mention aspectRatio.
+    const assemblyIdx = talkingHeadSection.indexOf('- Assembly:')
+    expect(assemblyIdx).toBeGreaterThanOrEqual(0)
+    expect(talkingHeadSection.slice(assemblyIdx, assemblyIdx + 400)).toContain('aspectRatio')
+
+    // Finding 2: narration language passthrough.
+    expect(talkingHeadSection).toContain('language')
+  })
 })
