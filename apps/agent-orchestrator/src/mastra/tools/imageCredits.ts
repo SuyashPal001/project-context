@@ -14,7 +14,7 @@ import { getPool } from '../../usage.js'
 // helper refundTask uses) — a refund must never hand back a permanent grant
 // for what was an expiring one.
 export async function refundImageCharge(
-  tenantId: string, agentId: string, chargeKey: string,
+  tenantId: string, agentId: string | undefined, chargeKey: string,
   rateId: string | null, rateVersion: number | null,
 ): Promise<void> {
   try {

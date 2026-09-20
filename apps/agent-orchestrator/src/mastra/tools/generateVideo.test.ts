@@ -371,4 +371,24 @@ describe('generateVideo tool', () => {
     expect(spendCredits).toHaveBeenCalledTimes(2)
     expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund' }))
   })
+
+  it('refuses with IDENTITY_ANCHOR_MISSING before any charge when identityAnchor strings are absent from the prompt', async () => {
+    const result = await generateVideo.execute!(
+      {
+        mode: 'animate_frame',
+        prompt: 'A woman making coffee, handheld feel, slight camera shake.',
+        aspectRatio: '9:16',
+        durationSeconds: 6,
+        startImageFileId: '11111111-1111-1111-1111-111111111111',
+        identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light' },
+      } as never,
+      baseCtx(),
+    )
+    // Cast, matching this file's own existing pattern for a narrowed result
+    // shape (e.g. `as { refused?: boolean }` elsewhere in this file) — the
+    // tool's inferred return type is a union of object literals, and bare
+    // property access on it is a type error under this repo's type-check.
+    expect((result as { refused?: boolean }).refused).toBe(true)
+    expect((result as { refusalReason?: string }).refusalReason).toBe('IDENTITY_ANCHOR_MISSING')
+  })
 })

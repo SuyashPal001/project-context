@@ -15,7 +15,7 @@ vi.mock('google-auth-library', () => ({
   }),
 }))
 
-import { classifyGeminiImageResponse, generateImage } from './images'
+import { classifyGeminiImageResponse, generateImage, buildGeminiImageRequest } from './images'
 import { vertexImageBreaker, geminiImageBreaker } from './router.js'
 
 describe('classifyGeminiImageResponse', () => {
@@ -154,5 +154,44 @@ describe('generateImage — no-Ollama-fallback invariant', () => {
     expect(vertexImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
     expect(geminiImageBreaker.onFailure).not.toHaveBeenCalled()
     expect(geminiImageBreaker.onSuccess).not.toHaveBeenCalled()
+  })
+})
+
+describe('buildGeminiImageRequest', () => {
+  it('includes one inline image part per entry in sourceImages, in order', () => {
+    const req = {
+      model: 'gemini-3-pro-image-preview',
+      prompt: 'a cast sheet',
+      sourceImages: [
+        { base64: 'AAAA', mimeType: 'image/png' },
+        { base64: 'BBBB', mimeType: 'image/jpeg' },
+      ],
+    }
+    const body = buildGeminiImageRequest(req)
+    const parts = body.contents[0].parts
+    expect(parts[0]).toEqual({ text: 'a cast sheet' })
+    expect(parts[1]).toEqual({ inlineData: { mimeType: 'image/png', data: 'AAAA' } })
+    expect(parts[2]).toEqual({ inlineData: { mimeType: 'image/jpeg', data: 'BBBB' } })
+    expect(parts).toHaveLength(3)
+  })
+
+  it('still supports the single sourceImageBase64/sourceMimeType shape edit_image sends', () => {
+    const req = {
+      model: 'gemini-3-pro-image-preview',
+      prompt: 'edit this',
+      sourceImageBase64: 'CCCC',
+      sourceMimeType: 'image/png',
+    }
+    const body = buildGeminiImageRequest(req)
+    expect(body.contents[0].parts).toEqual([
+      { text: 'edit this' },
+      { inlineData: { mimeType: 'image/png', data: 'CCCC' } },
+    ])
+  })
+
+  it('with no source image at all, sends only the text part', () => {
+    const req = { model: 'gemini-3-pro-image-preview', prompt: 'a plain image' }
+    const body = buildGeminiImageRequest(req)
+    expect(body.contents[0].parts).toEqual([{ text: 'a plain image' }])
   })
 })
