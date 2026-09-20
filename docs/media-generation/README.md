@@ -13,11 +13,19 @@ the production build, and an independent Astra review.
 The remaining product work is the production pipeline:
 
 1. Import product metadata and images from pasted product URLs.
-2. Generate full narration with the selected voice and language; Cartesia is
-   currently used only for library previews.
-3. Turn the selected avatar reference and narration into presenter video.
-4. Generate the script and shot plan, render scenes, and assemble narration,
-   captions, music, product shots, and transitions into a final MP4.
+2. ~~Generate full narration with the selected voice and language.~~ Built as
+   part of the talking-head skill: `generate_narration` (orchestrator tool) →
+   Cartesia `/v1/audio/speech` (inference gateway), including a `language`
+   field for non-English reads.
+3. ~~Turn the selected avatar reference and narration into presenter video.~~
+   Built: per-clip silent video via `generate_video`, then lip-synced onto the
+   locked narration track via `lipsync` (fal.ai LatentSync, or Sync Labs
+   sync-2.0) — see the talking-head skill in `directorAgent.ts`.
+4. ~~Generate the script and shot plan, render scenes, and assemble narration,
+   captions, music, product shots, and transitions into a final MP4.~~
+   Assembly (concatenation to one MP4, aligned to the narration length) is
+   built via `assemble_clips` (ffmpeg, local). Captions, music, and product-shot
+   compositing beyond the talking-head flow are still unbuilt.
 5. Add generation progress, preview, regeneration, download, and version
    history UI.
 6. Configure production provider credentials, credits, limits, retries, and
