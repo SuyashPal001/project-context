@@ -24,7 +24,7 @@ async function callGatewayForFrames(
     signal,
     headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
     body: JSON.stringify({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       temperature: 0.1,
       max_tokens: mode === 'quick' ? 512 : 4096,
       messages: [{
@@ -91,7 +91,7 @@ export const analyzeVideoTool = createTool({
           tenantId,
           agentId: 'analyze-video',
           workflowId: 'media-understanding',
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           inputTokens: usage.prompt_tokens ?? 0,
           outputTokens: usage.completion_tokens ?? 0,
         })

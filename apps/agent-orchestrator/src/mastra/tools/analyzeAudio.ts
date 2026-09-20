@@ -28,7 +28,7 @@ async function callGatewayForAudio(
     signal,
     headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
     body: JSON.stringify({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       temperature: 0.1,
       max_tokens: mode === 'quick' ? 512 : 8192,
       messages: [{
@@ -89,7 +89,7 @@ export const analyzeAudioTool = createTool({
           tenantId,
           agentId: 'analyze-audio',
           workflowId: 'media-understanding',
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           inputTokens: usage.prompt_tokens ?? 0,
           outputTokens: usage.completion_tokens ?? 0,
         })
