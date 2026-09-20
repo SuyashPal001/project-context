@@ -18,7 +18,7 @@ vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 const { shouldRequireApproval } = vi.hoisted(() => ({ shouldRequireApproval: vi.fn() }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
-import { generateNarration } from './generateNarration.js'
+import { generateNarration, inputSchema } from './generateNarration.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {
@@ -58,9 +58,35 @@ describe('generateNarration tool', () => {
     // execute() — this test calls execute() directly (bypassing that
     // boundary, same as every other tool test in this codebase), so assert
     // the schema itself rejects the input rather than expecting execute()
-    // to re-validate.
-    const parseResult = generateNarration.inputSchema!.safeParse({ script: longScript, voiceId: 'v1' })
+    // to re-validate. Uses the raw exported `inputSchema` (not
+    // `generateNarration.inputSchema`, which Mastra's createTool wraps in a
+    // StandardSchemaWithJSON type with no .safeParse at the type level).
+    const parseResult = inputSchema.safeParse({ script: longScript, voiceId: 'v1' })
     expect(parseResult.success).toBe(false)
+  })
+
+  it('passes the gateway refusal reason through and refunds the charge', async () => {
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ refused: true, reason: 'CUSTOM_REASON' }), { status: 200 })) as unknown as typeof fetch
+    ;(getPool as ReturnType<typeof vi.fn>).mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-30000', expires_at: null }] }) })
+
+    const result = await generateNarration.execute!({ script: 'Hello', voiceId: 'v1' } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: 'CUSTOM_REASON' })
+    expect(spendCredits).toHaveBeenCalledTimes(2)
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund', jobType: 'narration_generation' }))
+  })
+
+  it('does not attempt a refund when the charge itself fails with insufficient credits', async () => {
+    class InsufficientCreditsError extends Error { name = 'InsufficientCreditsError' }
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockRejectedValue(new InsufficientCreditsError('insufficient'))
+    global.fetch = vi.fn() as unknown as typeof fetch
+
+    const result = await generateNarration.execute!({ script: 'Hello', voiceId: 'v1' } as never, baseCtx())
+
+    expect(result).toMatchObject({ insufficientCredits: true })
+    expect(spendCredits).toHaveBeenCalledTimes(1)
+    expect(global.fetch).not.toHaveBeenCalled()
   })
 
   it('refunds the charge when the gateway call fails after a successful charge', async () => {

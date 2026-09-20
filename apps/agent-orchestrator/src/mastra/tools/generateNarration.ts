@@ -18,7 +18,7 @@ const outputSchema = z.object({
   jobId: z.string().optional(),
 })
 
-const inputSchema = z.object({
+export const inputSchema = z.object({
   script: z.string().max(500).describe(
     'The full narration script — one continuous read, not pre-split into clip-sized segments. ~500 characters is roughly 30-35 seconds of speech at typical ad pacing, matching this skill\'s 30s ceiling.'
   ),
