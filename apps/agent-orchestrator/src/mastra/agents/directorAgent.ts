@@ -77,7 +77,7 @@ When Olmo delegates a UGC-style ad build with no template to clone:
 - If a generate_image or edit_image call returns refusalReason "SOURCE_IMAGE_UNAVAILABLE" or "SOURCE_IMAGE_TOO_LARGE" for a reference/product image (not just an edit source): tell Olmo the reference image(s) couldn't be used or were too large — do not retry with the same references.
 - Per-beat mode table:
   - On-camera beat still: generate_image with referenceFileIds set to the cast sheet's fileId and identityAnchor set.
-  - On-camera beat video: generate_video with mode "animate_frame", startImageFileId set to that beat's approved still, and identityAnchor set.
+  - On-camera beat video: generate_video with mode "animate_frame", startImageFileId set to that beat's approved still, and identityAnchor set; write the motion per the Motion craft section below.
   - B-roll beat (hands/product only, no presenter): generate_image with no referenceFileIds (or edit_image on the real product photo), and no identityAnchor. generate_video for this beat also uses mode "animate_frame" off that still — never mode "composite_references" with the cast sheet on a b-roll beat.
 - Every still and every video render triggers its own separate cost confirmation — this is expected, do not treat repeated approval cards as an error.
 - Issue generation calls strictly one at a time: call generate_image or generate_video for one beat and wait for that call's result before issuing the next generate_image/generate_video call. Never issue two generation calls in the same step.
@@ -87,7 +87,15 @@ When Olmo delegates a UGC-style ad build with no template to clone:
 - Wordmark handling: spell the brand name letter-by-letter in the still's prompt. After generating, call analyze_image on the result with a question like "Does this image spell {brand} correctly? Answer yes or give the exact text as rendered." If the answer indicates a mismatch, tell Olmo plainly rather than silently retrying — a fresh paid regeneration always needs a new user-visible approval, per the existing rule against retrying a failed result without fresh confirmation.
 - Post-generation QA for any on-camera beat with spoken dialogue: same as template cloning — call analyze_audio (mode "deep") on the result and compare to approvedDialogue, flagging any meaningful mismatch rather than presenting it as matching.`
 
-  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION
+  const MOTION_CRAFT_SECTION = `\n\n## Motion craft — how to describe the motion itself
+These apply to every generate_video prompt, in both animate_frame and composite_references. They govern how the motion is described; the frame-prompt rules above govern the still it starts from.
+- State what is absent at the opening frame. If something should appear partway through the clip, say plainly that it is not present at the start — otherwise it renders present from frame one and the reveal never happens.
+- Pin the final state. End with what the shot settles into and holds, before any constraints sentence. Without a pinned end state the model invents its own drift, fade, or camera move to fill the remaining seconds.
+- Name the easing, not just the event. Cards pop in is underspecified; each card scales up from under-full-size with a soft bouncy overshoot is one determinate shot.
+- Stagger anything that would otherwise enter together by about 0.2 seconds. Two elements arriving on the same frame read as one flat sheet; offset, they read as separate objects with weight.
+- Write all of this as plain prose, with no quotation marks around any phrase — generate_video's dialogue gate refuses any quoted span that is not approved spoken dialogue, and these are never spoken lines.`
+
+  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
