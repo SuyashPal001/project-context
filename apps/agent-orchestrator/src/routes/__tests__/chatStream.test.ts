@@ -231,6 +231,19 @@ describe('attachmentFromCanvasToolResult — generate-narration', () => {
     const result = attachmentFromCanvasToolResult('generate-narration', { refused: true, refusalReason: 'GENERATION_FAILED' })
     expect(result).toBeNull()
   })
+
+  // Regression guard: before generateNarration.ts's output fix, the tool
+  // returned only {fileId, durationSeconds, ...} — no name/fileType/size —
+  // so this function fell through to the hardcoded markdown defaults below
+  // and every narration rendered in chat as a broken 0-byte "document.md"
+  // card instead of audio. Confirms today's real tool output (name/fileType/
+  // size present) does NOT hit those defaults, and documents what the
+  // defaults look like when they're absent so a future regression is visible
+  // as a diff against 'document.md'/'text/markdown'/0, not a silent pass.
+  it('falls back to markdown defaults if name/fileType/size are absent, same shape the pre-fix tool used to return', () => {
+    const result = attachmentFromCanvasToolResult('generate-narration', { fileId: 'f1', durationSeconds: 12.5 })
+    expect(result).toEqual({ fileId: 'f1', name: 'document.md', type: 'text/markdown', size: 0 })
+  })
 })
 
 describe('attachmentFromCanvasToolResult — lipsync', () => {

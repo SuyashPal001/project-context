@@ -44,7 +44,7 @@ describe('lipsync tool', () => {
     expect(fetchPresignedUrl).toHaveBeenCalledWith('v1', 'tok')
     expect(fetchPresignedUrl).toHaveBeenCalledWith('a1', 'tok')
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ jobType: 'lipsync_generation' }))
-    expect(result).toMatchObject({ fileId: 'f2' })
+    expect(result).toMatchObject({ fileId: 'f2', name: 'synced.mp4', fileType: 'video/mp4', size: 3, model: 'fal-ai/latentsync' })
   })
 
   it('defaults model to fal-ai/latentsync when not specified', async () => {

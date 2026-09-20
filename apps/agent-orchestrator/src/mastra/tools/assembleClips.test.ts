@@ -63,7 +63,7 @@ describe('assembleClips tool', () => {
 
     expect(downloadToSessionCache).toHaveBeenCalledTimes(3)
     expect(execFile).toHaveBeenCalled()
-    expect(result).toMatchObject({ fileId: 'assembled1' })
+    expect(result).toMatchObject({ fileId: 'assembled1', name: 'assembled.mp4', fileType: 'video/mp4', size: 8 })
   })
 
   it('rejects more than 3 clip file ids at the schema level', () => {

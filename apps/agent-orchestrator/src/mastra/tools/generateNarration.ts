@@ -10,6 +10,9 @@ const SPEECH_MODEL = 'sonic-3.5'
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
+  name: z.string().optional(),
+  fileType: z.string().optional(),
+  size: z.number().optional(),
   durationSeconds: z.number().optional(),
   refused: z.boolean().optional(),
   refusalReason: z.string().optional(),
@@ -121,7 +124,7 @@ export const generateNarration = createTool({
     }
 
     return {
-      fileId: attachment.fileId,
+      fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       durationSeconds: genResult.durationSeconds,
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
       jobId,

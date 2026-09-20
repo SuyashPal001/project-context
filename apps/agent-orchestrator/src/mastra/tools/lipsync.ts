@@ -11,10 +11,14 @@ const DEFAULT_LIPSYNC_MODEL = 'fal-ai/latentsync'
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
+  name: z.string().optional(),
+  fileType: z.string().optional(),
+  size: z.number().optional(),
   refused: z.boolean().optional(),
   refusalReason: z.string().optional(),
   insufficientCredits: z.boolean().optional(),
   creditsUsedMicro: z.string().optional(),
+  model: z.string().optional(),
   jobId: z.string().optional(),
 })
 
@@ -157,8 +161,9 @@ export const lipsync = createTool({
     }
 
     return {
-      fileId: attachment.fileId,
+      fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
+      model: resolvedModel,
       jobId,
     }
   },

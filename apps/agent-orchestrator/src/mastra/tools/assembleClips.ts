@@ -23,6 +23,9 @@ const MAX_CLIP_BYTES = 200 * 1024 * 1024
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
+  name: z.string().optional(),
+  fileType: z.string().optional(),
+  size: z.number().optional(),
   refused: z.boolean().optional(),
   refusalReason: z.string().optional(),
   insufficientCredits: z.boolean().optional(),
@@ -180,7 +183,7 @@ export const assembleClips = createTool({
     }
 
     return {
-      fileId: attachment.fileId,
+      fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
       jobId,
     }

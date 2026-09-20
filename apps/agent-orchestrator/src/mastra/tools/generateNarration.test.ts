@@ -49,7 +49,7 @@ describe('generateNarration tool', () => {
 
     expect(callOrder).toEqual(['charge', 'gateway'])
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 't1', amountMicro: -30_000n, kind: 'debit', jobType: 'narration_generation' }))
-    expect(result).toMatchObject({ fileId: 'f1', durationSeconds: 12.5 })
+    expect(result).toMatchObject({ fileId: 'f1', name: 'narration.wav', fileType: 'audio/wav', size: 3, durationSeconds: 12.5 })
   })
 
   it('refuses a script over 500 characters via the schema before any charge', async () => {
