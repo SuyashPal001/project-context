@@ -109,11 +109,17 @@ export const lipsync = createTool({
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
         body: JSON.stringify({ model: resolvedModel, videoUri, audioUri }),
-        // Strictly larger than the gateway's own 270s poll budget for the
-        // same reason generateVideo.ts's 270s must exceed the gateway's 240s
-        // Gemini timeout — this clock starts first and must not abort before
-        // the gateway's own internal timeout could.
-        signal: AbortSignal.timeout(290_000),
+        // Strictly larger than the gateway's own real worst-case runtime —
+        // same directional pattern generateVideo.ts's 270s client timeout
+        // uses against the gateway's 240s Gemini timeout (client timeout
+        // must exceed the gateway's internal one, not just its poll loop).
+        // The gateway's worst case (apps/inference-gateway/src/lipsync.ts)
+        // is 270s poll budget + up to 15s for the COMPLETED status's
+        // separate result-fetch call + up to 60s for downloadResultVideo's
+        // own fetch/validation ≈ 345s. 355s gives real headroom over that,
+        // so this clock never aborts a job that would have legitimately
+        // succeeded.
+        signal: AbortSignal.timeout(355_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
       genResult = await res.json()

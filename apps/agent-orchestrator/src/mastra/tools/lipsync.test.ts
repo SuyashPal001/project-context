@@ -16,7 +16,7 @@ vi.mock('./mediaCache.js', () => ({ fetchPresignedUrl }))
 const { shouldRequireApproval } = vi.hoisted(() => ({ shouldRequireApproval: vi.fn() }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
-import { lipsync } from './lipsync.js'
+import { lipsync, inputSchema } from './lipsync.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {
@@ -66,5 +66,59 @@ describe('lipsync tool', () => {
 
     expect(spendCredits).not.toHaveBeenCalled()
     expect(result).toMatchObject({ refused: true, refusalReason: 'SOURCE_UNAVAILABLE' })
+  })
+
+  it('refunds the charge when the gateway call fails after a successful charge', async () => {
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    global.fetch = vi.fn(async () => { throw new Error('network error') }) as unknown as typeof fetch
+    ;(getPool as ReturnType<typeof vi.fn>).mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-250000', expires_at: null }] }) })
+
+    const result = await lipsync.execute!({ videoFileId: 'v1', audioFileId: 'a1' } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(spendCredits).toHaveBeenCalledTimes(2)
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund', jobType: 'lipsync_generation' }))
+  })
+
+  it('does not attempt a refund when the charge itself fails with insufficient credits', async () => {
+    class InsufficientCreditsError extends Error { name = 'InsufficientCreditsError' }
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockRejectedValue(new InsufficientCreditsError('insufficient'))
+    global.fetch = vi.fn() as unknown as typeof fetch
+
+    const result = await lipsync.execute!({ videoFileId: 'v1', audioFileId: 'a1' } as never, baseCtx())
+
+    expect(result).toMatchObject({ insufficientCredits: true })
+    expect(spendCredits).toHaveBeenCalledTimes(1)
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('does not default agentId to empty string when absent from requestContext', async () => {
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockImplementation(async (args) => {
+      expect(args.actorId).toBeUndefined()
+    })
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f2', name: 'synced.mp4', type: 'video/mp4', size: 3 })
+
+    await lipsync.execute!({ videoFileId: 'v1', audioFileId: 'a1' } as never, ctx({ tenantId: 't1', conversationId: 'c1', idToken: 'tok' }))
+    expect(spendCredits).toHaveBeenCalled()
+  })
+
+  it('resolves the rate for an explicit non-default model and sends it to the gateway', async () => {
+    let sentBody: Record<string, unknown> = {}
+    global.fetch = vi.fn(async (_url, opts: RequestInit) => {
+      sentBody = JSON.parse(opts.body as string)
+      return new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })
+    }) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f2', name: 'synced.mp4', type: 'video/mp4', size: 3 })
+
+    await lipsync.execute!({ videoFileId: 'v1', audioFileId: 'a1', model: 'sync-2.0' } as never, baseCtx())
+
+    expect(resolveRate).toHaveBeenCalledWith('lipsync_generation', 'sync-2.0')
+    expect(sentBody.model).toBe('sync-2.0')
+  })
+
+  it('defaults model to fal-ai/latentsync at the Zod schema level', () => {
+    const parsed = inputSchema.parse({ videoFileId: 'v1', audioFileId: 'a1' })
+    expect(parsed.model).toBe('fal-ai/latentsync')
   })
 })
