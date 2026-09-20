@@ -19,6 +19,7 @@ import { handleImageGenerations } from './images.js';
 import { handleMusicGenerations } from './music.js';
 import { handleVideoGenerations } from './video.js';
 import { handleSpeechGenerations } from './speech.js';
+import { handleLipsyncGenerations } from './lipsync.js';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -494,6 +495,12 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Video generation (Director agent)
   if (req.method === 'POST' && req.url === '/v1/video/generations') {
     await handleVideoGenerations(req, res, readBody);
+    return;
+  }
+
+  // Lip-sync (talking-head skill)
+  if (req.method === 'POST' && req.url === '/v1/video/lipsync') {
+    await handleLipsyncGenerations(req, res, readBody);
     return;
   }
 
