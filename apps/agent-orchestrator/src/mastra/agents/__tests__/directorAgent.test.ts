@@ -13,6 +13,17 @@ describe('directorAgent tool registration', () => {
       expect.arrayContaining(['analyze_video', 'analyze_audio']),
     )
   })
+
+  it('has generate_narration, lipsync, and assemble_clips registered, needed for talking-head', async () => {
+    const directorTools = await directorAgent.listTools()
+    const delegateTools = await directorAgentDelegate.listTools()
+    expect(Object.keys(directorTools)).toEqual(
+      expect.arrayContaining(['generate_narration', 'lipsync', 'assemble_clips']),
+    )
+    expect(Object.keys(delegateTools)).toEqual(
+      expect.arrayContaining(['generate_narration', 'lipsync', 'assemble_clips']),
+    )
+  })
 })
 
 describe('directorAgent instructions', () => {
@@ -25,5 +36,6 @@ describe('directorAgent instructions', () => {
     expect(text).toContain('## Template cloning')
     expect(text).toContain('## UGC character generation')
     expect(text).toContain('## Motion craft')
+    expect(text).toContain('## Talking-head generation')
   })
 })
