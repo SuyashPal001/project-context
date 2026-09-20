@@ -36,7 +36,7 @@ const outputSchema = z.object({
 export const inputSchema = z.object({
   clipFileIds: z.array(z.string()).min(1).max(3),
   targetDurationSeconds: z.number().optional().describe(
-    'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align the silent clip total to the narration track length.'
+    'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align this clip total to a separate audio track\'s length.'
   ),
   aspectRatio: z.enum(['16:9', '9:16']),
 })
@@ -107,11 +107,18 @@ export const assembleClips = createTool({
       }
     }
 
-    const workDir = mkdtempSync(join(tmpdir(), 'assemble-'))
+    let workDir: string
+    try {
+      workDir = mkdtempSync(join(tmpdir(), 'assemble-'))
+    } catch (err) {
+      console.error(`[session:${sessionId}] assembleClips: failed to create temp dir:`, (err as Error).message)
+      if (charged) await refundAssemblyCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'ASSEMBLY_FAILED', jobId }
+    }
     const outputPath = join(workDir, 'assembled.mp4')
     try {
       // Normalizes every clip to CFR 30fps, a fixed aspect ratio, and strips
-      // any audio stream (-an on each input leg) before concatenating — the
+      // the audio stream from the output (-an) before concatenating — the
       // lip-sync step supplies the only audio that matters downstream, and
       // concat fails outright if inputs disagree on stream presence.
       const [w, h] = aspectRatio === '9:16' ? ['1080', '1920'] : ['1920', '1080']
@@ -119,13 +126,22 @@ export const assembleClips = createTool({
         `[${i}:v]fps=30,scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
       )
       const concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
-      const filterComplex = `${filterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=0[outv]`
+      // tpad must be chained inside the same filter_complex graph, not applied
+      // via a separate -vf flag — ffmpeg refuses to mix simple (-vf) and
+      // complex (-filter_complex) filtering on the same output stream. When a
+      // target duration is set, concat writes to an intermediate [cat] label
+      // and tpad consumes that to produce the final [outv].
+      const concatLabel = targetDurationSeconds !== undefined ? '[cat]' : '[outv]'
+      let filterComplex = `${filterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=0${concatLabel}`
+      if (targetDurationSeconds !== undefined) {
+        filterComplex += `; [cat]tpad=stop_mode=clone:stop_duration=${Math.max(0, targetDurationSeconds)}[outv]`
+      }
 
       const args: string[] = ['-y']
       for (const p of localPaths) args.push('-i', p)
       args.push('-filter_complex', filterComplex, '-map', '[outv]', '-an')
       if (targetDurationSeconds !== undefined) {
-        args.push('-vf', `tpad=stop_mode=clone:stop_duration=${Math.max(0, targetDurationSeconds)}`, '-t', String(targetDurationSeconds))
+        args.push('-t', String(targetDurationSeconds))
       }
       args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', outputPath)
 
@@ -143,7 +159,15 @@ export const assembleClips = createTool({
       return { refused: true, refusalReason: 'NO_SESSION_CONTEXT', jobId }
     }
 
-    const buffer = readFileSync(outputPath)
+    let buffer: Buffer
+    try {
+      buffer = readFileSync(outputPath)
+    } catch (err) {
+      console.error(`[session:${sessionId}] assembleClips: failed to read assembled output:`, (err as Error).message)
+      if (charged) await refundAssemblyCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      rmSync(workDir, { recursive: true, force: true })
+      return { refused: true, refusalReason: 'ASSEMBLY_FAILED', jobId }
+    }
     const attachment = await uploadGeneratedFile(idToken, {
       conversationId, title: 'Assembled Video', content: buffer,
       contentType: 'video/mp4', extension: 'mp4',
