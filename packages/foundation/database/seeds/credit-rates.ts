@@ -47,6 +47,31 @@ const RATES = [
   // capability range.
   { resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
     pricingSchema: { per_call_micro: 400_000 } },
+  // Cartesia sonic-3.5: ~$0.02 per 30s ad script (per spec's cost research,
+  // $40-42/1M characters, ~500 chars max script = ~$0.021). Priced with
+  // margin at a flat per-call rate rather than per-character, matching this
+  // codebase's existing flat-per-call convention for narration-sized clips.
+  { resourceType: 'narration_generation', subject: 'sonic-3.5',
+    pricingSchema: { per_call_micro: 30_000 } },
+  // fal.ai LatentSync: flat $0.20 per generation for outputs <=40s (spec's
+  // Gemini research). Priced with margin.
+  { resourceType: 'lipsync_generation', subject: 'fal-ai/latentsync',
+    pricingSchema: { per_call_micro: 250_000 } },
+  // Sync Labs sync-2.0: $0.08/output-second; priced flat assuming a
+  // worst-case ~30s ad (this skill's hard ceiling), same "flat per-call,
+  // not metered" convention generateVideo.ts already uses for its own
+  // duration-variable pricing.
+  { resourceType: 'lipsync_generation', subject: 'sync-2.0',
+    pricingSchema: { per_call_micro: 2_500_000 } },
+  // assemble_clips is pure local ffmpeg compute — no vendor cost. Priced at
+  // a small flat rate rather than zero, per the spec's open question:
+  // resolveRate() finding no rate at all makes shouldRequireApproval() skip
+  // the approval card silently (treated as "free, no charge" rather than
+  // "no card, but still gated") — a tiny non-zero rate keeps this tool on
+  // the same charge/approval code path as every other generation tool
+  // instead of carving out a new no-approval code path for one tool.
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-local',
+    pricingSchema: { per_call_micro: 1_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can
   // price them later without a deploy (spec section 3).
   { resourceType: 'message',   subject: '*', pricingSchema: { per_message_micro: 0 } },
