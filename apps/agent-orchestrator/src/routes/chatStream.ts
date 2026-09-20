@@ -569,8 +569,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const meta = GENERATION_APPROVAL_METADATA[toolName]
 
           // A tool paused for approval that this migration doesn't know how
-          // to render a card for (shouldn't happen — only the 5 gated tools
-          // set requireApproval, and all 5 have a metadata entry from Task
+          // to render a card for (shouldn't happen — only the 8 gated tools
+          // set requireApproval, and all 8 have a metadata entry from Task
           // 1). Fail open rather than hang the turn on an invisible card.
           if (!meta || !toolCallId) {
             console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — auto-approving`)

@@ -101,7 +101,7 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'edit_image': imageEdit,
   'generate-narration': narrationGen,
   'generate_narration': narrationGen,
-  'lipsync': lipsyncGen,
+  'lipsync': lipsyncGen, // single key: the tool id and the delegate map key are the same bare word — no hyphenated/underscored forms to differ
   'assemble-clips': assemblyGen,
   'assemble_clips': assemblyGen,
   'save_skill': {

@@ -134,16 +134,24 @@ describe('GENERATION_APPROVAL_METADATA — talking-head tools', () => {
     expect(GENERATION_APPROVAL_METADATA['generate-narration']).toBeDefined()
     expect(GENERATION_APPROVAL_METADATA['generate_narration']).toBeDefined()
     expect(GENERATION_APPROVAL_METADATA['generate-narration'].resourceType).toBe('narration_generation')
+    expect(GENERATION_APPROVAL_METADATA['generate-narration'].subject).toBe('sonic-3.5')
   })
 
   it('registers lipsync', () => {
     expect(GENERATION_APPROVAL_METADATA['lipsync']).toBeDefined()
     expect(GENERATION_APPROVAL_METADATA['lipsync'].resourceType).toBe('lipsync_generation')
+    expect(GENERATION_APPROVAL_METADATA['lipsync'].subject).toBe('fal-ai/latentsync')
   })
 
   it('registers assemble_clips under both hyphenated and underscored keys', () => {
     expect(GENERATION_APPROVAL_METADATA['assemble-clips']).toBeDefined()
     expect(GENERATION_APPROVAL_METADATA['assemble_clips']).toBeDefined()
     expect(GENERATION_APPROVAL_METADATA['assemble-clips'].resourceType).toBe('clip_assembly')
+    expect(GENERATION_APPROVAL_METADATA['assemble-clips'].subject).toBe('ffmpeg-local')
+  })
+
+  it('maps the underscored delegate keys to the same metadata object as the hyphenated tool ids', () => {
+    expect(GENERATION_APPROVAL_METADATA['generate_narration']).toBe(GENERATION_APPROVAL_METADATA['generate-narration'])
+    expect(GENERATION_APPROVAL_METADATA['assemble_clips']).toBe(GENERATION_APPROVAL_METADATA['assemble-clips'])
   })
 })
