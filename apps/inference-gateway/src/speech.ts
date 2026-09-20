@@ -3,17 +3,19 @@ import { requestsTotal, latency } from './metrics.js'
 
 const SPEECH_MODEL_ALLOWLIST = new Set(['sonic-3.5'])
 
-// Cartesia's own versioning header — one value, used consistently, unlike
-// apps/web's two existing Cartesia call sites which currently disagree
-// (2026-03-01 vs 2026-08-14). Picking the more recent one deliberately;
-// apps/web's inconsistency is out of scope to fix here (see spec's Open
-// Questions).
-const CARTESIA_VERSION = '2026-08-14'
+// Cartesia-Version for /tts/bytes endpoint — matches the proven-working value
+// in apps/web/app/api/creative/voices/preview/route.ts (2026-03-01).
+// Note: apps/web's /voices list endpoints use 2026-08-14, but this adapter
+// mimics /tts/bytes specifically.
+const CARTESIA_VERSION = '2026-03-01'
+
+const MAX_AUDIO_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB cap, matching apps/web
 
 export interface SpeechGenerationRequest {
   model: string
   transcript: string
   voiceId: string
+  language?: string
 }
 
 export type SpeechGenerationResult =
@@ -22,19 +24,31 @@ export type SpeechGenerationResult =
 
 export class UnsupportedSpeechModelError extends Error {}
 
-// Reads duration from a canonical 44-byte WAV header (RIFF/WAVE, one fmt
-// chunk before data) rather than trusting any vendor-reported duration field
-// — Cartesia's /tts/bytes response is the raw audio file, not a JSON
-// envelope with metadata. sampleRate and numChannels come straight from the
-// fmt chunk so this works regardless of what output_format was requested.
+// Reads duration from a WAV header by validating chunk layout first.
+// A WAV with an unexpected chunk before data (LIST/fact/bext) silently
+// produces garbage if trusted naively. This implementation asserts the
+// fmt chunk at offset 12 and data chunk at offset 36, throwing if either
+// is missing.
 export function readWavDurationSeconds(buf: Buffer): number {
   if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') {
     throw new Error('Not a valid WAV file')
+  }
+  // Validate fmt chunk is where we expect it (at offset 12)
+  if (buf.toString('ascii', 12, 16) !== 'fmt ') {
+    throw new Error('Unexpected WAV chunk layout')
+  }
+  // Validate data chunk is where we expect it (at offset 36)
+  if (buf.toString('ascii', 36, 40) !== 'data') {
+    throw new Error('Unexpected WAV chunk layout')
   }
   const numChannels = buf.readUInt16LE(22)
   const sampleRate = buf.readUInt32LE(24)
   const bitsPerSample = buf.readUInt16LE(34)
   const dataSize = buf.readUInt32LE(40)
+  // Sanity check: dataSize should not exceed buffer minus the 44-byte header
+  if (dataSize > buf.length - 44) {
+    throw new Error('WAV data chunk size exceeds buffer')
+  }
   const bytesPerSample = bitsPerSample / 8
   const numSamples = dataSize / (bytesPerSample * numChannels)
   return numSamples / sampleRate
@@ -42,10 +56,11 @@ export function readWavDurationSeconds(buf: Buffer): number {
 
 async function callCartesia(req: SpeechGenerationRequest): Promise<SpeechGenerationResult> {
   const key = process.env.CARTESIA_API_KEY ?? ''
+  const language = req.language ?? 'en'
   const res = await fetch('https://api.cartesia.ai/tts/bytes', {
     method: 'POST',
     headers: {
-      'X-API-Key': key,
+      'Authorization': `Bearer ${key}`,
       'Cartesia-Version': CARTESIA_VERSION,
       'Content-Type': 'application/json',
     },
@@ -54,14 +69,40 @@ async function callCartesia(req: SpeechGenerationRequest): Promise<SpeechGenerat
       transcript: req.transcript,
       voice: { mode: 'id', id: req.voiceId },
       output_format: { container: 'wav', encoding: 'pcm_s16le', sample_rate: 44100 },
-      language: 'en',
+      language,
     }),
     signal: AbortSignal.timeout(30_000),
   })
+
+  // 4xx errors (except 429) are permanent refusals — bad voiceId, content moderation, etc.
+  // Map them to the refused arm rather than throwing.
+  if (!res.ok && res.status >= 400 && res.status < 500 && res.status !== 429) {
+    const reason = await res.text().catch(() => `HTTP ${res.status}`)
+    return { refused: true, reason: `Cartesia rejected: ${reason}` }
+  }
+
   if (!res.ok) {
     throw new Error(`Cartesia speech generation failed: ${res.status} ${await res.text()}`)
   }
+
+  // Validate response content-type and size before buffering
+  const contentType = res.headers.get('content-type') ?? ''
+  const contentLength = Number(res.headers.get('content-length') ?? 0)
+
+  if (!contentType.startsWith('audio/')) {
+    return { refused: true, reason: `Unexpected content-type: ${contentType}` }
+  }
+
+  if (contentLength > MAX_AUDIO_SIZE_BYTES) {
+    return { refused: true, reason: 'Audio size exceeds limit' }
+  }
+
   const buf = Buffer.from(await res.arrayBuffer())
+
+  if (buf.byteLength > MAX_AUDIO_SIZE_BYTES) {
+    return { refused: true, reason: 'Audio size exceeds limit' }
+  }
+
   const durationSeconds = readWavDurationSeconds(buf)
   return { audioBase64: buf.toString('base64'), mimeType: 'audio/wav', durationSeconds }
 }
@@ -91,6 +132,8 @@ export async function handleSpeechGenerations(req: IncomingMessage, res: ServerR
   try {
     const result = await generateSpeech(payload)
     latency.observe({ adapter: 'speech' }, Date.now() - t0)
+    // Refused results are still "success" from the gateway perspective — a valid
+    // response that downstream can reason about. Only thrown errors count as failures.
     requestsTotal.inc({ adapter: 'speech', status: 'success' })
     res.writeHead(200, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify(result))
