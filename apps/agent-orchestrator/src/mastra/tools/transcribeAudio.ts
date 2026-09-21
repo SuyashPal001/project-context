@@ -16,6 +16,10 @@ const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const TRANSCRIBE_SUBJECT = 'gemini-transcribe'
 const FFMPEG_TIMEOUT_MS = 60_000
 const MAX_SOURCE_BYTES = 200 * 1024 * 1024
+// Mirrors the gateway's MAX_TRANSCRIBE_AUDIO_BYTES (transcribe.ts) — checked
+// here too so an oversized extraction is refused before spendCredits runs,
+// not after.
+const MAX_TRANSCRIBE_AUDIO_BYTES = 20 * 1024 * 1024
 
 const outputSchema = z.object({
   text: z.string().optional(),
@@ -72,17 +76,27 @@ export const transcribeAudio = createTool({
     // payment. Sending the full video to Gemini (rather than this
     // extracted track) would exceed its inline-request size ceiling — see
     // Task 2's revision note.
-    let workDir: string
+    let workDir: string | undefined
     let audioBase64: string
     try {
       workDir = mkdtempSync(join(tmpdir(), 'transcribe-'))
       const audioPath = join(workDir, 'audio.aac')
       await execFile('ffmpeg', ['-y', '-i', videoPath, '-vn', '-c:a', 'aac', audioPath], { timeout: FFMPEG_TIMEOUT_MS })
       audioBase64 = readFileSync(audioPath).toString('base64')
-      rmSync(workDir, { recursive: true, force: true })
     } catch (err) {
       console.error(`[session:${sessionId}] transcribeAudio: audio extraction failed:`, (err as Error).message)
+      if (workDir) rmSync(workDir, { recursive: true, force: true })
       return { refused: true, refusalReason: 'EXTRACTION_FAILED', jobId }
+    }
+    rmSync(workDir, { recursive: true, force: true })
+
+    // Cheap local check before charging — the extracted file is already on
+    // disk, so we can catch an oversized track here rather than charging and
+    // then having the gateway refuse, forcing an unnecessary refund cycle.
+    const decodedBytes = Math.floor(audioBase64.length * 3 / 4)
+    if (decodedBytes > MAX_TRANSCRIBE_AUDIO_BYTES) {
+      console.error(`[session:${sessionId}] transcribeAudio: extracted audio exceeds transcription size limit (${decodedBytes} bytes)`)
+      return { refused: true, refusalReason: 'EXTRACTION_TOO_LARGE', jobId }
     }
 
     const attempt = 0
