@@ -66,12 +66,33 @@ describe('assembleClips tool', () => {
     expect(result).toMatchObject({ fileId: 'assembled1', name: 'assembled.mp4', fileType: 'video/mp4', size: 8 })
   })
 
-  it('rejects more than 3 clip file ids at the schema level', () => {
+  it('accepts 4 clip ids (raised from the old max of 3)', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b', 'c', 'd'],
+      aspectRatio: '9:16',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects a 5th clip id', () => {
     // Parsed off the exported raw Zod schema, not assembleClips.inputSchema —
     // createTool's wrapped type is StandardSchemaWithJSON, which has no
     // .safeParse (this exact omission broke type-check in an earlier task).
-    const parsed = inputSchema.safeParse({ clipFileIds: ['a', 'b', 'c', 'd'], aspectRatio: '9:16' })
-    expect(parsed.success).toBe(false)
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b', 'c', 'd', 'e'],
+      aspectRatio: '9:16',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects preserveAudio combined with targetDurationSeconds', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      targetDurationSeconds: 20,
+    })
+    expect(result.success).toBe(false)
   })
 
   it('rejects a negative targetDurationSeconds at the schema level', () => {
@@ -114,6 +135,42 @@ describe('assembleClips tool', () => {
     expect(filterComplex).toMatch(/\[cat\]tpad=.*\[outv\]/)
     expect(args).toContain('-t')
     expect(args[args.indexOf('-t') + 1]).toBe('10')
+  })
+
+  it('builds a v=1:a=1 concat filter with per-input audio normalization and omits -an when preserveAudio is true', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'assembled1', name: 'assembled.mp4', type: 'video/mp4', size: 8 })
+
+    await assembleClips.execute!({ clipFileIds: ['c1', 'c2', 'c3', 'c4'], preserveAudio: true, aspectRatio: '9:16' } as never, baseCtx())
+
+    expect(execFile).toHaveBeenCalled()
+    const args = execFile.mock.calls[0][1] as string[]
+    const filterComplexIdx = args.indexOf('-filter_complex')
+    const filterComplex = args[filterComplexIdx + 1]
+    expect(filterComplex).toContain('concat=n=4:v=1:a=1')
+    // Every input's audio must be resampled/reformatted to a common shape
+    // before concat — concat refuses heterogeneous inputs (this skill's real
+    // audio comes from three different sources: fal.ai's lip-synced MP4,
+    // our own AAC mux, and an untouched copy from composite_end_card).
+    expect(filterComplex).toContain('aresample=48000')
+    expect(filterComplex).toContain('channel_layouts=stereo')
+    expect(args).not.toContain('-an')
+    expect(args).toContain('-map')
+    expect(args[args.indexOf('-map') + 1]).toBe('[outv]')
+    expect(args).toContain('[outa]')
+  })
+
+  it('defaults preserveAudio to false and keeps -an when omitted (skill 4/7 backward compat)', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'assembled1', name: 'assembled.mp4', type: 'video/mp4', size: 8 })
+
+    await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], aspectRatio: '9:16' } as never, baseCtx())
+
+    expect(execFile).toHaveBeenCalled()
+    const args = execFile.mock.calls[0][1] as string[]
+    expect(args).toContain('-an')
   })
 
   it('refunds the charge when ffmpeg fails after a successful charge', async () => {

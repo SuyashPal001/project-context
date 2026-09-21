@@ -37,12 +37,18 @@ const outputSchema = z.object({
 // so callers/tests can .safeParse()/.parse() it directly — omitting this export broke
 // `pnpm type-check` in an earlier task and had to be fixed in review; don't repeat it.
 export const inputSchema = z.object({
-  clipFileIds: z.array(z.string()).min(1).max(3),
+  clipFileIds: z.array(z.string()).min(1).max(4),
   targetDurationSeconds: z.number().positive().optional().describe(
-    'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align this clip total to a separate audio track\'s length.'
+    'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align this clip total to a separate audio track\'s length. Not compatible with preserveAudio (see refine below) — animation-character\'s preserveAudio callers pre-trim every clip upstream and never set this.'
+  ),
+  preserveAudio: z.boolean().default(false).describe(
+    'When true, concatenates with each input\'s audio stream preserved (v=1:a=1, each stream resampled to a common format first) instead of stripping all audio (-an). Every input must already carry an audio stream, already trimmed to its final length — this field does not itself trim anything. Default false keeps talking-head/short-drama-stitch\'s existing silent-concat-then-lipsync behavior unchanged.'
   ),
   aspectRatio: z.enum(['16:9', '9:16']),
-})
+}).refine(
+  (v) => !(v.preserveAudio && v.targetDurationSeconds !== undefined),
+  { message: 'preserveAudio and targetDurationSeconds cannot both be set — the concat filter graph produces one video+audio output stream, and stop_duration padding is meaningless once every input is already individually trimmed upstream' },
+)
 
 export const assembleClips = createTool({
   id: 'assemble-clips',
@@ -52,7 +58,7 @@ export const assembleClips = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { clipFileIds, targetDurationSeconds, aspectRatio } = inputData as z.infer<typeof inputSchema>
+    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -120,37 +126,65 @@ export const assembleClips = createTool({
     }
     const outputPath = join(workDir, 'assembled.mp4')
     try {
-      // Normalizes every clip to CFR 30fps, a fixed aspect ratio, and strips
-      // the audio stream from the output (-an) before concatenating — the
-      // lip-sync step supplies the only audio that matters downstream, and
-      // concat fails outright if inputs disagree on stream presence.
+      // Normalizes every clip to CFR 30fps and a fixed aspect ratio. Audio
+      // is stripped (-an) unless preserveAudio is set, matching talking-head/
+      // short-drama-stitch's existing silent-concat-then-lipsync flow by
+      // default. The inputSchema's refine above guarantees preserveAudio
+      // and targetDurationSeconds are never both set, so the concat label
+      // is always unambiguous: exactly one shared output when preserveAudio
+      // is false, exactly one video+audio pair when it's true.
       const [w, h] = aspectRatio === '9:16' ? ['1080', '1920'] : ['1920', '1080']
-      const filterParts = localPaths.map((_, i) =>
+
+      const videoFilterParts = localPaths.map((_, i) =>
         `[${i}:v]fps=30,scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
       )
-      const concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
-      // tpad must be chained inside the same filter_complex graph, not applied
-      // via a separate -vf flag — ffmpeg refuses to mix simple (-vf) and
-      // complex (-filter_complex) filtering on the same output stream. When a
-      // target duration is set, concat writes to an intermediate [cat] label
-      // and tpad consumes that to produce the final [outv].
-      // Note: stop_duration below pads BY the target amount (not TO it) — the
-      // trailing -t flag is what truncates the result to the actual target
-      // duration. Correct only because both are present; dropping -t while
-      // keeping tpad as-is would silently produce an over-long output.
-      const concatLabel = targetDurationSeconds !== undefined ? '[cat]' : '[outv]'
-      let filterComplex = `${filterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=0${concatLabel}`
-      if (targetDurationSeconds !== undefined) {
-        filterComplex += `; [cat]tpad=stop_mode=clone:stop_duration=${Math.max(0, targetDurationSeconds)}[outv]`
+
+      let filterComplex: string
+      let concatInputs: string
+      if (preserveAudio) {
+        // concat requires every input segment to agree on sample rate,
+        // channel layout and sample format — our real inputs are
+        // heterogeneous (fal.ai's lip-synced MP4, our own AAC mux, and an
+        // untouched -c:a copy from composite_end_card), so each audio
+        // stream is resampled/reformatted to one common shape BEFORE
+        // concat, not fed in raw.
+        const audioFilterParts = localPaths.map((_, i) =>
+          `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
+        )
+        concatInputs = localPaths.map((_, i) => `[v${i}][a${i}]`).join('')
+        filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=1[outv][outa]`
+      } else {
+        concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
+        // tpad must be chained inside the same filter_complex graph, not applied
+        // via a separate -vf flag — ffmpeg refuses to mix simple (-vf) and
+        // complex (-filter_complex) filtering on the same output stream. When a
+        // target duration is set, concat writes to an intermediate [cat] label
+        // and tpad consumes that to produce the final [outv].
+        // Note: stop_duration below pads BY the target amount (not TO it) — the
+        // trailing -t flag is what truncates the result to the actual target
+        // duration. Correct only because both are present; dropping -t while
+        // keeping tpad as-is would silently produce an over-long output.
+        const concatLabel = targetDurationSeconds !== undefined ? '[cat]' : '[outv]'
+        filterComplex = `${videoFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=0${concatLabel}`
+        if (targetDurationSeconds !== undefined) {
+          filterComplex += `; [cat]tpad=stop_mode=clone:stop_duration=${Math.max(0, targetDurationSeconds)}[outv]`
+        }
       }
 
       const args: string[] = ['-y']
       for (const p of localPaths) args.push('-i', p)
-      args.push('-filter_complex', filterComplex, '-map', '[outv]', '-an')
-      if (targetDurationSeconds !== undefined) {
+      args.push('-filter_complex', filterComplex, '-map', '[outv]')
+      if (preserveAudio) {
+        args.push('-map', '[outa]')
+      } else {
+        args.push('-an')
+      }
+      if (!preserveAudio && targetDurationSeconds !== undefined) {
         args.push('-t', String(targetDurationSeconds))
       }
-      args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', outputPath)
+      args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p')
+      if (preserveAudio) args.push('-c:a', 'aac')
+      args.push(outputPath)
 
       await execFile('ffmpeg', args, { timeout: FFMPEG_TIMEOUT_MS })
     } catch (err) {
