@@ -75,6 +75,11 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'generate-narration', 'generate_narration',
         'lipsync',
         'assemble-clips', 'assemble_clips',
+        'mux-beat-audio', 'mux_beat_audio',
+        'transcribe-audio', 'transcribe_audio',
+        'composite-end-card', 'composite_end_card',
+        'burn-captions', 'burn_captions',
+        'mix-music-bed', 'mix_music_bed',
         'save_skill',
       ].sort(),
     )
@@ -153,5 +158,22 @@ describe('GENERATION_APPROVAL_METADATA — talking-head tools', () => {
   it('maps the underscored delegate keys to the same metadata object as the hyphenated tool ids', () => {
     expect(GENERATION_APPROVAL_METADATA['generate_narration']).toBe(GENERATION_APPROVAL_METADATA['generate-narration'])
     expect(GENERATION_APPROVAL_METADATA['assemble_clips']).toBe(GENERATION_APPROVAL_METADATA['assemble-clips'])
+  })
+})
+
+describe('GENERATION_APPROVAL_METADATA — animation-character tools', () => {
+  it('registers both hyphenated and underscored forms for every animation-character tool', () => {
+    const pairs: [string, string][] = [
+      ['mux-beat-audio', 'mux_beat_audio'],
+      ['transcribe-audio', 'transcribe_audio'],
+      ['composite-end-card', 'composite_end_card'],
+      ['burn-captions', 'burn_captions'],
+      ['mix-music-bed', 'mix_music_bed'],
+    ]
+    for (const [hyphenated, underscored] of pairs) {
+      expect(GENERATION_APPROVAL_METADATA[hyphenated]).toBeDefined()
+      expect(GENERATION_APPROVAL_METADATA[underscored]).toBeDefined()
+      expect(GENERATION_APPROVAL_METADATA[hyphenated]).toEqual(GENERATION_APPROVAL_METADATA[underscored])
+    }
   })
 })

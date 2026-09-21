@@ -36,7 +36,7 @@ export const inputSchema = z.object({
 
 export const lipsync = createTool({
   id: 'lipsync',
-  description: 'Matches a silent video\'s mouth motion to a separate audio track. Use once, on the fully assembled silent video, against the full narration track — never per-clip.',
+  description: 'Matches a silent video\'s mouth motion to a separate audio track. For talking-head, use once on the fully assembled silent video against the full narration track — never per-clip. For animation-character, use on exactly one beat clip (the hook beat) against that beat\'s single narration line — never on more than one beat in the same ad.',
   inputSchema,
   outputSchema,
   requireApproval: async (input, ctx) => {
