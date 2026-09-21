@@ -28,15 +28,17 @@ const DISSOLVE_DURATION_SECONDS = 0.4
 // self-review rule: the spec asks for the end card to be "matched in
 // scale to the rendered product's bounding box" with "background color
 // sampled and matched to avoid a visible seam." v1 does neither — it
-// scales the real photo to fit the full frame with `force_original_aspect_
-// ratio=decrease` and centers it, with no bounding-box detection or
-// background color matching. Bounding-box detection needs either a
-// vision-model call (a new charge-bearing step this plan doesn't budget
-// for) or manual coordinates nothing upstream currently produces. Full-
-// frame centered is a safe, always-correct fallback — never mis-scaled or
-// mis-positioned, just potentially showing a visible background seam
-// against the animated frame behind it. Revisit if a real ad's end card
-// looks bad in testing, not preemptively.
+// scales the real photo to fit the full frame (against the base clip's
+// actual probed dimensions — see the ffprobe call below, not a hardcoded
+// nominal size) with `force_original_aspect_ratio=decrease` and centers
+// it, with no bounding-box detection or background color matching.
+// Bounding-box detection needs either a vision-model call (a new
+// charge-bearing step this plan doesn't budget for) or manual coordinates
+// nothing upstream currently produces. Full-frame centered against the
+// clip's real dimensions is correctly scaled and positioned in all cases;
+// the only remaining visible artifact is a possible background seam where
+// the photo's own background meets the animated frame behind it. Revisit
+// if a real ad's end card looks bad in testing, not preemptively.
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
@@ -132,16 +134,47 @@ export const compositeEndCard = createTool({
     }
     const outputPath = join(workDir, 'carded.mp4')
     try {
-      const { stdout: durationOut } = await execFile('ffprobe', [
-        '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', videoPath,
+      // Probe duration AND the base clip's real pixel dimensions in one
+      // call. Nothing upstream normalizes resolution before this tool runs
+      // — mux_beat_audio preserves the source clip's actual dimensions (no
+      // scale filter) and assemble_clips is where normalization to the
+      // nominal aspectRatio size finally happens, but that runs AFTER this
+      // tool in the pipeline. Scaling the card to the nominal 1920x1080 /
+      // 1080x1920 constants instead of the clip's real dimensions was a
+      // real, reproduced bug: whenever generate_video's actual output
+      // isn't exactly that nominal size, the card gets scaled to the wrong
+      // size and overlaid at the wrong (often negative) offsets onto a
+      // differently-sized base, silently cropping the product photo's
+      // edges — exactly the wordmark/brand-edge content this tool exists
+      // to protect. The card must always be scaled against [0:v]'s real
+      // width/height, never the aspectRatio constants.
+      const { stdout: probeOut } = await execFile('ffprobe', [
+        '-v', 'error', '-select_streams', 'v:0',
+        '-show_entries', 'stream=width,height:format=duration',
+        '-of', 'json', videoPath,
       ], { timeout: FFMPEG_TIMEOUT_MS })
-      const clipDurationSeconds = parseFloat(durationOut.trim())
-      if (!(clipDurationSeconds > 0)) throw new Error(`ffprobe returned an invalid duration: ${durationOut}`)
+      const probe = JSON.parse(probeOut) as {
+        streams?: Array<{ width?: number; height?: number }>
+        format?: { duration?: string }
+      }
+      const clipDurationSeconds = parseFloat(probe.format?.duration ?? '')
+      if (!(clipDurationSeconds > 0)) throw new Error(`ffprobe returned an invalid duration: ${probeOut}`)
       const dissolveStart = Math.max(0, clipDurationSeconds - DISSOLVE_WINDOW_SECONDS)
 
-      const [w, h] = aspectRatio === '9:16' ? ['1080', '1920'] : ['1920', '1080']
+      // Nominal aspectRatio dimensions are only a fallback for the
+      // (expected-never) case where ffprobe doesn't report stream
+      // dimensions — the real scale target is always the probed clip size.
+      const [nominalW, nominalH] = aspectRatio === '9:16' ? [1080, 1920] : [1920, 1080]
+      const probedW = probe.streams?.[0]?.width
+      const probedH = probe.streams?.[0]?.height
+      if (!probedW || !probedH) {
+        console.error(`[session:${sessionId}] compositeEndCard: ffprobe returned no stream dimensions, falling back to nominal ${nominalW}x${nominalH}:`, probeOut)
+      }
+      const videoWidth = probedW || nominalW
+      const videoHeight = probedH || nominalH
+
       const filterComplex =
-        `[1:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,format=rgba,` +
+        `[1:v]scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease,format=rgba,` +
         `fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
         `[0:v][card]overlay=(W-w)/2:(H-h)/2:enable='gte(t,${dissolveStart})'[outv]`
 
