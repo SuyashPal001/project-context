@@ -10,6 +10,10 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-21-animation-character-design.md`
 
+## Revision note (round 1)
+
+An Opus review of the first draft, before any task was dispatched, checked every ffmpeg filter-graph string and cross-checked every task's claims against the real current files it modifies — not just read the plan for internal consistency. It found 13 real defects, all now fixed in the task text below: a migration step that would run against a non-existent constraint (Task 1); an invalid ffmpeg graph when `preserveAudio` and `targetDurationSeconds` were both settable, plus unnormalized concatenated audio and a dead, never-used `perClipTrimSeconds` field (Task 3, now dropped); a `-shortest` flag that silently defeated `mux_beat_audio`'s own padding (Task 4); a still-image input with no real timestamps that made `composite_end_card`'s end card never actually appear (Task 6); a `drawtext` escaping bug that breaks on any apostrophe in narration, replaced with an SRT+`subtitles` approach (Task 7); a loudness-refusal gate in `mix_music_bed` that ran AFTER a mastering pass that always normalizes to -14 LUFS regardless of input — dead code that could never fire, fixed to measure the bed alone before mixing (Task 8); an inline-base64 payload size gap that would refuse most real masters, fixed by extracting audio-only locally before ever calling the gateway (Tasks 2 and 5); a missing `generate_song` registration on `directorAgent` that the plan's own section text depended on without it existing (Task 10); wrong test file paths throughout (this repo's tools tests are flat, not `__tests__/`); and an undocumented deviation from the spec's bounding-box/seam-matching requirement for the end card, now stated explicitly (Task 6). See each task's own inline comments for the specific reasoning.
+
 ## Global Constraints
 
 - Every vendor/gateway call is charge-BEFORE-call, refund-AFTER-failure. `chargeKey` is always derived from `execContext.agent.toolCallId`, never `randomUUID()` or a bare sessionId. `generateVideo.ts`/`lipsync.ts`/`generateNarration.ts` are the canonical good pattern; `generateSong.ts` (charges after) is the known-bad counter-example — never copy it.
@@ -27,10 +31,11 @@
 **Files:**
 - Modify: `packages/foundation/database/schema/credits.ts:17-19`
 - Modify: `packages/foundation/database/seeds/credit-rates.ts`
-- Create: a new Drizzle migration (generated, not hand-written)
 
 **Interfaces:**
 - Produces: a `resourceType` enum that includes `'audio_transcription'`, and active rate rows for `('audio_transcription', 'gemini-transcribe')` and four new `('clip_assembly', <new subject>)` rows — `ffmpeg-mux-audio`, `ffmpeg-composite-end-card`, `ffmpeg-burn-captions`, `ffmpeg-mix-music-bed` — that every later task's `resolveRate(...)` call depends on.
+
+**No migration in this task.** `credit_rates.resource_type` (`credits.ts:17-19`) is `text('resource_type', { enum: [...] })` — a TypeScript-only literal union, not a Postgres `pgEnum` or a check constraint (confirmed: no `pgEnum` for this column anywhere in the schema, and the existing migration SQL shows a plain `text NOT NULL` column). Widening the array is a compile-time-only change; `drizzle-kit generate` produces no diff for it. Do not run `drizzle-kit generate` for this task — it would report "No schema changes" and waste a step.
 
 - [ ] **Step 1: Widen the `resourceType` enum**
 
@@ -42,13 +47,7 @@ Edit `packages/foundation/database/schema/credits.ts` line 17-19:
   }).notNull(),
 ```
 
-- [ ] **Step 2: Generate the migration**
-
-Run: `cd packages/foundation/database && pnpm exec drizzle-kit generate`
-
-Expected: a new migration file appears under `packages/foundation/database/migrations/` altering the `resource_type` check constraint/enum to include `audio_transcription`. Read the generated SQL to confirm it only adds the new value and does not touch existing rows.
-
-- [ ] **Step 3: Add the five new seed rows**
+- [ ] **Step 2: Add the five new seed rows**
 
 Edit `packages/foundation/database/seeds/credit-rates.ts`, inserting these rows into the `RATES` array, after the existing `clip_assembly`/`ffmpeg-local` row and before the `message`/`*` row:
 
@@ -75,17 +74,17 @@ Edit `packages/foundation/database/seeds/credit-rates.ts`, inserting these rows 
     pricingSchema: { per_call_micro: 1_000 } },
 ```
 
-- [ ] **Step 4: Type-check and run the seed**
+- [ ] **Step 3: Type-check and run the seed**
 
 Run: `cd packages/foundation/database && pnpm type-check`
 Expected: PASS (the enum widen must not break any existing typed usage).
 
 Run: `pnpm exec tsx -e "import { seedCreditRates } from './seeds/credit-rates'; import { db } from './index'; seedCreditRates(db).then(() => process.exit(0))"` against a real `DATABASE_URL` if one is available in this environment; if not, leave this step's execution to deployment and note in the commit message that the seed still needs to run once against a live DB.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add packages/foundation/database/schema/credits.ts packages/foundation/database/seeds/credit-rates.ts packages/foundation/database/migrations/
+git add packages/foundation/database/schema/credits.ts packages/foundation/database/seeds/credit-rates.ts
 git commit -m "feat(credits): add audio_transcription resourceType + animation-character ffmpeg rate rows"
 ```
 
@@ -101,7 +100,9 @@ git commit -m "feat(credits): add audio_transcription resourceType + animation-c
 
 **Interfaces:**
 - Consumes: `process.env.GEMINI_API_KEY` (already used by `images.ts`/`video.ts`), the existing `generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key=...` call shape.
-- Produces: `POST /v1/audio/transcribe` accepting `{ fileUri: string, mimeType: string }`, returning `{ text: string, words: [{ word: string, startSeconds: number, endSeconds: number }] }` on success or `{ refused: true, reason: string }` — this exact shape is what `transcribe_audio.ts` (Task 5) parses.
+- Produces: `POST /v1/audio/transcribe` accepting `{ audioBase64: string, mimeType: string }` — audio only, already extracted from any source video by the caller — returning `{ text: string, words: [{ word: string, startSeconds: number, endSeconds: number }] }` on success or `{ refused: true, reason: string }` — this exact shape is what `transcribe_audio.ts` (Task 5) parses.
+
+**Why audio-only, not a video `fileUri` the gateway fetches itself:** an early draft of this route fetched the source video by URL and inlined its raw bytes to Gemini. A 30-second 1080×1920 master routinely exceeds Gemini's ~20MB inline-request ceiling on its own, before base64 inflation (~33% larger) pushes it further over — `video.ts:113`'s comment on `stageImageForOmni` documents exactly this ceiling for a different call. The fix is to never send video bytes to this route at all: Task 5's orchestrator tool extracts the audio-only track locally with ffmpeg (a 30s AAC track is well under 1MB) before calling this route, so the route only ever receives audio, and it POSTs bytes directly rather than making the gateway fetch a URL — no separate size-limited source-fetch step to get wrong.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -120,12 +121,7 @@ describe('transcribeAudio', () => {
     vi.restoreAllMocks()
   })
 
-  it('sends the source bytes to Gemini generateContent with a structured JSON responseSchema', async () => {
-    const sourceFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      headers: { get: () => 'audio/wav' },
-      arrayBuffer: async () => new TextEncoder().encode('fake-audio-bytes').buffer,
-    })
+  it('sends the base64 audio to Gemini generateContent with a structured JSON responseSchema', async () => {
     const geminiFetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -138,13 +134,9 @@ describe('transcribeAudio', () => {
         }) }] } }],
       }),
     })
-    let call = 0
-    global.fetch = vi.fn().mockImplementation((url: string) => {
-      call += 1
-      return call === 1 ? sourceFetch(url) : geminiFetch(url)
-    }) as unknown as typeof fetch
+    global.fetch = geminiFetch as unknown as typeof fetch
 
-    const result = await transcribeAudio({ fileUri: 'https://example.com/master.mp4', mimeType: 'video/mp4' })
+    const result = await transcribeAudio({ audioBase64: Buffer.from('fake-audio-bytes').toString('base64'), mimeType: 'audio/aac' })
 
     expect(result).toEqual({
       text: 'hello world',
@@ -153,30 +145,37 @@ describe('transcribeAudio', () => {
         { word: 'world', startSeconds: 0.5, endSeconds: 0.9 },
       ],
     })
+    expect(geminiFetch).toHaveBeenCalledTimes(1)
     const geminiCallArgs = geminiFetch.mock.calls[0]
     expect(geminiCallArgs[0]).toContain('generativelanguage.googleapis.com/v1beta/models/')
     expect(geminiCallArgs[0]).toContain(':generateContent')
     const body = JSON.parse(geminiCallArgs[1].body)
     expect(body.generationConfig.responseMimeType).toBe('application/json')
     expect(body.generationConfig.responseSchema.required).toEqual(['text', 'words'])
-    expect(body.contents[0].parts[0].inline_data.mime_type).toBe('video/mp4')
+    expect(body.contents[0].parts[0].inline_data.mime_type).toBe('audio/aac')
   })
 
   it('returns refused when Gemini responds with text that fails schema validation', async () => {
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, headers: { get: () => 'audio/wav' }, arrayBuffer: async () => new ArrayBuffer(8) })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ candidates: [{ content: { parts: [{ text: '{"text":"oops"}' }] } }] }),
-      }) as unknown as typeof fetch
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: '{"text":"oops"}' }] } }] }),
+    }) as unknown as typeof fetch
 
-    const result = await transcribeAudio({ fileUri: 'https://example.com/master.mp4', mimeType: 'video/mp4' })
+    const result = await transcribeAudio({ audioBase64: Buffer.from('x').toString('base64'), mimeType: 'audio/aac' })
     expect(result).toEqual({ refused: true, reason: expect.stringContaining('schema') })
+  })
+
+  it('returns refused when the decoded audio exceeds the size limit', async () => {
+    global.fetch = vi.fn() as unknown as typeof fetch
+    const oversized = Buffer.alloc(21 * 1024 * 1024).toString('base64')
+    const result = await transcribeAudio({ audioBase64: oversized, mimeType: 'audio/aac' })
+    expect(result).toEqual({ refused: true, reason: expect.stringContaining('size limit') })
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('throws UnsupportedTranscribeModelError for an unlisted model override', async () => {
     await expect(
-      transcribeAudio({ fileUri: 'https://example.com/x.mp4', mimeType: 'video/mp4', model: 'not-a-real-model' }),
+      transcribeAudio({ audioBase64: Buffer.from('x').toString('base64'), mimeType: 'audio/aac', model: 'not-a-real-model' }),
     ).rejects.toThrow(UnsupportedTranscribeModelError)
   })
 })
@@ -198,16 +197,16 @@ import { requestsTotal, latency } from './metrics.js'
 const TRANSCRIBE_MODEL_ALLOWLIST = new Set(['gemini-2.5-flash'])
 const DEFAULT_TRANSCRIBE_MODEL = 'gemini-2.5-flash'
 
-// Same "matches the caption-length ad" size class as MAX_CLIP_BYTES in
-// assembleClips.ts, but this call sends the file inline as base64 rather
-// than staging it via the Files API (video.ts's stageImageForOmni does
-// that for the image-conditioning path) — inline is simpler and this
-// skill's masters are at most a 30-second animated ad, well under Gemini's
-// inline-request size ceiling.
-const MAX_TRANSCRIBE_SOURCE_BYTES = 20 * 1024 * 1024
+// The caller (transcribe_audio.ts, Task 5) always sends audio-only bytes —
+// never a full video — specifically so this stays far under Gemini's
+// inline-request ceiling. 20MB decoded is already generous for a 30s AAC
+// track (typically well under 1MB); this cap exists to refuse a caller
+// mistake (e.g. sending the video itself) cleanly rather than passing an
+// oversized payload to Gemini and getting a cryptic 4xx back.
+const MAX_TRANSCRIBE_AUDIO_BYTES = 20 * 1024 * 1024
 
 export interface TranscribeRequest {
-  fileUri: string
+  audioBase64: string
   mimeType: string
   model?: string
 }
@@ -261,11 +260,11 @@ export async function transcribeAudio(req: TranscribeRequest): Promise<Transcrib
     throw new UnsupportedTranscribeModelError(`Unsupported transcribe model: ${model}`)
   }
 
-  const sourceRes = await fetch(req.fileUri)
-  if (!sourceRes.ok) throw new Error(`source fetch failed: HTTP ${sourceRes.status}`)
-  const buf = Buffer.from(await sourceRes.arrayBuffer())
-  if (buf.length > MAX_TRANSCRIBE_SOURCE_BYTES) {
-    return { refused: true, reason: 'Source file exceeds transcription size limit' }
+  // Decoded-size check before any network call — a caller sending video by
+  // mistake gets a clean refusal here, not a confusing Gemini 4xx.
+  const decodedBytes = Math.floor(req.audioBase64.length * 3 / 4)
+  if (decodedBytes > MAX_TRANSCRIBE_AUDIO_BYTES) {
+    return { refused: true, reason: 'Source audio exceeds transcription size limit' }
   }
 
   const key = process.env.GEMINI_API_KEY ?? ''
@@ -276,7 +275,7 @@ export async function transcribeAudio(req: TranscribeRequest): Promise<Transcrib
     body: JSON.stringify({
       contents: [{
         parts: [
-          { inline_data: { mime_type: req.mimeType, data: buf.toString('base64') } },
+          { inline_data: { mime_type: req.mimeType, data: req.audioBase64 } },
           { text: 'Transcribe the spoken audio in this file exactly as spoken, word for word. Return strict JSON matching the response schema: text is the full transcript, words is every spoken word in order with its start and end time in seconds as decimals. Do not include any commentary outside the JSON.' },
         ],
       }],
@@ -392,11 +391,13 @@ git commit -m "feat(inference-gateway): add POST /v1/audio/transcribe (Gemini st
 
 **Files:**
 - Modify: `apps/agent-orchestrator/src/mastra/tools/assembleClips.ts`
-- Modify: `apps/agent-orchestrator/src/mastra/tools/__tests__/assembleClips.test.ts` (path may differ slightly — locate the existing test file next to `assembleClips.ts` and extend it)
+- Modify: `apps/agent-orchestrator/src/mastra/tools/assembleClips.test.ts` (path may differ slightly — locate the existing test file next to `assembleClips.ts` and extend it)
 
 **Interfaces:**
 - Consumes: nothing new from earlier tasks in this plan.
-- Produces: `inputSchema` gains `clipFileIds: z.array(z.string()).min(1).max(4)` (was `.max(3)`), an optional `preserveAudio: z.boolean().default(false)`, and an optional `perClipTrimSeconds: z.array(z.number().positive()).optional()` (parallel to `clipFileIds` when set). Task 9 (`ANIMATION_CHARACTER_SECTION`) calls this tool with `preserveAudio: true` and 4 clip ids; skill 4/7 callers pass neither new field and keep today's exact behavior.
+- Produces: `inputSchema` gains `clipFileIds: z.array(z.string()).min(1).max(4)` (was `.max(3)`) and an optional `preserveAudio: z.boolean().default(false)`. Task 10 (`ANIMATION_CHARACTER_SECTION`) calls this tool with `preserveAudio: true` and 4 clip ids, no `targetDurationSeconds` (every clip is already individually trimmed to its own audio length by `mux_beat_audio`/`lipsync`/`composite_end_card` before assembly, so there is nothing left to pad or truncate to); skill 4/7 callers pass neither new field and keep today's exact behavior.
+
+**No `perClipTrimSeconds` field.** An earlier draft of this task added a `perClipTrimSeconds: number[]` field for per-clip padding at the concat stage. Dropped: this skill's actual per-beat trimming already happens upstream (Task 4's `mux_beat_audio`, `lipsync`, and Task 6's `composite_end_card` each trim their own clip to its own audio length before handing it to `assemble_clips`), so no caller in this plan would ever set the field — a field only `preserveAudio` needs, and nothing exercises, is dead code waiting to rot.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -419,33 +420,49 @@ it('rejects a 5th clip id', () => {
   expect(result.success).toBe(false)
 })
 
-it('builds a v=1:a=1 concat filter and omits -an when preserveAudio is true', async () => {
+it('builds a v=1:a=1 concat filter with per-input audio normalization and omits -an when preserveAudio is true', async () => {
   // Mirrors this file's existing execFile-mock pattern for asserting the
   // constructed ffmpeg args array, not just that execFile was called.
   const execFileMock = vi.fn().mockResolvedValue({ stdout: '', stderr: '' })
   vi.doMock('node:child_process', () => ({ execFile: execFileMock }))
   // ... invoke assembleClips.execute with preserveAudio: true, clipFileIds
-  // length 4, perClipTrimSeconds: [4.5, 5.2, 6.0, 5.5] (mocking
-  // fetchPresignedUrl/downloadToSessionCache the same way this file's
-  // existing tests do) ...
+  // length 4, no targetDurationSeconds (mocking fetchPresignedUrl/
+  // downloadToSessionCache the same way this file's existing tests do) ...
   const args: string[] = execFileMock.mock.calls[0][1]
   const filterComplexIdx = args.indexOf('-filter_complex')
-  expect(args[filterComplexIdx + 1]).toContain('concat=n=4:v=1:a=1')
+  const filterComplex = args[filterComplexIdx + 1]
+  expect(filterComplex).toContain('concat=n=4:v=1:a=1')
+  // Every input's audio must be resampled/reformatted to a common shape
+  // before concat — concat refuses heterogeneous inputs (this skill's real
+  // audio comes from three different sources: fal.ai's lip-synced MP4,
+  // our own AAC mux, and an untouched copy from composite_end_card).
+  expect(filterComplex).toContain('aresample=48000')
+  expect(filterComplex).toContain('channel_layouts=stereo')
   expect(args).not.toContain('-an')
 })
 
 it('defaults preserveAudio to false and keeps -an when omitted (skill 4/7 backward compat)', async () => {
   const execFileMock = vi.fn().mockResolvedValue({ stdout: '', stderr: '' })
   vi.doMock('node:child_process', () => ({ execFile: execFileMock }))
-  // ... invoke with 2 clips, no preserveAudio, no perClipTrimSeconds ...
+  // ... invoke with 2 clips, no preserveAudio ...
   const args: string[] = execFileMock.mock.calls[0][1]
   expect(args).toContain('-an')
+})
+
+it('rejects preserveAudio combined with targetDurationSeconds', () => {
+  const result = inputSchema.safeParse({
+    clipFileIds: ['a', 'b'],
+    aspectRatio: '9:16',
+    preserveAudio: true,
+    targetDurationSeconds: 20,
+  })
+  expect(result.success).toBe(false)
 })
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/assembleClips.test.ts` (adjust path to the file found in Step 1)
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/assembleClips.test.ts` (adjust path to the file found in Step 1)
 Expected: FAIL on the 4-clip-id and `preserveAudio` assertions (schema still caps at 3, no such field exists).
 
 - [ ] **Step 3: Implement the schema and filter-graph changes**
@@ -456,25 +473,22 @@ In `apps/agent-orchestrator/src/mastra/tools/assembleClips.ts`, change the `inpu
 export const inputSchema = z.object({
   clipFileIds: z.array(z.string()).min(1).max(4),
   targetDurationSeconds: z.number().positive().optional().describe(
-    'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align this clip total to a separate audio track\'s length. Ignored when perClipTrimSeconds is set.'
-  ),
-  perClipTrimSeconds: z.array(z.number().positive()).optional().describe(
-    'When set, must have exactly one entry per clipFileIds entry — each clip is individually trimmed/padded to its own duration BEFORE concatenation, instead of one shared targetDurationSeconds applied to the whole output. Used by animation-character, where each beat is already muxed to its own audio length.'
+    'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align this clip total to a separate audio track\'s length. Not compatible with preserveAudio (see refine below) — animation-character\'s preserveAudio callers pre-trim every clip upstream and never set this.'
   ),
   preserveAudio: z.boolean().default(false).describe(
-    'When true, concatenates with each input\'s audio stream preserved (v=1:a=1) instead of stripping all audio (-an). Every input must already carry an audio stream. Default false keeps talking-head/short-drama-stitch\'s existing silent-concat-then-lipsync behavior unchanged.'
+    'When true, concatenates with each input\'s audio stream preserved (v=1:a=1, each stream resampled to a common format first) instead of stripping all audio (-an). Every input must already carry an audio stream, already trimmed to its final length — this field does not itself trim anything. Default false keeps talking-head/short-drama-stitch\'s existing silent-concat-then-lipsync behavior unchanged.'
   ),
   aspectRatio: z.enum(['16:9', '9:16']),
 }).refine(
-  (v) => v.perClipTrimSeconds === undefined || v.perClipTrimSeconds.length === v.clipFileIds.length,
-  { message: 'perClipTrimSeconds, when set, must have exactly one entry per clipFileIds entry' },
+  (v) => !(v.preserveAudio && v.targetDurationSeconds !== undefined),
+  { message: 'preserveAudio and targetDurationSeconds cannot both be set — the concat filter graph produces one video+audio output stream, and stop_duration padding is meaningless once every input is already individually trimmed upstream' },
 )
 ```
 
 Replace the destructure at the top of `execute` (line 55):
 
 ```ts
-    const { clipFileIds, targetDurationSeconds, perClipTrimSeconds, preserveAudio, aspectRatio } = inputData as z.infer<typeof inputSchema>
+    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio } = inputData as z.infer<typeof inputSchema>
 ```
 
 Replace the ffmpeg filter-graph construction block (lines 122-153) with:
@@ -483,42 +497,48 @@ Replace the ffmpeg filter-graph construction block (lines 122-153) with:
       // Normalizes every clip to CFR 30fps and a fixed aspect ratio. Audio
       // is stripped (-an) unless preserveAudio is set, matching talking-head/
       // short-drama-stitch's existing silent-concat-then-lipsync flow by
-      // default.
+      // default. The inputSchema's refine above guarantees preserveAudio
+      // and targetDurationSeconds are never both set, so the concat label
+      // is always unambiguous: exactly one shared output when preserveAudio
+      // is false, exactly one video+audio pair when it's true.
       const [w, h] = aspectRatio === '9:16' ? ['1080', '1920'] : ['1920', '1080']
 
-      // perClipTrimSeconds pads/truncates EACH clip individually via its own
-      // tpad+trim stage before the shared concat — same tpad-then-truncate
-      // trick assembleClips already uses for the single shared
-      // targetDurationSeconds case (tpad pads BY the amount, trim -t
-      // truncates TO it; both must stay present together or the padded
-      // clip silently over-runs). When unset, falls back to this file's
-      // existing single-target/no-target behavior, unchanged.
-      const videoFilterParts = localPaths.map((_, i) => {
-        const scaleChain = `fps=30,scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1`
-        if (perClipTrimSeconds) {
-          const clipTarget = perClipTrimSeconds[i]
-          return `[${i}:v]${scaleChain},tpad=stop_mode=clone:stop_duration=${clipTarget},trim=duration=${clipTarget},setpts=PTS-STARTPTS[v${i}]`
+      const videoFilterParts = localPaths.map((_, i) =>
+        `[${i}:v]fps=30,scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
+      )
+
+      let filterComplex: string
+      let concatInputs: string
+      if (preserveAudio) {
+        // concat requires every input segment to agree on sample rate,
+        // channel layout and sample format — our real inputs are
+        // heterogeneous (fal.ai's lip-synced MP4, our own AAC mux, and an
+        // untouched -c:a copy from composite_end_card), so each audio
+        // stream is resampled/reformatted to one common shape BEFORE
+        // concat, not fed in raw.
+        const audioFilterParts = localPaths.map((_, i) =>
+          `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
+        )
+        concatInputs = localPaths.map((_, i) => `[v${i}][a${i}]`).join('')
+        filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=1[outv][outa]`
+      } else {
+        concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
+        const concatLabel = targetDurationSeconds !== undefined ? '[cat]' : '[outv]'
+        filterComplex = `${videoFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=0${concatLabel}`
+        if (targetDurationSeconds !== undefined) {
+          filterComplex += `; [cat]tpad=stop_mode=clone:stop_duration=${Math.max(0, targetDurationSeconds)}[outv]`
         }
-        return `[${i}:v]${scaleChain}[v${i}]`
-      })
-
-      const concatFlag = preserveAudio ? 'v=1:a=1' : 'v=1:a=0'
-      const concatInputs = preserveAudio
-        ? localPaths.map((_, i) => `[v${i}][${i}:a]`).join('')
-        : localPaths.map((_, i) => `[v${i}]`).join('')
-
-      const concatLabel = (!perClipTrimSeconds && targetDurationSeconds !== undefined) ? '[cat]' : preserveAudio ? '[outv][outa]' : '[outv]'
-      let filterComplex = `${videoFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:${concatFlag}${concatLabel}`
-      if (!perClipTrimSeconds && targetDurationSeconds !== undefined) {
-        filterComplex += `; [cat]tpad=stop_mode=clone:stop_duration=${Math.max(0, targetDurationSeconds)}[outv]`
       }
 
       const args: string[] = ['-y']
       for (const p of localPaths) args.push('-i', p)
       args.push('-filter_complex', filterComplex, '-map', '[outv]')
-      if (preserveAudio) args.push('-map', '[outa]')
-      if (!perClipTrimSeconds && !preserveAudio) args.push('-an')
-      if (!perClipTrimSeconds && targetDurationSeconds !== undefined) {
+      if (preserveAudio) {
+        args.push('-map', '[outa]')
+      } else {
+        args.push('-an')
+      }
+      if (!preserveAudio && targetDurationSeconds !== undefined) {
         args.push('-t', String(targetDurationSeconds))
       }
       args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p')
@@ -526,23 +546,21 @@ Replace the ffmpeg filter-graph construction block (lines 122-153) with:
       args.push(outputPath)
 ```
 
-Note: when `preserveAudio` is true, `concat=n=N:v=1:a=1` requires each `[v${i}]` to be immediately followed by its matching `[${i}:a]` in the concat input list — the `concatInputs` line above builds exactly that interleaving.
-
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/assembleClips.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/assembleClips.test.ts`
 Expected: PASS, including the two new schema tests and two new filter-graph tests.
 
 - [ ] **Step 5: Live ffmpeg verification (mandatory per Global Constraints)**
 
-Write a throwaway Node script (not committed) that generates 2 short silent test clips with `ffmpeg -f lavfi -i testsrc=duration=2:size=320x240:rate=30 -f lavfi -i sine=frequency=1000:duration=2 test1.mp4` (and a second with a different duration), then runs `assembleClips`'s actual constructed ffmpeg args (copy them from the implementation, do not re-derive) with `preserveAudio: true, perClipTrimSeconds: [1.5, 2.5]` against those two clips. Confirm the real `ffmpeg` binary accepts the filter graph (exit code 0) and the output file's audio duration (via `ffprobe -show_entries format=duration`) matches the sum of the two trim targets. Also run the `preserveAudio: false` (default) path against the same inputs and confirm it still produces a silent output — negative control proving the default path is unchanged.
+Write a throwaway Node script (not committed) that generates 2 short test clips WITH audio (`ffmpeg -f lavfi -i testsrc=duration=2:size=320x240:rate=30 -f lavfi -i sine=frequency=1000:duration=2 -shortest test1.mp4`, and a second at a different duration/frequency), then runs `assembleClips`'s actual constructed ffmpeg args (copy them from the implementation, do not re-derive) with `preserveAudio: true` against those two clips. Confirm the real `ffmpeg` binary accepts the filter graph (exit code 0), the output has both a video and an audio stream (`ffprobe -show_streams`), and its audio duration roughly matches the sum of the two input durations. Also run the `preserveAudio: false` (default) path against the same inputs and confirm it still produces a silent output — negative control proving the default path is unchanged.
 
 Delete the throwaway script and test clips after confirming both cases pass; do not commit them.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/tools/assembleClips.ts apps/agent-orchestrator/src/mastra/tools/__tests__/assembleClips.test.ts
+git add apps/agent-orchestrator/src/mastra/tools/assembleClips.ts apps/agent-orchestrator/src/mastra/tools/assembleClips.test.ts
 git commit -m "feat(orchestrator): assemble_clips gains 4-clip cap, preserveAudio, perClipTrimSeconds"
 ```
 
@@ -553,11 +571,11 @@ git commit -m "feat(orchestrator): assemble_clips gains 4-clip cap, preserveAudi
 **Files:**
 - Create: `apps/agent-orchestrator/src/mastra/tools/muxBeatAudio.ts`
 - Create: `apps/agent-orchestrator/src/mastra/tools/muxBeatAudioCredits.ts`
-- Create: `apps/agent-orchestrator/src/mastra/tools/__tests__/muxBeatAudio.test.ts`
+- Create: `apps/agent-orchestrator/src/mastra/tools/muxBeatAudio.test.ts`
 
 **Interfaces:**
 - Consumes: `fetchPresignedUrl`/`downloadToSessionCache` from `mediaCache.ts` (Task 3's siblings), `shouldRequireApproval` from `generationApproval.ts`, `uploadGeneratedFile` from `persistence.js`.
-- Produces: tool id `mux-beat-audio`, delegate key `mux_beat_audio`, raw exported `inputSchema = z.object({ videoFileId: z.string(), audioFileId: z.string() })`, output `{ fileId, name, fileType, size, refused, refusalReason, insufficientCredits, creditsUsedMicro, jobId }` — consumed by Task 9's `ANIMATION_CHARACTER_SECTION` for beats 2-4.
+- Produces: tool id `mux-beat-audio`, delegate key `mux_beat_audio`, raw exported `inputSchema = z.object({ videoFileId: z.string(), audioFileId: z.string() })`, output `{ fileId, name, fileType, size, refused, refusalReason, insufficientCredits, creditsUsedMicro, jobId }` — consumed by Task 10's `ANIMATION_CHARACTER_SECTION` for beats 2-4.
 
 - [ ] **Step 1: Write the credits helper**
 
@@ -612,7 +630,7 @@ export async function refundMuxBeatAudioCharge(
 
 - [ ] **Step 2: Write the failing test**
 
-Create `apps/agent-orchestrator/src/mastra/tools/__tests__/muxBeatAudio.test.ts`:
+Create `apps/agent-orchestrator/src/mastra/tools/muxBeatAudio.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest'
@@ -630,7 +648,7 @@ describe('muxBeatAudio inputSchema', () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/muxBeatAudio.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/muxBeatAudio.test.ts`
 Expected: FAIL — `Cannot find module '../muxBeatAudio.js'`.
 
 - [ ] **Step 4: Implement the tool**
@@ -765,13 +783,20 @@ export const muxBeatAudio = createTool({
       // Same tpad-then-truncate trick assembleClips.ts already validated
       // live: tpad pads BY targetSeconds (not TO it), so the trailing -t
       // is what truncates to the actual target — both must stay present.
-      const filterComplex = `[0:v]fps=30,tpad=stop_mode=clone:stop_duration=${targetSeconds}[v]`
+      // The audio side needs the same treatment: apad extends it with
+      // silence to at least targetSeconds so -t's truncation has real
+      // (silent, not absent) audio to cut to. Do NOT add -shortest here —
+      // -shortest ends the output at the SHORTER stream, which is the
+      // original (unpadded) audio length, silently defeating the whole
+      // point of this trim/pad — the output would end at the audio's
+      // original duration, never reaching targetSeconds.
+      const filterComplex = `[0:v]fps=30,tpad=stop_mode=clone:stop_duration=${targetSeconds}[v]; [1:a]apad[a]`
       await execFile('ffmpeg', [
         '-y', '-i', videoPath, '-i', audioPath,
         '-filter_complex', filterComplex,
-        '-map', '[v]', '-map', '1:a',
+        '-map', '[v]', '-map', '[a]',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-t', String(targetSeconds), '-shortest',
+        '-c:a', 'aac', '-t', String(targetSeconds),
         outputPath,
       ], { timeout: FFMPEG_TIMEOUT_MS })
     } catch (err) {
@@ -818,7 +843,7 @@ export const muxBeatAudio = createTool({
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/muxBeatAudio.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/muxBeatAudio.test.ts`
 Expected: PASS.
 
 - [ ] **Step 6: Live ffmpeg verification**
@@ -828,7 +853,7 @@ Using the same `testsrc`/`sine` lavfi-generated throwaway clips as Task 3 Step 5
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/tools/muxBeatAudio.ts apps/agent-orchestrator/src/mastra/tools/muxBeatAudioCredits.ts apps/agent-orchestrator/src/mastra/tools/__tests__/muxBeatAudio.test.ts
+git add apps/agent-orchestrator/src/mastra/tools/muxBeatAudio.ts apps/agent-orchestrator/src/mastra/tools/muxBeatAudioCredits.ts apps/agent-orchestrator/src/mastra/tools/muxBeatAudio.test.ts
 git commit -m "feat(orchestrator): add mux_beat_audio tool"
 ```
 
@@ -839,11 +864,13 @@ git commit -m "feat(orchestrator): add mux_beat_audio tool"
 **Files:**
 - Create: `apps/agent-orchestrator/src/mastra/tools/transcribeAudio.ts`
 - Create: `apps/agent-orchestrator/src/mastra/tools/transcribeAudioCredits.ts`
-- Create: `apps/agent-orchestrator/src/mastra/tools/__tests__/transcribeAudio.test.ts`
+- Create: `apps/agent-orchestrator/src/mastra/tools/transcribeAudio.test.ts`
 
 **Interfaces:**
-- Consumes: Task 2's `POST /v1/audio/transcribe`, `fetchPresignedUrl` from `mediaCache.ts`.
-- Produces: tool id `transcribe-audio`, delegate key `transcribe_audio`, raw exported `inputSchema = z.object({ fileId: z.string(), mimeType: z.string() })`, output `{ text, words: [{word,startSeconds,endSeconds}], refused, refusalReason, insufficientCredits, creditsUsedMicro, jobId }` — `words` is consumed directly by Task 7's `burn_captions` and by the caption/brand-name verification step in `ANIMATION_CHARACTER_SECTION` (Task 9).
+- Consumes: Task 2's `POST /v1/audio/transcribe` (which now takes `{ audioBase64, mimeType }`, not a fetchable URL — see Task 2's revision note), `fetchPresignedUrl`/`downloadToSessionCache` from `mediaCache.ts`.
+- Produces: tool id `transcribe-audio`, delegate key `transcribe_audio`, raw exported `inputSchema = z.object({ fileId: z.string() })`, output `{ text, words: [{word,startSeconds,endSeconds}], refused, refusalReason, insufficientCredits, creditsUsedMicro, jobId }` — `words` is consumed directly by Task 7's `burn_captions` and by the caption/brand-name verification step in `ANIMATION_CHARACTER_SECTION` (Task 10).
+
+**This tool extracts audio locally before calling the gateway.** `fileId` refers to the assembled master (a full video). Downloading it via the existing `mediaCache.ts` helpers is unchanged, but this tool now also runs a local `ffmpeg -vn` pass to strip the video track before base64-encoding and POSTing — sending the FULL video to Gemini would exceed its inline-request size ceiling (Task 2's revision note explains why). A 30-second AAC-only extraction is well under 1MB, comfortably inside Task 2's `MAX_TRANSCRIBE_AUDIO_BYTES` cap. `mimeType` is no longer an input field — this tool always extracts to `audio/aac` itself and no longer needs the caller to state the master's own MIME type.
 
 - [ ] **Step 1: Write the credits helper**
 
@@ -894,17 +921,17 @@ export async function refundTranscribeAudioCharge(
 
 - [ ] **Step 2: Write the failing test**
 
-Create `apps/agent-orchestrator/src/mastra/tools/__tests__/transcribeAudio.test.ts`:
+Create `apps/agent-orchestrator/src/mastra/tools/transcribeAudio.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest'
 import { inputSchema } from '../transcribeAudio.js'
 
 describe('transcribeAudio inputSchema', () => {
-  it('requires fileId and mimeType', () => {
-    const ok = inputSchema.safeParse({ fileId: 'f1', mimeType: 'video/mp4' })
+  it('requires fileId', () => {
+    const ok = inputSchema.safeParse({ fileId: 'f1' })
     expect(ok.success).toBe(true)
-    const missing = inputSchema.safeParse({ fileId: 'f1' })
+    const missing = inputSchema.safeParse({})
     expect(missing.success).toBe(false)
   })
 })
@@ -912,7 +939,7 @@ describe('transcribeAudio inputSchema', () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/transcribeAudio.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/transcribeAudio.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 4: Implement the tool**
@@ -922,13 +949,22 @@ Create `apps/agent-orchestrator/src/mastra/tools/transcribeAudio.ts`:
 ```ts
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { execFile as execFileCb } from 'node:child_process'
+import { promisify } from 'node:util'
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
-import { fetchPresignedUrl } from './mediaCache.js'
+import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundTranscribeAudioCharge } from './transcribeAudioCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 
+const execFile = promisify(execFileCb)
+
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const TRANSCRIBE_SUBJECT = 'gemini-transcribe'
+const FFMPEG_TIMEOUT_MS = 60_000
+const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 
 const outputSchema = z.object({
   text: z.string().optional(),
@@ -947,19 +983,18 @@ const outputSchema = z.object({
 // Exported raw so a test can call .safeParse directly — see this plan's
 // Global Constraints.
 export const inputSchema = z.object({
-  fileId: z.string().describe('The voice-mixed master (video or audio) to transcribe with word-level timings.'),
-  mimeType: z.string().describe('The source file\'s MIME type, e.g. video/mp4 or audio/wav.'),
+  fileId: z.string().describe('The voice-mixed master (a video file) to transcribe with word-level timings.'),
 })
 
 export const transcribeAudio = createTool({
   id: 'transcribe-audio',
-  description: 'Transcribes a video or audio file into text plus per-word start/end timings, via Gemini. Used to burn word-accurate captions and to verify brand names weren\'t garbled — distinct from analyze_audio, which returns a plain transcript with no word timings.',
+  description: 'Transcribes a video\'s spoken audio into text plus per-word start/end timings, via Gemini. Used to burn word-accurate captions and to verify brand names weren\'t garbled — distinct from analyze_audio, which returns a plain transcript with no word timings.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'audio_transcription', subject: TRANSCRIBE_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { fileId, mimeType } = inputData as z.infer<typeof inputSchema>
+    const { fileId } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -971,12 +1006,32 @@ export const transcribeAudio = createTool({
 
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
 
-    let fileUri: string
+    const scopeId = tenantId || sessionId
+    let videoPath: string
     try {
-      fileUri = await fetchPresignedUrl(fileId, idToken)
+      const videoUrl = await fetchPresignedUrl(fileId, idToken)
+      ;({ filePath: videoPath } = await downloadToSessionCache(scopeId, fileId, videoUrl, MAX_SOURCE_BYTES))
     } catch (err) {
-      console.error(`[session:${sessionId}] transcribeAudio: failed to resolve source file:`, (err as Error).message)
+      console.error(`[session:${sessionId}] transcribeAudio: failed to download source:`, (err as Error).message)
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
+    }
+
+    // Extract audio-only BEFORE charging — a local, free operation, and
+    // extraction failure means there's nothing to transcribe regardless of
+    // payment. Sending the full video to Gemini (rather than this
+    // extracted track) would exceed its inline-request size ceiling — see
+    // Task 2's revision note.
+    let workDir: string
+    let audioBase64: string
+    try {
+      workDir = mkdtempSync(join(tmpdir(), 'transcribe-'))
+      const audioPath = join(workDir, 'audio.aac')
+      await execFile('ffmpeg', ['-y', '-i', videoPath, '-vn', '-c:a', 'aac', audioPath], { timeout: FFMPEG_TIMEOUT_MS })
+      audioBase64 = readFileSync(audioPath).toString('base64')
+      rmSync(workDir, { recursive: true, force: true })
+    } catch (err) {
+      console.error(`[session:${sessionId}] transcribeAudio: audio extraction failed:`, (err as Error).message)
+      return { refused: true, refusalReason: 'EXTRACTION_FAILED', jobId }
     }
 
     const attempt = 0
@@ -1012,7 +1067,7 @@ export const transcribeAudio = createTool({
       const res = await fetch(`${GATEWAY_URL}/v1/audio/transcribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ fileUri, mimeType }),
+        body: JSON.stringify({ audioBase64, mimeType: 'audio/aac' }),
         signal: AbortSignal.timeout(60_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
@@ -1046,13 +1101,17 @@ export const transcribeAudio = createTool({
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/transcribeAudio.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/transcribeAudio.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Live ffmpeg verification (mandatory per Global Constraints — this task adds a new ffmpeg invocation)**
+
+Generate a throwaway 3-second `testsrc` clip with a 440Hz sine audio track, run `transcribeAudio.ts`'s exact `ffmpeg -vn -c:a aac` extraction command against it, confirm: (a) ffmpeg exits 0, (b) the output file has no video stream (`ffprobe -show_streams` — no `codec_type=video` entry), (c) the output plays as valid AAC audio (`ffprobe -show_entries format=duration` returns the same ~3s duration as the source). Delete throwaway files after.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/tools/transcribeAudio.ts apps/agent-orchestrator/src/mastra/tools/transcribeAudioCredits.ts apps/agent-orchestrator/src/mastra/tools/__tests__/transcribeAudio.test.ts
+git add apps/agent-orchestrator/src/mastra/tools/transcribeAudio.ts apps/agent-orchestrator/src/mastra/tools/transcribeAudioCredits.ts apps/agent-orchestrator/src/mastra/tools/transcribeAudio.test.ts
 git commit -m "feat(orchestrator): add transcribe_audio tool wrapping POST /v1/audio/transcribe"
 ```
 
@@ -1063,7 +1122,7 @@ git commit -m "feat(orchestrator): add transcribe_audio tool wrapping POST /v1/a
 **Files:**
 - Create: `apps/agent-orchestrator/src/mastra/tools/compositeEndCard.ts`
 - Create: `apps/agent-orchestrator/src/mastra/tools/compositeEndCardCredits.ts`
-- Create: `apps/agent-orchestrator/src/mastra/tools/__tests__/compositeEndCard.test.ts`
+- Create: `apps/agent-orchestrator/src/mastra/tools/compositeEndCard.test.ts`
 
 **Interfaces:**
 - Consumes: `fetchPresignedUrl`/`downloadToSessionCache`, `shouldRequireApproval`, `uploadGeneratedFile`.
@@ -1118,7 +1177,7 @@ export async function refundCompositeEndCardCharge(
 
 - [ ] **Step 2: Write the failing test**
 
-Create `apps/agent-orchestrator/src/mastra/tools/__tests__/compositeEndCard.test.ts`:
+Create `apps/agent-orchestrator/src/mastra/tools/compositeEndCard.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest'
@@ -1136,7 +1195,7 @@ describe('compositeEndCard inputSchema', () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/compositeEndCard.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/compositeEndCard.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 4: Implement the tool**
@@ -1169,6 +1228,20 @@ const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 // 4 is always the payoff/CTA beat, always ends on a hold).
 const DISSOLVE_WINDOW_SECONDS = 1.5
 const DISSOLVE_DURATION_SECONDS = 0.4
+
+// Deviation from the spec, stated explicitly per the writing-plans
+// self-review rule: the spec asks for the end card to be "matched in
+// scale to the rendered product's bounding box" with "background color
+// sampled and matched to avoid a visible seam." v1 does neither — it
+// scales the real photo to fit the full frame with `force_original_aspect_
+// ratio=decrease` and centers it, with no bounding-box detection or
+// background color matching. Bounding-box detection needs either a
+// vision-model call (a new charge-bearing step this plan doesn't budget
+// for) or manual coordinates nothing upstream currently produces. Full-
+// frame centered is a safe, always-correct fallback — never mis-scaled or
+// mis-positioned, just potentially showing a visible background seam
+// against the animated frame behind it. Revisit if a real ad's end card
+// looks bad in testing, not preemptively.
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
@@ -1275,11 +1348,21 @@ export const compositeEndCard = createTool({
       const filterComplex =
         `[1:v]scale=${w}:${h}:force_original_aspect_ratio=decrease,format=rgba,` +
         `fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
-        `[0:v][card]overlay=(W-w)/2:(H-h)/2:enable='gte(t,${dissolveStart})'`
+        `[0:v][card]overlay=(W-w)/2:(H-h)/2:enable='gte(t,${dissolveStart})'[outv]`
 
+      // A plain image input (-i photoPath with no -loop) is a single frame
+      // at PTS 0 with no real duration — fade's st=/d= timestamps and
+      // overlay's enable='gte(t,...)' gate never see the timeline moving,
+      // so the card either never appears or appears fully transparent
+      // forever. -loop 1 -framerate 30 -t <clip duration> turns it into a
+      // real video-length input with real timestamps BEFORE it's fed into
+      // the filter graph — this flag placement matters: it must come
+      // before this -i, not after.
       await execFile('ffmpeg', [
-        '-y', '-i', videoPath, '-i', photoPath,
+        '-y', '-i', videoPath,
+        '-loop', '1', '-framerate', '30', '-t', String(clipDurationSeconds), '-i', photoPath,
         '-filter_complex', filterComplex,
+        '-map', '[outv]', '-map', '0:a?',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
         '-c:a', 'copy',
         outputPath,
@@ -1328,7 +1411,7 @@ export const compositeEndCard = createTool({
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/compositeEndCard.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/compositeEndCard.test.ts`
 Expected: PASS.
 
 - [ ] **Step 6: Live ffmpeg verification**
@@ -1338,7 +1421,7 @@ Generate a throwaway 3-second `testsrc` clip and a small solid-color PNG (e.g. `
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/tools/compositeEndCard.ts apps/agent-orchestrator/src/mastra/tools/compositeEndCardCredits.ts apps/agent-orchestrator/src/mastra/tools/__tests__/compositeEndCard.test.ts
+git add apps/agent-orchestrator/src/mastra/tools/compositeEndCard.ts apps/agent-orchestrator/src/mastra/tools/compositeEndCardCredits.ts apps/agent-orchestrator/src/mastra/tools/compositeEndCard.test.ts
 git commit -m "feat(orchestrator): add composite_end_card tool"
 ```
 
@@ -1349,7 +1432,7 @@ git commit -m "feat(orchestrator): add composite_end_card tool"
 **Files:**
 - Create: `apps/agent-orchestrator/src/mastra/tools/burnCaptions.ts`
 - Create: `apps/agent-orchestrator/src/mastra/tools/burnCaptionsCredits.ts`
-- Create: `apps/agent-orchestrator/src/mastra/tools/__tests__/burnCaptions.test.ts`
+- Create: `apps/agent-orchestrator/src/mastra/tools/burnCaptions.test.ts`
 
 **Interfaces:**
 - Consumes: Task 5's `transcribe_audio` output shape (`words: [{word,startSeconds,endSeconds}]`) as this tool's own input.
@@ -1404,11 +1487,11 @@ export async function refundBurnCaptionsCharge(
 
 - [ ] **Step 2: Write the failing test**
 
-Create `apps/agent-orchestrator/src/mastra/tools/__tests__/burnCaptions.test.ts`:
+Create `apps/agent-orchestrator/src/mastra/tools/burnCaptions.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest'
-import { inputSchema, groupWordsIntoPhrases, escapeDrawtext } from '../burnCaptions.js'
+import { inputSchema, groupWordsIntoPhrases, formatSrtTimestamp, buildSrt } from '../burnCaptions.js'
 
 describe('burnCaptions inputSchema', () => {
   it('requires videoFileId and a non-empty words array', () => {
@@ -1439,17 +1522,29 @@ describe('groupWordsIntoPhrases', () => {
   })
 })
 
-describe('escapeDrawtext', () => {
-  it('escapes colons, single quotes, and backslashes for ffmpeg drawtext text=', () => {
-    expect(escapeDrawtext("it's 3:30")).toBe("it\\'s 3\\:30")
-    expect(escapeDrawtext('back\\slash')).toBe('back\\\\slash')
+describe('formatSrtTimestamp', () => {
+  it('formats seconds as HH:MM:SS,mmm', () => {
+    expect(formatSrtTimestamp(0)).toBe('00:00:00,000')
+    expect(formatSrtTimestamp(65.5)).toBe('00:01:05,500')
+    expect(formatSrtTimestamp(3661.25)).toBe('01:01:01,250')
+  })
+})
+
+describe('buildSrt', () => {
+  it('renders numbered cues with SRT timestamps, including phrases with apostrophes safely', () => {
+    const srt = buildSrt([
+      { text: "it's here", startSeconds: 0, endSeconds: 1.2 },
+      { text: 'don\'t wait', startSeconds: 1.3, endSeconds: 2.5 },
+    ])
+    expect(srt).toContain('1\n00:00:00,000 --> 00:00:01,200\nit\'s here')
+    expect(srt).toContain("2\n00:00:01,300 --> 00:00:02,500\ndon't wait")
   })
 })
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/burnCaptions.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/burnCaptions.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 4: Implement the tool**
@@ -1461,7 +1556,7 @@ import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
@@ -1504,15 +1599,30 @@ export function groupWordsIntoPhrases(words: TranscribedWord[], groupSize: numbe
   return phrases
 }
 
-// ffmpeg drawtext's text= value treats backslash, single-quote, colon, and
-// percent as special — escape order matters (backslash first, or the
-// escapes added for the others get re-escaped).
-export function escapeDrawtext(text: string): string {
-  return text
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/:/g, '\\:')
-    .replace(/%/g, '\\%')
+// SRT format requires HH:MM:SS,mmm — this is the standard SRT cue
+// timestamp, not a caption-styling concern.
+export function formatSrtTimestamp(seconds: number): string {
+  const totalMs = Math.round(seconds * 1000)
+  const h = Math.floor(totalMs / 3_600_000)
+  const m = Math.floor((totalMs % 3_600_000) / 60_000)
+  const s = Math.floor((totalMs % 60_000) / 1_000)
+  const ms = totalMs % 1_000
+  const pad = (n: number, len = 2) => String(n).padStart(len, '0')
+  return `${pad(h)}:${pad(m)}:${pad(s)},${pad(ms, 3)}`
+}
+
+// Writing an SRT file and burning it via ffmpeg's `subtitles` filter (not
+// a raw `drawtext` chain) is the fix for a real defect an earlier draft
+// had: drawtext's text= value is delimited by single quotes in the filter
+// string, so an escaped `\'` for an apostrophe in the caption text (e.g.
+// "it's", "don't" — both common in narration) actually TERMINATES that
+// quoted section early and breaks the whole filter graph. SRT text needs
+// no such escaping — the subtitles filter parses it as its own file
+// format, not as an inline filter-string argument.
+export function buildSrt(phrases: CaptionPhrase[]): string {
+  return phrases
+    .map((p, i) => `${i + 1}\n${formatSrtTimestamp(p.startSeconds)} --> ${formatSrtTimestamp(p.endSeconds)}\n${p.text}\n`)
+    .join('\n')
 }
 
 const outputSchema = z.object({
@@ -1607,17 +1717,21 @@ export const burnCaptions = createTool({
     const outputPath = join(workDir, 'captioned.mp4')
     try {
       const phrases = groupWordsIntoPhrases(words, WORDS_PER_PHRASE)
-      // Lower-third band, white fill, thick dark outline — matches the
-      // genre look novoads' caption presets describe. h*0.78 keeps the
-      // band clear of most safe-area UI overlays at any resolution.
-      const drawtextFilters = phrases.map((p) =>
-        `drawtext=text='${escapeDrawtext(p.text)}':fontcolor=white:fontsize=h*0.055:` +
-        `borderw=4:bordercolor=black:x=(w-text_w)/2:y=h*0.78:` +
-        `enable='between(t,${p.startSeconds},${p.endSeconds})'`
-      )
+      const srtPath = join(workDir, 'captions.srt')
+      writeFileSync(srtPath, buildSrt(phrases))
+      // ffmpeg's subtitles filter argument treats ':' and '\' specially in
+      // the FILTER STRING (not inside the SRT file itself) — escape the
+      // path defensively even though mkdtempSync under os.tmpdir() won't
+      // produce one on this deployment's Linux/macOS hosts.
+      const escapedSrtPath = srtPath.replace(/\\/g, '\\\\').replace(/:/g, '\\:')
+      // Lower-third placement, white fill, thick dark outline — matches
+      // the genre look novoads' caption presets describe. force_style
+      // overrides the SRT's own (absent) styling; MarginV keeps the band
+      // clear of most safe-area UI overlays at any resolution.
+      const forceStyle = "FontName=DejaVu Sans,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Alignment=2,MarginV=80"
       await execFile('ffmpeg', [
         '-y', '-i', videoPath,
-        '-vf', drawtextFilters.join(','),
+        '-vf', `subtitles=${escapedSrtPath}:force_style='${forceStyle}'`,
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
         '-c:a', 'copy',
         outputPath,
@@ -1666,17 +1780,17 @@ export const burnCaptions = createTool({
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/burnCaptions.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/burnCaptions.test.ts`
 Expected: PASS.
 
 - [ ] **Step 6: Live ffmpeg verification**
 
-Generate a throwaway 3-second `testsrc` clip, run `burnCaptions.ts`'s exact `-vf` drawtext chain against it with 2-3 short test phrases, confirm ffmpeg exits 0 and that frames pulled at each phrase's `startSeconds`/`endSeconds` midpoint visibly show the burned text (spot-check by reading a frame at, e.g., 0.5s into a phrase whose window covers it). Delete throwaway files after.
+Generate a throwaway 3-second `testsrc` clip, write a real SRT file via `buildSrt` with 2-3 short test phrases (include at least one with an apostrophe, e.g. "it's working", to specifically confirm the apostrophe bug is fixed), run `burnCaptions.ts`'s exact `subtitles=...` `-vf` filter against the clip, confirm ffmpeg exits 0 and that frames pulled at each phrase's `startSeconds`/`endSeconds` midpoint visibly show the burned text (spot-check by reading a frame at, e.g., 0.5s into a phrase whose window covers it). Delete throwaway files after.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/tools/burnCaptions.ts apps/agent-orchestrator/src/mastra/tools/burnCaptionsCredits.ts apps/agent-orchestrator/src/mastra/tools/__tests__/burnCaptions.test.ts
+git add apps/agent-orchestrator/src/mastra/tools/burnCaptions.ts apps/agent-orchestrator/src/mastra/tools/burnCaptionsCredits.ts apps/agent-orchestrator/src/mastra/tools/burnCaptions.test.ts
 git commit -m "feat(orchestrator): add burn_captions tool"
 ```
 
@@ -1687,7 +1801,7 @@ git commit -m "feat(orchestrator): add burn_captions tool"
 **Files:**
 - Create: `apps/agent-orchestrator/src/mastra/tools/mixMusicBed.ts`
 - Create: `apps/agent-orchestrator/src/mastra/tools/mixMusicBedCredits.ts`
-- Create: `apps/agent-orchestrator/src/mastra/tools/__tests__/mixMusicBed.test.ts`
+- Create: `apps/agent-orchestrator/src/mastra/tools/mixMusicBed.test.ts`
 
 **Interfaces:**
 - Consumes: `generate_song`'s output fileId (existing skill 1 tool, unchanged).
@@ -1742,7 +1856,7 @@ export async function refundMixMusicBedCharge(
 
 - [ ] **Step 2: Write the failing test**
 
-Create `apps/agent-orchestrator/src/mastra/tools/__tests__/mixMusicBed.test.ts`:
+Create `apps/agent-orchestrator/src/mastra/tools/mixMusicBed.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest'
@@ -1778,7 +1892,7 @@ describe('parseIntegratedLoudness', () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/mixMusicBed.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/mixMusicBed.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 4: Implement the tool**
@@ -1804,14 +1918,18 @@ const execFile = promisify(execFileCb)
 const MIX_SUBJECT = 'ffmpeg-mix-music-bed'
 const FFMPEG_TIMEOUT_MS = 60_000
 const MAX_SOURCE_BYTES = 200 * 1024 * 1024
-// Bed sits well under the voice — matches the spec's "ducked under the
-// voice" requirement; refined from novoads' own measured failure of a
-// flat 0.10 multiplier landing at -33 to -40 dB (inaudible).
-const BED_VOLUME = 0.18
-// Below this, treat the mixed bed as effectively inaudible and refuse
-// rather than ship it — same "measure, don't guess" discipline the spec
-// calls out from novoads' music_mix.py.
-const MIN_ACCEPTABLE_INTEGRATED_LUFS = -30
+// Base attenuation before sidechain ducking — matches the spec's "ducked
+// under the voice" requirement; refined from novoads' own measured
+// failure of a flat 0.10 multiplier landing at -33 to -40 dB (inaudible).
+const BED_VOLUME = 0.35
+// Below this, treat the bed itself (before any mixing) as effectively
+// silent/broken and refuse rather than ship it — same "measure, don't
+// guess" discipline the spec calls out from novoads' music_mix.py. This
+// must be measured on the bed ALONE, before mixing: measuring the final
+// mastered output is dead code, because the final loudnorm pass always
+// normalizes the whole mix to -14 LUFS regardless of how quiet the bed
+// actually was inside it — the gate would never fire.
+const MIN_ACCEPTABLE_BED_LUFS = -40
 
 export function parseIntegratedLoudness(stderr: string): number | null {
   const match = stderr.match(/Integrated loudness:\s*\n\s*I:\s*(-?\d+(?:\.\d+)?)\s*LUFS/)
@@ -1913,15 +2031,38 @@ export const mixMusicBed = createTool({
     const outputPath = join(workDir, 'mixed.mp4')
     let integratedLufs: number | null = null
     try {
+      // Gate 1: measure the bed ALONE, before any mixing, and refuse a
+      // silent/broken generation before spending the main encode. Doing
+      // this after the final mix (as an earlier draft did) is dead code —
+      // the final loudnorm pass always normalizes the WHOLE mix to -14
+      // LUFS regardless of the bed's own level, so a post-mix check can
+      // never observe a quiet bed.
+      const { stderr: bedLoudnessStderr } = await execFile('ffmpeg', [
+        '-i', musicPath, '-af', `volume=${BED_VOLUME},ebur128=framelog=quiet`, '-f', 'null', '-',
+      ], { timeout: FFMPEG_TIMEOUT_MS })
+      const bedLufs = parseIntegratedLoudness(bedLoudnessStderr)
+      if (bedLufs === null || bedLufs < MIN_ACCEPTABLE_BED_LUFS) {
+        console.error(`[session:${sessionId}] mixMusicBed: bed's own loudness ${bedLufs} LUFS is below the ${MIN_ACCEPTABLE_BED_LUFS} LUFS floor — refusing rather than shipping a silent/broken bed`)
+        if (charged) await refundMixMusicBedCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+        rmSync(workDir, { recursive: true, force: true })
+        return { refused: true, refusalReason: 'MUSIC_BED_INAUDIBLE', jobId }
+      }
+
       const { stdout: durationOut } = await execFile('ffprobe', [
         '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', videoPath,
       ], { timeout: FFMPEG_TIMEOUT_MS })
       const videoDurationSeconds = parseFloat(durationOut.trim())
       if (!(videoDurationSeconds > 0)) throw new Error(`ffprobe returned an invalid duration: ${durationOut}`)
 
+      // sidechaincompress ducks the bed WHEN the voice is present, rather
+      // than sitting at one static low level the whole ad (the spec asks
+      // for the bed to be "ducked under the voice", not just quiet
+      // throughout) — [bedvol][0:a]sidechaincompress compresses the first
+      // input (the bed) using the second (the voice) as the trigger.
       const filterComplex =
-        `[1:a]volume=${BED_VOLUME}[bed];` +
-        `[0:a][bed]amix=inputs=2:duration=longest:normalize=0[premaster];` +
+        `[1:a]volume=${BED_VOLUME}[bedvol];` +
+        `[bedvol][0:a]sidechaincompress=threshold=0.05:ratio=8:attack=5:release=300[duckedbed];` +
+        `[0:a][duckedbed]amix=inputs=2:duration=longest:normalize=0[premaster];` +
         `[premaster]loudnorm=I=-14:TP=-1.5:LRA=11[outa]`
       await execFile('ffmpeg', [
         '-y', '-i', videoPath, '-i', musicPath,
@@ -1932,20 +2073,12 @@ export const mixMusicBed = createTool({
         outputPath,
       ], { timeout: FFMPEG_TIMEOUT_MS })
 
-      // Verification pass: measure the mastered output's integrated
-      // loudness and refuse rather than ship a bed nobody would hear —
-      // novoads' own documented failure mode ("-33 to -40 dB, a bed paid
-      // for and never heard").
-      const { stderr: loudnessStderr } = await execFile('ffmpeg', [
+      // Informational only (not a gate) — report the finished master's
+      // own integrated loudness for the output field / any later QA read.
+      const { stderr: masterLoudnessStderr } = await execFile('ffmpeg', [
         '-i', outputPath, '-af', 'ebur128=framelog=quiet', '-f', 'null', '-',
       ], { timeout: FFMPEG_TIMEOUT_MS })
-      integratedLufs = parseIntegratedLoudness(loudnessStderr)
-      if (integratedLufs === null || integratedLufs < MIN_ACCEPTABLE_INTEGRATED_LUFS) {
-        console.error(`[session:${sessionId}] mixMusicBed: measured loudness ${integratedLufs} LUFS is below the ${MIN_ACCEPTABLE_INTEGRATED_LUFS} LUFS floor — refusing rather than shipping an inaudible bed`)
-        if (charged) await refundMixMusicBedCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
-        rmSync(workDir, { recursive: true, force: true })
-        return { refused: true, refusalReason: 'MUSIC_BED_INAUDIBLE', jobId }
-      }
+      integratedLufs = parseIntegratedLoudness(masterLoudnessStderr)
     } catch (err) {
       console.error(`[session:${sessionId}] mixMusicBed: ffmpeg failed:`, (err as Error).message)
       if (charged) await refundMixMusicBedCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
@@ -1991,17 +2124,17 @@ export const mixMusicBed = createTool({
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/mixMusicBed.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/mixMusicBed.test.ts`
 Expected: PASS.
 
 - [ ] **Step 6: Live ffmpeg verification**
 
-Generate a throwaway silent `testsrc` clip with a 440Hz sine "voice" track and a separate 220Hz sine "music" track (via `-f lavfi -i sine=frequency=...`), run `mixMusicBed.ts`'s exact filter_complex + loudnorm + ebur128 sequence against them, confirm: (a) the output has both frequencies present (spot-check via `ffprobe`/a quick spectral read is optional — confirming non-silent audio via `volumedetect` is sufficient), (b) `parseIntegratedLoudness` correctly extracts a number from the real ffmpeg stderr output (not just the hand-written test fixture in Step 2 — run the actual command and feed its real stderr through the function). Also run a negative control: mix at `volume=0.001` and confirm the tool's refusal path actually triggers (`MUSIC_BED_INAUDIBLE`). Delete throwaway files after.
+Generate a throwaway silent `testsrc` clip with a 440Hz sine "voice" track and a separate 220Hz sine "music" track (via `-f lavfi -i sine=frequency=...`), run `mixMusicBed.ts`'s exact pre-mix bed-loudness check, sidechaincompress filter_complex, and final loudnorm/ebur128 sequence against them, confirm: (a) the pre-mix bed check passes at the real `BED_VOLUME` and its `parseIntegratedLoudness` call correctly extracts a number from real ffmpeg stderr output (not just the hand-written test fixture in Step 2); (b) the final output has both frequencies present with the bed audibly quieter than the voice (a `volumedetect` read on each is sufficient — exact ducking behavior doesn't need spectral analysis). Then run a negative control specifically proving the fix for the dead-code bug: generate a near-silent music input (e.g. `sine=frequency=220:duration=3` piped through `volume=0.0001` when generating the test file, not inside the tool), confirm the tool's PRE-MIX refusal path actually triggers (`MUSIC_BED_INAUDIBLE`) — and separately confirm that if the old post-mix-only check were used instead, that same silent input would have passed (loudnorm always normalizes to -14 regardless), demonstrating why the gate had to move earlier. Delete throwaway files after.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/tools/mixMusicBed.ts apps/agent-orchestrator/src/mastra/tools/mixMusicBedCredits.ts apps/agent-orchestrator/src/mastra/tools/__tests__/mixMusicBed.test.ts
+git add apps/agent-orchestrator/src/mastra/tools/mixMusicBed.ts apps/agent-orchestrator/src/mastra/tools/mixMusicBedCredits.ts apps/agent-orchestrator/src/mastra/tools/mixMusicBed.test.ts
 git commit -m "feat(orchestrator): add mix_music_bed tool"
 ```
 
@@ -2012,7 +2145,7 @@ git commit -m "feat(orchestrator): add mix_music_bed tool"
 **Files:**
 - Modify: `apps/agent-orchestrator/src/mastra/tools/generationApproval.ts`
 - Modify: `apps/agent-orchestrator/src/mastra/tools/lipsync.ts:39`
-- Modify: `apps/agent-orchestrator/src/mastra/tools/__tests__/generationApproval.test.ts` (locate the existing test file; extend it)
+- Modify: `apps/agent-orchestrator/src/mastra/tools/generationApproval.test.ts` (locate the existing test file; extend it)
 
 **Interfaces:**
 - Consumes: nothing new.
@@ -2041,7 +2174,7 @@ it('registers both hyphenated and underscored forms for every animation-characte
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/generationApproval.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/generationApproval.test.ts`
 Expected: FAIL — all five entries `undefined`.
 
 - [ ] **Step 3: Add the entries**
@@ -2097,7 +2230,7 @@ with:
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/__tests__/generationApproval.test.ts`
+Run: `cd apps/agent-orchestrator && pnpm vitest run src/mastra/tools/generationApproval.test.ts`
 Expected: PASS.
 
 Run: `cd apps/agent-orchestrator && pnpm vitest run` (full suite)
@@ -2106,7 +2239,7 @@ Expected: PASS, no regressions from the `lipsync.ts` description change (no test
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/tools/generationApproval.ts apps/agent-orchestrator/src/mastra/tools/lipsync.ts apps/agent-orchestrator/src/mastra/tools/__tests__/generationApproval.test.ts
+git add apps/agent-orchestrator/src/mastra/tools/generationApproval.ts apps/agent-orchestrator/src/mastra/tools/lipsync.ts apps/agent-orchestrator/src/mastra/tools/generationApproval.test.ts
 git commit -m "feat(orchestrator): register animation-character tools in GENERATION_APPROVAL_METADATA"
 ```
 
@@ -2118,10 +2251,10 @@ git commit -m "feat(orchestrator): register animation-character tools in GENERAT
 - Modify: `apps/agent-orchestrator/src/mastra/agents/directorAgent.ts`
 
 **Interfaces:**
-- Consumes: `mux_beat_audio` (Task 4), `transcribe_audio` (Task 5), `composite_end_card` (Task 6), `burn_captions` (Task 7), `mix_music_bed` (Task 8), plus existing `generate_image`, `generate_video`, `generate_narration`, `lipsync`, `assemble_clips`, `generate_song`.
-- Produces: `ANIMATION_CHARACTER_SECTION` text appended to `directorAgent`/`directorAgentDelegate`'s instructions; both agents' `tools:` maps gain the five new underscored keys.
+- Consumes: `mux_beat_audio` (Task 4), `transcribe_audio` (Task 5), `composite_end_card` (Task 6), `burn_captions` (Task 7), `mix_music_bed` (Task 8), plus existing `generate_image`, `generate_video`, `generate_narration`, `lipsync`, `assemble_clips`.
+- Produces: `ANIMATION_CHARACTER_SECTION` text appended to `directorAgent`/`directorAgentDelegate`'s instructions; both agents' `tools:` maps gain the five new underscored keys PLUS `generate_song` (see Step 3's note — Director does not have this tool today).
 
-- [ ] **Step 1: Add the five new tool imports**
+- [ ] **Step 1: Add the six new tool imports**
 
 Near the existing imports (`import { lipsync } from '../tools/lipsync.js'` etc.), add:
 
@@ -2131,7 +2264,10 @@ import { transcribeAudio } from '../tools/transcribeAudio.js'
 import { compositeEndCard } from '../tools/compositeEndCard.js'
 import { burnCaptions } from '../tools/burnCaptions.js'
 import { mixMusicBed } from '../tools/mixMusicBed.js'
+import { generateSong } from '../tools/generateSong.js'
 ```
+
+Note on `generateSong`: this tool already exists and is already registered on `producerAgent.ts` (`generate_song: generateSong`, lines 47/66) — it is NOT currently registered on `directorAgent`/`directorAgentDelegate` at all. `ANIMATION_CHARACTER_SECTION` (Step 2) has Director call `generate_song` directly for the music bed, so Director needs this registration added — it is not already there the way `lipsync`/`generate_narration`/`assemble_clips` are (those came from skill 4's own plan). Confirm this import path and export name are still correct by checking `apps/agent-orchestrator/src/mastra/tools/generateSong.ts` before use — do not assume.
 
 - [ ] **Step 2: Write the `ANIMATION_CHARACTER_SECTION` constant**
 
@@ -2164,7 +2300,7 @@ NEGATIVE: no smooth CGI rendering, no photorealistic humans, no 2D flat illustra
 - Beats 2-4 audio: generate_narration with each beat's one VO line (same voiceId as beat 1, for one continuous voice across the ad), then mux_beat_audio with videoFileId set to that beat's silent clip and audioFileId set to that VO line's fileId.
 - End card: after beat 4's audio is muxed, call composite_end_card with videoFileId set to beat 4's muxed clip, productPhotoFileId set to the real product photo's fileId (never an AI-generated one), and the ad's aspectRatio. This must run BEFORE assembly.
 - Assembly: call assemble_clips ONCE with clipFileIds set to [beat 1's lip-synced clip, beat 2's muxed clip, beat 3's muxed clip, beat 4's carded clip] in that exact order, preserveAudio set to true, and aspectRatio matching the per-clip renders. Do not set targetDurationSeconds or perClipTrimSeconds here — every clip is already individually trimmed by lipsync/mux_beat_audio/composite_end_card.
-- Transcription: call transcribe_audio on the assembled master's fileId and mimeType "video/mp4".
+- Transcription: call transcribe_audio with fileId set to the assembled master's fileId (it extracts audio itself, no mimeType needed).
 - Captions: call burn_captions with videoFileId set to the assembled master's fileId and words set to exactly what transcribe_audio returned.
 - Brand-name check: compare transcribe_audio's text against the script's brand/product name and any spoken price. If either was garbled, tell Olmo plainly rather than presenting a broken caption as finished — the fix is to re-run transcribe_audio/burn_captions, or (Olmo's call) keep the brand name off narration entirely and rely on the end card, per the spec's preferred fix.
 - Music: call generate_song for the bed, then mix_music_bed with videoFileId set to the CAPTIONED master (not the pre-caption one) and musicFileId set to the bed. This is the LAST call in the pipeline — never generate or mix the bed earlier.
@@ -2175,12 +2311,12 @@ NEGATIVE: no smooth CGI rendering, no photorealistic humans, no 2D flat illustra
 
 Note: this replaces the existing `const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + TALKING_HEAD_SECTION` line — append `+ ANIMATION_CHARACTER_SECTION` to it, do not duplicate the line.
 
-- [ ] **Step 3: Wire the five new tools into both `tools:` maps**
+- [ ] **Step 3: Wire the six new tools into both `tools:` maps**
 
-Find the two `tools: { generate_image: generateImage, ... assemble_clips: assembleClips },` lines (one on `directorAgent`, one on `directorAgentDelegate`) and add the five new entries to both:
+Find the two `tools: { generate_image: generateImage, ... assemble_clips: assembleClips },` lines (one on `directorAgent`, one on `directorAgentDelegate`) and add the six new entries to both (five animation-character tools plus `generate_song`, per Step 1's note):
 
 ```ts
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong },
 ```
 
 - [ ] **Step 4: Run the director agent tests**
@@ -2285,10 +2421,14 @@ git commit -m "feat(orchestrator): add ANIMATION_CHARACTER_CONTRACT to platformA
 Add to the existing `describe('directorAgent tool registration', ...)` block:
 
 ```ts
-  it('has mux_beat_audio, transcribe_audio, composite_end_card, burn_captions, and mix_music_bed registered, needed for animation-character', async () => {
+  it('has mux_beat_audio, transcribe_audio, composite_end_card, burn_captions, mix_music_bed, and generate_song registered, needed for animation-character', async () => {
     const directorTools = await directorAgent.listTools()
     const delegateTools = await directorAgentDelegate.listTools()
-    const expected = ['mux_beat_audio', 'transcribe_audio', 'composite_end_card', 'burn_captions', 'mix_music_bed']
+    // generate_song is included here even though it's not a new tool file —
+    // it was never registered on directorAgent before this skill (only on
+    // producerAgent), and animation-character's own flow has Director call
+    // it directly for the music bed.
+    const expected = ['mux_beat_audio', 'transcribe_audio', 'composite_end_card', 'burn_captions', 'mix_music_bed', 'generate_song']
     expect(Object.keys(directorTools)).toEqual(expect.arrayContaining(expected))
     expect(Object.keys(delegateTools)).toEqual(expect.arrayContaining(expected))
   })
