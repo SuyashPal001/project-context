@@ -72,6 +72,26 @@ const RATES = [
   // instead of carving out a new no-approval code path for one tool.
   { resourceType: 'clip_assembly', subject: 'ffmpeg-local',
     pricingSchema: { per_call_micro: 1_000 } },
+  // Gemini transcription for animation-character's caption pipeline: short
+  // (<=30s) audio/video, inline-base64 request, structured JSON output.
+  // Priced flat per call, matching every other row's per_call_micro shape —
+  // no existing row uses per-token/per-duration pricing and this does not
+  // introduce one either. $0.02-ish estimate at Gemini 2.5 Flash rates for
+  // a 30s clip plus margin.
+  { resourceType: 'audio_transcription', subject: 'gemini-transcribe',
+    pricingSchema: { per_call_micro: 15_000 } },
+  // animation-character's four new local-ffmpeg steps. Same "pure local
+  // compute, small flat non-zero rate" reasoning as the clip_assembly/
+  // ffmpeg-local row above — keeps each tool on the normal charge/approval
+  // code path instead of a silent no-charge/no-approval carve-out.
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-mux-audio',
+    pricingSchema: { per_call_micro: 1_000 } },
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-composite-end-card',
+    pricingSchema: { per_call_micro: 1_000 } },
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-burn-captions',
+    pricingSchema: { per_call_micro: 1_000 } },
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-mix-music-bed',
+    pricingSchema: { per_call_micro: 1_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can
   // price them later without a deploy (spec section 3).
   { resourceType: 'message',   subject: '*', pricingSchema: { per_message_micro: 0 } },
