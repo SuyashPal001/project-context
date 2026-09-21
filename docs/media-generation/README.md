@@ -1,5 +1,93 @@
 # Media Generation
 
+## Status — verified against code, 2026-09-16
+
+The section below (dated 2026-09-15) undersold what exists. It was written
+against the creative-library milestone only and never updated once the
+generation tools landed a few days earlier (commits from 2026-09-10). Verified
+directly against the code on `main` today:
+
+### Shipped and real, not stubs
+
+- **`generate_image`** (`apps/agent-orchestrator/src/mastra/tools/generateImage.ts`) —
+  calls the gateway's `/v1/images/generations`, model `gemini-3-pro-image-preview`,
+  synchronous. Charges credits before upload, refunds on storage failure,
+  uploads via `uploadGeneratedFile` (rides the user's own `idToken`, forwarded
+  from chat request context — not a service-key call).
+- **`edit_image`** (`editImage.ts`) — same shape, reference-image editing.
+- **`generate_video`** (`generateVideo.ts`) — text-to-video, model
+  `gemini-omni-1.1-flash`, **synchronous** (direct fetch, no job id, no
+  polling — this is not the async Veo path Phase 2 below describes).
+- **`generate_song`** (`generateSong.ts`) — wired to `producerAgent`.
+- **`analyze_video`** (`analyzeVideo.ts`) — two modes (`quick`/`deep`, not
+  the four-pass forensic/structured/look-grade/narrative split some
+  competitor teardowns describe), samples 8 or 20 frames, calls the gateway's
+  chat-completions path.
+- **Approval gating is native Mastra, already wired.** Every generation tool
+  sets `requireApproval: async (_input, ctx) => shouldRequireApproval(...)`
+  (`generationApproval.ts`), using `@mastra/core`'s built-in
+  `requireApproval`/suspend-resume primitive — not a hand-rolled confirm loop.
+- **Credit rates are seeded**, not just planned:
+  `packages/foundation/database/seeds/credit-rates.ts` has live rows for
+  `image_generation` (`gemini-3-pro-image-preview`) and `video_generation`
+  (`gemini-omni-1.1-flash`).
+- **`director` and `producer` are real sub-agents**, not a gap — Olmo
+  delegates to them (`olmoDelegates.ts`), they hold the generation tools
+  above. This already matches the "orchestrator + specialist agents + tool
+  surface" shape described in outside teardowns of similar products.
+- **Endpoint shape diverges from the design decision below.** The gateway
+  ships three modality-specific routes — `/v1/images/generations`,
+  `/v1/music/generations`, `/v1/video/generations`
+  (`apps/inference-gateway/src/index.ts:466-486`) — not the unified
+  `POST /v1/generations` discriminated envelope the "Design decisions
+  already settled" section specifies. Either update the decision or migrate
+  the routes; they currently disagree.
+
+### Confirmed still missing
+
+1. **Product URL import** — no code anywhere imports metadata/images from a
+   pasted product link.
+2. ~~Full narration generation~~ Built as part of the talking-head skill:
+   `generate_narration` (orchestrator tool) → Cartesia `/v1/audio/speech`
+   (inference gateway), including a `language` field for non-English reads.
+3. ~~Presenter video~~ Built: per-clip silent video via `generate_video`,
+   then lip-synced onto the locked narration track via `lipsync` (fal.ai
+   LatentSync, or Sync Labs sync-2.0) — see the talking-head skill in
+   `directorAgent.ts`.
+4. ~~Script/shot-plan generation and final assembly~~ Assembly
+   (concatenation to one MP4, aligned to the narration length) is built via
+   `assemble_clips` (ffmpeg, local). Captions, music, and product-shot
+   compositing beyond the talking-head flow are still unbuilt.
+5. **Generation progress/regen/download/version-history UI** — not found in
+   `apps/web`.
+6. **Video generation has no async job layer.** `generate_video` is
+   synchronous today, unlike the Phase 2 plan below. Fine for short
+   `gemini-omni` clips; will need the SQS/watchdog bridge once a
+   longer-running model (Veo, Seedance-class) is added.
+7. **Creative-brief harness exists but live-run status is unverified from
+   code alone.** `scripts/testCreativeBrief.ts` and `scripts/testDirector.ts`
+   are real, runnable harnesses (Olmo → director delegate → `generate_image`,
+   asserting a `fileId` comes back) — whether someone has actually run one
+   against the live orchestrator and gotten a real image back needs a live
+   check, not a code read.
+
+### Known issues — re-verified today, both still open
+
+**`fileIngest.ts` still crashes on a null uploader**, unfixed —
+`products/agent-platform/packages/worker-handlers/handlers/fileIngest.ts:61`
+still does `eq(users.id, fileRecord.uploadedBy ?? '')` against a `uuid`
+column. Still unreachable in practice (every upload stamps a real user id)
+but still a live landmine once anything writes a null-uploader `files` row.
+
+**No internal file route for pure service-key callers** — confirmed,
+`apps/api/src/app.ts` only mounts `/internal/integrations` under
+`internalApi`. This does **not** currently block `generate_image`/
+`generate_video`, since those forward the real user's `idToken` from chat
+context rather than authenticating as the orchestrator's service key. It
+would block generation triggered from an unattended async task (no user
+token in scope) or from Drive — neither exists yet, so this is scoped risk,
+not a live bug.
+
 ## Creative library handoff — 2026-09-15
 
 The first creative-library milestone adds optional Templates, Avatars,
@@ -37,10 +125,14 @@ The next milestone should be one vertical slice: submit a creative brief,
 generate its script and storyboard, and render one real keyframe. This proves
 the orchestration and asset path before implementing full video assembly.
 
-**Media-generation status: in the pipeline. Not built.** The creative-library
-handoff above exists, while the generation architecture described below has not
-shipped. This document records the product framing and settled design decisions
-so the eventual spec starts from known ground.
+**Media-generation status: partially built.** Image generation, video
+generation (sync), song generation, video analysis, native approval-gated
+credit spend, and the talking-head skill's narration/lip-sync/assembly
+pipeline are real and shipped. Product import, captions/music/product-shot
+compositing beyond the talking-head flow, and progress/version UI are not.
+See "Status — verified against code" above for the accurate breakdown; the
+rest of this document is design framing and settled decisions for what's
+still ahead.
 
 ## What this platform is
 
@@ -65,24 +157,29 @@ workstream closes is letting them produce the artifact itself.
 
 ## Where the gap is today
 
-The agents can already *consume* media. `analyze_video` and `analyze_audio`
-exist as tools in the orchestrator, and the file pipeline handles uploads,
-ingestion, and retrieval.
-
-There is no generation path anywhere in the repository. No image model, no
-video model, no adapter, no asset provenance. A Film-Production-Director agent
-can write a shot list but cannot render a single frame of it.
+**Outdated — see "Status — verified against code" at the top.** This section
+originally said "no generation path anywhere in the repository," which was
+true when written and is no longer true. `generate_image`, `edit_image`,
+`generate_video` (sync), and `generate_song` are real, shipped tools with
+provenance (`files` rows via the normal upload path) and credit accounting.
+The real remaining gap is narrower: no async video job layer, no
+script/shot-plan/assembly layer, no product import, no presenter video, no
+progress UI. Kept below for the historical framing of *why* image-first was
+chosen, which still holds.
 
 ## Planned sequence
 
-**Phase 1 — image generation.** A `generate_image` tool backed by a Gemini
-image model, reachable through the existing inference gateway. Synchronous:
-the model returns image bytes inline in seconds.
+**Phase 1 — image generation. Shipped.** `generate_image` backed by
+`gemini-3-pro-image-preview`, reachable through the inference gateway,
+synchronous. Done, not planned — see "Status" above.
 
 **Phase 2 — video generation.** Text-to-video via Veo, and later other
-vendors. Video is a long-running operation measured in minutes, so it runs on
-the async task queue with the watchdog and refund path that already exist for
-agent tasks.
+vendors. Video is a long-running operation measured in minutes, so it should
+run on the async task queue with the watchdog and refund path that already
+exist for agent tasks. **Partially true today**: `generate_video` exists and
+ships, but it's synchronous against `gemini-omni-1.1-flash`, not yet bridged
+to the async SQS/watchdog layer this phase describes. That bridge is still
+the open work for a longer-running model.
 
 Image ships first because both phases need the identical downstream pipeline —
 model output to S3, asset row, Drive, inline render in chat, credit debit — and
@@ -97,12 +194,20 @@ Runway, and Seedream are all candidates alongside Google's models. Vendor
 specifics live behind adapters; nothing above the gateway knows which vendor
 served a request.
 
-**One endpoint, not one per modality.** `POST /v1/generations` on the
-inference gateway, with a discriminated response envelope carrying either a
-completed result or a pending operation id. Synchronous versus asynchronous is
-a property of the model, not of the modality — a fast video model or a slow
-high-resolution image model would break a URL-level split. Callers handle the
-envelope once and new models become a router entry plus an adapter.
+**Superseded by shipped code.** This decision said one endpoint
+(`POST /v1/generations`) with a discriminated envelope, on the reasoning that
+sync-vs-async is a model property, not a modality-level split. What actually
+shipped (`apps/inference-gateway/src/index.ts:466-486`) is three
+modality-specific routes — `/v1/images/generations`, `/v1/music/generations`,
+`/v1/video/generations` — each still synchronous today. Reversing that now
+means migrating three working, tested tool integrations
+(`generateImage.ts`, `generateSong.ts`, `generateVideo.ts`) for no behavior
+change yet, since nothing async exists to prove the original envelope
+argument. Decision: **keep the per-modality routes**, and revisit only when
+Phase 2's async video model actually lands and needs a pending-operation
+shape — if two of the three routes need a job-id envelope and one doesn't,
+that's the moment to decide whether to unify or give async routes their own
+envelope convention. Don't unify speculatively before that's known.
 
 **Model ids are namespaced `vendor/model`.** For example
 `google/gemini-3.1-flash-image`. Loose prefix matching collapses as soon as two
