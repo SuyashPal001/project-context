@@ -29,6 +29,7 @@ export type TranscribeResult =
   | { refused: true; reason: string }
 
 export class UnsupportedTranscribeModelError extends Error {}
+export class TranscribeBackendUnavailableError extends Error {}
 
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
@@ -75,6 +76,9 @@ export async function transcribeAudio(req: TranscribeRequest): Promise<Transcrib
   }
 
   const key = process.env.GEMINI_API_KEY ?? ''
+  if (!key) {
+    throw new TranscribeBackendUnavailableError('Gemini transcription unavailable: no GEMINI_API_KEY configured')
+  }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`
   const geminiRes = await fetch(url, {
     method: 'POST',

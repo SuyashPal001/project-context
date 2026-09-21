@@ -138,6 +138,39 @@
 
 ---
 
+### 11a. Animation-character skill — deployment prerequisites
+
+> This skill's 5 new ffmpeg tools (`mux_beat_audio`, `composite_end_card`, `burn_captions`,
+> `assemble_clips` audio path, `transcribe_audio`) and its Gemini-based transcription/VO
+> steps were built and tested against a local dev environment that does not match the GCP
+> VM's ffmpeg build. None of the below has been verified on any machine actually used
+> during implementation.
+
+- [ ] Run `ffmpeg -h filter=subtitles` on the target GCP VM — `burn_captions` needs the
+      `subtitles` filter compiled in with libass support. Every local dev run during this
+      implementation lacked libass; a captions call will fail with `SUBTITLES_FILTER_UNAVAILABLE`
+      on any ffmpeg build missing it. Install/rebuild ffmpeg with `--enable-libass` if it fails.
+- [ ] Confirm a DejaVu Sans (or equivalent) font is installed on the VM — `burn_captions`'
+      `force_style` references it by name; a missing font silently falls back to a default face
+      rather than erroring.
+- [ ] Confirm `GEMINI_API_KEY` is set in the **actual deployed** `apps/inference-gateway/.env`
+      on the GCP VM — this branch only touched `apps/inference-gateway/.env.example`. Without
+      it, `transcribe_audio` and any Gemini-Omni video calls fail (see `TranscribeBackendUnavailableError`
+      / `VideoBackendUnavailableError` in `apps/inference-gateway/src/`).
+- [ ] Run `pnpm db:seed` once (from `packages/foundation/database`) for the 5 new credit-rate
+      rows this branch added (`mux-beat-audio`, `composite-end-card`, `burn-captions`,
+      `transcribe-audio`/`gemini-transcribe`, and the music-bed mix rate). **This is not just
+      an "unbilled" risk** — `shouldRequireApproval` returns `false` when no rate is found for a
+      tool, which means all 5 new tools will run completely FREE **and with no approval card
+      shown to the user at all** until the rates are seeded, not merely free-and-confirmed.
+- [ ] Restart `agent-orchestrator` and `inference-gateway` PM2 processes by hand after deploy —
+      `./deploy.sh` only rebuilds Next.js and restarts `web-frontend`/`api`. Both of these
+      services ship code from this branch and won't pick it up without a manual
+      `pm2 restart agent-orchestrator` / `pm2 restart inference-gateway` (or the `mcp-server-pc`-
+      style `pm2 delete && pm2 start` if their env changed too).
+
+---
+
 ### 12. Smoke Test (pre-launch)
 
 - [ ] `https://projectcontext.co` → loads login page

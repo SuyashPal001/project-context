@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { transcribeAudio, UnsupportedTranscribeModelError } from './transcribe.js'
+import { transcribeAudio, UnsupportedTranscribeModelError, TranscribeBackendUnavailableError } from './transcribe.js'
 
 describe('transcribeAudio', () => {
   const origKey = process.env.GEMINI_API_KEY
@@ -8,6 +8,17 @@ describe('transcribeAudio', () => {
     if (origKey === undefined) delete process.env.GEMINI_API_KEY
     else process.env.GEMINI_API_KEY = origKey
     vi.restoreAllMocks()
+  })
+
+  it('throws a named TranscribeBackendUnavailableError instead of calling Gemini with an empty key when GEMINI_API_KEY is unset', async () => {
+    delete process.env.GEMINI_API_KEY
+    const geminiFetch = vi.fn()
+    global.fetch = geminiFetch as unknown as typeof fetch
+
+    await expect(
+      transcribeAudio({ audioBase64: Buffer.from('fake-audio-bytes').toString('base64'), mimeType: 'audio/aac' }),
+    ).rejects.toBeInstanceOf(TranscribeBackendUnavailableError)
+    expect(geminiFetch).not.toHaveBeenCalled()
   })
 
   it('sends the base64 audio to Gemini generateContent with a structured JSON responseSchema', async () => {
