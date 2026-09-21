@@ -41,7 +41,7 @@ export const analyzeImageTool = createTool({
         signal: controller.signal,
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
         body: JSON.stringify({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           temperature: 0.1,
           max_tokens: 256,
           messages: [{
@@ -67,7 +67,7 @@ export const analyzeImageTool = createTool({
           tenantId,
           agentId: 'analyze-image',
           workflowId: 'media-understanding',
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.6-flash',
           inputTokens: result.usage.prompt_tokens ?? 0,
           outputTokens: result.usage.completion_tokens ?? 0,
         })
