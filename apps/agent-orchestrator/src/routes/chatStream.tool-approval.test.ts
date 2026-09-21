@@ -302,6 +302,41 @@ describe('runChatStream — delegate-produced attachments', () => {
 
     expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({ attachments: undefined }))
   })
+
+  it('unwraps a fileId from a delegated generate_narration result into the done event\'s attachments', async () => {
+    // These three tools (generate_narration/lipsync/assemble_clips) only ever
+    // run via Director-as-delegate in production — never standalone Director —
+    // so this exercises the same subAgentToolResults unwrap path as the
+    // generate_video case above, for one of the new talking-head tools.
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-director-3',
+            toolName: 'agent-director',
+            result: {
+              text: 'Here is the narration track.',
+              subAgentToolResults: [
+                { toolName: 'generate_narration', result: { fileId: 'narr-1', name: 'narration.wav', fileType: 'audio/wav', size: 481200, durationSeconds: 22, creditsUsedMicro: '30000' } },
+              ],
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-director-3',
+    ))
+
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({
+      attachments: [
+        expect.objectContaining({ fileId: 'narr-1', name: 'narration.wav', type: 'audio/wav', size: 481200 }),
+      ],
+    }))
+  })
 })
 
 describe('runChatStream — Olmo-only delegation options', () => {

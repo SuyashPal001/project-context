@@ -11,6 +11,9 @@ import { retrieveTemplate } from '../tools/retrieveTemplate.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
 import { analyzeImageTool } from '../tools/analyzeImage.js'
+import { generateNarration } from '../tools/generateNarration.js'
+import { lipsync } from '../tools/lipsync.js'
+import { assembleClips } from '../tools/assembleClips.js'
 
 const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
@@ -95,7 +98,21 @@ These apply to every generate_video prompt, in both animate_frame and composite_
 - Stagger anything that would otherwise enter together by about 0.2 seconds. Two elements arriving on the same frame read as one flat sheet; offset, they read as separate objects with weight.
 - Write all of this as plain prose, with no quotation marks around any phrase — generate_video's dialogue gate refuses any quoted span that is not approved spoken dialogue, and these are never spoken lines.`
 
-  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION
+  const TALKING_HEAD_SECTION = `\n\n## Talking-head generation — one continuous presenter, narration-first pipeline
+When Olmo delegates a talking-head ad build (single continuous presenter speaking to camera, script-driven, not a multi-beat storyboard):
+- Cast sheet: same as UGC character generation above — one generate_image call with referenceFileIds set to the product photo's fileId if one exists, otherwise no reference. Do not pass identityAnchor on this call.
+- Narration: call generate_narration ONCE with the full script and the user's chosen voiceId (and language, if Olmo's brief specifies one other than English) — never split the script into per-clip segments. As soon as it succeeds, tell Olmo the returned fileId and durationSeconds so Olmo can lock both into working memory's Locked Reference Artifact IDs alongside the cast sheet. Every later step in this flow must use that locked fileId and durationSeconds, restated to you by Olmo in each delegation message — never call generate_narration again for the same ad unless the user has explicitly changed the script.
+- Clip count: compute clipCount = Math.ceil(durationSeconds / 10), capped at 3. If clipCount would exceed 3 (more than 30 seconds of narration), tell Olmo the script needs to be shorter rather than proceeding.
+- Clip durations: split the narration's total duration across clipCount clips as whole-second durations that sum to Math.ceil(durationSeconds), front-loaded toward 10 seconds each, but NEVER let any clip's duration drop below 3 seconds — generate_video's own floor. If a clip would otherwise be too short, rebalance the split evenly across clips instead (for example, a 21-second narration splits as 7+7+7, not 10+10+1). Each individual clip's durationSeconds must stay within generate_video's own 3-10 second range.
+- Per-clip stills: generate_image per clip, referenceFileIds set to the cast sheet's fileId, identityAnchor set with the terseTag/styleLock Olmo gives you. Every still must show the presenter's face clearly visible, front-facing or near-front-facing, and alone in frame — never turned away, never out of frame, never replaced by a product-only shot. If a product photo exists, the product may appear alongside the presenter, never in place of them. If the product is visible in a still, apply the UGC character section's wordmark-handling pattern unchanged: spell the brand name letter-by-letter in the prompt, call analyze_image to verify it rendered correctly, and tell Olmo plainly on a mismatch rather than silently retrying.
+- Per-clip silent video: generate_video, mode "animate_frame", off each approved still, at that clip's computed duration. Do not pass approvedDialogue and do not write any quoted dialogue in the prompt — these renders are silent; the narration audio is added later via lip-sync, not native speech. Apply the Motion craft section's rules with one exception here: only the LAST clip should pin to a final held state. Every other clip should end on sustained motion, not a hold, so the cut between clips reads as a continuation under the continuous narration track rather than a series of separate paused shots.
+- Issue generation calls strictly one at a time: call generate_image or generate_video for one clip and wait for that call's result before issuing the next generate_image/generate_video call. Never issue two generation calls in the same step.
+- Assembly: after all clips in this ad are generated and approved, call assemble_clips ONCE with clipFileIds in order, targetDurationSeconds set to the narration duration and fileId Olmo gave you in this delegation message, and aspectRatio set to the same aspectRatio used for the per-clip video renders.
+- Lip-sync: call lipsync ONCE — videoFileId set to the assembled clip's fileId, audioFileId set to the narration fileId Olmo gave you in this delegation message. Do not call lipsync per-clip; it runs exactly once per ad, after assembly, never before. Default to the fal-ai/latentsync model (cheaper, fully managed) unless the user has explicitly asked for higher fidelity, in which case use sync-2.0.
+- QA: call analyze_audio (mode "deep") on the lip-synced result and compare its transcript to the original script, same as template cloning and UGC character generation — flag any meaningful mismatch rather than presenting it as matching.
+- Tell Olmo plainly that this ad has a deliberate visible cut where clips join (per the motion-craft exception above), since the narration itself stays continuous across it — this is expected, not a defect to explain away.`
+
+  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + TALKING_HEAD_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
@@ -110,7 +127,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -129,6 +146,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips },
   errorProcessors: [streamErrorRetry()],
 })

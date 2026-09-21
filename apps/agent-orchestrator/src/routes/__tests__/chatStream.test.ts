@@ -221,6 +221,55 @@ describe('attachmentFromCanvasToolResult — generate-video', () => {
   })
 })
 
+describe('attachmentFromCanvasToolResult — generate-narration', () => {
+  it('returns an attachment payload for a generate-narration result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('generate-narration', { fileId: 'f1', name: 'narration.wav', fileType: 'audio/wav', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'narration.wav', type: 'audio/wav', size: 100 })
+  })
+
+  it('returns null for a generate-narration result with no fileId (refusal)', () => {
+    const result = attachmentFromCanvasToolResult('generate-narration', { refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(result).toBeNull()
+  })
+
+  // Regression guard: before generateNarration.ts's output fix, the tool
+  // returned only {fileId, durationSeconds, ...} — no name/fileType/size —
+  // so this function fell through to the hardcoded markdown defaults below
+  // and every narration rendered in chat as a broken 0-byte "document.md"
+  // card instead of audio. Confirms today's real tool output (name/fileType/
+  // size present) does NOT hit those defaults, and documents what the
+  // defaults look like when they're absent so a future regression is visible
+  // as a diff against 'document.md'/'text/markdown'/0, not a silent pass.
+  it('falls back to markdown defaults if name/fileType/size are absent, same shape the pre-fix tool used to return', () => {
+    const result = attachmentFromCanvasToolResult('generate-narration', { fileId: 'f1', durationSeconds: 12.5 })
+    expect(result).toEqual({ fileId: 'f1', name: 'document.md', type: 'text/markdown', size: 0 })
+  })
+})
+
+describe('attachmentFromCanvasToolResult — lipsync', () => {
+  it('returns an attachment payload for a lipsync result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('lipsync', { fileId: 'f1', name: 'lipsynced.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'lipsynced.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns null for a lipsync result with no fileId (refusal)', () => {
+    const result = attachmentFromCanvasToolResult('lipsync', { refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(result).toBeNull()
+  })
+})
+
+describe('attachmentFromCanvasToolResult — assemble-clips', () => {
+  it('returns an attachment payload for an assemble-clips result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('assemble-clips', { fileId: 'f1', name: 'assembled.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'assembled.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns null for an assemble-clips result with no fileId (refusal)', () => {
+    const result = attachmentFromCanvasToolResult('assemble-clips', { refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(result).toBeNull()
+  })
+})
+
 describe('redactUnverifiedFileIds', () => {
   it('leaves a fileId untouched when it matches one of this turn\'s real attachments', () => {
     const text = 'Here is your video (File ID: cab95b20-548e-485f-ae0d-952f10c878d1).'
