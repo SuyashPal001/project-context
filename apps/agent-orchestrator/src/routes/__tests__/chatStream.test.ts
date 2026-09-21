@@ -270,6 +270,33 @@ describe('attachmentFromCanvasToolResult — assemble-clips', () => {
   })
 })
 
+describe('attachmentFromCanvasToolResult — animation-character ffmpeg tools', () => {
+  it('returns an attachment payload for a mux-beat-audio result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('mux-beat-audio', { fileId: 'f1', name: 'beat.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'beat.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns an attachment payload for a composite-end-card result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('composite-end-card', { fileId: 'f1', name: 'endcard.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'endcard.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns an attachment payload for a burn-captions result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('burn-captions', { fileId: 'f1', name: 'captioned.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'captioned.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns an attachment payload for a mix-music-bed result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('mix-music-bed', { fileId: 'f1', name: 'final.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'final.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns null for a transcribe-audio result (no fileId, text+words only)', () => {
+    const result = attachmentFromCanvasToolResult('transcribe-audio', { text: 'hello world', words: [] })
+    expect(result).toBeNull()
+  })
+})
+
 describe('redactUnverifiedFileIds', () => {
   it('leaves a fileId untouched when it matches one of this turn\'s real attachments', () => {
     const text = 'Here is your video (File ID: cab95b20-548e-485f-ae0d-952f10c878d1).'
