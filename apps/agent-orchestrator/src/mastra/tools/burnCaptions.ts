@@ -33,6 +33,7 @@ export interface CaptionPhrase {
 }
 
 export function groupWordsIntoPhrases(words: TranscribedWord[], groupSize: number): CaptionPhrase[] {
+  if (groupSize <= 0) throw new Error(`groupWordsIntoPhrases: groupSize must be positive, got ${groupSize}`)
   const phrases: CaptionPhrase[] = []
   for (let i = 0; i < words.length; i += groupSize) {
     const chunk = words.slice(i, i + groupSize)
@@ -48,7 +49,9 @@ export function groupWordsIntoPhrases(words: TranscribedWord[], groupSize: numbe
 // SRT format requires HH:MM:SS,mmm — this is the standard SRT cue
 // timestamp, not a caption-styling concern.
 export function formatSrtTimestamp(seconds: number): string {
-  const totalMs = Math.round(seconds * 1000)
+  // Clamp negative input — a malformed transcript (e.g. a bad ASR offset)
+  // must not produce a negative HH:MM:SS,mmm, which is unparseable as SRT.
+  const totalMs = Math.round(Math.max(0, seconds) * 1000)
   const h = Math.floor(totalMs / 3_600_000)
   const m = Math.floor((totalMs % 3_600_000) / 60_000)
   const s = Math.floor((totalMs % 60_000) / 1_000)
@@ -174,6 +177,10 @@ export const burnCaptions = createTool({
       // the genre look novoads' caption presets describe. force_style
       // overrides the SRT's own (absent) styling; MarginV keeps the band
       // clear of most safe-area UI overlays at any resolution.
+      // FontName assumes DejaVu Sans is installed on the deployment host;
+      // if it isn't, libass/fontconfig falls back silently to whatever
+      // default font fontconfig picks — no error, just a different look.
+      // Revisit if production captions look wrong.
       const forceStyle = "FontName=DejaVu Sans,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Alignment=2,MarginV=80"
       await execFile('ffmpeg', [
         '-y', '-i', videoPath,
@@ -186,6 +193,28 @@ export const burnCaptions = createTool({
       console.error(`[session:${sessionId}] burnCaptions: ffmpeg failed:`, (err as Error).message)
       if (charged) await refundBurnCaptionsCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
       rmSync(workDir, { recursive: true, force: true })
+      // Distinct from the generic bucket so a caller/operator debugging a
+      // production deployment can tell "this host's ffmpeg has no libass"
+      // apart from any other ffmpeg failure — same pattern as
+      // assembleClips.ts's MISSING_AUDIO_STREAM. Verified live against a
+      // real libass-less ffmpeg (8.1.2, this machine's default Homebrew
+      // build): with the filter given as `subtitles=<path>:force_style=...`
+      // (this tool's exact invocation — args always present), the actual
+      // stderr is "Error parsing filterchain 'subtitles=...'" / "No option
+      // name near '<path>'" — NOT "Unknown filter 'subtitles'.", which is
+      // only what `ffmpeg -h filter=subtitles` prints, or what a bare
+      // `-vf subtitles` (no `=args`, never this tool's shape) fails with
+      // ("No such filter: 'subtitles'"). Matching on the args-present form
+      // plus the bare-filter form covers both real shapes across ffmpeg
+      // versions without matching unrelated filtergraph errors.
+      const stderr = (err as { stderr?: string }).stderr ?? ''
+      if (
+        stderr.includes("filterchain 'subtitles=") ||
+        stderr.includes("No such filter: 'subtitles'") ||
+        stderr.includes("Unknown filter 'subtitles'")
+      ) {
+        return { refused: true, refusalReason: 'SUBTITLES_FILTER_UNAVAILABLE', jobId }
+      }
       return { refused: true, refusalReason: 'CAPTION_FAILED', jobId }
     }
 
