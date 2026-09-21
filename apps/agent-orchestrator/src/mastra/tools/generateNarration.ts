@@ -32,7 +32,7 @@ export const inputSchema = z.object({
 
 export const generateNarration = createTool({
   id: 'generate-narration',
-  description: 'Generates a full narration/voiceover audio clip from a script using Cartesia. Use for the talking-head skill\'s single continuous narration track — not for per-beat dialogue, which uses generate_video\'s native speech instead.',
+  description: 'Generates a narration/voiceover audio clip from a script using Cartesia — an audio track produced separately from the video, not native in-render speech. Use for talking-head\'s single continuous narration track (one call, full script), and for animation-character\'s per-beat VO lines (one call per beat, each beat\'s single line, muxed or lip-synced onto that beat\'s silent clip afterward) — not for dialogue spoken natively by generate_video\'s own render.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
