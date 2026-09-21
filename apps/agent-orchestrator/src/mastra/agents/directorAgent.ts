@@ -14,6 +14,12 @@ import { analyzeImageTool } from '../tools/analyzeImage.js'
 import { generateNarration } from '../tools/generateNarration.js'
 import { lipsync } from '../tools/lipsync.js'
 import { assembleClips } from '../tools/assembleClips.js'
+import { muxBeatAudio } from '../tools/muxBeatAudio.js'
+import { transcribeAudio } from '../tools/transcribeAudio.js'
+import { compositeEndCard } from '../tools/compositeEndCard.js'
+import { burnCaptions } from '../tools/burnCaptions.js'
+import { mixMusicBed } from '../tools/mixMusicBed.js'
+import { generateSong } from '../tools/generateSong.js'
 
 const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
@@ -112,7 +118,39 @@ When Olmo delegates a talking-head ad build (single continuous presenter speakin
 - QA: call analyze_audio (mode "deep") on the lip-synced result and compare its transcript to the original script, same as template cloning and UGC character generation — flag any meaningful mismatch rather than presenting it as matching.
 - Tell Olmo plainly that this ad has a deliberate visible cut where clips join (per the motion-craft exception above), since the narration itself stays continuous across it — this is expected, not a defect to explain away.`
 
-  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + TALKING_HEAD_SECTION
+  const ANIMATION_CHARACTER_SECTION = `\n\n## Animation-character generation — 4-beat stylized story arc
+When Olmo delegates an animation-character ad build (stylized/animated story-driven ad, fixed 4 beats, one of three styles):
+
+Style-lock templates — Olmo will tell you which of these three styles was chosen. Paste the matching block verbatim, character for character, into every still and clip prompt for this ad, alongside the terseTag Olmo gives you:
+
+STYLE "3d_pixar":
+Stylized 3D animated feature film look. Soft volumetric golden-hour lighting from a large window, warm cosy palette of cream, butter yellow, dusty pink and soft sage. Subsurface scattering on skin, painterly background, shallow depth of field with creamy bokeh. Characters have large expressive eyes with multiple specular catchlights, stylized but believable proportions, smooth simplified hands, soft hair strands with subsurface glow. Every character reads mid-emotion, caught a moment before a smile or a sigh, never blank-staring. Vertical 9:16 composition.
+NEGATIVE: no live-action footage, no photorealistic humans, no uncanny faces, no dead eyes, no anime style, no 2D cel-shaded look, no flat illustration, no named or copyrighted animated film characters, no harsh fluorescent lighting, no extra fingers, no melted features, no morphing between frames, no warped product labels, no on-screen text, no subtitles, no captions.
+
+STYLE "2d_flat":
+Flat 2D vector illustration look. Bold simplified shapes, solid flat color fills with no gradients, clean geometric character design, limited 5-6 color palette per scene, thick uniform outline weight, minimal shading via flat color blocks only. Characters have simplified geometric proportions, expressive but minimal facial features (dot eyes, simple curved mouths), confident graphic-design-poster energy. Vertical 9:16 composition.
+NEGATIVE: no photorealistic rendering, no 3D shading or depth, no gradients, no photorealistic humans, no anime style, no named or copyrighted animated film characters, no textured/painterly background, no on-screen text, no subtitles, no captions.
+
+STYLE "claymation":
+Stop-motion claymation look. Visible clay/plasticine texture on every surface with soft matte finish, subtle fingerprint and tool-mark imperfections in the material, warm practical studio lighting with visible soft shadows, handmade set-built environments with visible seams and physical props. Characters have slightly asymmetric hand-sculpted proportions, small subtle per-frame jitter/wobble implied in the texture description (not literal motion — the LOOK of stop-motion). Vertical 9:16 composition.
+NEGATIVE: no smooth CGI rendering, no photorealistic humans, no 2D flat illustration, no anime style, no named or copyrighted animated film characters, no glossy/plastic sheen, no on-screen text, no subtitles, no captions.
+
+- Gate 0 (before any generation): only proceed if the product's pain point is emotional/relational (not a spec/feature pitch), visible on a face or a mechanism, involves a relationship or another character (not just the buyer alone), and is impulse-priced. If the product fails this filter, tell Olmo plainly rather than building a charming ad for a product that needs a demo.
+- Cast sheet: one generate_image call, referenceFileIds set to the product photo's fileId if one exists, identityAnchor set with the terseTag/styleLock Olmo gives you (styleLock is the matching STYLE block above, verbatim). The prompt must show the lead character in 2-3 emotional states, the product in 2-3 views, and a scale line-up — this single image is what keeps all 4 beats looking like the same character.
+- 4 beat stills: generate_image per beat, referenceFileIds set to [cast sheet fileId, previous beat's still fileId] (the cast sheet plus the PREVIOUS still, not just the cast sheet alone — chaining only off the cast sheet is how the character visibly changes between beats), identityAnchor set with the same terseTag/styleLock. Beat 1 is the hook (the character states its want/problem, framed for a close-up since it will be lip-synced). Beat 2 is the low point (the shortest, most private moment). Beat 3 is the turn (the product arrives and is used — Doctrine C only: the product is recreated in-style exactly as the reference shows it, same shape/colour/proportions/finish, never redesigned). Beat 4 is the payoff (warmth, then the CTA framing that will receive the end card).
+- BOARD GATE: once the cast sheet and all 4 beat stills exist, show all 5 images together and wait for one approval covering the whole set — never approve stills one at a time, the operator is judging beat-to-beat continuity. Only board-approved stills proceed to video.
+- 4 silent beat clips: generate_video, mode "animate_frame", off each approved still, one call per beat. Do not pass approvedDialogue and do not write quoted dialogue into any of these prompts — every beat's speech is added afterward (lip-sync for beat 1, VO mux for beats 2-4), never native to the render.
+- Beat 1 (hook) audio: generate_narration with the hook's one short line and the user's chosen voiceId, then lipsync with videoFileId set to beat 1's clip and audioFileId set to that narration's fileId. This is the ONE beat in this ad that gets lip-sync — do not call lipsync again for any other beat.
+- Beats 2-4 audio: generate_narration with each beat's one VO line (same voiceId as beat 1, for one continuous voice across the ad), then mux_beat_audio with videoFileId set to that beat's silent clip and audioFileId set to that VO line's fileId.
+- End card: after beat 4's audio is muxed, call composite_end_card with videoFileId set to beat 4's muxed clip, productPhotoFileId set to the real product photo's fileId (never an AI-generated one), and the ad's aspectRatio. This must run BEFORE assembly.
+- Assembly: call assemble_clips ONCE with clipFileIds set to [beat 1's lip-synced clip, beat 2's muxed clip, beat 3's muxed clip, beat 4's carded clip] in that exact order, preserveAudio set to true, and aspectRatio matching the per-clip renders. Do not set targetDurationSeconds or perClipTrimSeconds here — every clip is already individually trimmed by lipsync/mux_beat_audio/composite_end_card.
+- Transcription: call transcribe_audio with fileId set to the assembled master's fileId (it extracts audio itself, no mimeType needed).
+- Captions: call burn_captions with videoFileId set to the assembled master's fileId and words set to exactly what transcribe_audio returned.
+- Brand-name check: compare transcribe_audio's text against the script's brand/product name and any spoken price. If either was garbled, tell Olmo plainly rather than presenting a broken caption as finished — the fix is to re-run transcribe_audio/burn_captions, or (Olmo's call) keep the brand name off narration entirely and rely on the end card, per the spec's preferred fix.
+- Music: call generate_song for the bed, then mix_music_bed with videoFileId set to the CAPTIONED master (not the pre-caption one) and musicFileId set to the bed. This is the LAST call in the pipeline — never generate or mix the bed earlier.
+- If mix_music_bed returns refusalReason "MUSIC_BED_INAUDIBLE", tell Olmo the bed could not be mixed audibly and ask whether to retry generate_song for a different bed or deliver without one.`
+
+  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
@@ -127,7 +165,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -146,6 +184,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong },
   errorProcessors: [streamErrorRetry()],
 })
