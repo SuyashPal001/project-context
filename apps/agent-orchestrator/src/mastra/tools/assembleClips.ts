@@ -15,8 +15,8 @@ const execFile = promisify(execFileCb)
 
 const ASSEMBLY_SUBJECT = 'ffmpeg-local'
 // Matches media.ts's FFMPEG_TIMEOUT_MS pattern, sized generously for a
-// 3-clip concat rather than the single-clip frame-extraction case that file
-// times out at 60s.
+// 4-clip concat (plus an AAC encode step when preserveAudio is set) rather
+// than the single-clip frame-extraction case that file times out at 60s.
 const FFMPEG_TIMEOUT_MS = 60_000
 // Matches analyzeVideo.ts's MAX_VIDEO_BYTES cap — same class of input.
 const MAX_CLIP_BYTES = 200 * 1024 * 1024
@@ -52,7 +52,7 @@ export const inputSchema = z.object({
 
 export const assembleClips = createTool({
   id: 'assemble-clips',
-  description: 'Concatenates an ordered list of silent video clips into one video, normalized to a constant frame rate and fixed aspect ratio. Shared infra for talking-head and short-drama-stitch — not talking-head-specific.',
+  description: 'Concatenates an ordered list of video clips into one video, normalized to a constant frame rate and fixed aspect ratio. Silent by default (audio stripped); pass preserveAudio: true to keep and normalize each clip\'s own audio track instead. Shared infra for talking-head, short-drama-stitch, and animation-character — not talking-head-specific.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
@@ -191,6 +191,17 @@ export const assembleClips = createTool({
       console.error(`[session:${sessionId}] assembleClips: ffmpeg failed:`, (err as Error).message)
       if (charged) await refundAssemblyCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
       rmSync(workDir, { recursive: true, force: true })
+      // preserveAudio callers must hand in clips that already carry audio —
+      // if one doesn't, ffmpeg's filtergraph binding fails with this exact
+      // message ("Stream specifier ':a' in filtergraph description ...
+      // matches no streams", confirmed against a live run, not guessed).
+      // Distinct from the generic bucket so a caller building on this tool
+      // can tell "you gave me a silent clip" apart from any other ffmpeg
+      // failure.
+      const stderr = (err as { stderr?: string }).stderr ?? ''
+      if (preserveAudio && stderr.includes('matches no streams')) {
+        return { refused: true, refusalReason: 'MISSING_AUDIO_STREAM', jobId }
+      }
       return { refused: true, refusalReason: 'ASSEMBLY_FAILED', jobId }
     }
 

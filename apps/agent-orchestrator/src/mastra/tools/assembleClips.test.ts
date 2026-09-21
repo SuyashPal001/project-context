@@ -173,6 +173,22 @@ describe('assembleClips tool', () => {
     expect(args).toContain('-an')
   })
 
+  it('returns a distinct MISSING_AUDIO_STREAM refusal when preserveAudio is true and a clip has no audio track', async () => {
+    // Real ffmpeg (8.1.2, confirmed live) fails filtergraph binding with
+    // "Stream specifier ':a' in filtergraph description ... matches no
+    // streams" when an [i:a] label has no audio stream to bind to.
+    execFile.mockImplementationOnce((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error & { stderr?: string }) => void) => {
+      const err = new Error('Command failed') as Error & { stderr?: string }
+      err.stderr = "[fc#0] Stream specifier ':a' in filtergraph description [0:v]...[0:a]... matches no streams."
+      cb(err)
+    })
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
+
+    const result = await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], preserveAudio: true, aspectRatio: '9:16' } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: 'MISSING_AUDIO_STREAM' })
+  })
+
   it('refunds the charge when ffmpeg fails after a successful charge', async () => {
     execFile.mockImplementationOnce((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
       cb(new Error('ffmpeg exploded'))
