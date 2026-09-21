@@ -24,6 +24,18 @@ describe('directorAgent tool registration', () => {
       expect.arrayContaining(['generate_narration', 'lipsync', 'assemble_clips']),
     )
   })
+
+  it('has mux_beat_audio, transcribe_audio, composite_end_card, burn_captions, mix_music_bed, and generate_song registered, needed for animation-character', async () => {
+    const directorTools = await directorAgent.listTools()
+    const delegateTools = await directorAgentDelegate.listTools()
+    // generate_song is included here even though it's not a new tool file —
+    // it was never registered on directorAgent before this skill (only on
+    // producerAgent), and animation-character's own flow has Director call
+    // it directly for the music bed.
+    const expected = ['mux_beat_audio', 'transcribe_audio', 'composite_end_card', 'burn_captions', 'mix_music_bed', 'generate_song']
+    expect(Object.keys(directorTools)).toEqual(expect.arrayContaining(expected))
+    expect(Object.keys(delegateTools)).toEqual(expect.arrayContaining(expected))
+  })
 })
 
 describe('directorAgent instructions', () => {
@@ -64,5 +76,38 @@ describe('directorAgent instructions', () => {
 
     // Finding 2: narration language passthrough.
     expect(talkingHeadSection).toContain('language')
+  })
+})
+
+describe('directorAgent animation-character instructions', () => {
+  it('appends the animation-character section with all three style-lock templates', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toContain('## Animation-character generation')
+    expect(text).toContain('STYLE "3d_pixar"')
+    expect(text).toContain('STYLE "2d_flat"')
+    expect(text).toContain('STYLE "claymation"')
+  })
+
+  it('never calls lipsync more than once and confines it to the hook beat', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const sectionStart = text.indexOf('## Animation-character generation')
+    const section = text.slice(sectionStart)
+    expect(section).toContain('This is the ONE beat in this ad that gets lip-sync')
+  })
+
+  it('places mix_music_bed after burn_captions in the section text (music bed is last, never before captions)', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const sectionStart = text.indexOf('## Animation-character generation')
+    const section = text.slice(sectionStart)
+    const captionsIdx = section.indexOf('Captions: call burn_captions')
+    const musicIdx = section.indexOf('Music: call generate_song')
+    expect(captionsIdx).toBeGreaterThanOrEqual(0)
+    expect(musicIdx).toBeGreaterThan(captionsIdx)
   })
 })
