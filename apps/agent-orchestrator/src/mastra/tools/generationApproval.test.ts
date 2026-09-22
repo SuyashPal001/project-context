@@ -80,6 +80,7 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'composite-end-card', 'composite_end_card',
         'burn-captions', 'burn_captions',
         'mix-music-bed', 'mix_music_bed',
+        'trim-clip', 'trim_clip',
         'save_skill',
       ].sort(),
     )
@@ -175,5 +176,18 @@ describe('GENERATION_APPROVAL_METADATA — animation-character tools', () => {
       expect(GENERATION_APPROVAL_METADATA[underscored]).toBeDefined()
       expect(GENERATION_APPROVAL_METADATA[hyphenated]).toEqual(GENERATION_APPROVAL_METADATA[underscored])
     }
+  })
+})
+
+describe('GENERATION_APPROVAL_METADATA — short-drama-stitch tools', () => {
+  it('registers trim_clip under both hyphenated and underscored keys', () => {
+    expect(GENERATION_APPROVAL_METADATA['trim-clip']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['trim_clip']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['trim-clip'].resourceType).toBe('clip_assembly')
+    expect(GENERATION_APPROVAL_METADATA['trim-clip'].subject).toBe('ffmpeg-trim-clip')
+  })
+
+  it('maps the underscored delegate key to the same metadata object as the hyphenated tool id', () => {
+    expect(GENERATION_APPROVAL_METADATA['trim_clip']).toBe(GENERATION_APPROVAL_METADATA['trim-clip'])
   })
 })
