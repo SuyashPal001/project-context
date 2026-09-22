@@ -16,5 +16,8 @@
   },
   "peerDependencies": {
     "@serverless-saas/database": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.5"
   }
 }

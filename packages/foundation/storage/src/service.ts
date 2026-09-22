@@ -120,6 +120,22 @@ export class StorageService {
       ));
   }
 
+  // Platform-owned assets (creative_library_assets rows) are never
+  // tenant-scoped, so — unlike getDownloadUrl/resolveProvider — this
+  // deliberately skips the tenant-specific storageProviders lookup
+  // entirely and always signs against the platform default bucket.
+  // Querying storageProviders for a tenant here would be nonsensical
+  // (there is no tenant to look up an override for) and just adds a
+  // needless DB round-trip.
+  async getLibraryAssetDownloadUrl(storageKey: string): Promise<string> {
+    const bucket = await getBucketFromSSM();
+    const provider = new S3StorageProvider({
+      region: process.env.AWS_REGION || 'ap-south-1',
+      bucket,
+    });
+    return provider.getDownloadUrl(storageKey);
+  }
+
   async getDownloadUrl(tenantId: string, fileId: string): Promise<string> {
     const [file] = await db
       .select()
