@@ -123,7 +123,9 @@ function AvatarsPanel({ selected, onSelect }: { selected: AvatarSelection | null
     async function selectPreset(avatar: CreativeAvatar) {
         setUploading(avatar.id);
         try {
-            const response = await fetch(avatar.image);
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+            const response = await fetch(avatar.image, { cache: 'no-store', signal: controller.signal }).finally(() => clearTimeout(timeout));
             if (!response.ok) throw new Error('Could not load presenter image.');
             const file = new File([await response.blob()], `${avatar.id}.jpg`, { type: 'image/jpeg' });
             const attachment = await storeCreativeImage(file, AVATAR_PREFIX);
