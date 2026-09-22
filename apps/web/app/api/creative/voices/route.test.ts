@@ -59,3 +59,36 @@ it('enables synthesis when the requested language is supported by the catalogue 
   const response = await GET(new NextRequest('http://localhost/api/creative/voices?language=hi&q=Cathy'));
   expect((await response.json()).voices).toEqual([{ id: 'cathy-id', name: 'Cathy', tagline: 'Coworker', description: undefined, language: 'en', gender: undefined, country: undefined, supportedLocales: ['en-US', 'hi-IN'], hasPreview: true }]);
 });
+
+it('returns all catalogue rows regardless of requested language, disabling preview for unsupported ones', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+  findManyMock.mockResolvedValue([
+    { providerId: 'english-only', name: 'Lauren', tagline: 'Lively Narrator', description: undefined, language: 'en', gender: undefined, country: undefined, accents: [{ accent: 'american', locale: 'en-US', is_native: true }], previewFileUrl: null, localPreviewAsset: null },
+    { providerId: 'hindi-capable', name: 'Cathy', tagline: 'Coworker', description: undefined, language: 'en', gender: undefined, country: undefined, accents: [{ accent: 'american', locale: 'en-US', is_native: true }, { accent: 'indian', locale: 'hi-IN', is_native: false }], previewFileUrl: null, localPreviewAsset: null },
+  ]);
+  const { GET } = await import('./route');
+  const response = await GET(new NextRequest('http://localhost/api/creative/voices?language=hi'));
+  const body = await response.json();
+  expect(response.status).toBe(200);
+  expect(body.voices).toHaveLength(2);
+  expect(body.voices.find((v: { id: string }) => v.id === 'english-only')).toEqual(expect.objectContaining({ hasPreview: false }));
+  expect(body.voices.find((v: { id: string }) => v.id === 'hindi-capable')).toEqual(expect.objectContaining({ hasPreview: true }));
+});
+
+it('returns 503 when the catalogue table is empty', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+  findManyMock.mockResolvedValue([]);
+  const { GET } = await import('./route');
+  const response = await GET(new NextRequest('http://localhost/api/creative/voices'));
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: 'Voice library is not configured yet.' });
+});
+
+it('returns 502 when the catalogue query fails', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+  findManyMock.mockRejectedValue(new Error('boom'));
+  const { GET } = await import('./route');
+  const response = await GET(new NextRequest('http://localhost/api/creative/voices'));
+  expect(response.status).toBe(502);
+  expect(await response.json()).toEqual({ error: 'Could not load voices right now.' });
+});

@@ -8,6 +8,13 @@ vi.mock('@serverless-saas/database', () => ({
   db: { query: { voiceCatalogue: { findFirst: (...a: unknown[]) => findFirstMock(...a) } } },
   voiceCatalogue: { providerId: 'providerId' },
 }));
+// Real `eq` doesn't understand our fake column object, but the route only ever needs the
+// looked-up id back out of `where` — capture it verbatim so tests can assert the lookup is
+// actually id-scoped instead of the mock echoing back whatever it was told to return.
+vi.mock('drizzle-orm', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('drizzle-orm')>();
+  return { ...actual, eq: (_column: unknown, value: unknown) => ({ __mockWhere: true, value }) };
+});
 
 beforeEach(() => {
     process.env.CARTESIA_API_KEY = 'test-secret';
@@ -85,4 +92,24 @@ it('returns 404 for an id with no catalogue row', async () => {
     const { GET } = await import('./route');
     const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-1'));
     expect(response.status).toBe(404);
+});
+
+it('looks up the voice by the requested id', async () => {
+    const rows = [
+        { providerId: 'voice-1', name: 'Cathy', tagline: 'Coworker', previewFileUrl: null, localPreviewAsset: '/creative/voices/cathy-coworker.wav', accents: null },
+        { providerId: 'voice-2', name: 'Lauren', tagline: 'Lively Narrator', previewFileUrl: null, localPreviewAsset: '/creative/voices/lauren-lively-narrator.wav', accents: null },
+    ];
+    findFirstMock.mockImplementation(({ where }: { where: { value: string } }) => rows.find(row => row.providerId === where.value));
+    const { GET } = await import('./route');
+    const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-2'));
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost/creative/voices/lauren-lively-narrator.wav');
+});
+
+it('returns 502 when the catalogue query fails', async () => {
+    findFirstMock.mockRejectedValue(new Error('boom'));
+    const { GET } = await import('./route');
+    const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-1'));
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: 'Voice preview is unavailable.' });
 });

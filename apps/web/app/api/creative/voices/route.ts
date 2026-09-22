@@ -18,7 +18,10 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const rows = await db.query.voiceCatalogue.findMany();
+        const rows = await db.query.voiceCatalogue.findMany({ orderBy: (v, { asc }) => [asc(v.name)] });
+        if (rows.length === 0) {
+            return NextResponse.json({ error: 'Voice library is not configured yet.' }, { status: 503 });
+        }
         const matching = query
             ? rows.filter(row => `${row.name} ${row.tagline} ${row.description ?? ''}`.toLowerCase().includes(query.toLowerCase()))
             : rows;
