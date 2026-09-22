@@ -29,11 +29,15 @@ it('fetches an authenticated Cartesia preview through the server', async () => {
 });
 
 it('does not send the provider key to an untrusted preview host', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ name: 'Cathy', tagline: 'Coworker', preview_file_url: 'https://example.com/sample.wav' }) });
+    const fetchMock = vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ name: 'Cathy', tagline: 'Coworker', preview_file_url: 'https://example.com/sample.wav' }) })
+        .mockResolvedValueOnce({ ok: true, headers: new Headers({ 'content-type': 'audio/wav' }), arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer });
     vi.stubGlobal('fetch', fetchMock);
     const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-1'));
-    expect(response.status).toBe(502);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    const calledUrls = fetchMock.mock.calls.map(call => call[0].toString());
+    expect(calledUrls).not.toContain('https://example.com/sample.wav');
+    expect(calledUrls.some(url => url.startsWith('https://example.com'))).toBe(false);
 });
 
 it('uses the fixed sample for a curated voice without a provider preview', async () => {

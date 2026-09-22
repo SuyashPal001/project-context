@@ -63,7 +63,7 @@ it('selects the requested tagline when the provider has multiple voices with one
     expect((await response.json()).voices).toEqual([{ id: 'right-carson', name: 'Carson', tagline: 'Curious Conversationalist', language: 'en', supportedLocales: ['en-US', 'hi-IN'], hasPreview: true }]);
 });
 
-it('disables preview when a curated voice has neither a provider clip nor a fixed sample', async () => {
+it('enables preview via on-demand TTS when a curated voice has no static clip', async () => {
     const fetchMock = vi.fn().mockImplementation(async (input: string | URL) => {
         if (input.toString() === 'https://api.example.com/api/v1/agents') return { ok: true };
         const name = new URL(input.toString()).searchParams.get('q');
@@ -73,7 +73,7 @@ it('disables preview when a curated voice has neither a provider clip nor a fixe
     });
     vi.stubGlobal('fetch', fetchMock);
     const response = await GET(new NextRequest('http://localhost/api/creative/voices?language=en&q=Cathy'));
-    expect((await response.json()).voices).toEqual([{ id: 'cathy-id', name: 'Cathy', tagline: 'Coworker', language: 'en', supportedLocales: ['en'], hasPreview: false }]);
+    expect((await response.json()).voices).toEqual([{ id: 'cathy-id', name: 'Cathy', tagline: 'Coworker', language: 'en', supportedLocales: ['en'], hasPreview: true }]);
 });
 
 it('enables synthesis when the requested language is supported by the curated voice', async () => {

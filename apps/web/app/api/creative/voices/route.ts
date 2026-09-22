@@ -63,9 +63,8 @@ export async function GET(request: NextRequest) {
                 const supportsRequestedLanguage = supportedLocales.some(locale => locale.split(/[-_]/)[0] === language);
                 return {
                     id, name, tagline, description, language: voiceLanguage, gender, country, supportedLocales,
-                    hasPreview: language === 'en'
-                        ? Boolean(preview_file_url || (tagline && findCuratedVoice({ name, tagline })?.previewAsset))
-                        : supportsRequestedLanguage,
+                    hasPreview: supportsRequestedLanguage
+                        || Boolean(preview_file_url || (tagline && findCuratedVoice({ name, tagline })?.previewAsset)),
                 };
             }),
         }, { headers: { 'Cache-Control': 'private, no-store' } });
