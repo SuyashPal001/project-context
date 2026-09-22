@@ -65,7 +65,7 @@ const transitionEntrySchema = z.object({
 }).superRefine((v, ctx) => {
   if (v.type === 'xfade') {
     if (!v.name) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'INVALID_TRANSITION_OVERLAP: xfade entries require a name (e.g. "fade")' })
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'INVALID_TRANSITION_NAME: xfade entries require a name (e.g. "fade")' })
     }
     if (v.overlapSeconds === undefined || v.overlapSeconds <= 0) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'INVALID_TRANSITION_OVERLAP: xfade entries require overlapSeconds > 0 — never 0 or omitted, use type "cut" for a zero-width transition instead' })
@@ -125,8 +125,8 @@ interface TransitionEntry {
 // 234). Every non-final concat's video output is re-based with
 // settb=1/30 before it's used as an xfade input. A live 4-clip/3-boundary
 // [cut, xfade(1s), cut] run with this fix produced 11.074s for four 3s
-// clips — matching the arithmetic 9.0s (=3*4-1 overlap second... actually
-// 12 - 1 = 11, quantization accounts for the rest).
+// clips — matching the arithmetic for four 3-second clips with one
+// 1-second overlap (3+3+3+3-1=11), quantization accounts for the rest.
 function buildTransitionsFilterComplex(
   videoLabels: string[], // ['v0', 'v1', ...] — already-normalized per-input labels
   audioLabels: string[], // ['a0', 'a1', ...]

@@ -171,6 +171,39 @@
 
 ---
 
+### 11b. Short-drama-stitch skill — deployment prerequisites
+
+> This skill is editing-only (it never generates video), stitching user-uploaded footage
+> into an ad-length cut via `trim_clip` and `assemble_clips`. It reuses `burn_captions`
+> from the animation-character skill unchanged, and raises the clip-size ceiling used by
+> both tools.
+
+- [ ] Run `pnpm db:seed` once (from `packages/foundation/database`) for the
+      `('clip_assembly', 'ffmpeg-trim-clip')` credit-rate row this branch added. **This is not
+      just an "unbilled" risk** — `shouldRequireApproval` returns `false` when no rate is found
+      for a tool, which means `trim_clip` will run completely FREE **and with no approval card
+      shown to the user at all** until the rate is seeded, not merely free-and-confirmed.
+- [ ] Restart the `agent-orchestrator` PM2 process by hand after deploy — `./deploy.sh` only
+      rebuilds Next.js and restarts `web-frontend`/`api`. This skill ships code only in
+      `agent-orchestrator` (it does not touch `inference-gateway`), so a manual
+      `pm2 restart agent-orchestrator` is required to pick it up.
+- [ ] Same libass/`burn_captions` caveat as §11a applies here unchanged, since this skill
+      reuses that tool as-is: run `ffmpeg -h filter=subtitles` on the target GCP VM —
+      `burn_captions` needs the `subtitles` filter compiled in with libass support. No
+      machine used in this skill's own development had libass either, so this has still not
+      been verified on any machine actually used during implementation. Install/rebuild
+      ffmpeg with `--enable-libass` if it fails.
+- [ ] Expected memory footprint, deployment-sizing note (not a blocker): `MAX_CLIP_BYTES`
+      in `assembleClips.ts` was raised to 500MB and up to 8 clips can be processed per
+      `assemble_clips` call. `mediaCache.ts` fully materializes each downloaded file in
+      memory (via `arrayBuffer()`/`Buffer.from`, not streamed), so a worst-case run can
+      transiently use up to ~4GB (8 × 500MB) on the `agent-orchestrator` process. That
+      process shares its GCP VM with `web-frontend`, `mcp-server-pc`, `ai-service`, and
+      `inference-gateway` — size the VM (or set expectations for concurrent skill usage)
+      with this in mind.
+
+---
+
 ### 12. Smoke Test (pre-launch)
 
 - [ ] `https://projectcontext.co` → loads login page
