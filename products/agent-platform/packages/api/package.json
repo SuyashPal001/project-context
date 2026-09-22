@@ -30,7 +30,8 @@
     "db:seed:templates": "tsx seeds/agent-templates.ts",
     "db:seed:personas": "tsx seeds/personas.ts",
     "db:seed:llm-providers-openrouter": "tsx seeds/llm-providers-openrouter.ts",
-    "db:seed:creative-templates": "tsx seeds/creative-templates.ts"
+    "db:seed:creative-templates": "tsx seeds/creative-templates.ts",
+    "db:seed:creative-library-assets": "tsx seeds/creative-library-assets.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1011.0",
