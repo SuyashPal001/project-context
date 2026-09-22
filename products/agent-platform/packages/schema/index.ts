@@ -6,6 +6,7 @@ export * from './task-revisions';
 export * from './handover';
 export * from './conversations';
 export * from './creativeTemplates';
+export * from './creativeLibraryAssets';
 export * from './skills';
 export * from './documents';
 export * from './knowledge';
