@@ -296,6 +296,11 @@ describe('attachmentFromCanvasToolResult — animation-character ffmpeg tools', 
     const result = attachmentFromCanvasToolResult('transcribe-audio', { text: 'hello world', words: [] })
     expect(result).toBeNull()
   })
+
+  it('recognizes trim-clip as a canvas attachment result', () => {
+    const result = attachmentFromCanvasToolResult('trim-clip', { fileId: 'f1', name: 'trimmed.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toMatchObject({ fileId: 'f1' })
+  })
 })
 
 describe('redactUnverifiedFileIds', () => {
