@@ -88,6 +88,7 @@ describe('buildMastraMessage', () => {
       base64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
       mimeType: 'image/png',
       name: 'photo.png',
+      timestampSeconds: 0,
     })
 
     const attachments: Attachment[] = [

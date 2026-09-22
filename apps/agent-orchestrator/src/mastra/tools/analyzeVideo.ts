@@ -12,13 +12,13 @@ const QUICK_TIMEOUT_MS = 45_000
 const DEEP_TIMEOUT_MS = 150_000
 
 async function callGatewayForFrames(
-  frames: Array<{ base64: string; mimeType: string }>,
+  frames: Array<{ base64: string; mimeType: string; timestampSeconds: number }>,
   mode: 'quick' | 'deep',
   signal: AbortSignal,
 ): Promise<{ text: string; usage?: { prompt_tokens?: number; completion_tokens?: number } }> {
   const prompt = mode === 'quick'
-    ? 'Give a brief 1-2 sentence summary of what happens in this video, based on these sampled frames.'
-    : 'Describe this video in detail — subjects, actions, and any notable scene changes across these sampled frames.'
+    ? 'Give a brief 1-2 sentence summary of what happens in this video, based on these sampled frames. Each frame is labeled with its real timestamp.'
+    : 'Describe this video in detail — subjects, actions, and any notable scene changes across these sampled frames. Each frame is labeled with its real timestamp; for every notable beat or moment, give a rough timestamp range (e.g. "0.0s-3.2s: ...") rather than only a plain description.'
   const response = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
     method: 'POST',
     signal,
@@ -30,7 +30,10 @@ async function callGatewayForFrames(
       messages: [{
         role: 'user',
         content: [
-          ...frames.map(f => ({ type: 'image_url' as const, image_url: { url: f.base64 } })),
+          ...frames.flatMap(f => [
+            { type: 'text' as const, text: `Frame at t=${f.timestampSeconds.toFixed(1)}s` },
+            { type: 'image_url' as const, image_url: { url: f.base64 } },
+          ]),
           { type: 'text' as const, text: prompt },
         ],
       }],
@@ -45,8 +48,9 @@ async function callGatewayForFrames(
 export const analyzeVideoTool = createTool({
   id: 'analyze_video',
   description:
-    'Understand the content of an attached video file by sampling frames. ' +
-    'Use mode "quick" for a brief summary, "deep" for a detailed description.',
+    'Understand the content of an attached video file by sampling frames, with real timestamps. ' +
+    'Use mode "quick" for a brief summary, "deep" for a detailed description with rough timestamp ranges per beat. ' +
+    'Returns durationSeconds for callers (e.g. short-drama-stitch) that need the source clip\'s real length.',
   inputSchema: z.object({
     fileId: z.string(),
     mode: z.enum(['quick', 'deep']).default('quick'),
@@ -55,6 +59,7 @@ export const analyzeVideoTool = createTool({
     success: z.boolean(),
     summary: z.string().optional(),
     frameCount: z.number().optional(),
+    durationSeconds: z.number().optional(),
     partial: z.boolean().optional(),
     error: z.string().optional(),
   }),
@@ -82,7 +87,7 @@ export const analyzeVideoTool = createTool({
       // mediaCache.ts. Falls back to sessionId only if tenantId is unavailable.
       const { filePath } = await downloadToSessionCache(tenantId ?? sessionId, inputData.fileId, presignedUrl, MAX_VIDEO_BYTES, controller.signal)
       const maxFrames = mode === 'deep' ? DEEP_FRAMES : QUICK_FRAMES
-      const frames = await extractVideoFrames(filePath, inputData.fileId, sessionId, maxFrames, controller.signal)
+      const { frames, durationSeconds } = await extractVideoFrames(filePath, inputData.fileId, sessionId, maxFrames, controller.signal)
       if (frames.length === 0) return { success: false, error: 'no frames could be extracted' }
 
       const { text, usage } = await callGatewayForFrames(frames, mode, controller.signal)
@@ -96,7 +101,7 @@ export const analyzeVideoTool = createTool({
           outputTokens: usage.completion_tokens ?? 0,
         })
       }
-      return { success: true, summary: text, frameCount: frames.length }
+      return { success: true, summary: text, frameCount: frames.length, durationSeconds }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (message.toLowerCase().includes('abort')) {
