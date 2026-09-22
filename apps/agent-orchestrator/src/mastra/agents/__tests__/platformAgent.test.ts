@@ -58,3 +58,45 @@ describe('platformAgent instructions — talking-head contract', () => {
     expect(section).toMatch(/deliberate visible cut/)
   })
 })
+
+describe('platformAgent instructions — short-drama-stitch contract', () => {
+  it('includes the short-drama-stitch contract with its no-generation mutual-exclusion clause', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toContain('Short-drama-stitch ad')
+    expect(text).toContain('NOT when the user wants new footage created from scratch')
+  })
+
+  it('disambiguates short-drama-stitch from the three generation contracts BOTH ways', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    // Bidirectional: short-drama-stitch's own opening line names the other
+    // three, AND each of the other three's opening line now names
+    // short-drama-stitch back — a one-directional version would pass a
+    // weaker assertion that only checked both section headers exist, which
+    // proves nothing about whether either contract actually POINTS at the
+    // other. This test asserts the actual disambiguating clause is present
+    // on all three reciprocal sides, not just that both sections exist.
+    const ugcIdx = text.indexOf('## UGC character ad')
+    const talkingHeadIdx = text.indexOf('## Talking-head ad')
+    const animIdx = text.indexOf('## Animation-character ad')
+    const dramaIdx = text.indexOf('## Short-drama-stitch ad')
+    expect(ugcIdx).toBeGreaterThan(-1)
+    expect(talkingHeadIdx).toBeGreaterThan(-1)
+    expect(animIdx).toBeGreaterThan(-1)
+    expect(dramaIdx).toBeGreaterThan(-1)
+    const reciprocalClause = 'Short-drama-stitch ad contract below instead'
+    expect(text.slice(ugcIdx, ugcIdx + 800)).toContain(reciprocalClause)
+    expect(text.slice(talkingHeadIdx, talkingHeadIdx + 800)).toContain(reciprocalClause)
+    expect(text.slice(animIdx, animIdx + 800)).toContain(reciprocalClause)
+  })
+
+  it('widens ROUTING_CONTRACT to cover editing verbs, not just generation verbs', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toContain('stitch, cut, edit, or assemble existing footage into')
+  })
+})

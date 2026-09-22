@@ -111,3 +111,39 @@ describe('directorAgent animation-character instructions', () => {
     expect(musicIdx).toBeGreaterThan(captionsIdx)
   })
 })
+
+describe('directorAgent short-drama-stitch instructions', () => {
+  it('registers trim_clip on both directorAgent and directorAgentDelegate', async () => {
+    const agentTools = await directorAgent.listTools()
+    const delegateTools = await directorAgentDelegate.listTools()
+    expect(Object.keys(agentTools)).toEqual(expect.arrayContaining(['trim_clip']))
+    expect(Object.keys(delegateTools)).toEqual(expect.arrayContaining(['trim_clip']))
+  })
+
+  it('includes the short-drama-stitch section with its no-generation rule', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toContain('short-drama-stitch')
+    expect(text).toContain('never calls generate_image or generate_video')
+  })
+
+  it('includes the exact brand-name-check substring for short-drama-stitch (no script to compare against)', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toContain('this skill never generates speech, so there is no approved script to compare against')
+  })
+
+  it('orders captions before music in the short-drama-stitch section (pipeline-order regression guard)', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const shortDramaIdx = text.indexOf('Short-drama-stitch')
+    const section = text.slice(shortDramaIdx)
+    const captionsIdx = section.indexOf('Captions: call burn_captions')
+    const musicIdx = section.indexOf('Music: call generate_song')
+    expect(captionsIdx).toBeGreaterThan(-1)
+    expect(musicIdx).toBeGreaterThan(captionsIdx)
+  })
+})
