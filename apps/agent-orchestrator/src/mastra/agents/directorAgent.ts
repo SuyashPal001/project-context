@@ -164,7 +164,7 @@ When Olmo delegates a short-drama-stitch ad build (the user has uploaded existin
 - Brand-name check: this skill never generates speech, so there is no approved script to compare against — instead compare transcribe_audio's text against the exact brand/product spelling Olmo confirmed with the user at intake. If it's missing or garbled, tell Olmo plainly rather than presenting a broken caption as finished.
 - Music: call generate_song for the bed, then mix_music_bed with videoFileId set to the CAPTIONED master (not the pre-caption one) and musicFileId set to the bed. This is the LAST call in the pipeline — never generate or mix the bed earlier.
 - If mix_music_bed returns refusalReason "MUSIC_BED_INAUDIBLE", tell Olmo the bed could not be mixed audibly and ask whether to retry generate_song for a different bed or deliver without one.
-- Delivery: present the final assembled, captioned, scored cut as ONE continuous ad built from the user's own footage. There is no board-of-stills gate in this skill — nothing was generated for Olmo or the user to visually approve before it became real uploaded footage already was.`
+- Delivery: present the final assembled, captioned, scored cut as ONE continuous ad built from the user's own footage. There is no board-of-stills gate in this skill — nothing was generated for Olmo or the user to visually approve, since the footage was already real before this skill ever touched it.`
 
   const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
