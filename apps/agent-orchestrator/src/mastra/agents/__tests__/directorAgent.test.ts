@@ -147,3 +147,76 @@ describe('directorAgent short-drama-stitch instructions', () => {
     expect(musicIdx).toBeGreaterThan(captionsIdx)
   })
 })
+
+describe('directorAgent UGC first-frame instructions', () => {
+  it('includes the UGC first-frame section with its no-cast-sheet rule', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toContain('## UGC first-frame generation')
+    expect(text).toContain('this skill never calls generate_image to create a presenter')
+  })
+
+  it('enforces the animate_frame / composite_references mutual exclusion in the section text', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const sectionStart = text.indexOf('## UGC first-frame generation')
+    const section = text.slice(sectionStart)
+    expect(section).toContain('mode "animate_frame"')
+    expect(section).toContain('Never pass referenceFileIds alongside it')
+  })
+
+  it('issues one generate_video call at a time across multiple supplied stills', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const sectionStart = text.indexOf('## UGC first-frame generation')
+    const section = text.slice(sectionStart)
+    expect(section).toContain('one generate_video call at a time')
+  })
+
+  it('survives a tenant agentSystemPrompt override, same as the other appended sections', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('agentSystemPrompt', 'Custom persona override text.')
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toContain('Custom persona override text.')
+    expect(text).toContain('## UGC first-frame generation')
+  })
+
+  it('places Motion craft before UGC first-frame generation, since the section references its rules by name', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const motionIdx = text.indexOf('## Motion craft')
+    const firstFrameIdx = text.indexOf('## UGC first-frame generation')
+    expect(motionIdx).toBeGreaterThanOrEqual(0)
+    expect(firstFrameIdx).toBeGreaterThan(motionIdx)
+  })
+
+  it('requires aspectRatio and durationSeconds to be passed explicitly on every generate_video call', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const sectionStart = text.indexOf('## UGC first-frame generation')
+    // Bounded to just this section — an unbounded slice would also match
+    // ANIMATION_CHARACTER_SECTION further down the concatenated string
+    // (which independently mentions both fields), letting this test pass
+    // even if the fix here were deleted outright.
+    const nextSectionIdx = text.indexOf('\n\n## ', sectionStart + 1)
+    const section = text.slice(sectionStart, nextSectionIdx > 0 ? nextSectionIdx : undefined)
+    expect(section).toContain('aspectRatio')
+    expect(section).toContain('durationSeconds')
+  })
+
+  it('instructs setting approvedDialogue whenever a clip has spoken dialogue, never a quoted line left unset', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const sectionStart = text.indexOf('## UGC first-frame generation')
+    const section = text.slice(sectionStart)
+    expect(section).toContain('approvedDialogue')
+    expect(section).toMatch(/never write a quoted line without setting approvedDialogue/)
+  })
+})

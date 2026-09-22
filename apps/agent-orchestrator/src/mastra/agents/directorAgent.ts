@@ -105,6 +105,17 @@ These apply to every generate_video prompt, in both animate_frame and composite_
 - Stagger anything that would otherwise enter together by about 0.2 seconds. Two elements arriving on the same frame read as one flat sheet; offset, they read as separate objects with weight.
 - Write all of this as plain prose, with no quotation marks around any phrase — generate_video's dialogue gate refuses any quoted span that is not approved spoken dialogue, and these are never spoken lines.`
 
+  const UGC_FIRST_FRAME_SECTION = `\n\n## UGC first-frame generation — animate an existing still, no cast sheet
+When Olmo delegates a UGC first-frame ad build (the user already has one or more finished still images and wants each animated into a short clip, with no new character or storyboard being created): this skill never calls generate_image to create a presenter — the user's own image(s) ARE the frame(s).
+- Per-frame render: for each supplied still, call generate_video with mode "animate_frame" and startImageFileId set to that still's fileId. Never pass referenceFileIds alongside it — animate_frame and composite_references are mutually exclusive, same rule as everywhere else generate_video is used. Always pass aspectRatio and durationSeconds explicitly, per what Olmo confirmed with the user at intake — both are required fields with no sensible default, and durationSeconds must be a whole number of seconds between 3 and 10.
+- If the still's own aspect ratio doesn't match the requested output aspectRatio (16:9 or 9:16 — no other value is accepted), tell Olmo plainly that the frame will be reframed/cropped to fit, not that it will render unchanged.
+- Dialogue: if this clip has spoken dialogue, the exact approved line Olmo gives you MUST be passed in generate_video's approvedDialogue field, matching the quoted span in the prompt byte-for-byte — never write a quoted line without setting approvedDialogue, and never invent dialogue Olmo didn't tell you was approved.
+- Apply the Motion craft section's rules unchanged for every clip — state what's absent at the opening frame, pin the final held state, name the easing explicitly, stagger simultaneous elements by about 0.2 seconds.
+- Frame-prompt discipline still applies even though the frame itself isn't generated here: describe the motion in plain prose, never wrap any phrase in quotation marks unless it is approved spoken dialogue — same dialogue gate as every other generate_video call.
+- Multi-frame requests (the user supplies several stills for one ad) are independent clips, not one continuous scene — animate each still on its own, one generate_video call at a time, waiting for each call's result before issuing the next. Tell Olmo plainly that these render as separate clips unless the user also wants them assembled — assemble_clips is a separate, explicitly-requested step, never implied by "animate these".
+- If a still shows a person, keep the same posed-vs-candid read from the original frame — do not "fix" a posed photo into a candid one via the motion prompt; the animation should look like that exact frame coming to life, not a different shot.
+- Post-generation QA: if the clip includes native spoken dialogue (approvedDialogue was set), run the same analyze_audio deep-mode transcript check as every other dialogue-bearing skill. If it's silent/motion-only, skip audio QA.`
+
   const TALKING_HEAD_SECTION = `\n\n## Talking-head generation — one continuous presenter, narration-first pipeline
 When Olmo delegates a talking-head ad build (single continuous presenter speaking to camera, script-driven, not a multi-beat storyboard):
 - Cast sheet: same as UGC character generation above — one generate_image call with referenceFileIds set to the product photo's fileId if one exists, otherwise no reference. Do not pass identityAnchor on this call.
@@ -166,7 +177,7 @@ When Olmo delegates a short-drama-stitch ad build (the user has uploaded existin
 - If mix_music_bed returns refusalReason "MUSIC_BED_INAUDIBLE", tell Olmo the bed could not be mixed audibly and ask whether to retry generate_song for a different bed or deliver without one.
 - Delivery: present the final assembled, captioned, scored cut as ONE continuous ad built from the user's own footage. There is no board-of-stills gate in this skill — nothing was generated for Olmo or the user to visually approve, since the footage was already real before this skill ever touched it.`
 
-  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION
+  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
