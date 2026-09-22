@@ -666,6 +666,13 @@
       "when": 1789505084032,
       "tag": "0094_flashy_payback",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1790089228315,
+      "tag": "0095_foamy_cammi",
+      "breakpoints": true
     }
   ]
 }
