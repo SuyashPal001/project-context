@@ -11,8 +11,8 @@ pm2 stop web-frontend
 echo "→ Clearing Next.js cache..."
 rm -rf apps/web/.next
 
-echo "→ Building web frontend..."
-pnpm --filter @serverless-saas/web build
+echo "→ Building web frontend (and upstream foundation deps)..."
+pnpm --filter "@serverless-saas/web..." build
 
 echo "→ Copying static assets..."
 cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static

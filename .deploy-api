@@ -1,0 +1,20 @@
+#!/bin/bash
+set -e
+
+cd /home/suyashresearchwork/project-context
+
+echo "→ Rebuilding @serverless-saas/agent-api (and upstream foundation deps)..."
+pnpm --filter "@serverless-saas/agent-api..." build
+
+echo "→ Restarting api..."
+pm2 restart api --update-env
+
+echo "→ Building agent-orchestrator..."
+cd apps/agent-orchestrator
+node build.mjs
+cd /home/suyashresearchwork/project-context
+
+echo "→ Restarting agent-orchestrator..."
+pm2 restart agent-orchestrator --update-env
+
+echo "✓ API deploy complete"
