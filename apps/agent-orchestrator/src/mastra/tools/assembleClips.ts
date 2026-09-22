@@ -14,12 +14,14 @@ import { shouldRequireApproval } from './generationApproval.js'
 const execFile = promisify(execFileCb)
 
 const ASSEMBLY_SUBJECT = 'ffmpeg-local'
-// Matches media.ts's FFMPEG_TIMEOUT_MS pattern, sized generously for a
-// 4-clip concat (plus an AAC encode step when preserveAudio is set) rather
-// than the single-clip frame-extraction case that file times out at 60s.
-const FFMPEG_TIMEOUT_MS = 60_000
-// Matches analyzeVideo.ts's MAX_VIDEO_BYTES cap — same class of input.
-const MAX_CLIP_BYTES = 200 * 1024 * 1024
+// Matches media.ts's FFMPEG_TIMEOUT_MS pattern, sized generously for an
+// 8-clip xfade concat with real uploaded footage (short-drama-stitch) —
+// raised from 60s (sized for skill 4/5's shorter generated clips) to 180s.
+const FFMPEG_TIMEOUT_MS = 180_000
+// Raised from 200MB (sized for skill 4/5's generated clips) to 500MB —
+// short-drama-stitch's inputs are real uploaded camera footage, where a
+// single clip well over 200MB is ordinary.
+const MAX_CLIP_BYTES = 500 * 1024 * 1024
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
@@ -37,7 +39,7 @@ const outputSchema = z.object({
 // so callers/tests can .safeParse()/.parse() it directly — omitting this export broke
 // `pnpm type-check` in an earlier task and had to be fixed in review; don't repeat it.
 export const inputSchema = z.object({
-  clipFileIds: z.array(z.string()).min(1).max(4),
+  clipFileIds: z.array(z.string()).min(1).max(8),
   targetDurationSeconds: z.number().positive().optional().describe(
     'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align this clip total to a separate audio track\'s length. Not compatible with preserveAudio (see refine below) — animation-character\'s preserveAudio callers pre-trim every clip upstream and never set this.'
   ),

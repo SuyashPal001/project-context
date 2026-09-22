@@ -66,7 +66,7 @@ describe('assembleClips tool', () => {
     expect(result).toMatchObject({ fileId: 'assembled1', name: 'assembled.mp4', fileType: 'video/mp4', size: 8 })
   })
 
-  it('accepts 4 clip ids (raised from the old max of 3)', () => {
+  it('accepts 4 clip ids (raised from the old max of 3 in skill 5)', () => {
     const result = inputSchema.safeParse({
       clipFileIds: ['a', 'b', 'c', 'd'],
       aspectRatio: '9:16',
@@ -74,12 +74,20 @@ describe('assembleClips tool', () => {
     expect(result.success).toBe(true)
   })
 
-  it('rejects a 5th clip id', () => {
+  it('accepts 8 clip ids (raised from 4 in skill 7 for short-drama-stitch)', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+      aspectRatio: '9:16',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects a 9th clip id', () => {
     // Parsed off the exported raw Zod schema, not assembleClips.inputSchema —
     // createTool's wrapped type is StandardSchemaWithJSON, which has no
     // .safeParse (this exact omission broke type-check in an earlier task).
     const result = inputSchema.safeParse({
-      clipFileIds: ['a', 'b', 'c', 'd', 'e'],
+      clipFileIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
       aspectRatio: '9:16',
     })
     expect(result.success).toBe(false)
