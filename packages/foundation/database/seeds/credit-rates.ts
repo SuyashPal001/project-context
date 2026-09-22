@@ -92,6 +92,17 @@ const RATES = [
     pricingSchema: { per_call_micro: 1_000 } },
   { resourceType: 'clip_assembly', subject: 'ffmpeg-mix-music-bed',
     pricingSchema: { per_call_micro: 1_000 } },
+  // short-drama-stitch's clip-trim step. Same "pure local compute, small
+  // flat non-zero rate" reasoning as every other clip_assembly row above —
+  // keeps the tool on the normal charge/approval code path instead of a
+  // silent no-charge/no-approval carve-out. An unseeded row here doesn't
+  // just leave the tool unbilled — shouldRequireApproval returns false
+  // with no matching rate, so the tool would run free AND with no
+  // approval card at all. This row must be seeded (pnpm db:seed) against
+  // the deployed environment before a live run, same lesson skill 5
+  // documented for its own rows.
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-trim-clip',
+    pricingSchema: { per_call_micro: 1_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can
   // price them later without a deploy (spec section 3).
   { resourceType: 'message',   subject: '*', pricingSchema: { per_message_micro: 0 } },
