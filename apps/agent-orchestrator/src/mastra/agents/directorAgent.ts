@@ -20,6 +20,7 @@ import { compositeEndCard } from '../tools/compositeEndCard.js'
 import { burnCaptions } from '../tools/burnCaptions.js'
 import { mixMusicBed } from '../tools/mixMusicBed.js'
 import { generateSong } from '../tools/generateSong.js'
+import { trimClip } from '../tools/trimClip.js'
 
 const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
@@ -150,7 +151,22 @@ NEGATIVE: no smooth CGI rendering, no photorealistic humans, no 2D flat illustra
 - Music: call generate_song for the bed, then mix_music_bed with videoFileId set to the CAPTIONED master (not the pre-caption one) and musicFileId set to the bed. This is the LAST call in the pipeline — never generate or mix the bed earlier.
 - If mix_music_bed returns refusalReason "MUSIC_BED_INAUDIBLE", tell Olmo the bed could not be mixed audibly and ask whether to retry generate_song for a different bed or deliver without one.`
 
-  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION
+  const SHORT_DRAMA_STITCH_SECTION = `\n\n## Short-drama-stitch — editing footage the user already has, never generating video
+When Olmo delegates a short-drama-stitch ad build (the user has uploaded existing footage — short-drama/episode clips, multiple takes, raw b-roll — and wants an ad-length cut assembled from it): this is the ONLY skill that never calls generate_image or generate_video. If the footage genuinely can't support the ask (too few usable clips, wrong content, nothing that fits the target length), tell Olmo plainly and stop — never fill a gap with generated video.
+
+- Selection Mode A (AI-proposed): call analyze_video (mode "quick") once per uploaded clip. Its result now includes durationSeconds and frame descriptions labeled with real timestamps (e.g. "Frame at t=4.5s") — use these to propose which segments of which clips make a compelling cut, in what order, sized to the target length Olmo gave you. Treat these timestamps as approximate; trim_clip's own duration probe is the real correctness backstop, not this proposal.
+- Selection Mode B (user-specified): if Olmo tells you the user already gave exact clip/timestamp/order choices, skip analyze_video entirely and use those directly.
+- Cut-list approval: present the full proposed (or user-given) list — clip, in/out timestamps, order, and transition choice per boundary (cut, or a named crossfade with an overlap length) — to Olmo for one approval covering the whole list, before any trim_clip or assemble_clips call. Never trim or assemble before this approval.
+- Trim: after approval, call trim_clip once per selected segment — sourceFileId set to that clip's fileId, startSeconds/endSeconds set to the approved in/out points. If a call returns refusalReason "INVALID_TRIM_RANGE", tell Olmo the requested range exceeds that clip's real length and ask whether to adjust the cut list or drop that segment.
+- Assembly: call assemble_clips ONCE with clipFileIds set to the trimmed segments' fileIds in the approved order, preserveAudio set to true, transitions set to the approved per-boundary list (each entry either { type: "xfade", name: "fade", overlapSeconds: <a positive number, never 0> } or { type: "cut" } — never an xfade entry with overlapSeconds 0 or omitted, use type "cut" instead for a hard cut), and aspectRatio matching intake. Do not set targetDurationSeconds here — every clip is already individually trimmed by trim_clip.
+- Transcription: call transcribe_audio with fileId set to the assembled master's fileId (it extracts audio itself, no mimeType needed).
+- Captions: call burn_captions with videoFileId set to the assembled master's fileId and words set to exactly what transcribe_audio returned.
+- Brand-name check: this skill never generates speech, so there is no approved script to compare against — instead compare transcribe_audio's text against the exact brand/product spelling Olmo confirmed with the user at intake. If it's missing or garbled, tell Olmo plainly rather than presenting a broken caption as finished.
+- Music: call generate_song for the bed, then mix_music_bed with videoFileId set to the CAPTIONED master (not the pre-caption one) and musicFileId set to the bed. This is the LAST call in the pipeline — never generate or mix the bed earlier.
+- If mix_music_bed returns refusalReason "MUSIC_BED_INAUDIBLE", tell Olmo the bed could not be mixed audibly and ask whether to retry generate_song for a different bed or deliver without one.
+- Delivery: present the final assembled, captioned, scored cut as ONE continuous ad built from the user's own footage. There is no board-of-stills gate in this skill — nothing was generated for Olmo or the user to visually approve before it became real uploaded footage already was.`
+
+  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
@@ -165,7 +181,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -184,6 +200,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip },
   errorProcessors: [streamErrorRetry()],
 })
