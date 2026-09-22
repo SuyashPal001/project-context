@@ -339,6 +339,9 @@ importers:
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
+      '@serverless-saas/database':
+        specifier: workspace:*
+        version: link:../../packages/foundation/database
       '@tanstack/react-query':
         specifier: ^5.90.21
         version: 5.90.21(react@19.2.3)
