@@ -44,9 +44,23 @@ const outputSchema = z.object({
 // schemas uses and which Mastra's JSON-Schema conversion for model
 // function-calling has not been verified against) keeps every rejection
 // reason as a named, greppable message.
+//
+// `name` is a fixed enum, not a free-form string, deliberately deviating
+// from the plan's original `z.string().min(1)` — a code-reviewer proved
+// this is a real filter-graph injection: `name` gets interpolated
+// unvalidated into the ffmpeg `-filter_complex` string
+// (`xfade=transition=${name}:...`), and a payload like
+// `"fade[zz]; movie=red.mp4,fps=30,...[inj]; [zz][inj]xfade=transition=fadeblack"`
+// closes the xfade filter early and injects a second filter chain that
+// reads an arbitrary local file via ffmpeg's `movie=` source — a real
+// local-file-read primitive on the orchestrator machine. Since `name`
+// only ever comes from a model-chosen value (directorAgent's future
+// wiring), constraining it to real ffmpeg xfade transition names both
+// closes the injection and gives the model a clear valid-values list.
+const XFADE_TRANSITION_NAMES = ['fade', 'wipeleft', 'wiperight', 'slideleft', 'slideright', 'circlecrop', 'dissolve', 'fadeblack', 'fadewhite'] as const
 const transitionEntrySchema = z.object({
   type: z.enum(['xfade', 'cut']),
-  name: z.string().min(1).optional(),
+  name: z.enum(XFADE_TRANSITION_NAMES).optional(),
   overlapSeconds: z.number().optional(),
 }).superRefine((v, ctx) => {
   if (v.type === 'xfade') {
@@ -89,7 +103,7 @@ export const inputSchema = z.object({
 
 interface TransitionEntry {
   type: 'xfade' | 'cut'
-  name?: string
+  name?: typeof XFADE_TRANSITION_NAMES[number]
   overlapSeconds?: number
 }
 

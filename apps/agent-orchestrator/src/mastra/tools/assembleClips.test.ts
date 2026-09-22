@@ -302,6 +302,28 @@ describe('assembleClips tool', () => {
     if (!result.success) expect(JSON.stringify(result.error.issues)).toContain('INVALID_TRANSITION_OVERLAP')
   })
 
+  it('rejects an xfade entry with a name outside the fixed transition enum (filter-graph injection guard)', () => {
+    // `name` is interpolated unvalidated into the ffmpeg -filter_complex
+    // string (xfade=transition=${name}:...). A free-form string here is a
+    // real local-file-read primitive: a payload like
+    // "fade[zz]; movie=red.mp4,fps=30,...[inj]; [zz][inj]xfade=..." closes
+    // the intended filter early and injects a second filter chain that
+    // reads an arbitrary local file via ffmpeg's movie= source. `name`
+    // must be constrained to a fixed enum of real ffmpeg xfade transition
+    // names, not merely a non-empty string.
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [{
+        type: 'xfade',
+        name: 'fade[zz]; movie=red.mp4,fps=30,scale=1080:1920[inj]; [zz][inj]xfade=transition=fadeblack',
+        overlapSeconds: 1,
+      }],
+    })
+    expect(result.success).toBe(false)
+  })
+
   it('builds a sequential xfade/acrossfade+concat filter graph when transitions is set (xfade then cut)', async () => {
     const fs = await import('node:fs')
     vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
@@ -365,16 +387,64 @@ describe('assembleClips tool', () => {
     const ffmpegCall = execFile.mock.calls.find(c => c[0] === 'ffmpeg')!
     const args = ffmpegCall[1] as string[]
     const filterComplex = args[args.indexOf('-filter_complex') + 1]
-    expect(filterComplex).toContain('concat=n=2:v=1:a=1')
-    expect(filterComplex).toContain('settb=1/30')
+    // Tightened beyond two independent toContain checks: asserts the
+    // settb'd label is the SAME one the following xfade actually reads
+    // from (concat's raw video output -> settb -> the label xfade's
+    // first input names), not merely that both substrings appear
+    // somewhere in the graph. A regression where settb lands on the
+    // wrong label, or feeds the final concat instead of the intermediate
+    // one, would still pass two separate toContain assertions but not
+    // this chained one — and that's exactly the bug class (exit 234,
+    // zero output) this test exists to catch.
+    // accDuration after the cut boundary is 3+3=6, so the xfade offset
+    // is 6-1=5.
+    expect(filterComplex).toMatch(/\[accv0raw\]\[acca0\]; \[accv0raw\]settb=1\/30\[accv0\]; \[accv0\]\[v2\]xfade=transition=fade:duration=1:offset=5\[outv\]/)
   })
 
-  it('returns a distinct XFADE_FILTER_FAILED refusal on a real invalid-transition-name ffmpeg failure', async () => {
+  it('refuses with INVALID_TRANSITION_OVERLAP when overlapSeconds exceeds the accumulated clip duration, before ever calling ffmpeg', async () => {
+    // buildTransitionsFilterComplex's negative-offset guard: an xfade
+    // overlapSeconds larger than the accumulated stream it would
+    // crossfade against produces a negative `offset`, which real ffmpeg
+    // accepts silently and turns into a garbled result rather than an
+    // error — so this must be caught before ffmpeg ever runs, not
+    // discovered via a live ffmpeg failure.
+    execFile
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
+
+    const result = await assembleClips.execute!({
+      clipFileIds: ['c1', 'c2'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      // Two 3s clips (accDuration for the first boundary is 3), overlap
+      // 5 > 3 -> offset = 3 - 5 = -2.
+      transitions: [{ type: 'xfade', name: 'fade', overlapSeconds: 5 }],
+    } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: 'INVALID_TRANSITION_OVERLAP' })
+    // Only the two ffprobe calls should have run — the guard must throw
+    // before the ffmpeg execFile call is ever made.
+    expect(execFile).not.toHaveBeenCalledWith('ffmpeg', expect.anything(), expect.anything(), expect.anything())
+    const commands = execFile.mock.calls.map(c => c[0])
+    expect(commands).not.toContain('ffmpeg')
+    expect(commands.every(c => c === 'ffprobe')).toBe(true)
+  })
+
+  it('returns a distinct XFADE_FILTER_FAILED refusal when ffmpeg fails with the real invalid-transition-name error text', async () => {
     // Real ffmpeg (8.1.2, confirmed live against an actual invalid
     // `transition` name, not guessed) fails option-binding with "Error
     // applying option 'transition' to filter 'xfade': Not yet implemented
     // in FFmpeg, patches welcome" (exit 176) — mirrors the
     // MISSING_AUDIO_STREAM test's structure above.
+    //
+    // `name` here is a valid enum value ('fade') — a real bad transition
+    // name can no longer reach ffmpeg at all now that `name` is schema-
+    // constrained to a fixed enum (the filter-graph-injection fix). This
+    // test instead verifies the catch-branch's stderr-matching logic in
+    // isolation (defense in depth for any other real ffmpeg xfade
+    // failure that produces this exact error text) by mocking the ffmpeg
+    // call to fail with the real captured stderr directly.
     execFile
       .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
       .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
@@ -389,7 +459,7 @@ describe('assembleClips tool', () => {
       clipFileIds: ['c1', 'c2'],
       aspectRatio: '9:16',
       preserveAudio: true,
-      transitions: [{ type: 'xfade', name: 'not-a-real-name', overlapSeconds: 1 }],
+      transitions: [{ type: 'xfade', name: 'fade', overlapSeconds: 1 }],
     } as never, baseCtx())
 
     expect(result).toMatchObject({ refused: true, refusalReason: 'XFADE_FILTER_FAILED' })
