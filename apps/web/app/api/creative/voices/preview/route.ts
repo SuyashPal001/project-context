@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 const SAMPLE_TRANSCRIPTS: Record<string, string> = {
     ar: 'مرحباً! كيف حالك اليوم؟',
     zh: '你好！你今天好吗？',
-    fr: "Bonjour ! Comment allez-vous aujourd'hui ?",
+    fr: 'Bonjour ! Comment allez-vous aujourd’hui ?',
     de: 'Hallo! Wie geht es Ihnen heute?',
     he: 'שלום! מה שלומך היום?',
     hi: 'नमस्ते! आज आप कैसे हैं?',
