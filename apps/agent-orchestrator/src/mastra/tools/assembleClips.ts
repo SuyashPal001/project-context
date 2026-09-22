@@ -35,6 +35,32 @@ const outputSchema = z.object({
   jobId: z.string().optional(),
 })
 
+// A zero-width transition is `type: 'cut'`, never an xfade with
+// overlapSeconds 0 or omitted — verified live against real ffmpeg: video
+// `xfade duration=0` silently drops the second clip entirely (exit 0, no
+// error), and audio `acrossfade d=0` falls through to `nb_samples`'s
+// ~0.92s default, the opposite of zero. A flat object + .superRefine
+// (not z.discriminatedUnion, which nothing else in this codebase's tool
+// schemas uses and which Mastra's JSON-Schema conversion for model
+// function-calling has not been verified against) keeps every rejection
+// reason as a named, greppable message.
+const transitionEntrySchema = z.object({
+  type: z.enum(['xfade', 'cut']),
+  name: z.string().min(1).optional(),
+  overlapSeconds: z.number().optional(),
+}).superRefine((v, ctx) => {
+  if (v.type === 'xfade') {
+    if (!v.name) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'INVALID_TRANSITION_OVERLAP: xfade entries require a name (e.g. "fade")' })
+    }
+    if (v.overlapSeconds === undefined || v.overlapSeconds <= 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'INVALID_TRANSITION_OVERLAP: xfade entries require overlapSeconds > 0 — never 0 or omitted, use type "cut" for a zero-width transition instead' })
+    }
+  } else if (v.overlapSeconds !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'INVALID_TRANSITION_OVERLAP: a cut entry must not carry overlapSeconds' })
+  }
+})
+
 // Exported as the raw Zod schema (not just accessible via assembleClips.inputSchema)
 // so callers/tests can .safeParse()/.parse() it directly — omitting this export broke
 // `pnpm type-check` in an earlier task and had to be fixed in review; don't repeat it.
@@ -46,11 +72,96 @@ export const inputSchema = z.object({
   preserveAudio: z.boolean().default(false).describe(
     'When true, concatenates with each input\'s audio stream preserved (v=1:a=1, each stream resampled to a common format first) instead of stripping all audio (-an). Every input must already carry an audio stream, already trimmed to its final length — this field does not itself trim anything. Default false keeps talking-head/short-drama-stitch\'s existing silent-concat-then-lipsync behavior unchanged.'
   ),
+  transitions: z.array(transitionEntrySchema).optional().describe(
+    'Per-boundary transitions, length must equal clipFileIds.length - 1. Only consumed when preserveAudio is true (short-drama-stitch use case) — every clip pair gets either an xfade crossfade (with a positive overlapSeconds) or a hard cut.'
+  ),
   aspectRatio: z.enum(['16:9', '9:16']),
 }).refine(
   (v) => !(v.preserveAudio && v.targetDurationSeconds !== undefined),
   { message: 'preserveAudio and targetDurationSeconds cannot both be set — the concat filter graph produces one video+audio output stream, and stop_duration padding is meaningless once every input is already individually trimmed upstream' },
+).refine(
+  (v) => !v.transitions || v.transitions.length === v.clipFileIds.length - 1,
+  { message: 'TRANSITION_COUNT_MISMATCH: transitions.length must equal clipFileIds.length - 1, one entry per boundary between consecutive clips' },
+).refine(
+  (v) => !v.transitions || v.preserveAudio,
+  { message: 'TRANSITION_REQUIRES_AUDIO: transitions can only be set when preserveAudio is true — footage keeps its own audio in the short-drama-stitch use case this exists for' },
 )
+
+interface TransitionEntry {
+  type: 'xfade' | 'cut'
+  name?: string
+  overlapSeconds?: number
+}
+
+// xfade/acrossfade are strictly pairwise with an absolute `offset`
+// (relative to the first input) — there is no n-way form like concat has.
+// This walks the boundary list left to right, accumulating a running
+// duration, and builds a sequential filter graph: each xfade boundary
+// joins the accumulated stream to the next clip with an absolute offset;
+// each cut boundary concats them instead (concat=n=2, not batched with
+// neighbors — simpler and still correct at this skill's <=8-clip scale).
+// Confirmed live and correct for the xfade-then-cut case during spec
+// review: three 3s clips, one 1s xfade then one cut, produced exactly
+// 8.06s.
+//
+// settb fix (found during plan review, live-verified): feeding a
+// concat filter's video output directly into a LATER xfade fails —
+// ffmpeg 8.1.2 rejects it with "First input link main timebase ...
+// do not match ... xfade timebase" and produces no output at all (exit
+// 234). Every non-final concat's video output is re-based with
+// settb=1/30 before it's used as an xfade input. A live 4-clip/3-boundary
+// [cut, xfade(1s), cut] run with this fix produced 11.074s for four 3s
+// clips — matching the arithmetic 9.0s (=3*4-1 overlap second... actually
+// 12 - 1 = 11, quantization accounts for the rest).
+function buildTransitionsFilterComplex(
+  videoLabels: string[], // ['v0', 'v1', ...] — already-normalized per-input labels
+  audioLabels: string[], // ['a0', 'a1', ...]
+  durations: number[],   // ffprobed VIDEO-stream duration per input, same order
+  transitions: TransitionEntry[],
+): string {
+  let accV = videoLabels[0]
+  let accA = audioLabels[0]
+  let accDuration = durations[0]
+  const parts: string[] = []
+
+  for (let i = 0; i < transitions.length; i++) {
+    const boundary = transitions[i]
+    const nextV = videoLabels[i + 1]
+    const nextA = audioLabels[i + 1]
+    const nextDuration = durations[i + 1]
+    const isLast = i === transitions.length - 1
+    const outV = isLast ? 'outv' : `accv${i}`
+    const outA = isLast ? 'outa' : `acca${i}`
+
+    if (boundary.type === 'xfade') {
+      const overlap = boundary.overlapSeconds!
+      const offset = accDuration - overlap
+      if (offset < 0) {
+        // The AI-proposed or user-given overlap is larger than the
+        // accumulated stream it's crossfading against — ffmpeg accepts a
+        // negative offset silently and produces a garbled result rather
+        // than erroring, so this must be caught here, before ffmpeg ever
+        // runs.
+        throw new Error(`INVALID_TRANSITION_OVERLAP: boundary ${i}'s overlapSeconds (${overlap}) exceeds the accumulated clip duration (${accDuration}) it would crossfade against`)
+      }
+      parts.push(`[${accV}][${nextV}]xfade=transition=${boundary.name}:duration=${overlap}:offset=${offset}[${outV}]`)
+      parts.push(`[${accA}][${nextA}]acrossfade=d=${overlap}[${outA}]`)
+      accDuration = accDuration + nextDuration - overlap
+    } else {
+      const isFollowedByXfade = !isLast && transitions[i + 1].type === 'xfade'
+      const concatVideoOut = isFollowedByXfade ? `${outV}raw` : outV
+      parts.push(`[${accV}][${accA}][${nextV}][${nextA}]concat=n=2:v=1:a=1[${concatVideoOut}][${outA}]`)
+      if (isFollowedByXfade) {
+        parts.push(`[${concatVideoOut}]settb=1/30[${outV}]`)
+      }
+      accDuration = accDuration + nextDuration
+    }
+    accV = outV
+    accA = outA
+  }
+
+  return parts.join('; ')
+}
 
 export const assembleClips = createTool({
   id: 'assemble-clips',
@@ -60,7 +171,7 @@ export const assembleClips = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio } = inputData as z.infer<typeof inputSchema>
+    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio, transitions } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -142,8 +253,34 @@ export const assembleClips = createTool({
       )
 
       let filterComplex: string
-      let concatInputs: string
-      if (preserveAudio) {
+      if (transitions && transitions.length > 0) {
+        // Every input is ffprobed for its own VIDEO-stream duration
+        // specifically — NOT `format=duration` (the container's overall
+        // duration, which is the MAX of all streams). Real uploaded
+        // footage routinely has audio and video streams of different
+        // lengths; probing the container duration and using it as the
+        // xfade offset produced a live-verified, silently WRONG offset
+        // (exit 0, no error) with several seconds of A/V desync in the
+        // final output — this is the exact silent-failure class this
+        // skill's overlapSeconds validation was written to close, and it
+        // would have been reopened here by the wrong probe field.
+        const durations: number[] = []
+        for (const p of localPaths) {
+          const { stdout: durOut } = await execFile('ffprobe', [
+            '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=duration', '-of', 'csv=p=0', p,
+          ], { timeout: FFMPEG_TIMEOUT_MS })
+          const d = parseFloat(durOut.trim())
+          if (!(d > 0)) throw new Error(`ffprobe returned an invalid video-stream duration for an input clip: ${durOut}`)
+          durations.push(d)
+        }
+        const audioFilterParts = localPaths.map((_, i) =>
+          `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
+        )
+        const videoLabels = localPaths.map((_, i) => `v${i}`)
+        const audioLabels = localPaths.map((_, i) => `a${i}`)
+        const transitionsGraph = buildTransitionsFilterComplex(videoLabels, audioLabels, durations, transitions as TransitionEntry[])
+        filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${transitionsGraph}`
+      } else if (preserveAudio) {
         // concat requires every input segment to agree on sample rate,
         // channel layout and sample format — our real inputs are
         // heterogeneous (fal.ai's lip-synced MP4, our own AAC mux, and an
@@ -153,10 +290,10 @@ export const assembleClips = createTool({
         const audioFilterParts = localPaths.map((_, i) =>
           `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
         )
-        concatInputs = localPaths.map((_, i) => `[v${i}][a${i}]`).join('')
+        const concatInputs = localPaths.map((_, i) => `[v${i}][a${i}]`).join('')
         filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=1[outv][outa]`
       } else {
-        concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
+        const concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
         // tpad must be chained inside the same filter_complex graph, not applied
         // via a separate -vf flag — ffmpeg refuses to mix simple (-vf) and
         // complex (-filter_complex) filtering on the same output stream. When a
@@ -200,9 +337,23 @@ export const assembleClips = createTool({
       // Distinct from the generic bucket so a caller building on this tool
       // can tell "you gave me a silent clip" apart from any other ffmpeg
       // failure.
+      const message = (err as Error).message ?? ''
+      if (message.startsWith('INVALID_TRANSITION_OVERLAP')) {
+        return { refused: true, refusalReason: 'INVALID_TRANSITION_OVERLAP', jobId }
+      }
       const stderr = (err as { stderr?: string }).stderr ?? ''
       if (preserveAudio && stderr.includes('matches no streams')) {
         return { refused: true, refusalReason: 'MISSING_AUDIO_STREAM', jobId }
+      }
+      // Confirmed live (ffmpeg 8.1.2) against an invalid xfade `transition`
+      // name: ffmpeg does NOT report "unknown transition" — it fails while
+      // binding the `transition` option itself with "Error applying option
+      // 'transition' to filter 'xfade': Not yet implemented in FFmpeg,
+      // patches welcome" (exit 176). Matched on the option-binding prefix,
+      // which is specific to xfade's `transition` option regardless of
+      // which invalid name triggered it.
+      if (transitions && transitions.length > 0 && stderr.includes("Error applying option 'transition' to filter 'xfade'")) {
+        return { refused: true, refusalReason: 'XFADE_FILTER_FAILED', jobId }
       }
       return { refused: true, refusalReason: 'ASSEMBLY_FAILED', jobId }
     }

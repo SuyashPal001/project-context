@@ -220,4 +220,178 @@ describe('assembleClips tool', () => {
     expect(spendCredits).toHaveBeenCalledTimes(1)
     expect(execFile).not.toHaveBeenCalled()
   })
+
+  it('accepts a valid transitions array matching clipFileIds.length - 1', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b', 'c'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [
+        { type: 'xfade', name: 'fade', overlapSeconds: 1 },
+        { type: 'cut' },
+      ],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects transitions with the wrong length', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b', 'c'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [{ type: 'cut' }],
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(JSON.stringify(result.error.issues)).toContain('TRANSITION_COUNT_MISMATCH')
+  })
+
+  it('rejects transitions set without preserveAudio', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b'],
+      aspectRatio: '9:16',
+      transitions: [{ type: 'cut' }],
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(JSON.stringify(result.error.issues)).toContain('TRANSITION_REQUIRES_AUDIO')
+  })
+
+  it('rejects an xfade entry with overlapSeconds: 0', () => {
+    // Negative control for the live-verified ffmpeg bug: video xfade
+    // duration=0 silently drops the second clip entirely; audio acrossfade
+    // d=0 falls through to a ~0.92s default. Neither is a valid "zero-width
+    // crossfade," so the schema must reject this before it reaches ffmpeg.
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [{ type: 'xfade', name: 'fade', overlapSeconds: 0 }],
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(JSON.stringify(result.error.issues)).toContain('INVALID_TRANSITION_OVERLAP')
+  })
+
+  it('rejects an xfade entry with overlapSeconds omitted', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [{ type: 'xfade', name: 'fade' }],
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(JSON.stringify(result.error.issues)).toContain('INVALID_TRANSITION_OVERLAP')
+  })
+
+  it('rejects an xfade entry with no name', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [{ type: 'xfade', overlapSeconds: 1 }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a cut entry that carries overlapSeconds', () => {
+    const result = inputSchema.safeParse({
+      clipFileIds: ['a', 'b'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [{ type: 'cut', overlapSeconds: 1 }],
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(JSON.stringify(result.error.issues)).toContain('INVALID_TRANSITION_OVERLAP')
+  })
+
+  it('builds a sequential xfade/acrossfade+concat filter graph when transitions is set (xfade then cut)', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'assembled1', name: 'assembled.mp4', type: 'video/mp4', size: 8 })
+    // Three ffprobe duration calls (one per input, 3s each), then the ffmpeg
+    // call itself.
+    execFile
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '', stderr: '' }))
+
+    await assembleClips.execute!({
+      clipFileIds: ['c1', 'c2', 'c3'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [
+        { type: 'xfade', name: 'fade', overlapSeconds: 1 },
+        { type: 'cut' },
+      ],
+    } as never, baseCtx())
+
+    const ffmpegCall = execFile.mock.calls.find(c => c[0] === 'ffmpeg')!
+    const args = ffmpegCall[1] as string[]
+    const filterComplex = args[args.indexOf('-filter_complex') + 1]
+    // Matches the spec's live-verified confirmed-correct shape exactly:
+    // offset = accumulated duration so far (3) - overlap (1) = 2.
+    expect(filterComplex).toContain('xfade=transition=fade:duration=1:offset=2')
+    expect(filterComplex).toContain('acrossfade=d=1')
+    expect(filterComplex).toMatch(/concat=n=2:v=1:a=1\[outv\]\[outa\]/)
+  })
+
+  it('inserts settb after a concat that feeds a LATER xfade (cut-then-xfade ordering)', async () => {
+    // This ordering is the one the plan's Opus review found ffmpeg rejects
+    // without a fix: feeding a concat filter's video output directly into a
+    // later xfade fails live with "First input link main timebase ...
+    // do not match ... xfade timebase" and produces NO output file (exit
+    // 234) — the earlier xfade-then-cut test above never exercises this
+    // path, since its concat is the LAST boundary. This test asserts the
+    // settb fix is present: the video output of a non-final concat must be
+    // re-based to 1/30 before it feeds the next xfade.
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'assembled1', name: 'assembled.mp4', type: 'video/mp4', size: 8 })
+    execFile
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '', stderr: '' }))
+
+    await assembleClips.execute!({
+      clipFileIds: ['c1', 'c2', 'c3'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [
+        { type: 'cut' },
+        { type: 'xfade', name: 'fade', overlapSeconds: 1 },
+      ],
+    } as never, baseCtx())
+
+    const ffmpegCall = execFile.mock.calls.find(c => c[0] === 'ffmpeg')!
+    const args = ffmpegCall[1] as string[]
+    const filterComplex = args[args.indexOf('-filter_complex') + 1]
+    expect(filterComplex).toContain('concat=n=2:v=1:a=1')
+    expect(filterComplex).toContain('settb=1/30')
+  })
+
+  it('returns a distinct XFADE_FILTER_FAILED refusal on a real invalid-transition-name ffmpeg failure', async () => {
+    // Real ffmpeg (8.1.2, confirmed live against an actual invalid
+    // `transition` name, not guessed) fails option-binding with "Error
+    // applying option 'transition' to filter 'xfade': Not yet implemented
+    // in FFmpeg, patches welcome" (exit 176) — mirrors the
+    // MISSING_AUDIO_STREAM test's structure above.
+    execFile
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: Error & { stderr?: string }) => void) => {
+        const err = new Error('Command failed') as Error & { stderr?: string }
+        err.stderr = "[Parsed_xfade_0] const_values array too small for transition\nError applying option 'transition' to filter 'xfade': Not yet implemented in FFmpeg, patches welcome"
+        cb(err)
+      })
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
+
+    const result = await assembleClips.execute!({
+      clipFileIds: ['c1', 'c2'],
+      aspectRatio: '9:16',
+      preserveAudio: true,
+      transitions: [{ type: 'xfade', name: 'not-a-real-name', overlapSeconds: 1 }],
+    } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: 'XFADE_FILTER_FAILED' })
+  })
 })
