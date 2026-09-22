@@ -1,13 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { eq } from 'drizzle-orm';
+import { db, voiceCatalogue } from '@serverless-saas/database';
 import { verifyVoiceLibrarySession } from '../session';
-import { findCuratedVoice } from '../curated';
 
 export const runtime = 'nodejs';
 
 const SAMPLE_TRANSCRIPTS: Record<string, string> = {
     ar: 'مرحباً! كيف حالك اليوم؟',
     zh: '你好！你今天好吗？',
-    fr: 'Bonjour ! Comment allez-vous aujourd’hui ?',
+    fr: "Bonjour ! Comment allez-vous aujourd'hui ?",
     de: 'Hallo! Wie geht es Ihnen heute?',
     he: 'שלום! מה שלומך היום?',
     hi: 'नमस्ते! आज आप कैसे हैं?',
@@ -70,16 +71,9 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const voiceUrl = new URL(`https://api.cartesia.ai/voices/${encodeURIComponent(id)}`);
-        voiceUrl.searchParams.append('expand[]', 'preview_file_url');
-        const headers = { Authorization: `Bearer ${key}`, 'Cartesia-Version': '2026-08-14' };
-        const voiceResponse = await fetch(voiceUrl, { headers, cache: 'no-store', signal: AbortSignal.timeout(10_000) });
-        if (!voiceResponse.ok) return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
-        const voice = await voiceResponse.json() as { name?: string; tagline?: string; preview_file_url?: string | null; accents?: Array<{ locale: string }> };
-        const curated = voice.name && voice.tagline ? findCuratedVoice({ name: voice.name, tagline: voice.tagline }) : undefined;
-        if (!curated) {
-            return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
-        }
+        const voice = await db.query.voiceCatalogue.findFirst({ where: eq(voiceCatalogue.providerId, id) });
+        if (!voice) return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
+
         if (language !== 'en') {
             if (voice.accents?.length && !voice.accents.some(accent => accent.locale.split(/[-_]/)[0] === language)) {
                 return NextResponse.json({ error: 'This voice does not support that language.' }, { status: 404 });
@@ -121,17 +115,17 @@ export async function GET(request: NextRequest) {
                 pendingSamples.delete(cacheKey);
             }
         }
-        if (!voice.preview_file_url) {
-            if (!curated.previewAsset) return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
-            return NextResponse.redirect(new URL(curated.previewAsset, request.url), {
+        if (!voice.previewFileUrl) {
+            if (!voice.localPreviewAsset) return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
+            return NextResponse.redirect(new URL(voice.localPreviewAsset, request.url), {
                 headers: { 'Cache-Control': 'private, no-store' },
             });
         }
-        const previewUrl = new URL(voice.preview_file_url);
+        const previewUrl = new URL(voice.previewFileUrl);
         if (previewUrl.protocol !== 'https:' || (previewUrl.hostname !== 'cartesia.ai' && !previewUrl.hostname.endsWith('.cartesia.ai'))) {
             return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 502 });
         }
-        const preview = await fetch(previewUrl, { headers, redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+        const preview = await fetch(previewUrl, { headers: { Authorization: `Bearer ${key}`, 'Cartesia-Version': '2026-08-14' }, redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(10_000) });
         const contentType = preview.headers.get('content-type') ?? '';
         const length = Number(preview.headers.get('content-length') ?? 0);
         if (!preview.ok || (!contentType.startsWith('audio/') && contentType !== 'application/octet-stream') || length > 10 * 1024 * 1024) {
