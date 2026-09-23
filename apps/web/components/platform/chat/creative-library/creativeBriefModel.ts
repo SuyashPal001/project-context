@@ -27,11 +27,23 @@ export interface ProductImageSelection {
     attachment: Attachment;
 }
 
+export interface ImportedProductData {
+    title: string | null;
+    description: string | null;
+    price: string | null;
+    /** Every candidate image import found, in page order. Empty = no images found. */
+    images: Attachment[];
+    /** fileId of the image selected to represent the product; null if none picked yet. */
+    selectedImageId: string | null;
+}
+
 export interface ProductUrlSelection {
     kind: 'product-url';
     id: string;
     name: string;
     url: string;
+    /** Present once import succeeds. Absent = link only, no import (unchanged prior behavior). */
+    imported?: ImportedProductData;
 }
 
 export type ProductSelection = ProductImageSelection | ProductUrlSelection;

@@ -121,3 +121,136 @@ describe('creative brief', () => {
         expect(parseCreativeBriefDraft(JSON.stringify({ ...brief, avatar: { kind: 'avatar' } })).avatar).toBeNull();
     });
 });
+
+type UrlProduct = Extract<NonNullable<CreativeBrief['product']>, { kind: 'product-url' }>;
+
+describe('imported product-url wiring', () => {
+  const importedBrief: CreativeBrief = {
+    template: null,
+    avatar: null,
+    voice: null,
+    product: {
+      kind: 'product-url',
+      id: 'https://shop.example.com/p/1',
+      name: 'shop.example.com',
+      url: 'https://shop.example.com/p/1',
+      imported: {
+        title: 'Ceramic Mug',
+        description: 'A sturdy 12oz mug.',
+        price: '19.00 USD',
+        images: [{ fileId: 'file-1', name: 'mug.jpg', type: 'image/jpeg', size: 1024 }],
+        selectedImageId: 'file-1',
+      },
+    },
+  };
+
+  it('includes the imported title, description, and price in the product line', () => {
+    const message = buildCreativeBriefMessage('', importedBrief);
+    expect(message).toContain('- Product: Ceramic Mug (https://shop.example.com/p/1) — A sturdy 12oz mug. — 19.00 USD');
+    expect(message).toContain('19.00 USD');
+  });
+
+  it('leads with the edited imported title, drops the stale name, and never repeats the title', () => {
+    const edited: CreativeBrief = {
+      ...importedBrief,
+      product: { ...(importedBrief.product as UrlProduct), name: 'Home | Shop', imported: { ...(importedBrief.product as UrlProduct).imported!, title: 'Ceramic Mug' } },
+    };
+    const line = buildCreativeBriefMessage('', edited).split('\n').find(l => l.startsWith('- Product:'))!;
+    expect(line).not.toContain('Home | Shop');
+    expect(line.match(/Ceramic Mug/g)).toHaveLength(1);
+    expect(line).toContain('A sturdy 12oz mug.');
+    expect(line).toContain('19.00 USD');
+  });
+
+  it('falls back to name when the imported title is blank', () => {
+    const blank: CreativeBrief = {
+      ...importedBrief,
+      product: { ...(importedBrief.product as UrlProduct), name: 'shop.example.com', imported: { ...(importedBrief.product as UrlProduct).imported!, title: '  ' } },
+    };
+    expect(buildCreativeBriefMessage('', blank)).toContain('- Product: shop.example.com (https://shop.example.com/p/1) — A sturdy');
+  });
+
+  it('drops a malformed imported field without throwing, keeping the link-only selection', () => {
+    // Tamper with the persisted marker itself, as a corrupted stored message would be.
+    const marker = (imported: unknown) => {
+      const prefix = '<!-- olmo-creative-brief:v1:';
+      const good = buildCreativeBriefMessage('', importedBrief);
+      const start = good.lastIndexOf(prefix) + prefix.length;
+      const payload = JSON.parse(decodeURIComponent(good.slice(start, -' -->'.length)));
+      payload.brief.product.imported = imported;
+      return `${good.slice(0, start)}${encodeURIComponent(JSON.stringify(payload)).replaceAll('-', '%2D')} -->`;
+    };
+    for (const bad of [
+      { title: 'x', description: null, price: null, images: 'nope', selectedImageId: 'file-1' },
+      { title: 5, description: null, price: null, images: [], selectedImageId: null },
+      { title: null, description: null, price: null, images: [{ fileId: 1 }], selectedImageId: null },
+      'junk',
+    ]) {
+      const parsed = parseCreativeBriefPresentation(marker(bad));
+      expect(parsed?.brief.product?.kind).toBe('product-url');
+      expect((parsed?.brief.product as UrlProduct).imported).toBeUndefined();
+      expect(() => creativeBriefAttachmentIds(parsed!.brief)).not.toThrow();
+    }
+  });
+
+  it('round-trips a valid imported field unchanged through encode/parse', () => {
+    const parsed = parseCreativeBriefPresentation(buildCreativeBriefMessage('hi', importedBrief));
+    expect(parsed?.brief.product).toEqual(importedBrief.product);
+  });
+
+  it('tells the agent to use the attached image when a selected image is present', () => {
+    const message = buildCreativeBriefMessage('', importedBrief);
+    expect(message).toContain('Use the attached product image as the visual reference.');
+  });
+
+  it('keeps the "inspect the URL" instruction when no image is selected', () => {
+    const noImageBrief: CreativeBrief = {
+      ...importedBrief,
+      product: { ...importedBrief.product!, imported: { ...(importedBrief.product as any).imported, selectedImageId: null } } as any,
+    };
+    const message = buildCreativeBriefMessage('', noImageBrief);
+    expect(message).toContain('Treat the URL as a source to inspect');
+  });
+
+  it('falls back to name-and-url when imported is absent (unchanged behavior)', () => {
+    const linkOnlyBrief: CreativeBrief = {
+      ...importedBrief,
+      product: { kind: 'product-url', id: 'https://x.example.com', name: 'x.example.com', url: 'https://x.example.com' },
+    };
+    const message = buildCreativeBriefMessage('', linkOnlyBrief);
+    expect(message).toContain('x.example.com (https://x.example.com)');
+  });
+
+  it('creativeBriefAttachmentIds includes the selected imported image, so it is hidden from the plain attachment list', () => {
+    expect(creativeBriefAttachmentIds(importedBrief).has('file-1')).toBe(true);
+  });
+
+  it('creativeBriefAttachmentIds is empty when no image is selected', () => {
+    const noImageBrief: CreativeBrief = {
+      ...importedBrief,
+      product: { ...importedBrief.product!, imported: { ...(importedBrief.product as any).imported, selectedImageId: null } } as any,
+    };
+    expect(creativeBriefAttachmentIds(noImageBrief).size).toBe(0);
+  });
+
+  it('mergeCreativeBriefAttachments actually attaches the selected imported image', () => {
+    const merged = mergeCreativeBriefAttachments(undefined, importedBrief);
+    expect(merged).toEqual([{ fileId: 'file-1', name: 'mug.jpg', type: 'image/jpeg', size: 1024 }]);
+  });
+
+  it('mergeCreativeBriefAttachments attaches nothing for product-url when no image is selected', () => {
+    const noImageBrief: CreativeBrief = {
+      ...importedBrief,
+      product: { ...importedBrief.product!, imported: { ...(importedBrief.product as any).imported, selectedImageId: null } } as any,
+    };
+    expect(mergeCreativeBriefAttachments(undefined, noImageBrief)).toBeUndefined();
+  });
+
+  it('dedupes if the selected imported image happens to already be in existing attachments', () => {
+    const merged = mergeCreativeBriefAttachments(
+      [{ fileId: 'file-1', name: 'mug.jpg', type: 'image/jpeg', size: 1024 }],
+      importedBrief,
+    );
+    expect(merged).toHaveLength(1);
+  });
+});

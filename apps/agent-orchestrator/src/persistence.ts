@@ -464,8 +464,9 @@ export function generatedFileKey(conversationId: string, title: string, extensio
  * Persist agent-generated content through the same path a browser upload takes:
  * mint a pending row + presigned URL, PUT the bytes, then confirm.
  *
- * There is no server-side putObject on StorageProvider, so this is genuinely three
- * hops rather than one write. Every failure yields null instead of throwing: the
+ * This deliberately uses the browser-style upload flow (three hops) rather than a
+ * single write. StorageProvider has putObject and StorageService has
+ * putFileForTenant, but this orchestrator path does not use them. Every failure yields null instead of throwing: the
  * canvas has already been streamed to the user by the time this runs, so a failed
  * upload should cost the download, not the reply.
  */

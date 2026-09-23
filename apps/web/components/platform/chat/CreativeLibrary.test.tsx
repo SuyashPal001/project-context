@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CreativeLibrary } from './CreativeLibrary';
 import { fetchCreativeVoice } from './creativeVoiceFetch';
 import { api } from '@/lib/api';
+import { toast } from 'sonner';
 import { createEmptyCreativeBrief, type CreativeBrief } from './creative-library/creativeBriefModel';
 
 vi.mock('@/lib/api', () => ({ api: { get: vi.fn(), post: vi.fn() } }));
@@ -55,12 +56,90 @@ describe('creative library', () => {
         })));
     });
 
-    it('adds a product link to the brief without presenting it as imported metadata', () => {
+    it('imports product data server-side and attaches it to the brief', async () => {
+        vi.mocked(api.post).mockResolvedValueOnce({ data: {
+            title: 'Ceramic Mug', description: 'A sturdy mug.', price: '19.00 USD',
+            images: [{ fileId: 'file-1', name: 'mug.jpg', type: 'image/jpeg', size: 1024 }],
+        } });
         const { onSelect } = renderLibrary('products');
         fireEvent.change(screen.getByRole('textbox', { name: 'Product page link' }), { target: { value: 'https://example.com/products/cup' } });
         fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
-        expect(onSelect).toHaveBeenCalledWith({ kind: 'product-url', id: 'https://example.com/products/cup', name: 'example.com', url: 'https://example.com/products/cup' });
-        expect(screen.getByText(/not imported automatically yet/)).toBeTruthy();
+
+        expect(api.post).toHaveBeenCalledWith('/api/v1/products/import', { url: 'https://example.com/products/cup' });
+        await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'product-url', url: 'https://example.com/products/cup', name: 'Ceramic Mug',
+            imported: expect.objectContaining({ title: 'Ceramic Mug', selectedImageId: 'file-1' }),
+        })));
+    });
+
+    it('falls back to a link-only selection and a toast when import fails', async () => {
+        vi.mocked(api.post).mockRejectedValueOnce(new Error('network'));
+        const { onSelect } = renderLibrary('products');
+        fireEvent.change(screen.getByRole('textbox', { name: 'Product page link' }), { target: { value: 'https://example.com/products/cup' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+
+        await waitFor(() => expect(onSelect).toHaveBeenCalledWith({
+            kind: 'product-url', id: 'https://example.com/products/cup', name: 'example.com', url: 'https://example.com/products/cup',
+        }));
+        expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('added the link only'));
+    });
+
+    it('does not fire a second import when the form is submitted again while one is in flight', async () => {
+        let resolveImport!: (value: unknown) => void;
+        vi.mocked(api.post).mockReturnValueOnce(new Promise(resolve => { resolveImport = resolve; }));
+        const { onSelect } = renderLibrary('products');
+        const input = screen.getByRole('textbox', { name: 'Product page link' });
+        fireEvent.change(input, { target: { value: 'https://example.com/products/cup' } });
+        fireEvent.submit(input.closest('form')!);
+        fireEvent.submit(input.closest('form')!);
+        expect(api.post).toHaveBeenCalledTimes(1);
+
+        resolveImport({ data: { title: 'Ceramic Mug', description: null, price: null, images: [] } });
+        await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    });
+
+    it('renders the editable import card for an imported selection and forwards edits', () => {
+        const brief: CreativeBrief = { ...createEmptyCreativeBrief(), product: {
+            kind: 'product-url', id: 'https://example.com/p/1', name: 'Ceramic Mug', url: 'https://example.com/p/1',
+            imported: {
+                title: 'Ceramic Mug', description: 'A mug.', price: '19.00 USD',
+                images: [{ fileId: 'img-1', name: 'a.jpg', type: 'image/jpeg', size: 100 }],
+                selectedImageId: 'img-1',
+            },
+        } };
+        const { onSelect } = renderLibrary('products', vi.fn(), brief);
+        expect(screen.getByDisplayValue('Ceramic Mug')).toBeTruthy();
+        fireEvent.change(screen.getByLabelText('Product title'), { target: { value: 'Big Mug' } });
+        expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'product-url',
+            imported: expect.objectContaining({ title: 'Big Mug' }),
+        }));
+    });
+
+    it('does not render the import card for a link-only selection', () => {
+        const brief: CreativeBrief = { ...createEmptyCreativeBrief(), product: {
+            kind: 'product-url', id: 'https://example.com/p/1', name: 'example.com', url: 'https://example.com/p/1',
+        } };
+        renderLibrary('products', vi.fn(), brief);
+        expect(screen.queryByLabelText('Product title')).toBeNull();
+    });
+
+    it('skips a second import when re-submitting the same already-imported URL', async () => {
+        vi.mocked(api.post).mockResolvedValueOnce({ data: { title: 'Ceramic Mug', description: null, price: null, images: [] } });
+        const onSelect = vi.fn();
+        const brief = createEmptyCreativeBrief();
+        const { rerender } = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CreativeLibrary tab="products" brief={brief} onSelect={onSelect} /></QueryClientProvider>);
+        fireEvent.change(screen.getByRole('textbox', { name: 'Product page link' }), { target: { value: 'https://example.com/products/cup' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+        await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+
+        const importedSelection = onSelect.mock.calls[0][0];
+        const briefWithSelection = { ...brief, product: importedSelection };
+        rerender(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CreativeLibrary tab="products" brief={briefWithSelection} onSelect={onSelect} /></QueryClientProvider>);
+        fireEvent.change(screen.getByRole('textbox', { name: 'Product page link' }), { target: { value: 'https://example.com/products/cup' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+
+        expect(api.post).toHaveBeenCalledTimes(1); // not called again for the identical, already-imported URL
     });
 
     it('attaches an existing uploaded product image when selected', async () => {

@@ -105,6 +105,44 @@ export class StorageService {
     };
   }
 
+  /**
+   * Writes bytes the caller already has (a server-side fetch result, not a
+   * browser upload) directly to the tenant's storage and records the files
+   * row as already `uploaded` — there is no presign/confirm round trip
+   * because there is no client waiting to PUT anything.
+   *
+   * The object is written FIRST, and the `files` row is only inserted once
+   * that succeeds. Inserting first would leave an `uploaded` row pointing at
+   * a missing object if the put then failed.
+   */
+  async putFileForTenant(
+    tenantId: string,
+    uploadedBy: string,
+    userKey: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<{ fileId: string; key: string }> {
+    const s3Key = tenantS3Key(tenantId, userKey);
+    const provider = await this.resolveProvider(tenantId);
+    await (provider as S3StorageProvider).putObject(s3Key, body, contentType);
+
+    const [file] = await db
+      .insert(files)
+      .values({
+        tenantId,
+        name: userKey.split('/').pop() || userKey,
+        key: userKey,
+        mimeType: contentType,
+        status: 'uploaded',
+        uploadedBy,
+        size: body.length,
+        uploadedAt: new Date(),
+      })
+      .returning();
+
+    return { fileId: file.id, key: userKey };
+  }
+
   async confirmUpload(tenantId: string, fileId: string, size: number): Promise<void> {
     await db
       .update(files)

@@ -80,6 +80,9 @@ function SelectionThumbnail({ selection }: { selection: CreativeSelection }) {
         return <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted"><FileThumbnail fileId={selection.attachment.fileId} alt="" /></span>;
     }
     if (selection.kind === 'product-url') {
+        if (selection.imported?.selectedImageId) {
+            return <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted"><FileThumbnail fileId={selection.imported.selectedImageId} alt="" /></span>;
+        }
         return <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><Link2 className="h-4 w-4" /></span>;
     }
 
@@ -114,7 +117,9 @@ function SelectionPreview({ field, selection }: { field: CreativeBriefField; sel
         <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
             {selection.kind === 'product-image' || (selection.kind === 'avatar' && !selection.image)
                 ? <FileThumbnail fileId={selection.attachment.fileId} alt={selection.name} />
-                : image
+                : selection.kind === 'product-url' && selection.imported?.selectedImageId
+                    ? <FileThumbnail fileId={selection.imported.selectedImageId} alt={selection.name} />
+                    : image
                     ? <Image src={image} alt="" fill sizes="256px" className="object-cover" />
                     : <div className="flex h-full items-center justify-center text-muted-foreground"><Link2 className="h-6 w-6" /></div>}
         </div>
