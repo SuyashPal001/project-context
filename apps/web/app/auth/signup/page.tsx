@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { signUp } from "@/lib/auth";
 import { initiateGoogleSignIn } from "@/lib/auth-google";
+import { useHyperspace } from "@/components/hyperspace-provider";
 import { StarfieldCanvas } from "@/components/starfield-canvas";
 import { SaarthiLogo as ProjectContextLogo } from "@/components/platform/SaarthiLogo";
 
@@ -35,11 +37,12 @@ type SignupSchema = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
     const router = useRouter();
+    const { startHyperspace, finishHyperspace, cancelHyperspace } = useHyperspace();
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     const form = useForm<SignupSchema>({
-        resolver: zodResolver(signupSchema as any),
+        resolver: zodResolver(signupSchema),
         defaultValues: {
             name: "",
             email: "",
@@ -51,15 +54,18 @@ export default function SignupPage() {
     async function onSubmit(data: SignupSchema) {
         setIsLoading(true);
         setError(null);
+        startHyperspace('signup');
 
         try {
             await signUp(data.name, data.email, data.password);
 
             // On success, redirect to verification page
+            finishHyperspace();
             router.push(`/auth/verify?email=${encodeURIComponent(data.email)}`);
-        } catch (err: any) {
+        } catch (err: unknown) {
+            cancelHyperspace();
             console.error("Signup error:", err);
-            setError(err.message || "Failed to create account. Please try again.");
+            setError(err instanceof Error ? err.message : "Failed to create account. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -155,7 +161,7 @@ export default function SignupPage() {
                             variant="outline"
                             type="button"
                             className="w-full"
-                            onClick={() => initiateGoogleSignIn()}
+                            onClick={() => initiateGoogleSignIn(undefined, 'signup')}
                             disabled={isLoading}
                         >
                             <svg className="mr-2 h-4 w-4" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
@@ -168,7 +174,7 @@ export default function SignupPage() {
 
                 <p className="text-center text-sm text-muted-foreground">
                     Already have an account?{' '}
-                    <a href="/auth/login" className="text-foreground font-medium hover:underline">Sign in</a>
+                    <Link href="/auth/login" className="text-foreground font-medium hover:underline">Sign in</Link>
                 </p>
             </div>
         </div>

@@ -18,7 +18,7 @@ export function HyperspaceLoader({ active, ...sequenceProps }: HyperspaceLoaderP
     return <HyperspaceSequence {...sequenceProps} />;
 }
 
-function HyperspaceSequence({ isDone, onComplete, statusMessage, visualTheme = 'light' }: Omit<HyperspaceLoaderProps, 'active'>) {
+function HyperspaceSequence({ isDone, onComplete, statusMessage, mode = 'signin', visualTheme = 'light' }: Omit<HyperspaceLoaderProps, 'active'>) {
     const [step, setStep] = useState(0);
 
     useEffect(() => {
@@ -42,6 +42,7 @@ function HyperspaceSequence({ isDone, onComplete, statusMessage, visualTheme = '
 
     const arrival = step >= 6;
     const isDark = visualTheme === 'dark';
+    const arrivalLabel = mode === 'signup' ? 'Account created' : 'Workspace ready';
 
     return (
         <div className={`fixed inset-0 z-[9999] pointer-events-none flex flex-col items-center justify-center overflow-hidden ${isDark ? 'bg-[#070504] text-[#f3e7df]' : 'bg-[#f6efe8] text-[#29221f]'}`}>
@@ -78,7 +79,7 @@ function HyperspaceSequence({ isDone, onComplete, statusMessage, visualTheme = '
 
             <div className={`absolute inset-0 z-20 flex items-center justify-center transition-opacity duration-700 ${arrival ? `opacity-100 ${isDark ? 'bg-[#070504]/80' : 'bg-[#f6efe8]/70'}` : 'opacity-0 pointer-events-none'}`}>
                 <div className={`text-[16px] font-medium tracking-wide transition-all duration-700 ${arrival ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
-                    Workspace ready
+                    {arrivalLabel}
                 </div>
             </div>
         </div>

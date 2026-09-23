@@ -1,12 +1,13 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import { useTheme } from "next-themes";
 import { HyperspaceLoader } from "./hyperspace-loader";
 
 interface HyperspaceContextType {
     startHyperspace: (mode?: 'signup' | 'signin') => void;
     finishHyperspace: () => void;
+    cancelHyperspace: () => void;
     setHyperspaceStatus: (message: string) => void;
 }
 
@@ -25,29 +26,35 @@ export function HyperspaceProvider({ children }: { children: ReactNode }) {
     const [isDone, setIsDone] = useState(false);
     const [statusMessage, setStatusMessage] = useState('');
 
-    const startHyperspace = (newMode: 'signup' | 'signin' = 'signin') => {
+    const startHyperspace = useCallback((newMode: 'signup' | 'signin' = 'signin') => {
         setMode(newMode);
         setActive(true);
         setIsDone(false);
         setStatusMessage('');
-    };
+    }, []);
 
-    const finishHyperspace = () => {
+    const finishHyperspace = useCallback(() => {
         setIsDone(true);
-    };
+    }, []);
 
-    const setHyperspaceStatus = (message: string) => {
+    const cancelHyperspace = useCallback(() => {
+        setActive(false);
+        setIsDone(false);
+        setStatusMessage('');
+    }, []);
+
+    const setHyperspaceStatus = useCallback((message: string) => {
         setStatusMessage(message);
-    };
+    }, []);
 
-    const handleComplete = () => {
+    const handleComplete = useCallback(() => {
         // Animation sequence has fully finished, hide it.
         setActive(false);
         setStatusMessage('');
-    };
+    }, []);
 
     return (
-        <HyperspaceContext.Provider value={{ startHyperspace, finishHyperspace, setHyperspaceStatus }}>
+        <HyperspaceContext.Provider value={{ startHyperspace, finishHyperspace, cancelHyperspace, setHyperspaceStatus }}>
             {children}
             {/* The loader sits globally above everything */}
             <HyperspaceLoader

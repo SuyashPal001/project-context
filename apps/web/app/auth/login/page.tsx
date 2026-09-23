@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -22,10 +23,15 @@ const passwordSchema = z.object({ password: z.string().min(8, { message: "Passwo
 type EmailSchema = z.infer<typeof emailSchema>;
 type PasswordSchema = z.infer<typeof passwordSchema>;
 
+interface CheckEmailResponse {
+    error?: string;
+    provider?: string;
+}
+
 function LoginPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { startHyperspace, finishHyperspace } = useHyperspace();
+    const { startHyperspace, finishHyperspace, cancelHyperspace } = useHyperspace();
     const redirectParam = searchParams.get('redirect') || undefined;
 
     const [step, setStep] = useState<Step>('email');
@@ -44,25 +50,25 @@ function LoginPageContent() {
             setSuccessMessage(`Invitation accepted! Please log in again to access ${slug}.`);
     }, [searchParams]);
 
-    const emailForm = useForm<EmailSchema>({ resolver: zodResolver(emailSchema as any), defaultValues: { email: '' } });
-    const passwordForm = useForm<PasswordSchema>({ resolver: zodResolver(passwordSchema as any), defaultValues: { password: '' } });
+    const emailForm = useForm<EmailSchema>({ resolver: zodResolver(emailSchema), defaultValues: { email: '' } });
+    const passwordForm = useForm<PasswordSchema>({ resolver: zodResolver(passwordSchema), defaultValues: { password: '' } });
 
     async function onEmailSubmit(data: EmailSchema) {
         setIsLoading(true);
         setError(null);
         try {
             const res = await fetch(`/api/proxy/api/v1/auth/check-email?email=${encodeURIComponent(data.email)}`);
-            let json: any;
+            let json: CheckEmailResponse;
             try {
-                json = await res.json();
+                json = await res.json() as CheckEmailResponse;
             } catch {
                 throw new Error('Service unavailable. Please try again.');
             }
             if (!res.ok) throw new Error(json?.error || 'Failed to check email. Please try again.');
             setEmail(data.email);
             setStep(json.provider === 'google' ? 'google' : 'password');
-        } catch (err: any) {
-            setError(err.message || 'Failed to check email. Please try again.');
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Failed to check email. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -102,9 +108,9 @@ function LoginPageContent() {
                 throw new Error("This account requires a password reset. Please use 'Forgot password'.");
             }
             await completeLogin(signInResult.idToken, signInResult.accessToken, signInResult.refreshToken);
-        } catch (err: any) {
-            finishHyperspace();
-            setError(err.message || 'Invalid email or password.');
+        } catch (err: unknown) {
+            cancelHyperspace();
+            setError(err instanceof Error ? err.message : 'Invalid email or password.');
         } finally {
             setIsLoading(false);
         }
@@ -163,7 +169,7 @@ function LoginPageContent() {
                                 </Button>
                             </>
                         )}
-                        <p className="text-center text-sm text-muted-foreground">Don&apos;t have an account?{' '}<a href="/auth/signup" className="text-foreground font-medium hover:underline">Sign up</a></p>
+                        <p className="text-center text-sm text-muted-foreground">Don&apos;t have an account?{' '}<Link href="/auth/signup" className="text-foreground font-medium hover:underline">Sign up</Link></p>
                     </>
                 )}
 
@@ -182,7 +188,7 @@ function LoginPageContent() {
                             </form>
                         </Form>
                         <p className="text-center text-sm">
-                            <a href={`/auth/forgot-password?email=${encodeURIComponent(email)}`} className="text-primary hover:underline text-sm">Forgot password?</a>
+                            <Link href={`/auth/forgot-password?email=${encodeURIComponent(email)}`} className="text-primary hover:underline text-sm">Forgot password?</Link>
                         </p>
                     </>
                 )}
