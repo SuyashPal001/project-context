@@ -5,9 +5,10 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { resolveSourceImage } from '../../media.js'
 import { refundImageCharge } from './imageCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
+import type { MediaExecContext } from './batchRunner.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
-const IMAGE_MODEL = 'gemini-3-pro-image-preview'
+export const IMAGE_MODEL = 'gemini-3-pro-image-preview'
 
 const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024 // matches editImage.ts's existing per-file cap
 // Aggregate cap across ALL resolved references in one call. The gateway's
@@ -18,7 +19,7 @@ const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024 // matches editImage.ts's exi
 // gateway's 40MB raw-body cap once JSON/base64 overhead is included.
 const MAX_TOTAL_REFERENCE_BYTES = 25 * 1024 * 1024
 
-const outputSchema = z.object({
+export const imageOutputSchema = z.object({
   fileId: z.string().optional(),
   name: z.string().optional(),
   fileType: z.string().optional(),
@@ -30,27 +31,24 @@ const outputSchema = z.object({
   model: z.string().optional(),
 })
 
-export const generateImage = createTool({
-  id: 'generate-image',
-  description: 'Generates a new image from a text prompt using Gemini 3 Pro Image, optionally anchored on 1-3 reference images for identity/style consistency. Use when the user asks Director to create, draw, or generate an image.',
-  inputSchema: z.object({
-    prompt: z.string().describe('Full description of the image to generate'),
-    referenceFileIds: z.array(z.string().uuid()).min(1).max(3).optional()
-      .describe('Existing files rows used as identity/style anchors — the model composes a new image informed by all of them.'),
-    identityAnchor: z.object({
-      terseTag: z.string(),
-      styleLock: z.string(),
-    }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code. Required whenever referenceFileIds includes a cast sheet.'),
-  }),
-  outputSchema,
-  requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
-  execute: async (inputData, execContext) => {
-    const { prompt, referenceFileIds, identityAnchor } = inputData as {
-      prompt: string
-      referenceFileIds?: string[]
-      identityAnchor?: { terseTag: string; styleLock: string }
-    }
+export const imageItemSchema = z.object({
+  prompt: z.string().describe('Full description of the image to generate'),
+  referenceFileIds: z.array(z.string().uuid()).min(1).max(3).optional()
+    .describe('Existing files rows used as identity/style anchors — the model composes a new image informed by all of them.'),
+  identityAnchor: z.object({
+    terseTag: z.string(),
+    styleLock: z.string(),
+  }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code. Required whenever referenceFileIds includes a cast sheet.'),
+})
+
+export type ImageItemInput = z.infer<typeof imageItemSchema>
+
+export async function generateImageItem(
+  inputData: ImageItemInput,
+  execContext: MediaExecContext | undefined,
+  itemIndex: number,
+) {
+    const { prompt, referenceFileIds, identityAnchor } = inputData
 
     // Identity-anchor gate — enforced in tool code, not prose, mirroring
     // generateVideo.ts's extractQuotedSpans/approvedDialogue check. Refuses
@@ -133,14 +131,11 @@ export const generateImage = createTool({
     }
 
     // Success — charge now, before the (best-effort) upload. Deterministic
-    // (conversationId + toolCallId + a hardcoded attempt suffix, matching
-    // generateVideo.ts's `video:${jobId}:${attempt}` chargeKey shape exactly,
-    // attempt included) rather than a random uuid — a background-task
-    // onFailed backstop needs to reconstruct this key from BackgroundTask
-    // fields alone, which a randomUUID() generated inside execute()'s own
-    // closure can never be, and matching video's shape means one shared
-    // construction works for both kinds in backgroundTaskRefund.ts.
-    const chargeKey = `image:${conversationId ?? sessionId}:${toolCallId}:0`
+    // (conversationId + toolCallId + item index) rather than a random uuid,
+    // so the key is stable per call and has the same shape as
+    // generateVideo.ts's video:${jobId}:${attempt}. The item index occupies
+    // the last slot; the single tool passes 0.
+    const chargeKey = `image:${conversationId ?? sessionId}:${toolCallId}:${itemIndex}`
     let charged = false
     let rateId: string | null = null
     let rateVersion: number | null = null
@@ -186,5 +181,15 @@ export const generateImage = createTool({
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
       model: IMAGE_MODEL,
     }
-  },
+}
+
+export const generateImage = createTool({
+  id: 'generate-image',
+  description: 'Generates a new image from a text prompt using Gemini 3 Pro Image, optionally anchored on 1-3 reference images for identity/style consistency. Use when the user asks Director to create, draw, or generate an image.',
+  inputSchema: imageItemSchema,
+  outputSchema: imageOutputSchema,
+  requireApproval: async (_input, ctx) =>
+    shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
+  execute: async (inputData, execContext) =>
+    generateImageItem(inputData as ImageItemInput, execContext as unknown as MediaExecContext, 0),
 })
