@@ -208,6 +208,39 @@ describe('POST /products/import', () => {
     expect(userKey).toMatch(/^imported-products\//);
   });
 
+  it('derives a safe, bounded filename for the key and returned name', async () => {
+    const longName = 'a'.repeat(400);
+    const imageUrl = `https://cdn.example.com/x/${longName}%20caf%C3%A9%20%E2%9C%93!!.jpg`;
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true, status: 200, url: 'https://shop.example.com/p/1',
+        headers: withGet(new Map([['content-type', 'text/html']])),
+        body: { getReader: () => textReader(`<html><head><meta property="og:image" content="${imageUrl}"></head></html>`) },
+      })
+      .mockResolvedValueOnce({
+        ok: true, status: 200,
+        headers: withGet(new Map([['content-type', 'image/jpeg']])),
+        body: { getReader: () => byteReader(new Uint8Array([1, 2, 3])) },
+      });
+    putFileForTenantMock.mockResolvedValueOnce({ fileId: 'file-9', key: 'k' });
+
+    const app = await buildApp();
+    const res = await app.request('/products/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
+    });
+
+    const body = await res.json();
+    const [, , key] = putFileForTenantMock.mock.calls[0];
+    expect(key).toMatch(/^imported-products\//);
+    expect(key.length).toBeLessThan(200);
+    const name = body.data.images[0].name;
+    expect(name.length).toBeLessThanOrEqual(120);
+    expect(name).toMatch(/^[A-Za-z0-9._-]+$/);
+    expect(key.endsWith(`-${name}`)).toBe(true);
+  });
+
   it('keeps images that succeed when another image in the same import fails', async () => {
     fetchMock
       .mockResolvedValueOnce({

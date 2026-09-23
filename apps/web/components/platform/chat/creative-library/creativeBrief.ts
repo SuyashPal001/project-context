@@ -25,17 +25,25 @@ function selectedImportedImage(brief: CreativeBrief): Attachment | undefined {
     if (brief.product?.kind !== 'product-url') return undefined;
     const { imported } = brief.product;
     if (!imported?.selectedImageId) return undefined;
+    if (!Array.isArray(imported.images)) return undefined;
     return imported.images.find(image => image.fileId === imported.selectedImageId);
 }
 
 export function buildCreativeBriefMessage(direction: string, brief: CreativeBrief): string {
     const trimmedDirection = direction.trim();
     const productSelection = brief.product;
-    const product = productSelection?.kind === 'product-url'
-        ? [`${productSelection.name} (${productSelection.url})`, productSelection.imported?.title, productSelection.imported?.description, productSelection.imported?.price]
+    let product: string | undefined;
+    if (productSelection?.kind === 'product-url') {
+        const imported = productSelection.imported;
+        // Lead with the (possibly user-edited) imported title so it appears once
+        // and a corrected title replaces the stale scraped name.
+        const lead = imported ? (imported.title?.trim() || productSelection.name) : productSelection.name;
+        product = [`${lead} (${productSelection.url})`, imported?.description, imported?.price]
             .filter(Boolean)
-            .join(' — ')
-        : productSelection?.name;
+            .join(' — ');
+    } else {
+        product = productSelection?.name;
+    }
     // "Has an image actually attached" must match mergeCreativeBriefAttachments's
     // own condition below, or this line can claim an attachment that was never
     // added to the outgoing message.
@@ -136,9 +144,26 @@ function isAvatarSelection(value: unknown): value is NonNullable<CreativeBrief['
         && (value.image === undefined || isTrustedCreativeImage(value.image));
 }
 
+function isStringOrNull(value: unknown): boolean {
+    return value === null || typeof value === 'string';
+}
+
+function isImportedProductData(value: unknown): boolean {
+    return isRecord(value)
+        && isStringOrNull(value.title) && isStringOrNull(value.description) && isStringOrNull(value.price)
+        && Array.isArray(value.images) && value.images.every(isAttachment)
+        && isStringOrNull(value.selectedImageId);
+}
+
 function isProductSelection(value: unknown): value is NonNullable<CreativeBrief['product']> {
     if (!isRecord(value) || !hasString(value, 'id') || !hasString(value, 'name')) return false;
-    if (value.kind === 'product-url') return hasString(value, 'url');
+    if (value.kind === 'product-url') {
+        if (!hasString(value, 'url')) return false;
+        // A malformed imported payload is dropped (link-only), not fatal: the
+        // marker is parsed from persisted user messages on every render.
+        if (value.imported !== undefined && !isImportedProductData(value.imported)) delete value.imported;
+        return true;
+    }
     return value.kind === 'product-image' && isAttachment(value.attachment);
 }
 

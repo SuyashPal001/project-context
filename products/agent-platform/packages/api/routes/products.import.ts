@@ -90,6 +90,14 @@ async function readCapped(response: Response, maxBytes: number, signal: AbortSig
 
 interface ImportedImage { fileId: string; name: string; type: string; size: number }
 
+// files.name is varchar(255) and files.key varchar(512): an unbounded remote
+// filename would fail the insert AFTER the S3 put, orphaning the object.
+function safeFilename(segment: string): string {
+  let decoded = segment;
+  try { decoded = decodeURIComponent(segment); } catch { /* keep raw segment */ }
+  return decoded.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 100) || 'image';
+}
+
 async function importOneImage(
   imageUrl: string,
   tenantId: string,
@@ -106,7 +114,7 @@ async function importOneImage(
   } finally {
     deadline.dispose();
   }
-  const filename = new URL(imageUrl).pathname.split('/').pop() || 'image';
+  const filename = safeFilename(new URL(imageUrl).pathname.split('/').pop() ?? '');
   const key = `${IMPORTED_IMAGE_PREFIX}${crypto.randomUUID()}-${filename}`;
   const { fileId } = await storageService.putFileForTenant(tenantId, userId, key, body, contentType);
   return { fileId, name: filename, type: contentType, size: body.length };

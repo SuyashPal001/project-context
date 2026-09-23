@@ -11,6 +11,12 @@ export function ProductImportCard({ selection, onChange }: {
     const imported = selection.imported;
     if (!imported) return null;
 
+    function editTitle(value: string) {
+        let hostname = selection.name;
+        try { hostname = new URL(selection.url).hostname; } catch { /* keep current name */ }
+        onChange({ ...selection, name: value.trim() || hostname, imported: { ...imported!, title: value } });
+    }
+
     function patch(fields: Partial<NonNullable<ProductUrlSelection['imported']>>) {
         onChange({ ...selection, imported: { ...imported!, ...fields } });
     }
@@ -19,7 +25,7 @@ export function ProductImportCard({ selection, onChange }: {
         <Input
             aria-label="Product title"
             value={imported.title ?? ''}
-            onChange={(event) => patch({ title: event.target.value })}
+            onChange={(event) => editTitle(event.target.value)}
             placeholder="Product title"
         />
         <Textarea

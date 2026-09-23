@@ -101,7 +101,7 @@ describe('extractProductPage', () => {
     ]);
   });
 
-  it('falls back to <img> tags only when og:image and JSON-LD image both found nothing', () => {
+  it('does not run the <img> scan when og:image found something', () => {
     const html = `<html><head>
       <meta property="og:image" content="https://cdn.example.com/hero.jpg">
     </head><body><img src="https://cdn.example.com/other.jpg" width="400" height="400"></body></html>`;
@@ -136,5 +136,38 @@ describe('extractProductPage', () => {
     const images = Array.from({ length: 10 }, (_, i) => `<meta property="og:image" content="https://cdn.example.com/${i}.jpg">`).join('\n');
     const html = `<html><head>${images}</head></html>`;
     expect(extractProductPage(html, 'https://shop.example.com').imageUrls).toHaveLength(6);
+  });
+
+  describe('JSON-LD Product.image tier', () => {
+    const ld = (obj: unknown) => `<html><head><script type="application/ld+json">${JSON.stringify(obj)}</script></head><body><img src="/body.jpg" width="400" height="400"></body></html>`;
+    const page = 'https://shop.example.com/p/1';
+
+    it('reads a string image', () => {
+      expect(extractProductPage(ld({ '@type': 'Product', image: 'https://cdn.example.com/a.jpg' }), page).imageUrls)
+        .toEqual(['https://cdn.example.com/a.jpg']);
+    });
+    it('reads an array of strings', () => {
+      expect(extractProductPage(ld({ '@type': 'Product', image: ['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg'] }), page).imageUrls)
+        .toEqual(['https://cdn.example.com/a.jpg', 'https://cdn.example.com/b.jpg']);
+    });
+    it('reads ImageObject {url}', () => {
+      expect(extractProductPage(ld({ '@type': 'Product', image: { '@type': 'ImageObject', url: 'https://cdn.example.com/a.jpg' } }), page).imageUrls)
+        .toEqual(['https://cdn.example.com/a.jpg']);
+      expect(extractProductPage(ld({ '@type': 'Product', image: [{ url: 'https://cdn.example.com/b.jpg' }] }), page).imageUrls)
+        .toEqual(['https://cdn.example.com/b.jpg']);
+    });
+    it('reads an image inside @graph', () => {
+      expect(extractProductPage(ld({ '@graph': [{ '@type': 'WebSite' }, { '@type': 'Product', image: 'https://cdn.example.com/g.jpg' }] }), page).imageUrls)
+        .toEqual(['https://cdn.example.com/g.jpg']);
+    });
+    it('resolves a relative URL against the page URL', () => {
+      expect(extractProductPage(ld({ '@type': 'Product', image: '/img/r.jpg' }), page).imageUrls)
+        .toEqual(['https://shop.example.com/img/r.jpg']);
+    });
+    it('is only consulted when og:image found nothing, and beats the body scan', () => {
+      const html = `<html><head><meta property="og:image" content="https://cdn.example.com/og.jpg">
+        <script type="application/ld+json">${JSON.stringify({ '@type': 'Product', image: 'https://cdn.example.com/ld.jpg' })}</script></head></html>`;
+      expect(extractProductPage(html, page).imageUrls).toEqual(['https://cdn.example.com/og.jpg']);
+    });
   });
 });

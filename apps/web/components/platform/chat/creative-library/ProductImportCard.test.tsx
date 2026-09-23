@@ -42,6 +42,22 @@ describe('ProductImportCard', () => {
         }));
     });
 
+    it('title edit also updates the selection name; clearing falls back to the hostname', () => {
+        const onChange = vi.fn();
+        render(<ProductImportCard selection={baseSelection} onChange={onChange} />);
+        const input = screen.getByDisplayValue('Ceramic Mug');
+        fireEvent.change(input, { target: { value: ' Large Mug ' } });
+        expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+            name: 'Large Mug',
+            imported: expect.objectContaining({ title: ' Large Mug ' }),
+        }));
+        fireEvent.change(input, { target: { value: '' } });
+        expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+            name: 'shop.example.com',
+            imported: expect.objectContaining({ title: '' }),
+        }));
+    });
+
     it('renders every candidate image as a pickable option', () => {
         render(<ProductImportCard selection={baseSelection} onChange={vi.fn()} />);
         expect(screen.getAllByRole('button', { name: /use this image/i })).toHaveLength(2);

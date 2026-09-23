@@ -39,26 +39,43 @@ function priceFromProduct(candidate: unknown): string | null {
   return priceFromOffer(offer);
 }
 
-function readJsonLdPrice($: ReturnType<typeof load>): string | null {
-  const scripts = $('script[type="application/ld+json"]').toArray();
-  for (const script of scripts) {
-    const raw = $(script).text();
+function jsonLdCandidates($: ReturnType<typeof load>): unknown[] {
+  const out: unknown[] = [];
+  for (const script of $('script[type="application/ld+json"]').toArray()) {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse($(script).text());
     } catch {
       continue; // one malformed JSON-LD block must not fail extraction
     }
     // Shopify/Yoast/WooCommerce commonly nest the Product under a top-level
     // @graph array rather than at the document root.
     const graph = (parsed as { '@graph'?: unknown[] })?.['@graph'];
-    const candidates = Array.isArray(graph) ? graph : Array.isArray(parsed) ? parsed : [parsed];
-    for (const candidate of candidates) {
-      const price = priceFromProduct(candidate);
-      if (price) return price;
-    }
+    out.push(...(Array.isArray(graph) ? graph : Array.isArray(parsed) ? parsed : [parsed]));
+  }
+  return out;
+}
+
+function readJsonLdPrice(candidates: unknown[]): string | null {
+  for (const candidate of candidates) {
+    const price = priceFromProduct(candidate);
+    if (price) return price;
   }
   return null;
+}
+
+/** Product.image may be a string, an ImageObject {url}, or an array of either. */
+function jsonLdImages(candidates: unknown[]): string[] {
+  const out: string[] = [];
+  for (const candidate of candidates) {
+    const image = (candidate as { image?: unknown } | null)?.image;
+    const entries = Array.isArray(image) ? image : [image];
+    for (const entry of entries) {
+      if (typeof entry === 'string') out.push(entry);
+      else if (typeof (entry as { url?: unknown } | null)?.url === 'string') out.push((entry as { url: string }).url);
+    }
+  }
+  return out;
 }
 
 export function extractProductPage(html: string, pageUrl: string): ExtractedProduct {
@@ -72,7 +89,8 @@ export function extractProductPage(html: string, pageUrl: string): ExtractedProd
     || $('meta[name="description"]').attr('content')?.trim()
     || null;
 
-  const price = readJsonLdPrice($)
+  const ldCandidates = jsonLdCandidates($);
+  const price = readJsonLdPrice(ldCandidates)
     || $('meta[property="product:price:amount"]').attr('content')?.trim()
     || null;
 
@@ -88,10 +106,12 @@ export function extractProductPage(html: string, pageUrl: string): ExtractedProd
 
   $('meta[property="og:image"]').each((_, el) => addCandidate($(el).attr('content')));
 
-  // The body <img> scan is a last resort, not additive — og:image (or a
-  // future JSON-LD Product.image addition) is the trusted signal. Running
-  // it unconditionally mixes noisy thumbnails/icons into a page that
-  // already gave a clean answer.
+  // Tiers are fallbacks, not additive: og:image, then JSON-LD Product.image
+  // (only if og:image found nothing), then the body <img> scan as a last
+  // resort. The scan is noisy and must not mix thumbnails/icons into a page
+  // that already gave a clean answer.
+  if (imageUrls.length === 0) jsonLdImages(ldCandidates).forEach(addCandidate);
+
   if (imageUrls.length === 0) {
     $('img').each((_, el) => {
       const src = $(el).attr('src');
