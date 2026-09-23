@@ -139,6 +139,7 @@ describe('useChatStream message preparation', () => {
             'Make this ad',
             [expect.objectContaining({ fileId: 'image-1', presignedUrl: 'https://files.example/avatar.jpg' })],
             undefined,
+            true,
         );
     });
 

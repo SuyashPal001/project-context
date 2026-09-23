@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import postgres from 'postgres';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getBucketFromSSM } from '@serverless-saas/storage';
 
 // Fixed, not gen_random_uuid() — the web app's creativeLibraryAvatars.ts
 // hardcodes these same values as each preset's assetId, so a picked
@@ -47,8 +48,8 @@ function storageKeyFor(slug: string): string {
 }
 
 async function uploadSeedImages(): Promise<void> {
-  const bucket = process.env.DOCUMENTS_BUCKET;
-  if (!bucket) throw new Error('DOCUMENTS_BUCKET is not set');
+  const bucket = await getBucketFromSSM();
+  if (!bucket) throw new Error('Unable to resolve documents bucket (DOCUMENTS_BUCKET / SSM param empty)');
   const s3 = new S3Client({ region: process.env.AWS_REGION || 'ap-south-1' });
   // From this file's directory (products/agent-platform/packages/api/seeds/),
   // '../../../../..' climbs 5 levels to the repo root, then into apps/web/public.

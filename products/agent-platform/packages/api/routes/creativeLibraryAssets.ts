@@ -1,9 +1,12 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
+import { z } from 'zod';
 import { db } from '../db';
 import { creativeLibraryAssets } from '@serverless-saas/agent-schema/creativeLibraryAssets';
 import { storageService } from '@serverless-saas/storage';
 import type { AppEnv } from '@serverless-saas/types';
+
+const uuidSchema = z.string().uuid();
 
 export const creativeLibraryAssetsRoutes = new Hono<AppEnv>();
 
@@ -20,10 +23,18 @@ export const creativeLibraryAssetsRoutes = new Hono<AppEnv>();
 creativeLibraryAssetsRoutes.get('/:id/presigned-url', async (c) => {
   const id = c.req.param('id');
 
+  if (!uuidSchema.safeParse(id).success) {
+    return c.json({ error: 'Not Found', message: 'Creative library asset not found' }, 404);
+  }
+
   const [row] = await db
     .select({ storageKey: creativeLibraryAssets.storageKey })
     .from(creativeLibraryAssets)
-    .where(and(eq(creativeLibraryAssets.id, id), eq(creativeLibraryAssets.status, 'active')))
+    .where(and(
+      eq(creativeLibraryAssets.id, id),
+      eq(creativeLibraryAssets.status, 'active'),
+      isNull(creativeLibraryAssets.tenantId),
+    ))
     .limit(1);
 
   if (!row) return c.json({ error: 'Not Found', message: 'Creative library asset not found' }, 404);

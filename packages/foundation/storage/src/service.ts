@@ -10,7 +10,7 @@ import type { StorageProvider, UploadUrlRequest, UploadUrlResponse } from './typ
 const ssm = new SSMClient({ region: process.env.AWS_REGION || 'ap-south-1' });
 let cachedBucket: string | null = null;
 
-async function getBucketFromSSM(): Promise<string> {
+export async function getBucketFromSSM(): Promise<string> {
   if (cachedBucket) return cachedBucket;
 
   // Lambdas get the bucket injected directly; SSM is the fallback for other runtimes

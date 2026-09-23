@@ -46,4 +46,16 @@ describe('GET /creative-library-assets/:id/presigned-url', () => {
     expect(res.status).toBe(404);
     expect(getLibraryAssetDownloadUrlMock).not.toHaveBeenCalled();
   });
+
+  it('returns 404 for a malformed (non-uuid) id without querying the db', async () => {
+    const { creativeLibraryAssetsRoutes } = await import('../routes/creativeLibraryAssets');
+    const app = new Hono().route('/creative-library-assets', creativeLibraryAssetsRoutes);
+
+    const res = await app.request('/creative-library-assets/not-a-uuid/presigned-url');
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'Not Found', message: 'Creative library asset not found' });
+    expect(selectMock).not.toHaveBeenCalled();
+    expect(getLibraryAssetDownloadUrlMock).not.toHaveBeenCalled();
+  });
 });
