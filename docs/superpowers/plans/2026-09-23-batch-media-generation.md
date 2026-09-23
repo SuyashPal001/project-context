@@ -10,8 +10,6 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-23-batch-media-generation-design.md`
 
-**Spec correction:** the spec says the new tools register on "the director and producer delegates". Only `directorAgent.ts` registers generation tools, on two agents: the standalone `directorAgent` and the Olmo-facing `directorAgentDelegate`. Register on those two. There is no producer registration to touch.
-
 ## Global Constraints
 
 - No background tasks, `untilIdle`, job tables, or polling anywhere. Batch execution is one synchronous `execute()`.
@@ -23,6 +21,9 @@
 - Director's rule that dependent generation calls are issued one at a time stays. Batches are for independent items only.
 - Every new or changed function gets a test before it is considered done (TDD: failing test, watch it fail, implement, watch it pass, commit).
 - New spec/plan `.md` files are gitignored by a blanket `*.md` rule; use `git add -f` for anything under `docs/superpowers/`.
+- `tsc --noEmit` in `apps/agent-orchestrator` includes test files (`src/**`). Tests must type-check, not just pass. Mastra tool accessors are loosely typed: reach `requireApproval` and `inputSchema` through the casts shown in the plan's test code, not with bare `!`.
+- The upload helper `uploadGeneratedFile` catches every error and returns `null` (`persistence.ts`), so the item functions get no try/catch around it. A failed upload already surfaces as `STORAGE_FAILED` with a refund.
+- The `attempt` slot in the video chargeKey is reserved by `generateVideo.ts`'s existing comment for a future retry counter. This plan uses that slot for the item index. If a retry counter is ever added, the key needs a different shape (for example an extra `:r<attempt>` suffix) so item 1 / attempt 0 cannot collide with item 0 / attempt 1.
 
 ## File Structure
 
@@ -35,9 +36,12 @@
 - Modify `apps/agent-orchestrator/src/mastra/tools/generationApproval.ts` — `buildCount` and four new metadata entries; new test `generationApproval.batch.test.ts`.
 - Modify `apps/agent-orchestrator/src/routes/chatStream.ts` — count on the confirm event/persist, `attachmentsFromToolResult`, allow-lists.
 - Modify `apps/agent-orchestrator/src/persistence.ts` — `count` on `GenerationConfirmRequestPayload`.
-- Modify `apps/agent-orchestrator/src/mastra/agents/directorAgent.ts` — register tools, add prompt bullet.
+- Modify `apps/agent-orchestrator/src/mastra/agents/directorAgent.ts` — register tools, add and reword prompt text.
+- Modify `apps/agent-orchestrator/src/mastra/agents/platformAgent.ts` — hoist `UGC_CHARACTER_CONTRACT` to an exported module constant and rewrite its steps 2, 4, 6 so Olmo delegates whole stages, plus one clause in `DELEGATION_CONTRACT`; new test `agents/__tests__/ugcCharacterContract.test.ts`.
+- Modify `docs/media-generation/README.md` — resolve the open question about batch size and partial failure.
 - Modify `products/agent-platform/packages/api/routes/messages.ts` — accept `count`; extend `__tests__/messages.generation-confirm.test.ts`.
-- Modify web: `components/platform/chat/types.ts`, `hooks/useChat.ts`, `app/[tenant]/dashboard/chat/useChatStream.ts`, `components/platform/chat/MessageThread.tsx`; extend `components/platform/credits/ApproveCost.test.tsx`.
+- Modify `apps/agent-orchestrator/src/routes/chatStream.tool-approval.test.ts` (mock entry for the batch tool) and `apps/agent-orchestrator/src/mastra/tools/generationApproval.test.ts` (exact key list).
+- Modify web: `components/platform/chat/types.ts`, `hooks/useChat.ts`, `app/[tenant]/dashboard/chat/useChatStream.ts` (+ its test), `components/platform/chat/MessageThread.tsx`, `components/platform/chat/ToolCallCard.tsx` (+ new test), `components/platform/chat/ThinkingIndicator.tsx`; extend `components/platform/credits/ApproveCost.test.tsx`.
 
 ---
 
@@ -58,15 +62,15 @@ Run: `git log --oneline -14` — expected to include, newest first among the one
 
 Run: `git revert --no-commit cbc0bd58 5d0f72d7 579eefa1 bc7b94fc 8c84ec76 cd458fa0`
 
-If git reports a conflict (expected in `apps/agent-orchestrator/src/mastra/tools/generateImage.test.ts`, where `a5e1f45b`'s cast fix sits next to the tests `bc7b94fc` appended): resolve so the file equals `f521fba9`'s version plus `a5e1f45b`'s fix — that is, keep the "builds a deterministic chargeKey…" test with the `{ ...(baseCtx() as { requestContext: RequestContext }) ... }` style cast from `a5e1f45b`, and drop the two background tests and the `backgroundTaskRefund.js` mock. Then `git add` the file and run `git revert --continue` only if git is mid-sequence; with `--no-commit` just `git add` the resolved files.
+Git is expected to auto-merge `apps/agent-orchestrator/src/mastra/tools/generateImage.test.ts` with no conflict (a trial run of this exact revert applied cleanly). If it does report a conflict there, resolve so the file equals `f521fba9`'s version plus `a5e1f45b`'s cast fix: keep the "builds a deterministic chargeKey…" test with `a5e1f45b`'s cast, and drop the two background tests and the `backgroundTaskRefund.js` mock. Then `git add` the resolved files.
 
 - [ ] **Step 3: Verify the resulting tree**
 
 Run: `git diff f521fba9 --stat -- apps products packages`
 Expected: exactly one file listed, `apps/agent-orchestrator/src/mastra/tools/generateImage.test.ts`, and its diff (`git diff f521fba9 -- apps/agent-orchestrator/src/mastra/tools/generateImage.test.ts`) contains only the cast fix from `a5e1f45b`.
 
-Run: `grep -rn "background\|untilIdle\|refundStaleBackgroundTask" apps/agent-orchestrator/src/mastra/tools/generateVideo.ts apps/agent-orchestrator/src/mastra/tools/generateImage.ts apps/agent-orchestrator/src/routes/chatStream.ts`
-Expected: no matches.
+Run: `grep -rn "background\|untilIdle\|refundStaleBackgroundTask" apps/agent-orchestrator/src/mastra/tools/generateVideo.ts apps/agent-orchestrator/src/routes/chatStream.ts`
+Expected: no matches. (`generateImage.ts` is excluded on purpose: `f521fba9` left a comment there mentioning a "background-task onFailed backstop … backgroundTaskRefund.ts". That file no longer exists after the revert, so the comment is stale; Task 3 rewrites it.)
 
 - [ ] **Step 4: Run tests and type-check**
 
@@ -156,29 +160,12 @@ Add to `generateVideo.test.ts`. Extend the existing import line to `import { gen
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'video:c1:tc-9:0' }))
   })
-
-  it('refunds when the post-charge upload throws instead of returning null', async () => {
-    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
-    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('s3 down'))
-    const query = vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-100000', expires_at: null }] })
-    getPool.mockReturnValue({ query })
-
-    const result = await generateVideoItem(
-      { mode: 'text_to_video', prompt: 'anything', aspectRatio: '16:9', durationSeconds: 8 },
-      baseCtx(),
-      0,
-    )
-
-    expect(spendCredits).toHaveBeenCalledTimes(2)
-    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund' }))
-    expect(result).toEqual({ refused: true, refusalReason: 'STORAGE_FAILED', jobId: expect.any(String) })
-  })
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [ ] **Step 3: Run tests to verify the expected state**
 
-Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generateVideo.test.ts -t "generateVideoItem|single generateVideo tool|upload throws"`
-Expected: FAIL — `generateVideoItem` is not exported (import error), so all three fail.
+Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generateVideo.test.ts -t "generateVideoItem|single generateVideo tool"`
+Expected: the `generateVideoItem` test FAILS (`generateVideoItem` is undefined because the named export does not exist yet). The single-tool `…:0` test already PASSES; it is there to guard the refactor, not to drive it.
 
 - [ ] **Step 4: Implement the extraction**
 
@@ -203,27 +190,8 @@ export async function generateVideoItem(
 
 Edits inside the moved body:
    - The destructure `const { mode, … } = inputData as z.infer<typeof inputSchema>` becomes `const { mode, … } = inputData`.
-   - `const attempt = 0` becomes `const attempt = itemIndex`, and the comment above it gets one added sentence: `In a batch call the item index occupies this slot so each item has its own key; the single tool passes 0.`
-   - Replace the unguarded upload call
-     ```ts
-     const attachment = await uploadGeneratedFile(idToken, {
-       conversationId, title: 'Generated Video', content: buffer,
-       contentType: genResult.mimeType, extension,
-     })
-     ```
-     with
-     ```ts
-     let attachment: Awaited<ReturnType<typeof uploadGeneratedFile>> = null
-     try {
-       attachment = await uploadGeneratedFile(idToken, {
-         conversationId, title: 'Generated Video', content: buffer,
-         contentType: genResult.mimeType, extension,
-       })
-     } catch (err) {
-       console.error(`[session:${sessionId}] generateVideo: upload threw:`, (err as Error).message)
-     }
-     ```
-     A throw here used to escape after the charge and leak it; a batch cannot refund a charge it never saw, so the refund must happen in the item function. The existing `if (!attachment) { … refund … STORAGE_FAILED }` branch below now covers it.
+   - `const attempt = 0` becomes `const attempt = itemIndex`, and the comment above it gets two added sentences: `In a batch call the item index occupies this slot so each item has its own key; the single tool passes 0. If a retry counter is ever added, this key needs a different shape (e.g. a :r<attempt> suffix) so item 1 / attempt 0 cannot collide with item 0 / attempt 1.`
+   - Nothing else in the body changes. In particular do NOT add a try/catch around `uploadGeneratedFile`: it never throws (it catches everything and returns `null`), and every other post-charge failure path already refunds inline (`refundVideoCharge` swallows its own errors, `res.json()` is inside the existing try, and a non-`InsufficientCreditsError` `spendCredits` failure means the charge did not commit).
 
 7. Replace the `createTool` call's fields so it reads:
 
@@ -242,7 +210,7 @@ export const generateVideo = createTool({
 
 - [ ] **Step 5: Run the full file and type-check**
 
-Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generateVideo.test.ts` — expected: PASS (every existing test plus the three new ones).
+Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generateVideo.test.ts` — expected: PASS (every existing test plus the two new ones).
 Run: `pnpm --filter agent-orchestrator type-check` — expected: no errors. If `execContext as unknown as MediaExecContext` is rejected or unnecessary, keep whichever cast compiles; do not change `MediaExecContext`.
 
 - [ ] **Step 6: Commit**
@@ -278,27 +246,14 @@ Extend the import to `import { generateImage, generateImageItem } from './genera
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'image:c1:tc-7:3' }))
   })
-
-  it('refunds when the post-charge upload throws instead of returning null', async () => {
-    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
-    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('s3 down'))
-    const query = vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-100000', expires_at: null }] })
-    getPool.mockReturnValue({ query })
-
-    const result = await generateImageItem({ prompt: 'a red bicycle' }, baseCtx(), 0)
-
-    expect(spendCredits).toHaveBeenCalledTimes(2)
-    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund' }))
-    expect(result).toEqual({ refused: true, refusalReason: 'STORAGE_FAILED' })
-  })
 ```
 
-If `getPool` is not already a hoisted mock in this test file, mirror how the existing "refunds with the original grants' shortest expiry when the post-charge upload fails" test in the same file sets up the pool, and copy that setup instead of the two `getPool` lines above.
+The existing test "builds a deterministic chargeKey…" (`image:c1:tc-1:0`, added by the kept commit `f521fba9`) already covers the single tool's index 0, so no second single-tool test is needed here.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run tests to verify the expected state**
 
-Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generateImage.test.ts -t "generateImageItem|upload throws"`
-Expected: FAIL — `generateImageItem` is not exported.
+Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generateImage.test.ts -t "generateImageItem"`
+Expected: FAIL — `generateImageItem` is not exported (undefined).
 
 - [ ] **Step 3: Implement the extraction**
 
@@ -309,27 +264,8 @@ In `generateImage.ts`:
 3. Lift the inline `inputSchema: z.object({ … })` from `createTool` into `export const imageItemSchema = z.object({ … })` (same fields, same `.describe` strings), plus `export type ImageItemInput = z.infer<typeof imageItemSchema>`.
 4. Move the `execute` body into `export async function generateImageItem(inputData: ImageItemInput, execContext: MediaExecContext | undefined, itemIndex: number)`. Edits inside:
    - The destructure of `inputData` drops its inline `as { … }` cast (the parameter is already typed).
-   - The chargeKey line becomes `const chargeKey = \`image:${conversationId ?? sessionId}:${toolCallId}:${itemIndex}\`` and its comment gets `The item index occupies the attempt slot; the single tool passes 0.`
-   - Replace
-     ```ts
-     const attachment = conversationId && idToken
-       ? await uploadGeneratedFile(idToken, { … })
-       : null
-     ```
-     with
-     ```ts
-     let attachment: Awaited<ReturnType<typeof uploadGeneratedFile>> = null
-     if (conversationId && idToken) {
-       try {
-         attachment = await uploadGeneratedFile(idToken, {
-           conversationId, title: 'Generated Image', content: buffer,
-           contentType: genResult.mimeType, extension,
-         })
-       } catch (err) {
-         console.error(`[session:${sessionId}] generateImage: upload threw:`, (err as Error).message)
-       }
-     }
-     ```
+   - The chargeKey line becomes `const chargeKey = \`image:${conversationId ?? sessionId}:${toolCallId}:${itemIndex}\``. Replace the whole comment block above it (the one `f521fba9` wrote, which refers to a "background-task onFailed backstop" and `backgroundTaskRefund.ts`, both gone after Task 1) with: `// Deterministic (conversationId + toolCallId + item index) rather than a random uuid, so the key is stable per call and has the same shape as generateVideo.ts's video:\${jobId}:\${attempt}. The item index occupies the last slot; the single tool passes 0.`
+   - Nothing else in the body changes. Do NOT add a try/catch around `uploadGeneratedFile` (it never throws; it returns `null`, which the existing `if (!attachment)` refund branch already handles).
 5. `createTool` becomes:
 
 ```ts
@@ -349,7 +285,7 @@ The charge-after-success ordering (charge only after the `imageBase64` check) mu
 
 - [ ] **Step 4: Run tests and type-check**
 
-Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generateImage.test.ts` — expected: PASS (all existing tests, including the `image:c1:tc-1:0` one, plus the two new).
+Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generateImage.test.ts` — expected: PASS (all existing tests, including the `image:c1:tc-1:0` one, plus the new one).
 Run: `pnpm --filter agent-orchestrator type-check` — expected: no errors.
 
 - [ ] **Step 5: Commit**
@@ -384,16 +320,16 @@ describe('runBatch', () => {
   it('runs items concurrently, not one after another', async () => {
     let inFlight = 0
     let maxInFlight = 0
-    const started = Date.now()
     const out = await runBatch([0, 1, 2], async (_item, index) => {
       inFlight += 1
       maxInFlight = Math.max(maxInFlight, inFlight)
-      await new Promise((r) => setTimeout(r, 60))
+      await new Promise((r) => setTimeout(r, 20))
       inFlight -= 1
       return { fileId: `f${index}` }
     })
+    // All three were in flight at once. This is the overlap proof; there is
+    // deliberately no wall-clock bound, which would be flaky on shared CI.
     expect(maxInFlight).toBe(3)
-    expect(Date.now() - started).toBeLessThan(150) // three serial waits would be 180ms+
     expect(out.results.map((r) => r.index)).toEqual([0, 1, 2])
     expect(out).toMatchObject({ succeeded: 3, failed: 0 })
   })
@@ -443,7 +379,9 @@ export async function runBatch<TItem>(
   runItem: (item: TItem, index: number) => Promise<Record<string, unknown>>,
 ): Promise<BatchResult> {
   const settled = await Promise.allSettled(items.map((item, index) => runItem(item, index)))
-  const results = settled.map((s, index) => {
+  // Annotated on purpose: without it, spreading a Record<string, unknown> loses
+  // the index signature and `r.fileId` below fails to type-check (TS2339).
+  const results: BatchResult['results'] = settled.map((s, index) => {
     if (s.status === 'fulfilled') return { index, ...s.value }
     console.error(`[batch] item ${index} threw:`, (s.reason as Error)?.message ?? String(s.reason))
     return { index, refused: true, refusalReason: 'GENERATION_FAILED' }
@@ -549,7 +487,7 @@ describe('generateVideos tool', () => {
   })
 
   it('rejects an empty batch and a batch over MAX_BATCH_ITEMS', () => {
-    const schema = generateVideos.inputSchema!
+    const schema = generateVideos.inputSchema as unknown as { safeParse: (v: unknown) => { success: boolean } }
     expect(schema.safeParse({ items: [] }).success).toBe(false)
     expect(schema.safeParse({ items: [item('1'), item('2'), item('3'), item('4'), item('5')] }).success).toBe(false)
     expect(schema.safeParse({ items: [item('1'), item('2'), item('3'), item('4')] }).success).toBe(true)
@@ -558,7 +496,8 @@ describe('generateVideos tool', () => {
   it('requireApproval delegates to shouldRequireApproval with video_generation and the video model', async () => {
     shouldRequireApproval.mockResolvedValue(true)
     const ctx = { requestContext: {} }
-    const needs = await generateVideos.requireApproval!({ items: [item('x')] } as never, ctx as never)
+    const requireApproval = generateVideos.requireApproval as unknown as (input: unknown, ctx: unknown) => Promise<boolean>
+    const needs = await requireApproval({ items: [item('x')] }, ctx)
     expect(needs).toBe(true)
     expect(shouldRequireApproval).toHaveBeenCalledWith({ resourceType: 'video_generation', subject: 'google/gemini-omni-1.1-flash' }, ctx)
   })
@@ -642,7 +581,7 @@ describe('generateImages tool', () => {
   })
 
   it('rejects an empty batch and a batch over MAX_BATCH_ITEMS', () => {
-    const schema = generateImages.inputSchema!
+    const schema = generateImages.inputSchema as unknown as { safeParse: (v: unknown) => { success: boolean } }
     expect(schema.safeParse({ items: [] }).success).toBe(false)
     expect(schema.safeParse({ items: [1, 2, 3, 4, 5].map((n) => imgItem(String(n))) }).success).toBe(false)
     expect(schema.safeParse({ items: [1, 2, 3, 4].map((n) => imgItem(String(n))) }).success).toBe(true)
@@ -651,7 +590,8 @@ describe('generateImages tool', () => {
   it('requireApproval delegates to shouldRequireApproval with image_generation and the image model', async () => {
     shouldRequireApproval.mockResolvedValue(true)
     const ctx = { requestContext: {} }
-    expect(await generateImages.requireApproval!({ items: [imgItem('x')] } as never, ctx as never)).toBe(true)
+    const requireApproval = generateImages.requireApproval as unknown as (input: unknown, ctx: unknown) => Promise<boolean>
+    expect(await requireApproval({ items: [imgItem('x')] }, ctx)).toBe(true)
     expect(shouldRequireApproval).toHaveBeenCalledWith({ resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview' }, ctx)
   })
 })
@@ -691,7 +631,7 @@ export const generateImages = createTool({
 - [ ] **Step 9: Run all new and touched tool tests plus type-check**
 
 Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/` — expected: PASS.
-Run: `pnpm --filter agent-orchestrator type-check` — expected: no errors. If `videoOutputSchema.extend` fails to type-check because the schema is wrapped, use `z.object({ ...videoOutputSchema.shape, index: z.number() })` instead (same for image).
+Run: `pnpm --filter agent-orchestrator type-check` — expected: no errors (test files are included in this type-check; the casts in the plan's test code are what make them compile). If `videoOutputSchema.extend` fails to type-check because the schema is wrapped, use `z.object({ ...videoOutputSchema.shape, index: z.number() })` instead (same for image).
 
 - [ ] **Step 10: Commit**
 
@@ -776,9 +716,28 @@ and inside the record add:
   'generate_images': imageBatchGen,
 ```
 
+Also update the exact-key assertion in `generationApproval.test.ts` (`describe('GENERATION_APPROVAL_METADATA')` → `it('has an entry for every gated tool id')`): add `'generate-images', 'generate_images', 'generate-videos', 'generate_videos',` to the expected array (the test sorts both sides, so position does not matter). Without this the existing test fails on the four new keys.
+
 Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/tools/generationApproval.batch.test.ts src/mastra/tools/generationApproval.test.ts` — expected: PASS.
 
 - [ ] **Step 4: Write the failing chatStream tests**
+
+`chatStream.tool-approval.test.ts` replaces the whole `../mastra/tools/generationApproval.js` module with a mock whose `GENERATION_APPROVAL_METADATA` has only a `'generate-image'` entry (around lines 44-49). Without a batch entry, `generate_videos` takes chatStream's unmapped-tool auto-approve path and the new test would time out waiting for the event. First add the entry to that mock:
+
+```ts
+vi.mock('../mastra/tools/generationApproval.js', () => ({
+  GENERATION_APPROVAL_METADATA: {
+    'generate-image': { resourceType: 'image_generation', subject: 'model-x', label: 'Generate image' },
+    'generate_videos': {
+      resourceType: 'video_generation', subject: 'model-v', label: 'Generate videos',
+      buildCount: (args: Record<string, unknown>) => (Array.isArray(args.items) ? args.items.length : undefined),
+    },
+  },
+  detectSkillPii: () => '',
+}))
+```
+
+Then add the two tests below.
 
 Add to the first `describe('runChatStream — tool-call-approval round trip', …)` block in `chatStream.tool-approval.test.ts`:
 
@@ -829,7 +788,7 @@ Add to the first `describe('runChatStream — tool-call-approval round trip', �
 ```
 
 Run: `cd apps/agent-orchestrator && npx vitest run src/routes/chatStream.tool-approval.test.ts -t "item count|omits count"`
-Expected: the batch test FAILS (no `count` in the event; note the unmapped-tool fallback would also have auto-approved before the metadata step, so this confirms the metadata is now consulted); the single-item test passes already and guards against regressions.
+Expected: the batch test FAILS (the mocked metadata entry now maps the tool, so the event is sent, but chatStream does not add `count` yet); the single-item test passes already and guards against regressions.
 
 - [ ] **Step 5: Implement in `chatStream.ts` and `persistence.ts`**
 
@@ -871,7 +830,7 @@ Expected: FAIL — `generationConfirmRequestSchema` is not exported.
 
 - [ ] **Step 7: Implement the API schema**
 
-In `routes/messages.ts`, lift the inline `z.object({ id, resourceType, subject, label, preview, status, decisionAt, declineReason })` (the value of `generationConfirmRequest`, currently just above `uploadRequest`) into `export const generationConfirmRequestSchema = z.object({ …same fields…, count: z.number().int().min(1).max(20).optional() })` defined at module top level, and use `generationConfirmRequest: generationConfirmRequestSchema.nullish(),` in the save schema. Do not touch the PATCH route's separate status-only schema.
+In `routes/messages.ts`, lift the inline `z.object({ id, resourceType, subject, label, preview, status, decisionAt, declineReason })` (the value of `generationConfirmRequest`, currently just above `uploadRequest`) into `export const generationConfirmRequestSchema = z.object({ …same fields…, count: z.number().int().min(1).max(20).optional() })` defined at module top level (add the comment `// Upper bound is deliberately looser than the orchestrator's MAX_BATCH_ITEMS (4) so raising that limit needs no API change.` above the `count` line), and use `generationConfirmRequest: generationConfirmRequestSchema.nullish(),` in the save schema. Do not touch the PATCH route's separate status-only schema.
 
 Run the same API test command — expected: PASS.
 
@@ -880,7 +839,7 @@ Run the same API test command — expected: PASS.
 Run: `pnpm --filter agent-orchestrator type-check` and the API package's type-check — expected: no errors.
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/tools/generationApproval.ts apps/agent-orchestrator/src/mastra/tools/generationApproval.batch.test.ts apps/agent-orchestrator/src/persistence.ts apps/agent-orchestrator/src/routes/chatStream.ts apps/agent-orchestrator/src/routes/chatStream.tool-approval.test.ts products/agent-platform/packages/api/routes/messages.ts products/agent-platform/packages/api/__tests__/messages.generation-confirm.test.ts
+git add apps/agent-orchestrator/src/mastra/tools/generationApproval.ts apps/agent-orchestrator/src/mastra/tools/generationApproval.test.ts apps/agent-orchestrator/src/mastra/tools/generationApproval.batch.test.ts apps/agent-orchestrator/src/persistence.ts apps/agent-orchestrator/src/routes/chatStream.ts apps/agent-orchestrator/src/routes/chatStream.tool-approval.test.ts products/agent-platform/packages/api/routes/messages.ts products/agent-platform/packages/api/__tests__/messages.generation-confirm.test.ts
 git commit -m "feat: carry an item count on the generation approval card for batch tools"
 ```
 
@@ -1045,15 +1004,20 @@ git commit -m "feat(agent-orchestrator): attach every succeeded item of a batch 
 
 ---
 
-### Task 7: Register the tools and update Director's prompt
+### Task 7: Register the tools and teach Director and Olmo to batch
+
+Registering the tools is not enough. Olmo's own `UGC_CHARACTER_CONTRACT` (in `platformAgent.ts`) currently tells it that N beats means N separate approvals and to delegate "each beat's still" and "each approved still" individually, so on the Olmo → Director path Director would only ever receive one item per delegation and have nothing to batch. Both prompts change here.
 
 **Files:**
-- Modify: `apps/agent-orchestrator/src/mastra/agents/directorAgent.ts` (imports; both `tools:` objects at ~lines 113 and 132; the one-at-a-time bullet's neighbourhood at ~line 83)
+- Modify: `apps/agent-orchestrator/src/mastra/agents/directorAgent.ts` (imports; both `tools:` objects at ~lines 113 and 132; prompt lines ~33, ~82 and the one-at-a-time bullet at ~83)
+- Modify: `apps/agent-orchestrator/src/mastra/agents/platformAgent.ts` (hoist and rewrite `UGC_CHARACTER_CONTRACT` at ~line 372; one phrase in `DELEGATION_CONTRACT` at ~line 346)
+- Modify: `docs/media-generation/README.md` (open question near line 189)
 - Test: `apps/agent-orchestrator/src/mastra/agents/__tests__/directorAgent.test.ts`
+- Create: `apps/agent-orchestrator/src/mastra/agents/__tests__/ugcCharacterContract.test.ts`
 
 **Interfaces:**
 - Consumes: `generateVideos`, `generateImages` from Task 4.
-- Produces: both `directorAgent` and `directorAgentDelegate` expose `generate_videos` and `generate_images`; Director's instructions contain the batch guidance.
+- Produces: both `directorAgent` and `directorAgentDelegate` expose `generate_videos` and `generate_images`; `platformAgent.ts` exports `UGC_CHARACTER_CONTRACT` as a module-level string constant (like the already-exported `SKILL_CREATION_CONTRACT`).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1076,53 +1040,123 @@ describe('directorAgent batch generation tools', () => {
     expect(text).toContain('generate_videos')
     expect(text).toContain('in ONE call')
     expect(text).toContain('Issue generation calls strictly one at a time')
+    expect(text).toContain('priced for the whole batch')
+    expect(text).toContain('each entry of the results list')
+  })
+})
+```
+
+Create `ugcCharacterContract.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest'
+import { UGC_CHARACTER_CONTRACT } from '../platformAgent.js'
+
+describe('UGC_CHARACTER_CONTRACT', () => {
+  it('tells Olmo to delegate whole stages in one delegation, not one beat at a time', () => {
+    expect(UGC_CHARACTER_CONTRACT).toContain('ALL beats')
+    expect(UGC_CHARACTER_CONTRACT).toContain('in ONE delegation')
+  })
+
+  it('no longer tells Olmo that every beat needs its own separate approval', () => {
+    expect(UGC_CHARACTER_CONTRACT).not.toContain('there is no single approval that covers the whole board today')
+  })
+
+  it('still requires the cast sheet first and board approval before any video', () => {
+    expect(UGC_CHARACTER_CONTRACT).toContain('generate the cast sheet')
+    expect(UGC_CHARACTER_CONTRACT).toContain('approve the set as a whole')
   })
 })
 ```
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/agents/__tests__/directorAgent.test.ts`
-Expected: FAIL — the tools are not registered and the prompt has no batch text.
+Run: `cd apps/agent-orchestrator && npx vitest run src/mastra/agents/__tests__/directorAgent.test.ts src/mastra/agents/__tests__/ugcCharacterContract.test.ts`
+Expected: FAIL — the tools are not registered, the Director prompt has no batch text, and `UGC_CHARACTER_CONTRACT` is not exported.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Implement the Director changes**
 
-In `directorAgent.ts`: add `import { generateVideos } from '../tools/generateVideos.js'` and `import { generateImages } from '../tools/generateImages.js'` next to the existing tool imports. In BOTH `tools: { … }` objects add `generate_videos: generateVideos, generate_images: generateImages,` (keys with underscores, matching the existing convention noted in the comment above them). Then, directly after the existing bullet that begins `- Issue generation calls strictly one at a time:` (which must remain untouched), add this bullet:
+In `directorAgent.ts`:
+
+1. Add `import { generateVideos } from '../tools/generateVideos.js'` and `import { generateImages } from '../tools/generateImages.js'` next to the existing tool imports.
+2. In BOTH `tools: { … }` objects add `generate_videos: generateVideos, generate_images: generateImages,` (underscore keys, matching the convention in the comment above them).
+3. Line ~33 (`- Before claiming an image is ready, check the tool result for a fileId field. …`): append the sentence ` For a batch call (generate_images or generate_videos) check each entry of the results list instead: only an entry with its own fileId produced media.`
+4. Line ~82: replace `- Every still and every video render triggers its own separate cost confirmation — this is expected, do not treat repeated approval cards as an error.` with `- Every single-item still or video render triggers its own cost confirmation, and every batch call triggers one confirmation priced for the whole batch — this is expected, do not treat repeated approval cards as an error.`
+5. Directly after the existing bullet that begins `- Issue generation calls strictly one at a time:` (which stays untouched), add:
 
 ```
-- When several stills or clips are independent — each one depends only on an anchor that is already approved (the cast sheet, or an approved still) and none needs another new output from the same batch — issue them in ONE call: generate_images with items: [...] or generate_videos with items: [...], at most 4 items per call. Each item takes the same fields as the matching single tool. One cost-confirmation card covers the whole batch. Anything that needs another new generation's output first (for example an animate_frame clip whose startImageFileId is a still you have not generated yet) must wait for that result and go in a later call. A batch counts as one generation call for the one-at-a-time rule above. The returned results list has one entry per item: for any entry that is refused, apply the same refusal handling as for the single tool, and retry only those items in a new batch call.
+- When several stills or clips are independent — each one depends only on an anchor that is already approved (the cast sheet, or an approved still) and none needs another new output from the same batch — issue them in ONE call: generate_images with items: [...] or generate_videos with items: [...], at most 4 items per call. Each item takes the same fields as the matching single tool. One cost-confirmation card covers the whole batch. Anything that needs another new generation's output first (for example an animate_frame clip whose startImageFileId is a still you have not generated yet) must wait for that result and go in a later call. A batch counts as one generation call for the one-at-a-time rule above. The returned results list has one entry per item: for any entry that is refused, apply the same refusal handling as for the single tool. Do not retry refused items automatically; tell the requester which items failed and why, and only re-issue them in a new call if asked, since a retry needs a fresh approval card.
 ```
 
-- [ ] **Step 4: Run tests and the whole suite**
+- [ ] **Step 4: Implement the Olmo changes**
+
+In `platformAgent.ts`:
+
+1. `UGC_CHARACTER_CONTRACT` is currently a `const` declared inside the function that builds Olmo's instructions. It contains no `${…}` interpolation. Cut the whole declaration (`const UGC_CHARACTER_CONTRACT = \`…\``) and paste it at module top level as `export const UGC_CHARACTER_CONTRACT = \`…\``, next to the already-exported `SKILL_CREATION_CONTRACT`. Leave the existing use (`… + UGC_CHARACTER_CONTRACT + …`) untouched. If it turns out to interpolate a variable after all, stop and report instead of hoisting.
+2. In the hoisted text replace steps 2, 4 and 6 (steps 1, 3, 5 and 7 stay word for word):
+
+   Step 2 becomes:
+   `2. Tell the user plainly, before delegating: stills are generated in batches of up to 4 and each batch is one cost confirmation card priced for the whole batch; video clips work the same way. A board of N beats therefore needs about N/4 confirmations for stills and about N/4 for video, and credits are still charged per item.`
+
+   Step 4 becomes:
+   `4. Delegate to agent-director to generate the stills for ALL beats in ONE delegation, each with its per-beat mode as usual. Director batches up to 4 per call and splits a larger board itself. Do not delegate one beat per message.`
+
+   Step 6 becomes:
+   `6. Delegate to agent-director to render ALL approved stills into video clips in ONE delegation. Director batches up to 4 clips per call. Do not delegate one clip per message.`
+3. In `DELEGATION_CONTRACT` (~line 346) replace the phrase `a subAgentToolResults entry with an actual fileId` with `a subAgentToolResults entry with an actual fileId (for a batch generate_videos or generate_images entry, one or more items inside its results list, each with its own fileId)`.
+
+- [ ] **Step 5: Update the media-generation README**
+
+In `docs/media-generation/README.md`, replace the open-question bullet
+
+```
+- How many images a single call may produce, and what is charged when a batch
+  partially fails.
+```
+
+with
+
+```
+- (Resolved 2026-09-23) Batch size and partial failure: `generate_videos` and
+  `generate_images` take up to 4 independent items per call, with one approval
+  card priced per item, and each item is charged and refunded independently
+  under its own key. See
+  `docs/superpowers/specs/2026-09-23-batch-media-generation-design.md`.
+```
+
+- [ ] **Step 6: Run tests and the whole suite**
 
 Run: `cd apps/agent-orchestrator && npx vitest run` — expected: PASS.
 Run: `pnpm --filter agent-orchestrator type-check` — expected: no errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add apps/agent-orchestrator/src/mastra/agents/directorAgent.ts apps/agent-orchestrator/src/mastra/agents/__tests__/directorAgent.test.ts
-git commit -m "feat(agent-orchestrator): register batch generation tools and teach Director to batch"
+git add apps/agent-orchestrator/src/mastra/agents/directorAgent.ts apps/agent-orchestrator/src/mastra/agents/platformAgent.ts apps/agent-orchestrator/src/mastra/agents/__tests__/directorAgent.test.ts apps/agent-orchestrator/src/mastra/agents/__tests__/ugcCharacterContract.test.ts docs/media-generation/README.md
+git commit -m "feat(agent-orchestrator): register batch generation tools and teach Director and Olmo to batch"
 ```
 
 ---
 
-### Task 8: Web — pass the count to the approval card
+### Task 8: Web — price the approval card for the batch and recognise the batch tools
 
 **Files:**
 - Modify: `apps/web/components/platform/chat/types.ts` (`GenerationConfirmRequest`)
 - Modify: `apps/web/hooks/useChat.ts` (callback type at line ~29, SSE case at ~362)
 - Modify: `apps/web/app/[tenant]/dashboard/chat/useChatStream.ts` (`onGenerationConfirmRequired`, ~line 460)
 - Modify: `apps/web/components/platform/chat/MessageThread.tsx` (the `ApproveCost` usage, ~line 440)
-- Test: `apps/web/components/platform/credits/ApproveCost.test.tsx`
+- Modify: `apps/web/components/platform/chat/ToolCallCard.tsx` (`isImageGenTool`, `isVideoGenTool`, `mediaGenFailureReason`)
+- Modify: `apps/web/components/platform/chat/ThinkingIndicator.tsx` (~line 136)
+- Test: `apps/web/components/platform/credits/ApproveCost.test.tsx`, `apps/web/app/[tenant]/dashboard/chat/useChatStream.test.tsx`
+- Create: `apps/web/components/platform/chat/ToolCallCard.batch.test.ts`
 
 **Interfaces:**
-- Consumes: the `count` field on the `generation_confirm_request` SSE payload (Task 5).
-- Produces: `GenerationConfirmRequest.count?: number`; the 6th positional callback argument `count?: number` on `onGenerationConfirmRequired`; `ApproveCost` receives `params={{ count }}`.
+- Consumes: the `count` field on the `generation_confirm_request` SSE payload (Task 5) and the batch result shape `{ results: [{ index, fileId?, refused?, … }], succeeded, failed }` (Task 4).
+- Produces: `GenerationConfirmRequest.count?: number`; a 6th positional argument `count?: number` on `onGenerationConfirmRequired`; `ApproveCost` receives `params={{ count }}`; `ToolCallCard.tsx` exports `mediaGenFailureReason`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Add to `ApproveCost.test.tsx` inside `describe('ApproveCost', …)`:
+(a) Add to `ApproveCost.test.tsx` inside `describe('ApproveCost', …)`. This one passes already, because `ApproveCost` supports `params.count` today; it locks that contract:
 
 ```tsx
     it('requests the estimate for the batch size when params.count is given', async () => {
@@ -1149,10 +1183,109 @@ Add to `ApproveCost.test.tsx` inside `describe('ApproveCost', …)`:
     });
 ```
 
-Run: `cd apps/web && npx vitest run components/platform/credits/ApproveCost.test.tsx`
-Expected: PASS already, because `ApproveCost` supports `params.count` today. This test locks that contract; the failing part of this task is the type-check in Step 2.
+(b) In `useChatStream.test.tsx`, make the mocked `useChat` remember the options it was given. Change the hoisted mock object and the mock factory to:
 
-- [ ] **Step 2: Add the field and watch the type-check catch missing wiring**
+```tsx
+const chatMock = vi.hoisted(() => ({
+    sendMessage: vi.fn<(...args: unknown[]) => Promise<void>>(),
+    cancel: vi.fn(),
+    lastOptions: undefined as undefined | { onGenerationConfirmRequired?: (...args: unknown[]) => void },
+}));
+
+vi.mock('@/hooks/useChat', () => ({
+    useChat: (options: { onGenerationConfirmRequired?: (...args: unknown[]) => void }) => {
+        chatMock.lastOptions = options;
+        return {
+            sendMessage: chatMock.sendMessage,
+            sendApproval: vi.fn(),
+            sendGenerationConfirm: vi.fn(),
+            sendClarificationAnswer: vi.fn(),
+            sendUploadAnswer: vi.fn(),
+            cancel: chatMock.cancel,
+            isStreaming: false,
+            isRetrying: false,
+        };
+    },
+}));
+```
+
+then append:
+
+```tsx
+describe('useChatStream generation confirm', () => {
+    const conversationIdRef = { current: 'conversation-1' };
+
+    function setup() {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        );
+        renderHook(() => useChatStream({
+            conversationId: 'conversation-1',
+            conversationIdRef,
+            agentId: 'agent-1',
+            selectedConversation: undefined,
+            messages: [],
+            handleCanvasUpdate: vi.fn(),
+            openCanvas: vi.fn(),
+        }), { wrapper });
+        return client;
+    }
+
+    const pendingRequest = (client: QueryClient) =>
+        client.getQueryData<{ data: Array<{ generationConfirmRequest?: Record<string, unknown> }> }>(['messages', 'conversation-1'])
+            ?.data[0]?.generationConfirmRequest;
+
+    it('stores the batch count on the pending request', () => {
+        const client = setup();
+        act(() => {
+            chatMock.lastOptions!.onGenerationConfirmRequired!('conf-1', 'video_generation', 'google/gemini-omni-1.1-flash', 'Generate videos', undefined, 3);
+        });
+        expect(pendingRequest(client)).toMatchObject({ id: 'conf-1', status: 'pending', count: 3 });
+    });
+
+    it('omits count for a single-item request', () => {
+        const client = setup();
+        act(() => {
+            chatMock.lastOptions!.onGenerationConfirmRequired!('conf-2', 'image_generation', 'gemini-3-pro-image-preview', 'Generate image');
+        });
+        expect(pendingRequest(client)).not.toHaveProperty('count');
+    });
+});
+```
+
+(c) Create `ToolCallCard.batch.test.ts`:
+
+```ts
+/** @vitest-environment jsdom */
+import { describe, it, expect } from 'vitest';
+import { mediaGenFailureReason } from './ToolCallCard';
+
+describe('mediaGenFailureReason for batch tools', () => {
+    it('reports no failure when at least one item produced a file', () => {
+        expect(mediaGenFailureReason('generate_videos', {
+            results: [{ index: 0, fileId: 'f' }, { index: 1, refused: true }],
+        })).toBeNull();
+    });
+
+    it('reports a failure when no item produced a file', () => {
+        expect(mediaGenFailureReason('generate_videos', { results: [{ index: 0, refused: true }] })).toBe('Video generation failed');
+        expect(mediaGenFailureReason('generate_images', { results: [{ index: 0, insufficientCredits: true }] })).toBe('Image generation failed');
+    });
+
+    it('still handles a single-item result', () => {
+        expect(mediaGenFailureReason('generate_video', { fileId: 'f' })).toBeNull();
+        expect(mediaGenFailureReason('generate_video', { refused: true })).toBe('Video generation failed');
+    });
+});
+```
+
+- [ ] **Step 2: Run to see the expected state**
+
+Run: `cd apps/web && npx vitest run components/platform/credits/ApproveCost.test.tsx "app/[tenant]/dashboard/chat/useChatStream.test.tsx" components/platform/chat/ToolCallCard.batch.test.ts`
+Expected: the ApproveCost test PASSES (already supported). "stores the batch count" FAILS (the handler ignores a 6th argument). `ToolCallCard.batch.test.ts` FAILS (`mediaGenFailureReason` is not exported, so calling it throws). "omits count" passes and guards against regressions.
+
+- [ ] **Step 3: Implement**
 
 In `types.ts` add to `GenerationConfirmRequest`:
 
@@ -1167,16 +1300,33 @@ In `useChatStream.ts` change `onGenerationConfirmRequired` to `(confirmationId: 
 
 In `MessageThread.tsx` add to the `<ApproveCost … />` props: `params={pendingGenerationConfirm.request.count ? { count: pendingGenerationConfirm.request.count } : undefined}`.
 
-- [ ] **Step 3: Type-check and run web tests**
+In `ToolCallCard.tsx`:
+- `isImageGenTool` also returns true for `'generate_images'` and `'generate-images'`; `isVideoGenTool` also for `'generate_videos'` and `'generate-videos'`.
+- Change `function mediaGenFailureReason(` to `export function mediaGenFailureReason(`.
+- At the top of its body, right after `if (!result) return null;`, add:
+
+```ts
+  if (Array.isArray(result.results)) {
+    const entries = result.results as Array<Record<string, unknown>>;
+    if (entries.some((entry) => typeof entry.fileId === 'string')) return null;
+    return isVideoGenTool(toolName) ? 'Video generation failed' : 'Image generation failed';
+  }
+```
+
+A batch result has no top-level `fileId`, so without this branch a fully successful batch would be shown as a failed generation.
+
+In `ThinkingIndicator.tsx` (~line 136) extend the `isImageGen` condition with `|| tc.toolName === 'generate_images' || tc.toolName === 'generate-images'`.
+
+- [ ] **Step 4: Type-check and run web tests**
 
 Run: `cd apps/web && pnpm type-check` — expected: no errors.
-Run: `cd apps/web && npx vitest run components/platform` — expected: PASS.
+Run: `cd apps/web && npx vitest run components/platform "app/[tenant]/dashboard/chat"` — expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add apps/web/components/platform/chat/types.ts apps/web/hooks/useChat.ts "apps/web/app/[tenant]/dashboard/chat/useChatStream.ts" apps/web/components/platform/chat/MessageThread.tsx apps/web/components/platform/credits/ApproveCost.test.tsx
-git commit -m "feat(web): price the generation approval card for the batch size"
+git add apps/web/components/platform/chat/types.ts apps/web/hooks/useChat.ts "apps/web/app/[tenant]/dashboard/chat/useChatStream.ts" "apps/web/app/[tenant]/dashboard/chat/useChatStream.test.tsx" apps/web/components/platform/chat/MessageThread.tsx apps/web/components/platform/chat/ToolCallCard.tsx apps/web/components/platform/chat/ToolCallCard.batch.test.ts apps/web/components/platform/chat/ThinkingIndicator.tsx apps/web/components/platform/credits/ApproveCost.test.tsx
+git commit -m "feat(web): price the approval card for the batch and recognise the batch tools"
 ```
 
 ---
@@ -1206,7 +1356,8 @@ Deploy-independent checklist for a person to run, then record the outcome in the
 3. In Mastra Studio open the run's `mastra_span_events` and confirm a single `generate_videos` tool call whose child spans overlap.
 4. Force one item to fail (an `identityAnchor` whose tag is missing from the prompt) and confirm the card total is unchanged, the failed item is reported, and the credit ledger shows a debit+refund only for the items that were charged and failed.
 5. Confirm the card reloads with the same count after a page refresh (the count is persisted with the request).
-6. Record the observed maximum concurrent gateway calls and whether Vertex returned any 429 with 4 items; if it did, lower `MAX_BATCH_ITEMS` in `batchRunner.ts` and re-run its tests.
+6. Record the observed maximum concurrent gateway calls, whether Vertex returned any 429 with 4 items (and whether the gateway's video circuit breaker opened), and the orchestrator and gateway memory peak. If there were 429s or memory looks tight, lower `MAX_BATCH_ITEMS` in `batchRunner.ts` and re-run its tests.
+7. Confirm Olmo delegates whole stages: for a multi-beat UGC ad it should send all beats' stills to Director in one delegation and Director should issue `generate_images` batches, not one call per beat. If Olmo still delegates one beat at a time, the Task 7 prompt edits did not take effect; check the assembled instructions in the span trace.
 
 No commit for this task unless Step 3 finds a defect.
 
@@ -1218,3 +1369,13 @@ No commit for this task unless Step 3 finds a defect.
 - Approval is all-or-nothing for the batch.
 - `MAX_BATCH_ITEMS = 4` is unverified against real gateway quota; Task 9 Step 3 checks it.
 - Skill text seeded in the DB may still say "generate each beat"; Director's prompt overrides it only partly. Editing the skills is out of scope.
+
+Found by the plan review, accepted rather than fixed here:
+
+- One item that fails input validation (for example `animate_frame` without `startImageFileId`) fails the whole batch, because Mastra validates tool input after the user has approved the card. Nothing is charged in that case.
+- The gateway's video circuit breaker (`geminiVideoBreaker`, `apps/inference-gateway/src/circuit-breaker.ts`) opens after 3 failures for 60 seconds, and there is no 429 backoff anywhere. A 4-item batch that draws rate-limit errors can trip it, and a retry during the open window fails and costs another approval card. Director's prompt therefore says not to retry refused items automatically.
+- Up to 4 inline base64 videos are held in memory in the gateway and in the orchestrator at once, and no PM2 `max_memory_restart` is configured. Probably fine, untested; Task 9 Step 3 should note memory while it runs.
+- Image items that share reference images each download them separately (up to 25MB each).
+- An image item that hits `InsufficientCreditsError` has already been generated at vendor cost, and that result is discarded. Batches make this more likely; the approval card's balance check against the full batch price mitigates it.
+- The web tool card shows a batch as one card with singular loading text, and reports a failure only when every item failed. Partial failures are reported through the assistant's reply and the per-item results, not the card.
+- The `attempt` slot of the video chargeKey now carries the item index, so a future retry counter needs a different key shape (see Global Constraints).

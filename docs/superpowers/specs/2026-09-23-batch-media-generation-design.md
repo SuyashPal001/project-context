@@ -80,11 +80,14 @@ const settled = await Promise.allSettled(
 ```
 
 A rejected promise maps to `{ index, refused: true, refusalReason:
-'GENERATION_FAILED' }`. Before this mapping is trusted, the plan must audit
-every throw path in the two item functions for the charged-then-throws
-window (video charges before the gateway call) and make sure the refund
-happens inside the item function, not only on the `return` paths, since the
-batch wrapper cannot refund a charge it does not know about.
+'GENERATION_FAILED' }`. The wrapper cannot refund a charge it does not know
+about, so every post-charge failure must already refund inside the item
+function. This was audited against the real code: `uploadGeneratedFile`
+catches everything and returns `null`; `refundVideoCharge` and
+`refundImageCharge` swallow their own errors; `res.json()` sits inside the
+existing try; and a non-`InsufficientCreditsError` `spendCredits` failure
+means the charge did not commit. No item-function change is needed for
+this.
 
 ### Credit keys
 
@@ -132,12 +135,24 @@ The new tool names are added to the allow-list. The plan must also check
 `useChatStream.ts` for any place that reads `fileId` off a `tool_done`
 result for live display, since a batch result is nested under `results`.
 
-### Director
+### Director and Olmo prompts
 
 Director's prompt keeps its rule that dependent generation calls are issued
 one at a time, and adds: independent clips or stills that depend only on an
 already-approved anchor go in one `generate_videos` / `generate_images`
 call. `maxSteps` stays at 8.
+
+Olmo's own prompt must change too. Its `UGC_CHARACTER_CONTRACT` currently
+tells it that N beats means N separate approvals and to delegate each beat's
+still and each approved still individually. Left alone, Director would only
+ever receive one item per delegation on the Olmo path, so nothing would be
+batched. The contract's steps 2, 4 and 6 change so Olmo delegates whole
+stages (all beats' stills in one delegation, then all approved stills in one
+delegation) and tells the user about one confirmation card per batch of up to
+4. A phrase in Olmo's `DELEGATION_CONTRACT` about finding a `fileId` in
+`subAgentToolResults` is clarified for batch results, and Director's own
+"every render triggers its own confirmation" and "check the tool result for a
+fileId" lines are reworded for batches.
 
 ## What happens to the existing branch
 
@@ -161,7 +176,6 @@ the repo as history, with a one-line superseded banner added to each.
   refunds only itself; an invalid item (dialogue gate, identity anchor,
   missing source image) is refused without being charged; one item hitting
   `InsufficientCreditsError` does not stop the others.
-- Throw audit: an item that throws after its charge is refunded (video).
 - Schema: `items` empty or over `MAX_BATCH_ITEMS` is rejected.
 - Single tools unchanged: existing `generateVideo`/`generateImage` tests
   pass untouched, including chargeKey `…:0`.
@@ -176,6 +190,11 @@ the repo as history, with a one-line superseded banner added to each.
   card, overlapping gateway calls, and all attachments landing.
 
 ## Known limits
+
+Beyond the list below, the implementation plan's "Known limits" section
+records further limits found by its review (whole-batch failure on one bad
+item's input, the gateway's video circuit breaker with no 429 backoff,
+memory with 4 inline videos, and web-card display of partial failures).
 
 - The turn blocks until the slowest item finishes (up to the 270s video
   gateway timeout), same as today's single call. No mid-turn interaction.
