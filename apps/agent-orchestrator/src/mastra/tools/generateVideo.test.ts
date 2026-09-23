@@ -20,9 +20,6 @@ const { shouldRequireApproval } = vi.hoisted(() => ({
 }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
-const { refundStaleBackgroundTask } = vi.hoisted(() => ({ refundStaleBackgroundTask: vi.fn() }))
-vi.mock('./backgroundTaskRefund.js', () => ({ refundStaleBackgroundTask }))
-
 import { generateVideo } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
@@ -393,19 +390,5 @@ describe('generateVideo tool', () => {
     // property access on it is a type error under this repo's type-check.
     expect((result as { refused?: boolean }).refused).toBe(true)
     expect((result as { refusalReason?: string }).refusalReason).toBe('IDENTITY_ANCHOR_MISSING')
-  })
-
-  it('is registered for background dispatch with a timeout above the gateway ceiling and no retries', () => {
-    expect(generateVideo.background).toEqual(expect.objectContaining({
-      enabled: true,
-      timeoutMs: 280_000,
-      maxRetries: 0,
-    }))
-  })
-
-  it('wires onFailed to the shared refund backstop for kind "video"', async () => {
-    const task = { id: 't1', resourceId: 'tenant-1', threadId: 'conv-1', toolCallId: 'tc-1' } as never
-    await generateVideo.background!.onFailed!(task)
-    expect(vi.mocked(refundStaleBackgroundTask)).toHaveBeenCalledWith(task, 'video')
   })
 })

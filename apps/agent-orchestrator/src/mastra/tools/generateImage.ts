@@ -5,7 +5,6 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { resolveSourceImage } from '../../media.js'
 import { refundImageCharge } from './imageCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
-import { refundStaleBackgroundTask } from './backgroundTaskRefund.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -44,12 +43,6 @@ export const generateImage = createTool({
     }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code. Required whenever referenceFileIds includes a cast sheet.'),
   }),
   outputSchema,
-  background: {
-    enabled: true,
-    timeoutMs: 100_000,
-    maxRetries: 0,
-    onFailed: (task) => refundStaleBackgroundTask(task, 'image'),
-  },
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
   execute: async (inputData, execContext) => {

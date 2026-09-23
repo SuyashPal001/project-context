@@ -26,9 +26,6 @@ const { shouldRequireApproval } = vi.hoisted(() => ({
 }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
-const { refundStaleBackgroundTask } = vi.hoisted(() => ({ refundStaleBackgroundTask: vi.fn() }))
-vi.mock('./backgroundTaskRefund.js', () => ({ refundStaleBackgroundTask }))
-
 import { generateImage } from './generateImage.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
@@ -252,19 +249,5 @@ describe('generateImage tool', () => {
     await generateImage.execute!({ prompt: 'a red bicycle' } as never, execCtx)
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'image:c1:tc-1:0' }))
-  })
-
-  it('is registered for background dispatch with a timeout above the gateway ceiling and no retries', () => {
-    expect(generateImage.background).toEqual(expect.objectContaining({
-      enabled: true,
-      timeoutMs: 100_000,
-      maxRetries: 0,
-    }))
-  })
-
-  it('wires onFailed to the shared refund backstop for kind "image"', async () => {
-    const task = { id: 't1', resourceId: 'tenant-1', threadId: 'conv-1', toolCallId: 'tc-1' } as never
-    await generateImage.background!.onFailed!(task)
-    expect(vi.mocked(refundStaleBackgroundTask)).toHaveBeenCalledWith(task, 'image')
   })
 })

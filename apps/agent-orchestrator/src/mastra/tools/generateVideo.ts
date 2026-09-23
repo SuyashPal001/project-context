@@ -5,7 +5,6 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { refundVideoCharge } from './videoCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
-import { refundStaleBackgroundTask } from './backgroundTaskRefund.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 // Namespaced per docs/media-generation/README.md's convention. This is a new
@@ -65,19 +64,6 @@ export const generateVideo = createTool({
   description: 'Generates a short video clip from a text description, optionally conditioned on a product/reference image, using Gemini Omni Flash. Use when the user asks Director to create or generate a video.',
   inputSchema,
   outputSchema,
-  // 280s: strictly above the gateway's own 270s ceiling (see the existing
-  // AbortSignal.timeout(270_000) comment below), so a call that's genuinely
-  // still in flight inside the gateway's own timeout isn't killed early by
-  // the manager. maxRetries: 0 — a retry would re-run execute() from the
-  // top and charge credits a second time; chargeKey idempotency covers the
-  // charge itself but not a second upload, so retries stay off until that's
-  // solved (see spec's Known Limits).
-  background: {
-    enabled: true,
-    timeoutMs: 280_000,
-    maxRetries: 0,
-    onFailed: (task) => refundStaleBackgroundTask(task, 'video'),
-  },
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {

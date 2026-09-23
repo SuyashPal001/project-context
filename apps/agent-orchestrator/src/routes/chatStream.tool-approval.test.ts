@@ -302,26 +302,6 @@ describe('runChatStream — delegate-produced attachments', () => {
 
     expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({ attachments: undefined }))
   })
-
-  it('surfaces a tool-error chunk as a refused tool_done event, not an unhandled chunk', async () => {
-    streamMock.mockResolvedValueOnce(fakeStream(
-      [
-        { type: 'tool-call', payload: { toolCallId: 'tc-1', toolName: 'generate-video' } },
-        { type: 'tool-error', payload: { toolCallId: 'tc-1', toolName: 'generate-video', error: { message: 'background task timed out' } } },
-        { type: 'finish', payload: { output: { usage: {} } } },
-      ],
-      'run-tool-error-1',
-    ))
-
-    const sendEvent = vi.fn()
-    await runChatStream(baseOpts({ sendEvent }))
-
-    expect(sendEvent).toHaveBeenCalledWith('tool_done', expect.objectContaining({
-      toolCallId: 'tc-1',
-      toolName: 'generate-video',
-      result: { refused: true, refusalReason: 'BACKGROUND_TASK_FAILED' },
-    }))
-  })
 })
 
 describe('runChatStream — Olmo-only delegation options', () => {
