@@ -241,4 +241,114 @@ describe('POST /products/import', () => {
     expect(body.data.images).toHaveLength(1);
     expect(body.data.images[0].fileId).toBe('file-good');
   });
+
+  it('rejects a redirect to a private address on the hop and never fetches it', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false, status: 302,
+      headers: withGet(new Map([['location', 'https://internal.example.com/x']])),
+    });
+    assertPublicHttpUrlMock
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new SsrfBlockedError('Host resolves to a non-public address: 10.0.0.5'));
+    const app = await buildApp();
+    const res = await app.request('/products/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
+    });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(await res.json())).not.toContain('10.0.0.5');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an https-to-http redirect and never fetches it', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false, status: 302,
+      headers: withGet(new Map([['location', 'http://shop.example.com/p/2']])),
+    });
+    const app = await buildApp();
+    const res = await app.request('/products/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
+    });
+    expect(res.status).toBe(422);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // A body whose read() never resolves on its own; it only rejects when the
+  // signal passed to fetch() aborts, like a real fetch body stream.
+  function stalledBody(init: { signal?: AbortSignal }) {
+    return {
+      getReader: () => ({
+        read: () => new Promise((_, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+        }),
+        cancel: async () => {},
+      }),
+    };
+  }
+
+  it('returns 422 when the page body stalls past the timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementationOnce(async (_url: string, init: { signal?: AbortSignal }) => ({
+        ok: true, status: 200, url: 'https://shop.example.com/p/1',
+        headers: withGet(new Map([['content-type', 'text/html']])),
+        body: stalledBody(init),
+      }));
+      const app = await buildApp();
+      const pending = app.request('/products/import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      const res = await pending;
+      expect(res.status).toBe(422);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the page fields and other images when one image body stalls', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true, status: 200, url: 'https://shop.example.com/p/1',
+          headers: withGet(new Map([['content-type', 'text/html']])),
+          body: { getReader: () => textReader(`<html><head><title>Mug</title>
+            <meta property="og:image" content="https://cdn.example.com/good.jpg">
+            <meta property="og:image" content="https://cdn.example.com/stall.jpg">
+          </head></html>`) },
+        })
+        .mockResolvedValueOnce({
+          ok: true, status: 200,
+          headers: withGet(new Map([['content-type', 'image/jpeg']])),
+          body: { getReader: () => byteReader(new Uint8Array([1])) },
+        })
+        .mockImplementationOnce(async (_url: string, init: { signal?: AbortSignal }) => ({
+          ok: true, status: 200,
+          headers: withGet(new Map([['content-type', 'image/jpeg']])),
+          body: stalledBody(init),
+        }));
+      putFileForTenantMock.mockResolvedValueOnce({ fileId: 'file-good', key: 'imported-products/good.jpg' });
+      const app = await buildApp();
+      const pending = app.request('/products/import', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      const res = await pending;
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.data.title).toBe('Mug');
+      expect(body.data.images).toHaveLength(1);
+      expect(body.data.images[0].fileId).toBe('file-good');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

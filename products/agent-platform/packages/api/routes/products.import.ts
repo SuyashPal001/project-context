@@ -19,56 +19,71 @@ const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const IMPORTED_IMAGE_PREFIX = 'imported-products/'; // deliberately outside creative-products/ — see CreativeLibrary.tsx's PRODUCT_PREFIX filter
 
 /**
+ * One deadline for a whole top-level request: every redirect hop AND the
+ * subsequent body read share the same signal, so the budget is one
+ * `timeoutMs`, not one per hop and not "until headers arrive". The caller
+ * must call `dispose()` only after it has finished reading the body.
+ */
+function createDeadline(timeoutMs: number): { signal: AbortSignal; dispose: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return { signal: controller.signal, dispose: () => clearTimeout(timer) };
+}
+
+/**
  * Fetches with `redirect: 'manual'` and re-runs the shared SSRF guard on
  * every redirect target, rejecting past MAX_REDIRECTS. `fetch()`'s default
  * `redirect: 'follow'` would only ever have guarded the first URL — a
  * same-origin page that 302s to an internal address would sail through.
  * This route additionally requires https — the shared guard allows http too.
  *
- * One AbortController's signal covers the whole call, headers and body
- * both — aborting it after the timeout also aborts an in-progress read of
- * the same response's body, so the timeout budget isn't "until headers
- * arrive," it's the whole request.
+ * The caller-supplied `signal` is passed to every hop's fetch; pass the same
+ * signal to readCapped so the body read shares the deadline.
  */
-async function guardedFetch(rawUrl: string, timeoutMs: number): Promise<Response> {
+async function guardedFetch(rawUrl: string, signal: AbortSignal): Promise<Response> {
   let currentUrl = rawUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (!currentUrl.startsWith('https://')) {
       throw new SsrfBlockedError(`Only https:// URLs are allowed: ${currentUrl}`);
     }
     await assertPublicHttpUrl(currentUrl);
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetch(currentUrl, { redirect: 'manual', signal: controller.signal });
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location');
-        if (!location) return response;
-        currentUrl = new URL(location, currentUrl).href;
-        continue;
-      }
-      return response;
-    } finally {
-      clearTimeout(timeout);
+    const response = await fetch(currentUrl, { redirect: 'manual', signal });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) return response;
+      currentUrl = new URL(location, currentUrl).href;
+      continue;
     }
+    return response;
   }
   throw new SsrfBlockedError(`Too many redirects fetching ${rawUrl}`);
 }
 
-async function readCapped(response: Response, maxBytes: number): Promise<Buffer> {
+async function readCapped(response: Response, maxBytes: number, signal: AbortSignal): Promise<Buffer> {
   const reader = response.body?.getReader();
   if (!reader) return Buffer.alloc(0);
+  const aborted = new Promise<never>((_, reject) => {
+    const fail = () => reject(new Error('Read aborted: deadline exceeded'));
+    if (signal.aborted) fail();
+    else signal.addEventListener('abort', fail, { once: true });
+  });
+  aborted.catch(() => {}); // avoid an unhandled rejection when the read finishes first
   const chunks: Uint8Array[] = [];
   let total = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.length;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error(`Response exceeded ${maxBytes} bytes`);
+  try {
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) break;
+      total += value.length;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error(`Response exceeded ${maxBytes} bytes`);
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+  } catch (error) {
+    if (signal.aborted) await reader.cancel().catch(() => {});
+    throw error;
   }
   return Buffer.concat(chunks);
 }
@@ -80,11 +95,17 @@ async function importOneImage(
   tenantId: string,
   userId: string,
 ): Promise<ImportedImage | null> {
-  const response = await guardedFetch(imageUrl, IMAGE_FETCH_TIMEOUT_MS);
-  const contentType = response.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
-  if (!response.ok || !ALLOWED_IMAGE_TYPES.has(contentType)) return null;
-
-  const body = await readCapped(response, MAX_IMAGE_BYTES);
+  const deadline = createDeadline(IMAGE_FETCH_TIMEOUT_MS);
+  let body: Buffer;
+  let contentType: string;
+  try {
+    const response = await guardedFetch(imageUrl, deadline.signal);
+    contentType = response.headers.get('content-type')?.split(';')[0]?.trim() ?? '';
+    if (!response.ok || !ALLOWED_IMAGE_TYPES.has(contentType)) return null;
+    body = await readCapped(response, MAX_IMAGE_BYTES, deadline.signal);
+  } finally {
+    deadline.dispose();
+  }
   const filename = new URL(imageUrl).pathname.split('/').pop() || 'image';
   const key = `${IMPORTED_IMAGE_PREFIX}${crypto.randomUUID()}-${filename}`;
   const { fileId } = await storageService.putFileForTenant(tenantId, userId, key, body, contentType);
@@ -111,27 +132,33 @@ productsImportRoutes.post(
       return c.json({ error: 'Import failed', message: 'Only https:// URLs are allowed' }, 400);
     }
 
+    const deadline = createDeadline(PAGE_FETCH_TIMEOUT_MS);
     let pageResponse: Response;
-    try {
-      pageResponse = await guardedFetch(url, PAGE_FETCH_TIMEOUT_MS);
-    } catch (error) {
-      // The guard's own message can name the resolved private address — log
-      // it server-side, but never hand a tenant a probe for what resolves
-      // where on the platform's network.
-      console.error('[products.import] fetch failed', { url, error });
-      return c.json({ error: 'Import failed', message: 'Could not read that product page' }, 422);
-    }
-
-    const contentType = pageResponse.headers.get('content-type') ?? '';
-    if (!pageResponse.ok || !contentType.includes('text/html')) {
-      return c.json({ error: 'Import failed', message: 'That URL is not a readable web page' }, 422);
-    }
-
     let html: string;
     try {
-      html = (await readCapped(pageResponse, MAX_PAGE_BYTES)).toString('utf8');
-    } catch {
-      return c.json({ error: 'Import failed', message: 'That page was too large to read' }, 422);
+      try {
+        pageResponse = await guardedFetch(url, deadline.signal);
+      } catch (error) {
+        // The guard's own message can name the resolved private address — log
+        // it server-side, but never hand a tenant a probe for what resolves
+        // where on the platform's network.
+        console.error('[products.import] fetch failed', { url, error });
+        return c.json({ error: 'Import failed', message: 'Could not read that product page' }, 422);
+      }
+
+      const contentType = pageResponse.headers.get('content-type') ?? '';
+      if (!pageResponse.ok || !contentType.includes('text/html')) {
+        return c.json({ error: 'Import failed', message: 'That URL is not a readable web page' }, 422);
+      }
+
+      try {
+        html = (await readCapped(pageResponse, MAX_PAGE_BYTES, deadline.signal)).toString('utf8');
+      } catch (error) {
+        console.error('[products.import] page read failed', { url, error });
+        return c.json({ error: 'Import failed', message: 'That page was too large or too slow to read' }, 422);
+      }
+    } finally {
+      deadline.dispose();
     }
 
     const extracted = extractProductPage(html, pageResponse.url || url);
