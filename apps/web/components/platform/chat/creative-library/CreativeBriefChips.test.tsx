@@ -62,4 +62,17 @@ describe('CreativeBriefChips', () => {
         fireEvent.focus(screen.getByLabelText('Avatar my-avatar.jpg'));
         await waitFor(() => expect(screen.getAllByTestId('file-thumbnail').length).toBeGreaterThan(1));
     });
+
+    it('shows the selected imported image on a product-url chip, else the link icon', () => {
+        const base = { kind: 'product-url' as const, id: 'https://shop.example.com/p/1', name: 'Mug', url: 'https://shop.example.com/p/1' };
+        const imported = { title: 'Mug', description: null, price: null, images: [], selectedImageId: 'file-1' };
+        const withImage = updateCreativeBrief(createEmptyCreativeBrief(), { ...base, imported });
+        const { unmount } = render(<CreativeBriefChips brief={withImage} readOnly />);
+        expect(screen.getByTestId('file-thumbnail')).toBeTruthy();
+        unmount();
+
+        const withoutImage = updateCreativeBrief(createEmptyCreativeBrief(), { ...base, imported: { ...imported, selectedImageId: null } });
+        render(<CreativeBriefChips brief={withoutImage} readOnly />);
+        expect(screen.queryByTestId('file-thumbnail')).toBeNull();
+    });
 });

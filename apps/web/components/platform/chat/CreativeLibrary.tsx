@@ -15,6 +15,7 @@ import { CREATIVE_TEMPLATES } from './creativeLibraryTemplates';
 import { CREATIVE_AVATARS, type CreativeAvatar } from './creativeLibraryAvatars';
 import { fetchCreativeVoice } from './creativeVoiceFetch';
 import { cn } from '@/lib/utils';
+import { ProductImportCard } from './creative-library/ProductImportCard';
 import type {
     AvatarSelection,
     CreativeBrief,
@@ -268,6 +269,9 @@ function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | nu
                     </Button>
                 </form>
                 <p className="text-xs text-muted-foreground">We&apos;ll try to pull the product name, description and images from the page.</p>
+                {selected?.kind === 'product-url' && selected.imported && (
+                    <ProductImportCard selection={selected} onChange={(next) => onSelect(next)} />
+                )}
             </div>
             <div className={showArtwork ? 'min-w-0 space-y-3' : 'shrink-0 space-y-2'}>
                 {showArtwork && <>
