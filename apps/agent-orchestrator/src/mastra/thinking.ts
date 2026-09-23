@@ -30,6 +30,11 @@ const APPROVAL_SIGNALS = new Set([
   'yes', 'go', 'approve', 'approved', 'ok', 'okay', 'sure', 'looks good',
   'perfect', 'alright', 'sounds good', 'go ahead', "let's go", 'do it',
   'proceed', 'confirmed', 'confirm',
+  // Retry-shaped follow-ups after a failed generation. Same reason as the
+  // approval words above — if these hit the <15-char fast path they land at
+  // budget=0, olmoDelegates returns {}, and Olmo can't call agent-director /
+  // agent-producer to actually re-fire the generation.
+  'retry', 'try again', 'resend', 'regenerate', 'redo', 'again', 'once more',
 ])
 
 const COMPLEX_KEYWORDS = [
@@ -46,7 +51,12 @@ export function getThinkingBudget(message: string): number {
 
   // Approval-shaped replies always get at least default thinking, even
   // though several of these words also appear in CONVERSATIONAL below.
+  // Match on first-word too — "yes create", "approve and go", "try again with X"
+  // all read as approvals and must reach the delegate map.
   if (APPROVAL_SIGNALS.has(lower)) return 1024
+  const firstWord = lower.split(/\s+/)[0] ?? ''
+  const firstTwoWords = lower.split(/\s+/).slice(0, 2).join(' ')
+  if (APPROVAL_SIGNALS.has(firstWord) || APPROVAL_SIGNALS.has(firstTwoWords)) return 1024
 
   // Very short or purely conversational
   if (lower.length < 15 || CONVERSATIONAL.has(lower)) return 0

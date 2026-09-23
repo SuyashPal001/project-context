@@ -24,31 +24,47 @@ export type SpeechGenerationResult =
 
 export class UnsupportedSpeechModelError extends Error {}
 
-// Reads duration from a WAV header by validating chunk layout first.
-// A WAV with an unexpected chunk before data (LIST/fact/bext) silently
-// produces garbage if trusted naively. This implementation asserts the
-// fmt chunk at offset 12 and data chunk at offset 36, throwing if either
-// is missing.
+// Reads duration from a WAV header by walking chunks. Some producers
+// (Cartesia among them) emit non-PCM fmt chunk sizes, or insert LIST/fact/
+// bext/JUNK chunks between fmt and data — asserting fixed offsets 12/36
+// throws on all of those. Walk the chunk list instead, locate fmt and data
+// by id, and derive duration from data.size / (channels * sampleRate *
+// bytesPerSample). Fails only when the file isn't RIFF/WAVE, is truncated
+// mid-chunk, or is missing fmt or data outright.
 export function readWavDurationSeconds(buf: Buffer): number {
-  if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') {
+  if (buf.length < 12 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') {
     throw new Error('Not a valid WAV file')
   }
-  // Validate fmt chunk is where we expect it (at offset 12)
-  if (buf.toString('ascii', 12, 16) !== 'fmt ') {
-    throw new Error('Unexpected WAV chunk layout')
+  let offset = 12
+  let numChannels = 0
+  let sampleRate = 0
+  let bitsPerSample = 0
+  let dataSize = -1
+  while (offset + 8 <= buf.length) {
+    const chunkId = buf.toString('ascii', offset, offset + 4)
+    const chunkSize = buf.readUInt32LE(offset + 4)
+    const chunkStart = offset + 8
+    if (chunkId === 'data') {
+      // Cartesia (and other TTS producers) sometimes emit a data chunkSize
+      // larger than the delivered buffer — the header is written eagerly for
+      // streaming clients that fill the remainder later. Clamp to what we
+      // actually received so duration is computed from real bytes; the audio
+      // bytes themselves are passed through untouched to the caller.
+      dataSize = Math.min(chunkSize, buf.length - chunkStart)
+      break
+    }
+    if (chunkStart + chunkSize > buf.length) throw new Error(`WAV chunk ${chunkId} exceeds buffer`)
+    if (chunkId === 'fmt ') {
+      if (chunkSize < 16) throw new Error('WAV fmt chunk too small')
+      numChannels = buf.readUInt16LE(chunkStart + 2)
+      sampleRate = buf.readUInt32LE(chunkStart + 4)
+      bitsPerSample = buf.readUInt16LE(chunkStart + 14)
+    }
+    // Chunk sizes are padded to even byte boundaries per the RIFF spec.
+    offset = chunkStart + chunkSize + (chunkSize % 2)
   }
-  // Validate data chunk is where we expect it (at offset 36)
-  if (buf.toString('ascii', 36, 40) !== 'data') {
-    throw new Error('Unexpected WAV chunk layout')
-  }
-  const numChannels = buf.readUInt16LE(22)
-  const sampleRate = buf.readUInt32LE(24)
-  const bitsPerSample = buf.readUInt16LE(34)
-  const dataSize = buf.readUInt32LE(40)
-  // Sanity check: dataSize should not exceed buffer minus the 44-byte header
-  if (dataSize > buf.length - 44) {
-    throw new Error('WAV data chunk size exceeds buffer')
-  }
+  if (numChannels === 0 || sampleRate === 0 || bitsPerSample === 0) throw new Error('WAV missing fmt chunk')
+  if (dataSize < 0) throw new Error('WAV missing data chunk')
   const bytesPerSample = bitsPerSample / 8
   const numSamples = dataSize / (bytesPerSample * numChannels)
   return numSamples / sampleRate

@@ -23,21 +23,21 @@ describe('readWavDurationSeconds', () => {
     expect(() => readWavDurationSeconds(buf)).toThrow(/Not a valid WAV file/)
   })
 
-  it('rejects a WAV with unexpected chunk at offset 12 (not fmt)', () => {
+  it('rejects a WAV that never emits a fmt chunk', () => {
     const buf = Buffer.alloc(44)
     buf.write('RIFF', 0)
     buf.write('WAVE', 8)
-    buf.write('LIST', 12) // Wrong chunk ID
-    expect(() => readWavDurationSeconds(buf)).toThrow(/Unexpected WAV chunk layout/)
+    buf.write('LIST', 12)
+    // chunkSize=0 at bytes 16-19 (Buffer.alloc), so walker advances past LIST
+    // and runs out of buffer without seeing fmt.
+    expect(() => readWavDurationSeconds(buf)).toThrow(/WAV missing fmt chunk/)
   })
 
-  it('rejects a WAV with unexpected chunk at offset 36 (not data)', () => {
+  it('rejects a WAV that has fmt but never emits a data chunk', () => {
     const sampleRate = 44100
-    const numSamples = sampleRate * 2
-    const dataSize = numSamples * 2
-    const buf = Buffer.alloc(44 + dataSize)
+    const buf = Buffer.alloc(44)
     buf.write('RIFF', 0)
-    buf.writeUInt32LE(36 + dataSize, 4)
+    buf.writeUInt32LE(36, 4)
     buf.write('WAVE', 8)
     buf.write('fmt ', 12)
     buf.writeUInt32LE(16, 16)
@@ -47,8 +47,34 @@ describe('readWavDurationSeconds', () => {
     buf.writeUInt32LE(sampleRate * 2, 28)
     buf.writeUInt16LE(2, 32)
     buf.writeUInt16LE(16, 34)
-    buf.write('fact', 36) // Wrong chunk ID
-    expect(() => readWavDurationSeconds(buf)).toThrow(/Unexpected WAV chunk layout/)
+    buf.write('fact', 36)
+    buf.writeUInt32LE(0, 40) // zero-size fact — walker advances, then buffer ends
+    expect(() => readWavDurationSeconds(buf)).toThrow(/WAV missing data chunk/)
+  })
+
+  it('parses a WAV that has a LIST chunk between fmt and data (the Cartesia case)', () => {
+    const sampleRate = 44100
+    const numSamples = sampleRate * 2
+    const dataSize = numSamples * 2
+    const listPayload = 16
+    const buf = Buffer.alloc(44 + 8 + listPayload + dataSize)
+    buf.write('RIFF', 0)
+    buf.writeUInt32LE(36 + 8 + listPayload + dataSize, 4)
+    buf.write('WAVE', 8)
+    buf.write('fmt ', 12)
+    buf.writeUInt32LE(16, 16)
+    buf.writeUInt16LE(1, 20)
+    buf.writeUInt16LE(1, 22)
+    buf.writeUInt32LE(sampleRate, 24)
+    buf.writeUInt32LE(sampleRate * 2, 28)
+    buf.writeUInt16LE(2, 32)
+    buf.writeUInt16LE(16, 34)
+    buf.write('LIST', 36)
+    buf.writeUInt32LE(listPayload, 40)
+    // (LIST payload bytes stay zero — content doesn't matter to the walker)
+    buf.write('data', 44 + 8 + listPayload - 8)
+    buf.writeUInt32LE(dataSize, 44 + 8 + listPayload - 4)
+    expect(readWavDurationSeconds(buf)).toBe(2)
   })
 
   it('rejects a WAV where dataSize exceeds buffer bounds', () => {
@@ -66,7 +92,9 @@ describe('readWavDurationSeconds', () => {
     buf.writeUInt16LE(16, 34)
     buf.write('data', 36)
     buf.writeUInt32LE(1000, 40) // Claims huge data
-    expect(() => readWavDurationSeconds(buf)).toThrow(/WAV data chunk size exceeds buffer/)
+    // Data chunk claims 1000 bytes but only 0 delivered → clamp to 0 → duration=0.
+    // Cartesia streams sometimes over-declare data size; we clamp rather than throw.
+    expect(readWavDurationSeconds(buf)).toBe(0)
   })
 
   it('calculates duration correctly for mono audio', () => {
