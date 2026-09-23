@@ -240,4 +240,14 @@ describe('generateImage tool', () => {
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ actorId: undefined }))
   })
+
+  it('builds a deterministic chargeKey from conversationId and toolCallId, not a random uuid', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    const execCtx = { ...baseCtx(), agent: { toolCallId: 'tc-1' } } as never
+    await generateImage.execute!({ prompt: 'a red bicycle' } as never, execCtx)
+
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'image:c1:tc-1:0' }))
+  })
 })

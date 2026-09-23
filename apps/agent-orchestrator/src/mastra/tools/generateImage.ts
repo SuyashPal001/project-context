@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
@@ -71,6 +70,11 @@ export const generateImage = createTool({
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
+    // toolCallId lives on execContext.agent.toolCallId, not execContext.toolCallId
+    // and not requestContext — same gotcha generateVideo.ts documents. Reading
+    // the wrong location silently returns 'unknown' every time, which would
+    // make chargeKey constant per conversation instead of per call.
+    const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
 
     // Not a refusal — referenceFileIds without identityAnchor is legitimate
     // (e.g. a non-cast-sheet reference), but it's also exactly what an
@@ -128,8 +132,15 @@ export const generateImage = createTool({
       return { refused: true, refusalReason: 'GENERATION_FAILED' }
     }
 
-    // Success — charge now, before the (best-effort) upload.
-    const chargeKey = `image:${sessionId}:${randomUUID()}`
+    // Success — charge now, before the (best-effort) upload. Deterministic
+    // (conversationId + toolCallId + a hardcoded attempt suffix, matching
+    // generateVideo.ts's `video:${jobId}:${attempt}` chargeKey shape exactly,
+    // attempt included) rather than a random uuid — a background-task
+    // onFailed backstop needs to reconstruct this key from BackgroundTask
+    // fields alone, which a randomUUID() generated inside execute()'s own
+    // closure can never be, and matching video's shape means one shared
+    // construction works for both kinds in backgroundTaskRefund.ts.
+    const chargeKey = `image:${conversationId ?? sessionId}:${toolCallId}:0`
     let charged = false
     let rateId: string | null = null
     let rateVersion: number | null = null
