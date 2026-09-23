@@ -30,13 +30,7 @@ describe('creative library', () => {
         expect(onSelect).toHaveBeenCalledWith({ kind: 'template', id: 'testimonial', title: 'Testimonial', category: 'Social proof', image: '/creative/templates/testimonial.png' });
     });
 
-    it('attaches a selected presenter preset as a still image', async () => {
-        vi.mocked(api.post).mockResolvedValueOnce({ data: { fileId: 'avatar-1', uploadUrl: 'https://storage.example.com/avatar' } });
-        vi.mocked(api.post).mockResolvedValueOnce({ success: true });
-        const fetchImage = vi.fn()
-            .mockResolvedValueOnce({ ok: true, blob: async () => new Blob(['portrait'], { type: 'image/jpeg' }) })
-            .mockResolvedValueOnce({ ok: true });
-        vi.stubGlobal('fetch', fetchImage);
+    it('attaches a selected presenter preset directly, with no upload round-trip', async () => {
         const { onSelect } = renderLibrary('avatars');
 
         expect(screen.getAllByRole('button', { name: /avatar$/ })).toHaveLength(6);
@@ -44,10 +38,9 @@ describe('creative library', () => {
 
         await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
             kind: 'avatar', id: 'tech-presenter', name: 'Arjun',
-            attachment: { fileId: 'avatar-1', name: 'tech-presenter.jpg', type: 'image/jpeg', size: 8 },
+            attachment: { fileId: '8b6e9254-cc47-492c-bdc7-557ac6302e01', name: 'Arjun', type: 'image/jpeg', size: 0 },
         })));
-        expect(api.post).toHaveBeenCalledWith('/api/v1/files/upload', expect.objectContaining({ key: expect.stringMatching(/^creative-avatars\//) }));
-        expect(fetchImage).toHaveBeenCalledWith('/creative/avatars/tech-presenter.jpg');
+        expect(api.post).not.toHaveBeenCalled();
     });
 
     it('allows a presenter image upload and attaches it to the brief', async () => {
@@ -60,25 +53,6 @@ describe('creative library', () => {
             kind: 'avatar', name: 'my-presenter.png', role: 'Uploaded presenter',
             attachment: { fileId: 'avatar-2', name: 'my-presenter.png', type: 'image/png', size: 6 },
         })));
-    });
-
-    it('does not insert a presenter into a later draft when upload finishes after leaving Avatars', async () => {
-        vi.mocked(api.post).mockResolvedValueOnce({ data: { fileId: 'avatar-3', uploadUrl: 'https://storage.example.com/delayed' } });
-        vi.mocked(api.post).mockResolvedValueOnce({ success: true });
-        let finishUpload!: (result: { ok: boolean }) => void;
-        const uploadPending = new Promise<{ ok: boolean }>(resolve => { finishUpload = resolve; });
-        const fetchImage = vi.fn()
-            .mockResolvedValueOnce({ ok: true, blob: async () => new Blob(['portrait'], { type: 'image/jpeg' }) })
-            .mockReturnValueOnce(uploadPending);
-        vi.stubGlobal('fetch', fetchImage);
-        const { onSelect, unmount } = renderLibrary('avatars');
-        fireEvent.click(screen.getByRole('button', { name: 'Use Mira avatar' }));
-        await waitFor(() => expect(fetchImage).toHaveBeenCalledTimes(2));
-
-        unmount();
-        finishUpload({ ok: true });
-        await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/v1/files/avatar-3/confirm', { size: 8 }));
-        expect(onSelect).not.toHaveBeenCalled();
     });
 
     it('adds a product link to the brief without presenting it as imported metadata', () => {
