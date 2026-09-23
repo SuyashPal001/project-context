@@ -4,6 +4,8 @@ Date: 2026-09-23
 Status: v2 — rewritten after Opus review found v1 duplicated a native Mastra
 feature already half-wired in this repo; pending user review
 
+> **Superseded** by `2026-09-23-batch-media-generation-design.md`. Kept as history; do not implement.
+
 ## Revision note (v2)
 
 An Opus review of v1 (hand-built `media_jobs` table + detached async

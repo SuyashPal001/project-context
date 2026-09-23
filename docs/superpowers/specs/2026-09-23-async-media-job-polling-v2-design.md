@@ -9,6 +9,8 @@ plus a follow-up Opus review of the fix approach. Both reviews are
 summarized in "What went wrong" below; their full text lives in this
 session's transcript, not reproduced here.
 
+> **Superseded** by `2026-09-23-batch-media-generation-design.md`. Kept as history; do not implement.
+
 ## What went wrong with the original implementation
 
 The original plan (Tasks 1-6) opted `generateVideo`/`generateImage` into
