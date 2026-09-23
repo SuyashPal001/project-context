@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode } from "react";
+import { useTheme } from "next-themes";
 import { HyperspaceLoader } from "./hyperspace-loader";
 
 interface HyperspaceContextType {
@@ -18,6 +19,7 @@ export function useHyperspace() {
 }
 
 export function HyperspaceProvider({ children }: { children: ReactNode }) {
+    const { resolvedTheme } = useTheme();
     const [active, setActive] = useState(false);
     const [mode, setMode] = useState<'signup' | 'signin'>('signin');
     const [isDone, setIsDone] = useState(false);
@@ -54,6 +56,7 @@ export function HyperspaceProvider({ children }: { children: ReactNode }) {
                 isDone={isDone}
                 onComplete={handleComplete}
                 statusMessage={statusMessage}
+                visualTheme={resolvedTheme === 'dark' ? 'dark' : 'light'}
             />
         </HyperspaceContext.Provider>
     );

@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { StarfieldCanvas } from "./starfield-canvas";
 import { OlmoMark } from "./platform/OlmoMark";
+import { HyperspaceSceneBoundary } from "./hyperspace/hyperspace-scene-boundary";
 
 interface HyperspaceLoaderProps {
     active: boolean;
@@ -10,37 +10,18 @@ interface HyperspaceLoaderProps {
     onComplete?: () => void;
     statusMessage?: string;
     mode?: 'signup' | 'signin';
+    visualTheme?: 'light' | 'dark';
 }
 
-// Rose (#E69DB8) -> peach (#F2A679), 5 evenly-interpolated stops — replaces the
-// old unrelated rainbow (blue/orange/cyan/pink/purple) checkpoint colors.
-const CHECKPOINTS_SIGNIN = [
-    { label: "verifying identity", color: "#E69DB8" },
-    { label: "loading workspace", color: "#E99FA8" },
-    { label: "waking your agents", color: "#ECA299" },
-    { label: "syncing permissions", color: "#EFA489" },
-    { label: "destination reached", color: "#F2A679" },
-];
+export function HyperspaceLoader({ active, ...sequenceProps }: HyperspaceLoaderProps) {
+    if (!active) return null;
+    return <HyperspaceSequence {...sequenceProps} />;
+}
 
-const CHECKPOINTS_SIGNUP = [
-    { label: "verifying identity", color: "#E69DB8" },
-    { label: "creating workspace", color: "#E99FA8" },
-    { label: "provisioning agent", color: "#ECA299" },
-    { label: "almost ready", color: "#EFA489" },
-    { label: "destination reached", color: "#F2A679" },
-];
-
-export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mode = 'signin' }: HyperspaceLoaderProps) {
-    const checkpoints = mode === 'signup' ? CHECKPOINTS_SIGNUP : CHECKPOINTS_SIGNIN;
-
+function HyperspaceSequence({ isDone, onComplete, statusMessage, visualTheme = 'light' }: Omit<HyperspaceLoaderProps, 'active'>) {
     const [step, setStep] = useState(0);
 
     useEffect(() => {
-        if (!active) {
-            setStep(0);
-            return;
-        }
-
         let timeout: NodeJS.Timeout;
 
         if (step === 0) timeout = setTimeout(() => setStep(1), 350);
@@ -57,67 +38,30 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
         else if (step === 6) timeout = setTimeout(() => { onComplete?.(); }, 800);
 
         return () => clearTimeout(timeout);
-    }, [active, step, isDone, onComplete]);
+    }, [step, isDone, onComplete]);
 
-    const activeIndex = step === 0 ? -1 : (step <= 5 ? step - 1 : -1);
-    const completedIndex = step <= 1 ? -1 : (step <= 6 ? step - 2 : 4);
     const arrival = step >= 6;
-
-    useEffect(() => {
-        if (!active) return;
-    }, [active]);
-
-    if (!active) return null;
+    const isDark = visualTheme === 'dark';
 
     return (
-        <div className="fixed inset-0 z-[9999] pointer-events-none bg-background flex flex-col items-center justify-center overflow-hidden text-foreground">
-            <StarfieldCanvas speedMode="warp" active={active} />
+        <div className={`fixed inset-0 z-[9999] pointer-events-none flex flex-col items-center justify-center overflow-hidden ${isDark ? 'bg-[#070504] text-[#f3e7df]' : 'bg-[#f6efe8] text-[#29221f]'}`}>
+            <div className={`absolute inset-0 z-0 ${isDark ? 'bg-[radial-gradient(ellipse_at_center,rgba(28,20,17,0.98)_0%,rgba(12,8,7,0.96)_46%,rgba(3,2,2,1)_100%)]' : 'bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(249,241,235,0.88)_42%,rgba(225,202,191,0.72)_100%)]'}`} />
+            <div className="absolute inset-0 z-[1]">
+                <HyperspaceSceneBoundary arriving={step >= 5} visualTheme={visualTheme} />
+            </div>
 
-            <div className={`relative z-10 flex flex-col items-center justify-center transition-opacity duration-500 delay-100 ${arrival ? 'opacity-0' : 'opacity-100'}`}>
-                <div className="absolute -top-32 flex items-center gap-2">
-                    <OlmoMark height={18} className="opacity-70" />
-                    <div className="font-sans tracking-[0.22em] text-[12px] uppercase opacity-40 whitespace-nowrap">
+            <div className={`absolute inset-0 z-10 flex items-center justify-center transition-opacity duration-500 ${arrival ? 'opacity-0' : 'opacity-100'}`}>
+                <div className={`absolute left-1/2 top-1/2 h-[22vh] w-[34vw] min-w-[320px] -translate-x-1/2 -translate-y-1/2 ${isDark ? 'bg-[radial-gradient(ellipse_at_center,rgba(12,8,7,0.92)_0%,rgba(12,8,7,0.68)_42%,rgba(12,8,7,0)_74%)]' : 'bg-[radial-gradient(ellipse_at_center,rgba(250,244,239,0.94)_0%,rgba(250,244,239,0.74)_42%,rgba(250,244,239,0)_74%)]'}`} />
+
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap">
+                    <OlmoMark
+                        height={22}
+                        centered
+                        className={`absolute bottom-[calc(100%+12px)] left-1/2 -translate-x-1/2 opacity-90 ${isDark ? '!text-[#f1dfd5]' : '!text-[#40342f]'}`}
+                    />
+                    <div className={`font-sans text-[15px] font-medium uppercase tracking-[0.3em] ${isDark ? 'text-[#f1dfd5] [text-shadow:0_1px_16px_rgba(0,0,0,0.95)]' : 'text-[#40342f] [text-shadow:0_1px_14px_rgba(255,255,255,0.95)]'}`}>
                         OlmoWorks
                     </div>
-                </div>
-
-                <div className="flex flex-col gap-6 items-center w-[240px]">
-                    {checkpoints.map((cp, i) => {
-                        const isActive = activeIndex === i;
-                        const isCompleted = completedIndex >= i;
-                        const isVisible = activeIndex >= i || isCompleted;
-
-                        return (
-                            <div key={i} className={`flex items-center gap-4 transition-all duration-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-                                <div className="relative w-5 h-5 flex items-center justify-center shrink-0">
-                                    {isCompleted ? (
-                                        <svg className="w-4 h-4 text-foreground opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                    ) : (
-                                        <>
-                                            <div
-                                                className={`w-2 h-2 rounded-full transition-all duration-300`}
-                                                style={{ backgroundColor: isActive ? cp.color : 'transparent' }}
-                                            />
-                                            {isActive && (
-                                                <div
-                                                    className="absolute inset-0 rounded-full animate-ping opacity-60"
-                                                    style={{ backgroundColor: cp.color }}
-                                                />
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                                <div
-                                    className="font-mono text-[12px] tracking-[0.04em] transition-colors duration-300 whitespace-nowrap"
-                                    style={{ color: isCompleted ? 'var(--muted-foreground)' : (isActive ? 'var(--foreground)' : 'transparent') }}
-                                >
-                                    {cp.label}
-                                </div>
-                            </div>
-                        );
-                    })}
                 </div>
             </div>
 
@@ -125,14 +69,14 @@ export function HyperspaceLoader({ active, isDone, onComplete, statusMessage, mo
                 <div className="absolute bottom-12 left-0 right-0 flex justify-center z-10 pointer-events-none">
                     <p
                         className="font-mono text-[11px] tracking-[0.08em] transition-opacity duration-500"
-                        style={{ color: 'var(--muted-foreground)' }}
+                        style={{ color: isDark ? '#bca9a0' : '#8c7c74' }}
                     >
                         {statusMessage}
                     </p>
                 </div>
             )}
 
-            <div className={`absolute inset-0 z-20 flex items-center justify-center transition-opacity duration-700 ${arrival ? 'opacity-100 bg-background/60' : 'opacity-0 pointer-events-none'}`}>
+            <div className={`absolute inset-0 z-20 flex items-center justify-center transition-opacity duration-700 ${arrival ? `opacity-100 ${isDark ? 'bg-[#070504]/80' : 'bg-[#f6efe8]/70'}` : 'opacity-0 pointer-events-none'}`}>
                 <div className={`text-[16px] font-medium tracking-wide transition-all duration-700 ${arrival ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
                     Workspace ready
                 </div>
