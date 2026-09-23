@@ -84,6 +84,20 @@ describe('creative library', () => {
         expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('added the link only'));
     });
 
+    it('does not fire a second import when the form is submitted again while one is in flight', async () => {
+        let resolveImport!: (value: unknown) => void;
+        vi.mocked(api.post).mockReturnValueOnce(new Promise(resolve => { resolveImport = resolve; }));
+        const { onSelect } = renderLibrary('products');
+        const input = screen.getByRole('textbox', { name: 'Product page link' });
+        fireEvent.change(input, { target: { value: 'https://example.com/products/cup' } });
+        fireEvent.submit(input.closest('form')!);
+        fireEvent.submit(input.closest('form')!);
+        expect(api.post).toHaveBeenCalledTimes(1);
+
+        resolveImport({ data: { title: 'Ceramic Mug', description: null, price: null, images: [] } });
+        await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    });
+
     it('skips a second import when re-submitting the same already-imported URL', async () => {
         vi.mocked(api.post).mockResolvedValueOnce({ data: { title: 'Ceramic Mug', description: null, price: null, images: [] } });
         const onSelect = vi.fn();

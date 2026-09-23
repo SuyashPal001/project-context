@@ -208,6 +208,7 @@ function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | nu
     }
 
     async function addLink() {
+        if (importingLink) return;
         let parsed: URL;
         try {
             parsed = new URL(url.trim());
@@ -266,7 +267,7 @@ function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | nu
                         Add link
                     </Button>
                 </form>
-                <p className="text-xs text-muted-foreground">A link is added to your brief. Product details are not imported automatically yet.</p>
+                <p className="text-xs text-muted-foreground">We&apos;ll try to pull the product name, description and images from the page.</p>
             </div>
             <div className={showArtwork ? 'min-w-0 space-y-3' : 'shrink-0 space-y-2'}>
                 {showArtwork && <>
