@@ -49,7 +49,6 @@ interface VoicePage {
 const PRODUCT_PREFIX = 'creative-products/';
 const AVATAR_PREFIX = 'creative-avatars/';
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const MINI_WAVEFORM = [10, 18, 14, 24, 32, 20, 28, 16, 26, 34, 22, 14, 20, 10];
 const LANGUAGES = [
     { value: 'en', label: 'English' },
     { value: 'ar', label: 'Arabic' },
@@ -309,7 +308,7 @@ function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | nu
 }
 
 function VoiceCard({ voice, languageLabel, playing, selected, onPreview, onSelect }: { voice: Voice; languageLabel: string; playing: boolean; selected: boolean; onPreview: () => void; onSelect: () => void }) {
-    return <div className={cn("rounded-xl border bg-muted/30 p-3 transition-colors hover:border-foreground/30", selected ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}>
+    return <div className={cn("relative rounded-xl border bg-muted/30 p-3 transition-colors hover:border-foreground/30", selected ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}>
         <div className="flex min-w-0 gap-3">
             <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-muted">
                 {creativeVoiceArtwork(voice.name) && <Image src={creativeVoiceArtwork(voice.name)!} alt="" fill sizes="96px" className="object-cover" />}
@@ -317,21 +316,14 @@ function VoiceCard({ voice, languageLabel, playing, selected, onPreview, onSelec
                     {playing ? <Square className="h-3.5 w-3.5 fill-current" /> : voice.hasPreview ? <Play className="ml-0.5 h-3.5 w-3.5 fill-current" /> : <Music2 className="h-3.5 w-3.5" />}
                 </button>
             </div>
-            <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold text-foreground">{voice.name}{voice.tagline ? ` · ${voice.tagline}` : ''}</h3>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{voice.description || [voice.gender, voice.country].filter(Boolean).join(' · ') || 'Natural voice'}</p>
-                    </div>
-                    <Button type="button" size="sm" variant={selected ? 'default' : 'outline'} className="h-8 shrink-0 px-2.5" onClick={onSelect}>{selected ? <><Check className="mr-1 h-3.5 w-3.5" />Selected</> : 'Select'}</Button>
-                </div>
-                <div aria-hidden="true" className="mt-auto flex h-5 items-center gap-0.5 text-foreground/25">
-                    {MINI_WAVEFORM.map((height, index) => <span key={index} className="w-0.5 rounded-full bg-current" style={{ height }} />)}
-                </div>
-                <div className="mt-1 flex flex-wrap gap-1.5">
+            <button type="button" aria-pressed={selected} onClick={onSelect} aria-label={`Use ${voice.name} voice`} className="flex min-w-0 flex-1 flex-col rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span className="block pr-7 text-sm font-semibold leading-5 text-foreground">{voice.name}</span>
+                <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">{voice.description || [voice.gender, voice.country].filter(Boolean).join(' · ') || 'Natural voice'}</span>
+                <span className="mt-auto flex flex-wrap gap-1.5 pt-2">
                     {[languageLabel, voice.gender, voice.country].filter((value): value is string => Boolean(value)).map(value => <span key={value} className="rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{value}</span>)}
-                </div>
-            </div>
+                </span>
+            </button>
+            {selected && <span className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background"><Check className="h-3.5 w-3.5" /></span>}
         </div>
     </div>;
 }
