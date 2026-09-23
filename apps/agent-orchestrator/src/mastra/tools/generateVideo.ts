@@ -5,16 +5,17 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { refundVideoCharge } from './videoCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
+import type { MediaExecContext } from './batchRunner.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 // Namespaced per docs/media-generation/README.md's convention. This is a new
 // row alongside the old bare 'gemini-omni-1.1-flash' subject in
 // packages/foundation/database/seeds/credit-rates.ts and the gateway's own
 // VIDEO_MODEL_ALLOWLIST — see Task 7. Never rename the old row in place.
-const VIDEO_MODEL = 'google/gemini-omni-1.1-flash'
+export const VIDEO_MODEL = 'google/gemini-omni-1.1-flash'
 const GATEWAY_MODEL_ID = 'gemini-omni-1.1-flash' // the bare id the gateway's allowlist/wire format still expects
 
-const outputSchema = z.object({
+export const videoOutputSchema = z.object({
   fileId: z.string().optional(),
   name: z.string().optional(),
   fileType: z.string().optional(),
@@ -27,7 +28,7 @@ const outputSchema = z.object({
   jobId: z.string().optional(),
 })
 
-const inputSchema = z.object({
+export const videoItemSchema = z.object({
   mode: z.enum(['text_to_video', 'animate_frame', 'composite_references']),
   prompt: z.string().describe('Description of the video to generate'),
   aspectRatio: z.enum(['16:9', '9:16']),
@@ -47,6 +48,8 @@ const inputSchema = z.object({
   { message: 'referenceFileIds is required for composite_references and only for composite_references' },
 )
 
+export type VideoItemInput = z.infer<typeof videoItemSchema>
+
 // Extracts EVERY quoted span, not just the first — a prompt is only clean if
 // every quoted span matches the approved line. A first-match-only check would
 // let a second, unapproved quoted phrase slip through undetected if the first
@@ -59,16 +62,13 @@ function extractQuotedSpans(prompt: string): string[] {
   return [...prompt.matchAll(/"([^"]+)"|“([^”]+)”/g)].map((m) => m[1] ?? m[2])
 }
 
-export const generateVideo = createTool({
-  id: 'generate-video',
-  description: 'Generates a short video clip from a text description, optionally conditioned on a product/reference image, using Gemini Omni Flash. Use when the user asks Director to create or generate a video.',
-  inputSchema,
-  outputSchema,
-  requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
-  execute: async (inputData, execContext) => {
+export async function generateVideoItem(
+  inputData: VideoItemInput,
+  execContext: MediaExecContext | undefined,
+  itemIndex: number,
+) {
     const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor } =
-      inputData as z.infer<typeof inputSchema>
+      inputData
 
     // jobId is derived purely from execContext (no charge or gateway call
     // involved), so it's safe to compute it before the dialogue gate below —
@@ -151,8 +151,12 @@ export const generateVideo = createTool({
     // a refunded-then-retried call from being charged twice. Incrementing
     // `attempt` on retry (so a bare re-execution under the same toolCallId
     // gets a fresh key after a refund) is deferred, per Task 7's original
-    // plan text — not implemented here.
-    const attempt = 0
+    // plan text — not implemented here. In a batch call the item index
+    // occupies this slot so each item has its own key; the single tool
+    // passes 0. If a retry counter is ever added, this key needs a different
+    // shape (e.g. a :r<attempt> suffix) so item 1 / attempt 0 cannot collide
+    // with item 0 / attempt 1.
+    const attempt = itemIndex
     const chargeKey = `video:${jobId}:${attempt}`
     let charged = false
     let rateId: string | null = null
@@ -255,5 +259,15 @@ export const generateVideo = createTool({
       model: VIDEO_MODEL,
       jobId,
     }
-  },
+}
+
+export const generateVideo = createTool({
+  id: 'generate-video',
+  description: 'Generates a short video clip from a text description, optionally conditioned on a product/reference image, using Gemini Omni Flash. Use when the user asks Director to create or generate a video.',
+  inputSchema: videoItemSchema,
+  outputSchema: videoOutputSchema,
+  requireApproval: async (_input, ctx) =>
+    shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
+  execute: async (inputData, execContext) =>
+    generateVideoItem(inputData as VideoItemInput, execContext as unknown as MediaExecContext, 0),
 })
