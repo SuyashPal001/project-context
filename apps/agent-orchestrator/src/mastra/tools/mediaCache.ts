@@ -7,10 +7,37 @@ export async function fetchPresignedUrl(fileId: string, idToken: string, signal?
     headers: { Authorization: `Bearer ${idToken}` },
     signal,
   })
-  if (!res.ok) throw new Error(`presigned-url fetch failed: HTTP ${res.status}`)
-  const data = (await res.json()) as { presignedUrl?: string }
-  if (!data.presignedUrl) throw new Error('presigned-url response missing presignedUrl')
-  return data.presignedUrl
+  if (res.ok) {
+    const data = (await res.json()) as { presignedUrl?: string }
+    if (!data.presignedUrl) throw new Error('presigned-url response missing presignedUrl')
+    return data.presignedUrl
+  }
+
+  // A tenant-scoped fileId 404s here for exactly two reasons: it genuinely
+  // doesn't exist, or it's a creative_library_assets id (a platform-owned
+  // preset — e.g. an avatar picked in the creative-ad composer), which was
+  // never in the tenant `files` table to begin with. This function has 13
+  // direct importers (trimClip, assembleClips, compositeEndCard, lipsync,
+  // mixMusicBed, muxBeatAudio, burnCaptions, transcribeAudio, analyzeAudio,
+  // analyzeVideo, analyzeImage, generateVideo, and media.ts's
+  // resolveSourceImage) — that last one is itself called by generateImage
+  // and editImage, so those two get the fallback transitively, not by
+  // calling this function directly. Every one of them needs to resolve
+  // both kinds of id, so the fallback lives here once rather than being
+  // duplicated across every caller.
+  if (res.status === 404) {
+    const libRes = await fetch(`${INTERNAL_API_URL}/creative-library-assets/${encodeURIComponent(fileId)}/presigned-url`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+      signal,
+    })
+    if (libRes.ok) {
+      const libData = (await libRes.json()) as { presignedUrl?: string }
+      if (!libData.presignedUrl) throw new Error('presigned-url response missing presignedUrl')
+      return libData.presignedUrl
+    }
+  }
+
+  throw new Error(`presigned-url fetch failed: HTTP ${res.status}`)
 }
 
 // scopeId:fileId -> { filePath, mimeType }. `scopeId` is the caller's tenantId

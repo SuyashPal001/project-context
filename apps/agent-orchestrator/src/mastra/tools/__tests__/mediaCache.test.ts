@@ -20,6 +20,29 @@ describe('fetchPresignedUrl', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
     await expect(fetchPresignedUrl('missing', 'token-1')).rejects.toThrow('404')
   })
+
+  it('falls back to the creative-library-assets route when the tenant-scoped lookup 404s', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ presignedUrl: 'https://example.com/library-signed' }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const url = await fetchPresignedUrl('8b6e9254-cc47-492c-bdc7-557ac6302e01', 'token-1')
+
+    expect(url).toBe('https://example.com/library-signed')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1][0]).toContain('/creative-library-assets/8b6e9254-cc47-492c-bdc7-557ac6302e01/presigned-url')
+  })
+
+  it('still throws when both the tenant-scoped and library-asset lookups fail', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchPresignedUrl('truly-missing', 'token-1')).rejects.toThrow('404')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('downloadToSessionCache', () => {
