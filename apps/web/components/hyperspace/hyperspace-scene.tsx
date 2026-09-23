@@ -41,7 +41,7 @@ function useSharedStagedTextures(
     useEffect(() => {
         let disposed = false;
         const loadedTextures: THREE.Texture[] = [];
-        const timeouts = mediaItems.map((item, index) => window.setTimeout(() => {
+        mediaItems.forEach((item) => {
             new THREE.TextureLoader().load(
                 item.sources[quality].src,
                 (texture) => {
@@ -60,13 +60,14 @@ function useSharedStagedTextures(
                     });
                 },
                 undefined,
-                () => undefined,
+                (error) => {
+                    console.warn(`hyperspace: failed to load ${item.sources[quality].src}`, error);
+                },
             );
-        }, Math.floor(index / 5) * 80));
+        });
 
         return () => {
             disposed = true;
-            timeouts.forEach(window.clearTimeout);
             loadedTextures.forEach((texture) => texture.dispose());
         };
     }, [gl, mediaItems, quality]);

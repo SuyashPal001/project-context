@@ -45,7 +45,7 @@ export function createTunnelLayout(
         const baySlot = index % PLANES_PER_BAY;
         const row = Math.floor(baySlot / 2);
         const side: -1 | 1 = baySlot % 2 === 0 ? -1 : 1;
-        const heroOnTop = (segment + (side === 1 ? 1 : 0)) % 2 === 0;
+        const heroOnTop = true;
         const isHero = row === 0;
         const mediaPool = isHero ? heroMediaIndices : companionMediaIndices;
         const mediaPoolIndex = isHero
