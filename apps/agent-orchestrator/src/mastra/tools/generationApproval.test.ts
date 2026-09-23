@@ -70,8 +70,10 @@ describe('GENERATION_APPROVAL_METADATA', () => {
       [
         'edit-image', 'edit_image',
         'generate-image', 'generate_image',
+        'generate-images', 'generate_images',
         'generate-song', 'generate_song',
         'generate-video', 'generate_video',
+        'generate-videos', 'generate_videos',
         'save_skill',
       ].sort(),
     )

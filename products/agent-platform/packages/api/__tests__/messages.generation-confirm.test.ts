@@ -60,3 +60,24 @@ describe('PATCH /:conversationId/messages/:messageId/generation-confirm', () => 
     expect(res.status).toBe(400)
   })
 })
+
+describe('generationConfirmRequestSchema', () => {
+  const base = { id: 'x', resourceType: 'video_generation', subject: 's', label: 'Generate videos', status: 'pending' as const }
+
+  it('keeps an integer count between 1 and 20', async () => {
+    const { generationConfirmRequestSchema } = await import('../routes/messages')
+    expect(generationConfirmRequestSchema.parse({ ...base, count: 3 }).count).toBe(3)
+  })
+
+  it('rejects zero, fractional, and oversized counts', async () => {
+    const { generationConfirmRequestSchema } = await import('../routes/messages')
+    for (const count of [0, 1.5, 21]) {
+      expect(generationConfirmRequestSchema.safeParse({ ...base, count }).success).toBe(false)
+    }
+  })
+
+  it('still accepts a request with no count', async () => {
+    const { generationConfirmRequestSchema } = await import('../routes/messages')
+    expect(generationConfirmRequestSchema.parse(base)).not.toHaveProperty('count')
+  })
+})

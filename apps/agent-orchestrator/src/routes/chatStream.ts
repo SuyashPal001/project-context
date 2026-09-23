@@ -586,18 +586,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const approvalMessageId = crypto.randomUUID()
 
           const preview = meta.buildPreview?.(args)
+          const count = meta.buildCount?.(args)
           const piiNote = toolName === 'save_skill' && typeof args.body === 'string' ? detectSkillPii(args.body) : ''
           const label = piiNote ? `${meta.label}${piiNote}` : meta.label
 
           sendEvent('generation_confirm_request', {
             confirmationId: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label,
             ...(preview ? { preview } : {}),
+            ...(count ? { count } : {}),
           })
 
           if (conversationId && idToken) {
             saveGenerationConfirmRequest(idToken, conversationId, approvalMessageId, {
               id: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label, status: 'pending',
               ...(preview ? { preview } : {}),
+              ...(count ? { count } : {}),
             })
           }
 

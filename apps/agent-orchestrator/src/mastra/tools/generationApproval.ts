@@ -79,11 +79,17 @@ const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label
 const songGen = { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' }
 const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image' }
 
+const itemCount = (args: Record<string, unknown>): number | undefined =>
+  Array.isArray(args.items) ? args.items.length : undefined
+const videoBatchGen = { ...videoGen, label: 'Generate videos', buildCount: itemCount }
+const imageBatchGen = { ...imageGen, label: 'Generate images', buildCount: itemCount }
+
 export const GENERATION_APPROVAL_METADATA: Record<string, {
   resourceType: string
   subject: string
   label: string
   buildPreview?: (args: Record<string, unknown>) => string | undefined
+  buildCount?: (args: Record<string, unknown>) => number | undefined
 }> = {
   'generate-image': imageGen,
   'generate_image': imageGen,
@@ -93,6 +99,10 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'generate_song': songGen,
   'edit-image': imageEdit,
   'edit_image': imageEdit,
+  'generate-videos': videoBatchGen,
+  'generate_videos': videoBatchGen,
+  'generate-images': imageBatchGen,
+  'generate_images': imageBatchGen,
   'save_skill': {
     resourceType: 'skill_creation',
     subject: 'create',

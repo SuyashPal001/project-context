@@ -44,6 +44,10 @@ vi.mock('../mastra/registry.js', () => ({
 vi.mock('../mastra/tools/generationApproval.js', () => ({
   GENERATION_APPROVAL_METADATA: {
     'generate-image': { resourceType: 'image_generation', subject: 'model-x', label: 'Generate image' },
+    'generate_videos': {
+      resourceType: 'video_generation', subject: 'model-v', label: 'Generate videos',
+      buildCount: (args: Record<string, unknown>) => (Array.isArray(args.items) ? args.items.length : undefined),
+    },
   },
   detectSkillPii: () => '',
 }))
@@ -234,6 +238,50 @@ describe('runChatStream — tool-call-approval round trip', () => {
       requestContext: streamedRequestContext,
     })
     expect(approveToolCall).not.toHaveBeenCalled()
+  })
+
+  it('includes the item count on generation_confirm_request for a batch tool', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate_videos', toolCallId: 'tc-b1', args: { items: [{}, {}, {}] } } }],
+      'run-b1',
+    ))
+    approveToolCall.mockResolvedValueOnce(fakeStream(
+      [{ type: 'finish', payload: { output: { usage: {} } } }],
+      'run-b1',
+    ))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+
+    await vi.waitFor(() =>
+      expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({
+        confirmationId: 'tc-b1', resourceType: 'video_generation', count: 3,
+      }))
+    )
+    pendingToolApprovals.get('tc-b1')?.resolve({ confirmed: true })
+    await runPromise
+  })
+
+  it('omits count on generation_confirm_request for a single-item tool', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-s1', args: { prompt: 'a cat' } } }],
+      'run-s1',
+    ))
+    approveToolCall.mockResolvedValueOnce(fakeStream(
+      [{ type: 'finish', payload: { output: { usage: {} } } }],
+      'run-s1',
+    ))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+
+    await vi.waitFor(() =>
+      expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({ confirmationId: 'tc-s1' }))
+    )
+    const payload = sendEvent.mock.calls.find((c) => c[0] === 'generation_confirm_request')![1]
+    expect(payload).not.toHaveProperty('count')
+    pendingToolApprovals.get('tc-s1')?.resolve({ confirmed: true })
+    await runPromise
   })
 })
 
