@@ -5,6 +5,7 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { refundLipsyncCharge } from './lipsyncCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
+import { stableToolCallId } from '../../credits.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const DEFAULT_LIPSYNC_MODEL = 'fal-ai/latentsync'
@@ -56,7 +57,7 @@ export const lipsync = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
     const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
-    const jobId = `${conversationId ?? sessionId}:${toolCallId}`
+    const jobId = `${conversationId ?? sessionId}:${stableToolCallId(toolCallId)}`
 
     if (!idToken) {
       // No idToken means fetchPresignedUrl below can never succeed — refuse

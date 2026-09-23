@@ -6,6 +6,7 @@ import { fetchPresignedUrl } from './mediaCache.js'
 import { refundVideoCharge } from './videoCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
+import { stableToolCallId } from '../../credits.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 // Namespaced per docs/media-generation/README.md's convention. This is a new
@@ -98,7 +99,7 @@ export async function generateVideoItem(
     // free. This was caught by review before implementation; do not read
     // toolCallId from anywhere except execContext.agent.toolCallId.
     const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
-    const jobId = `${conversationId ?? sessionId}:${toolCallId}`
+    const jobId = `${conversationId ?? sessionId}:${stableToolCallId(toolCallId)}`
 
     // Content/dialogue approval gate — enforced in tool code, not prose.
     // Director's own instructions (see TEMPLATE_CLONING_SECTION in

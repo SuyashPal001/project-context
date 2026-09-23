@@ -151,7 +151,7 @@ function toGeminiContents(messages: OpenAIMessage[]): {
   return { systemInstruction, contents }
 }
 
-function sanitizeSchema(schema: unknown): unknown {
+export function sanitizeSchema(schema: unknown): unknown {
   if (!schema || typeof schema !== 'object') return schema
   if (Array.isArray(schema)) return schema.map(sanitizeSchema)
   const obj = schema as Record<string, unknown>
@@ -201,6 +201,18 @@ function sanitizeSchema(schema: unknown): unknown {
     const props = out.properties as Record<string, unknown>
     out.required = (out.required as unknown[]).filter((r) => typeof r === 'string' && r in props)
     if ((out.required as unknown[]).length === 0) delete out.required
+  }
+  // Gemini rejects `type:"object"` with an empty `properties:{}` — 400
+  // INVALID_ARGUMENT with no detail — even though Vertex accepts it. Zero-arg
+  // MCP tools (e.g. list_folder) hit this. Drop the empty properties key so
+  // the declaration reads as `{type:"object"}`, which Gemini treats as
+  // no-argument.
+  if (out.type === 'object'
+      && out.properties
+      && typeof out.properties === 'object'
+      && !Array.isArray(out.properties)
+      && Object.keys(out.properties as Record<string, unknown>).length === 0) {
+    delete out.properties
   }
   return out
 }

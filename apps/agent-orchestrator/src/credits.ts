@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type pg from 'pg'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import type { PricingSchema } from '@serverless-saas/credits'
@@ -8,6 +9,16 @@ import {
   type RefundTaskDeps,
 } from '@serverless-saas/agent-credits'
 import { getPool } from './usage.js'
+
+// Gemini 3.x returns thoughtSignatures encoded into toolCallId — the raw ID can
+// be 4+ KB, which blows past Postgres's ~2704-byte btree tuple limit when it
+// gets concatenated into credit_ledger.idempotency_key. Every generation tool
+// that builds a chargeKey off toolCallId must go through this helper first.
+// SHA-256 hex is deterministic (idempotency preserved), 64 chars, and safely
+// under every downstream size cap.
+export function stableToolCallId(id: string): string {
+  return createHash('sha256').update(id).digest('hex')
+}
 
 export interface CreditBalanceResult {
   allowed: boolean

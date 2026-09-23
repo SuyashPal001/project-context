@@ -10,6 +10,7 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl, downloadToSessionCache } from './mediaCache.js'
 import { refundMixMusicBedCharge } from './mixMusicBedCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
+import { stableToolCallId } from '../../credits.js'
 
 const execFile = promisify(execFileCb)
 
@@ -70,7 +71,7 @@ export const mixMusicBed = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
     const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
-    const jobId = `${conversationId ?? sessionId}:${toolCallId}`
+    const jobId = `${conversationId ?? sessionId}:${stableToolCallId(toolCallId)}`
 
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
 

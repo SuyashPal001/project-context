@@ -4,6 +4,7 @@ import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-s
 import { uploadGeneratedFile } from '../../persistence.js'
 import { refundNarrationCharge } from './narrationCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
+import { stableToolCallId } from '../../credits.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const SPEECH_MODEL = 'sonic-3.5'
@@ -49,7 +50,7 @@ export const generateNarration = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
     const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
-    const jobId = `${conversationId ?? sessionId}:${toolCallId}`
+    const jobId = `${conversationId ?? sessionId}:${stableToolCallId(toolCallId)}`
 
     // Charge BEFORE the vendor call — same settled rule generateVideo.ts
     // follows. generateSong.ts charges after and is a known-divergent tool,
