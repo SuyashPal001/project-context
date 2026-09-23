@@ -20,6 +20,7 @@ import type {
     CreativeBrief,
     CreativeLibraryTab,
     CreativeSelection,
+    ImportedProductData,
     ProductSelection,
     TemplateSelection,
     VoiceSelection,
@@ -172,6 +173,7 @@ function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | nu
     const [url, setUrl] = useState('');
     const [search, setSearch] = useState('');
     const [uploading, setUploading] = useState(false);
+    const [importingLink, setImportingLink] = useState(false);
     const { data, isPending, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
         queryKey: ['creative-products'],
         initialPageParam: 0,
@@ -205,14 +207,44 @@ function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | nu
         }
     }
 
-    function addLink() {
+    async function addLink() {
+        let parsed: URL;
         try {
-            const parsed = new URL(url.trim());
+            parsed = new URL(url.trim());
             if (parsed.protocol !== 'https:') throw new Error('Invalid protocol');
-            onSelect({ kind: 'product-url', id: parsed.href, name: parsed.hostname, url: parsed.href });
-            setUrl('');
         } catch {
             toast.error('Enter a valid product URL beginning with https://');
+            return;
+        }
+
+        // Re-submitting the URL that's already the current, successfully-imported
+        // selection would otherwise re-download the same images again. A URL
+        // whose previous import failed (no `imported`) is intentionally NOT
+        // skipped here — it must be retryable.
+        if (selected?.kind === 'product-url' && selected.url === parsed.href && selected.imported) {
+            setUrl('');
+            return;
+        }
+
+        setImportingLink(true);
+        try {
+            const response = await api.post<{ data: ImportedProductData }>('/api/v1/products/import', { url: parsed.href });
+            onSelect({
+                kind: 'product-url',
+                id: parsed.href,
+                name: response.data.title || parsed.hostname,
+                url: parsed.href,
+                imported: {
+                    ...response.data,
+                    selectedImageId: response.data.images[0]?.fileId ?? null,
+                },
+            });
+        } catch {
+            toast.error('Could not read that product page — added the link only.');
+            onSelect({ kind: 'product-url', id: parsed.href, name: parsed.hostname, url: parsed.href });
+        } finally {
+            setImportingLink(false);
+            setUrl('');
         }
     }
 
@@ -229,7 +261,10 @@ function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | nu
                 </>}
                 <form onSubmit={event => { event.preventDefault(); addLink(); }} className="flex gap-2">
                     <Input type="url" value={url} onChange={event => setUrl(event.target.value)} placeholder="Paste a product page link" aria-label="Product page link" className="h-10 min-w-0" />
-                    <Button type="submit" disabled={!url.trim()} className="shrink-0">Add link</Button>
+                    <Button type="submit" disabled={!url.trim() || importingLink} className="shrink-0">
+                        {importingLink ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Add link
+                    </Button>
                 </form>
                 <p className="text-xs text-muted-foreground">A link is added to your brief. Product details are not imported automatically yet.</p>
             </div>
