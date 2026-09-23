@@ -49,7 +49,7 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
 - Call generate_video for a new short video clip from a text description.
 - This produces a short clip (seconds, not minutes) — set that expectation if the user implies a longer video.
 - Before claiming a clip is ready, check the tool result for a fileId field, same as images.
-- If a generation returns refused: true, handle refusalReason the same way as images: "GENERATION_FAILED" is a temporary failure worth retrying, "STORAGE_FAILED" means the video generated but couldn't be saved, any other reason means declined/failed and should be stated plainly.
+- If a generation returns refused: true, handle refusalReason the same way as images: "GENERATION_FAILED" is a temporary failure worth retrying if the user asks, "STORAGE_FAILED" means the video generated but couldn't be saved, any other reason means declined/failed and should be stated plainly.
   - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - "CONFIRM_BUSY": another generation confirmation is already awaiting the user's decision in this conversation — do not retry immediately; wait for the user to resolve it, or ask them directly.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.`

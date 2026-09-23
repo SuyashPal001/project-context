@@ -77,6 +77,7 @@ export function mediaGenFailureReason(toolName: string, result: Record<string, u
   if (Array.isArray(result.results)) {
     const entries = result.results as Array<Record<string, unknown>>;
     if (entries.some((entry) => typeof entry.fileId === 'string')) return null;
+    if (entries.length > 0 && entries.every((entry) => entry.insufficientCredits === true)) return 'Out of credits';
     return isVideoGenTool(toolName) ? 'Video generation failed' : 'Image generation failed';
   }
   if (typeof result.fileId === 'string') return null;

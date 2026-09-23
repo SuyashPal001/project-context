@@ -11,7 +11,19 @@ describe('mediaGenFailureReason for batch tools', () => {
 
     it('reports a failure when no item produced a file', () => {
         expect(mediaGenFailureReason('generate_videos', { results: [{ index: 0, refused: true }] })).toBe('Video generation failed');
-        expect(mediaGenFailureReason('generate_images', { results: [{ index: 0, insufficientCredits: true }] })).toBe('Image generation failed');
+    });
+
+    it('reports Out of credits when every item in the batch is insufficientCredits', () => {
+        expect(mediaGenFailureReason('generate_images', { results: [{ index: 0, insufficientCredits: true }] })).toBe('Out of credits');
+        expect(mediaGenFailureReason('generate_images', {
+            results: [{ index: 0, insufficientCredits: true }, { index: 1, insufficientCredits: true }],
+        })).toBe('Out of credits');
+    });
+
+    it('falls back to the generic failure when only some items are insufficientCredits', () => {
+        expect(mediaGenFailureReason('generate_images', {
+            results: [{ index: 0, insufficientCredits: true }, { index: 1, refused: true }],
+        })).toBe('Image generation failed');
     });
 
     it('still handles a single-item result', () => {

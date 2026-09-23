@@ -25,7 +25,7 @@ const CODE_SPECS: SubAgentSpec[] = [
     build: () => directorAgentDelegate as unknown as Agent,
     description: 'Generates and edits images, and generates short video clips, from a text description. Not for music or speech, and not for written copy.',
     tags: ['image', 'video'],
-    maxSteps: 8,
+    maxSteps: 16,
     estimatedCredits: 20_000,
   }),
   defineSubAgent({
