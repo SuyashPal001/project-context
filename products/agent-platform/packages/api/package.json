@@ -55,6 +55,7 @@
     "@serverless-saas/storage": "workspace:*",
     "@serverless-saas/types": "workspace:*",
     "@serverless-saas/validators": "workspace:*",
+    "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.18",
     "jszip": "3.10.1",
