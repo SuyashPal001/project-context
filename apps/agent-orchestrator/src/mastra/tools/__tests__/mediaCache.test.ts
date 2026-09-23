@@ -43,6 +43,13 @@ describe('fetchPresignedUrl', () => {
     await expect(fetchPresignedUrl('truly-missing', 'token-1')).rejects.toThrow('404')
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
+
+  it('does not fall back on a non-404 failure', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 500 })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchPresignedUrl('file-1', 'token-1')).rejects.toThrow('500')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('downloadToSessionCache', () => {
