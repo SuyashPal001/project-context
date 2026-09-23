@@ -98,6 +98,32 @@ describe('creative library', () => {
         await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
     });
 
+    it('renders the editable import card for an imported selection and forwards edits', () => {
+        const brief: CreativeBrief = { ...createEmptyCreativeBrief(), product: {
+            kind: 'product-url', id: 'https://example.com/p/1', name: 'Ceramic Mug', url: 'https://example.com/p/1',
+            imported: {
+                title: 'Ceramic Mug', description: 'A mug.', price: '19.00 USD',
+                images: [{ fileId: 'img-1', name: 'a.jpg', type: 'image/jpeg', size: 100 }],
+                selectedImageId: 'img-1',
+            },
+        } };
+        const { onSelect } = renderLibrary('products', vi.fn(), brief);
+        expect(screen.getByDisplayValue('Ceramic Mug')).toBeTruthy();
+        fireEvent.change(screen.getByLabelText('Product title'), { target: { value: 'Big Mug' } });
+        expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'product-url',
+            imported: expect.objectContaining({ title: 'Big Mug' }),
+        }));
+    });
+
+    it('does not render the import card for a link-only selection', () => {
+        const brief: CreativeBrief = { ...createEmptyCreativeBrief(), product: {
+            kind: 'product-url', id: 'https://example.com/p/1', name: 'example.com', url: 'https://example.com/p/1',
+        } };
+        renderLibrary('products', vi.fn(), brief);
+        expect(screen.queryByLabelText('Product title')).toBeNull();
+    });
+
     it('skips a second import when re-submitting the same already-imported URL', async () => {
         vi.mocked(api.post).mockResolvedValueOnce({ data: { title: 'Ceramic Mug', description: null, price: null, images: [] } });
         const onSelect = vi.fn();
