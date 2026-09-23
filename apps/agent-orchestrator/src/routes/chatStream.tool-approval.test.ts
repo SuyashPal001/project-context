@@ -146,7 +146,7 @@ vi.mock('../llm/quickCall.js', () => ({
   quickGeminiCall: vi.fn().mockResolvedValue('[]'),
 }))
 
-import { runChatStream, type ChatStreamOpts } from './chatStream.js'
+import { runChatStream, attachmentsFromToolResult, type ChatStreamOpts } from './chatStream.js'
 import { pendingToolApprovals } from '../types.js'
 import * as persistence from '../persistence.js'
 import * as usage from '../usage.js'
@@ -349,6 +349,88 @@ describe('runChatStream — delegate-produced attachments', () => {
     await runChatStream(baseOpts({ sendEvent }))
 
     expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({ attachments: undefined }))
+  })
+
+  it('turns a batch tool-result into one attachment per succeeded item and none for failed items', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-batch-1',
+            toolName: 'generate-videos',
+            result: {
+              results: [
+                { index: 0, fileId: 'v-0', name: 'a.mp4', fileType: 'video/mp4', size: 10, creditsUsedMicro: '100000', model: 'google/gemini-omni-1.1-flash' },
+                { index: 1, refused: true, refusalReason: 'GENERATION_FAILED' },
+                { index: 2, fileId: 'v-2', name: 'c.mp4', fileType: 'video/mp4', size: 12 },
+              ],
+              succeeded: 2,
+              failed: 1,
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-batch-1',
+    ))
+
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({
+      attachments: [
+        expect.objectContaining({ fileId: 'v-0', name: 'a.mp4', type: 'video/mp4', generation: { creditsUsedMicro: '100000', model: 'google/gemini-omni-1.1-flash' } }),
+        expect.objectContaining({ fileId: 'v-2', name: 'c.mp4', type: 'video/mp4' }),
+      ],
+    }))
+  })
+
+  it('unwraps a batch result nested in a delegate wrapper (Olmo -> Director)', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-director-b',
+            toolName: 'agent-director',
+            result: {
+              text: 'Generated two stills.',
+              subAgentToolResults: [
+                { toolName: 'generate_images', result: { results: [
+                  { index: 0, fileId: 'i-0', name: 'a.png', fileType: 'image/png', size: 5 },
+                  { index: 1, fileId: 'i-1', name: 'b.png', fileType: 'image/png', size: 6 },
+                ], succeeded: 2, failed: 0 } },
+              ],
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-director-b',
+    ))
+
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({
+      attachments: [
+        expect.objectContaining({ fileId: 'i-0' }),
+        expect.objectContaining({ fileId: 'i-1' }),
+      ],
+    }))
+  })
+})
+
+describe('attachmentsFromToolResult', () => {
+  it('wraps a single-file result and returns [] for an unknown tool or a fileId-less result', () => {
+    expect(attachmentsFromToolResult('generate-video', { fileId: 'f', name: 'n', fileType: 'video/mp4', size: 1 })).toHaveLength(1)
+    expect(attachmentsFromToolResult('retrieve-template', { fileId: 'f' })).toEqual([])
+    expect(attachmentsFromToolResult('generate-video', { refused: true })).toEqual([])
+  })
+
+  it('returns [] for a batch result with no results array', () => {
+    expect(attachmentsFromToolResult('generate-videos', {})).toEqual([])
   })
 })
 
