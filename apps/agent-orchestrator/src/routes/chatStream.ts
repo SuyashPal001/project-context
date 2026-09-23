@@ -486,6 +486,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         },
         requestContext,
         providerOptions: { 'inference-gateway': { thinkingBudget } },
+        untilIdle: true,
         ...olmoOptions,
         ...(skillInvocationPrepareStep ? { prepareStep: skillInvocationPrepareStep } : {}),
       })
@@ -709,6 +710,26 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
               if (innerAttachment) pendingAttachments.push(innerAttachment)
             }
           }
+          break
+        }
+        case 'tool-error': {
+          const p = part.payload ?? part
+          const toolCallId = (p.toolCallId ?? '') as string
+          const rawToolName = (p.toolName ?? '') as string
+          const resolvedToolName = rawToolName || toolCallNames.get(toolCallId) || ''
+          toolCallNames.delete(toolCallId)
+          const errorMessage = (p.error?.message ?? 'unknown error') as string
+          // A background task the manager itself failed (timeout exceeded,
+          // uncaught throw) — not a graceful {refused:true} return, which
+          // still arrives as a normal tool-result. Surfaced with the same
+          // shape every other generation refusal already uses so the
+          // frontend needs no new event contract.
+          console.error(`[sse:${sessionId}] tool-error toolName=${resolvedToolName} toolCallId=${toolCallId}: ${errorMessage}`)
+          sendEvent('tool_done', {
+            toolCallId, toolName: resolvedToolName, conversationId,
+            result: { refused: true, refusalReason: 'BACKGROUND_TASK_FAILED' },
+          })
+          onToolCallEnd()
           break
         }
         case 'finish': {
