@@ -586,6 +586,18 @@ No commit for this task — it's a verification gate, not a change.
 
 ---
 
+## Deploy ordering
+
+Tasks 3-5 must ship in the same deploy, not merged/released independently.
+Mastra wires a background task's chunk-transform (completed→`tool-result`,
+failed→`tool-error`) into the dispatching stream's controller unconditionally
+at dispatch time — it does not wait for `untilIdle`. If Task 3/4 (tools opt
+into `background`) ship before Task 5 (`untilIdle: true`) is live, a
+generation that completes in that window has its result chunk enqueued into
+a stream whose connection already closed (the old code has no reason to stay
+open past the initial turn) — a silent attachment drop in production for
+whatever period separates those two deploys, not just a theoretical risk.
+
 ## Known limits carried forward from the spec
 
 - Retry (`maxRetries > 0`) stays off — a retried `execute()` is not charge/upload-safe yet.
