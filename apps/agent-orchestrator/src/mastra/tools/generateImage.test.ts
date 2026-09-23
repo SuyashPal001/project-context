@@ -26,7 +26,7 @@ const { shouldRequireApproval } = vi.hoisted(() => ({
 }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
-import { generateImage } from './generateImage.js'
+import { generateImage, generateImageItem } from './generateImage.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {
@@ -239,5 +239,25 @@ describe('generateImage tool', () => {
     )
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ actorId: undefined }))
+  })
+
+  it('builds a deterministic chargeKey from conversationId and toolCallId, not a random uuid', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    const execCtx = { requestContext: (baseCtx() as unknown as { requestContext: RequestContext }).requestContext, agent: { toolCallId: 'tc-1' } } as never
+    await generateImage.execute!({ prompt: 'a red bicycle' } as never, execCtx)
+
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'image:c1:tc-1:0' }))
+  })
+
+  it('generateImageItem charges under a chargeKey ending in the item index', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+    const execCtx = { ...(baseCtx() as unknown as { requestContext: unknown }), agent: { toolCallId: 'tc-7' } }
+
+    await generateImageItem({ prompt: 'a red bicycle' }, execCtx as never, 3)
+
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'image:c1:tc-7:3' }))
   })
 })

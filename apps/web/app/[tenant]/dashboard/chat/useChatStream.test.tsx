@@ -11,19 +11,23 @@ import { useChatStream } from './useChatStream';
 const chatMock = vi.hoisted(() => ({
     sendMessage: vi.fn<(...args: unknown[]) => Promise<void>>(),
     cancel: vi.fn(),
+    lastOptions: undefined as undefined | { onGenerationConfirmRequired?: (...args: unknown[]) => void },
 }));
 
 vi.mock('@/hooks/useChat', () => ({
-    useChat: () => ({
-        sendMessage: chatMock.sendMessage,
-        sendApproval: vi.fn(),
-        sendGenerationConfirm: vi.fn(),
-        sendClarificationAnswer: vi.fn(),
-        sendUploadAnswer: vi.fn(),
-        cancel: chatMock.cancel,
-        isStreaming: false,
-        isRetrying: false,
-    }),
+    useChat: (options: { onGenerationConfirmRequired?: (...args: unknown[]) => void }) => {
+        chatMock.lastOptions = options;
+        return {
+            sendMessage: chatMock.sendMessage,
+            sendApproval: vi.fn(),
+            sendGenerationConfirm: vi.fn(),
+            sendClarificationAnswer: vi.fn(),
+            sendUploadAnswer: vi.fn(),
+            cancel: chatMock.cancel,
+            isStreaming: false,
+            isRetrying: false,
+        };
+    },
 }));
 
 afterEach(() => {
@@ -197,5 +201,46 @@ describe('useChatStream message preparation', () => {
             undefined,
             true,
         );
+    });
+});
+
+describe('useChatStream generation confirm', () => {
+    const conversationIdRef = { current: 'conversation-1' };
+
+    function setup() {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        );
+        renderHook(() => useChatStream({
+            conversationId: 'conversation-1',
+            conversationIdRef,
+            agentId: 'agent-1',
+            selectedConversation: undefined,
+            messages: [],
+            handleCanvasUpdate: vi.fn(),
+            openCanvas: vi.fn(),
+        }), { wrapper });
+        return client;
+    }
+
+    const pendingRequest = (client: QueryClient) =>
+        client.getQueryData<{ data: Array<{ generationConfirmRequest?: Record<string, unknown> }> }>(['messages', 'conversation-1'])
+            ?.data[0]?.generationConfirmRequest;
+
+    it('stores the batch count on the pending request', () => {
+        const client = setup();
+        act(() => {
+            chatMock.lastOptions!.onGenerationConfirmRequired!('conf-1', 'video_generation', 'google/gemini-omni-1.1-flash', 'Generate videos', undefined, 3);
+        });
+        expect(pendingRequest(client)).toMatchObject({ id: 'conf-1', status: 'pending', count: 3 });
+    });
+
+    it('omits count for a single-item request', () => {
+        const client = setup();
+        act(() => {
+            chatMock.lastOptions!.onGenerationConfirmRequired!('conf-2', 'image_generation', 'gemini-3-pro-image-preview', 'Generate image');
+        });
+        expect(pendingRequest(client)).not.toHaveProperty('count');
     });
 });

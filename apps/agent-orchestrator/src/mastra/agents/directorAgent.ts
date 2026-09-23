@@ -7,6 +7,8 @@ import { getMastraMemory } from '../memory.js'
 import { generateImage } from '../tools/generateImage.js'
 import { editImage } from '../tools/editImage.js'
 import { generateVideo } from '../tools/generateVideo.js'
+import { generateVideos } from '../tools/generateVideos.js'
+import { generateImages } from '../tools/generateImages.js'
 import { retrieveTemplate } from '../tools/retrieveTemplate.js'
 import { analyzeVideoTool } from '../tools/analyzeVideo.js'
 import { analyzeAudioTool } from '../tools/analyzeAudio.js'
@@ -40,7 +42,7 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
 - ANY request to make, generate, create, produce, draft, mock up or show an image REQUIRES you to call the generate_image tool. Narrative replies alone ("Here is the image with X, Y, Z...") are not allowed — the UI renders nothing unless a tool actually ran. If you did not call generate_image this turn, you did not produce an image.
 - Call generate_image for a new image from a text description.
 - Call edit_image when the user references an existing image in this conversation (by its fileId) and wants it changed.
-- Before claiming an image is ready, check the tool result for a fileId field. No fileId means no image exists yet, regardless of what else the result contains — never say "here's your image" or similar in that case. This applies whether you skipped the tool entirely or called it and got a refusal.
+- Before claiming an image is ready, check the tool result for a fileId field. No fileId means no image exists yet, regardless of what else the result contains — never say "here's your image" or similar in that case. This applies whether you skipped the tool entirely or called it and got a refusal. For a batch call (generate_images or generate_videos) check each entry of the results list instead: only an entry with its own fileId produced media.
 - If a generation returns refused: true, check refusalReason:
   - "SAFETY" or another content-policy reason from Gemini: tell the user their request was declined for content policy reasons — do not retry, do not describe it as a technical error.
   - "GENERATION_FAILED": tell the user image generation failed due to a temporary issue — they can try again.
@@ -57,7 +59,7 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
 - Call generate_video for a new short video clip from a text description.
 - This produces a short clip (seconds, not minutes) — set that expectation if the user implies a longer video.
 - Before claiming a clip is ready, check the tool result for a fileId field, same as images.
-- If a generation returns refused: true, handle refusalReason the same way as images: "GENERATION_FAILED" is a temporary failure worth retrying, "STORAGE_FAILED" means the video generated but couldn't be saved, any other reason means declined/failed and should be stated plainly.
+- If a generation returns refused: true, handle refusalReason the same way as images: "GENERATION_FAILED" is a temporary failure worth retrying if the user asks, "STORAGE_FAILED" means the video generated but couldn't be saved, any other reason means declined/failed and should be stated plainly.
   - "DECLINED": the user chose not to proceed when asked to confirm the cost. Say so plainly and do not retry or re-ask in the same turn.
   - "CONFIRM_BUSY": another generation confirmation is already awaiting the user's decision in this conversation — do not retry immediately; wait for the user to resolve it, or ask them directly.
 - If insufficientCredits is returned, tell the user they're out of credits — do not retry.`
@@ -89,8 +91,9 @@ When Olmo delegates a UGC-style ad build with no template to clone:
   - On-camera beat still: generate_image with referenceFileIds set to the cast sheet's fileId and identityAnchor set.
   - On-camera beat video: generate_video with mode "animate_frame", startImageFileId set to that beat's approved still, and identityAnchor set; write the motion per the Motion craft section below.
   - B-roll beat (hands/product only, no presenter): generate_image with no referenceFileIds (or edit_image on the real product photo), and no identityAnchor. generate_video for this beat also uses mode "animate_frame" off that still — never mode "composite_references" with the cast sheet on a b-roll beat.
-- Every still and every video render triggers its own separate cost confirmation — this is expected, do not treat repeated approval cards as an error.
+- Every single-item still or video render triggers its own cost confirmation, and every batch call triggers one confirmation priced for the whole batch — this is expected, do not treat repeated approval cards as an error.
 - Issue generation calls strictly one at a time: call generate_image or generate_video for one beat and wait for that call's result before issuing the next generate_image/generate_video call. Never issue two generation calls in the same step.
+- When several stills or clips are independent — each one depends only on an anchor that is already approved (the cast sheet, or an approved still) and none needs another new output from the same batch — issue them in ONE call: generate_images with items: [...] or generate_videos with items: [...], at most 4 items per call. Each item takes the same fields as the matching single tool. One cost-confirmation card covers the whole batch. Anything that needs another new generation's output first (for example an animate_frame clip whose startImageFileId is a still you have not generated yet) must wait for that result and go in a later call. A batch counts as one generation call for the one-at-a-time rule above. Before claiming any batch item is ready, check each entry of the results list for its own fileId — only an entry with its own fileId produced media, same as the single-tool rule above. For any entry that is refused, apply the same refusal handling as for the single tool. Do not retry refused items automatically; tell the requester which items failed and why, and only re-issue them in a new call if asked, since a retry needs a fresh approval card.
 - Frame prompts for stills should describe a frozen mid-moment — for example, about to speak to camera, or mid-pour — and end with a plain, UNQUOTED sentence describing paused-frame quality — never wrap this in quotation marks, since generate_video's dialogue gate refuses any quoted span that isn't an approved spoken line, and most beats here have none.
 - Realism modifiers for on-camera beats (handheld feel, slight camera shake, candid, natural skin texture, imperfect framing) must also be written as plain UNQUOTED sentences, same reason.
 - Write the terseTag and styleLock into the prompt as plain unquoted text — never wrap either in quotation marks, since generate_video's dialogue gate refuses any quoted span that isn't approved spoken dialogue.
@@ -192,7 +195,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -211,6 +214,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip },
   errorProcessors: [streamErrorRetry()],
 })

@@ -13,3 +13,4 @@ export * from './webhooks';
 export * from './storage';
 export * from './observability';
 export * from './credits';
+export * from './creative';

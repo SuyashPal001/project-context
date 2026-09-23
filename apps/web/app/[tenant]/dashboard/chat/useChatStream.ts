@@ -457,7 +457,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             });
         }, [queryClient]),
 
-        onGenerationConfirmRequired: useCallback((confirmationId: string, resourceType: string, subject: string, label: string, preview?: string) => {
+        onGenerationConfirmRequired: useCallback((confirmationId: string, resourceType: string, subject: string, label: string, preview?: string, count?: number) => {
             emitStreamEvent('generation_confirm_request');
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const msg: Message = {
@@ -466,7 +466,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                     role: 'assistant',
                     content: '',
                     createdAt: new Date().toISOString(),
-                    generationConfirmRequest: { id: confirmationId, resourceType, subject, label, status: 'pending', ...(preview ? { preview } : {}) },
+                    generationConfirmRequest: { id: confirmationId, resourceType, subject, label, status: 'pending', ...(preview ? { preview } : {}), ...(count ? { count } : {}) },
                 };
                 return old ? { data: [...old.data, msg] } : { data: [msg] };
             });

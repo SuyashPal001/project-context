@@ -44,6 +44,10 @@ vi.mock('../mastra/registry.js', () => ({
 vi.mock('../mastra/tools/generationApproval.js', () => ({
   GENERATION_APPROVAL_METADATA: {
     'generate-image': { resourceType: 'image_generation', subject: 'model-x', label: 'Generate image' },
+    'generate_videos': {
+      resourceType: 'video_generation', subject: 'model-v', label: 'Generate videos',
+      buildCount: (args: Record<string, unknown>) => (Array.isArray(args.items) ? args.items.length : undefined),
+    },
   },
   detectSkillPii: () => '',
 }))
@@ -142,7 +146,7 @@ vi.mock('../llm/quickCall.js', () => ({
   quickGeminiCall: vi.fn().mockResolvedValue('[]'),
 }))
 
-import { runChatStream, type ChatStreamOpts } from './chatStream.js'
+import { runChatStream, attachmentsFromToolResult, type ChatStreamOpts } from './chatStream.js'
 import { pendingToolApprovals } from '../types.js'
 import * as persistence from '../persistence.js'
 import * as usage from '../usage.js'
@@ -234,6 +238,50 @@ describe('runChatStream — tool-call-approval round trip', () => {
       requestContext: streamedRequestContext,
     })
     expect(approveToolCall).not.toHaveBeenCalled()
+  })
+
+  it('includes the item count on generation_confirm_request for a batch tool', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate_videos', toolCallId: 'tc-b1', args: { items: [{}, {}, {}] } } }],
+      'run-b1',
+    ))
+    approveToolCall.mockResolvedValueOnce(fakeStream(
+      [{ type: 'finish', payload: { output: { usage: {} } } }],
+      'run-b1',
+    ))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+
+    await vi.waitFor(() =>
+      expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({
+        confirmationId: 'tc-b1', resourceType: 'video_generation', count: 3,
+      }))
+    )
+    pendingToolApprovals.get('tc-b1')?.resolve({ confirmed: true })
+    await runPromise
+  })
+
+  it('omits count on generation_confirm_request for a single-item tool', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-s1', args: { prompt: 'a cat' } } }],
+      'run-s1',
+    ))
+    approveToolCall.mockResolvedValueOnce(fakeStream(
+      [{ type: 'finish', payload: { output: { usage: {} } } }],
+      'run-s1',
+    ))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+
+    await vi.waitFor(() =>
+      expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({ confirmationId: 'tc-s1' }))
+    )
+    const payload = sendEvent.mock.calls.find((c) => c[0] === 'generation_confirm_request')![1]
+    expect(payload).not.toHaveProperty('count')
+    pendingToolApprovals.get('tc-s1')?.resolve({ confirmed: true })
+    await runPromise
   })
 })
 
@@ -336,6 +384,88 @@ describe('runChatStream — delegate-produced attachments', () => {
         expect.objectContaining({ fileId: 'narr-1', name: 'narration.wav', type: 'audio/wav', size: 481200 }),
       ],
     }))
+  })
+
+  it('turns a batch tool-result into one attachment per succeeded item and none for failed items', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-batch-1',
+            toolName: 'generate-videos',
+            result: {
+              results: [
+                { index: 0, fileId: 'v-0', name: 'a.mp4', fileType: 'video/mp4', size: 10, creditsUsedMicro: '100000', model: 'google/gemini-omni-1.1-flash' },
+                { index: 1, refused: true, refusalReason: 'GENERATION_FAILED' },
+                { index: 2, fileId: 'v-2', name: 'c.mp4', fileType: 'video/mp4', size: 12 },
+              ],
+              succeeded: 2,
+              failed: 1,
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-batch-1',
+    ))
+
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({
+      attachments: [
+        expect.objectContaining({ fileId: 'v-0', name: 'a.mp4', type: 'video/mp4', generation: { creditsUsedMicro: '100000', model: 'google/gemini-omni-1.1-flash' } }),
+        expect.objectContaining({ fileId: 'v-2', name: 'c.mp4', type: 'video/mp4' }),
+      ],
+    }))
+  })
+
+  it('unwraps a batch result nested in a delegate wrapper (Olmo -> Director)', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        {
+          type: 'tool-result',
+          payload: {
+            toolCallId: 'tc-director-b',
+            toolName: 'agent-director',
+            result: {
+              text: 'Generated two stills.',
+              subAgentToolResults: [
+                { toolName: 'generate_images', result: { results: [
+                  { index: 0, fileId: 'i-0', name: 'a.png', fileType: 'image/png', size: 5 },
+                  { index: 1, fileId: 'i-1', name: 'b.png', fileType: 'image/png', size: 6 },
+                ], succeeded: 2, failed: 0 } },
+              ],
+            },
+          },
+        },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-director-b',
+    ))
+
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({
+      attachments: [
+        expect.objectContaining({ fileId: 'i-0' }),
+        expect.objectContaining({ fileId: 'i-1' }),
+      ],
+    }))
+  })
+})
+
+describe('attachmentsFromToolResult', () => {
+  it('wraps a single-file result and returns [] for an unknown tool or a fileId-less result', () => {
+    expect(attachmentsFromToolResult('generate-video', { fileId: 'f', name: 'n', fileType: 'video/mp4', size: 1 })).toHaveLength(1)
+    expect(attachmentsFromToolResult('retrieve-template', { fileId: 'f' })).toEqual([])
+    expect(attachmentsFromToolResult('generate-video', { refused: true })).toEqual([])
+  })
+
+  it('returns [] for a batch result with no results array', () => {
+    expect(attachmentsFromToolResult('generate-videos', {})).toEqual([])
   })
 })
 

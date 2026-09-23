@@ -38,6 +38,7 @@
     "index:knowledge": "tsx scripts/indexKnowledge.ts",
     "index:knowledge:dry": "tsx scripts/indexKnowledge.ts --dry-run",
     "backfill:credits": "tsx scripts/backfillCredits.ts",
+    "refresh:voices": "tsx scripts/refreshVoiceCatalogue.ts",
     "test": "vitest run"
   },
   "dependencies": {

@@ -220,3 +220,24 @@ describe('directorAgent UGC first-frame instructions', () => {
     expect(section).toMatch(/never write a quoted line without setting approvedDialogue/)
   })
 })
+
+describe('directorAgent batch generation tools', () => {
+  it('registers generate_videos and generate_images on both Director agents', async () => {
+    for (const agent of [directorAgent, directorAgentDelegate]) {
+      const tools = await agent.listTools()
+      expect(Object.keys(tools)).toEqual(expect.arrayContaining(['generate_videos', 'generate_images']))
+    }
+  })
+
+  it('tells Director to batch independent items and to keep dependent calls sequential', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('agentSystemPrompt', 'Custom persona override text.')
+    const instructions = await directorAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toContain('generate_videos')
+    expect(text).toContain('in ONE call')
+    expect(text).toContain('Issue generation calls strictly one at a time')
+    expect(text).toContain('priced for the whole batch')
+    expect(text).toContain('each entry of the results list')
+  })
+})

@@ -12,6 +12,22 @@ import type { AppEnv } from '@serverless-saas/types';
 const AGENT_ORCHESTRATOR_URL = process.env.AGENT_ORCHESTRATOR_URL ?? '';
 const INTERNAL_SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY ?? '';
 
+export const generationConfirmRequestSchema = z.object({
+    id: z.string(),
+    resourceType: z.string(),
+    subject: z.string(),
+    label: z.string(),
+    // What the card is asking the user to approve (e.g. the opening of
+    // a drafted SKILL.md). Capped well under the tool's own preview
+    // budget — this is a display string, not the stored artifact.
+    preview: z.string().max(2000).optional(),
+    // Upper bound is deliberately looser than the orchestrator's MAX_BATCH_ITEMS (4) so raising that limit needs no API change.
+    count: z.number().int().min(1).max(20).optional(),
+    status: z.enum(['pending', 'approved', 'declined']),
+    decisionAt: z.string().optional(),
+    declineReason: z.string().max(500).optional(),
+});
+
 export const messagesRoutes = new Hono<AppEnv>();
 
 // Verify conversation belongs strictly to this tenant+user (no cross-member bleed)
@@ -178,19 +194,7 @@ messagesRoutes.post('/:conversationId/messages/save', async (c) => {
             status: z.enum(['pending', 'approved', 'dismissed']),
             decisionAt: z.string().optional(),
         }).nullish(),
-        generationConfirmRequest: z.object({
-            id: z.string(),
-            resourceType: z.string(),
-            subject: z.string(),
-            label: z.string(),
-            // What the card is asking the user to approve (e.g. the opening of
-            // a drafted SKILL.md). Capped well under the tool's own preview
-            // budget — this is a display string, not the stored artifact.
-            preview: z.string().max(2000).optional(),
-            status: z.enum(['pending', 'approved', 'declined']),
-            decisionAt: z.string().optional(),
-            declineReason: z.string().max(500).optional(),
-        }).nullish(),
+        generationConfirmRequest: generationConfirmRequestSchema.nullish(),
         uploadRequest: z.object({
             id: z.string(),
             prompt: z.string(),

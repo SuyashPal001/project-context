@@ -192,6 +192,29 @@ describe('ApproveCost', () => {
         expect(onApprove).toHaveBeenCalledTimes(1);
     });
 
+    it('requests the estimate for the batch size when params.count is given', async () => {
+        apiGetMock.mockResolvedValue({
+            costMicro: '6000000',
+            sufficient: true,
+            rateId: 'rate-1',
+            rateVersion: 1,
+            unlimited: false,
+        });
+        render(
+            <ApproveCost
+                label="Generate videos"
+                resourceType="video_generation"
+                subject="google/gemini-omni-1.1-flash"
+                params={{ count: 3 }}
+                onApprove={vi.fn()}
+                onCancel={vi.fn()}
+            />,
+        );
+
+        await screen.findByTestId('approve-cost');
+        expect(apiGetMock.mock.calls[0][0]).toContain('count=3');
+    });
+
     // 'skill_creation' is not a CreditResourceType. Casting it to one made the
     // estimate query fire against a resource that has no rate, so the card fell
     // into its isError branch and told the user "Couldn't estimate cost" for a

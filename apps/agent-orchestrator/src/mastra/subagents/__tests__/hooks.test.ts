@@ -49,7 +49,7 @@ describe('onDelegationStart', () => {
   it('applies the spec maxSteps instead of Mastra default of 5', async () => {
     const config = buildDelegationConfig(host, { budget: allow, record: noopRecord })
     const result = await config.onDelegationStart!(startContext() as never)
-    expect(result).toMatchObject({ modifiedMaxSteps: 8 })
+    expect(result).toMatchObject({ modifiedMaxSteps: 16 })
   })
 
   it('replaces the delegate-facing identity, keeps the host agentId for billing', async () => {

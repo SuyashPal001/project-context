@@ -20,7 +20,7 @@ const { shouldRequireApproval } = vi.hoisted(() => ({
 }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
-import { generateVideo } from './generateVideo.js'
+import { generateVideo, generateVideoItem } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {
@@ -38,6 +38,33 @@ beforeEach(() => {
 })
 
 describe('generateVideo tool', () => {
+  it('generateVideoItem charges under a chargeKey ending in the item index', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+    const execCtx = { ...(baseCtx() as unknown as { requestContext: unknown }), agent: { toolCallId: 'tc-9' } }
+
+    await generateVideoItem(
+      { mode: 'text_to_video', prompt: 'a car driving', aspectRatio: '16:9', durationSeconds: 8 },
+      execCtx as never,
+      2,
+    )
+
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'video:c1:tc-9:2' }))
+  })
+
+  it('the single generateVideo tool still charges under index 0', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+    const execCtx = { ...(baseCtx() as unknown as { requestContext: unknown }), agent: { toolCallId: 'tc-9' } }
+
+    await generateVideo.execute!(
+      { mode: 'text_to_video', prompt: 'a car driving', aspectRatio: '16:9', durationSeconds: 8 } as never,
+      execCtx as never,
+    )
+
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'video:c1:tc-9:0' }))
+  })
+
   it('calls the gateway, charges credits only after success, uploads the result, and returns metadata only', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'clip.mp4', type: 'video/mp4', size: 3 })

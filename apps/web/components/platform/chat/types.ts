@@ -33,6 +33,8 @@ export interface GenerationConfirmRequest {
     status: 'pending' | 'approved' | 'declined';
     decisionAt?: string;
     declineReason?: string;
+    /** Number of items in a batch generation. Absent for single-item tools. */
+    count?: number;
 }
 
 export interface ClarificationOption {

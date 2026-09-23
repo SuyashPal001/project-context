@@ -168,6 +168,31 @@ export function attachmentFromCanvasToolResult(
   return attachment
 }
 
+const BATCH_TOOL_ITEM_NAME: Record<string, string> = {
+  'generate-videos': 'generate-video',
+  'generate-images': 'generate-image',
+}
+
+/**
+ * One tool-result to zero or more attachments. Batch tools return
+ * { results: [...] } with one single-tool-shaped entry per item; each
+ * succeeded entry becomes its own attachment, failed entries none.
+ */
+export function attachmentsFromToolResult(
+  normalizedToolName: string,
+  result: Record<string, unknown>,
+): AttachmentPayload[] {
+  const itemName = BATCH_TOOL_ITEM_NAME[normalizedToolName]
+  if (itemName) {
+    if (!Array.isArray(result.results)) return []
+    return (result.results as Array<Record<string, unknown>>)
+      .map((entry) => attachmentFromCanvasToolResult(itemName, entry))
+      .filter((a): a is AttachmentPayload => a !== null)
+  }
+  const single = attachmentFromCanvasToolResult(normalizedToolName, result)
+  return single ? [single] : []
+}
+
 const FILE_ID_PATTERN = /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g
 
 /**
@@ -268,7 +293,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const assistantMessageId = crypto.randomUUID()
   let pendingArtifactRef: ArtifactRefPayload | null = null
   const pendingAttachments: AttachmentPayload[] = []
-  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'mix-music-bed', 'trim-clip'])
+  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'])
 
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
@@ -586,18 +611,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const approvalMessageId = crypto.randomUUID()
 
           const preview = meta.buildPreview?.(args)
+          const count = meta.buildCount?.(args)
           const piiNote = toolName === 'save_skill' && typeof args.body === 'string' ? detectSkillPii(args.body) : ''
           const label = piiNote ? `${meta.label}${piiNote}` : meta.label
 
           sendEvent('generation_confirm_request', {
             confirmationId: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label,
             ...(preview ? { preview } : {}),
+            ...(count ? { count } : {}),
           })
 
           if (conversationId && idToken) {
             saveGenerationConfirmRequest(idToken, conversationId, approvalMessageId, {
               id: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label, status: 'pending',
               ...(preview ? { preview } : {}),
+              ...(count ? { count } : {}),
             })
           }
 
@@ -673,7 +701,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes.
           // render-canvas/generate-image/edit-image have no entityId (ephemeral display only) — skip pendingArtifactRef for them.
           const normName = resolvedToolName.toLowerCase().replace(/_/g, '-')
-          if (SAVE_TOOL_NAMES.has(normName) && !['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'mix-music-bed', 'trim-clip'].includes(normName)) {
+          if (SAVE_TOOL_NAMES.has(normName) && !['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'].includes(normName)) {
             const entityId = (result.prdId ?? result.planId ?? result.taskBoardId) as string | undefined
             if (entityId) {
               const artifactType = normName.includes('prd') ? 'prd' : normName.includes('plan') ? 'roadmap' : 'tasks'
@@ -688,8 +716,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // render-canvas persists its content as a file (see renderCanvas.ts);
           // collect it into the assistant message's attachments alongside any
           // user-uploaded ones, so multiple canvas outputs in one turn all survive.
-          const canvasAttachment = attachmentFromCanvasToolResult(normName, result)
-          if (canvasAttachment) pendingAttachments.push(canvasAttachment)
+          pendingAttachments.push(...attachmentsFromToolResult(normName, result))
 
           // A delegate wrapper's own tool-result (toolName agent-director/
           // agent-producer) never carries fileId at the top level — the real
@@ -705,8 +732,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             for (const entry of result.subAgentToolResults as Array<{ toolName?: unknown; result?: unknown }>) {
               const innerName = typeof entry.toolName === 'string' ? entry.toolName.toLowerCase().replace(/_/g, '-') : ''
               const innerResult = (entry.result ?? {}) as Record<string, unknown>
-              const innerAttachment = attachmentFromCanvasToolResult(innerName, innerResult)
-              if (innerAttachment) pendingAttachments.push(innerAttachment)
+              pendingAttachments.push(...attachmentsFromToolResult(innerName, innerResult))
             }
           }
           break

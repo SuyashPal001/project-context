@@ -97,11 +97,17 @@ const burnCaptionsGen = { resourceType: 'clip_assembly', subject: BURN_CAPTIONS_
 const mixMusicBedGen = { resourceType: 'clip_assembly', subject: MIX_MUSIC_BED_SUBJECT, label: 'Mix music bed' }
 const trimClipGen = { resourceType: 'clip_assembly', subject: TRIM_CLIP_SUBJECT, label: 'Trim clip' }
 
+const itemCount = (args: Record<string, unknown>): number | undefined =>
+  Array.isArray(args.items) ? args.items.length : undefined
+const videoBatchGen = { ...videoGen, label: 'Generate videos', buildCount: itemCount }
+const imageBatchGen = { ...imageGen, label: 'Generate images', buildCount: itemCount }
+
 export const GENERATION_APPROVAL_METADATA: Record<string, {
   resourceType: string
   subject: string
   label: string
   buildPreview?: (args: Record<string, unknown>) => string | undefined
+  buildCount?: (args: Record<string, unknown>) => number | undefined
 }> = {
   'generate-image': imageGen,
   'generate_image': imageGen,
@@ -111,6 +117,10 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'generate_song': songGen,
   'edit-image': imageEdit,
   'edit_image': imageEdit,
+  'generate-videos': videoBatchGen,
+  'generate_videos': videoBatchGen,
+  'generate-images': imageBatchGen,
+  'generate_images': imageBatchGen,
   'generate-narration': narrationGen,
   'generate_narration': narrationGen,
   'lipsync': lipsyncGen, // single key: the tool id and the delegate map key are the same bare word — no hyphenated/underscored forms to differ

@@ -15,6 +15,7 @@
     "@nangohq/frontend": "^0.71.4",
     "@neondatabase/serverless": "^0.10.4",
     "@react-three/fiber": "9.7.0",
+    "@serverless-saas/database": "workspace:*",
     "@tanstack/react-query": "^5.90.21",
     "@tiptap/core": "^3.26.0",
     "@tiptap/extension-blockquote": "^3.26.0",

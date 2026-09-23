@@ -377,6 +377,8 @@ export interface GenerationConfirmRequestPayload {
   status: 'pending' | 'approved' | 'declined'
   /** What is being approved — shown in the card body. */
   preview?: string
+  /** Item count for a batch tool's approval card, absent for single-item tools. */
+  count?: number
   decisionAt?: string
   declineReason?: string
 }

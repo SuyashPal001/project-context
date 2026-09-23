@@ -299,8 +299,11 @@ These are unresolved and belong in the spec, not in code:
   credits and an agent in a loop could otherwise drain a balance.
 - Whether generation is reachable only from chat, or also from Drive and from
   unattended async tasks.
-- How many images a single call may produce, and what is charged when a batch
-  partially fails.
+- (Resolved 2026-09-23) Batch size and partial failure: `generate_videos` and
+  `generate_images` take up to 4 independent items per call, with one approval
+  card priced per item, and each item is charged and refunded independently
+  under its own key. See
+  `docs/superpowers/specs/2026-09-23-batch-media-generation-design.md`.
 - Whether generated assets count against the tenant storage quota, and what
   retention applies to generations nobody keeps.
 - Whether generated media are labelled as AI-generated in the UI or in
