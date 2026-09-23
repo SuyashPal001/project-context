@@ -18,7 +18,8 @@ interface ToolCallCardProps {
 // form works too if a future caller normalizes before this point.
 function isImageGenTool(toolName: string): boolean {
   return toolName === 'generate_image' || toolName === 'generate-image'
-    || toolName === 'edit_image' || toolName === 'edit-image';
+    || toolName === 'edit_image' || toolName === 'edit-image'
+    || toolName === 'generate_images' || toolName === 'generate-images';
 }
 
 // Producer's tool follows the same unnormalized-key convention as Director's
@@ -30,7 +31,8 @@ function isSongGenTool(toolName: string): boolean {
 // Director's video tool follows the same unnormalized-key convention as its
 // image tools (registered as 'generate_video' in directorAgent.ts).
 function isVideoGenTool(toolName: string): boolean {
-  return toolName === 'generate_video' || toolName === 'generate-video';
+  return toolName === 'generate_video' || toolName === 'generate-video'
+    || toolName === 'generate_videos' || toolName === 'generate-videos';
 }
 
 // Anything this card must treat as "may render a media artifact, not proof
@@ -70,8 +72,13 @@ function isArchitectDelegateTool(toolName: string): boolean {
 // yet. The gateway can also pass through its own reason strings (e.g.
 // NO_PREDICTIONS, NO_AUDIO_BYTES) that fall through to the generic message
 // below.
-function mediaGenFailureReason(toolName: string, result: Record<string, unknown> | undefined): string | null {
+export function mediaGenFailureReason(toolName: string, result: Record<string, unknown> | undefined): string | null {
   if (!result) return null;
+  if (Array.isArray(result.results)) {
+    const entries = result.results as Array<Record<string, unknown>>;
+    if (entries.some((entry) => typeof entry.fileId === 'string')) return null;
+    return isVideoGenTool(toolName) ? 'Video generation failed' : 'Image generation failed';
+  }
   if (typeof result.fileId === 'string') return null;
   if (result.insufficientCredits) return 'Out of credits';
   const reason = typeof result.refusalReason === 'string' ? result.refusalReason : undefined;

@@ -26,7 +26,7 @@ export interface UseChatOptions {
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
-    onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string) => void;
+    onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string, count?: number) => void;
     // turnMessageId is the id the assistant message for THIS turn has (or will
     // have once its first text-delta lands) — see the clarification_request /
     // upload_request cases below. Passing it lets the request be attached to
@@ -366,6 +366,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 payload.subject as string,
                                 payload.label as string,
                                 typeof payload.preview === 'string' ? payload.preview : undefined,
+                                typeof payload.count === 'number' ? payload.count : undefined,
                             );
                             break;
                         }

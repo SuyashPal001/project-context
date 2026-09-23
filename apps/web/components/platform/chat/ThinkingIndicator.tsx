@@ -134,7 +134,8 @@ export function LiveTrace({
         || tc.toolName?.startsWith('agent-task'));
     const isImageGen = activeToolCalls.some(tc =>
         tc.toolName === 'generate_image' || tc.toolName === 'generate-image'
-        || tc.toolName === 'edit_image' || tc.toolName === 'edit-image');
+        || tc.toolName === 'edit_image' || tc.toolName === 'edit-image'
+        || tc.toolName === 'generate_images' || tc.toolName === 'generate-images');
 
     const THINKING_MESSAGES = [
         "Thinking...",

@@ -442,6 +442,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                     resourceType={toCreditResourceType(pendingGenerationConfirm.request.resourceType)}
                     subject={pendingGenerationConfirm.request.subject}
                     preview={pendingGenerationConfirm.request.preview}
+                    params={pendingGenerationConfirm.request.count ? { count: pendingGenerationConfirm.request.count } : undefined}
                     onApprove={() => onGenerationConfirm?.(pendingGenerationConfirm.message.id, pendingGenerationConfirm.request.id)}
                     onCancel={(reason) => onGenerationDecline?.(pendingGenerationConfirm.message.id, pendingGenerationConfirm.request.id, reason)}
                 />
