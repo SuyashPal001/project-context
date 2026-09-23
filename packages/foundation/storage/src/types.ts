@@ -2,6 +2,7 @@ export interface StorageProvider {
   getUploadUrl(key: string, contentType: string, expiresIn?: number, size?: number): Promise<{ url: string }>;
   getDownloadUrl(key: string, expiresIn?: number): Promise<string>;
   deleteObject(key: string): Promise<void>;
+  putObject(key: string, body: Buffer, contentType: string): Promise<void>;
 }
 
 export interface UploadUrlRequest {

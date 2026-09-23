@@ -57,6 +57,16 @@ export class S3StorageProvider implements StorageProvider {
     return Buffer.concat(chunks)
   }
 
+  async putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    });
+    await this.client.send(command);
+  }
+
   async deleteObject(key: string): Promise<void> {
     const command = new DeleteObjectCommand({
       Bucket: this.bucket,
