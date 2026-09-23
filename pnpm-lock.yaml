@@ -979,6 +979,9 @@ importers:
       '@serverless-saas/agent-schema':
         specifier: workspace:*
         version: link:../schema
+      '@serverless-saas/agent-worker-handlers':
+        specifier: workspace:*
+        version: link:../worker-handlers
       '@serverless-saas/ai':
         specifier: workspace:*
         version: link:../../../../packages/foundation/ai
