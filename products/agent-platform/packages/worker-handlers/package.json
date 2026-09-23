@@ -12,6 +12,10 @@
     "./db": {
       "types": "./dist/db.d.ts",
       "default": "./dist/db.js"
+    },
+    "./lib/ssrf-guard": {
+      "types": "./dist/lib/ssrfGuard.d.ts",
+      "default": "./dist/lib/ssrfGuard.js"
     }
   },
   "scripts": {
