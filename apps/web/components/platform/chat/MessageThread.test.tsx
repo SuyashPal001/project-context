@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MessageThread } from './MessageThread';
 import { api } from '@/lib/api';
@@ -65,5 +65,28 @@ describe('MessageThread attachment URL refresh', () => {
         render(<MessageThread messages={[baseMessage]} />);
 
         await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/creative-library-assets/')));
+        // The fallback isn't just called — its resolved URL must actually reach
+        // what the user sees. The mocked MessageItem JSON.stringifies its props,
+        // so the freshUrls value it was passed shows up in its rendered text.
+        await waitFor(() => expect(screen.getByTestId('message-item').textContent).toContain('https://library.example/avatar.jpg'));
+    });
+
+    it('does not fall through to creative-library-assets when the tenant lookup 403s', async () => {
+        vi.mocked(api.get).mockImplementation(async (path: string) => {
+            if (path.includes('/files/')) {
+                // A real 403 (missing files:read) is a different access-model
+                // failure than "not in the tenant files table" — it must fail
+                // outright, not be treated as "try the library route instead."
+                const err = new Error('Forbidden') as Error & { status?: number };
+                err.status = 403;
+                throw err;
+            }
+            throw new Error(`unexpected path ${path}`);
+        });
+
+        render(<MessageThread messages={[baseMessage]} />);
+
+        await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining('/files/')));
+        expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('/creative-library-assets/'));
     });
 });
