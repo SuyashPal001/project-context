@@ -21,17 +21,31 @@ export function creativeSelectionLabel(selection: CreativeSelection): string {
     return selection.name;
 }
 
+function selectedImportedImage(brief: CreativeBrief): Attachment | undefined {
+    if (brief.product?.kind !== 'product-url') return undefined;
+    const { imported } = brief.product;
+    if (!imported?.selectedImageId) return undefined;
+    return imported.images.find(image => image.fileId === imported.selectedImageId);
+}
+
 export function buildCreativeBriefMessage(direction: string, brief: CreativeBrief): string {
     const trimmedDirection = direction.trim();
-    const product = brief.product?.kind === 'product-url'
-        ? `${brief.product.name} (${brief.product.url})`
-        : brief.product?.name;
+    const productSelection = brief.product;
+    const product = productSelection?.kind === 'product-url'
+        ? [`${productSelection.name} (${productSelection.url})`, productSelection.imported?.title, productSelection.imported?.description, productSelection.imported?.price]
+            .filter(Boolean)
+            .join(' — ')
+        : productSelection?.name;
+    // "Has an image actually attached" must match mergeCreativeBriefAttachments's
+    // own condition below, or this line can claim an attachment that was never
+    // added to the outgoing message.
+    const hasSelectedImage = productSelection?.kind === 'product-image' || Boolean(selectedImportedImage(brief));
     const lines = [
         trimmedDirection ? `User direction:\n${trimmedDirection}` : null,
         'Creative brief:',
         brief.template ? `- Template: ${brief.template.title} (${brief.template.category})\n  Template slug: ${brief.template.id}` : null,
         brief.avatar ? `- Avatar: ${brief.avatar.name} · ${brief.avatar.role} · ${brief.avatar.tone}\n  Use the attached still image as the presenter reference.` : null,
-        product ? `- Product: ${product}${brief.product?.kind === 'product-image' ? '\n  Use the attached product image as the visual reference.' : '\n  Treat the URL as a source to inspect; verify product details before making claims.'}` : null,
+        product ? `- Product: ${product}${hasSelectedImage ? '\n  Use the attached product image as the visual reference.' : '\n  Treat the URL as a source to inspect; verify product details before making claims.'}` : null,
         brief.voice ? `- Voice: ${brief.voice.name}${brief.voice.tagline ? ` · ${brief.voice.tagline}` : ''}\n  Voice ID: ${brief.voice.id}\n  Narration language: ${brief.voice.languageLabel} (${brief.voice.language})` : null,
         'Create the ad from this brief. Do not invent product claims, prices, customer quotes, or results.',
     ];
@@ -75,6 +89,7 @@ export function creativeBriefAttachmentIds(brief: CreativeBrief): Set<string> {
     return new Set([
         brief.avatar?.attachment.fileId,
         brief.product?.kind === 'product-image' ? brief.product.attachment.fileId : undefined,
+        selectedImportedImage(brief)?.fileId,
     ].filter((fileId): fileId is string => Boolean(fileId)));
 }
 
@@ -83,6 +98,7 @@ export function mergeCreativeBriefAttachments(existing: Attachment[] | undefined
         ...(existing ?? []),
         brief.avatar?.attachment,
         brief.product?.kind === 'product-image' ? brief.product.attachment : undefined,
+        selectedImportedImage(brief),
     ].filter((attachment): attachment is Attachment => Boolean(attachment));
     const unique = [...new Map(candidates.map(attachment => [attachment.fileId, attachment])).values()];
     return unique.length > 0 ? unique : undefined;
