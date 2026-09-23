@@ -563,7 +563,21 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                         try {
                             const { presignedUrl } = await api.get<{ presignedUrl: string }>(`/api/v1/files/${encodeURIComponent(att.fileId)}/presigned-url`);
                             return { ...att, presignedUrl };
-                        } catch { return att; }
+                        } catch (err) {
+                            // Only retry on 404 (fileId genuinely not in
+                            // the tenant files table — e.g. a
+                            // creative_library_assets id, such as an
+                            // avatar preset picked in the composer).
+                            // /files/:id/presigned-url also 403s when the
+                            // caller lacks files:read — that case must
+                            // fail here, not silently fall through to a
+                            // route with a different access model.
+                            if ((err as { status?: number }).status !== 404) return att;
+                            try {
+                                const { presignedUrl } = await api.get<{ presignedUrl: string }>(`/api/v1/creative-library-assets/${encodeURIComponent(att.fileId)}/presigned-url`);
+                                return { ...att, presignedUrl };
+                            } catch { return att; }
+                        }
                     }
                     return att;
                 }));

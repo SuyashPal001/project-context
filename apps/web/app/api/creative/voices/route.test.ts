@@ -40,14 +40,14 @@ it('returns curated voices from the catalogue, matching by search query', async 
   expect(body).toEqual({ voices: [{ id: 'voice-lauren', name: 'Lauren', tagline: 'Lively Narrator', description: undefined, language: 'en', gender: undefined, country: undefined, supportedLocales: ['en-US'], hasPreview: true }] });
 });
 
-it('disables preview when a catalogue row has neither a provider clip nor a fixed sample', async () => {
+it('enables preview via on-demand TTS when a catalogue row has no static clip', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
   findManyMock.mockResolvedValue([
     { providerId: 'cathy-id', name: 'Cathy', tagline: 'Coworker', description: undefined, language: 'en', gender: undefined, country: undefined, accents: null, previewFileUrl: null, localPreviewAsset: null },
   ]);
   const { GET } = await import('./route');
   const response = await GET(new NextRequest('http://localhost/api/creative/voices?language=en&q=Cathy'));
-  expect((await response.json()).voices).toEqual([{ id: 'cathy-id', name: 'Cathy', tagline: 'Coworker', description: undefined, language: 'en', gender: undefined, country: undefined, supportedLocales: ['en'], hasPreview: false }]);
+  expect((await response.json()).voices).toEqual([{ id: 'cathy-id', name: 'Cathy', tagline: 'Coworker', description: undefined, language: 'en', gender: undefined, country: undefined, supportedLocales: ['en'], hasPreview: true }]);
 });
 
 it('enables synthesis when the requested language is supported by the catalogue row', async () => {

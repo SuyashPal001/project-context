@@ -17,7 +17,7 @@ interface ActionTimelineProps {
   maxItems?: number;
 }
 
-const actionIcons: Record<CanvasAction, React.ElementType> = {
+const actionIcons: Record<CanvasAction, React.ComponentType<{ className?: string }>> = {
   screenshot: Camera,
   click: MousePointer2,
   type: Type,

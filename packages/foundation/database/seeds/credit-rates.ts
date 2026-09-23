@@ -47,6 +47,62 @@ const RATES = [
   // capability range.
   { resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
     pricingSchema: { per_call_micro: 400_000 } },
+  // Cartesia sonic-3.5: ~$0.02 per 30s ad script (per spec's cost research,
+  // $40-42/1M characters, ~500 chars max script = ~$0.021). Priced with
+  // margin at a flat per-call rate rather than per-character, matching this
+  // codebase's existing flat-per-call convention for narration-sized clips.
+  { resourceType: 'narration_generation', subject: 'sonic-3.5',
+    pricingSchema: { per_call_micro: 30_000 } },
+  // fal.ai LatentSync: flat $0.20 per generation for outputs <=40s (spec's
+  // Gemini research). Priced with margin.
+  { resourceType: 'lipsync_generation', subject: 'fal-ai/latentsync',
+    pricingSchema: { per_call_micro: 250_000 } },
+  // Sync Labs sync-2.0: $0.08/output-second; priced flat assuming a
+  // worst-case ~30s ad (this skill's hard ceiling), same "flat per-call,
+  // not metered" convention generateVideo.ts already uses for its own
+  // duration-variable pricing.
+  { resourceType: 'lipsync_generation', subject: 'sync-2.0',
+    pricingSchema: { per_call_micro: 2_500_000 } },
+  // assemble_clips is pure local ffmpeg compute — no vendor cost. Priced at
+  // a small flat rate rather than zero, per the spec's open question:
+  // resolveRate() finding no rate at all makes shouldRequireApproval() skip
+  // the approval card silently (treated as "free, no charge" rather than
+  // "no card, but still gated") — a tiny non-zero rate keeps this tool on
+  // the same charge/approval code path as every other generation tool
+  // instead of carving out a new no-approval code path for one tool.
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-local',
+    pricingSchema: { per_call_micro: 1_000 } },
+  // Gemini transcription for animation-character's caption pipeline: short
+  // (<=30s) audio/video, inline-base64 request, structured JSON output.
+  // Priced flat per call, matching every other row's per_call_micro shape —
+  // no existing row uses per-token/per-duration pricing and this does not
+  // introduce one either. $0.02-ish estimate at Gemini 2.5 Flash rates for
+  // a 30s clip plus margin.
+  { resourceType: 'audio_transcription', subject: 'gemini-transcribe',
+    pricingSchema: { per_call_micro: 15_000 } },
+  // animation-character's four new local-ffmpeg steps. Same "pure local
+  // compute, small flat non-zero rate" reasoning as the clip_assembly/
+  // ffmpeg-local row above — keeps each tool on the normal charge/approval
+  // code path instead of a silent no-charge/no-approval carve-out.
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-mux-audio',
+    pricingSchema: { per_call_micro: 1_000 } },
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-composite-end-card',
+    pricingSchema: { per_call_micro: 1_000 } },
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-burn-captions',
+    pricingSchema: { per_call_micro: 1_000 } },
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-mix-music-bed',
+    pricingSchema: { per_call_micro: 1_000 } },
+  // short-drama-stitch's clip-trim step. Same "pure local compute, small
+  // flat non-zero rate" reasoning as every other clip_assembly row above —
+  // keeps the tool on the normal charge/approval code path instead of a
+  // silent no-charge/no-approval carve-out. An unseeded row here doesn't
+  // just leave the tool unbilled — shouldRequireApproval returns false
+  // with no matching rate, so the tool would run free AND with no
+  // approval card at all. This row must be seeded (pnpm db:seed) against
+  // the deployed environment before a live run, same lesson skill 5
+  // documented for its own rows.
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-trim-clip',
+    pricingSchema: { per_call_micro: 1_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can
   // price them later without a deploy (spec section 3).
   { resourceType: 'message',   subject: '*', pricingSchema: { per_message_micro: 0 } },

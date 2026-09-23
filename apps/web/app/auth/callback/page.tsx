@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useHyperspace } from "@/components/hyperspace-provider";
@@ -9,16 +10,27 @@ import { useRouter } from "next/navigation";
 function CallbackContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { startHyperspace, finishHyperspace } = useHyperspace();
+  const { startHyperspace, finishHyperspace, cancelHyperspace } = useHyperspace();
   const [error, setError] = useState<string | null>(null);
+  const exchangeStartedRef = useRef(false);
 
   useEffect(() => {
+    if (exchangeStartedRef.current) return;
+
     const code = searchParams.get("code");
 
     if (!code) {
       setError("No authorization code found in the URL.");
       return;
     }
+    exchangeStartedRef.current = true;
+
+    // Start before the OAuth/session requests so the transition is visible
+    // during the slow work. Starting immediately before router.push() can be
+    // batched with navigation and never paint, and previously skipped admins.
+    const authMode = sessionStorage.getItem("auth_mode") === "signup" ? "signup" : "signin";
+    sessionStorage.removeItem("auth_mode");
+    startHyperspace(authMode);
 
     async function exchangeCode() {
       try {
@@ -110,36 +122,36 @@ function CallbackContent() {
         const profile = await profileRes.json();
 
         // 5. Route based on role and onboarding status.
-        // Hyperspace only fires for returning users — new users go to onboarding silently.
         if (profile.role === 'platform_admin') {
+          finishHyperspace();
           router.push('/ops');
           router.refresh();
         } else if (profile.slug && !profile.needsOnboarding) {
-          startHyperspace('signin');
           router.push(`/${profile.slug}/dashboard`);
           router.refresh();
         } else {
+          finishHyperspace();
           router.push("/auth/onboarding");
           router.refresh();
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Auth callback error:", err);
-        finishHyperspace();
-        setError(err.message || "An error occurred during authentication.");
+        cancelHyperspace();
+        setError(err instanceof Error ? err.message : "An error occurred during authentication.");
       }
     }
 
     exchangeCode();
-  }, [searchParams]);
+  }, [cancelHyperspace, finishHyperspace, router, searchParams, startHyperspace]);
 
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
         <h1 className="text-2xl font-bold text-destructive mb-4">Authentication Error</h1>
         <p className="text-muted-foreground mb-6">{error}</p>
-        <a href="/auth/login" className="text-primary hover:underline font-medium">
+        <Link href="/auth/login" className="text-primary hover:underline font-medium">
           Back to login
-        </a>
+        </Link>
       </div>
     );
   }

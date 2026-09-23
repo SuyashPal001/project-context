@@ -20,9 +20,9 @@ import {
 } from "@/components/ui/tooltip";
 
 type NavItem =
-    | { kind: "link";    label: string; href: string; icon: React.ElementType }
+    | { kind: "link";    label: string; href: string; icon: React.ComponentType<{ className?: string }> }
     | { kind: "section"; label: string }
-    | { kind: "sub";     label: string; href: string; icon: React.ElementType };
+    | { kind: "sub";     label: string; href: string; icon: React.ComponentType<{ className?: string }> };
 
 const NAV: NavItem[] = [
     { kind: "link",    label: "Overview",           href: "/ops",                                         icon: LayoutDashboard },

@@ -23,7 +23,7 @@ export async function extractVideoFrames(
   // Lets analyzeVideo.ts thread its overall per-call deadline through this
   // leg too, on top of the fixed FFMPEG_TIMEOUT_MS floor below.
   signal?: AbortSignal,
-): Promise<DownloadedMedia[]> {
+): Promise<{ frames: DownloadedMedia[]; durationSeconds: number }> {
   let frameDir: string | undefined
   try {
     frameDir = mkdtempSync(join(tmpdir(), 'vframes-'))
@@ -51,18 +51,25 @@ export async function extractVideoFrames(
     const frameFiles = readdirSync(dir).filter(f => f.endsWith('.jpg')).sort()
     console.log(`[session:${sessionId}] video frames extracted: ${frameFiles.length}`)
 
-    return frameFiles.map((f, i) => {
+    const frames = frameFiles.map((f, i) => {
       const frameBuf = readFileSync(join(dir, f))
+      // Each frame's real timestamp is i * interval — the sampling is
+      // evenly spaced by construction (fps=1/interval above), so this is
+      // exact, not an estimate.
       return {
         filePath: join(dir, f),
         base64: `data:image/jpeg;base64,${frameBuf.toString('base64')}`,
         mimeType: 'image/jpeg',
         name: `${name}_frame${i + 1}.jpg`,
+        timestampSeconds: i * interval,
       }
     })
+    return { frames, durationSeconds: duration }
   } catch (err) {
+    // Unchanged no-throw contract, new return shape — two existing tests
+    // in media.test.ts assert this path never throws.
     console.error(`[session:${sessionId}] video frame extraction error:`, (err as Error).message)
-    return []
+    return { frames: [], durationSeconds: 0 }
   } finally {
     if (frameDir) {
       try {
@@ -142,7 +149,7 @@ export async function downloadMediaAttachment(att: Attachment, sessionId: string
       const result = await mammoth.extractRawText({ buffer: buf })
       const text = result.value.trim()
       const textBase64 = `data:text/plain;base64,${Buffer.from(text).toString('base64')}`
-      return { filePath, base64: textBase64, mimeType: 'text/plain', name }
+      return { filePath, base64: textBase64, mimeType: 'text/plain', name, timestampSeconds: 0 }
     }
     if (att.type === 'application/pdf') {
       const { PDFParse } = await import('pdf-parse')
@@ -152,14 +159,14 @@ export async function downloadMediaAttachment(att: Attachment, sessionId: string
       if (text.length > 0) {
         const textBase64 = `data:text/plain;base64,${Buffer.from(text).toString('base64')}`
         console.log(`[session:${sessionId}] pdf text extracted: ${text.length} chars, sending as text/plain`)
-        return { filePath, base64: textBase64, mimeType: 'text/plain', name }
+        return { filePath, base64: textBase64, mimeType: 'text/plain', name, timestampSeconds: 0 }
       }
       // If no text extracted (scanned PDF), fall through to raw base64
     }
     const mimeType = att.type ?? 'application/octet-stream'
     const base64 = `data:${mimeType};base64,${buf.toString('base64')}`
     console.log(`[session:${sessionId}] media saved: ${filePath} (${buf.length} bytes), base64 prefix: ${base64.slice(0, 40)}`)
-    return { filePath, base64, mimeType, name }
+    return { filePath, base64, mimeType, name, timestampSeconds: 0 }
   } catch (err) {
     console.error(`[session:${sessionId}] media download error "${name}":`, (err as Error).message)
     return null

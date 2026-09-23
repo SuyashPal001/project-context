@@ -88,6 +88,7 @@ describe('buildMastraMessage', () => {
       base64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
       mimeType: 'image/png',
       name: 'photo.png',
+      timestampSeconds: 0,
     })
 
     const attachments: Attachment[] = [
@@ -218,6 +219,87 @@ describe('attachmentFromCanvasToolResult — generate-video', () => {
       fileId: 'f1', name: 'clip.mp4', type: 'video/mp4', size: 100,
       generation: { creditsUsedMicro: '50000', model: 'gemini-omni-1.1-flash' },
     })
+  })
+})
+
+describe('attachmentFromCanvasToolResult — generate-narration', () => {
+  it('returns an attachment payload for a generate-narration result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('generate-narration', { fileId: 'f1', name: 'narration.wav', fileType: 'audio/wav', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'narration.wav', type: 'audio/wav', size: 100 })
+  })
+
+  it('returns null for a generate-narration result with no fileId (refusal)', () => {
+    const result = attachmentFromCanvasToolResult('generate-narration', { refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(result).toBeNull()
+  })
+
+  // Regression guard: before generateNarration.ts's output fix, the tool
+  // returned only {fileId, durationSeconds, ...} — no name/fileType/size —
+  // so this function fell through to the hardcoded markdown defaults below
+  // and every narration rendered in chat as a broken 0-byte "document.md"
+  // card instead of audio. Confirms today's real tool output (name/fileType/
+  // size present) does NOT hit those defaults, and documents what the
+  // defaults look like when they're absent so a future regression is visible
+  // as a diff against 'document.md'/'text/markdown'/0, not a silent pass.
+  it('falls back to markdown defaults if name/fileType/size are absent, same shape the pre-fix tool used to return', () => {
+    const result = attachmentFromCanvasToolResult('generate-narration', { fileId: 'f1', durationSeconds: 12.5 })
+    expect(result).toEqual({ fileId: 'f1', name: 'document.md', type: 'text/markdown', size: 0 })
+  })
+})
+
+describe('attachmentFromCanvasToolResult — lipsync', () => {
+  it('returns an attachment payload for a lipsync result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('lipsync', { fileId: 'f1', name: 'lipsynced.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'lipsynced.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns null for a lipsync result with no fileId (refusal)', () => {
+    const result = attachmentFromCanvasToolResult('lipsync', { refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(result).toBeNull()
+  })
+})
+
+describe('attachmentFromCanvasToolResult — assemble-clips', () => {
+  it('returns an attachment payload for an assemble-clips result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('assemble-clips', { fileId: 'f1', name: 'assembled.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'assembled.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns null for an assemble-clips result with no fileId (refusal)', () => {
+    const result = attachmentFromCanvasToolResult('assemble-clips', { refused: true, refusalReason: 'GENERATION_FAILED' })
+    expect(result).toBeNull()
+  })
+})
+
+describe('attachmentFromCanvasToolResult — animation-character ffmpeg tools', () => {
+  it('returns an attachment payload for a mux-beat-audio result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('mux-beat-audio', { fileId: 'f1', name: 'beat.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'beat.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns an attachment payload for a composite-end-card result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('composite-end-card', { fileId: 'f1', name: 'endcard.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'endcard.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns an attachment payload for a burn-captions result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('burn-captions', { fileId: 'f1', name: 'captioned.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'captioned.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns an attachment payload for a mix-music-bed result with a fileId', () => {
+    const result = attachmentFromCanvasToolResult('mix-music-bed', { fileId: 'f1', name: 'final.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toEqual({ fileId: 'f1', name: 'final.mp4', type: 'video/mp4', size: 100 })
+  })
+
+  it('returns null for a transcribe-audio result (no fileId, text+words only)', () => {
+    const result = attachmentFromCanvasToolResult('transcribe-audio', { text: 'hello world', words: [] })
+    expect(result).toBeNull()
+  })
+
+  it('recognizes trim-clip as a canvas attachment result', () => {
+    const result = attachmentFromCanvasToolResult('trim-clip', { fileId: 'f1', name: 'trimmed.mp4', fileType: 'video/mp4', size: 100 })
+    expect(result).toMatchObject({ fileId: 'f1' })
   })
 })
 

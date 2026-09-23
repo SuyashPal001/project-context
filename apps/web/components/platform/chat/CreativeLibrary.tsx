@@ -120,19 +120,8 @@ function AvatarsPanel({ selected, onSelect }: { selected: AvatarSelection | null
         return () => { mountedRef.current = false; };
     }, []);
 
-    async function selectPreset(avatar: CreativeAvatar) {
-        setUploading(avatar.id);
-        try {
-            const response = await fetch(avatar.image);
-            if (!response.ok) throw new Error('Could not load presenter image.');
-            const file = new File([await response.blob()], `${avatar.id}.jpg`, { type: 'image/jpeg' });
-            const attachment = await storeCreativeImage(file, AVATAR_PREFIX);
-            if (mountedRef.current) onSelect({ kind: 'avatar', ...avatar, attachment });
-        } catch {
-            if (mountedRef.current) toast.error('Could not attach this presenter image. Please try again.');
-        } finally {
-            if (mountedRef.current) setUploading(null);
-        }
+    function selectPreset(avatar: CreativeAvatar) {
+        onSelect({ kind: 'avatar', ...avatar, attachment: { fileId: avatar.assetId, name: avatar.name, type: 'image/jpeg', size: 0 } });
     }
 
     async function uploadOwnImage(file: File) {
@@ -161,7 +150,7 @@ function AvatarsPanel({ selected, onSelect }: { selected: AvatarSelection | null
         </div>
         {matches.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">No avatars match your search.</p> :
             <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
-                {matches.map(avatar => <button key={avatar.id} type="button" aria-pressed={selected?.id === avatar.id} disabled={uploading !== null} onClick={() => { if (selected?.id !== avatar.id) void selectPreset(avatar); }} aria-label={`Use ${avatar.name} avatar`} className="group min-w-0 text-left disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {matches.map(avatar => <button key={avatar.id} type="button" aria-pressed={selected?.id === avatar.id} disabled={uploading !== null} onClick={() => { if (selected?.id !== avatar.id) selectPreset(avatar); }} aria-label={`Use ${avatar.name} avatar`} className="group min-w-0 text-left disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     <span className={cn("relative block aspect-[4/5] overflow-hidden rounded-xl border bg-muted transition-colors group-hover:border-foreground/50", selected?.id === avatar.id ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}>
                         <Image src={avatar.image} alt="" fill sizes="(max-width: 640px) 45vw, 220px" className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
                         {selected?.id === avatar.id && <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background"><Check className="h-3.5 w-3.5" /></span>}

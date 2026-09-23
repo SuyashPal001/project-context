@@ -26,7 +26,7 @@ function StatCard({
 }: {
     label: string;
     value: React.ReactNode;
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string }>;
     sub?: string;
     loading?: boolean;
 }) {

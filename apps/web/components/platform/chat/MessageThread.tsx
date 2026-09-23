@@ -248,9 +248,29 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             failedUrlsRef.current.delete(att.fileId!);
                             return { fileId: att.fileId!, url: presignedUrl };
                         } catch (err) {
-                            console.error('Failed to refresh URL for', att.fileId, err);
-                            failedUrlsRef.current.set(att.fileId!, Date.now());
-                            return null;
+                            // Only retry on 404 (fileId genuinely not in the
+                            // tenant files table — e.g. a creative_library_assets
+                            // id, such as an avatar preset picked in the
+                            // composer). /files/:id/presigned-url also 403s
+                            // when the caller lacks files:read — that case must
+                            // fail here, not silently fall through to a route
+                            // with a different access model.
+                            if ((err as { status?: number }).status !== 404) {
+                                console.error('Failed to refresh URL for', att.fileId, err);
+                                failedUrlsRef.current.set(att.fileId!, Date.now());
+                                return null;
+                            }
+                            try {
+                                const { presignedUrl } = await api.get<{ presignedUrl: string }>(
+                                    `/api/v1/creative-library-assets/${encodeURIComponent(att.fileId!)}/presigned-url`
+                                );
+                                failedUrlsRef.current.delete(att.fileId!);
+                                return { fileId: att.fileId!, url: presignedUrl };
+                            } catch (fallbackErr) {
+                                console.error('Failed to refresh URL for', att.fileId, '(404 on tenant lookup, then failed on creative-library-assets fallback)', fallbackErr);
+                                failedUrlsRef.current.set(att.fileId!, Date.now());
+                                return null;
+                            }
                         }
                     })
                 );

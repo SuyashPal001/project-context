@@ -74,6 +74,15 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'generate-song', 'generate_song',
         'generate-video', 'generate_video',
         'generate-videos', 'generate_videos',
+        'generate-narration', 'generate_narration',
+        'lipsync',
+        'assemble-clips', 'assemble_clips',
+        'mux-beat-audio', 'mux_beat_audio',
+        'transcribe-audio', 'transcribe_audio',
+        'composite-end-card', 'composite_end_card',
+        'burn-captions', 'burn_captions',
+        'mix-music-bed', 'mix_music_bed',
+        'trim-clip', 'trim_clip',
         'save_skill',
       ].sort(),
     )
@@ -125,5 +134,62 @@ describe('detectSkillPii', () => {
   it('names detected types when PII is present', () => {
     const note = detectSkillPii('contact me at a@b.com')
     expect(note).toContain('personal data detected')
+  })
+})
+
+describe('GENERATION_APPROVAL_METADATA — talking-head tools', () => {
+  it('registers generate_narration under both hyphenated and underscored keys', () => {
+    expect(GENERATION_APPROVAL_METADATA['generate-narration']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['generate_narration']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['generate-narration'].resourceType).toBe('narration_generation')
+    expect(GENERATION_APPROVAL_METADATA['generate-narration'].subject).toBe('sonic-3.5')
+  })
+
+  it('registers lipsync', () => {
+    expect(GENERATION_APPROVAL_METADATA['lipsync']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['lipsync'].resourceType).toBe('lipsync_generation')
+    expect(GENERATION_APPROVAL_METADATA['lipsync'].subject).toBe('fal-ai/latentsync')
+  })
+
+  it('registers assemble_clips under both hyphenated and underscored keys', () => {
+    expect(GENERATION_APPROVAL_METADATA['assemble-clips']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['assemble_clips']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['assemble-clips'].resourceType).toBe('clip_assembly')
+    expect(GENERATION_APPROVAL_METADATA['assemble-clips'].subject).toBe('ffmpeg-local')
+  })
+
+  it('maps the underscored delegate keys to the same metadata object as the hyphenated tool ids', () => {
+    expect(GENERATION_APPROVAL_METADATA['generate_narration']).toBe(GENERATION_APPROVAL_METADATA['generate-narration'])
+    expect(GENERATION_APPROVAL_METADATA['assemble_clips']).toBe(GENERATION_APPROVAL_METADATA['assemble-clips'])
+  })
+})
+
+describe('GENERATION_APPROVAL_METADATA — animation-character tools', () => {
+  it('registers both hyphenated and underscored forms for every animation-character tool', () => {
+    const pairs: [string, string][] = [
+      ['mux-beat-audio', 'mux_beat_audio'],
+      ['transcribe-audio', 'transcribe_audio'],
+      ['composite-end-card', 'composite_end_card'],
+      ['burn-captions', 'burn_captions'],
+      ['mix-music-bed', 'mix_music_bed'],
+    ]
+    for (const [hyphenated, underscored] of pairs) {
+      expect(GENERATION_APPROVAL_METADATA[hyphenated]).toBeDefined()
+      expect(GENERATION_APPROVAL_METADATA[underscored]).toBeDefined()
+      expect(GENERATION_APPROVAL_METADATA[hyphenated]).toEqual(GENERATION_APPROVAL_METADATA[underscored])
+    }
+  })
+})
+
+describe('GENERATION_APPROVAL_METADATA — short-drama-stitch tools', () => {
+  it('registers trim_clip under both hyphenated and underscored keys', () => {
+    expect(GENERATION_APPROVAL_METADATA['trim-clip']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['trim_clip']).toBeDefined()
+    expect(GENERATION_APPROVAL_METADATA['trim-clip'].resourceType).toBe('clip_assembly')
+    expect(GENERATION_APPROVAL_METADATA['trim-clip'].subject).toBe('ffmpeg-trim-clip')
+  })
+
+  it('maps the underscored delegate key to the same metadata object as the hyphenated tool id', () => {
+    expect(GENERATION_APPROVAL_METADATA['trim_clip']).toBe(GENERATION_APPROVAL_METADATA['trim-clip'])
   })
 })

@@ -41,12 +41,16 @@ it('streams the CDN preview for a catalogue row with a provider URL', async () =
 
 it('does not send the provider key to an untrusted preview host', async () => {
     findFirstMock.mockResolvedValue({ providerId: 'voice-1', name: 'Cathy', tagline: 'Coworker', previewFileUrl: 'https://example.com/sample.wav', localPreviewAsset: null, accents: null });
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, headers: new Headers({ 'content-type': 'audio/wav' }), arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer });
     vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('./route');
     const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-1'));
-    expect(response.status).toBe(502);
-    expect(fetchMock).not.toHaveBeenCalled();
+    // The untrusted static clip is skipped (never fetched, so the key is never sent to it) and the
+    // route falls through to on-demand TTS instead of failing the preview.
+    expect(response.status).toBe(200);
+    const calledUrls = fetchMock.mock.calls.map(call => call[0].toString());
+    expect(calledUrls).not.toContain('https://example.com/sample.wav');
+    expect(calledUrls.some(url => url.startsWith('https://example.com'))).toBe(false);
 });
 
 it('uses the fixed sample for a catalogue row without a provider preview', async () => {
@@ -57,11 +61,15 @@ it('uses the fixed sample for a catalogue row without a provider preview', async
     expect(response.headers.get('location')).toBe('http://localhost/creative/voices/lauren-lively-narrator.wav');
 });
 
-it('returns 404 when neither a provider preview nor a local sample exists', async () => {
-    findFirstMock.mockResolvedValue({ providerId: 'voice-1', name: 'Cathy', tagline: 'Coworker', previewFileUrl: null, localPreviewAsset: null, accents: null });
+it('synthesises English on demand when neither a provider preview nor a local sample exists', async () => {
+    findFirstMock.mockResolvedValue({ providerId: 'voice-2', name: 'Cathy', tagline: 'Coworker', previewFileUrl: null, localPreviewAsset: null, accents: null });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, headers: new Headers({ 'content-type': 'audio/wav' }), arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer });
+    vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('./route');
-    const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-1'));
-    expect(response.status).toBe(404);
+    const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-2'));
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls[0][0].toString()).toBe('https://api.cartesia.ai/tts/bytes');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ language: 'en', transcript: 'Hello! How are you doing today?' });
 });
 
 it('generates the sample in the requested supported language', async () => {

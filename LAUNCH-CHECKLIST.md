@@ -138,6 +138,72 @@
 
 ---
 
+### 11a. Animation-character skill — deployment prerequisites
+
+> This skill's 5 new ffmpeg tools (`mux_beat_audio`, `composite_end_card`, `burn_captions`,
+> `assemble_clips` audio path, `transcribe_audio`) and its Gemini-based transcription/VO
+> steps were built and tested against a local dev environment that does not match the GCP
+> VM's ffmpeg build. None of the below has been verified on any machine actually used
+> during implementation.
+
+- [ ] Run `ffmpeg -h filter=subtitles` on the target GCP VM — `burn_captions` needs the
+      `subtitles` filter compiled in with libass support. Every local dev run during this
+      implementation lacked libass; a captions call will fail with `SUBTITLES_FILTER_UNAVAILABLE`
+      on any ffmpeg build missing it. Install/rebuild ffmpeg with `--enable-libass` if it fails.
+- [ ] Confirm a DejaVu Sans (or equivalent) font is installed on the VM — `burn_captions`'
+      `force_style` references it by name; a missing font silently falls back to a default face
+      rather than erroring.
+- [ ] Confirm `GEMINI_API_KEY` is set in the **actual deployed** `apps/inference-gateway/.env`
+      on the GCP VM — this branch only touched `apps/inference-gateway/.env.example`. Without
+      it, `transcribe_audio` and any Gemini-Omni video calls fail (see `TranscribeBackendUnavailableError`
+      / `VideoBackendUnavailableError` in `apps/inference-gateway/src/`).
+- [ ] Run `pnpm db:seed` once (from `packages/foundation/database`) for the 5 new credit-rate
+      rows this branch added (`mux-beat-audio`, `composite-end-card`, `burn-captions`,
+      `transcribe-audio`/`gemini-transcribe`, and the music-bed mix rate). **This is not just
+      an "unbilled" risk** — `shouldRequireApproval` returns `false` when no rate is found for a
+      tool, which means all 5 new tools will run completely FREE **and with no approval card
+      shown to the user at all** until the rates are seeded, not merely free-and-confirmed.
+- [ ] Restart `agent-orchestrator` and `inference-gateway` PM2 processes by hand after deploy —
+      `./deploy.sh` only rebuilds Next.js and restarts `web-frontend`/`api`. Both of these
+      services ship code from this branch and won't pick it up without a manual
+      `pm2 restart agent-orchestrator` / `pm2 restart inference-gateway` (or the `mcp-server-pc`-
+      style `pm2 delete && pm2 start` if their env changed too).
+
+---
+
+### 11b. Short-drama-stitch skill — deployment prerequisites
+
+> This skill is editing-only (it never generates video), stitching user-uploaded footage
+> into an ad-length cut via `trim_clip` and `assemble_clips`. It reuses `burn_captions`
+> from the animation-character skill unchanged, and raises the clip-size ceiling used by
+> both tools.
+
+- [ ] Run `pnpm db:seed` once (from `packages/foundation/database`) for the
+      `('clip_assembly', 'ffmpeg-trim-clip')` credit-rate row this branch added. **This is not
+      just an "unbilled" risk** — `shouldRequireApproval` returns `false` when no rate is found
+      for a tool, which means `trim_clip` will run completely FREE **and with no approval card
+      shown to the user at all** until the rate is seeded, not merely free-and-confirmed.
+- [ ] Restart the `agent-orchestrator` PM2 process by hand after deploy — `./deploy.sh` only
+      rebuilds Next.js and restarts `web-frontend`/`api`. This skill ships code only in
+      `agent-orchestrator` (it does not touch `inference-gateway`), so a manual
+      `pm2 restart agent-orchestrator` is required to pick it up.
+- [ ] Same libass/`burn_captions` caveat as §11a applies here unchanged, since this skill
+      reuses that tool as-is: run `ffmpeg -h filter=subtitles` on the target GCP VM —
+      `burn_captions` needs the `subtitles` filter compiled in with libass support. No
+      machine used in this skill's own development had libass either, so this has still not
+      been verified on any machine actually used during implementation. Install/rebuild
+      ffmpeg with `--enable-libass` if it fails.
+- [ ] Expected memory footprint, deployment-sizing note (not a blocker): `MAX_CLIP_BYTES`
+      in `assembleClips.ts` was raised to 500MB and up to 8 clips can be processed per
+      `assemble_clips` call. `mediaCache.ts` fully materializes each downloaded file in
+      memory (via `arrayBuffer()`/`Buffer.from`, not streamed), so a worst-case run can
+      transiently use up to ~4GB (8 × 500MB) on the `agent-orchestrator` process. That
+      process shares its GCP VM with `web-frontend`, `mcp-server-pc`, `ai-service`, and
+      `inference-gateway` — size the VM (or set expectations for concurrent skill usage)
+      with this in mind.
+
+---
+
 ### 12. Smoke Test (pre-launch)
 
 - [ ] `https://projectcontext.co` → loads login page

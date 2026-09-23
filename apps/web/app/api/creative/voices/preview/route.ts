@@ -6,6 +6,7 @@ import { verifyVoiceLibrarySession } from '../session';
 export const runtime = 'nodejs';
 
 const SAMPLE_TRANSCRIPTS: Record<string, string> = {
+    en: 'Hello! How are you doing today?',
     ar: 'مرحباً! كيف حالك اليوم؟',
     zh: '你好！你今天好吗？',
     fr: 'Bonjour ! Comment allez-vous aujourd’hui ?',
@@ -74,66 +75,68 @@ export async function GET(request: NextRequest) {
         const voice = await db.query.voiceCatalogue.findFirst({ where: eq(voiceCatalogue.providerId, id) });
         if (!voice) return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
 
-        if (language !== 'en') {
-            if (voice.accents?.length && !voice.accents.some(accent => accent.locale.split(/[-_]/)[0] === language)) {
-                return NextResponse.json({ error: 'This voice does not support that language.' }, { status: 404 });
+        if (language !== 'en' && voice.accents?.length && !voice.accents.some(accent => accent.locale.split(/[-_]/)[0] === language)) {
+            return NextResponse.json({ error: 'This voice does not support that language.' }, { status: 404 });
+        }
+        if (language === 'en') {
+            // Static clip first, then the bundled local asset; if neither exists (or the static clip
+            // fetch fails) fall through to on-demand TTS below so every English voice stays previewable.
+            if (voice.previewFileUrl) {
+                const previewUrl = new URL(voice.previewFileUrl);
+                if (previewUrl.protocol === 'https:' && (previewUrl.hostname === 'cartesia.ai' || previewUrl.hostname.endsWith('.cartesia.ai'))) {
+                    const preview = await fetch(previewUrl, { headers: { Authorization: `Bearer ${key}`, 'Cartesia-Version': '2026-08-14' }, redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+                    const contentType = preview.headers.get('content-type') ?? '';
+                    const length = Number(preview.headers.get('content-length') ?? 0);
+                    if (preview.ok && (contentType.startsWith('audio/') || contentType === 'application/octet-stream') && length <= 10 * 1024 * 1024) {
+                        const bytes = await preview.arrayBuffer();
+                        if (bytes.byteLength <= 10 * 1024 * 1024) {
+                            return new NextResponse(bytes, { headers: { 'Content-Type': contentType, 'Cache-Control': 'private, no-store' } });
+                        }
+                    }
+                }
             }
-            const cacheKey = `${id}:${language}`;
-            const cached = sampleCache.get(cacheKey);
-            if (cached) return sampleResponse(cached);
-            let pending = pendingSamples.get(cacheKey);
-            if (!pending) {
-                if (!reserveGeneration()) return NextResponse.json({ error: 'Too many voice previews. Please try again shortly.' }, { status: 429 });
-                pending = (async () => {
-                    const sample = await fetch('https://api.cartesia.ai/tts/bytes', {
-                        method: 'POST',
-                        headers: { Authorization: `Bearer ${key}`, 'Cartesia-Version': '2026-03-01', 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            model_id: 'sonic-3.5',
-                            transcript: SAMPLE_TRANSCRIPTS[language],
-                            voice: { mode: 'id', id },
-                            output_format: { container: 'wav', encoding: 'pcm_s16le', sample_rate: 24000 },
-                            language,
-                        }),
-                        cache: 'no-store',
-                        signal: AbortSignal.timeout(20_000),
-                    });
-                    const contentType = sample.headers.get('content-type') ?? '';
-                    const length = Number(sample.headers.get('content-length') ?? 0);
-                    if (!sample.ok || !contentType.startsWith('audio/') || length > 10 * 1024 * 1024) throw new Error('Voice preview is unavailable.');
-                    const bytes = await sample.arrayBuffer();
-                    if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('Voice preview is too large.');
-                    return { bytes, contentType };
-                })();
-                pendingSamples.set(cacheKey, pending);
-            }
-            try {
-                const generated = await pending;
-                cacheSample(cacheKey, generated);
-                return sampleResponse(generated);
-            } finally {
-                pendingSamples.delete(cacheKey);
+            if (voice.localPreviewAsset) {
+                return NextResponse.redirect(new URL(voice.localPreviewAsset, request.url), {
+                    headers: { 'Cache-Control': 'private, no-store' },
+                });
             }
         }
-        if (!voice.previewFileUrl) {
-            if (!voice.localPreviewAsset) return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
-            return NextResponse.redirect(new URL(voice.localPreviewAsset, request.url), {
-                headers: { 'Cache-Control': 'private, no-store' },
-            });
+        const cacheKey = `${id}:${language}`;
+        const cached = sampleCache.get(cacheKey);
+        if (cached) return sampleResponse(cached);
+        let pending = pendingSamples.get(cacheKey);
+        if (!pending) {
+            if (!reserveGeneration()) return NextResponse.json({ error: 'Too many voice previews. Please try again shortly.' }, { status: 429 });
+            pending = (async () => {
+                const sample = await fetch('https://api.cartesia.ai/tts/bytes', {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${key}`, 'Cartesia-Version': '2026-03-01', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_id: 'sonic-3.5',
+                        transcript: SAMPLE_TRANSCRIPTS[language],
+                        voice: { mode: 'id', id },
+                        output_format: { container: 'wav', encoding: 'pcm_s16le', sample_rate: 24000 },
+                        language,
+                    }),
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(20_000),
+                });
+                const contentType = sample.headers.get('content-type') ?? '';
+                const length = Number(sample.headers.get('content-length') ?? 0);
+                if (!sample.ok || !contentType.startsWith('audio/') || length > 10 * 1024 * 1024) throw new Error('Voice preview is unavailable.');
+                const bytes = await sample.arrayBuffer();
+                if (bytes.byteLength > 10 * 1024 * 1024) throw new Error('Voice preview is too large.');
+                return { bytes, contentType };
+            })();
+            pendingSamples.set(cacheKey, pending);
         }
-        const previewUrl = new URL(voice.previewFileUrl);
-        if (previewUrl.protocol !== 'https:' || (previewUrl.hostname !== 'cartesia.ai' && !previewUrl.hostname.endsWith('.cartesia.ai'))) {
-            return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 502 });
+        try {
+            const generated = await pending;
+            cacheSample(cacheKey, generated);
+            return sampleResponse(generated);
+        } finally {
+            pendingSamples.delete(cacheKey);
         }
-        const preview = await fetch(previewUrl, { headers: { Authorization: `Bearer ${key}`, 'Cartesia-Version': '2026-08-14' }, redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(10_000) });
-        const contentType = preview.headers.get('content-type') ?? '';
-        const length = Number(preview.headers.get('content-length') ?? 0);
-        if (!preview.ok || (!contentType.startsWith('audio/') && contentType !== 'application/octet-stream') || length > 10 * 1024 * 1024) {
-            return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 502 });
-        }
-        const bytes = await preview.arrayBuffer();
-        if (bytes.byteLength > 10 * 1024 * 1024) return NextResponse.json({ error: 'Voice preview is too large.' }, { status: 502 });
-        return new NextResponse(bytes, { headers: { 'Content-Type': contentType, 'Cache-Control': 'private, no-store' } });
     } catch {
         return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 502 });
     }

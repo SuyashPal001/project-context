@@ -24,7 +24,7 @@ import React from 'react';
 export interface SidebarItem {
     label: string;
     href: string;
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string }>;
     roles?: string[];
     planRequired?: 'starter' | 'business' | 'enterprise';
     planGateFeature?: string;

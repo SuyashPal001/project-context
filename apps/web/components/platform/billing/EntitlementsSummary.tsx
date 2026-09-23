@@ -33,7 +33,7 @@ function MetricProgress({
     metrics
 }: {
     label: string,
-    icon: React.ElementType,
+    icon: React.ComponentType<{ className?: string }>,
     metrics: EntitlementMetrics
 }) {
     const percentage = metrics.unlimited || metrics.limit === 0

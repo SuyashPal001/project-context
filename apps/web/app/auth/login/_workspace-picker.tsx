@@ -21,13 +21,14 @@ interface Props {
 
 export function WorkspacePicker({ workspaces, pendingTokens }: Props) {
     const router = useRouter();
-    const { startHyperspace } = useHyperspace();
+    const { startHyperspace, cancelHyperspace } = useHyperspace();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     async function handleSelect(ws: Workspace) {
         setIsLoading(true);
         setError(null);
+        startHyperspace('signin');
         try {
             const { idToken, accessToken, refreshToken } = pendingTokens;
 
@@ -51,11 +52,11 @@ export function WorkspacePicker({ workspaces, pendingTokens }: Props) {
                 if (!refreshRes.ok) throw new Error('Failed to switch workspace');
             }
 
-            startHyperspace();
             router.push(`/${ws.slug}/dashboard`);
             router.refresh();
-        } catch (err: any) {
-            setError(err.message || 'Failed to select workspace.');
+        } catch (err: unknown) {
+            cancelHyperspace();
+            setError(err instanceof Error ? err.message : 'Failed to select workspace.');
         } finally {
             setIsLoading(false);
         }

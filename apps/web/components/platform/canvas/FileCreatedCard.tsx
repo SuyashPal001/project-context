@@ -9,7 +9,7 @@ interface FileCreatedCardProps {
   onDownload?: () => void;
 }
 
-const fileIcons: Record<string, React.ElementType> = {
+const fileIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   pdf: FileText,
   docx: FileText,
   doc: FileText,

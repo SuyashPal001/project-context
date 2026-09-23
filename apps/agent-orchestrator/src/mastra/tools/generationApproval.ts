@@ -56,6 +56,15 @@ export function detectSkillPii(body: string): string {
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
 const VIDEO_MODEL = 'google/gemini-omni-1.1-flash'
 const MUSIC_MODEL = 'lyria-002'
+const NARRATION_MODEL = 'sonic-3.5'
+const LIPSYNC_MODEL = 'fal-ai/latentsync'
+const ASSEMBLY_SUBJECT = 'ffmpeg-local'
+const MUX_BEAT_AUDIO_SUBJECT = 'ffmpeg-mux-audio'
+const TRANSCRIBE_SUBJECT = 'gemini-transcribe'
+const COMPOSITE_END_CARD_SUBJECT = 'ffmpeg-composite-end-card'
+const BURN_CAPTIONS_SUBJECT = 'ffmpeg-burn-captions'
+const MIX_MUSIC_BED_SUBJECT = 'ffmpeg-mix-music-bed'
+const TRIM_CLIP_SUBJECT = 'ffmpeg-trim-clip'
 
 /**
  * Rebuilds the approval card's display fields from a bare
@@ -78,6 +87,15 @@ const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label
 const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video' }
 const songGen = { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' }
 const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image' }
+const narrationGen = { resourceType: 'narration_generation', subject: NARRATION_MODEL, label: 'Generate narration' }
+const lipsyncGen = { resourceType: 'lipsync_generation', subject: LIPSYNC_MODEL, label: 'Lip-sync video' }
+const assemblyGen = { resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT, label: 'Assemble clips' }
+const muxBeatAudioGen = { resourceType: 'clip_assembly', subject: MUX_BEAT_AUDIO_SUBJECT, label: 'Mux beat audio' }
+const transcribeAudioGen = { resourceType: 'audio_transcription', subject: TRANSCRIBE_SUBJECT, label: 'Transcribe audio' }
+const compositeEndCardGen = { resourceType: 'clip_assembly', subject: COMPOSITE_END_CARD_SUBJECT, label: 'Composite end card' }
+const burnCaptionsGen = { resourceType: 'clip_assembly', subject: BURN_CAPTIONS_SUBJECT, label: 'Burn captions' }
+const mixMusicBedGen = { resourceType: 'clip_assembly', subject: MIX_MUSIC_BED_SUBJECT, label: 'Mix music bed' }
+const trimClipGen = { resourceType: 'clip_assembly', subject: TRIM_CLIP_SUBJECT, label: 'Trim clip' }
 
 const itemCount = (args: Record<string, unknown>): number | undefined =>
   Array.isArray(args.items) ? args.items.length : undefined
@@ -103,6 +121,23 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'generate_videos': videoBatchGen,
   'generate-images': imageBatchGen,
   'generate_images': imageBatchGen,
+  'generate-narration': narrationGen,
+  'generate_narration': narrationGen,
+  'lipsync': lipsyncGen, // single key: the tool id and the delegate map key are the same bare word — no hyphenated/underscored forms to differ
+  'assemble-clips': assemblyGen,
+  'assemble_clips': assemblyGen,
+  'mux-beat-audio': muxBeatAudioGen,
+  'mux_beat_audio': muxBeatAudioGen,
+  'trim-clip': trimClipGen,
+  'trim_clip': trimClipGen,
+  'transcribe-audio': transcribeAudioGen,
+  'transcribe_audio': transcribeAudioGen,
+  'composite-end-card': compositeEndCardGen,
+  'composite_end_card': compositeEndCardGen,
+  'burn-captions': burnCaptionsGen,
+  'burn_captions': burnCaptionsGen,
+  'mix-music-bed': mixMusicBedGen,
+  'mix_music_bed': mixMusicBedGen,
   'save_skill': {
     resourceType: 'skill_creation',
     subject: 'create',

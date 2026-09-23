@@ -154,7 +154,7 @@ export function attachmentFromCanvasToolResult(
   normalizedToolName: string,
   result: Record<string, unknown>,
 ): AttachmentPayload | null {
-  if (!['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video'].includes(normalizedToolName)) return null
+  if (!['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'mix-music-bed', 'trim-clip'].includes(normalizedToolName)) return null
   if (typeof result.fileId !== 'string') return null
   const attachment: AttachmentPayload = {
     fileId: result.fileId,
@@ -293,7 +293,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const assistantMessageId = crypto.randomUUID()
   let pendingArtifactRef: ArtifactRefPayload | null = null
   const pendingAttachments: AttachmentPayload[] = []
-  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-videos', 'generate-images'])
+  const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'])
 
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
@@ -594,8 +594,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const meta = GENERATION_APPROVAL_METADATA[toolName]
 
           // A tool paused for approval that this migration doesn't know how
-          // to render a card for (shouldn't happen — only the 5 gated tools
-          // set requireApproval, and all 5 have a metadata entry from Task
+          // to render a card for (shouldn't happen — only the 8 gated tools
+          // set requireApproval, and all 8 have a metadata entry from Task
           // 1). Fail open rather than hang the turn on an invisible card.
           if (!meta || !toolCallId) {
             console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — auto-approving`)
@@ -701,7 +701,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // Capture artifact ref when a save tool (savePRD / savePlan / saveTasks) completes.
           // render-canvas/generate-image/edit-image have no entityId (ephemeral display only) — skip pendingArtifactRef for them.
           const normName = resolvedToolName.toLowerCase().replace(/_/g, '-')
-          if (SAVE_TOOL_NAMES.has(normName) && !['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-videos', 'generate-images'].includes(normName)) {
+          if (SAVE_TOOL_NAMES.has(normName) && !['render-canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'].includes(normName)) {
             const entityId = (result.prdId ?? result.planId ?? result.taskBoardId) as string | undefined
             if (entityId) {
               const artifactType = normName.includes('prd') ? 'prd' : normName.includes('plan') ? 'roadmap' : 'tasks'

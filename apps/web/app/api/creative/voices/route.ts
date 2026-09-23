@@ -38,9 +38,7 @@ export async function GET(request: NextRequest) {
                     gender: row.gender ?? undefined,
                     country: row.country ?? undefined,
                     supportedLocales,
-                    hasPreview: language === 'en'
-                        ? Boolean(row.previewFileUrl || row.localPreviewAsset)
-                        : supportsRequestedLanguage,
+                    hasPreview: supportsRequestedLanguage || Boolean(row.previewFileUrl || row.localPreviewAsset),
                 };
             }),
         }, { headers: { 'Cache-Control': 'private, no-store' } });

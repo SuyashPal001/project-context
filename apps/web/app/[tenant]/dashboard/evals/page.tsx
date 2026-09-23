@@ -70,11 +70,11 @@ function MetricCard({
 }: {
     title: string;
     value: string;
-    icon: React.ElementType;
+    icon: React.ComponentType<{ className?: string }>;
     sub?: string;
     highlight?: "green" | "blue" | "amber";
 }) {
-    const colours = {
+    const colours: Record<"green" | "blue" | "amber", string> = {
         green: "text-emerald-500",
         blue: "text-blue-500",
         amber: "text-amber-500",

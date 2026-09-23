@@ -29,7 +29,29 @@ describe('extractVideoFrames', () => {
     }) as unknown as typeof execFileCb)
 
     const result = await extractVideoFrames('/tmp/does-not-matter.mp4', 'clip.mp4', 'session-1')
-    expect(result).toEqual([])
+    expect(result).toEqual({ frames: [], durationSeconds: 0 })
+  })
+
+  it('returns durationSeconds alongside the extracted frames', async () => {
+    const { extractVideoFrames } = await import('../media.js')
+    const mockedExecFile = vi.mocked(execFileCb)
+    let call = 0
+    mockedExecFile.mockImplementation(((...args: unknown[]) => {
+      const cb = args[args.length - 1] as (err: Error | null, res?: { stdout: string; stderr: string }) => void
+      call++
+      if (call === 1) {
+        // ffprobe call
+        cb(null, { stdout: JSON.stringify({ streams: [{ codec_type: 'video', duration: '12.0' }] }), stderr: '' })
+      } else {
+        // ffmpeg frame-extraction call
+        cb(null, { stdout: '', stderr: '' })
+      }
+    }) as unknown as typeof execFileCb)
+
+    const result = await extractVideoFrames('/tmp/fake.mp4', 'clip1', 'sess1', 8)
+
+    expect(result.durationSeconds).toBe(12.0)
+    expect(Array.isArray(result.frames)).toBe(true)
   })
 
   it('reads back frame files ffmpeg produced, honoring a custom maxFrames', async () => {
@@ -51,9 +73,10 @@ describe('extractVideoFrames', () => {
     }) as unknown as typeof execFileCb)
 
     const result = await extractVideoFrames('/tmp/does-not-matter.mp4', 'clip.mp4', 'session-1', 2)
-    expect(result).toHaveLength(2)
-    expect(result[0].mimeType).toBe('image/jpeg')
-    expect(result[0].name).toBe('clip.mp4_frame1.jpg')
+    expect(result.frames).toHaveLength(2)
+    expect(result.frames[0].mimeType).toBe('image/jpeg')
+    expect(result.frames[0].name).toBe('clip.mp4_frame1.jpg')
+    expect(result.durationSeconds).toBe(10)
   })
 
   it('returns an empty array when mkdtempSync fails, without throwing', async () => {
@@ -67,6 +90,6 @@ describe('extractVideoFrames', () => {
     })
 
     const result = await extractVideoFrames('/tmp/does-not-matter.mp4', 'clip.mp4', 'session-1')
-    expect(result).toEqual([])
+    expect(result).toEqual({ frames: [], durationSeconds: 0 })
   })
 })

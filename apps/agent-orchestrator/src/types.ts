@@ -17,6 +17,7 @@ export interface DownloadedMedia {
   base64: string
   mimeType: string
   name: string
+  timestampSeconds: number
 }
 
 export interface RelaySessionCtx {

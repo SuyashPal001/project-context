@@ -27,6 +27,7 @@ import { handoverRoutes } from './routes/handover';
 import { publicPackRoutes } from './routes/packs.public';
 import { skillsRoutes } from './routes/skills';
 import { tenantMemoryRoutes } from './routes/tenant-memory';
+import { creativeLibraryAssetsRoutes } from './routes/creativeLibraryAssets';
 
 // Internal routes
 import internalRetrieveRoute from './routes/internal/retrieve';
@@ -87,6 +88,7 @@ export function mountApiRoutes(api: Hono<AppEnv>): void {
     api.route('/milestones', milestonesRoutes);
     api.route('/pages', pagesRoutes);
     api.route('/tenant-memory', tenantMemoryRoutes);
+    api.route('/creative-library-assets', creativeLibraryAssetsRoutes);
 }
 
 export function mountInternalRoutes(internalApi: Hono<AppEnv>): void {

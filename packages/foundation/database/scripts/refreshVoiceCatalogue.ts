@@ -152,10 +152,14 @@ async function run() {
     console.error(`\nFAILED (${failures.length}):`);
     for (const f of failures) console.error(`  ${f}`);
   }
-  process.exitCode = failures.length > 0 ? 1 : 0;
+  // Explicit exit: the shared @serverless-saas/database client is a pooled postgres.js
+  // connection opened at import time with no idle timeout and no handle to .end() it
+  // here, so without this the process hangs after a successful run (same reason as
+  // backfillCredits.ts).
+  process.exit(failures.length > 0 ? 1 : 0);
 }
 
 run().catch(err => {
   console.error('refresh failed', err);
-  process.exitCode = 1;
+  process.exit(1);
 });

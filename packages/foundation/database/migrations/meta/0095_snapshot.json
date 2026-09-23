@@ -1,5 +1,5 @@
 {
-  "id": "7b8bd0f9-753a-4da5-adc1-b0ee445f1b75",
+  "id": "97f4041f-8cea-4171-bce0-cd5d41dbbcb3",
   "prevId": "c0907b49-5fe9-4149-8800-a8dd6fb9b70e",
   "version": "7",
   "dialect": "postgresql",
@@ -4511,86 +4511,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.voice_catalogue": {
-      "name": "voice_catalogue",
-      "schema": "",
-      "columns": {
-        "provider_id": {
-          "name": "provider_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tagline": {
-          "name": "tagline",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "language": {
-          "name": "language",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "gender": {
-          "name": "gender",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "country": {
-          "name": "country",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "accents": {
-          "name": "accents",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "preview_file_url": {
-          "name": "preview_file_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "local_preview_asset": {
-          "name": "local_preview_asset",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "refreshed_at": {
-          "name": "refreshed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.agent_delegations": {
       "name": "agent_delegations",
       "schema": "",
@@ -8965,6 +8885,114 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.creative_library_assets": {
+      "name": "creative_library_assets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "creative_library_asset_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attributes": {
+          "name": "attributes",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "creative_library_assets_tenant_id_tenants_id_fk": {
+          "name": "creative_library_assets_tenant_id_tenants_id_fk",
+          "tableFrom": "creative_library_assets",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "creative_library_assets_tenant_id_slug_unique": {
+          "name": "creative_library_assets_tenant_id_slug_unique",
+          "nullsNotDistinct": true,
+          "columns": [
+            "tenant_id",
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.skill_installs": {
       "name": "skill_installs",
       "schema": "",
@@ -11747,6 +11775,14 @@
         "assistant",
         "system",
         "tool"
+      ]
+    },
+    "public.creative_library_asset_kind": {
+      "name": "creative_library_asset_kind",
+      "schema": "public",
+      "values": [
+        "avatar",
+        "product"
       ]
     },
     "public.skill_install_status": {

@@ -143,6 +143,63 @@ describe('useChatStream message preparation', () => {
             'Make this ad',
             [expect.objectContaining({ fileId: 'image-1', presignedUrl: 'https://files.example/avatar.jpg' })],
             undefined,
+            true,
+        );
+    });
+
+    it('falls back to the creative-library-assets presign route when the tenant file lookup 404s', async () => {
+        vi.spyOn(api, 'get').mockImplementation(async (path: string) => {
+            if (path.includes('/files/')) {
+                // Matches the real shape of a 404 thrown by apps/web/lib/api.ts's
+                // ApiError (status set from the response) — the implementation
+                // gates its retry on this exact field, so a plain Error() here
+                // would make this test pass without proving the 404-specific gate
+                // works (it would also "pass" for a 403).
+                const err = new Error('Not Found') as Error & { status?: number };
+                err.status = 404;
+                throw err;
+            }
+            if (path.includes('/creative-library-assets/')) {
+                return { presignedUrl: 'https://library.example/avatar.jpg' };
+            }
+            throw new Error(`unexpected path ${path}`);
+        });
+        vi.spyOn(api, 'patch').mockResolvedValue({});
+        chatMock.sendMessage.mockResolvedValue();
+
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        );
+        const { result } = renderHook(() => useChatStream({
+            conversationId: 'conversation-1',
+            conversationIdRef: { current: 'conversation-1' },
+            agentId: 'agent-1',
+            selectedConversation: undefined,
+            messages: [],
+            handleCanvasUpdate: vi.fn(),
+            openCanvas: vi.fn(),
+        }), { wrapper });
+
+        await act(async () => {
+            await result.current.sendMessage('Make this ad', [{
+                fileId: '8b6e9254-cc47-492c-bdc7-557ac6302e01',
+                name: 'tech-presenter.jpg',
+                type: 'image/jpeg',
+                size: 42,
+            }]);
+        });
+
+        // Real signature (see the call site in useChatStream.ts's sendMessage):
+        // sendChatMessage(content, enriched, skillsUsed, isFirstMessage). This
+        // test doesn't pass skillsUsed, so it's `undefined` here (not
+        // expect.anything(), which rejects undefined) — and this is the first
+        // turn of an untitled, empty conversation, so isFirstMessage is `true`.
+        expect(chatMock.sendMessage).toHaveBeenCalledWith(
+            'Make this ad',
+            [expect.objectContaining({ presignedUrl: 'https://library.example/avatar.jpg' })],
+            undefined,
+            true,
         );
     });
 });
