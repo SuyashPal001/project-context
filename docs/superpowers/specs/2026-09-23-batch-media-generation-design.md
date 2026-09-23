@@ -49,9 +49,11 @@ included), without touching the approval flow's one-card-per-call model.
 ### New tools
 
 `generate-videos` and `generate-images` (ids), registered under the
-underscored keys `generate_videos` / `generate_images` on the director and
-producer delegates, mirroring how `generate_video`/`generate_image` are
-registered today.
+underscored keys `generate_videos` / `generate_images` on both Director
+agents in `directorAgent.ts` (the standalone `directorAgent` and the
+Olmo-facing `directorAgentDelegate`), mirroring how
+`generate_video`/`generate_image` are registered today. Only Director
+registers generation tools.
 
 Input: `{ items: Item[] }` with `items.min(1).max(MAX_BATCH_ITEMS)`. `Item`
 is exactly the existing single tool's input schema (export it from
