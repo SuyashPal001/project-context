@@ -50,8 +50,8 @@ function LoginPageContent() {
             setSuccessMessage(`Invitation accepted! Please log in again to access ${slug}.`);
     }, [searchParams]);
 
-    const emailForm = useForm<EmailSchema>({ resolver: zodResolver(emailSchema), defaultValues: { email: '' } });
-    const passwordForm = useForm<PasswordSchema>({ resolver: zodResolver(passwordSchema), defaultValues: { password: '' } });
+    const emailForm = useForm<EmailSchema>({ resolver: zodResolver(emailSchema as any), defaultValues: { email: '' } });
+    const passwordForm = useForm<PasswordSchema>({ resolver: zodResolver(passwordSchema as any), defaultValues: { password: '' } });
 
     async function onEmailSubmit(data: EmailSchema) {
         setIsLoading(true);
