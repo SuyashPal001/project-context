@@ -3,7 +3,7 @@
 import { X, FileText, Film, LayoutGrid } from 'lucide-react';
 import type { CanvasTab } from './types';
 
-const TAB_ICONS: Record<CanvasTab['kind'], React.ElementType> = {
+const TAB_ICONS: Record<CanvasTab['kind'], React.ComponentType<{ className?: string }>> = {
   artifact: FileText,
   file: Film,
   gallery: LayoutGrid,

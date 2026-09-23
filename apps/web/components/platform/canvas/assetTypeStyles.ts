@@ -1,7 +1,7 @@
 import { FileVideo, FileAudio, FileImage, FileText, FileSpreadsheet, File as FileIcon } from 'lucide-react';
 import type { AssetType } from '@/types/assets';
 
-export const TYPE_ICONS: Record<AssetType, React.ElementType> = {
+export const TYPE_ICONS: Record<AssetType, React.ComponentType<{ className?: string }>> = {
   video: FileVideo,
   audio: FileAudio,
   image: FileImage,
