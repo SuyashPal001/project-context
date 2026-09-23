@@ -18,6 +18,7 @@ import type { RelaySessionCtx, DownloadedMedia } from './types.js'
 import { validateToken } from './auth.js'
 import { createConversation, saveUserMessage, saveAssistantMessage, fetchConversationAllowMode } from './persistence.js'
 import { fetchAgentMemory, fetchAllowedSubAgents } from './usage.js'
+import { isClientHiddenTool } from './toolVisibility.js'
 import { filterPII } from './pii-filter.js'
 import { platformAgent } from './mastra/index.js'
 import { olmoDelegationOptions } from './mastra/subagents/streamOptions.js'
@@ -242,7 +243,7 @@ async function handleSession(
               const toolName = (p.toolName ?? '') as string
               const args = (p.args ?? {}) as Record<string, unknown>
               const toolCallId = (p.toolCallId ?? toolName) as string
-              ws.send(JSON.stringify({ type: 'tool_call', toolName, toolCallId, args, conversationId }))
+              if (!isClientHiddenTool(toolName)) ws.send(JSON.stringify({ type: 'tool_call', toolName, toolCallId, args, conversationId }))
               fireToolCallLog({
                 tenantId,
                 conversationId: conversationId ?? '',

@@ -25,6 +25,7 @@ import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/ge
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle } from '../persistence.js'
 import { generateText } from 'ai'
 import { liteModel } from '../mastra/model.js'
+import { isClientHiddenTool } from '../toolVisibility.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
   const prompt = `Based on this conversation turn, generate exactly 3 short, natural follow-up questions the user might want to ask next.
@@ -579,7 +580,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const toolCallId = (p.toolCallId ?? toolName) as string
           if (toolCallId && toolName) toolCallNames.set(toolCallId, toolName)
           toolCallCount++
-          sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
+          if (!isClientHiddenTool(toolName)) sendEvent('tool_call', { toolName, toolCallId, args, conversationId })
           onToolCallStart()
           if (toolName === 'retrieve_documents') ragFired = true
           fireToolCallLog({ tenantId, conversationId, userId: internalUserId, toolName, success: true, latencyMs: Date.now() - startTime, args })
@@ -682,7 +683,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           toolCallNames.delete(toolCallId)
           const result = (p.result ?? p.output ?? {}) as Record<string, unknown>
           console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
-          sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
+          if (!isClientHiddenTool(resolvedToolName)) sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
           onToolCallEnd()
 
           // Capture citations from RAG tool
