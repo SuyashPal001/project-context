@@ -64,6 +64,8 @@ interface MessageItemProps {
     activeToolCalls?: ToolCall[];
     completedToolCalls?: CompletedToolCall[];
     liveReasoningText?: string;
+    /** See CompletedTrace.afterSeq — live value while this message streams. */
+    liveTraceAfterSeq?: number;
     onFollowUpSelect?: (text: string) => void;
     onRegenerate?: (message: Message) => void;
     onEditAndResubmit?: (message: Message, newContent: string) => void;
@@ -88,6 +90,7 @@ export function MessageItem({
     activeToolCalls,
     completedToolCalls,
     liveReasoningText,
+    liveTraceAfterSeq,
     onFollowUpSelect,
     onRegenerate,
     onEditAndResubmit,
@@ -149,6 +152,50 @@ export function MessageItem({
     // the legacy path (useChatStream's onDone drops their parts).
     const parts: MessagePart[] | undefined = isAssistant && !message.planResult ? message.parts : undefined;
     const hasParts = !!parts && parts.length > 0;
+
+    // Where the trace (tool rows / reasoning) sits among the text parts, so text
+    // written BEFORE the first tool call renders above it instead of below.
+    // See CompletedTrace.afterSeq. Undefined = no split (trace first, as before).
+    const traceAnchor = message.isStreaming ? liveTraceAfterSeq : message.completedTrace?.afterSeq;
+
+    const renderPart = (part: MessagePart, i: number) => {
+        if (part.type === 'text') {
+            // The last text part of a still-streaming turn is the
+            // open one — it keeps StreamingMessage's live cursor
+            // and auto-scroll; earlier, closed parts are static.
+            const isOpen = !!message.isStreaming && i === parts!.length - 1;
+            if (!part.text.trim() && !isOpen) return null;
+            return (
+                <div key={part.seq} className="text-sm relative min-w-0 break-words text-foreground/90 leading-[1.75] w-full">
+                    {isOpen ? (
+                        <StreamingMessage isStreaming content={part.text} />
+                    ) : (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={chatMarkdownComponents}>
+                            {part.text}
+                        </ReactMarkdown>
+                    )}
+                </div>
+            );
+        }
+        // Request parts hold only the id — the request objects live
+        // on the message (that's what the answer handlers mutate),
+        // one entry per round, so each part resolves its OWN round
+        // by id and a part matching no entry renders nothing.
+        if (part.type === 'clarification') {
+            const request = message.clarificationRequests?.find(r => r.id === part.clarificationId);
+            return request
+                ? <div key={part.seq} className="w-full">{renderClarificationCard(request)}</div>
+                : null;
+        }
+        if (part.type === 'upload') {
+            const request = message.uploadRequests?.find(r => r.id === part.uploadId);
+            return request
+                ? <div key={part.seq} className="w-full">{renderUploadCard(request)}</div>
+                : null;
+        }
+        return null;
+    };
+
 
     // One card per request ROUND — a turn can ask several times (see
     // Message.clarificationRequests), and each round's card is placed either by
@@ -214,6 +261,12 @@ export function MessageItem({
                     />
                 )}
 
+                {hasParts && traceAnchor !== undefined && parts!.some(p => p.seq <= traceAnchor) && (
+                    <div className="w-full flex flex-col gap-2 min-w-0">
+                        {parts!.map((part, i) => (part.seq <= traceAnchor ? renderPart(part, i) : null))}
+                    </div>
+                )}
+
                 {isAssistant && message.isStreaming && (activeToolCalls?.length || completedToolCalls?.length || liveReasoningText) ? (
                     <LiveTrace
                         isStreaming
@@ -232,43 +285,7 @@ export function MessageItem({
 
                 {hasParts ? (
                     <div className="w-full flex flex-col gap-2 min-w-0">
-                        {parts!.map((part, i) => {
-                            if (part.type === 'text') {
-                                // The last text part of a still-streaming turn is the
-                                // open one — it keeps StreamingMessage's live cursor
-                                // and auto-scroll; earlier, closed parts are static.
-                                const isOpen = !!message.isStreaming && i === parts!.length - 1;
-                                if (!part.text.trim() && !isOpen) return null;
-                                return (
-                                    <div key={part.seq} className="text-sm relative min-w-0 break-words text-foreground/90 leading-[1.75] w-full">
-                                        {isOpen ? (
-                                            <StreamingMessage isStreaming content={part.text} />
-                                        ) : (
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={chatMarkdownComponents}>
-                                                {part.text}
-                                            </ReactMarkdown>
-                                        )}
-                                    </div>
-                                );
-                            }
-                            // Request parts hold only the id — the request objects live
-                            // on the message (that's what the answer handlers mutate),
-                            // one entry per round, so each part resolves its OWN round
-                            // by id and a part matching no entry renders nothing.
-                            if (part.type === 'clarification') {
-                                const request = message.clarificationRequests?.find(r => r.id === part.clarificationId);
-                                return request
-                                    ? <div key={part.seq} className="w-full">{renderClarificationCard(request)}</div>
-                                    : null;
-                            }
-                            if (part.type === 'upload') {
-                                const request = message.uploadRequests?.find(r => r.id === part.uploadId);
-                                return request
-                                    ? <div key={part.seq} className="w-full">{renderUploadCard(request)}</div>
-                                    : null;
-                            }
-                            return null;
-                        })}
+                        {parts!.map((part, i) => (traceAnchor !== undefined && part.seq <= traceAnchor ? null : renderPart(part, i)))}
                     </div>
                 ) : isUser && isEditing ? (
                     <div className="w-full flex flex-col gap-2" style={{ maxWidth: '75%' }}>

@@ -49,14 +49,17 @@ const sortByDate = (a: Message, b: Message) =>
 // helpers record arrival order inside the turn instead.
 
 /** Appends streamed text to the turn's open text part, or opens a new one. */
-function appendTextPart(parts: MessagePart[] | undefined, delta: string, seq: number): MessagePart[] {
+function appendTextPart(parts: MessagePart[] | undefined, delta: string, seq: number, splitAtSeq?: number | null): MessagePart[] {
     const list = parts ? [...parts] : [];
     const last = list[list.length - 1];
+    // Text that arrives after the trace (tool calls / reasoning) started must not
+    // grow a part that renders above it — open a fresh part instead.
+    const closedByTrace = splitAtSeq != null && !!last && last.seq <= splitAtSeq;
     // Growing the open text part in place (rather than pushing one part per
     // token) is what keeps character-by-character streaming cheap: the parts
     // array identity changes, but its length and every earlier part's `seq`
     // key stay stable, so React reconciles the same nodes.
-    if (last && last.type === 'text') {
+    if (last && last.type === 'text' && !closedByTrace) {
         list[list.length - 1] = { ...last, text: last.text + delta };
         return list;
     }
@@ -224,6 +227,15 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // (also its React key). Reset per turn in sendMessage — parts only ever
     // sort within a single message.
     const partSeqRef = useRef(0);
+    // Where the trace (tool rows / reasoning) sits among the turn's text parts —
+    // see CompletedTrace.afterSeq. Ref for the stream callbacks, state so the UI re-renders.
+    const traceAfterSeqRef = useRef<number | null>(null);
+    const [traceAfterSeq, setTraceAfterSeq] = useState<number | null>(null);
+    const markTraceStart = () => {
+        if (traceAfterSeqRef.current !== null) return;
+        traceAfterSeqRef.current = partSeqRef.current;
+        setTraceAfterSeq(partSeqRef.current);
+    };
 
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>, result?: Record<string, unknown>) => {
         const call = activeToolCalls.get(toolCallId);
@@ -246,6 +258,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
         onReasoning: useCallback((delta: string) => {
             emitStreamEvent('reasoning');
+            markTraceStart();
             if (reasoningStartRef.current === null) reasoningStartRef.current = Date.now();
             reasoningLastRef.current = Date.now();
             setReasoningText(prev => {
@@ -263,7 +276,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 const idx = data.findIndex(m => m.id === messageId);
                 if (idx >= 0) {
                     const prevParts = data[idx].parts;
-                    const nextParts = appendTextPart(prevParts, delta, partSeqRef.current + 1);
+                    const nextParts = appendTextPart(prevParts, delta, partSeqRef.current + 1, traceAfterSeqRef.current);
                     // The seq is only actually consumed when a NEW text part was
                     // opened — appending into the open one reuses its seq.
                     if (nextParts.length !== (prevParts?.length ?? 0)) partSeqRef.current++;
@@ -311,7 +324,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             reasoningLastRef.current = null;
             const toolCallsAtDone = completedToolCallsRef.current;
             const hadTrace = toolCallsAtDone.length > 0 || elapsedSec >= 2 || !!reasoningTextAtDone;
-            const trace = hadTrace ? { completedTrace: { elapsedSec, toolCalls: toolCallsAtDone, reasoningText: reasoningTextAtDone || undefined, reasoningElapsedSec } } : {};
+            const trace = hadTrace ? { completedTrace: { elapsedSec, afterSeq: traceAfterSeqRef.current ?? undefined, toolCalls: toolCallsAtDone, reasoningText: reasoningTextAtDone || undefined, reasoningElapsedSec } } : {};
 
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
                 const data = old ? [...old.data] : [];
@@ -347,7 +360,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 }
                 return { data: [...data].sort(sortByDate) };
             });
-            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); completedToolCallsRef.current = []; batchSeenIndicesRef.current.clear(); setReasoningText(''); reasoningTextRef.current = ''; }, 1500);
+            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); completedToolCallsRef.current = []; batchSeenIndicesRef.current.clear(); setReasoningText(''); reasoningTextRef.current = ''; traceAfterSeqRef.current = null; setTraceAfterSeq(null); }, 1500);
             setTimeout(() => {
                 const conversationId = conversationIdRef.current;
                 if (!conversationId) return;
@@ -402,6 +415,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
             emitStreamEvent('tool_call');
+            markTraceStart();
             const query = String(args?.query ?? args?.filename ?? args?.subject ?? args?.prompt ?? '');
             setActiveToolCalls(prev => { const next = new Map(prev); next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query }); return next; });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
@@ -619,6 +633,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             setWarmupMessage(null);
             streamStartRef.current = Date.now();
             partSeqRef.current = 0;
+            traceAfterSeqRef.current = null;
+            setTraceAfterSeq(null);
             setReasoningText('');
             // useChat marks the transport as streaming synchronously before its
             // first await, so control passes directly from preparation to the
@@ -686,7 +702,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
 
     return {
         sendMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isPreparingMessage, isRetrying,
-        activeToolCalls, completedToolCalls, reasoningText,
+        activeToolCalls, completedToolCalls, reasoningText, traceAfterSeq,
         eventError, warmupMessage, agentTimedOut, hasSentFirstMessage,
         lastStreamEvent, regenerate, editAndResubmit,
     };

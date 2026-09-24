@@ -27,6 +27,8 @@ interface MessageThreadProps {
     activeToolCalls?: Message["toolCalls"];
     completedToolCalls?: CompletedToolCall[];
     reasoningText?: string;
+    /** See CompletedTrace.afterSeq — live value for the message being streamed. */
+    traceAfterSeq?: number | null;
     error?: string | null;
     warmupMessage?: string | null;
     onApprove?: (messageId: string, approvalId: string) => void;
@@ -67,7 +69,7 @@ function toCreditResourceType(resourceType: string): CreditResourceType | null {
         : null;
 }
 
-export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onUploadAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, agentIsDefault, agentName }: MessageThreadProps) {
+export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRetrying, activeToolCalls, completedToolCalls, reasoningText, traceAfterSeq, error, warmupMessage, onApprove, onDismiss, onGenerationConfirm, onGenerationDecline, onClarificationAnswer, onUploadAnswer, onFollowUpSelect, onRegenerate, onEditAndResubmit, agentAvatarUrl, agentPersona, agentIsDefault, agentName }: MessageThreadProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     // Marks where real content ends and the reserved bottom spacer begins.
     // scrollHeight now always includes that spacer (~one pane's worth of
@@ -374,6 +376,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                             activeToolCalls={message.isStreaming ? activeToolCalls : undefined}
                             completedToolCalls={message.isStreaming ? completedToolCalls : undefined}
                             liveReasoningText={message.isStreaming ? reasoningText : undefined}
+                            liveTraceAfterSeq={message.isStreaming ? (traceAfterSeq ?? undefined) : undefined}
                         />
                     );
                 })}

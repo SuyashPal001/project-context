@@ -146,6 +146,10 @@ export interface ArtifactRef {
 
 export interface CompletedTrace {
     elapsedSec: number;
+    /** seq of the last message part that arrived before the first tool call /
+     *  reasoning delta. Text parts at or below it render ABOVE the trace, the
+     *  rest below, so the trace sits where it happened in the turn. Client-only. */
+    afterSeq?: number;
     // Populated live by useChatStream's onDone for the turn that just finished.
     // A message loaded from GET /messages only carries the durable summary
     // (elapsedSec + toolCallCount persisted in messages.completed_trace) — the
