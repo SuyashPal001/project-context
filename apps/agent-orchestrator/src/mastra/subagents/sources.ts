@@ -31,7 +31,7 @@ const CODE_SPECS: SubAgentSpec[] = [
   defineSubAgent({
     id: 'producer',
     build: () => producerAgentDelegate as unknown as Agent,
-    description: 'Generates music and audio from a description. Not for images or video, and not for written copy.',
+    description: 'Generates music, and spoken narration/voiceover from text in a chosen voice. Not for images or video, and not for written copy.',
     tags: ['audio'],
     maxSteps: 8,
     estimatedCredits: 20_000,
