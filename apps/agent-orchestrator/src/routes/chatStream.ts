@@ -321,8 +321,13 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     if (pendingEval) { fireAutoEval(pendingEval); pendingEval = null }
   }
 
+  // Stage timestamps for the gap before the first chunk; grep `[timing:` on the VM.
+  const mark = (stage: string): void => console.log(`[timing:${sessionId}] +${Date.now() - startTime}ms ${stage}`)
+
   try {
+    mark('runChatStream entered')
     const workingMemory = await workingMemoryPromise
+    mark('working memory loaded')
     if (workingMemory) console.log(`[sse:${sessionId}] injected working memory tenantId=${tenantId}`)
 
     const memPreamble = workingMemory
@@ -331,6 +336,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     console.log('[session] tenantId:', tenantId, 'folderId:', folderId ?? '(none)')
     const sessionCtx = `<session_context>\ntenant_id: ${tenantId}${folderId ? `\nfolder_id: ${folderId}` : ''}${folderScopeLine(folderPrefix)}\n</session_context>\n\n`
     const mastraMessage = await buildMastraMessage(attachments, memPreamble, sessionCtx, message, sessionId)
+    mark('message built')
 
     if (isStreamClosed()) return
 
@@ -374,6 +380,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       fetchAllowedSubAgents(tenantId),
       countThreadMessages(conversationId),
     ])
+    mark('agent/conversation fetches done')
     if (skillSettings.testSkillInstallId) requestContext.set('testSkillInstallId', skillSettings.testSkillInstallId)
     if (agentPersonaPrompt) {
       requestContext.set('agentSystemPrompt', agentPersonaPrompt)
@@ -463,6 +470,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // cheap relative to the model call itself (cheaper still with response
     // caching), so keep it always; only semantic recall's separate pgvector
     // query is worth gating off.
+    mark('skills resolved')
     const SEMANTIC_RECALL_MIN_MESSAGES = 20
     const disableRecall = thinkingBudget === 0 || threadMessageCount <= SEMANTIC_RECALL_MIN_MESSAGES
     const memoryOptions = disableRecall ? { semanticRecall: false as const } : undefined
@@ -554,6 +562,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     }
 
     await runWithGuardrailContext({ tenantId, conversationId }, async () => {
+      mark('calling agent.stream')
       let currentStream: any = await (activeAgent as any).stream(mastraMessage, {
         memory: {
           thread: conversationId || crypto.randomUUID(),
@@ -565,6 +574,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         ...olmoOptions,
         ...(skillInvocationPrepareStep ? { prepareStep: skillInvocationPrepareStep } : {}),
       })
+      mark('agent.stream returned')
 
     turnLoop: while (true) {
     for await (const part of currentStream.fullStream as AsyncIterable<any>) {

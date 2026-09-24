@@ -16,6 +16,7 @@ import { fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills } from '../../u
 import { invokedSkillsInstruction, mergeSkillSets } from '../skillInvocation.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
+import { timed } from '../stageTiming.js'
 import { createViolationHandler } from '../guardrails.js'
 import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
@@ -329,7 +330,7 @@ export const platformAgent = new Agent({
     // Set by chatStream.ts from agentSkills.systemPrompt before calling stream().
     // PRD generation is handled by prdWorkflow (gatherStep → writeStep → formatStep).
     const override = requestContext?.get('agentSystemPrompt') as string | undefined
-    const base = override ?? await fetchPlatformPrompt()
+    const base = override ?? await timed('instructions.fetchPlatformPrompt', requestContext, fetchPlatformPrompt)
     // Persona personality is a layer composed ahead of the base prompt, never a
     // replacement for it — an agent with a persona keeps 100% of its normal
     // capabilities, just with a personality prepended. Set by chatStream.ts from
@@ -532,10 +533,10 @@ Your reasoning is shown live to the user as "Thinking it through." Reason as a h
     // bypass chatStream.ts's check; dropping fetchInvokedSkills's own
     // resolution would bypass the load-time one.
     const invokedIds = (requestContext?.get('invokedSkillInstallIds') as string[] | undefined) ?? []
-    const [attached, invoked] = await Promise.all([
+    const [attached, invoked] = await timed('skills.fetch', requestContext, () => Promise.all([
       fetchAttachedSkills(agentId, tenantId),
       invokedIds.length > 0 ? fetchInvokedSkills(invokedIds, tenantId) : Promise.resolve([]),
-    ])
+    ]))
     return mergeSkillSets(attached, invoked)
   },
 
