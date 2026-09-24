@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { AwaitingApprovalContext } from "./ToolCallCard";
 import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
@@ -324,6 +325,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
     }
 
     return (
+        <AwaitingApprovalContext.Provider value={pendingGenerationConfirm !== null && pendingGenerationConfirm !== undefined}>
         <div className="relative flex-1 min-h-0 overflow-hidden" style={{ containerType: 'size' }}>
         <div ref={scrollRef} className="h-full px-4 md:px-8 py-4 overflow-y-auto custom-scrollbar">
             <div className="max-w-4xl mx-auto space-y-2 pb-4">
@@ -494,6 +496,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             </button>
         )}
         </div>
+        </AwaitingApprovalContext.Provider>
     );
 }
 
@@ -503,9 +506,9 @@ function ThinkingDots({ label = 'Thinking...', avatarUrl, persona, isDefault }: 
             <AgentOrb size={60} liveState="thinking" avatarUrl={avatarUrl} persona={persona} isDefault={isDefault} />
             <div className="flex items-center gap-2 pt-1.5">
                 <span className="flex gap-[3px] items-center">
-                    <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.3s]" />
-                    <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.15s]" />
-                    <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce" />
+                    <span className="h-[4px] w-[4px] rounded-full bg-[var(--shimmer-accent)] opacity-70 animate-bounce [animation-delay:-0.3s]" />
+                    <span className="h-[4px] w-[4px] rounded-full bg-[var(--shimmer-accent)] opacity-70 animate-bounce [animation-delay:-0.15s]" />
+                    <span className="h-[4px] w-[4px] rounded-full bg-[var(--shimmer-accent)] opacity-70 animate-bounce" />
                 </span>
                 <span className="shimmer-text text-sm text-shimmer-accent-80 font-mono">{label}</span>
             </div>

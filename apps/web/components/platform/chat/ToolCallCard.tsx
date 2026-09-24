@@ -1,8 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 import type { ToolCallSearchResult } from './types';
 import { TYPE_STYLES, TYPE_BADGES } from '@/components/platform/canvas/assetTypeStyles';
+
+// True while a generation approval card is waiting on the user. The delegate's
+// "Generating visual…" skeleton would otherwise sit there as if work were under
+// way, when nothing has been approved (or spent) yet.
+export const AwaitingApprovalContext = createContext(false);
 
 interface ToolCallCardProps {
   toolName: string;
@@ -247,12 +252,21 @@ function domainColor(domain: string): string {
   return DOMAIN_PALETTE[Math.abs(h) % DOMAIN_PALETTE.length];
 }
 
+function isMediaGenDelegateOrTool(toolName: string): boolean {
+  return isImageGenTool(toolName) || isSongGenTool(toolName) || isVideoGenTool(toolName)
+    || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
+}
+
 export function ToolCallCard({ toolName, query, status, results, result }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
-  const failureReason = status === 'done' && isMediaGenTool(toolName) ? mediaGenFailureReason(toolName, result) : null;
+  // The orchestrator closes a cancelled generation out with { cancelled: true } so the
+  // row stops spinning; it must not read as a finished "Visual created" with a green check.
+  const cancelled = status === 'done' && result?.cancelled === true;
+  const failureReason = status === 'done' && !cancelled && isMediaGenTool(toolName) ? mediaGenFailureReason(toolName, result) : null;
+  const awaitingApproval = useContext(AwaitingApprovalContext) && status === 'loading' && isMediaGenDelegateOrTool(toolName);
   const { prefix: labelPrefix, highlight } = toolLabel(toolName, query, status);
-  const prefix = failureReason ?? labelPrefix;
+  const prefix = cancelled ? 'Cancelled' : (failureReason ?? (awaitingApproval ? 'Waiting for your approval' : labelPrefix));
   // Placeholder shaped like InlineAttachmentCard's own thumbnail chip, so the
   // real image/song/video attachment swaps in without the layout jumping once
   // it lands. 'image' / 'audio' / 'video' picks the tile styling
@@ -261,7 +275,7 @@ export function ToolCallCard({ toolName, query, status, results, result }: ToolC
   const mediaSkeletonType = (isImageGenTool(toolName) || isDirectorDelegateTool(toolName)) ? 'image'
     : (isSongGenTool(toolName) || isProducerDelegateTool(toolName)) ? 'audio'
     : isVideoGenTool(toolName) ? 'video' : null;
-  const showMediaSkeleton = status === 'loading' && mediaSkeletonType !== null;
+  const showMediaSkeleton = status === 'loading' && mediaSkeletonType !== null && !awaitingApproval;
 
   return (
     <div className="my-1.5 text-foreground">
@@ -274,7 +288,7 @@ export function ToolCallCard({ toolName, query, status, results, result }: ToolC
 
         <span className={`text-sm font-semibold flex-1 truncate ${status === 'loading' ? 'shimmer-text' : ''}`}>
           {prefix}
-          {highlight && (
+          {highlight && !awaitingApproval && !cancelled && (
             <span className="font-medium" style={{ color: 'var(--color-text-primary, inherit)' }}>
               {highlight}
             </span>
@@ -287,6 +301,10 @@ export function ToolCallCard({ toolName, query, status, results, result }: ToolC
             <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-60 animate-bounce [animation-delay:-0.15s]" />
             <span className="h-[4px] w-[4px] rounded-full bg-muted-foreground opacity-30 animate-bounce" />
           </span>
+        ) : cancelled ? (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-muted-foreground">
+            <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          </svg>
         ) : failureReason ? (
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500">
             <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3"/>

@@ -87,9 +87,9 @@ const WARMUP_STEP_INTERVAL_MS = 8_000;
 function PulsingDots() {
     return (
         <span className="flex gap-[3px] items-center">
-            <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.3s]" />
-            <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce [animation-delay:-0.15s]" />
-            <span className="h-[4px] w-[4px] rounded-full bg-primary/70 animate-bounce" />
+            <span className="h-[4px] w-[4px] rounded-full bg-[var(--shimmer-accent)] opacity-70 animate-bounce [animation-delay:-0.3s]" />
+            <span className="h-[4px] w-[4px] rounded-full bg-[var(--shimmer-accent)] opacity-70 animate-bounce [animation-delay:-0.15s]" />
+            <span className="h-[4px] w-[4px] rounded-full bg-[var(--shimmer-accent)] opacity-70 animate-bounce" />
         </span>
     );
 }
