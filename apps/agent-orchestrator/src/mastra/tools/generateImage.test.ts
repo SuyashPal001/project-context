@@ -28,6 +28,7 @@ vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
 import { generateImage, generateImageItem } from './generateImage.js'
 import { uploadGeneratedFile } from '../../persistence.js'
+import { stableToolCallId } from '../../credits.js'
 
 function ctx(values: Record<string, string>) {
   const requestContext = new RequestContext()
@@ -248,7 +249,7 @@ describe('generateImage tool', () => {
     const execCtx = { requestContext: (baseCtx() as unknown as { requestContext: RequestContext }).requestContext, agent: { toolCallId: 'tc-1' } } as never
     await generateImage.execute!({ prompt: 'a red bicycle' } as never, execCtx)
 
-    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'image:c1:tc-1:0' }))
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: `image:c1:${stableToolCallId('tc-1')}:0` }))
   })
 
   it('generateImageItem charges under a chargeKey ending in the item index', async () => {
@@ -258,6 +259,6 @@ describe('generateImage tool', () => {
 
     await generateImageItem({ prompt: 'a red bicycle' }, execCtx as never, 3)
 
-    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'image:c1:tc-7:3' }))
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: `image:c1:${stableToolCallId('tc-7')}:3` }))
   })
 })

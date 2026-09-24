@@ -19,6 +19,7 @@ const { shouldRequireApproval } = vi.hoisted(() => ({ shouldRequireApproval: vi.
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
 import { generateImages } from './generateImages.js'
+import { stableToolCallId } from '../../credits.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function batchCtx() {
@@ -46,7 +47,7 @@ describe('generateImages tool', () => {
 
     expect(result.succeeded).toBe(2)
     expect(result.results.map((r) => r.fileId).sort()).toEqual(['i0', 'i1'])
-    expect(spendCredits.mock.calls.map((c) => c[0].key).sort()).toEqual(['image:c1:tc-b:0', 'image:c1:tc-b:1'])
+    expect(spendCredits.mock.calls.map((c) => c[0].key).sort()).toEqual([`image:c1:${stableToolCallId('tc-b')}:0`, `image:c1:${stableToolCallId('tc-b')}:1`])
   })
 
   it('does not charge an item whose gateway call is refused (image charges only after success)', async () => {
@@ -95,5 +96,13 @@ describe('generateImages tool', () => {
     const requireApproval = generateImages.requireApproval as unknown as (input: unknown, ctx: unknown) => Promise<boolean>
     expect(await requireApproval({ items: [imgItem('x')] }, ctx)).toBe(true)
     expect(shouldRequireApproval).toHaveBeenCalledWith({ resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview' }, ctx)
+  })
+})
+
+describe('generate_image charge key', () => {
+  it('stays under the ledger index limit for a Gemini thought-signature toolCallId', () => {
+    const giant = 'gs.' + 'A'.repeat(7000) + '.0'
+    const key = `image:c1:${stableToolCallId(giant)}:0`
+    expect(key.length).toBeLessThan(200)
   })
 })

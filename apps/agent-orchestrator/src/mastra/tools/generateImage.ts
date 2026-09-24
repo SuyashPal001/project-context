@@ -7,6 +7,7 @@ import { refundImageCharge } from './imageCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
 import { emitGenerationStarted } from './generationStarted.js'
+import { stableToolCallId } from '../../credits.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 export const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -138,7 +139,11 @@ export async function generateImageItem(
     // so the key is stable per call and has the same shape as
     // generateVideo.ts's video:${jobId}:${attempt}. The item index occupies
     // the last slot; the single tool passes 0.
-    const chargeKey = `image:${conversationId ?? sessionId}:${toolCallId}:${itemIndex}`
+    // stableToolCallId: a Gemini 3.x toolCallId carries the thoughtSignature and
+    // can be ~7KB, over Postgres's btree limit on credit_ledger's idempotency
+    // index. That made every charge on Olmo's direct generate_image throw after
+    // the image was already generated (seen live 2026-09-25).
+    const chargeKey = `image:${conversationId ?? sessionId}:${stableToolCallId(toolCallId)}:${itemIndex}`
     let charged = false
     let rateId: string | null = null
     let rateVersion: number | null = null
