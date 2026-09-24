@@ -136,14 +136,11 @@ export function LiveTrace({
         tc.toolName === 'generate_image' || tc.toolName === 'generate-image'
         || tc.toolName === 'edit_image' || tc.toolName === 'edit-image'
         || tc.toolName === 'generate_images' || tc.toolName === 'generate-images');
-    // The batch tools' own tool call carries live batchProgress (set by
-    // onBatchItemProgress in useChatStream.ts as each item settles) — when
-    // present, it overrides the rotating message below with a real count
-    // instead of a generic "Generating..." loop.
-    const batchProgress = activeToolCalls.find(tc =>
-        (tc.toolName === 'generate_videos' || tc.toolName === 'generate-videos'
-            || tc.toolName === 'generate_images' || tc.toolName === 'generate-images')
-        && tc.batchProgress)?.batchProgress;
+    // Live batchProgress is set by onBatchItemProgress in useChatStream.ts as
+    // each item settles — on the batch tool's own call, or on the delegate
+    // wrapper's call when Olmo delegates (only that id reaches the browser).
+    // When present it overrides the rotating message below with a real count.
+    const batchProgress = activeToolCalls.find(tc => tc.batchProgress)?.batchProgress;
 
     const THINKING_MESSAGES = [
         "Thinking...",

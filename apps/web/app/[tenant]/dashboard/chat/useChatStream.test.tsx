@@ -294,4 +294,16 @@ describe('useChatStream batch item progress', () => {
         });
         expect(result.current.activeToolCalls.get('tc-1')?.batchProgress).toEqual({ done: 2, total: 3 });
     });
+
+    it('attaches progress to the delegate wrapper call when the inner batch call id is unknown to the browser', () => {
+        const { result } = setup();
+        act(() => {
+            chatMock.lastOptions!.onToolCall!('agent-director', 'tc-delegate', {});
+        });
+        act(() => {
+            chatMock.lastOptions!.onBatchItemProgress!('inner-batch-id', 1, 4);
+        });
+        expect(result.current.activeToolCalls.get('tc-delegate')?.batchProgress).toEqual({ done: 1, total: 4 });
+        expect(result.current.activeToolCalls.has('inner-batch-id')).toBe(false);
+    });
 });

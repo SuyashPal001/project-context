@@ -347,7 +347,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 }
                 return { data: [...data].sort(sortByDate) };
             });
-            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); completedToolCallsRef.current = []; setReasoningText(''); reasoningTextRef.current = ''; }, 1500);
+            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); completedToolCallsRef.current = []; batchSeenIndicesRef.current.clear(); setReasoningText(''); reasoningTextRef.current = ''; }, 1500);
             setTimeout(() => {
                 const conversationId = conversationIdRef.current;
                 if (!conversationId) return;
@@ -466,10 +466,17 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             seen.add(index);
             const done = seen.size;
             setActiveToolCalls(prev => {
-                const existing = prev.get(toolCallId);
-                if (!existing) return prev;
+                // When Olmo delegates to Director, the batch tool's own call id
+                // never reaches the browser — only the delegate wrapper's does —
+                // so fall back to the most recent loading call to carry the count.
+                let targetId = prev.has(toolCallId) ? toolCallId : undefined;
+                if (!targetId) {
+                    for (const [id, call] of prev) if (call.isLoading) targetId = id;
+                }
+                const existing = targetId ? prev.get(targetId) : undefined;
+                if (!targetId || !existing) return prev;
                 const next = new Map(prev);
-                next.set(toolCallId, { ...existing, batchProgress: { done, total } });
+                next.set(targetId, { ...existing, batchProgress: { done, total } });
                 return next;
             });
         }, []),

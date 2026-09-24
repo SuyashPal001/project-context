@@ -64,8 +64,8 @@ describe('listCastingAssets tool', () => {
 
   it('fetches the voice catalogue with no tenant scoping', async () => {
     const client = mockClient([
-      { provider_id: 'nandi', name: 'Nandi', tagline: 'Poised concierge', description: null },
-      { provider_id: 'asher', name: 'Asher', tagline: 'Warm narrator', description: 'Great for explainers' },
+      { provider_id: 'nandi', name: 'Nandi', tagline: 'Poised concierge', description: null, language: 'en', accents: null },
+      { provider_id: 'asher', name: 'Asher', tagline: 'Warm narrator', description: 'Great for explainers', language: 'en', accents: [{ locale: 'en-US' }, { locale: 'hi-IN' }] },
     ])
     pool.connect.mockResolvedValue(client)
 
@@ -73,8 +73,8 @@ describe('listCastingAssets tool', () => {
 
     expect(result).toEqual({
       items: [
-        { id: 'nandi', name: 'Nandi', description: 'Poised concierge' },
-        { id: 'asher', name: 'Asher', description: 'Warm narrator — Great for explainers' },
+        { id: 'nandi', name: 'Nandi', description: 'Poised concierge', languages: ['en'] },
+        { id: 'asher', name: 'Asher', description: 'Warm narrator — Great for explainers', languages: ['en', 'hi'] },
       ],
     })
     expect(client.query).toHaveBeenCalledWith(expect.stringContaining('voice_catalogue'))

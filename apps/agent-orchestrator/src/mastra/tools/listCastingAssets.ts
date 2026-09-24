@@ -34,6 +34,7 @@ export const listCastingAssets = createTool({
       id: z.string().describe('Avatar asset id or voice providerId — pass this straight through as the pick'),
       name: z.string(),
       description: z.string(),
+      languages: z.array(z.string()).optional().describe('Voices only: language codes this voice can read (e.g. "en", "hi")'),
     })),
     error: z.string().optional(),
   }),
@@ -46,15 +47,21 @@ export const listCastingAssets = createTool({
     const client = await getPool().connect()
     try {
       if (kind === 'voice') {
-        const { rows } = await client.query<{ provider_id: string; name: string; tagline: string; description: string | null }>(
-          `SELECT provider_id, name, tagline, description FROM voice_catalogue ORDER BY name`,
+        const { rows } = await client.query<{ provider_id: string; name: string; tagline: string; description: string | null; language: string | null; accents: Array<{ locale: string }> | null }>(
+          `SELECT provider_id, name, tagline, description, language, accents FROM voice_catalogue ORDER BY name`,
         )
         return {
-          items: rows.map((row) => ({
-            id: row.provider_id,
-            name: row.name,
-            description: row.description ? `${row.tagline} — ${row.description}` : row.tagline,
-          })),
+          items: rows.map((row) => {
+            // Same rule as the web voice picker (apps/web/app/api/creative/voices/route.ts):
+            // accents' locales when present, else the single language column.
+            const locales = row.accents?.map((a) => a.locale) ?? (row.language ? [row.language] : [])
+            return {
+              id: row.provider_id,
+              name: row.name,
+              description: row.description ? `${row.tagline} — ${row.description}` : row.tagline,
+              languages: [...new Set(locales.map((l) => l.split(/[-_]/)[0]))],
+            }
+          }),
         }
       }
 
