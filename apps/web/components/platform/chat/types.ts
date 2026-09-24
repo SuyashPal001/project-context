@@ -16,6 +16,9 @@ export interface ToolCall {
     /** Set once the generation itself begins (generation_started SSE event). Before that a
      *  delegate call is only reasoning / writing the prompt, so no generating skeleton. */
     generationStarted?: boolean;
+    /** Aspect ratio of the media being generated ("9:16"), from generation_started, so the
+     *  skeleton has the result's shape. */
+    generationAspectRatio?: string;
 }
 
 export interface ApprovalRequest {

@@ -5,8 +5,11 @@
 // generating skeleton then reads as "the image already started".
 type SendEvent = (event: string, data: object) => void
 
-export function emitGenerationStarted(execContext: unknown): void {
+// aspectRatio, when the tool has one, lets the client shape the generating
+// skeleton like the result (a 9:16 video gets a vertical placeholder).
+export function emitGenerationStarted(execContext: unknown, info: { aspectRatio?: unknown } = {}): void {
   const sendEvent = (execContext as { requestContext?: { get: (key: string) => unknown } } | undefined)
     ?.requestContext?.get('sendEvent') as SendEvent | undefined
-  sendEvent?.('generation_started', {})
+  const aspectRatio = typeof info.aspectRatio === 'string' && /^\d+:\d+$/.test(info.aspectRatio) ? info.aspectRatio : undefined
+  sendEvent?.('generation_started', aspectRatio ? { aspectRatio } : {})
 }

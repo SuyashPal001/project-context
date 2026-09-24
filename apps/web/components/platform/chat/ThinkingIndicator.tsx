@@ -240,6 +240,7 @@ export function LiveTrace({
                         query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
                         status="loading"
                         generationStarted={tool.generationStarted}
+                        aspectRatio={tool.generationAspectRatio ?? (typeof tool.arguments?.aspectRatio === 'string' ? tool.arguments.aspectRatio : undefined)}
                     />
                 ))}
             </div>

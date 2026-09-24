@@ -199,7 +199,7 @@ export const generateImage = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    emitGenerationStarted(execContext)
+    emitGenerationStarted(execContext, { aspectRatio: (inputData as { aspectRatio?: unknown }).aspectRatio })
     return generateImageItem(inputData as ImageItemInput, execContext as unknown as MediaExecContext, 0)
   },
 })

@@ -28,3 +28,15 @@ describe('media skeleton progress', () => {
     expect(pct).toBeLessThan(95);
   });
 });
+
+describe('skeleton shape', () => {
+  it('is vertical for a 9:16 generation and 16:9 when unknown', () => {
+    const { rerender } = render(<ToolCallCard toolName="generate_video" query="" status="loading" aspectRatio="9:16" />);
+    let sk = screen.getByTestId('media-progress-skeleton');
+    expect(sk.className).toContain('max-w-[180px]');
+    expect(sk.style.aspectRatio).toBe(String(9 / 16));
+    rerender(<ToolCallCard toolName="generate_video" query="" status="loading" />);
+    sk = screen.getByTestId('media-progress-skeleton');
+    expect(sk.className).toContain('aspect-video');
+  });
+});

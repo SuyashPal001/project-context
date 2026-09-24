@@ -26,7 +26,7 @@ export interface UseChatOptions {
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
     onBatchItemProgress?: (toolCallId: string, index: number, total: number) => void;
-    onGenerationStarted?: () => void;
+    onGenerationStarted?: (aspectRatio?: string) => void;
     // Follow-up suggestion chips arrive after `done` (the server no longer holds
     // `done` for them); messageId is the message `done` just settled.
     onFollowUps?: (suggestions: string[], messageId: string) => void;
@@ -375,7 +375,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                         }
 
                         case 'generation_started': {
-                            onGenerationStartedRef.current?.();
+                            onGenerationStartedRef.current?.(typeof payload.aspectRatio === 'string' ? payload.aspectRatio : undefined);
                             break;
                         }
 

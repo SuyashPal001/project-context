@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { MessageAttachment } from './types';
 import type { Asset } from '@/types/assets';
 import { assetTypeForFile } from '@/lib/assetType';
@@ -37,6 +38,13 @@ export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
   };
 
   const isMedia = type === 'image' || type === 'video';
+  // Real width/height ratio, read once the media loads. Until then the card is
+  // 16:9 (the same shape as ToolCallCard's skeleton); a vertical TikTok-style
+  // video or 9:16 image then reshapes to its true proportions instead of being
+  // cropped into a landscape box.
+  const [ratio, setRatio] = useState<number | null>(null);
+  const onDims = (w: number, h: number) => { if (w > 0 && h > 0) setRatio(w / h); };
+  const portrait = ratio !== null && ratio < 1;
 
   // Media (image/video) gets the big aspect-video card — same shape as
   // ToolCallCard's loading skeleton so the result swaps in without resizing.
@@ -55,7 +63,10 @@ export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
         // aspect-video turned 0 width into 0 height, making the whole card
         // occupy zero pixels. Generated images rendered nothing; the fixed
         // h-20 w-20 non-media tile below was unaffected.
-        className={`relative block w-[240px] max-w-full aspect-video rounded-xl border border-border/60 overflow-hidden text-left hover:border-border transition-colors ${typeStyle.bg}`}
+        style={ratio ? { aspectRatio: String(ratio) } : undefined}
+        data-testid="inline-media-card"
+        // Portrait gets a narrower card so a 9:16 video is not ~430px tall.
+        className={`relative block ${portrait ? 'w-[180px]' : 'w-[240px]'} max-w-full ${ratio ? '' : 'aspect-video'} rounded-xl border border-border/60 overflow-hidden text-left hover:border-border transition-colors ${typeStyle.bg}`}
       >
         <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
           {TYPE_BADGES[type]}
@@ -63,9 +74,9 @@ export function InlineAttachmentCard({ file, url }: InlineAttachmentCardProps) {
 
         {url ? (
           type === 'image' ? (
-            <img src={url} alt={file.name} className="absolute inset-0 h-full w-full object-cover" />
+            <img src={url} alt={file.name} onLoad={(e) => onDims(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)} className="absolute inset-0 h-full w-full object-cover" />
           ) : (
-            <video src={url} className="absolute inset-0 h-full w-full object-cover" muted />
+            <video src={url} preload="metadata" onLoadedMetadata={(e) => onDims(e.currentTarget.videoWidth, e.currentTarget.videoHeight)} className="absolute inset-0 h-full w-full object-cover" muted />
           )
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">

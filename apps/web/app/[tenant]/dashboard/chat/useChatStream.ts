@@ -485,14 +485,14 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         // The generation tool's own call id never reaches the browser when Olmo
         // delegates (only the delegate wrapper's does), so mark the most recent
         // loading call — same fallback as onBatchItemProgress below.
-        onGenerationStarted: useCallback(() => {
+        onGenerationStarted: useCallback((aspectRatio?: string) => {
             setActiveToolCalls(prev => {
                 let targetId: string | undefined;
                 for (const [id, call] of prev) if (call.isLoading) targetId = id;
                 const existing = targetId ? prev.get(targetId) : undefined;
                 if (!targetId || !existing) return prev;
                 const next = new Map(prev);
-                next.set(targetId, { ...existing, generationStarted: true });
+                next.set(targetId, { ...existing, generationStarted: true, ...(aspectRatio ? { generationAspectRatio: aspectRatio } : {}) });
                 return next;
             });
         }, []),

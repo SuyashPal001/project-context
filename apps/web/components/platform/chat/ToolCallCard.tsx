@@ -17,6 +17,8 @@ interface ToolCallCardProps {
   result?: Record<string, unknown>;
   /** Delegate calls only: true once the generation itself has begun. */
   generationStarted?: boolean;
+  /** "9:16", "1:1", ... — shapes the generating skeleton like the result. 16:9 when unknown. */
+  aspectRatio?: string;
 }
 
 // Director's tools are registered under the underscore key (generate_image,
@@ -268,7 +270,18 @@ export function estimatedProgress(elapsedMs: number, expectedMs: number): number
   return Math.min(95, Math.floor(95 * (1 - Math.exp((-2 * elapsedMs) / expectedMs))));
 }
 
-function MediaProgressSkeleton({ type }: { type: 'image' | 'audio' | 'video' }) {
+// "9:16" -> 9/16. Null for anything unparseable, so the skeleton stays 16:9.
+export function parseAspectRatio(value: string | undefined): number | null {
+  const m = value ? /^(\d+):(\d+)$/.exec(value) : null;
+  if (!m) return null;
+  const w = Number(m[1]), h = Number(m[2]);
+  return w > 0 && h > 0 ? w / h : null;
+}
+
+function MediaProgressSkeleton({ type, aspectRatio }: { type: 'image' | 'audio' | 'video'; aspectRatio?: string }) {
+  // Audio has no picture, so it keeps the default card shape.
+  const ratio = type === 'audio' ? null : parseAspectRatio(aspectRatio);
+  const portrait = ratio !== null && ratio < 1;
   // Mounts when generation actually starts (after approval), so that is t=0.
   const [startedAt] = useState(() => Date.now());
   const [now, setNow] = useState(startedAt);
@@ -279,7 +292,13 @@ function MediaProgressSkeleton({ type }: { type: 'image' | 'audio' | 'video' }) 
   const pct = estimatedProgress(now - startedAt, EXPECTED_MS[type]);
 
   return (
-    <div className={`relative mt-1.5 w-full max-w-[240px] aspect-video rounded-xl border border-border/60 overflow-hidden flex items-center justify-center ${TYPE_STYLES[type].bg}`}>
+    <div
+      data-testid="media-progress-skeleton"
+      // Same widths as InlineAttachmentCard (180px portrait, 240px otherwise) so
+      // the finished media swaps in without the card changing size.
+      style={ratio ? { aspectRatio: String(ratio) } : undefined}
+      className={`relative mt-1.5 w-full ${portrait ? 'max-w-[180px]' : 'max-w-[240px]'} ${ratio ? '' : 'aspect-video'} rounded-xl border border-border/60 overflow-hidden flex items-center justify-center ${TYPE_STYLES[type].bg}`}
+    >
       <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
         {TYPE_BADGES[type]}
       </span>
@@ -303,7 +322,7 @@ function isMediaGenDelegateOrTool(toolName: string): boolean {
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
 }
 
-export function ToolCallCard({ toolName, query, status, results, result, generationStarted }: ToolCallCardProps) {
+export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
   // The orchestrator closes a cancelled generation out with { cancelled: true } so the
@@ -381,7 +400,7 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
         )}
       </div>
 
-      {showMediaSkeleton && mediaSkeletonType && <MediaProgressSkeleton type={mediaSkeletonType} />}
+      {showMediaSkeleton && mediaSkeletonType && <MediaProgressSkeleton type={mediaSkeletonType} aspectRatio={aspectRatio} />}
 
       {hasResults && expanded && (
         <div className="flex gap-2.5 mt-1.5 pl-0.5">

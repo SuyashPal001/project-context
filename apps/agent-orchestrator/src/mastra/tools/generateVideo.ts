@@ -271,7 +271,7 @@ export const generateVideo = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    emitGenerationStarted(execContext)
+    emitGenerationStarted(execContext, { aspectRatio: (inputData as { aspectRatio?: unknown }).aspectRatio })
     return generateVideoItem(inputData as VideoItemInput, execContext as unknown as MediaExecContext, 0)
   },
 })
