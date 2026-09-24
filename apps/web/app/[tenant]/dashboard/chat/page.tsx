@@ -337,21 +337,36 @@ function ChatPage() {
         return true;
     };
 
+    const firstSendStartedRef = useRef(false);
     useEffect(() => {
-        if (pendingFirstMessage === null) return;
+        if (pendingFirstMessage === null) {
+            firstSendStartedRef.current = false;
+            return;
+        }
         if (!conversationId || isLoadingMessages || messages.length > 0) return;
-        sendMessage(pendingFirstMessage, pendingFirstAttachments);
-        setPendingFirstMessage(null);
-        setPendingFirstAttachments(undefined);
-        if (pendingCreativeBrief) {
-            clearCreativeBrief();
-            setActiveEmptyStateTab(null);
-            setPendingCreativeBrief(false);
-        }
-        if (pendingAllowMode && pendingAllowMode !== 'ask') {
-            setAllowMode.mutate(pendingAllowMode);
-        }
-        setPendingAllowMode(null);
+        if (firstSendStartedRef.current) return;
+        firstSendStartedRef.current = true;
+        const message = pendingFirstMessage;
+        const attachments = pendingFirstAttachments;
+        const allowModeToApply = pendingAllowMode && pendingAllowMode !== 'ask' ? pendingAllowMode : null;
+        void (async () => {
+            // The orchestrator reads allowMode off the conversation row while
+            // handling the first message, so the PATCH must land before it is
+            // sent. onError on the mutation already toasts; still send on failure
+            // (falls back to 'ask', the safe default).
+            if (allowModeToApply) {
+                try { await setAllowMode.mutateAsync(allowModeToApply); } catch { /* toasted */ }
+            }
+            sendMessage(message, attachments);
+            setPendingFirstMessage(null);
+            setPendingFirstAttachments(undefined);
+            if (pendingCreativeBrief) {
+                clearCreativeBrief();
+                setActiveEmptyStateTab(null);
+                setPendingCreativeBrief(false);
+            }
+            setPendingAllowMode(null);
+        })();
     }, [pendingFirstMessage, conversationId, isLoadingMessages, messages.length, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // A caller (e.g. the Skills page's "+ Create skill" button, or
