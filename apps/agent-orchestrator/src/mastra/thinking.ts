@@ -35,6 +35,11 @@ const APPROVAL_SIGNALS = new Set([
   // budget=0, olmoDelegates returns {}, and Olmo can't call agent-director /
   // agent-producer to actually re-fire the generation.
   'retry', 'try again', 'resend', 'regenerate', 'redo', 'again', 'once more',
+  // Bare imperatives that ALSO mean "fire the pending plan". Same fast-path
+  // trap. First-word matching below catches "generate it", "make it now",
+  // "build the ad", etc.
+  'generate', 'make', 'build', 'create', 'produce', 'run', 'start', 'do',
+  'ship', 'send', 'submit', 'fire', 'kick off', 'kickoff',
 ])
 
 const COMPLEX_KEYWORDS = [
