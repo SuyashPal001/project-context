@@ -83,6 +83,7 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'burn-captions', 'burn_captions',
         'mix-music-bed', 'mix_music_bed',
         'trim-clip', 'trim_clip',
+        'overlay-text', 'overlay_text',
         'save_skill',
       ].sort(),
     )

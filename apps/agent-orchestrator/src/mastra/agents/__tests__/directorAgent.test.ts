@@ -32,7 +32,7 @@ describe('directorAgent tool registration', () => {
     // it was never registered on directorAgent before this skill (only on
     // producerAgent), and animation-character's own flow has Director call
     // it directly for the music bed.
-    const expected = ['mux_beat_audio', 'transcribe_audio', 'composite_end_card', 'burn_captions', 'mix_music_bed', 'generate_song']
+    const expected = ['mux_beat_audio', 'transcribe_audio', 'composite_end_card', 'burn_captions', 'mix_music_bed', 'generate_song', 'overlay_text']
     expect(Object.keys(directorTools)).toEqual(expect.arrayContaining(expected))
     expect(Object.keys(delegateTools)).toEqual(expect.arrayContaining(expected))
   })
