@@ -15,7 +15,11 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/\bpmAgent(Delegate)?\b/gi, 'the planning step'],
   [/\barchitectAgent(Delegate)?\b/gi, 'the technical design step'],
   [/\bsub-?agents?\b/gi, 'specialists'],
-  [/\bdelegat(e|es|ed|ing|ion)\b/gi, 'hand this off'],
+  [/\bdelegation\b/gi, 'handoff'],
+  [/\bdelegates\b/gi, 'hands off'],
+  [/\bdelegated\b/gi, 'handed off'],
+  [/\bdelegating\b/gi, 'handing off'],
+  [/\bdelegate\b/gi, 'hand off'],
   [/\bretrieve_documents\b/gi, 'searching your documents'],
   [/\bstart_task\b/gi, 'starting the task'],
   [/\bget_task_thread\b/gi, 'checking the task'],
@@ -57,7 +61,10 @@ const REDACTIONS: Array<[RegExp, string]> = [
 export function redactReasoningText(text: string): string {
   let out = text
   for (const [pattern, replacement] of REDACTIONS) {
-    out = out.replace(pattern, replacement)
+    // Swallow markdown backticks around a name: `agent-director` would otherwise
+    // render the friendly replacement in code font.
+    const wrapped = new RegExp('`?' + pattern.source + '`?', pattern.flags)
+    out = out.replace(wrapped, replacement)
   }
   // "the agent-director" -> "the the visual generation step" without this.
   return out.replace(/\b(the) the\b/gi, '$1')

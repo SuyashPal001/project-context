@@ -16,3 +16,14 @@ describe('redactReasoningText', () => {
     expect(redactReasoningText(text)).toBe(text)
   })
 })
+
+describe('redactReasoningText grammar', () => {
+  it('keeps verb forms readable', () => {
+    expect(redactReasoningText('Direct delegation to X')).toBe('Direct handoff to X')
+    expect(redactReasoningText('I will delegate this')).toBe('I will hand off this')
+    expect(redactReasoningText('it delegated the work')).toBe('it handed off the work')
+  })
+  it('drops backticks around redacted names', () => {
+    expect(redactReasoningText('call `agent-director` now')).toBe('call the visual generation step now')
+  })
+})
