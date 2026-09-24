@@ -21,6 +21,7 @@ import { makeAppPool } from '../../db.js'
 import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { retrieveTemplate } from '../tools/retrieveTemplate.js'
 import { listCastingAssets } from '../tools/listCastingAssets.js'
+import { checkCreditPlan } from '../tools/checkCreditPlan.js'
 import { listFolderTool } from '../tools/listFolder.js'
 import { findInFolderTool } from '../tools/findInFolder.js'
 import { readFileTool } from '../tools/readFile.js'
@@ -103,6 +104,7 @@ export const SERVER_TOOLS = {
   retrieve_documents: retrieveDocumentsTool,
   retrieve_template: retrieveTemplate,
   list_casting_assets: listCastingAssets,
+  check_credit_plan: checkCreditPlan,
   // start_task / get_task_thread — in-process calls into the shared
   // agent-platform MCP tool registry (no MCP protocol, no network hop). The
   // human/session caller carries no agentId, so Task 4's agent_tool_assignments
@@ -380,6 +382,13 @@ The plan must state: what you intend to make (for video/audio, the full script o
 Any plain affirmative ("yes", "go", "approved", "looks good", etc.) counts as approval — do not require the user to click a specific option. But approval is scoped to that exact plan: if the script, duration, style, or count changes afterward, treat it as a new plan and present a new estimate before spending again. Never regenerate to fix a bad result without a fresh confirmation, since a retry spends credits again too.
 This does not apply to free operations — uploading files, browsing models, checking job status, transcripts, or analysis.
 When the user's message is an affirmative reply to a media-generation plan you just proposed, your next action in that same turn MUST be a call to the appropriate delegate (agent-director for image/video, agent-producer for audio) — not a working-memory update, not a text reply. Do not write anything describing a completed or submitted generation before that delegate call has returned a result containing a fileId. If your response would describe generated or submitted media but no delegate call fired this turn, that is a failure: say plainly that generation could not be started and ask the user to retry, instead of narrating a result that did not happen.`
+    const LOW_BALANCE_RECOVERY_CONTRACT = `\n\n## Low-balance recovery — required behaviour
+Before you present a cost plan for generation under the credit-spending confirmation rule above, call check_credit_plan with the planned steps (kind and count for each image, video, narration, music, lipsync, or ffmpeg edit step). It is free and read-only, and every amount it returns is in credits.
+- If shortfallCredits is 0, or the tenant is unlimited, or balanceUnknown is true, say nothing about balance and continue with the normal cost plan. Never tell the user they are out of credits when balanceUnknown is true.
+- If shortfallCredits is above 0, do not block and do not just say there are not enough credits. Show the user the full cost and their balance, then call ask_clarifying_questions with one question offering the returned options — each as a bold label, a one-line description, and its cost in credits — and let the user pick. Only offer options the tool returned. Whichever they pick becomes the plan you present for the normal cost approval; the top-up option means they add credits from the billing page (do not invent a link) and then ask again.
+- If any name in unpricedKinds is returned, mention that those steps could not be priced and the total excludes them.
+- If a delegate (agent-director or agent-producer) ever returns an out-of-credits refusal instead, do not leave the user at a dead end: call check_credit_plan for what remains to be generated and offer the same options.`
+
     const CAST_SHEET_REVIEW_CONTRACT = `\n\n## Cast-sheet reuse and review — required behaviour
 Before delegating to agent-director to generate a new cast sheet for the UGC character, Talking-head, or Animation-character contracts below, check working memory's Locked Reference Artifact IDs field for either of these, in this order:
 1. A line labeled "Cast sheet: <fileId>" already written earlier in this conversation. If present and it fits the current request, reuse that fileId directly, tell the user plainly you're reusing the existing approved character, and skip straight to that contract's next step — a reused cast sheet does not need re-review.
@@ -454,7 +463,7 @@ Your reasoning is shown live to the user as "Thinking it through." Reason as a h
     const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
     const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
-      + DELEGATION_CONTRACT + ROUTING_CONTRACT + BRIEF_SELECTIONS_CONTRACT + COST_CONFIRMATION_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
+      + DELEGATION_CONTRACT + ROUTING_CONTRACT + BRIEF_SELECTIONS_CONTRACT + COST_CONFIRMATION_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {

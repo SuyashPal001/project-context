@@ -34,7 +34,7 @@ export interface CreditBalanceResult {
 //
 // tenant_id is bound once via $1 and threaded through every join — no query
 // here can cross tenants.
-const BALANCE_QUERY = `
+export const BALANCE_QUERY = `
   select
     coalesce(ca.balance_micro, 0) as balance_micro,
     coalesce(tfo.unlimited, pe.unlimited, false) as unlimited
