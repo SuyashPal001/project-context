@@ -222,10 +222,11 @@ async function getCachedMcpTools(mcpClient: MCPClient, tenantId: string): Promis
   if (cached && cached.expiresAt > Date.now()) return cached.tools
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let tools: Record<string, any> = {}
+  const fetchStartedAt = Date.now()
   try {
     tools = await mcpClient.listTools()
     mcpToolsCache.set(tenantId, { tools, expiresAt: Date.now() + MCP_TOOLS_CACHE_TTL_MS })
-    console.log('[mastra] mcpToolsCache miss — fetched', Object.keys(tools).length, 'tools for tenant', tenantId)
+    console.log('[mastra] mcpToolsCache miss — fetched', Object.keys(tools).length, 'tools for tenant', tenantId, `in ${Date.now() - fetchStartedAt}ms`)
   } catch (err) {
     console.warn('[mastra] listTools failed, continuing without MCP tools:', (err as Error).message)
   }

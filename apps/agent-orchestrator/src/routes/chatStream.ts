@@ -525,7 +525,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       if (isStreamClosed()) break turnLoop
 
       // TEMP INSTRUMENTATION — task 8 delegate approval test
-      console.log(`[task8:${sessionId}] chunk type=${part.type}${part.payload?.toolName ? ` toolName=${part.payload.toolName}` : ''}${part.payload?.toolCallId ? ` toolCallId=${part.payload.toolCallId}` : ''}${part.payload?.agentId ? ` agentId=${part.payload.agentId}` : ''}`)
+      console.log(`[task8:${sessionId}] +${Date.now() - startTime}ms chunk type=${part.type}${part.payload?.toolName ? ` toolName=${part.payload.toolName}` : ''}${part.payload?.toolCallId ? ` toolCallId=${part.payload.toolCallId}` : ''}${part.payload?.agentId ? ` agentId=${part.payload.agentId}` : ''}`)
 
       switch (part.type) {
         case 'text-delta': {
