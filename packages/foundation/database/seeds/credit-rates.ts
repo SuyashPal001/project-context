@@ -107,6 +107,10 @@ const RATES = [
   // (pnpm db:seed) or the tool runs free with no approval card.
   { resourceType: 'clip_assembly', subject: 'ffmpeg-overlay-text',
     pricingSchema: { per_call_micro: 1_000 } },
+  // stretch_clip — same local-ffmpeg flat-rate reasoning; must be seeded
+  // (pnpm db:seed) or the tool runs free with no approval card.
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-stretch-clip',
+    pricingSchema: { per_call_micro: 1_000 } },
   // Metering ships before pricing: these are deliberately free on day one so ops can
   // price them later without a deploy (spec section 3).
   { resourceType: 'message',   subject: '*', pricingSchema: { per_message_micro: 0 } },
