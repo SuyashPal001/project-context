@@ -102,9 +102,9 @@ function getExa(): ExaClass {
 
 // Plain image requests: Olmo writes the prompt and calls generate_image itself instead
 // of handing off to agent-director (one fewer model round trip, one tool call id, and
-// the approval card is raised by Olmo's own call). Off by default; set OLMO_DIRECT_IMAGE=1
-// on the orchestrator to turn it on, unset it to go back to the director path.
-const DIRECT_IMAGE = process.env.OLMO_DIRECT_IMAGE === '1'
+// the approval card is raised by Olmo's own call). On by default (verified live
+// 2026-09-25); set OLMO_DIRECT_IMAGE=0 on the orchestrator to go back to the director path.
+const DIRECT_IMAGE = process.env.OLMO_DIRECT_IMAGE !== '0'
 
 export const SERVER_TOOLS = {
   // RAG over the tenant's own uploaded corpus. Seeded prompts instruct agents to
@@ -572,10 +572,11 @@ Your reasoning is shown live to the user as "Thinking it through." Reason as a h
       }
     }
 
-    // MCP_TOOLS_DISABLED=1 skips the mcp-server hop entirely (no client, no
-    // listTools). Nothing user-facing runs through it today, and the cold
-    // fetch sat in front of every first turn of a session.
-    if (process.env.MCP_TOOLS_DISABLED === '1') return SERVER_TOOLS
+    // The mcp-server hop (per-session client + listTools) is OFF by default:
+    // nothing user-facing runs through it today, and the cold fetch sat in
+    // front of every first turn of a session. Set MCP_TOOLS_ENABLED=1 on the
+    // orchestrator to turn the Gmail/Google tools back on.
+    if (process.env.MCP_TOOLS_ENABLED !== '1') return SERVER_TOOLS
 
     // --- MCP path (backup / default when Composio is disabled or errored) ---
     const storedClient = requestContext.get('__mcpClient') as MCPClient | undefined
