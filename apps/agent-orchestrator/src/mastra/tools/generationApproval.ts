@@ -85,10 +85,26 @@ const STRETCH_CLIP_SUBJECT = 'ffmpeg-stretch-clip'
 // "unmapped tool" fallback, which then crashes with `resumeStream() cannot
 // resume tool call ... because it is not suspended` — Olmo has no suspension
 // of its own to resume when the pause lives inside a delegate.
-const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Generate image' }
-const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video' }
+// What the approval card shows under the title so the user sees what they are
+// paying for. Prompt text only — tool args carry no size/aspect field for images.
+const PROMPT_PREVIEW_MAX_CHARS = 500
+const clipPrompt = (text: string): string =>
+  text.length > PROMPT_PREVIEW_MAX_CHARS ? `${text.slice(0, PROMPT_PREVIEW_MAX_CHARS).trimEnd()}…` : text
+const promptPreview = (args: Record<string, unknown>): string | undefined =>
+  typeof args.prompt === 'string' && args.prompt.trim() ? clipPrompt(args.prompt.trim()) : undefined
+const batchPromptPreview = (args: Record<string, unknown>): string | undefined => {
+  if (!Array.isArray(args.items)) return undefined
+  const prompts = args.items
+    .map((item) => (item && typeof item === 'object' ? (item as Record<string, unknown>).prompt : undefined))
+    .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+  if (prompts.length === 0) return undefined
+  return clipPrompt(prompts.map((p, i) => `${i + 1}. ${p.trim()}`).join('\n'))
+}
+
+const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Generate image', buildPreview: promptPreview }
+const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video', buildPreview: promptPreview }
 const songGen = { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' }
-const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image' }
+const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image', buildPreview: promptPreview }
 const narrationGen = { resourceType: 'narration_generation', subject: NARRATION_MODEL, label: 'Generate narration' }
 const lipsyncGen = { resourceType: 'lipsync_generation', subject: LIPSYNC_MODEL, label: 'Lip-sync video' }
 const assemblyGen = { resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT, label: 'Assemble clips' }
@@ -103,8 +119,8 @@ const stretchClipGen = { resourceType: 'clip_assembly', subject: STRETCH_CLIP_SU
 
 const itemCount = (args: Record<string, unknown>): number | undefined =>
   Array.isArray(args.items) ? args.items.length : undefined
-const videoBatchGen = { ...videoGen, label: 'Generate videos', buildCount: itemCount }
-const imageBatchGen = { ...imageGen, label: 'Generate images', buildCount: itemCount }
+const videoBatchGen = { ...videoGen, label: 'Generate videos', buildPreview: batchPromptPreview, buildCount: itemCount }
+const imageBatchGen = { ...imageGen, label: 'Generate images', buildPreview: batchPromptPreview, buildCount: itemCount }
 
 export const GENERATION_APPROVAL_METADATA: Record<string, {
   resourceType: string

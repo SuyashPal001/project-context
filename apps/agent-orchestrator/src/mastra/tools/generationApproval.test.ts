@@ -105,8 +105,18 @@ describe('GENERATION_APPROVAL_METADATA', () => {
     expect(GENERATION_APPROVAL_METADATA['generate_song']).toBe(GENERATION_APPROVAL_METADATA['generate-song'])
   })
 
-  it('generate-image has no preview builder', () => {
-    expect(GENERATION_APPROVAL_METADATA['generate-image'].buildPreview).toBeUndefined()
+  it('generate-image previews the prompt so the card shows what is being paid for', () => {
+    const build = GENERATION_APPROVAL_METADATA['generate-image'].buildPreview
+    expect(build?.({ prompt: '  a sleek blue car  ' })).toBe('a sleek blue car')
+    expect(build?.({})).toBeUndefined()
+    expect(build?.({ prompt: 'x'.repeat(900) })?.length).toBeLessThanOrEqual(501)
+  })
+
+  it('generate_images previews each item prompt, numbered', () => {
+    const preview = GENERATION_APPROVAL_METADATA['generate_images'].buildPreview?.({
+      items: [{ prompt: 'red car' }, { prompt: 'blue car' }],
+    })
+    expect(preview).toBe('1. red car\n2. blue car')
   })
 
   it('save_skill builds a preview from args.body', () => {
