@@ -25,6 +25,7 @@ import { stretchClip } from '../tools/stretchClip.js'
 import { mixMusicBed } from '../tools/mixMusicBed.js'
 import { generateSong } from '../tools/generateSong.js'
 import { trimClip } from '../tools/trimClip.js'
+import { IMAGE_PROMPT_CRAFT } from './imagePromptCraft.js'
 
 const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
 
@@ -187,7 +188,7 @@ When Olmo delegates a short-drama-stitch ad build (the user has uploaded existin
   const OVERLAY_TEXT_SECTION = `\n\n## On-screen text overlays\nWhen Olmo asks for hook copy, a title, or any on-screen text on a finished video, call overlay_text (videoFileId plus overlays with text, startSeconds/endSeconds, position top|center|bottom) as a post step — never ask generate_image or generate_video to render the words. If it returns refusalReason "SUBTITLES_FILTER_UNAVAILABLE", tell Olmo the host cannot burn text overlays.`
   const STRETCH_CLIP_SECTION = `\n\n## Lengthening a clip\nWhen Olmo asks to fill a longer runtime from an existing short clip, call stretch_clip (videoFileId, targetDurationSeconds, mode). Use loop for atmospheric or repeatable footage (audio repeats too, hard cut at the seam), slow only for a modest lengthening (refused beyond 2x the original), hold to freeze the last frame (audio plays once then goes silent). It only lengthens — use trim_clip to shorten. If it refuses with STRETCH_TOO_LARGE, tell Olmo which mode limit was hit rather than retrying the same request.`
 
-  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
+  const base = (override || defaultInstructions) + IMAGE_PROMPT_CRAFT + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
