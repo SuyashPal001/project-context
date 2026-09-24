@@ -78,7 +78,7 @@ describe('ApproveCost', () => {
         render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={vi.fn()} />);
 
         const el = await screen.findByTestId('approve-cost');
-        const approveOption = screen.getByRole('button', { name: /1\. Approve/ }) as HTMLButtonElement;
+        const approveOption = screen.getByRole('button', { name: /1\. Generate song/ }) as HTMLButtonElement;
         expect(approveOption.disabled).toBe(true);
         // Insufficient hides the footer's own Approve shortcut too — only the
         // disabled numbered option and Skip remain.
@@ -100,7 +100,7 @@ describe('ApproveCost', () => {
         render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} onCancel={vi.fn()} />);
 
         await screen.findByTestId('approve-cost');
-        await userEvent.click(screen.getByRole('button', { name: /1\. Approve/ }));
+        await userEvent.click(screen.getByRole('button', { name: /1\. Generate song/ }));
 
         expect(onApprove).toHaveBeenCalledTimes(1);
     });
@@ -142,7 +142,7 @@ describe('ApproveCost', () => {
         expect(onCancel).toHaveBeenCalledWith();
     });
 
-    it('calls onCancel with no reason when the numbered "Hold off" option is clicked', async () => {
+    it('calls onCancel with no reason when the numbered "Cancel" option is clicked', async () => {
         apiGetMock.mockResolvedValue({
             costMicro: '2000000',
             balanceMicro: '10000000',
@@ -155,7 +155,7 @@ describe('ApproveCost', () => {
         render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={onCancel} />);
 
         await screen.findByTestId('approve-cost');
-        await userEvent.click(screen.getByRole('button', { name: /2\. Hold off/ }));
+        await userEvent.click(screen.getByRole('button', { name: /2\. Cancel/ }));
 
         expect(onCancel).toHaveBeenCalledWith();
     });

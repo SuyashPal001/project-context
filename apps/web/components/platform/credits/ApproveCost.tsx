@@ -58,7 +58,7 @@ export interface ApproveCostProps {
     /** Declining. `reason` carries whatever the user typed in the free-text
      * field — forwarded all the way to the agent's tool result (same channel
      * ClarificationCard's freeText already uses), so the agent reads it on
-     * its next turn and decides what to do. Undefined for a plain Skip/Hold off. */
+     * its next turn and decides what to do. Undefined for a plain Skip/Cancel. */
     onCancel?: (reason?: string) => void;
 }
 
@@ -87,7 +87,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pr
         ) : (
             <Shell label={label} preview={preview} testId="approve-cost-unpriced" onApprove={onApprove} onCancel={onCancel}>
                 <Option number={1} label="Approve" detail="This doesn't use credits." onClick={onApprove} tone="primary" />
-                {onCancel && <Option number={2} label="Hold off" detail="Don't do it — dismiss this." onClick={() => onCancel()} />}
+                {onCancel && <Option number={2} label="Cancel" detail="Don't do it." onClick={() => onCancel()} />}
             </Shell>
         );
     }
@@ -119,7 +119,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pr
         ) : (
             <Shell label={label} preview={preview} testId="approve-cost-error" onApprove={onApprove} onCancel={onCancel}>
                 <Option number={1} label="Approve — generate it" detail={detail} onClick={onApprove} tone="primary" />
-                {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
+                {onCancel && <Option number={2} label="Cancel" detail="Don't generate anything." onClick={() => onCancel()} />}
             </Shell>
         );
     }
@@ -131,7 +131,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pr
         ) : (
             <Shell label={label} preview={preview} testId="approve-cost-unlimited" onApprove={onApprove} onCancel={onCancel}>
                 <Option number={1} label="Approve — generate it" detail="Unlimited plan — this won't touch your balance." onClick={onApprove} tone="primary" />
-                {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
+                {onCancel && <Option number={2} label="Cancel" detail="Don't generate anything." onClick={() => onCancel()} />}
             </Shell>
         );
     }
@@ -151,8 +151,8 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pr
         <InlineRow testId="approve-cost" detail={`This costs ${costCredits} credits`} insufficient={insufficient} extra={billingLink} onApprove={onApprove} onCancel={onCancel} />
     ) : (
         <Shell label={label} preview={preview} testId="approve-cost" onApprove={insufficient ? undefined : onApprove} onCancel={onCancel}>
-            <Option number={1} label="Approve — generate it" detail={`~${costCredits} credits`} onClick={onApprove} disabled={insufficient} tone="primary" />
-            {onCancel && <Option number={2} label="Hold off" detail="Don't generate — dismiss this." onClick={() => onCancel()} />}
+            <Option number={1} label={`${label} · ~${costCredits} credits`} detail="Starts right away." onClick={onApprove} disabled={insufficient} tone="primary" />
+            {onCancel && <Option number={2} label="Cancel" detail="Don't generate anything." onClick={() => onCancel()} />}
             {billingLink}
         </Shell>
     );
