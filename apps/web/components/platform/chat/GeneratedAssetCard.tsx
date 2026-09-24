@@ -41,21 +41,28 @@ export function GeneratedAssetCard({ file, url, createdAt }: GeneratedAssetCardP
         <PopoverContent
           side="top"
           align="end"
-          className="w-56 p-3 text-xs space-y-1.5"
+          collisionPadding={16}
+          className="w-64 overflow-hidden rounded-xl p-0 text-xs shadow-lg"
           data-testid="generation-details"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Model</span>
-            <span className="font-mono">{model}</span>
+          <div className="flex items-center justify-between px-3.5 py-3 bg-muted/40">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Credits used</span>
+            <span className="text-base font-semibold tabular-nums">
+              {credits.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Created</span>
-            <span>{new Date(createdAt).toLocaleString()}</span>
-          </div>
-          <div className="flex items-center justify-between pt-1.5 border-t border-border/60 font-medium">
-            <span>Credits used</span>
-            <span className="font-mono">{credits.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-          </div>
+          <dl className="space-y-2.5 px-3.5 py-3">
+            <div className="space-y-0.5">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Model</dt>
+              <dd className="font-mono text-[11px] leading-snug break-all">{model}</dd>
+            </div>
+            <div className="space-y-0.5">
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Created</dt>
+              <dd className="tabular-nums">
+                {new Date(createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              </dd>
+            </div>
+          </dl>
         </PopoverContent>
       </Popover>
     </div>
