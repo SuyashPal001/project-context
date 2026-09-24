@@ -42,11 +42,12 @@ describe('buildStretchArgs', () => {
     expect(args('slow', 5, 10).ok).toBe(true)
   })
 
-  it('hold pads only the difference and silences audio after the original', () => {
+  it('hold pads by the full target and lets -t trim, silencing audio after the original', () => {
     const r = args('hold', 6, 9.5)
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.args[r.args.indexOf('-vf') + 1]).toBe('tpad=stop_mode=clone:stop_duration=3.500')
+    expect(r.args[r.args.indexOf('-vf') + 1]).toBe('tpad=stop_mode=clone:stop_duration=9.500')
+    expect(r.args[r.args.indexOf('-t') + 1]).toBe('9.500')
     expect(r.args[r.args.indexOf('-af') + 1]).toBe('apad')
   })
 

@@ -69,8 +69,10 @@ export function buildStretchArgs(opts: {
     }
   }
 
-  // hold: freeze the last frame; any audio plays once then goes silent.
-  const pad = (targetSeconds - sourceSeconds).toFixed(3)
+  // hold: freeze the last frame; any audio plays once then goes silent. Pad by the
+  // full target, not target - source: the video stream can be shorter than the
+  // container duration, and -t trims the excess.
+  const pad = targetSeconds.toFixed(3)
   return {
     ok: true,
     args: [

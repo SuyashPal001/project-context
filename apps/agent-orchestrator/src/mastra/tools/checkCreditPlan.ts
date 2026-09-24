@@ -7,7 +7,7 @@ import { tenantContextSchema } from '../context.js'
 
 const MICRO_PER_CREDIT = 1_000_000
 
-export type StepKind = 'image' | 'video' | 'narration' | 'music' | 'lipsync' | 'lipsync_hq' | 'edit'
+export type StepKind = 'image' | 'video' | 'narration' | 'music' | 'lipsync' | 'lipsync_hq' | 'transcribe' | 'edit'
 
 // Same job types and subjects the generation tools charge against, so the
 // estimate reads the same rate rows the real debit will. 'edit' prices as one
@@ -20,6 +20,7 @@ const PRICING: Record<StepKind, { jobType: string; subject: string }> = {
   music: { jobType: 'music_generation', subject: 'lyria-002' },
   lipsync: { jobType: 'lipsync_generation', subject: 'fal-ai/latentsync' },
   lipsync_hq: { jobType: 'lipsync_generation', subject: 'sync-2.0' },
+  transcribe: { jobType: 'audio_transcription', subject: 'gemini-transcribe' },
   edit: { jobType: 'clip_assembly', subject: 'ffmpeg-local' },
 }
 
@@ -164,7 +165,7 @@ export const checkCreditPlan = createTool({
   requestContextSchema: tenantContextSchema,
   inputSchema: z.object({
     steps: z.array(z.object({
-      kind: z.enum(['image', 'video', 'narration', 'music', 'lipsync', 'lipsync_hq', 'edit']).describe('What is being generated; "lipsync_hq" is the higher-fidelity sync-2.0 lipsync, about 10x the standard "lipsync"; "edit" is any deterministic ffmpeg step (assemble, trim, captions, overlay, mux)'),
+      kind: z.enum(['image', 'video', 'narration', 'music', 'lipsync', 'lipsync_hq', 'transcribe', 'edit']).describe('What is being generated; "lipsync_hq" is the higher-fidelity sync-2.0 lipsync, about 10x the standard "lipsync"; "transcribe" is an audio transcription call; "edit" is any deterministic ffmpeg step (assemble, trim, captions, overlay, mux)'),
       count: z.number().int().min(1).describe('How many separate generations or edit calls of this kind'),
     })).min(1),
   }),

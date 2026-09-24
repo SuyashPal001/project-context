@@ -14,6 +14,7 @@ const prices: Record<StepKind, bigint | null> = {
   music: 3n * CREDIT,
   lipsync: 5n * CREDIT,
   lipsync_hq: 50n * CREDIT,
+  transcribe: 1n * CREDIT,
   edit: 1n * CREDIT,
 }
 
@@ -56,6 +57,11 @@ describe('computeCreditPlan', () => {
     expect(r.options.find((o) => o.label === 'Loop and stretch')?.costCredits).toBe(15)
     const img = await computeCreditPlan([{ kind: 'image', count: 4 }], deps(20n * CREDIT))
     expect(img.options.map((o) => o.label)).not.toContain('Loop and stretch')
+  })
+
+  it('prices a transcribe step into the full cost', async () => {
+    const r = await computeCreditPlan([{ kind: 'video', count: 1 }, { kind: 'transcribe', count: 2 }], deps(100n * CREDIT))
+    expect(r.fullCostCredits).toBe(12)
   })
 
   it('omits loop-and-stretch when the plan has fewer than 2 generated visuals', async () => {
