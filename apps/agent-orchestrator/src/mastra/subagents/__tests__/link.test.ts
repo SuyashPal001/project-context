@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { recordDelegation } from '../link.js'
+import { stableToolCallId } from '../../../credits.js'
 
 const base = {
   tenantId: 't1', agentId: 'a1', conversationId: 'c1',
@@ -14,7 +15,7 @@ describe('recordDelegation', () => {
     expect(query).toHaveBeenCalledTimes(1)
     const [sql, values] = query.mock.calls[0]
     expect(sql).toMatch(/insert into agent_delegations/i)
-    expect(values).toEqual(['t1', 'a1', 'c1', 'director', 'run-1', 'call-1', true, 1234, null, null])
+    expect(values).toEqual(['t1', 'a1', 'c1', 'director', 'run-1', stableToolCallId('call-1'), true, 1234, null, null])
   })
 
   it('carries a rejection reason for a refused delegation', async () => {

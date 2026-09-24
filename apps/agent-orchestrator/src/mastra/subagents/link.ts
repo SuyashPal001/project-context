@@ -1,4 +1,5 @@
 import { getPool } from '../../usage.js'
+import { stableToolCallId } from '../../credits.js'
 
 export interface DelegationRecord {
   tenantId: string
@@ -41,7 +42,9 @@ export async function recordDelegation(
       record.conversationId || null,
       record.primitiveId,
       record.runId,
-      record.toolCallId,
+      // Hashed: a Gemini toolCallId carries the thought signature (~7KB). Nothing
+      // reads this column back; run_id is the join key into Mastra's traces.
+      stableToolCallId(record.toolCallId),
       record.success,
       record.durationMs,
       record.rejectionReason ?? null,
