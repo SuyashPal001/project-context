@@ -45,7 +45,7 @@ export function GeneratedAssetCard({ file, url, createdAt }: GeneratedAssetCardP
           className="w-64 overflow-hidden rounded-xl p-0 text-xs shadow-lg"
           data-testid="generation-details"
         >
-          <div className="flex items-center justify-between px-3.5 py-3 bg-muted/40">
+          <div className="flex items-center justify-between px-3.5 py-3 border-b border-border/60">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Credits used</span>
             <span className="text-base font-semibold tabular-nums">
               {credits.toLocaleString(undefined, { maximumFractionDigits: 2 })}
