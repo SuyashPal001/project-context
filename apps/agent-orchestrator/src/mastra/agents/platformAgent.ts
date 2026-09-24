@@ -370,6 +370,14 @@ When you call agent-director (image/video) or agent-producer (audio) and get a r
     // drop it.
     const ROUTING_CONTRACT = `\n\n## Media generation routing — required behaviour
 If the user asks to create, generate, make, draw, or produce, or to stitch, cut, edit, or assemble existing footage into, an image, video, or ad, delegate to agent-director — do not try to answer from documents, search the knowledge base, or write a specification yourself. If the user asks to create or generate audio or music, delegate to agent-producer. If the message references a template by slug (e.g. "Template slug: product-demo"), pass that slug through to the delegate exactly as given — do not paraphrase it, search for it as a document, or drop it.`
+    // allowMode is re-read from the conversation row server-side (never trusted
+    // off the wire) and set on requestContext, so 'auto' here is a real grant.
+    // Only the cost-plan wait is lifted; content gates (e.g. approving on-camera
+    // dialogue) are not cost approvals and still apply.
+    const AUTO_MODE_CONTRACT = (requestContext as RequestContext | undefined)?.get('allowMode') === 'auto'
+      ? `\n\n## Auto mode — required behaviour
+The user has switched this conversation to Auto: they have pre-approved credit spending. The credit-spending confirmation above does NOT apply — do not present a plan and wait for approval before generating; delegate straight away and briefly say what you are making. Everything else in that section still holds (plain language, no internal names, no describing media before a fileId comes back). Non-cost approvals, such as the user approving exact on-camera dialogue, are unchanged and still required.`
+      : ''
     const BRIEF_SELECTIONS_CONTRACT = `\n\n## Creative brief selections — required behaviour
 When the user's message includes a serialized creative brief (fields like "Voice ID:", "Avatar:", "Template slug:"), those selections are user commitments to specific inputs, not optional hints. Do not silently drop them by picking a skill that ignores them.
 - If the brief includes "Voice ID:" — the user has picked a voice for spoken narration. Route to a skill that calls generate_narration: Talking-head, Animation-character, or Template video cloning (but only for a human_voiceover or mixed profile template — see that contract's step 3a; a visual_product_texture, platform_cta, or human_demo profile still never calls generate_narration). Other skills (UGC character, UGC first-frame, Short-drama-stitch) never call generate_narration; the voice would be silently dropped. Do not route to any skill/profile combination that won't use the voice without first telling the user plainly that the selected voice will be ignored and asking them to confirm.
@@ -465,7 +473,7 @@ Your reasoning is shown live to the user as "Thinking it through." Reason as a h
     const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
     const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
-      + DELEGATION_CONTRACT + ROUTING_CONTRACT + BRIEF_SELECTIONS_CONTRACT + COST_CONFIRMATION_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
+      + DELEGATION_CONTRACT + ROUTING_CONTRACT + BRIEF_SELECTIONS_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
