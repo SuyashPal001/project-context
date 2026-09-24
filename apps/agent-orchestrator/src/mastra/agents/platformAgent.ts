@@ -378,6 +378,13 @@ If the user asks to create, generate, make, draw, or produce, or to stitch, cut,
       ? `\n\n## Auto mode — required behaviour
 The user has switched this conversation to Auto: they have pre-approved credit spending. The credit-spending confirmation above does NOT apply — do not present a plan and wait for approval before generating; delegate straight away and briefly say what you are making. Everything else in that section still holds (plain language, no internal names, no describing media before a fileId comes back). Non-cost approvals, such as the user approving exact on-camera dialogue, are unchanged and still required.`
       : ''
+    // The approval card the generation tool raises already shows the label,
+    // model and cost and is the real spend gate, so for a plain image request
+    // the text plan is a second, redundant confirmation. Video/audio and any
+    // skill or template flow keep it (their script/shot breakdown is not on
+    // the card).
+    const IMAGE_ONE_STEP_CONTRACT = `\n\n## Plain image requests — one confirmation only
+Exception to the credit-spending confirmation above: when the user asks for one or a few plain images (no video, no audio, no template, no skill flow in progress), do NOT post a text plan and wait. Delegate to agent-director right away — the approval card that appears is the confirmation. Before delegating, say at most one short plain-language line about what you are making. Video, audio, and every skill or template flow keep the full plan-and-wait step.`
     const BRIEF_SELECTIONS_CONTRACT = `\n\n## Creative brief selections — required behaviour
 When the user's message includes a serialized creative brief (fields like "Voice ID:", "Avatar:", "Template slug:"), those selections are user commitments to specific inputs, not optional hints. Do not silently drop them by picking a skill that ignores them.
 - If the brief includes "Voice ID:" — the user has picked a voice for spoken narration. Route to a skill that calls generate_narration: Talking-head, Animation-character, or Template video cloning (but only for a human_voiceover or mixed profile template — see that contract's step 3a; a visual_product_texture, platform_cta, or human_demo profile still never calls generate_narration). Other skills (UGC character, UGC first-frame, Short-drama-stitch) never call generate_narration; the voice would be silently dropped. Do not route to any skill/profile combination that won't use the voice without first telling the user plainly that the selected voice will be ignored and asking them to confirm.
@@ -473,7 +480,7 @@ Your reasoning is shown live to the user as "Thinking it through." Reason as a h
     const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
     const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
-      + DELEGATION_CONTRACT + ROUTING_CONTRACT + BRIEF_SELECTIONS_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
+      + DELEGATION_CONTRACT + ROUTING_CONTRACT + BRIEF_SELECTIONS_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + IMAGE_ONE_STEP_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
