@@ -796,6 +796,22 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           console.log(`[task8:${sessionId}] AFTER ${confirmed ? 'approve' : 'decline'}ToolCall newRunId=${currentStream?.runId ?? 'none'} hasFullStream=${!!currentStream?.fullStream}`)
           continue turnLoop
         }
+        // A tool threw (as opposed to returning a refused result). Without this
+        // case the error was never logged and the browser never got a tool_done,
+        // so the row fell back to a success check when the turn ended.
+        case 'tool-error': {
+          const p = part.payload ?? part
+          const toolCallId = (p.toolCallId ?? '') as string
+          const resolvedToolName = ((p.toolName ?? '') as string) || toolCallNames.get(toolCallId) || ''
+          toolCallNames.delete(toolCallId)
+          const err = p.error as { message?: string; stack?: string } | string | undefined
+          const message = typeof err === 'string' ? err : err?.message ?? JSON.stringify(err ?? null)
+          console.error(`[sse:${sessionId}] tool-error toolName=${resolvedToolName} toolCallId=${toolCallId} error=${message}${typeof err === 'object' && err?.stack ? `\n${err.stack}` : ''}`)
+          if (isGatedTool(resolvedToolName)) generationActivity++
+          if (!isClientHiddenTool(resolvedToolName)) sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result: { failed: true }, conversationId })
+          onToolCallEnd()
+          break
+        }
         case 'tool-result': {
           const p = part.payload ?? part
           const toolCallId = (p.toolCallId ?? '') as string

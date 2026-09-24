@@ -88,6 +88,8 @@ export function mediaGenFailureReason(toolName: string, result: Record<string, u
     return isVideoGenTool(toolName) ? 'Video generation failed' : 'Image generation failed';
   }
   if (typeof result.fileId === 'string') return null;
+  // The orchestrator sends { failed: true } when the tool threw instead of returning.
+  if (result.failed === true) return isVideoGenTool(toolName) ? 'Video generation failed' : isSongGenTool(toolName) ? 'Song generation failed' : 'Image generation failed';
   if (result.insufficientCredits) return 'Out of credits';
   const reason = typeof result.refusalReason === 'string' ? result.refusalReason : undefined;
   if (reason === 'STORAGE_FAILED') return 'Generated, but could not be saved';

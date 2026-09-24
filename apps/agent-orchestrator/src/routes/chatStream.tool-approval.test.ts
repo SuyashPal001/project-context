@@ -301,6 +301,20 @@ describe('runChatStream — tool-call-approval round trip', () => {
     expect(declineToolCall.mock.calls[0][0].reason).not.toContain('already been shown')
   })
 
+  it('a thrown tool (tool-error) closes the row as failed instead of leaving it to read as success', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        { type: 'tool-call', payload: { toolName: 'generate-image', toolCallId: 'tc-err', args: {} } },
+        { type: 'tool-error', payload: { toolName: 'generate-image', toolCallId: 'tc-err', error: new Error('boom') } },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-err',
+    ))
+    const sendEvent = vi.fn()
+    await runChatStream(baseOpts({ sendEvent }))
+    expect(sendEvent).toHaveBeenCalledWith('tool_done', expect.objectContaining({ toolCallId: 'tc-err', result: { failed: true } }))
+  })
+
   it('includes the item count on generation_confirm_request for a batch tool', async () => {
     streamMock.mockResolvedValueOnce(fakeStream(
       [{ type: 'tool-call-approval', payload: { toolName: 'generate_videos', toolCallId: 'tc-b1', args: { items: [{}, {}, {}] } } }],

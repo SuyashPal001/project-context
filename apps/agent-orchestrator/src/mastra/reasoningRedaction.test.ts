@@ -27,3 +27,17 @@ describe('redactReasoningText grammar', () => {
     expect(redactReasoningText('call `agent-director` now')).toBe('call the visual generation step now')
   })
 })
+
+describe('redactReasoningText tool nouns', () => {
+  it('reads naturally when a tool name is used as a noun', () => {
+    expect(redactReasoningText('directly call the generate_image tool when')).toBe('directly call the image generator when')
+    expect(redactReasoningText('I will call generate_image now')).toBe('I will call the image generator now')
+    expect(redactReasoningText('the `generate-video` tool')).toBe('the video generator')
+  })
+})
+
+describe('redactReasoningText own-tool phrasing', () => {
+  it('handles "my own generate_image tool"', () => {
+    expect(redactReasoningText('call my own generate_image tool directly')).toBe('call the image generator directly')
+  })
+})

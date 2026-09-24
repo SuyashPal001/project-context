@@ -58,8 +58,21 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/\bmix[-_]music[-_]bed\b/gi, 'mixing the music'],
 ]
 
+// Tool names used as a noun ("the generate_image tool", "call generate_image")
+// read badly with the verb-phrase replacements below ("the creating the image
+// tool"). Handle the "<name> tool" form first with a noun phrase.
+const TOOL_NOUNS: Array<[RegExp, string]> = [
+  [/(\b(?:the|my own|its own|your own)\s+)?`?\bgenerate[-_]images?`?\s+tool\b/gi, 'the image generator'],
+  [/(\b(?:the|my own|its own|your own)\s+)?`?\bgenerate[-_]videos?`?\s+tool\b/gi, 'the video generator'],
+  [/(\b(?:the|my own|its own|your own)\s+)?`?\bgenerate[-_]song`?\s+tool\b/gi, 'the music generator'],
+  [/(\b(?:the|my own|its own|your own)\s+)?`?\bgenerate[-_]narration`?\s+tool\b/gi, 'the voiceover generator'],
+  [/(\b(?:the|my own|its own|your own)\s+)?`?\bedit[-_]image`?\s+tool\b/gi, 'the image editor'],
+  [/\b(call|calling|use|using|invoke|invoking)\s+(my own\s+|its own\s+|the\s+)?`?generate[-_]image`?/gi, '$1 the image generator'],
+]
+
 export function redactReasoningText(text: string): string {
   let out = text
+  for (const [pattern, replacement] of TOOL_NOUNS) out = out.replace(pattern, replacement)
   for (const [pattern, replacement] of REDACTIONS) {
     // Swallow markdown backticks around a name: `agent-director` would otherwise
     // render the friendly replacement in code font.

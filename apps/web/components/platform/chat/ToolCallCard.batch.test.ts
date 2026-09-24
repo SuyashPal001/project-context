@@ -31,3 +31,10 @@ describe('mediaGenFailureReason for batch tools', () => {
         expect(mediaGenFailureReason('generate_video', { refused: true })).toBe('Video generation failed');
     });
 });
+
+describe('mediaGenFailureReason — thrown tool', () => {
+  it('reads { failed: true } as a failure, not success', () => {
+    expect(mediaGenFailureReason('generate_image', { failed: true })).toBe('Image generation failed')
+    expect(mediaGenFailureReason('generate_video', { failed: true })).toBe('Video generation failed')
+  })
+})
