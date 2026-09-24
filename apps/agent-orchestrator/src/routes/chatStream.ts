@@ -58,6 +58,10 @@ async function generateTitle(userMessage: string): Promise<string> {
   return result.text.trim().replace(/^["']|["']$/g, '').slice(0, 255)
 }
 
+// Shown to the model as the reason a tool call was declined. Says outright that
+// this was the user's choice, not a failure, so the reply doesn't read as an error.
+const DECLINED_BY_USER_REASON = 'The user chose to cancel this generation. It did not fail. Do not retry it and do not describe it as an error — acknowledge briefly and ask if they want to change anything.'
+
 export interface ChatStreamOpts {
   message: string
   // The actual user-typed text (may be empty) — persisted as the message's
@@ -668,10 +672,19 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // `sendEvent`, which saveSkill.ts's live-session guard requires.
           // Without this, approving a save_skill draft resumes with no
           // sendEvent and the skill is never saved.
+          // A declined call never yields a tool-result, so the client's "Generating…"
+          // placeholder for it would otherwise sit there until the whole turn
+          // ends. Close it out here (same pairing as the tool-result case below).
+          if (!confirmed) {
+            if (!isClientHiddenTool(toolName)) sendEvent('tool_done', { toolCallId, toolName, result: { cancelled: true }, conversationId })
+            toolCallNames.delete(toolCallId)
+            onToolCallEnd()
+          }
+
           console.log(`[task8:${sessionId}] BEFORE ${confirmed ? 'approveToolCall' : 'declineToolCall'} runId=${runId} toolCallId=${toolCallId} toolName=${toolName} args=${JSON.stringify(args).slice(0, 400)} olmoOptionsKeys=${Object.keys(olmoOptions).join(',')}`)
           currentStream = confirmed
             ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, ...olmoOptions })
-            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? 'Declined by user', requestContext, ...olmoOptions })
+            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? DECLINED_BY_USER_REASON, requestContext, ...olmoOptions })
           console.log(`[task8:${sessionId}] AFTER ${confirmed ? 'approve' : 'decline'}ToolCall newRunId=${currentStream?.runId ?? 'none'} hasFullStream=${!!currentStream?.fullStream}`)
           continue turnLoop
         }
