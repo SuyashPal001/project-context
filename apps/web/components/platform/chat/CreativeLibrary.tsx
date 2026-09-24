@@ -318,7 +318,7 @@ function VoiceCard({ voice, languageLabel, playing, selected, onPreview, onSelec
             </div>
             <button type="button" aria-pressed={selected} onClick={onSelect} aria-label={`Use ${voice.name} voice`} className="flex min-w-0 flex-1 flex-col rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <span className="block pr-7 text-sm font-semibold leading-5 text-foreground">{voice.name}</span>
-                <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">{voice.tagline || voice.description || [voice.gender, voice.country].filter(Boolean).join(' · ') || 'Natural voice'}</span>
+                <span className="mt-1 line-clamp-2 block text-xs leading-5 text-muted-foreground">{[voice.tagline, voice.description].filter(Boolean).join(' — ') || [voice.gender, voice.country].filter(Boolean).join(' · ') || 'Natural voice'}</span>
                 <span className="mt-auto flex flex-wrap gap-1.5 pt-2">
                     {[languageLabel, voice.gender, voice.country].filter((value): value is string => Boolean(value)).map(value => <span key={value} className="rounded bg-background/80 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{value}</span>)}
                 </span>

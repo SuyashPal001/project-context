@@ -234,6 +234,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             return next;
         });
         setActiveToolCalls(prev => { const next = new Map(prev); next.delete(toolCallId); return next; });
+        batchSeenIndicesRef.current.delete(toolCallId);
     }, [activeToolCalls]);
 
     const { sendMessage: sendChatMessage, sendApproval, sendGenerationConfirm, sendClarificationAnswer, sendUploadAnswer, cancel, isStreaming, isRetrying } = useChat({
