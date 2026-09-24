@@ -7,6 +7,7 @@ import { refundVideoCharge } from './videoCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
 import { stableToolCallId } from '../../credits.js'
+import { emitGenerationStarted } from './generationStarted.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 // Namespaced per docs/media-generation/README.md's convention. This is a new
@@ -269,6 +270,8 @@ export const generateVideo = createTool({
   outputSchema: videoOutputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
-  execute: async (inputData, execContext) =>
-    generateVideoItem(inputData as VideoItemInput, execContext as unknown as MediaExecContext, 0),
+  execute: async (inputData, execContext) => {
+    emitGenerationStarted(execContext)
+    return generateVideoItem(inputData as VideoItemInput, execContext as unknown as MediaExecContext, 0)
+  },
 })

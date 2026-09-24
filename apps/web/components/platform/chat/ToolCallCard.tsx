@@ -15,6 +15,8 @@ interface ToolCallCardProps {
   status: 'loading' | 'done';
   results?: ToolCallSearchResult[];
   result?: Record<string, unknown>;
+  /** Delegate calls only: true once the generation itself has begun. */
+  generationStarted?: boolean;
 }
 
 // Director's tools are registered under the underscore key (generate_image,
@@ -257,16 +259,23 @@ function isMediaGenDelegateOrTool(toolName: string): boolean {
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
 }
 
-export function ToolCallCard({ toolName, query, status, results, result }: ToolCallCardProps) {
+export function ToolCallCard({ toolName, query, status, results, result, generationStarted }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
   // The orchestrator closes a cancelled generation out with { cancelled: true } so the
   // row stops spinning; it must not read as a finished "Visual created" with a green check.
   const cancelled = status === 'done' && result?.cancelled === true;
   const failureReason = status === 'done' && !cancelled && isMediaGenTool(toolName) ? mediaGenFailureReason(toolName, result) : null;
-  const awaitingApproval = useContext(AwaitingApprovalContext) && status === 'loading' && isMediaGenDelegateOrTool(toolName);
+  const cardAwaitingApproval = useContext(AwaitingApprovalContext);
+  const isDelegate = isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
+  // A delegate call is just "the specialist is working" until its generation tool starts.
+  // Before that it is reasoning / writing the prompt, and a generating skeleton reads as
+  // "the image has already started" (it may still be waiting on the approval card).
+  const preparing = status === 'loading' && isDelegate && !generationStarted && !cardAwaitingApproval;
+  const awaitingApproval = cardAwaitingApproval && status === 'loading' && isMediaGenDelegateOrTool(toolName);
   const { prefix: labelPrefix, highlight } = toolLabel(toolName, query, status);
-  const prefix = cancelled ? 'Cancelled' : (failureReason ?? (awaitingApproval ? 'Waiting for your approval' : labelPrefix));
+  const preparingLabel = isProducerDelegateTool(toolName) ? 'Preparing your audio…' : 'Preparing your image…';
+  const prefix = cancelled ? 'Cancelled' : (failureReason ?? (awaitingApproval ? 'Waiting for your approval' : preparing ? preparingLabel : labelPrefix));
   // Placeholder shaped like InlineAttachmentCard's own thumbnail chip, so the
   // real image/song/video attachment swaps in without the layout jumping once
   // it lands. 'image' / 'audio' / 'video' picks the tile styling
@@ -275,7 +284,7 @@ export function ToolCallCard({ toolName, query, status, results, result }: ToolC
   const mediaSkeletonType = (isImageGenTool(toolName) || isDirectorDelegateTool(toolName)) ? 'image'
     : (isSongGenTool(toolName) || isProducerDelegateTool(toolName)) ? 'audio'
     : isVideoGenTool(toolName) ? 'video' : null;
-  const showMediaSkeleton = status === 'loading' && mediaSkeletonType !== null && !awaitingApproval;
+  const showMediaSkeleton = status === 'loading' && mediaSkeletonType !== null && !awaitingApproval && !preparing;
 
   return (
     <div className="my-1.5 text-foreground">
@@ -288,7 +297,7 @@ export function ToolCallCard({ toolName, query, status, results, result }: ToolC
 
         <span className={`text-sm font-semibold flex-1 truncate ${status === 'loading' ? 'shimmer-text' : ''}`}>
           {prefix}
-          {highlight && !awaitingApproval && !cancelled && (
+          {highlight && !awaitingApproval && !preparing && !cancelled && (
             <span className="font-medium" style={{ color: 'var(--color-text-primary, inherit)' }}>
               {highlight}
             </span>

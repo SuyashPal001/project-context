@@ -23,8 +23,15 @@ describe('ToolCallCard — cancelled / awaiting approval', () => {
         expect(container.querySelector('.aspect-video')).toBeNull();
     });
 
-    it('still shows the skeleton when nothing is awaiting approval', () => {
+    it('shows "Preparing your image…" with no skeleton while the delegate has not started generating', () => {
         const { container } = render(<ToolCallCard toolName="agent-director" query="" status="loading" />);
+        expect(screen.getByText('Preparing your image…')).toBeTruthy();
+        expect(screen.queryByText(/Generating visual/)).toBeNull();
+        expect(container.querySelector('.aspect-video')).toBeNull();
+    });
+
+    it('shows the generating skeleton once generation has started', () => {
+        const { container } = render(<ToolCallCard toolName="agent-director" query="" status="loading" generationStarted />);
         expect(screen.getByText(/Generating visual/)).toBeTruthy();
         expect(container.querySelector('.aspect-video')).not.toBeNull();
     });

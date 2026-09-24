@@ -13,6 +13,9 @@ export interface ToolCall {
     durationMs?: number;
     /** Live per-item progress for a batch generation call (generate_videos/generate_images) — set as batch_item_progress SSE events arrive, before the tool call itself resolves. */
     batchProgress?: { done: number; total: number };
+    /** Set once the generation itself begins (generation_started SSE event). Before that a
+     *  delegate call is only reasoning / writing the prompt, so no generating skeleton. */
+    generationStarted?: boolean;
 }
 
 export interface ApprovalRequest {

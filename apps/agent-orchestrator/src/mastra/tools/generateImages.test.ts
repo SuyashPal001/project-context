@@ -71,13 +71,15 @@ describe('generateImages tool', () => {
 
     await generateImages.execute!({ items: [imgItem('one'), imgItem('two')] } as never, ctx)
 
-    expect(sendEvent).toHaveBeenCalledTimes(2)
-    const calls = sendEvent.mock.calls.map((c) => c[1]).sort((a, b) => a.index - b.index)
+    // generation_started (once, when execute begins) is separate from the per-item progress events.
+    expect(sendEvent.mock.calls.filter((c) => c[0] === 'generation_started')).toHaveLength(1)
+    const progress = sendEvent.mock.calls.filter((c) => c[0] === 'batch_item_progress')
+    expect(progress).toHaveLength(2)
+    const calls = progress.map((c) => c[1]).sort((a, b) => a.index - b.index)
     expect(calls).toEqual([
       { toolCallId: 'tc-b', index: 0, total: 2, status: 'done', fileId: 'i0' },
       { toolCallId: 'tc-b', index: 1, total: 2, status: 'done', fileId: 'i1' },
     ])
-    expect(sendEvent.mock.calls.every((c) => c[0] === 'batch_item_progress')).toBe(true)
   })
 
   it('rejects an empty batch and a batch over MAX_BATCH_ITEMS', () => {

@@ -6,6 +6,7 @@ import { resolveSourceImage } from '../../media.js'
 import { refundImageCharge } from './imageCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
+import { emitGenerationStarted } from './generationStarted.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 export const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -192,6 +193,8 @@ export const generateImage = createTool({
   outputSchema: imageOutputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
-  execute: async (inputData, execContext) =>
-    generateImageItem(inputData as ImageItemInput, execContext as unknown as MediaExecContext, 0),
+  execute: async (inputData, execContext) => {
+    emitGenerationStarted(execContext)
+    return generateImageItem(inputData as ImageItemInput, execContext as unknown as MediaExecContext, 0)
+  },
 })

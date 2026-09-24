@@ -5,6 +5,7 @@ import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-s
 import { uploadGeneratedFile } from '../../persistence.js'
 import { refundMusicCharge } from './musicCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
+import { emitGenerationStarted } from './generationStarted.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const MUSIC_MODEL = 'lyria-002'
@@ -29,6 +30,7 @@ export const generateSong = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'music_generation', subject: MUSIC_MODEL }, ctx),
   execute: async (inputData, execContext) => {
+    emitGenerationStarted(execContext)
     const { prompt } = inputData as { prompt: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined ?? ''

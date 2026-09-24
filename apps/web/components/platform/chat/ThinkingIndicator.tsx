@@ -239,6 +239,7 @@ export function LiveTrace({
                         toolName={tool.toolName}
                         query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
                         status="loading"
+                        generationStarted={tool.generationStarted}
                     />
                 ))}
             </div>

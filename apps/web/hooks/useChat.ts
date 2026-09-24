@@ -26,6 +26,7 @@ export interface UseChatOptions {
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
     onBatchItemProgress?: (toolCallId: string, index: number, total: number) => void;
+    onGenerationStarted?: () => void;
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
     onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string, count?: number) => void;
     // turnMessageId is the id the assistant message for THIS turn has (or will
@@ -62,6 +63,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onToolCall,
         onToolDone,
         onBatchItemProgress,
+        onGenerationStarted,
         onApprovalRequired,
         onGenerationConfirmRequired,
         onClarificationRequired,
@@ -88,6 +90,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onToolCallRef = useRef(onToolCall);
     const onToolDoneRef = useRef(onToolDone);
     const onBatchItemProgressRef = useRef(onBatchItemProgress);
+    const onGenerationStartedRef = useRef(onGenerationStarted);
     const onApprovalRequiredRef = useRef(onApprovalRequired);
     const onGenerationConfirmRequiredRef = useRef(onGenerationConfirmRequired);
     const onClarificationRequiredRef = useRef(onClarificationRequired);
@@ -108,6 +111,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onToolCallRef.current = onToolCall;
     onToolDoneRef.current = onToolDone;
     onBatchItemProgressRef.current = onBatchItemProgress;
+    onGenerationStartedRef.current = onGenerationStarted;
     onApprovalRequiredRef.current = onApprovalRequired;
     onGenerationConfirmRequiredRef.current = onGenerationConfirmRequired;
     onClarificationRequiredRef.current = onClarificationRequired;
@@ -350,6 +354,11 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 payload.result as Record<string, unknown> ?? {},
                                 payload.results as Array<{ title: string; domain: string; favicon?: string }> | undefined,
                             );
+                            break;
+                        }
+
+                        case 'generation_started': {
+                            onGenerationStartedRef.current?.();
                             break;
                         }
 
