@@ -22,6 +22,8 @@ import { retrieveDocumentsTool } from '../tools/retrieveDocuments.js'
 import { retrieveTemplate } from '../tools/retrieveTemplate.js'
 import { listCastingAssets } from '../tools/listCastingAssets.js'
 import { checkCreditPlan } from '../tools/checkCreditPlan.js'
+import { generateImage } from '../tools/generateImage.js'
+import { IMAGE_PROMPT_CRAFT } from './imagePromptCraft.js'
 import { listFolderTool } from '../tools/listFolder.js'
 import { findInFolderTool } from '../tools/findInFolder.js'
 import { readFileTool } from '../tools/readFile.js'
@@ -96,6 +98,12 @@ function getExa(): ExaClass {
   }
   return _exa
 }
+
+// Plain image requests: Olmo writes the prompt and calls generate_image itself instead
+// of handing off to agent-director (one fewer model round trip, one tool call id, and
+// the approval card is raised by Olmo's own call). Off by default; set OLMO_DIRECT_IMAGE=1
+// on the orchestrator to turn it on, unset it to go back to the director path.
+const DIRECT_IMAGE = process.env.OLMO_DIRECT_IMAGE === '1'
 
 export const SERVER_TOOLS = {
   // RAG over the tenant's own uploaded corpus. Seeded prompts instruct agents to
@@ -195,6 +203,7 @@ export const SERVER_TOOLS = {
   find_in_folder: findInFolderTool,
   // Reads one file, enforced against the grant before a byte is fetched.
   read_file: readFileTool,
+  ...(DIRECT_IMAGE ? { generate_image: generateImage } : {}),
 }
 
 // Server tool names used to filter out duplicate MCP tool registrations.
@@ -385,8 +394,15 @@ The user has switched this conversation to Auto: they have pre-approved credit s
     // the card).
     const IMAGE_ONE_STEP_CONTRACT = `\n\n## Plain image requests — one confirmation only
 Exception to the credit-spending confirmation above: when the user asks for one or a few plain images (no video, no audio, no template, no skill flow in progress), do NOT post a text plan and wait. Delegate to agent-director right away — the approval card that appears is the confirmation. Do NOT write anything that implies generation has started or is under way ("I am starting the generation", "generating now", "working on it") — nothing is generated until the user approves the card in Ask mode, and that wording makes the card look like it arrives after the image. Either write nothing before delegating, or at most one line in the future tense about what you are about to make ("Here's what I'll create — approve below."). Only in Auto mode may you speak as if it is underway. Always pick an aspect ratio and pass it to agent-director in your delegation message as aspectRatio (one of 1:1, 3:4, 4:3, 9:16, 16:9): use the one the user asked for; otherwise infer it (vertical/story/reel/phone -> 9:16, square/post/avatar -> 1:1, portrait -> 3:4) and default to 16:9. Do not ask the user about size with a separate question — in Ask mode the approval card shows the ratio and the user can change it there, in Auto mode just use it. Video, audio, and every skill or template flow keep the full plan-and-wait step.`
+    const DIRECT_IMAGE_CONTRACT = `\n\n## Plain image requests — you generate these yourself
+When the user asks for one plain image (a single new image from a text description), call your own generate_image tool directly — do NOT delegate to agent-director for it, and do NOT post a text plan first: the approval card that appears is the only confirmation. Delegate to agent-director instead for anything else: an image edit; a request with any attached or referenced image, product photo, avatar or cast sheet; a template slug; a creative brief or skill flow; several images that must stay consistent; and all video and audio (those keep the full plan-and-wait step).
+Do NOT write anything that implies generation has started ("I am starting the generation", "generating now") — in Ask mode nothing is generated until the user approves the card. Either write nothing before calling the tool, or one short future-tense line ("Here's what I'll create — approve below."). Only in Auto mode may you speak as if it is underway.
+Always set aspectRatio (1:1, 3:4, 4:3, 9:16 or 16:9): the one the user asked for, otherwise infer it (vertical/story/reel/phone -> 9:16, square/post/avatar -> 1:1, portrait -> 3:4) and default to 16:9. Do not ask about size with a separate question — the approval card shows it and the user can change it there.
+Write the prompt you pass to generate_image following the image prompt craft rules below.
+Result handling: only say an image exists if the tool result has a fileId; never restate the fileId, name or size. If it returns refused: true, check refusalReason — "SAFETY" or another content-policy reason: say the request was declined for content-policy reasons, do not retry, do not call it a technical error; "GENERATION_FAILED": a temporary failure, they can try again; "STORAGE_FAILED": the image was generated but could not be saved (likely a storage limit); "CONFIRM_BUSY": another approval is already waiting, do not retry, wait for the user. If insufficientCredits is returned, tell them they are out of credits and do not retry.` + IMAGE_PROMPT_CRAFT
     const CANCELLED_GENERATION_CONTRACT = `\n\n## Cancelled generation — required behaviour
 If the user cancelled or declined a generation (the tool result says the user chose to cancel), that is their choice, not a failure. Never say the generation "couldn't be generated", failed, or hit an error. Reply in one short line acknowledging it was cancelled and ask if they want to change anything. Do not retry unless they ask.`
+    const ROUTING_DIRECT_IMAGE_NOTE = `\nException to the image routing above: a plain single-image request is NOT delegated — you generate it yourself with generate_image (see "Plain image requests" below). Image edits, anything with an attached or referenced image, templates, skill flows, video and audio still go to the delegates.`
     const BRIEF_SELECTIONS_CONTRACT = `\n\n## Creative brief selections — required behaviour
 When the user's message includes a serialized creative brief (fields like "Voice ID:", "Avatar:", "Template slug:"), those selections are user commitments to specific inputs, not optional hints. Do not silently drop them by picking a skill that ignores them.
 - If the brief includes "Voice ID:" — the user has picked a voice for spoken narration. Route to a skill that calls generate_narration: Talking-head, Animation-character, or Template video cloning (but only for a human_voiceover or mixed profile template — see that contract's step 3a; a visual_product_texture, platform_cta, or human_demo profile still never calls generate_narration). Other skills (UGC character, UGC first-frame, Short-drama-stitch) never call generate_narration; the voice would be silently dropped. Do not route to any skill/profile combination that won't use the voice without first telling the user plainly that the selected voice will be ignored and asking them to confirm.
@@ -482,7 +498,7 @@ Your reasoning is shown live to the user as "Thinking it through." Reason as a h
     const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
     const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT
-      + DELEGATION_CONTRACT + ROUTING_CONTRACT + BRIEF_SELECTIONS_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + IMAGE_ONE_STEP_CONTRACT + CANCELLED_GENERATION_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
+      + DELEGATION_CONTRACT + ROUTING_CONTRACT + (DIRECT_IMAGE ? ROUTING_DIRECT_IMAGE_NOTE : '') + BRIEF_SELECTIONS_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + (DIRECT_IMAGE ? DIRECT_IMAGE_CONTRACT : IMAGE_ONE_STEP_CONTRACT) + CANCELLED_GENERATION_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
