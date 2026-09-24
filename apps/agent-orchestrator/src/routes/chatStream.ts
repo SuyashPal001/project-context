@@ -679,6 +679,18 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             if (!isClientHiddenTool(toolName)) sendEvent('tool_done', { toolCallId, toolName, result: { cancelled: true }, conversationId })
             toolCallNames.delete(toolCallId)
             onToolCallEnd()
+            // The client's "Generating visual…" skeleton is the OUTER delegate
+            // call (agent-director / agent-producer), not the inner generation
+            // tool the approval is keyed on — different toolCallId, so the
+            // close above never reaches it. Close any in-flight delegate calls
+            // too; their own tool-result later finds no name and is a no-op
+            // client-side.
+            for (const [openId, openName] of [...toolCallNames]) {
+              if (!/^agent[-_]/.test(openName)) continue
+              sendEvent('tool_done', { toolCallId: openId, toolName: openName, result: { cancelled: true }, conversationId })
+              toolCallNames.delete(openId)
+              onToolCallEnd()
+            }
           }
 
           console.log(`[task8:${sessionId}] BEFORE ${confirmed ? 'approveToolCall' : 'declineToolCall'} runId=${runId} toolCallId=${toolCallId} toolName=${toolName} args=${JSON.stringify(args).slice(0, 400)} olmoOptionsKeys=${Object.keys(olmoOptions).join(',')}`)
