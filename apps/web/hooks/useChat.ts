@@ -27,6 +27,9 @@ export interface UseChatOptions {
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
     onBatchItemProgress?: (toolCallId: string, index: number, total: number) => void;
     onGenerationStarted?: () => void;
+    // Follow-up suggestion chips arrive after `done` (the server no longer holds
+    // `done` for them); messageId is the message `done` just settled.
+    onFollowUps?: (suggestions: string[], messageId: string) => void;
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
     onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string, count?: number) => void;
     // turnMessageId is the id the assistant message for THIS turn has (or will
@@ -64,6 +67,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onToolDone,
         onBatchItemProgress,
         onGenerationStarted,
+        onFollowUps,
         onApprovalRequired,
         onGenerationConfirmRequired,
         onClarificationRequired,
@@ -91,6 +95,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onToolDoneRef = useRef(onToolDone);
     const onBatchItemProgressRef = useRef(onBatchItemProgress);
     const onGenerationStartedRef = useRef(onGenerationStarted);
+    const onFollowUpsRef = useRef(onFollowUps);
     const onApprovalRequiredRef = useRef(onApprovalRequired);
     const onGenerationConfirmRequiredRef = useRef(onGenerationConfirmRequired);
     const onClarificationRequiredRef = useRef(onClarificationRequired);
@@ -112,6 +117,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onToolDoneRef.current = onToolDone;
     onBatchItemProgressRef.current = onBatchItemProgress;
     onGenerationStartedRef.current = onGenerationStarted;
+    onFollowUpsRef.current = onFollowUps;
     onApprovalRequiredRef.current = onApprovalRequired;
     onGenerationConfirmRequiredRef.current = onGenerationConfirmRequired;
     onClarificationRequiredRef.current = onClarificationRequired;
@@ -257,6 +263,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let authExpired = false;
+            // The message `done` settled, so a later follow_ups event can find it.
+            let lastDoneMessageId: string | null = null;
 
             // eslint-disable-next-line no-constant-condition
             while (true) {
@@ -316,6 +324,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 suggestedFollowUps,
                                 attachments,
                             );
+                            lastDoneMessageId = msgId;
                             currentMessageId = null;
                             accumulatedText = '';
                             setStreamingText('');
@@ -354,6 +363,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 payload.result as Record<string, unknown> ?? {},
                                 payload.results as Array<{ title: string; domain: string; favicon?: string }> | undefined,
                             );
+                            break;
+                        }
+
+                        case 'follow_ups': {
+                            const suggestions = payload.suggestedFollowUps;
+                            if (lastDoneMessageId && Array.isArray(suggestions) && suggestions.length > 0) {
+                                onFollowUpsRef.current?.(suggestions as string[], lastDoneMessageId);
+                            }
                             break;
                         }
 

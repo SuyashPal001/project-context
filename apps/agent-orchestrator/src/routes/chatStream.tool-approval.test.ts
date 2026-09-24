@@ -150,6 +150,7 @@ import { runChatStream, attachmentsFromToolResult, type ChatStreamOpts } from '.
 import { pendingToolApprovals } from '../types.js'
 import * as persistence from '../persistence.js'
 import * as usage from '../usage.js'
+import * as quickCall from '../llm/quickCall.js'
 
 function baseOpts(overrides: Partial<ChatStreamOpts>): ChatStreamOpts {
   return {
@@ -313,6 +314,28 @@ describe('runChatStream — tool-call-approval round trip', () => {
     const sendEvent = vi.fn()
     await runChatStream(baseOpts({ sendEvent }))
     expect(sendEvent).toHaveBeenCalledWith('tool_done', expect.objectContaining({ toolCallId: 'tc-err', result: { failed: true } }))
+  })
+
+  it('sends done without waiting for follow-up chips, then the chips as a follow_ups event', async () => {
+    let releaseChips!: () => void
+    vi.mocked(quickCall.quickGeminiCall).mockImplementationOnce(() => new Promise((resolve) => {
+      releaseChips = () => resolve('["One?", "Two?", "Three?"]')
+    }))
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [
+        { type: 'text-delta', payload: { text: 'Here is a long enough reply to qualify for follow-up suggestions.' } },
+        { type: 'finish', payload: { output: { usage: {} } } },
+      ],
+      'run-fu',
+    ))
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+    await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledWith('done', expect.anything()))
+    expect(sendEvent.mock.calls.find(([e]) => e === 'done')?.[1]).not.toHaveProperty('suggestedFollowUps')
+    expect(sendEvent).not.toHaveBeenCalledWith('follow_ups', expect.anything())
+    releaseChips()
+    await runPromise
+    expect(sendEvent).toHaveBeenCalledWith('follow_ups', expect.objectContaining({ suggestedFollowUps: ['One?', 'Two?', 'Three?'] }))
   })
 
   it('includes the item count on generation_confirm_request for a batch tool', async () => {

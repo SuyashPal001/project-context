@@ -288,7 +288,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   let ragChunksRetrieved = 0
   let ragChunks: string[] = []
   let ragSources: Array<{ name: string; score: number }> = []
-  let suggestedFollowUps: string[] = []
+  let followUpsPromise: Promise<string[]> | null = null
   let totalTokens = 0
   let inputTokens = 0
   let outputTokens = 0
@@ -912,16 +912,15 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             console.log(`[sse:${sessionId}] plan JSON extracted from agent response`)
           }
 
-          // Generate follow-up suggestions in parallel with a 4s timeout
+          // Follow-up chips are started here but NOT awaited before `done`: the
+          // reply is already on screen, and holding `done` for them kept the
+          // "Working…" header counting for up to 4s. They go out afterwards as a
+          // separate `follow_ups` event (sent below, before the stream closes).
           if (fullText.length > 50) {
-            try {
-              suggestedFollowUps = await Promise.race([
-                generateFollowUps(message, fullText),
-                new Promise<string[]>(resolve => setTimeout(() => resolve([]), 4000)),
-              ])
-            } catch {
-              suggestedFollowUps = []
-            }
+            followUpsPromise = Promise.race([
+              generateFollowUps(message, fullText),
+              new Promise<string[]>(resolve => setTimeout(() => resolve([]), 4000)),
+            ]).catch(() => [] as string[])
           }
 
           // Title generation is fire-and-forget: never let it block the
@@ -937,7 +936,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             }).catch(() => {})
           }
 
-          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, suggestedFollowUps: suggestedFollowUps.length > 0 ? suggestedFollowUps : undefined, attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined })
+          sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined })
 
           // Guard against ghost messages: if the client disconnected (Stop button
           // or navigation) before the agent finished, isStreamClosed() is already
@@ -967,6 +966,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     }) // end runWithGuardrailContext
 
     stopHeartbeat()
+    // Cast: assigned inside the stream callback, so TS narrows it to null here.
+    const pendingFollowUps = followUpsPromise as Promise<string[]> | null
+    if (pendingFollowUps && !isStreamClosed()) {
+      const suggestedFollowUps = await pendingFollowUps
+      if (suggestedFollowUps.length > 0) sendEvent('follow_ups', { suggestedFollowUps, conversationId })
+    }
     closeStream()
   } catch (err) {
     stopHeartbeat()

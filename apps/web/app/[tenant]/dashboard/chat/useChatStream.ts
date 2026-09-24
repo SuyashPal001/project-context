@@ -288,6 +288,17 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             });
         }, [queryClient, activeToolCalls, handleToolDone]),
 
+        onFollowUps: useCallback((suggestions: string[], messageId: string) => {
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
+                if (!old) return old;
+                const idx = old.data.findIndex(m => m.id === messageId);
+                if (idx < 0) return old;
+                const data = [...old.data];
+                data[idx] = { ...data[idx], suggestedFollowUps: suggestions };
+                return { ...old, data };
+            });
+        }, [queryClient]),
+
         onDone: useCallback((fullText: string, messageId: string, _convId?: string, planResult?: unknown, artifactRefRaw?: unknown, citationsRaw?: unknown, suggestedFollowUpsRaw?: unknown, attachmentsRaw?: unknown) => {
             emitStreamEvent('done');
             if (artifactToolActiveRef.current) {
