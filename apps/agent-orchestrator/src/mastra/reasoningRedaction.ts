@@ -35,6 +35,23 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/\btool[- ]?call(s|ed|ing)?\b/gi, 'step'],
   [/\bworking memory\b/gi, 'notes'],
   [/\brequestContext\b/gi, 'the current context'],
+  [/\bupdate_?working_?memory\b/gi, 'updating notes'],
+  [/\bcheck[-_]credit[-_]plan\b/gi, 'checking your credits'],
+  [/\bgenerate[-_]images?\b/gi, 'creating the image'],
+  [/\bgenerate[-_]videos?\b/gi, 'creating the video'],
+  [/\bgenerate[-_]narration\b/gi, 'creating the voiceover'],
+  [/\bgenerate[-_]song\b/gi, 'creating the music'],
+  [/\bedit[-_]image\b/gi, 'editing the image'],
+  [/\blipsync\b/gi, 'syncing the lips'],
+  [/\bassemble[-_]clips\b/gi, 'assembling the clips'],
+  [/\bmux[-_]beat[-_]audio\b/gi, 'adding the audio'],
+  [/\btrim[-_]clip\b/gi, 'trimming the clip'],
+  [/\bstretch[-_]clip\b/gi, 'adjusting the clip'],
+  [/\boverlay[-_]text\b/gi, 'adding the text'],
+  [/\btranscribe[-_]audio\b/gi, 'transcribing the audio'],
+  [/\bcomposite[-_]end[-_]card\b/gi, 'adding the end card'],
+  [/\bburn[-_]captions\b/gi, 'adding captions'],
+  [/\bmix[-_]music[-_]bed\b/gi, 'mixing the music'],
 ]
 
 export function redactReasoningText(text: string): string {
@@ -42,5 +59,6 @@ export function redactReasoningText(text: string): string {
   for (const [pattern, replacement] of REDACTIONS) {
     out = out.replace(pattern, replacement)
   }
-  return out
+  // "the agent-director" -> "the the visual generation step" without this.
+  return out.replace(/\b(the) the\b/gi, '$1')
 }
