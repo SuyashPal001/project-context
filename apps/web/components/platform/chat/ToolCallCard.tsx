@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { ToolCallSearchResult } from './types';
 import { TYPE_STYLES, TYPE_BADGES } from '@/components/platform/canvas/assetTypeStyles';
 
@@ -256,6 +256,48 @@ function domainColor(domain: string): string {
   return DOMAIN_PALETTE[Math.abs(h) % DOMAIN_PALETTE.length];
 }
 
+// The vendors report no progress: a generation is one request that returns the
+// finished file. So the bar is an estimate from typical duration, like ChatGPT's.
+// It eases toward 95% and holds there until the real result replaces the
+// skeleton, so it never claims done early and never goes backwards.
+const EXPECTED_MS = { image: 22_000, audio: 35_000, video: 90_000 } as const;
+
+export function estimatedProgress(elapsedMs: number, expectedMs: number): number {
+  if (elapsedMs <= 0) return 0;
+  // ~86% at the expected time, then a slow crawl toward the 95% cap.
+  return Math.min(95, Math.floor(95 * (1 - Math.exp((-2 * elapsedMs) / expectedMs))));
+}
+
+function MediaProgressSkeleton({ type }: { type: 'image' | 'audio' | 'video' }) {
+  // Mounts when generation actually starts (after approval), so that is t=0.
+  const [startedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(startedAt);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+  const pct = estimatedProgress(now - startedAt, EXPECTED_MS[type]);
+
+  return (
+    <div className={`relative mt-1.5 w-full max-w-[240px] aspect-video rounded-xl border border-border/60 overflow-hidden flex items-center justify-center ${TYPE_STYLES[type].bg}`}>
+      <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
+        {TYPE_BADGES[type]}
+      </span>
+      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
+      <span data-testid="media-progress-pct" className="relative z-10 text-xs font-medium tabular-nums text-muted-foreground">
+        {pct}%
+      </span>
+      <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-foreground/10">
+        <div
+          data-testid="media-progress-bar"
+          className="h-full bg-[var(--shimmer-accent)] transition-[width] duration-300 ease-out"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function isMediaGenDelegateOrTool(toolName: string): boolean {
   return isImageGenTool(toolName) || isSongGenTool(toolName) || isVideoGenTool(toolName)
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
@@ -339,14 +381,7 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
         )}
       </div>
 
-      {showMediaSkeleton && mediaSkeletonType && (
-        <div className={`relative mt-1.5 w-full max-w-[240px] aspect-video rounded-xl border border-border/60 overflow-hidden flex items-center justify-center ${TYPE_STYLES[mediaSkeletonType].bg}`}>
-          <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
-            {TYPE_BADGES[mediaSkeletonType]}
-          </span>
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
-        </div>
-      )}
+      {showMediaSkeleton && mediaSkeletonType && <MediaProgressSkeleton type={mediaSkeletonType} />}
 
       {hasResults && expanded && (
         <div className="flex gap-2.5 mt-1.5 pl-0.5">
