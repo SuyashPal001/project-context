@@ -151,7 +151,7 @@ export function ApproveCost({ label, variant = 'card', resourceType, subject, pr
         <InlineRow testId="approve-cost" detail={`This costs ${costCredits} credits`} insufficient={insufficient} extra={billingLink} onApprove={onApprove} onCancel={onCancel} />
     ) : (
         <Shell label={label} preview={preview} testId="approve-cost" onApprove={insufficient ? undefined : onApprove} onCancel={onCancel}>
-            <Option number={1} label={`${label} · ~${costCredits} credits`} detail="Starts right away." onClick={onApprove} disabled={insufficient} tone="primary" />
+            <Option number={1} label="Approve — generate it" detail={`~${costCredits} credits`} onClick={onApprove} disabled={insufficient} tone="primary" />
             {onCancel && <Option number={2} label="Cancel" detail="Don't generate anything." onClick={() => onCancel()} />}
             {billingLink}
         </Shell>

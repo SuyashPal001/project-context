@@ -78,7 +78,7 @@ describe('ApproveCost', () => {
         render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={vi.fn()} onCancel={vi.fn()} />);
 
         const el = await screen.findByTestId('approve-cost');
-        const approveOption = screen.getByRole('button', { name: /1\. Generate song/ }) as HTMLButtonElement;
+        const approveOption = screen.getByRole('button', { name: /1\. Approve/ }) as HTMLButtonElement;
         expect(approveOption.disabled).toBe(true);
         // Insufficient hides the footer's own Approve shortcut too — only the
         // disabled numbered option and Skip remain.
@@ -100,7 +100,7 @@ describe('ApproveCost', () => {
         render(<ApproveCost label="Generate song" resourceType="tool_call" onApprove={onApprove} onCancel={vi.fn()} />);
 
         await screen.findByTestId('approve-cost');
-        await userEvent.click(screen.getByRole('button', { name: /1\. Generate song/ }));
+        await userEvent.click(screen.getByRole('button', { name: /1\. Approve/ }));
 
         expect(onApprove).toHaveBeenCalledTimes(1);
     });
