@@ -571,6 +571,11 @@ Your reasoning is shown live to the user as "Thinking it through." Reason as a h
       }
     }
 
+    // MCP_TOOLS_DISABLED=1 skips the mcp-server hop entirely (no client, no
+    // listTools). Nothing user-facing runs through it today, and the cold
+    // fetch sat in front of every first turn of a session.
+    if (process.env.MCP_TOOLS_DISABLED === '1') return SERVER_TOOLS
+
     // --- MCP path (backup / default when Composio is disabled or errored) ---
     const storedClient = requestContext.get('__mcpClient') as MCPClient | undefined
     const mcpClient = storedClient ?? getMCPClientForTenant(
