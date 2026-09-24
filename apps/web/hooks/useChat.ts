@@ -25,6 +25,7 @@ export interface UseChatOptions {
     onError?: (code: string, message: string) => void;
     onToolCall?: (toolName: string, toolCallId: string, args: Record<string, unknown>) => void;
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
+    onBatchItemProgress?: (toolCallId: string, index: number, total: number) => void;
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
     onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string, count?: number) => void;
     // turnMessageId is the id the assistant message for THIS turn has (or will
@@ -60,6 +61,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onError,
         onToolCall,
         onToolDone,
+        onBatchItemProgress,
         onApprovalRequired,
         onGenerationConfirmRequired,
         onClarificationRequired,
@@ -85,6 +87,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onErrorRef = useRef(onError);
     const onToolCallRef = useRef(onToolCall);
     const onToolDoneRef = useRef(onToolDone);
+    const onBatchItemProgressRef = useRef(onBatchItemProgress);
     const onApprovalRequiredRef = useRef(onApprovalRequired);
     const onGenerationConfirmRequiredRef = useRef(onGenerationConfirmRequired);
     const onClarificationRequiredRef = useRef(onClarificationRequired);
@@ -104,6 +107,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onErrorRef.current = onError;
     onToolCallRef.current = onToolCall;
     onToolDoneRef.current = onToolDone;
+    onBatchItemProgressRef.current = onBatchItemProgress;
     onApprovalRequiredRef.current = onApprovalRequired;
     onGenerationConfirmRequiredRef.current = onGenerationConfirmRequired;
     onClarificationRequiredRef.current = onClarificationRequired;
@@ -346,6 +350,16 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 payload.result as Record<string, unknown> ?? {},
                                 payload.results as Array<{ title: string; domain: string; favicon?: string }> | undefined,
                             );
+                            break;
+                        }
+
+                        case 'batch_item_progress': {
+                            const toolCallId = payload.toolCallId as string | undefined;
+                            const index = payload.index as number | undefined;
+                            const total = payload.total as number | undefined;
+                            if (toolCallId && index !== undefined && total !== undefined) {
+                                onBatchItemProgressRef.current?.(toolCallId, index, total);
+                            }
                             break;
                         }
 

@@ -136,6 +136,14 @@ export function LiveTrace({
         tc.toolName === 'generate_image' || tc.toolName === 'generate-image'
         || tc.toolName === 'edit_image' || tc.toolName === 'edit-image'
         || tc.toolName === 'generate_images' || tc.toolName === 'generate-images');
+    // The batch tools' own tool call carries live batchProgress (set by
+    // onBatchItemProgress in useChatStream.ts as each item settles) — when
+    // present, it overrides the rotating message below with a real count
+    // instead of a generic "Generating..." loop.
+    const batchProgress = activeToolCalls.find(tc =>
+        (tc.toolName === 'generate_videos' || tc.toolName === 'generate-videos'
+            || tc.toolName === 'generate_images' || tc.toolName === 'generate-images')
+        && tc.batchProgress)?.batchProgress;
 
     const THINKING_MESSAGES = [
         "Thinking...",
@@ -177,7 +185,8 @@ export function LiveTrace({
         "Almost done...",
     ];
 
-    const thinkingMessages = isPRD ? PRD_MESSAGES
+    const thinkingMessages = batchProgress ? [`Generating ${batchProgress.done} of ${batchProgress.total}...`]
+        : isPRD ? PRD_MESSAGES
         : isRoadmap ? ROADMAP_MESSAGES
         : isTasks ? TASKS_MESSAGES
         : isImageGen ? IMAGE_MESSAGES
@@ -213,7 +222,7 @@ export function LiveTrace({
             <div className="animate-in fade-in duration-300">
                 {liveElapsed >= 2 && (
                     <div className="shimmer-text text-sm text-shimmer-accent-80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
-                        Working for {liveElapsed}s{loadingTools.length > 0 ? ` · ${thinkingMessages[messageIndex]}` : ''}
+                        Working for {liveElapsed}s{loadingTools.length > 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
                     </div>
                 )}
                 <ReasoningRow text={reasoningText} />

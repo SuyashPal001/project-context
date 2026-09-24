@@ -59,6 +59,27 @@ describe('generateImages tool', () => {
     expect(spendCredits).not.toHaveBeenCalled()
   })
 
+  it('emits batch_item_progress per item as each settles, not just at the end', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ fileId: 'i0', name: 'a.png', type: 'image/png', size: 3 })
+      .mockResolvedValueOnce({ fileId: 'i1', name: 'b.png', type: 'image/png', size: 3 })
+    const sendEvent = vi.fn()
+    const requestContext = new RequestContext()
+    for (const [k, v] of Object.entries({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok', sendEvent })) requestContext.set(k, v)
+    const ctx = { requestContext, agent: { toolCallId: 'tc-b' } } as never
+
+    await generateImages.execute!({ items: [imgItem('one'), imgItem('two')] } as never, ctx)
+
+    expect(sendEvent).toHaveBeenCalledTimes(2)
+    const calls = sendEvent.mock.calls.map((c) => c[1]).sort((a, b) => a.index - b.index)
+    expect(calls).toEqual([
+      { toolCallId: 'tc-b', index: 0, total: 2, status: 'done', fileId: 'i0' },
+      { toolCallId: 'tc-b', index: 1, total: 2, status: 'done', fileId: 'i1' },
+    ])
+    expect(sendEvent.mock.calls.every((c) => c[0] === 'batch_item_progress')).toBe(true)
+  })
+
   it('rejects an empty batch and a batch over MAX_BATCH_ITEMS', () => {
     const schema = generateImages.inputSchema as unknown as { safeParse: (v: unknown) => { success: boolean } }
     expect(schema.safeParse({ items: [] }).success).toBe(false)

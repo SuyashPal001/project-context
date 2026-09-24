@@ -11,11 +11,19 @@ import { useChatStream } from './useChatStream';
 const chatMock = vi.hoisted(() => ({
     sendMessage: vi.fn<(...args: unknown[]) => Promise<void>>(),
     cancel: vi.fn(),
-    lastOptions: undefined as undefined | { onGenerationConfirmRequired?: (...args: unknown[]) => void },
+    lastOptions: undefined as undefined | {
+        onGenerationConfirmRequired?: (...args: unknown[]) => void;
+        onToolCall?: (...args: unknown[]) => void;
+        onBatchItemProgress?: (...args: unknown[]) => void;
+    },
 }));
 
 vi.mock('@/hooks/useChat', () => ({
-    useChat: (options: { onGenerationConfirmRequired?: (...args: unknown[]) => void }) => {
+    useChat: (options: {
+        onGenerationConfirmRequired?: (...args: unknown[]) => void;
+        onToolCall?: (...args: unknown[]) => void;
+        onBatchItemProgress?: (...args: unknown[]) => void;
+    }) => {
         chatMock.lastOptions = options;
         return {
             sendMessage: chatMock.sendMessage,
@@ -242,5 +250,48 @@ describe('useChatStream generation confirm', () => {
             chatMock.lastOptions!.onGenerationConfirmRequired!('conf-2', 'image_generation', 'gemini-3-pro-image-preview', 'Generate image');
         });
         expect(pendingRequest(client)).not.toHaveProperty('count');
+    });
+});
+
+describe('useChatStream batch item progress', () => {
+    function setup() {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        );
+        return renderHook(() => useChatStream({
+            conversationId: 'conversation-1',
+            conversationIdRef: { current: 'conversation-1' },
+            agentId: 'agent-1',
+            selectedConversation: undefined,
+            messages: [],
+            handleCanvasUpdate: vi.fn(),
+            openCanvas: vi.fn(),
+        }), { wrapper });
+    }
+
+    it('counts distinct settled items, not the highest index seen, when items arrive out of order', () => {
+        const { result } = setup();
+        act(() => {
+            chatMock.lastOptions!.onToolCall!('generate_videos', 'tc-1', {});
+        });
+        // Item 2 (of 0,1,2) settles first — Promise.allSettled doesn't
+        // preserve completion order, so a naive `index + 1` would show
+        // "3 of 3" here even though only one item has actually finished.
+        act(() => {
+            chatMock.lastOptions!.onBatchItemProgress!('tc-1', 2, 3);
+        });
+        expect(result.current.activeToolCalls.get('tc-1')?.batchProgress).toEqual({ done: 1, total: 3 });
+
+        act(() => {
+            chatMock.lastOptions!.onBatchItemProgress!('tc-1', 0, 3);
+        });
+        expect(result.current.activeToolCalls.get('tc-1')?.batchProgress).toEqual({ done: 2, total: 3 });
+
+        // A duplicate event for an already-seen index must not double-count.
+        act(() => {
+            chatMock.lastOptions!.onBatchItemProgress!('tc-1', 2, 3);
+        });
+        expect(result.current.activeToolCalls.get('tc-1')?.batchProgress).toEqual({ done: 2, total: 3 });
     });
 });

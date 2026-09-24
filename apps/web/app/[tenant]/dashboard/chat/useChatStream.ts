@@ -197,6 +197,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // the setCompletedToolCalls update, leaving onDone reading the stale
     // (pre-append) array and building a trace with an empty toolCalls list.
     const completedToolCallsRef = useRef<CompletedToolCall[]>([]);
+    // Items settle out of order (Promise.allSettled resolves whichever
+    // finishes first) — index alone isn't a monotonic "done count", so this
+    // tracks which indices have actually been seen per batch toolCallId.
+    const batchSeenIndicesRef = useRef<Map<string, Set<number>>>(new Map());
     // Extended-thinking trace for the live "thinking it through" row — never part of
     // the persisted message, reset per turn in sendMessage/onDone below.
     const [reasoningText, setReasoningText] = useState('');
@@ -448,6 +452,26 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 }, i * DELAY);
             }
         }, [handleToolDone, handleCanvasUpdate]),
+
+        // Fires mid-flight, well before the batch tool's own tool_done — the
+        // matching activeToolCalls entry from onToolCall above is still
+        // loading, so this only ever updates it in place, never creates one.
+        onBatchItemProgress: useCallback((toolCallId: string, index: number, total: number) => {
+            let seen = batchSeenIndicesRef.current.get(toolCallId);
+            if (!seen) {
+                seen = new Set<number>();
+                batchSeenIndicesRef.current.set(toolCallId, seen);
+            }
+            seen.add(index);
+            const done = seen.size;
+            setActiveToolCalls(prev => {
+                const existing = prev.get(toolCallId);
+                if (!existing) return prev;
+                const next = new Map(prev);
+                next.set(toolCallId, { ...existing, batchProgress: { done, total } });
+                return next;
+            });
+        }, []),
 
         onApprovalRequired: useCallback((approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => {
             emitStreamEvent('approval_request');

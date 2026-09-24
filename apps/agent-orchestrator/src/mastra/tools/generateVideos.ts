@@ -4,7 +4,7 @@ import {
   generateVideoItem, videoItemSchema, videoOutputSchema, VIDEO_MODEL, type VideoItemInput,
 } from './generateVideo.js'
 import { shouldRequireApproval } from './generationApproval.js'
-import { MAX_BATCH_ITEMS, runBatch, type MediaExecContext } from './batchRunner.js'
+import { MAX_BATCH_ITEMS, runBatch, batchProgressEmitter, type MediaExecContext } from './batchRunner.js'
 
 export const generateVideos = createTool({
   id: 'generate-videos',
@@ -19,7 +19,12 @@ export const generateVideos = createTool({
     shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {
     const { items } = inputData as { items: VideoItemInput[] }
-    return runBatch(items, (item, index) =>
-      generateVideoItem(item, execContext as unknown as MediaExecContext, index))
+    const sendEvent = execContext?.requestContext?.get('sendEvent') as ((event: string, data: object) => void) | undefined
+    const toolCallId = (execContext as unknown as MediaExecContext)?.agent?.toolCallId
+    return runBatch(
+      items,
+      (item, index) => generateVideoItem(item, execContext as unknown as MediaExecContext, index),
+      batchProgressEmitter(sendEvent, toolCallId),
+    )
   },
 })

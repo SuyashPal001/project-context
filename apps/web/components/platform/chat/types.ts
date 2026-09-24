@@ -11,6 +11,8 @@ export interface ToolCall {
     error?: string;
     isLoading?: boolean;
     durationMs?: number;
+    /** Live per-item progress for a batch generation call (generate_videos/generate_images) — set as batch_item_progress SSE events arrive, before the tool call itself resolves. */
+    batchProgress?: { done: number; total: number };
 }
 
 export interface ApprovalRequest {

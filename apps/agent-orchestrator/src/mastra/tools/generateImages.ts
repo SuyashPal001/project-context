@@ -4,7 +4,7 @@ import {
   generateImageItem, imageItemSchema, imageOutputSchema, IMAGE_MODEL, type ImageItemInput,
 } from './generateImage.js'
 import { shouldRequireApproval } from './generationApproval.js'
-import { MAX_BATCH_ITEMS, runBatch, type MediaExecContext } from './batchRunner.js'
+import { MAX_BATCH_ITEMS, runBatch, batchProgressEmitter, type MediaExecContext } from './batchRunner.js'
 
 export const generateImages = createTool({
   id: 'generate-images',
@@ -19,7 +19,12 @@ export const generateImages = createTool({
     shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
   execute: async (inputData, execContext) => {
     const { items } = inputData as { items: ImageItemInput[] }
-    return runBatch(items, (item, index) =>
-      generateImageItem(item, execContext as unknown as MediaExecContext, index))
+    const sendEvent = execContext?.requestContext?.get('sendEvent') as ((event: string, data: object) => void) | undefined
+    const toolCallId = (execContext as unknown as MediaExecContext)?.agent?.toolCallId
+    return runBatch(
+      items,
+      (item, index) => generateImageItem(item, execContext as unknown as MediaExecContext, index),
+      batchProgressEmitter(sendEvent, toolCallId),
+    )
   },
 })

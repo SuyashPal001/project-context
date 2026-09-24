@@ -189,7 +189,7 @@ describe('creative library', () => {
         } as Response);
         const { onSelect } = renderLibrary('audio');
         fireEvent.change(screen.getByRole('combobox', { name: 'Voice language' }), { target: { value: 'hi' } });
-        await screen.findByText('Cathy · Coworker');
+        await screen.findByText('Coworker');
         fireEvent.click(screen.getByRole('button', { name: 'Select' }));
         expect(onSelect).toHaveBeenCalledWith({ kind: 'voice', id: 'cathy-id', name: 'Cathy', tagline: 'Coworker', language: 'hi', languageLabel: 'Hindi' });
         expect(screen.getAllByText('Hindi').length).toBeGreaterThan(0);

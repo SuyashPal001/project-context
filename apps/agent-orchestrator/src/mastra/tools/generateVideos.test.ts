@@ -92,6 +92,27 @@ describe('generateVideos tool', () => {
     expect(schema.safeParse({ items: [item('1'), item('2'), item('3'), item('4')] }).success).toBe(true)
   })
 
+  it('emits batch_item_progress per item as each settles, not just at the end', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ fileId: 'f0', name: 'a.mp4', type: 'video/mp4', size: 3 })
+      .mockResolvedValueOnce({ fileId: 'f1', name: 'b.mp4', type: 'video/mp4', size: 3 })
+    const sendEvent = vi.fn()
+    const requestContext = new RequestContext()
+    for (const [k, v] of Object.entries({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok', sendEvent })) requestContext.set(k, v)
+    const ctx = { requestContext, agent: { toolCallId: 'tc-b' } } as never
+
+    await generateVideos.execute!({ items: [item('one'), item('two')] } as never, ctx)
+
+    expect(sendEvent).toHaveBeenCalledTimes(2)
+    const calls = sendEvent.mock.calls.map((c) => c[1]).sort((a, b) => a.index - b.index)
+    expect(calls).toEqual([
+      { toolCallId: 'tc-b', index: 0, total: 2, status: 'done', fileId: 'f0' },
+      { toolCallId: 'tc-b', index: 1, total: 2, status: 'done', fileId: 'f1' },
+    ])
+    expect(sendEvent.mock.calls.every((c) => c[0] === 'batch_item_progress')).toBe(true)
+  })
+
   it('requireApproval delegates to shouldRequireApproval with video_generation and the video model', async () => {
     shouldRequireApproval.mockResolvedValue(true)
     const ctx = { requestContext: {} }

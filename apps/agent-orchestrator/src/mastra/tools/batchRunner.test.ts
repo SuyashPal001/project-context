@@ -40,4 +40,28 @@ describe('runBatch', () => {
     })
     expect(out).toMatchObject({ succeeded: 1, failed: 2 })
   })
+
+  it('fires onItemSettled as each item finishes, not just once at the end', async () => {
+    const seen: Array<{ index: number; total: number; fileId?: unknown; refused?: unknown }> = []
+    const delays = [50, 0, 20]
+    const out = await runBatch(
+      [0, 1, 2],
+      async (_item, index) => {
+        if (index === 1) throw new Error('boom')
+        await new Promise((r) => setTimeout(r, delays[index]))
+        return { fileId: `f${index}` }
+      },
+      (index, total, item) => { seen.push({ index, total, fileId: item.fileId, refused: item.refused }) },
+    )
+    // Fastest-settling item first (1: throws immediately, then 2: 20ms, then
+    // 0: 50ms) proves the callback fires per-item as it completes, not
+    // batched until the whole call returns.
+    expect(seen.map((s) => s.index)).toEqual([1, 2, 0])
+    expect(seen).toEqual(expect.arrayContaining([
+      { index: 0, total: 3, fileId: 'f0', refused: undefined },
+      { index: 1, total: 3, fileId: undefined, refused: true },
+      { index: 2, total: 3, fileId: 'f2', refused: undefined },
+    ]))
+    expect(out.results).toHaveLength(3)
+  })
 })
