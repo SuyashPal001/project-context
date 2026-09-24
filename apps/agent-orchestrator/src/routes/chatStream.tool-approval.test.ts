@@ -240,6 +240,67 @@ describe('runChatStream — tool-call-approval round trip', () => {
     expect(approveToolCall).not.toHaveBeenCalled()
   })
 
+  it('plain cancel (no reason, nothing generated): replies instantly, then finishes the declined run in the background', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-ic', args: { prompt: 'x', aspectRatio: '16:9' } } }],
+      'run-ic',
+    ))
+    let releaseDecline!: () => void
+    declineToolCall.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseDecline = () => resolve(fakeStream([{ type: 'finish', payload: { output: { usage: {} } } }], 'run-ic'))
+    }))
+
+    const sendEvent = vi.fn()
+    const closeStream = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent, closeStream, message: 'generate an image of a tvc character', displayMessage: 'generate an image of a tvc character' }))
+
+    await vi.waitFor(() =>
+      expect(sendEvent).toHaveBeenCalledWith('generation_confirm_request', expect.objectContaining({ confirmationId: 'tc-ic' }))
+    )
+    pendingToolApprovals.get('tc-ic')?.resolve({ confirmed: false })
+
+    const notice = 'Cancelled: tvc character image (16:9). Nothing was generated. Want to change anything and try again?'
+    // The user has their reply and `done` while the declined run is still unresolved.
+    await vi.waitFor(() => expect(declineToolCall).toHaveBeenCalled())
+    expect(sendEvent).toHaveBeenCalledWith('delta', expect.objectContaining({ text: notice }))
+    expect(sendEvent).toHaveBeenCalledWith('done', expect.objectContaining({ text: notice }))
+    expect(sendEvent.mock.calls.find(([e]) => e === 'done')?.[1]).not.toHaveProperty('suggestedFollowUps')
+    expect(closeStream).toHaveBeenCalled()
+    expect(persistence.saveAssistantMessage).toHaveBeenCalledTimes(1)
+    expect(declineToolCall.mock.calls[0][0].reason).toContain(notice)
+
+    releaseDecline()
+    await runPromise
+    // The background finish must not persist a second copy of the turn.
+    expect(persistence.saveAssistantMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancel after an approved generation in the same turn is mid-flow: no instant reply', async () => {
+    streamMock.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate-image', toolCallId: 'tc-m1', args: { prompt: 'x' } } }],
+      'run-m',
+    ))
+    approveToolCall.mockResolvedValueOnce(fakeStream(
+      [{ type: 'tool-call-approval', payload: { toolName: 'generate_videos', toolCallId: 'tc-m2', args: { prompt: 'y' } } }],
+      'run-m',
+    ))
+    declineToolCall.mockResolvedValueOnce(fakeStream(
+      [{ type: 'finish', payload: { output: { usage: {} } } }],
+      'run-m',
+    ))
+
+    const sendEvent = vi.fn()
+    const runPromise = runChatStream(baseOpts({ sendEvent }))
+    await vi.waitFor(() => expect(pendingToolApprovals.get('tc-m1')).toBeTruthy())
+    pendingToolApprovals.get('tc-m1')?.resolve({ confirmed: true })
+    await vi.waitFor(() => expect(pendingToolApprovals.get('tc-m2')).toBeTruthy())
+    pendingToolApprovals.get('tc-m2')?.resolve({ confirmed: false })
+    await runPromise
+
+    expect(sendEvent).not.toHaveBeenCalledWith('delta', expect.objectContaining({ text: expect.stringContaining('Nothing was generated') }))
+    expect(declineToolCall.mock.calls[0][0].reason).not.toContain('already been shown')
+  })
+
   it('includes the item count on generation_confirm_request for a batch tool', async () => {
     streamMock.mockResolvedValueOnce(fakeStream(
       [{ type: 'tool-call-approval', payload: { toolName: 'generate_videos', toolCallId: 'tc-b1', args: { items: [{}, {}, {}] } } }],

@@ -26,6 +26,7 @@ import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConve
 import { generateText } from 'ai'
 import { liteModel } from '../mastra/model.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
+import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
   const prompt = `Based on this conversation turn, generate exactly 3 short, natural follow-up questions the user might want to ask next.
@@ -300,6 +301,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
   const pendingAttachments: AttachmentPayload[] = []
   const SAVE_TOOL_NAMES = new Set(['saveprd', 'saveplan', 'savetasks', 'save-prd', 'save-plan', 'save-tasks', 'rendercanvas', 'render-canvas', 'render_canvas', 'generate-image', 'edit-image', 'generate-song', 'generate-video', 'generate-narration', 'lipsync', 'assemble-clips', 'mux-beat-audio', 'composite-end-card', 'burn-captions', 'overlay-text', 'stretch-clip', 'mix-music-bed', 'trim-clip', 'generate-videos', 'generate-images'])
 
+  // Set once a cancelled card has been answered instantly (see cancelNotice.ts):
+  // the user already has `done`, the SSE stream is closed, and the loop keeps
+  // running only to let the declined Mastra run finish. Everything user-facing
+  // (events, persistence, chips, metrics) is skipped from then on.
+  let backgroundDecline = false
+  // Anything generated (or started, or approved) earlier in this turn means a
+  // later cancel is mid-flow, so the instant "Nothing was generated" reply
+  // would be false — Olmo answers instead. Counted from several signals because
+  // no single one covers every tool: generation_started (5 tools emit it), an
+  // approved card, and gated tool results, direct or nested inside a delegate.
+  let generationActivity = 0
+  const isGatedTool = (name: unknown): boolean => typeof name === 'string' && name in GENERATION_APPROVAL_METADATA
+  let backgroundAutoDeclines = 0
+  let releaseBackgroundDecline: () => void = () => {}
+
   const flushMetrics = (): void => {
     if (pendingMetrics) { fireMetrics(pendingMetrics); pendingMetrics = null }
     if (pendingEval) { fireAutoEval(pendingEval); pendingEval = null }
@@ -324,7 +340,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     requestContext.set('tenantId', tenantId)
     requestContext.set('agentId', agentId)
     requestContext.set('userId', internalUserId)
-    requestContext.set('sendEvent', sendEvent)
+    requestContext.set('sendEvent', (event: string, data: object) => {
+      if (event === 'generation_started') generationActivity++
+      sendEvent(event, data)
+    })
     requestContext.set('sessionId', sessionId)
     requestContext.set('conversationId', conversationId)
     requestContext.set('idToken', idToken)
@@ -507,6 +526,33 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     let reasoningStartMs: number | null = null
     let reasoningLastMs: number | null = null
 
+    // A cancel answered instantly on this thread may still be finishing its
+    // declined run in the background. Wait for it (capped) so two runs never
+    // write to the same thread's memory at once. Everything above is prep that
+    // is safe to overlap.
+    if (conversationId) {
+      const waited = await waitForBackgroundDecline(conversationId)
+      if (waited !== 'none') console.log(`[sse:${sessionId}] waited for background decline on thread: ${waited}`)
+    }
+
+    // Persists the user message and this turn's assistant message. Shared by the
+    // normal finish path and the instant-cancel path.
+    const saveTurn = (): void => {
+      const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
+      saveUserMessage(idToken, conversationId, displayMessage, atts, skillsUsed)
+      // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
+      // turn that's too fast/toolless to show a summary live doesn't get one
+      // materialize after a reload either.
+      const elapsedSec = Math.max(0, Math.floor((Date.now() - startTime) / 1000))
+      const reasoningElapsedSec = reasoningStartMs !== null && reasoningLastMs !== null
+        ? Math.max(1, Math.round((reasoningLastMs - reasoningStartMs) / 1000))
+        : undefined
+      const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
+        ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
+        : null
+      saveAssistantMessage(idToken, conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
+    }
+
     await runWithGuardrailContext({ tenantId, conversationId }, async () => {
       let currentStream: any = await (activeAgent as any).stream(mastraMessage, {
         memory: {
@@ -522,10 +568,15 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
     turnLoop: while (true) {
     for await (const part of currentStream.fullStream as AsyncIterable<any>) {
-      if (isStreamClosed()) break turnLoop
+      if (isStreamClosed() && !backgroundDecline) break turnLoop
 
       // TEMP INSTRUMENTATION — task 8 delegate approval test
       console.log(`[task8:${sessionId}] +${Date.now() - startTime}ms chunk type=${part.type}${part.payload?.toolName ? ` toolName=${part.payload.toolName}` : ''}${part.payload?.toolCallId ? ` toolCallId=${part.payload.toolCallId}` : ''}${part.payload?.agentId ? ` agentId=${part.payload.agentId}` : ''}`)
+
+      if (part.type === 'tool-output') {
+        const nested = part.payload?.output
+        if (nested?.type === 'tool-result' && isGatedTool(nested.payload?.toolName)) generationActivity++
+      }
 
       switch (part.type) {
         case 'text-delta': {
@@ -597,6 +648,20 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const args = (p.args ?? {}) as Record<string, unknown>
           const runId = (currentStream.runId ?? '') as string
           const meta = GENERATION_APPROVAL_METADATA[toolName]
+
+          // The user already cancelled and got their reply; the background run
+          // tried another gated call anyway. Decline it without a card. Capped so
+          // a model that keeps retrying cannot loop forever — past the cap the
+          // run is left suspended (the watchdog's 24h sweep declines it).
+          if (backgroundDecline) {
+            if (++backgroundAutoDeclines > 3) {
+              console.warn(`[sse:${sessionId}] background decline: gave up after ${backgroundAutoDeclines - 1} auto-declines`)
+              break turnLoop
+            }
+            console.log(`[sse:${sessionId}] background decline: auto-declining ${toolName} toolCallId=${toolCallId}`)
+            currentStream = await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: 'The user already cancelled. Do not call any tool. Reply with one short sentence.', requestContext, ...olmoOptions })
+            continue turnLoop
+          }
 
           // A tool paused for approval that this migration doesn't know how
           // to render a card for (shouldn't happen — only the 8 gated tools
@@ -693,10 +758,31 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             }
           }
 
+          // Instant cancel: nothing else was generated this turn and the user
+          // gave no instruction with the cancel, so there is nothing for a model
+          // to decide. Reply now, close the stream, and let the declined run
+          // finish in the background. A cancel with a reason, or one mid-flow
+          // after earlier generations, still gets Olmo's own reply.
+          let reason = declineReason ?? DECLINED_BY_USER_REASON
+          if (confirmed) generationActivity++
+          if (!confirmed && !declineReason && pendingAttachments.length === 0 && generationActivity === 0 && !isStreamClosed()) {
+            const notice = buildCancelNotice(toolName, args, displayMessage)
+            const out = appendText('parent', notice)
+            if (out) sendEvent('delta', { text: out, conversationId })
+            sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined })
+            saveTurn()
+            backgroundDecline = true
+            stopHeartbeat()
+            closeStream()
+            if (conversationId) trackBackgroundDecline(conversationId, new Promise<void>((resolve) => { releaseBackgroundDecline = resolve }))
+            reason = backgroundDeclineReason(notice)
+            console.log(`[sse:${sessionId}] instant cancel sent at +${Date.now() - startTime}ms; finishing declined run in background`)
+          }
+
           console.log(`[task8:${sessionId}] BEFORE ${confirmed ? 'approveToolCall' : 'declineToolCall'} runId=${runId} toolCallId=${toolCallId} toolName=${toolName} args=${JSON.stringify(args).slice(0, 400)} olmoOptionsKeys=${Object.keys(olmoOptions).join(',')}`)
           currentStream = confirmed
             ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, ...olmoOptions })
-            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: declineReason ?? DECLINED_BY_USER_REASON, requestContext, ...olmoOptions })
+            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason, requestContext, ...olmoOptions })
           console.log(`[task8:${sessionId}] AFTER ${confirmed ? 'approve' : 'decline'}ToolCall newRunId=${currentStream?.runId ?? 'none'} hasFullStream=${!!currentStream?.fullStream}`)
           continue turnLoop
         }
@@ -707,6 +793,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const resolvedToolName = rawToolName || toolCallNames.get(toolCallId) || ''
           toolCallNames.delete(toolCallId)
           const result = (p.result ?? p.output ?? {}) as Record<string, unknown>
+          if (isGatedTool(resolvedToolName)) generationActivity++
           console.log(`[sse:${sessionId}] tool-result toolName=${resolvedToolName} resultKeys=${Object.keys(result).join(',')}`)
           if (!isClientHiddenTool(resolvedToolName)) sendEvent('tool_done', { toolCallId, toolName: resolvedToolName, result, conversationId })
           onToolCallEnd()
@@ -777,6 +864,10 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             .catch(err => console.error(`[credits:${sessionId}] debit failed:`, (err as Error).message))
           recordUsage({ tenantId, actorId: agentId, inputTokens, outputTokens })   // the row chat never wrote
           console.log(`[tokens] model=${modelName} input=${inputTokens} output=${outputTokens} total=${totalTokens} cost=$${costUsd.toFixed(6)} fullTextLen=${fullText.length}`)
+          if (backgroundDecline) {
+            console.log(`[sse:${sessionId}] background decline finished at +${Date.now() - startTime}ms`)
+            break
+          }
 
           const responseTimeMs = Date.now() - startTime
           const cached = lastRagResult.get(tenantId)
@@ -828,19 +919,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // out-of-order message into the conversation after the user has moved on.
           if (isStreamClosed()) break
 
-          const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-          saveUserMessage(idToken, conversationId, displayMessage, atts, skillsUsed)
-          // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
-          // turn that's too fast/toolless to show a summary live doesn't get one
-          // materialize after a reload either.
-          const elapsedSec = Math.max(0, Math.floor(responseTimeMs / 1000))
-          const reasoningElapsedSec = reasoningStartMs !== null && reasoningLastMs !== null
-            ? Math.max(1, Math.round((reasoningLastMs - reasoningStartMs) / 1000))
-            : undefined
-          const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
-            ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
-            : null
-          saveAssistantMessage(idToken, conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
+          saveTurn()
           if (pendingArtifactRef) fireArtifactNotification(tenantId, internalUserId, pendingArtifactRef)
 
           // FREE-AI Sutra 1 — non-blocking, runs after client already received `done`
@@ -865,13 +944,19 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     closeStream()
   } catch (err) {
     stopHeartbeat()
-    console.error(`[sse:${sessionId}] fatal error:`, (err as Error).message)
-    sendEvent('error', { message: 'Internal server error', conversationId })
-    // Save the user message even on error so attachments aren't lost.
-    // The finish path is never reached when the turn throws, so this is the only
-    // opportunity to durably persist the user turn.
-    const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-    saveUserMessage(idToken, conversationId, message, atts, skillsUsed)
+    console.error(`[sse:${sessionId}] fatal error${backgroundDecline ? ' (background decline)' : ''}:`, (err as Error).message)
+    // After an instant cancel the user already has their reply and both
+    // messages are saved; nothing more to tell them or persist.
+    if (!backgroundDecline) {
+      sendEvent('error', { message: 'Internal server error', conversationId })
+      // Save the user message even on error so attachments aren't lost.
+      // The finish path is never reached when the turn throws, so this is the only
+      // opportunity to durably persist the user turn.
+      const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
+      saveUserMessage(idToken, conversationId, message, atts, skillsUsed)
+    }
     closeStream()
+  } finally {
+    releaseBackgroundDecline()
   }
 }
