@@ -21,6 +21,7 @@ import { transcribeAudio } from '../tools/transcribeAudio.js'
 import { compositeEndCard } from '../tools/compositeEndCard.js'
 import { burnCaptions } from '../tools/burnCaptions.js'
 import { overlayText } from '../tools/overlayText.js'
+import { stretchClip } from '../tools/stretchClip.js'
 import { mixMusicBed } from '../tools/mixMusicBed.js'
 import { generateSong } from '../tools/generateSong.js'
 import { trimClip } from '../tools/trimClip.js'
@@ -183,8 +184,9 @@ When Olmo delegates a short-drama-stitch ad build (the user has uploaded existin
 - Delivery: present the final assembled, captioned, scored cut as ONE continuous ad built from the user's own footage. There is no board-of-stills gate in this skill — nothing was generated for Olmo or the user to visually approve, since the footage was already real before this skill ever touched it.`
 
   const OVERLAY_TEXT_SECTION = `\n\n## On-screen text overlays\nWhen Olmo asks for hook copy, a title, or any on-screen text on a finished video, call overlay_text (videoFileId plus overlays with text, startSeconds/endSeconds, position top|center|bottom) as a post step — never ask generate_image or generate_video to render the words. If it returns refusalReason "SUBTITLES_FILTER_UNAVAILABLE", tell Olmo the host cannot burn text overlays.`
+  const STRETCH_CLIP_SECTION = `\n\n## Lengthening a clip\nWhen Olmo asks to fill a longer runtime from an existing short clip, call stretch_clip (videoFileId, targetDurationSeconds, mode). Use loop for atmospheric or repeatable footage (audio repeats too, hard cut at the seam), slow only for a modest lengthening (refused beyond 2x the original), hold to freeze the last frame (audio plays once then goes silent). It only lengthens — use trim_clip to shorten. If it refuses with STRETCH_TOO_LARGE, tell Olmo which mode limit was hit rather than retrying the same request.`
 
-  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION
+  const base = (override || defaultInstructions) + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
@@ -199,7 +201,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -218,6 +220,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip },
   errorProcessors: [streamErrorRetry()],
 })

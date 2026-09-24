@@ -40,10 +40,37 @@ describe('computeCreditPlan', () => {
     expect(r.fullCostCredits).toBe(48)
     expect(r.shortfallCredits).toBe(18)
     const labels = r.options.map((o) => o.label)
-    expect(labels).toEqual(['Hero clip only', 'Fewer clips', 'Top up credits'])
+    expect(labels).toEqual(['Hero clip only', 'Fewer clips', 'Loop and stretch', 'Top up credits'])
     expect(r.options[0].costCredits).toBe(12) // 1 video + 1 image
     expect(r.options[1].costCredits).toBe(24) // 2 videos + 2 images
-    expect(r.options[2].costCredits).toBe(48)
+    expect(r.options[2].costCredits).toBe(11) // 1 video + 1 edit step
+    expect(r.options[3].costCredits).toBe(48)
+  })
+
+  it('prices loop-and-stretch with the non-visual steps included and skips image-only plans', async () => {
+    const r = await computeCreditPlan(
+      [{ kind: 'video', count: 4 }, { kind: 'narration', count: 1 }, { kind: 'music', count: 1 }],
+      deps(20n * CREDIT),
+    )
+    // 1 video 10 + narration 1 + music 3 + 1 edit 1 = 15
+    expect(r.options.find((o) => o.label === 'Loop and stretch')?.costCredits).toBe(15)
+    const img = await computeCreditPlan([{ kind: 'image', count: 4 }], deps(20n * CREDIT))
+    expect(img.options.map((o) => o.label)).not.toContain('Loop and stretch')
+  })
+
+  it('omits loop-and-stretch when the plan has fewer than 2 generated visuals', async () => {
+    const r = await computeCreditPlan([{ kind: 'video', count: 1 }], deps(5n * CREDIT))
+    expect(r.options.map((o) => o.label)).not.toContain('Loop and stretch')
+  })
+
+  it('omits loop-and-stretch when generation plus edit does not fit the balance', async () => {
+    const r = await computeCreditPlan([{ kind: 'video', count: 4 }], deps(10n * CREDIT))
+    expect(r.options.map((o) => o.label)).not.toContain('Loop and stretch')
+  })
+
+  it('omits loop-and-stretch when the edit step has no rate', async () => {
+    const r = await computeCreditPlan([{ kind: 'video', count: 4 }], deps(30n * CREDIT, false, { edit: null }))
+    expect(r.options.map((o) => o.label)).not.toContain('Loop and stretch')
   })
 
   it('drops cheaper options that still exceed the balance but keeps top-up', async () => {
@@ -54,7 +81,7 @@ describe('computeCreditPlan', () => {
   it('does not list a duplicate option when hero and fewer cost the same', async () => {
     // 2 videos: hero = 1, fewer = ceil(2/2) = 1
     const r = await computeCreditPlan([{ kind: 'video', count: 2 }], deps(15n * CREDIT))
-    expect(r.options.map((o) => o.label)).toEqual(['Hero clip only', 'Top up credits'])
+    expect(r.options.map((o) => o.label)).toEqual(['Hero clip only', 'Loop and stretch', 'Top up credits'])
   })
 
   it('never reports a shortfall for an unlimited tenant', async () => {

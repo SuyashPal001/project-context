@@ -116,6 +116,28 @@ export async function computeCreditPlan(steps: PlanStep[], deps: CreditPlanDeps)
     'Keep the same structure but generate about half as many clips and images.',
     merged.map((s) => (isGeneratedVisual(s.kind) ? { ...s, count: Math.max(1, Math.ceil(s.count / 2)) } : s)),
   )
+  // Loop and stretch: generate one clip, then fill the runtime with the free
+  // deterministic editor. Only worth offering when the plan wanted several
+  // generated visuals, and priced as one video + one edit step on top of every non-visual step (narration, music, lipsync, other edits). Needs a video: stretch_clip cannot loop a still.
+  const visualCount = merged.filter((s) => isGeneratedVisual(s.kind)).reduce((n, s) => n + s.count, 0)
+  if (visualCount >= 2 && unit.has('video')) {
+    let editUnit = unit.get('edit') ?? null
+    if (editUnit === null) {
+      try { editUnit = await deps.priceMicro('edit') } catch { editUnit = null }
+    }
+    if (editUnit !== null) {
+      const others = cost(merged.filter((s) => !isGeneratedVisual(s.kind)))
+      const c = others + (unit.get('video') ?? 0n) + editUnit
+      if (c <= available && !seen.has(c)) {
+        seen.add(c)
+        result.options.push({
+          label: 'Loop and stretch',
+          description: 'Generate one short clip, then loop or slow it across the full runtime with the editor. Reuses the same footage instead of a unique scene per moment.',
+          costCredits: toCredits(c),
+        })
+      }
+    }
+  }
   result.options.push({
     label: 'Top up credits',
     description: 'Add credits from the billing page, then run the full plan as originally scoped.',

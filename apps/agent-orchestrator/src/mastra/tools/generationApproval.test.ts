@@ -84,6 +84,7 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'mix-music-bed', 'mix_music_bed',
         'trim-clip', 'trim_clip',
         'overlay-text', 'overlay_text',
+        'stretch-clip', 'stretch_clip',
         'save_skill',
       ].sort(),
     )
