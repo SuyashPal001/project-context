@@ -342,6 +342,19 @@ the same check. Read the relevant doc file first — a few minutes there is
 cheaper than a hand-built system that turns out to duplicate something
 already shipped.
 
+## Tool-call IDs are not safe to use raw in keys
+
+The inference gateway encodes Gemini 3.x's `thoughtSignature` into the tool-call ID
+(`gs.<base64>.<index>`, see `apps/inference-gateway/src/adapters/gemini.ts`), so a
+`toolCallId` can be several KB. Any tool that builds a charge key, job id, idempotency
+key or DB value from `toolCallId` must pass it through `stableToolCallId()`
+(`apps/agent-orchestrator/src/credits.ts`, sha256). Used raw, it overflows Postgres's
+btree limit on `credit_ledger`'s idempotency index (error 54000) and the charge throws
+*after* the vendor already generated the media, so the result is lost. This hit video
+first (`d1fdf92c`) and then `generate_image` (`c3c28517`), which had been missed. It only
+shows on thinking-model turns (e.g. Olmo calling a tool directly), so a tool that works
+through a delegate can still break when called another way.
+
 ## What NOT to do
 
 - **Don't add product features to `packages/foundation/*`.** Foundation packages are shared. Product code goes in `apps/*` or `products/*`.
