@@ -32,7 +32,11 @@ export interface ImageGenerationRequest {
   // caller (generateImage.ts's Zod schema) — this gateway function itself
   // does not re-enforce a cap, it just forwards whatever array it's given.
   sourceImages?: Array<{ base64: string; mimeType: string }>
+  // Optional output shape. Anything outside IMAGE_ASPECT_RATIOS is ignored (model default).
+  aspectRatio?: string
 }
+
+export const IMAGE_ASPECT_RATIOS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9'])
 
 export type ImageGenerationResult =
   | { imageBase64: string; mimeType: string }
@@ -61,7 +65,10 @@ export function buildGeminiImageRequest(req: ImageGenerationRequest) {
   }
   return {
     contents: [{ role: 'user', parts }],
-    generationConfig: { responseModalities: ['IMAGE'] },
+    generationConfig: {
+      responseModalities: ['IMAGE'],
+      ...(req.aspectRatio && IMAGE_ASPECT_RATIOS.has(req.aspectRatio) ? { imageConfig: { aspectRatio: req.aspectRatio } } : {}),
+    },
     safetySettings: SAFETY_SETTINGS,
   }
 }

@@ -42,7 +42,7 @@ const directorInstructions = async ({ requestContext }: { requestContext?: Reque
 
 ## Rules
 - ANY request to make, generate, create, produce, draft, mock up or show an image REQUIRES you to call the generate_image tool. Narrative replies alone ("Here is the image with X, Y, Z...") are not allowed — the UI renders nothing unless a tool actually ran. If you did not call generate_image this turn, you did not produce an image.
-- Call generate_image for a new image from a text description.
+- Call generate_image for a new image from a text description. If the delegation message names an aspectRatio (1:1, 3:4, 4:3, 9:16 or 16:9), pass exactly that value as generate_image's aspectRatio.
 - Call edit_image when the user references an existing image in this conversation (by its fileId) and wants it changed.
 - If a generation tool call was declined by the user (the tool result says the user chose to cancel, or there is simply no result because they cancelled at the approval card), that is NOT a failure and NOT a technical error. Reply in one short plain sentence that the user cancelled it — do not say it "couldn't be completed" or hedge about why — do not retry, and do not re-ask in the same turn.
 - Before claiming an image is ready, check the tool result for a fileId field. No fileId means no image exists yet, regardless of what else the result contains — never say "here's your image" or similar in that case. This applies whether you skipped the tool entirely or called it and got a refusal. For a batch call (generate_images or generate_videos) check each entry of the results list instead: only an entry with its own fileId produced media.

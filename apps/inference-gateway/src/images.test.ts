@@ -195,3 +195,15 @@ describe('buildGeminiImageRequest', () => {
     expect(body.contents[0].parts).toEqual([{ text: 'a plain image' }])
   })
 })
+
+describe('buildGeminiImageRequest aspectRatio', () => {
+  it('sets imageConfig.aspectRatio for a supported ratio', () => {
+    const body = buildGeminiImageRequest({ model: 'm', prompt: 'p', aspectRatio: '9:16' })
+    expect(body.generationConfig).toEqual({ responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '9:16' } })
+  })
+
+  it('ignores an unsupported or missing ratio', () => {
+    expect(buildGeminiImageRequest({ model: 'm', prompt: 'p', aspectRatio: '7:5' }).generationConfig).toEqual({ responseModalities: ['IMAGE'] })
+    expect(buildGeminiImageRequest({ model: 'm', prompt: 'p' }).generationConfig).toEqual({ responseModalities: ['IMAGE'] })
+  })
+})

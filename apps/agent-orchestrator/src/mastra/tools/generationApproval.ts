@@ -86,12 +86,15 @@ const STRETCH_CLIP_SUBJECT = 'ffmpeg-stretch-clip'
 // resume tool call ... because it is not suspended` — Olmo has no suspension
 // of its own to resume when the pause lives inside a delegate.
 // What the approval card shows under the title so the user sees what they are
-// paying for. Prompt text only — tool args carry no size/aspect field for images.
+// paying for: the prompt, plus the aspect ratio when the tool call set one.
 const PROMPT_PREVIEW_MAX_CHARS = 500
 const clipPrompt = (text: string): string =>
   text.length > PROMPT_PREVIEW_MAX_CHARS ? `${text.slice(0, PROMPT_PREVIEW_MAX_CHARS).trimEnd()}…` : text
-const promptPreview = (args: Record<string, unknown>): string | undefined =>
-  typeof args.prompt === 'string' && args.prompt.trim() ? clipPrompt(args.prompt.trim()) : undefined
+const promptPreview = (args: Record<string, unknown>): string | undefined => {
+  if (typeof args.prompt !== 'string' || !args.prompt.trim()) return undefined
+  const ratio = typeof args.aspectRatio === 'string' && args.aspectRatio ? `Aspect ratio: ${args.aspectRatio}\n\n` : ''
+  return `${ratio}${clipPrompt(args.prompt.trim())}`
+}
 const batchPromptPreview = (args: Record<string, unknown>): string | undefined => {
   if (!Array.isArray(args.items)) return undefined
   const prompts = args.items
