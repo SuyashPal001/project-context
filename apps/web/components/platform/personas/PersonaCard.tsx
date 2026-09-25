@@ -28,7 +28,7 @@ export function PersonaCard({ persona, isHired, href }: PersonaCardProps) {
             name={persona.name}
             headerBadge={
                 persona.isOfficial ? (
-                    <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
+                    <Badge variant="outline" className="gap-1 text-muted-foreground border-border">
                         <Pin className="h-3 w-3" /> Official
                     </Badge>
                 ) : undefined
