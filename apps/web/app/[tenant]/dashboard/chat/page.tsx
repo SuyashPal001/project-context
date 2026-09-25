@@ -6,6 +6,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { PLANS } from "@/components/platform/billing/PlanSelectorDialog";
 import { OlmoMark } from "@/components/platform/OlmoMark";
+import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
+import { getAgentTypeIcon } from "@/components/platform/agents/agentTypeIcon";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { ConversationList } from "@/components/platform/chat/ConversationList";
 import { MessageThread } from "@/components/platform/chat/MessageThread";
@@ -79,14 +81,14 @@ function ChatPage() {
     const {
         tenantSlug, conversationId, conversationIdRef, firstName,
         isChatSidebarCollapsed, toggleChatSidebar,
-        providers, activeAgents, isLoadingAgents,
+        providers, activeAgents, isLoadingAgents, draftAgent,
         isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
         isDeleteDialogOpen, setIsDeleteDialogOpen,
         agentSelectorOpen, setAgentSelectorOpen,
         activePill, setActivePill,
         createConversation, updateAgentMutation, deleteConversation,
-        handleSelectConversation, handleNewChat,
+        handleSelectConversation, handleNewChat, startNewChat,
     } = page;
 
     // Same plan lookup AccountMenu.tsx uses: `plan` off the tenant JWT claim is
@@ -595,7 +597,7 @@ function ChatPage() {
                     <ConversationList
                         selectedId={conversationId || undefined}
                         onSelect={handleSelectConversation}
-                        onNewChat={handleNewChat}
+                        onNewChat={startNewChat}
                     />
                 </div>
 
@@ -686,10 +688,24 @@ function ChatPage() {
                                 <div className="flex-1 min-h-0" />
                                 <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
                                     <div className="flex flex-col items-center gap-2 mb-8">
-                                        <div className="flex items-center gap-1.5 opacity-80">
-                                            <OlmoMark height={18} />
-                                            <span className="text-sm font-semibold tracking-tight">Olmo Creative Agent</span>
-                                        </div>
+                                        {!draftAgent || draftAgent.origin === 'built_in' ? (
+                                            <div className="flex items-center gap-1.5 opacity-80">
+                                                <OlmoMark height={18} />
+                                                <span className="text-sm font-semibold tracking-tight">Olmo Creative Agent</span>
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5 opacity-80">
+                                                <PersonaAvatar
+                                                    persona={draftAgent.persona}
+                                                    avatarUrl={draftAgent.avatarUrl}
+                                                    size={18}
+                                                    className="rounded-full h-[18px] w-[18px] shrink-0"
+                                                    iconClassName="text-foreground/50"
+                                                    icon={getAgentTypeIcon(draftAgent.type)}
+                                                />
+                                                <span className="text-sm font-semibold tracking-tight">{draftAgent.name}</span>
+                                            </div>
+                                        )}
                                         <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium">
                                             <span className="text-muted-foreground">{currentPlanName} plan</span>
                                             {nextPlan && (
@@ -712,7 +728,7 @@ function ChatPage() {
                                                 setPendingFirstMessage(message);
                                                 setPendingFirstAttachments(mergedAttachments);
                                                 setPendingCreativeBrief(creativeBriefStarted);
-                                                handleNewChat();
+                                                handleNewChat(draftAgent?.id);
                                                 // Keep the pre-conversation composer intact. A successful
                                                 // creation replaces this view; a failure remains fully editable.
                                                 return false;
@@ -721,7 +737,7 @@ function ChatPage() {
                                             onMediaClick={(t) => toast.info(`Adding ${t}...`)}
                                             isLoading={createConversation.isPending}
                                             isStreaming={false}
-                                            agentId={activeAgents[0]?.id}
+                                            agentId={draftAgent?.id}
                                             allowMode={pendingAllowMode ?? 'ask'}
                                             onAllowModeChange={setPendingAllowMode}
                                             hasSupplementalContent={creativeBriefStarted}

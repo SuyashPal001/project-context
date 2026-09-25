@@ -207,6 +207,9 @@ describe('runChatStream — tool-call-approval round trip', () => {
       runId: 'run-1',
       toolCallId: 'tc-1',
       requestContext: streamedRequestContext,
+      // Resumes carry onTitleGenerated too: a resumed run rebuilds only
+      // thread/resource from its snapshot.
+      memory: { onTitleGenerated: expect.any(Function) },
     })
     expect(declineToolCall).not.toHaveBeenCalled()
   })
@@ -237,6 +240,9 @@ describe('runChatStream — tool-call-approval round trip', () => {
       toolCallId: 'tc-2',
       reason: 'too expensive',
       requestContext: streamedRequestContext,
+      // Resumes carry onTitleGenerated too: a resumed run rebuilds only
+      // thread/resource from its snapshot.
+      memory: { onTitleGenerated: expect.any(Function) },
     })
     expect(approveToolCall).not.toHaveBeenCalled()
   })
@@ -613,6 +619,9 @@ describe('runChatStream — Olmo-only delegation options', () => {
       runId: 'run-9',
       toolCallId: 'tc-9',
       requestContext: streamOpts.requestContext,
+      // Resumes carry onTitleGenerated too: a resumed run rebuilds only
+      // thread/resource from its snapshot.
+      memory: { onTitleGenerated: expect.any(Function) },
       maxSteps: 20,
       delegation: streamOpts.delegation,
     })
@@ -626,6 +635,9 @@ describe('runChatStream — Olmo-only delegation options', () => {
       toolCallId: 'tc-9',
       reason: 'no',
       requestContext: streamOpts.requestContext,
+      // Resumes carry onTitleGenerated too: a resumed run rebuilds only
+      // thread/resource from its snapshot.
+      memory: { onTitleGenerated: expect.any(Function) },
       maxSteps: 20,
       delegation: streamOpts.delegation,
     })

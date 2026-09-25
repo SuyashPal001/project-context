@@ -64,6 +64,11 @@ export function useChatPage() {
     });
     const activeAgents = agentsData?.data?.filter(a => a.status === 'active') ?? [];
     const defaultAgent = activeAgents.find(a => a.isDefault) ?? activeAgents[0];
+    // Which employee the no-conversation composer will start a chat with.
+    // ?agent= (set by "New chat" under an employee) only picks it — unlike
+    // ?agentId=, it never creates anything until the first message is sent.
+    const draftAgentParam = searchParams.get('agent');
+    const draftAgent = activeAgents.find(a => a.id === draftAgentParam) ?? defaultAgent;
 
     const { data: conversationsData, isLoading: isLoadingConversations, isError: isErrorConversations } = useQuery<ConversationsResponse>({
         queryKey: ['conversations'],
@@ -107,7 +112,6 @@ export function useChatPage() {
         onSuccess: (res) => {
             queryClient.invalidateQueries({ queryKey: ['conversations'] });
             router.push(`/${tenantSlug}/dashboard/chat?id=${res.data.id}`);
-            toast.success('Conversation started');
         },
         onError: (err: any) => {
             const msg = err.data?.error;
@@ -211,16 +215,24 @@ export function useChatPage() {
         }
     };
 
+    // "New chat" buttons in the conversation list: open the empty composer
+    // instead of creating a conversation up front. Creating on click left an
+    // untitled "Chat with {agent}" row behind every time nothing got sent.
+    const startNewChat = (agentId?: string) => {
+        const agentParam = agentId && agentId !== defaultAgent?.id ? `?agent=${agentId}` : '';
+        router.push(`/${tenantSlug}/dashboard/chat${agentParam}`);
+    };
+
     return {
         tenantSlug, conversationId, conversationIdRef, firstName,
         isChatSidebarCollapsed, toggleChatSidebar,
-        providers, activeAgents, isLoadingAgents,
+        providers, activeAgents, isLoadingAgents, draftAgent,
         conversations, isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
         isDeleteDialogOpen, setIsDeleteDialogOpen,
         agentSelectorOpen, setAgentSelectorOpen,
         activePill, setActivePill,
         queryClient, createConversation, updateAgentMutation, deleteConversation,
-        handleSelectConversation, handleNewChat,
+        handleSelectConversation, handleNewChat, startNewChat,
     };
 }

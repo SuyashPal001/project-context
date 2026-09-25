@@ -4,7 +4,7 @@ import { z } from 'zod'
 import pg from 'pg'
 import dns from 'dns/promises'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { memoryModel } from './model.js'
+import { memoryModel, liteModel } from './model.js'
 
 // Separate pg.Pool for Mastra
 // Does NOT use our Drizzle connection
@@ -227,6 +227,23 @@ const tenantMemoryExtractor = new Extractor({
 // all threads together on first activation. Prove OM out at 'thread' scope
 // first, then graduate to 'resource' once validated — don't skip straight to
 // the experimental path.
+// Native Mastra thread titles (replaces a hand-built one-shot title call in
+// chatStream.ts). Runs in the background after the first finished response,
+// from the whole exchange so far (user message and reply), and only while the
+// thread's title is still empty. Never runs on a turn that suspends for tool
+// approval; it runs when the resumed turn finishes. Not applied to threads a
+// delegate inherits from Olmo (Mastra forces it off there).
+const TITLE_GENERATION = {
+  model: liteModel,
+  instructions: [
+    'Write a title for this chat for a sidebar list.',
+    '3 to 6 words naming what the user wants done, e.g. "Red car ad image" or "30s gym reel script".',
+    'Plain words only: no quotes, no trailing punctuation, no emoji, not a sentence.',
+    'If the user only said hello, name what the reply offered instead of "Greeting".',
+    'Use the language the user wrote in.',
+  ].join(' '),
+}
+
 export function getMastraMemory(): Memory {
   if (memory) return memory
 
@@ -235,6 +252,7 @@ export function getMastraMemory(): Memory {
     vector: getMastraVector(),
     embedder,
     options: {
+      generateTitle: TITLE_GENERATION,
       lastMessages: 20,
       semanticRecall: {
         topK: 3,
@@ -299,6 +317,7 @@ export function getOlmoMemory(): Memory {
     vector: getMastraVector(),
     embedder,
     options: {
+      generateTitle: TITLE_GENERATION,
       lastMessages: 20,
       semanticRecall: {
         topK: 3,

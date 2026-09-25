@@ -30,6 +30,8 @@ export interface UseChatOptions {
     // Follow-up suggestion chips arrive after `done` (the server no longer holds
     // `done` for them); messageId is the message `done` just settled.
     onFollowUps?: (suggestions: string[], messageId: string) => void;
+    // A new chat's generated title (Mastra generateTitle), sent after `done`.
+    onTitle?: (conversationId: string, title: string) => void;
     onApprovalRequired?: (approvalId: string, toolName: string, description: string, args: Record<string, unknown>) => void;
     onGenerationConfirmRequired?: (confirmationId: string, resourceType: string, subject: string, label: string, preview?: string, count?: number) => void;
     // turnMessageId is the id the assistant message for THIS turn has (or will
@@ -68,6 +70,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onBatchItemProgress,
         onGenerationStarted,
         onFollowUps,
+        onTitle,
         onApprovalRequired,
         onGenerationConfirmRequired,
         onClarificationRequired,
@@ -96,6 +99,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onBatchItemProgressRef = useRef(onBatchItemProgress);
     const onGenerationStartedRef = useRef(onGenerationStarted);
     const onFollowUpsRef = useRef(onFollowUps);
+    const onTitleRef = useRef(onTitle);
     const onApprovalRequiredRef = useRef(onApprovalRequired);
     const onGenerationConfirmRequiredRef = useRef(onGenerationConfirmRequired);
     const onClarificationRequiredRef = useRef(onClarificationRequired);
@@ -118,6 +122,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onBatchItemProgressRef.current = onBatchItemProgress;
     onGenerationStartedRef.current = onGenerationStarted;
     onFollowUpsRef.current = onFollowUps;
+    onTitleRef.current = onTitle;
     onApprovalRequiredRef.current = onApprovalRequired;
     onGenerationConfirmRequiredRef.current = onGenerationConfirmRequired;
     onClarificationRequiredRef.current = onClarificationRequired;
@@ -363,6 +368,13 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 payload.result as Record<string, unknown> ?? {},
                                 payload.results as Array<{ title: string; domain: string; favicon?: string }> | undefined,
                             );
+                            break;
+                        }
+
+                        case 'title': {
+                            if (typeof payload.conversationId === 'string' && typeof payload.title === 'string' && payload.title) {
+                                onTitleRef.current?.(payload.conversationId, payload.title);
+                            }
                             break;
                         }
 

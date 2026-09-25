@@ -23,8 +23,6 @@ import { lastRagResult } from '../types.js'
 import { pendingToolApprovals, sessionActiveToolApprovals } from '../types.js'
 import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/generationApproval.js'
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle } from '../persistence.js'
-import { generateText } from 'ai'
-import { liteModel } from '../mastra/model.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
 
@@ -49,14 +47,6 @@ JSON array:`
   const parsed = JSON.parse(match[0])
   if (!Array.isArray(parsed)) return []
   return parsed.filter((s: unknown) => typeof s === 'string').slice(0, 3)
-}
-
-async function generateTitle(userMessage: string): Promise<string> {
-  const result = await generateText({
-    model: liteModel,
-    prompt: `Generate a short conversation title (max 6 words, no quotes, no trailing punctuation) summarizing this user message:\n\n${userMessage.slice(0, 400)}\n\nTitle:`,
-  })
-  return result.text.trim().replace(/^["']|["']$/g, '').slice(0, 255)
 }
 
 // Shown to the model as the reason a tool call was declined. Says outright that
@@ -561,13 +551,38 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       saveAssistantMessage(idToken, conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
     }
 
+    // Settles when Mastra's background title call reports back (or is skipped),
+    // so the stream can stay open long enough to deliver the 'title' event.
+    let settleTitle: () => void = () => {}
+    const titleSettled = new Promise<void>((resolve) => { settleTitle = resolve })
+
     await runWithGuardrailContext({ tenantId, conversationId }, async () => {
+      // Mastra's native generateTitle (memory.ts) names the thread after the
+      // first finished response; this copies it onto our conversation row and
+      // renames the sidebar live. Passed again on every resume below: a resumed
+      // run rebuilds only thread/resource from its snapshot, so without it a
+      // chat whose first turn paused for approval would never get its title.
+      // Mastra only titles threads whose own title is empty, which includes
+      // older chats we already named — isFirstMessage (the client saw no title)
+      // keeps it from overwriting those.
+      const titleMemory = {
+        onTitleGenerated: (title: string) => {
+          const clean = title.trim().replace(/^["']|["']$/g, '').slice(0, 255)
+          if (isFirstMessage && conversationId && clean) {
+            saveConversationTitle(idToken, conversationId, clean)
+            if (!isStreamClosed()) sendEvent('title', { conversationId, title: clean })
+          }
+          settleTitle()
+        },
+      }
+
       mark('calling agent.stream')
       let currentStream: any = await (activeAgent as any).stream(mastraMessage, {
         memory: {
           thread: conversationId || crypto.randomUUID(),
           resource: tenantId,
           ...(memoryOptions ? { options: memoryOptions } : {}),
+          ...titleMemory,
         },
         requestContext,
         providerOptions: { 'inference-gateway': { thinkingBudget } },
@@ -669,7 +684,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
               break turnLoop
             }
             console.log(`[sse:${sessionId}] background decline: auto-declining ${toolName} toolCallId=${toolCallId}`)
-            currentStream = await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: 'The user already cancelled. Do not call any tool. Reply with one short sentence.', requestContext, ...olmoOptions })
+            currentStream = await (activeAgent as any).declineToolCall({ runId, toolCallId, reason: 'The user already cancelled. Do not call any tool. Reply with one short sentence.', requestContext, memory: titleMemory, ...olmoOptions })
             continue turnLoop
           }
 
@@ -679,7 +694,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // 1). Fail open rather than hang the turn on an invisible card.
           if (!meta || !toolCallId) {
             console.error(`[sse:${sessionId}] tool-call-approval for unmapped tool="${toolName}" toolCallId="${toolCallId}" — auto-approving`)
-            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, ...olmoOptions })
+            currentStream = await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, memory: titleMemory, ...olmoOptions })
             continue turnLoop
           }
 
@@ -791,8 +806,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
 
           console.log(`[task8:${sessionId}] BEFORE ${confirmed ? 'approveToolCall' : 'declineToolCall'} runId=${runId} toolCallId=${toolCallId} toolName=${toolName} args=${JSON.stringify(args).slice(0, 400)} olmoOptionsKeys=${Object.keys(olmoOptions).join(',')}`)
           currentStream = confirmed
-            ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, ...olmoOptions })
-            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason, requestContext, ...olmoOptions })
+            ? await (activeAgent as any).approveToolCall({ runId, toolCallId, requestContext, memory: titleMemory, ...olmoOptions })
+            : await (activeAgent as any).declineToolCall({ runId, toolCallId, reason, requestContext, memory: titleMemory, ...olmoOptions })
           console.log(`[task8:${sessionId}] AFTER ${confirmed ? 'approve' : 'decline'}ToolCall newRunId=${currentStream?.runId ?? 'none'} hasFullStream=${!!currentStream?.fullStream}`)
           continue turnLoop
         }
@@ -923,19 +938,6 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
             ]).catch(() => [] as string[])
           }
 
-          // Title generation is fire-and-forget: never let it block the
-          // 'done' event, and let saveConversationTitle's own error handling
-          // absorb failures — a missing title just falls back to the
-          // frontend's "Chat with {agent}" default.
-          if (isFirstMessage) {
-            Promise.race([
-              generateTitle(message),
-              new Promise<string>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
-            ]).then((title) => {
-              if (title) saveConversationTitle(idToken, conversationId, title)
-            }).catch(() => {})
-          }
-
           sendEvent('done', { text: fullText, conversationId, messageId: assistantMessageId, planResult, artifactRef: pendingArtifactRef ?? undefined, citations: ragSources.length > 0 ? ragSources : undefined, attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined })
 
           // Guard against ghost messages: if the client disconnected (Stop button
@@ -968,10 +970,17 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     stopHeartbeat()
     // Cast: assigned inside the stream callback, so TS narrows it to null here.
     const pendingFollowUps = followUpsPromise as Promise<string[]> | null
+    // A new chat's title lands a moment after the reply; hold the stream open
+    // for it (alongside follow-ups, same 4s cap) so the sidebar renames live.
+    // If it misses, the list still picks the saved title up on its next fetch.
+    const pendingTitle = isFirstMessage && !isStreamClosed()
+      ? Promise.race([titleSettled, new Promise<void>((resolve) => setTimeout(resolve, 4000))])
+      : null
     if (pendingFollowUps && !isStreamClosed()) {
       const suggestedFollowUps = await pendingFollowUps
       if (suggestedFollowUps.length > 0) sendEvent('follow_ups', { suggestedFollowUps, conversationId })
     }
+    if (pendingTitle) await pendingTitle
     closeStream()
   } catch (err) {
     stopHeartbeat()

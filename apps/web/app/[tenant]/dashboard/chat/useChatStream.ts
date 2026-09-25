@@ -6,7 +6,7 @@ import { useChat } from '@/hooks/useChat';
 import { toast } from 'sonner';
 import type { CanvasAction, CanvasEventData, ArtifactType } from '@/components/platform/canvas/types';
 import type { ToolCall, CompletedToolCall, Message, MessagePart, MessagesResponse, ArtifactRef, MessageAttachment } from '@/components/platform/chat/types';
-import type { Conversation } from '@/components/platform/chat/types';
+import type { Conversation, ConversationsResponse } from '@/components/platform/chat/types';
 import type { ClarificationRequest, ClarificationQuestion, UploadRequest } from '@/components/platform/chat/types';
 import { normalizeMessages } from '@/components/platform/chat/normalizeMessages';
 import type { Attachment } from '@/types/agent-events';
@@ -287,6 +287,16 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 return { data: [...data].sort(sortByDate) };
             });
         }, [queryClient, activeToolCalls, handleToolDone]),
+
+        // Rename the sidebar row and header in place — no refetch, no flash.
+        onTitle: useCallback((convId: string, title: string) => {
+            queryClient.setQueryData<ConversationsResponse>(['conversations'], old =>
+                old ? { ...old, data: old.data.map(c => c.id === convId ? { ...c, title } : c) } : old
+            );
+            queryClient.setQueryData<{ data: Conversation }>(['conversation', convId], old =>
+                old ? { ...old, data: { ...old.data, title } } : old
+            );
+        }, [queryClient]),
 
         onFollowUps: useCallback((suggestions: string[], messageId: string) => {
             queryClient.setQueryData<MessagesResponse>(['messages', conversationIdRef.current], old => {
@@ -606,9 +616,10 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         setIsPreparingMessage(true);
         const displayContent = creativeMessageDisplayText(content);
 
-        // Title is generated server-side (chatStream.ts) from the first
-        // message's content once the agent's reply is known — this flag just
-        // tells the orchestrator this is that first turn.
+        // Title is generated server-side (Mastra generateTitle, see
+        // chatStream.ts) once the first reply finishes and arrives as a
+        // `title` event — this flag tells the orchestrator the chat has no
+        // title yet, so it may save one.
         const isFirstMessage = !selectedConversation?.title && messages.length === 0 && displayContent.trim().length > 0;
 
         // Show the user's turn immediately. Resolving presigned attachment URLs
