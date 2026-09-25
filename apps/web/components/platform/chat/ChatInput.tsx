@@ -784,37 +784,50 @@ export function ChatInput({
                                                     type="button"
                                                     className="h-8 px-2 flex items-center gap-1 rounded-full text-xs font-medium text-foreground/90 hover:text-foreground transition-colors"
                                                 >
+                                                    {allowMode === 'auto'
+                                                        ? <ChevronsRight className="h-3.5 w-3.5" />
+                                                        : <Hand className="h-3.5 w-3.5" />}
                                                     {allowMode === 'auto' ? 'Auto' : 'Ask'}
                                                     <ChevronDown className="h-3 w-3 opacity-60" />
                                                 </button>
                                             </DropdownMenuTrigger>
-                                            <DropdownMenuContent side="top" align="start" className="w-72 p-2">
-                                                <DropdownMenuItem
-                                                    onClick={() => onAllowModeChange('auto')}
-                                                    className="flex items-start gap-2.5 cursor-pointer py-2"
-                                                >
-                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                        <ChevronsRight className="h-4 w-4" />
-                                                    </span>
-                                                    <span className="flex-1 min-w-0 flex flex-col pt-0.5">
-                                                        <span className="text-sm font-medium">Generate without asking</span>
-                                                        <span className="text-xs text-muted-foreground">The agent runs without confirmation</span>
-                                                    </span>
-                                                    {allowMode === 'auto' && <Check className="h-4 w-4 shrink-0 mt-1.5" />}
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem
-                                                    onClick={() => onAllowModeChange('ask')}
-                                                    className="flex items-start gap-2.5 cursor-pointer py-2"
-                                                >
-                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                                                        <Hand className="h-4 w-4" />
-                                                    </span>
-                                                    <span className="flex-1 min-w-0 flex flex-col pt-0.5">
-                                                        <span className="text-sm font-medium">Ask before generating</span>
-                                                        <span className="text-xs text-muted-foreground">The agent asks before each generation</span>
-                                                    </span>
-                                                    {(allowMode ?? 'ask') === 'ask' && <Check className="h-4 w-4 shrink-0 mt-1.5" />}
-                                                </DropdownMenuItem>
+                                            <DropdownMenuContent side="top" align="start" className="w-72 p-1.5">
+                                                <div className="px-2.5 pt-1.5 pb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                    When Olmo generates
+                                                </div>
+                                                {([
+                                                    { mode: 'ask', Icon: Hand, title: 'Ask before generating', hint: 'Shows cost, waits for your OK' },
+                                                    { mode: 'auto', Icon: ChevronsRight, title: 'Generate without asking', hint: 'Starts right away, no approval' },
+                                                ] as const).map(({ mode, Icon, title, hint }) => {
+                                                    const selected = (allowMode ?? 'ask') === mode
+                                                    return (
+                                                        <DropdownMenuItem
+                                                            key={mode}
+                                                            onClick={() => onAllowModeChange(mode)}
+                                                            className={cn(
+                                                                'flex items-center gap-2.5 cursor-pointer rounded-lg px-2.5 py-2',
+                                                                selected && 'bg-accent/60',
+                                                            )}
+                                                        >
+                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60">
+                                                                <Icon className="h-4 w-4" />
+                                                            </span>
+                                                            <span className="flex-1 min-w-0 flex flex-col">
+                                                                <span className="text-sm font-medium">{title}</span>
+                                                                <span className="text-xs text-muted-foreground truncate">{hint}</span>
+                                                            </span>
+                                                            <span
+                                                                aria-hidden
+                                                                className={cn(
+                                                                    'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
+                                                                    selected ? 'border-foreground' : 'border-muted-foreground/40',
+                                                                )}
+                                                            >
+                                                                {selected && <span className="h-2 w-2 rounded-full bg-foreground" />}
+                                                            </span>
+                                                        </DropdownMenuItem>
+                                                    )
+                                                })}
                                             </DropdownMenuContent>
                                         </DropdownMenu>
                                     )}
