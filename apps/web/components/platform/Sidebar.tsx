@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
     LayoutDashboard,
     Users,
@@ -44,6 +44,26 @@ import { getSidebarItems, getDeveloperPanelItems, getSettingsPanelItems, type Si
 import { signOut } from "@/lib/auth"
 import { WorkspaceSwitcherPill } from "./WorkspaceSwitcherPill"
 import { AccountMenu } from "./AccountMenu"
+import { ConversationList } from "./chat/ConversationList"
+import { FEATURE_FLAGS } from "@/lib/feature-flags"
+
+// The chat list, living in the main sidebar while Olmo is the only employee
+// (FEATURE_FLAGS.employees off) — one assistant needs no second column. Its
+// own component so useSearchParams sits behind a Suspense boundary.
+function SidebarChats({ tenantSlug }: { tenantSlug: string }) {
+    const router = useRouter()
+    const pathname = usePathname()
+    const searchParams = useSearchParams()
+    const selectedId = pathname?.includes('/dashboard/chat') ? searchParams.get('id') ?? undefined : undefined
+    return (
+        <ConversationList
+            variant="sidebar"
+            selectedId={selectedId}
+            onSelect={(c) => router.push(`/${tenantSlug}/dashboard/chat?id=${c.id}`)}
+            onNewChat={() => router.push(`/${tenantSlug}/dashboard/chat`)}
+        />
+    )
+}
 
 
 interface SidebarNavLinkProps {
@@ -60,7 +80,9 @@ function SidebarNavLink({ item, isCollapsed, onLockedClick, badgeCount }: Sideba
     const { collapseSidebar } = useSidebar()
     // Chat's own message list + pane need the room; every other nav
     // destination keeps whatever collapse state the user already chose.
-    const isChatLink = item.label === "Chat"
+    // Only while the chat page has its own list column — with the list in
+    // this sidebar, collapsing it would hide the chats you came for.
+    const isChatLink = item.label === "Chat" && FEATURE_FLAGS.employees
 
     const content = (
         <div
@@ -330,6 +352,11 @@ export function Sidebar() {
                                 </React.Fragment>
                             )
                         })
+                    )}
+                    {!activePanel && !isSidebarCollapsed && !FEATURE_FLAGS.employees && tenantSlug && (
+                        <React.Suspense fallback={null}>
+                            <SidebarChats tenantSlug={tenantSlug} />
+                        </React.Suspense>
                     )}
                 </nav>
 

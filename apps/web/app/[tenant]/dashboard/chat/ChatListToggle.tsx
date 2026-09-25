@@ -4,6 +4,7 @@ import { ListTodo, PanelLeftClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { WORK_ITEM } from "@/components/platform/chat/workItemLabels"
+import { FEATURE_FLAGS } from "@/lib/feature-flags"
 
 // Opens/closes the chat list panel. Closed, it names the list with its own icon:
 // the bare panel icon it used to show was identical to the main sidebar's
@@ -13,6 +14,8 @@ export function ChatListToggle({ collapsed, onToggle, className }: {
     onToggle: () => void
     className?: string
 }) {
+    // No list column while the chat list lives in the main sidebar.
+    if (!FEATURE_FLAGS.employees) return null
     if (collapsed) {
         return (
             <Button

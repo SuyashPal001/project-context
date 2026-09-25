@@ -586,17 +586,20 @@ function ChatPage() {
                 </div>
             )}
             <div className="flex flex-1 overflow-hidden relative">
-                {/* Conversations Sidebar */}
-                <div className={cn(
-                    "flex flex-col border-r border-border transition-all duration-300 ease-in-out bg-[var(--messages-panel)] z-20 overflow-hidden relative",
-                    isChatSidebarCollapsed ? "w-0 opacity-0 pointer-events-none -translate-x-full" : "w-60 opacity-100 translate-x-0"
-                )}>
-                    <ConversationList
-                        selectedId={conversationId || undefined}
-                        onSelect={handleSelectConversation}
-                        onNewChat={startNewChat}
-                    />
-                </div>
+                {/* Conversations column — only while employees are grouped; with
+                    Olmo alone the list lives in the main sidebar (Sidebar.tsx). */}
+                {FEATURE_FLAGS.employees && (
+                    <div className={cn(
+                        "flex flex-col border-r border-border transition-all duration-300 ease-in-out bg-[var(--messages-panel)] z-20 overflow-hidden relative",
+                        isChatSidebarCollapsed ? "w-0 opacity-0 pointer-events-none -translate-x-full" : "w-60 opacity-100 translate-x-0"
+                    )}>
+                        <ConversationList
+                            selectedId={conversationId || undefined}
+                            onSelect={handleSelectConversation}
+                            onNewChat={startNewChat}
+                        />
+                    </div>
+                )}
 
                 {/* Main Chat Area */}
                 <div className="flex-1 flex flex-row min-w-0 bg-background relative overflow-hidden">

@@ -29,6 +29,9 @@ interface ConversationListProps {
     selectedId?: string;
     onSelect: (conversation: Conversation) => void;
     onNewChat: (agentId?: string) => void;
+    /** 'panel': the chat page's own column. 'sidebar': a compact section inside
+     *  the main sidebar, used while Olmo is the only employee. */
+    variant?: 'panel' | 'sidebar';
 }
 
 // ─── ConversationRow ──────────────────────────────────────────────────────────
@@ -252,10 +255,12 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
 
 // ─── ConversationList ─────────────────────────────────────────────────────────
 
-export function ConversationList({ selectedId, onSelect, onNewChat }: ConversationListProps) {
+export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'panel' }: ConversationListProps) {
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [actionType, setActionType] = useState<'archive' | 'delete'>('archive');
     const [search, setSearch] = useState('');
+    // Sidebar variant only: the "Chats" section folds away, like any other section.
+    const [sidebarListOpen, setSidebarListOpen] = useState(true);
     // undefined = the user hasn't opened or closed anything yet (default applies);
     // null = explicitly all closed.
     const [expandedAgentId, setExpandedAgentId] = useState<string | null | undefined>(undefined);
@@ -371,6 +376,91 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
             hasSelectedConversation={!!selectedId && (convsByAgent[agent.id] ?? []).some(c => c.id === selectedId)}
         />
     );
+
+    const confirmDialog = (
+        <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>{actionType === 'delete' ? 'Delete Conversation?' : 'Archive Conversation?'}</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        {actionType === 'delete'
+                            ? 'This will permanently delete the conversation and all its messages.'
+                            : 'This will move the conversation to your archives.'}
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => {
+                            if (!deleteId) return;
+                            if (actionType === 'delete') deleteMutation.mutate(deleteId);
+                            else archiveMutation.mutate(deleteId);
+                            setDeleteId(null);
+                        }}
+                    >
+                        {actionType === 'delete' ? 'Delete' : 'Archive'}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    );
+
+    if (variant === 'sidebar') {
+        return (
+            <div className="mt-6">
+                {/* Section header, set apart from the nav above the way AdAnt
+                    does it: label, count, then a rule running to the edge. */}
+                <div className="flex items-center gap-2 pl-3 pr-1 mb-1.5">
+                    <button
+                        onClick={() => setSidebarListOpen(o => !o)}
+                        title={sidebarListOpen ? "Collapse" : "Expand"}
+                        className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 hover:text-foreground transition-colors"
+                    >
+                        {WORK_ITEM.plural}
+                        {!isLoading && flatConversations.length > 0 && (
+                            <span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium tracking-normal tabular-nums">
+                                {flatConversations.length}
+                            </span>
+                        )}
+                    </button>
+                    <div className="h-px flex-1 bg-border" />
+                    <button
+                        onClick={() => onNewChat()}
+                        title={WORK_ITEM.new}
+                        className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                    >
+                        <Plus className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+                {!sidebarListOpen ? null : isLoading ? (
+                    <div className="space-y-1 px-2.5">
+                        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-5 w-full" />)}
+                    </div>
+                ) : isError ? (
+                    <button onClick={() => refetch()} className="px-3 py-1.5 text-[12px] text-destructive hover:underline">
+                        Failed to load — retry
+                    </button>
+                ) : flatConversations.length === 0 ? (
+                    <p className="px-3 py-1.5 text-[12px] text-muted-foreground/60">{WORK_ITEM.empty}</p>
+                ) : (
+                    <div className="space-y-0.5">
+                        {flatConversations.map(conv => (
+                            <ConversationRow
+                                key={conv.id}
+                                conversation={conv}
+                                isSelected={selectedId === conv.id}
+                                onSelect={() => onSelect(conv)}
+                                onArchive={() => { setActionType('archive'); setDeleteId(conv.id); }}
+                                onDelete={() => { setActionType('delete'); setDeleteId(conv.id); }}
+                            />
+                        ))}
+                    </div>
+                )}
+                {confirmDialog}
+            </div>
+        );
+    }
 
     return (
         <div className="flex flex-col h-full bg-[var(--messages-panel)] border-r border-border">
@@ -517,32 +607,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                 )}
             </div>
 
-            <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>{actionType === 'delete' ? 'Delete Conversation?' : 'Archive Conversation?'}</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            {actionType === 'delete'
-                                ? 'This will permanently delete the conversation and all its messages.'
-                                : 'This will move the conversation to your archives.'}
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={() => {
-                                if (!deleteId) return;
-                                if (actionType === 'delete') deleteMutation.mutate(deleteId);
-                                else archiveMutation.mutate(deleteId);
-                                setDeleteId(null);
-                            }}
-                        >
-                            {actionType === 'delete' ? 'Delete' : 'Archive'}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            {confirmDialog}
         </div>
     );
 }
