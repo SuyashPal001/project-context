@@ -7,7 +7,7 @@ import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight, ArrowRight } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight, ArrowRight, Pin, PinOff, Pencil } from "lucide-react";
 import { format, isToday, isThisWeek } from "date-fns";
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
@@ -16,6 +16,7 @@ import { getAgentTypeIcon } from "../agents/agentTypeIcon";
 import { cn } from "@/lib/utils";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { WORK_ITEM } from "./workItemLabels";
+import { AllChatsDialog } from "./AllChatsDialog";
 import { toast } from "sonner";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -36,13 +37,43 @@ interface ConversationListProps {
 
 // ─── ConversationRow ──────────────────────────────────────────────────────────
 
-function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDelete }: {
+function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDelete, onPin, onRename }: {
     conversation: Conversation;
     isSelected: boolean;
     onSelect: () => void;
     onArchive: () => void;
     onDelete: () => void;
+    onPin?: () => void;
+    onRename?: (title: string) => void;
 }) {
+    const pinned = !!conversation.metadata?.pinnedAt;
+    const [renaming, setRenaming] = useState(false);
+    const [draft, setDraft] = useState("");
+
+    const commitRename = () => {
+        const title = draft.trim();
+        setRenaming(false);
+        if (title && title !== conversation.title) onRename?.(title);
+    };
+
+    if (renaming) {
+        return (
+            <input
+                autoFocus
+                value={draft}
+                maxLength={255}
+                onChange={e => setDraft(e.target.value)}
+                onFocus={e => e.target.select()}
+                onBlur={commitRename}
+                onKeyDown={e => {
+                    if (e.key === "Enter") commitRename();
+                    if (e.key === "Escape") setRenaming(false);
+                }}
+                className="w-full h-9 px-2.5 rounded-md bg-background border border-primary/30 text-[13px] outline-none"
+            />
+        );
+    }
+
     return (
         <div className="relative group">
             <button
@@ -54,6 +85,7 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
                         : "text-muted-foreground hover:bg-accent/50 hover:text-foreground font-medium"
                 )}
             >
+                {pinned && <Pin className="h-3 w-3 mr-1.5 shrink-0 opacity-60" />}
                 <span className="truncate text-[13px] min-w-0 flex-1 pr-5">
                     {conversation.title || WORK_ITEM.untitled}
                 </span>
@@ -77,10 +109,26 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-[160px] rounded-lg">
+                        {onPin && (
+                            <DropdownMenuItem className="cursor-pointer rounded-lg mx-1 my-0.5" onClick={onPin}>
+                                {pinned
+                                    ? <><PinOff className="h-4 w-4 mr-2" />Unpin</>
+                                    : <><Pin className="h-4 w-4 mr-2" />Pin</>}
+                            </DropdownMenuItem>
+                        )}
+                        {onRename && (
+                            <DropdownMenuItem
+                                className="cursor-pointer rounded-lg mx-1 my-0.5"
+                                // Wait for the menu to close, or it takes focus back from the input.
+                                onSelect={() => { setDraft(conversation.title || ""); setTimeout(() => setRenaming(true), 0); }}
+                            >
+                                <Pencil className="h-4 w-4 mr-2" />Rename
+                            </DropdownMenuItem>
+                        )}
+                        {(onPin || onRename) && <div className="h-px bg-border my-1 mx-2" />}
                         <DropdownMenuItem className="cursor-pointer rounded-lg mx-1 my-0.5" onClick={onArchive}>
                             <Archive className="h-4 w-4 mr-2" />Archive
                         </DropdownMenuItem>
-                        <div className="h-px bg-border my-1 mx-2" />
                         <DropdownMenuItem
                             className="text-red-500 focus:text-red-500 focus:bg-red-500/10 cursor-pointer rounded-lg mx-1 my-0.5"
                             onClick={onDelete}
@@ -110,6 +158,9 @@ const CONVERSATIONS_PAGE_SIZE = 5;
 // Unpinned employees shown in RECENT before "All employees" takes over — the
 // list stays short however many employees a workspace grows to.
 const RECENT_EMPLOYEES_LIMIT = 5;
+
+// Unpinned chats shown in the sidebar before "View all" takes over.
+const SIDEBAR_CHATS_LIMIT = 15;
 
 // "3:45 PM" for today, weekday name within the last 7 days, else "Mar 4" —
 // matches the reference inbox pattern (today's time, otherwise a day/date).
@@ -256,8 +307,9 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
 // ─── ConversationList ─────────────────────────────────────────────────────────
 
 export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'panel' }: ConversationListProps) {
+    // Only Delete asks first; Archive is undoable from its toast.
     const [deleteId, setDeleteId] = useState<string | null>(null);
-    const [actionType, setActionType] = useState<'archive' | 'delete'>('archive');
+    const [allChatsOpen, setAllChatsOpen] = useState(false);
     const [search, setSearch] = useState('');
     // Sidebar variant only: the "Chats" section folds away, like any other section.
     const [sidebarListOpen, setSidebarListOpen] = useState(true);
@@ -284,11 +336,20 @@ export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'p
         queryFn: () => api.get<AgentsResponse>("/api/v1/agents"),
     });
 
+    const updateConversation = useMutation({
+        mutationFn: ({ id, patch }: { id: string; patch: { title?: string; status?: 'active'; pinned?: boolean } }) =>
+            api.patch(`/api/v1/conversations/${id}`, patch),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ["conversations"] }),
+        onError: (e: { data?: { message?: string } }) => toast.error(e.data?.message || "Failed to update chat"),
+    });
+
+    const unarchive = (id: string) => updateConversation.mutate({ id, patch: { status: 'active' } });
+
     const archiveMutation = useMutation({
         mutationFn: (id: string) => api.del(`/api/v1/conversations/${id}`),
         onSuccess: (_, id) => {
             queryClient.invalidateQueries({ queryKey: ["conversations"] });
-            toast.success("Conversation archived");
+            toast.success("Chat archived", { action: { label: "Undo", onClick: () => unarchive(id) } });
             if (selectedId === id) router.push(`/${tenantSlug}/dashboard/chat`);
         },
         onError: (e: any) => toast.error(e.data?.message || "Failed to archive"),
@@ -306,7 +367,8 @@ export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'p
 
     const activeAgents = (agentsData?.data ?? []).filter(a => a.status === 'active');
     const lockedAgents = (agentsData?.data ?? []).filter(a => a.status === 'paused');
-    const allConvs = (conversationsData?.data ?? []).filter(c => c.status !== 'archived');
+    const allConvsIncludingArchived = conversationsData?.data ?? [];
+    const allConvs = allConvsIncludingArchived.filter(c => c.status !== 'archived');
     const query = search.trim().toLowerCase();
     // Search covers employees and tasks: an employee whose name matches shows
     // all their tasks; otherwise only tasks whose title matches.
@@ -344,8 +406,22 @@ export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'p
 
     const isLoading = loadingConvs || loadingAgents;
 
-    // Flat list (Employees off): every chat, most recently active first.
-    const flatConversations = [...filtered].sort((a, b) => lastActivity(b) - lastActivity(a));
+    // Flat list (Employees off): pinned chats first (newest pin on top), then
+    // every other chat, most recently active first.
+    const pinnedAt = (c: Conversation) => c.metadata?.pinnedAt ? new Date(c.metadata.pinnedAt).getTime() : 0;
+    const flatConversations = [...filtered].sort((a, b) => pinnedAt(b) - pinnedAt(a) || lastActivity(b) - lastActivity(a));
+    // The sidebar keeps every pinned chat and the open one, plus the most recent
+    // few; the rest are one click away in View all.
+    const pinnedCount = flatConversations.filter(c => pinnedAt(c) > 0).length;
+    const sidebarConversations = flatConversations.filter((c, i) =>
+        i < pinnedCount + SIDEBAR_CHATS_LIMIT || c.id === selectedId);
+
+    const rowActions = (conv: Conversation) => ({
+        onArchive: () => archiveMutation.mutate(conv.id),
+        onDelete: () => setDeleteId(conv.id),
+        onPin: () => updateConversation.mutate({ id: conv.id, patch: { pinned: !conv.metadata?.pinnedAt } }),
+        onRename: (title: string) => updateConversation.mutate({ id: conv.id, patch: { title } }),
+    });
 
     // One employee open at a time; with nothing chosen yet, the pinned one.
     const openAgentId = expandedAgentId === undefined ? pinnedAgents[0]?.id ?? null : expandedAgentId;
@@ -371,8 +447,8 @@ export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'p
             onToggle={() => setExpandedAgentId(openAgentId === agent.id ? null : agent.id)}
             onSelect={onSelect}
             onNewChat={onNewChat}
-            onArchive={(id) => { setActionType('archive'); setDeleteId(id); }}
-            onDelete={(id) => { setActionType('delete'); setDeleteId(id); }}
+            onArchive={(id) => archiveMutation.mutate(id)}
+            onDelete={(id) => setDeleteId(id)}
             hasSelectedConversation={!!selectedId && (convsByAgent[agent.id] ?? []).some(c => c.id === selectedId)}
         />
     );
@@ -381,11 +457,9 @@ export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'p
         <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
             <AlertDialogContent>
                 <AlertDialogHeader>
-                    <AlertDialogTitle>{actionType === 'delete' ? 'Delete Conversation?' : 'Archive Conversation?'}</AlertDialogTitle>
+                    <AlertDialogTitle>Delete {WORK_ITEM.singular.toLowerCase()}?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        {actionType === 'delete'
-                            ? 'This will permanently delete the conversation and all its messages.'
-                            : 'This will move the conversation to your archives.'}
+                        This permanently deletes the {WORK_ITEM.singular.toLowerCase()} and all its messages. To keep it out of the list instead, archive it.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -394,12 +468,11 @@ export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'p
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         onClick={() => {
                             if (!deleteId) return;
-                            if (actionType === 'delete') deleteMutation.mutate(deleteId);
-                            else archiveMutation.mutate(deleteId);
+                            deleteMutation.mutate(deleteId);
                             setDeleteId(null);
                         }}
                     >
-                        {actionType === 'delete' ? 'Delete' : 'Archive'}
+                        Delete
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>
@@ -445,18 +518,36 @@ export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'p
                     <p className="px-3 py-1.5 text-[12px] text-muted-foreground/60">{WORK_ITEM.empty}</p>
                 ) : (
                     <div className="space-y-0.5">
-                        {flatConversations.map(conv => (
+                        {sidebarConversations.map(conv => (
                             <ConversationRow
                                 key={conv.id}
                                 conversation={conv}
                                 isSelected={selectedId === conv.id}
                                 onSelect={() => onSelect(conv)}
-                                onArchive={() => { setActionType('archive'); setDeleteId(conv.id); }}
-                                onDelete={() => { setActionType('delete'); setDeleteId(conv.id); }}
+                                {...rowActions(conv)}
                             />
                         ))}
                     </div>
                 )}
+                {/* Always offered: archived chats are only reachable from here. */}
+                {sidebarListOpen && !isLoading && !isError && (flatConversations.length > 0 || allConvsIncludingArchived.length > 0) && (
+                    <button
+                        onClick={() => setAllChatsOpen(true)}
+                        className="w-full text-left px-2.5 py-1.5 mt-0.5 text-[12px] text-muted-foreground/70 hover:text-foreground rounded-md hover:bg-accent/30 transition-colors"
+                    >
+                        View all
+                    </button>
+                )}
+                <AllChatsDialog
+                    open={allChatsOpen}
+                    onOpenChange={setAllChatsOpen}
+                    conversations={allConvsIncludingArchived}
+                    onSelect={onSelect}
+                    onNewChat={() => onNewChat()}
+                    onArchive={id => archiveMutation.mutate(id)}
+                    onUnarchive={unarchive}
+                    onDelete={id => setDeleteId(id)}
+                />
                 {confirmDialog}
             </div>
         );
@@ -528,8 +619,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat, variant = 'p
                                     conversation={conv}
                                     isSelected={selectedId === conv.id}
                                     onSelect={() => onSelect(conv)}
-                                    onArchive={() => { setActionType('archive'); setDeleteId(conv.id); }}
-                                    onDelete={() => { setActionType('delete'); setDeleteId(conv.id); }}
+                                    {...rowActions(conv)}
                                 />
                             ))}
                         </div>

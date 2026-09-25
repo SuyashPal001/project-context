@@ -8,4 +8,5 @@ export const WORK_ITEM = {
     untitled: "Untitled chat",
     start: "Start a chat…",
     empty: "No chats yet",
+    all: "All chats",
 } as const;

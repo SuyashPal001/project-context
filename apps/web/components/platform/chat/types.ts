@@ -272,6 +272,8 @@ export interface Conversation {
         testSkillInstallId?: string;
         /** Skills turned on in this conversation with "/". Never attached to the agent. */
         invokedSkills?: Array<{ installId: string; skillId: string; name: string }>;
+        /** Set while the chat is pinned to the top of the list. */
+        pinnedAt?: string;
     } | null;
 }
 

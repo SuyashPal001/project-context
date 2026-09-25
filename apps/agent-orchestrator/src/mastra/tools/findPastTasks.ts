@@ -126,8 +126,9 @@ export const findPastTasksTool = createTool({
     const list = await apiGet<{ data: ConversationSummary[] }>('/api/v1/conversations', idToken)
     if (!list) return { tasks: [], note: 'Could not load past tasks right now.' }
 
-    // Never the task we are in, never archived ones.
-    const pool = list.data.filter(c => c.id !== currentConversationId && c.status !== 'archived')
+    // Never the task we are in. Archived tasks stay in: archiving only tidies
+    // the user's list, it does not mean "forget this".
+    const pool = list.data.filter(c => c.id !== currentConversationId)
     const lastActive = (c: ConversationSummary) => c.lastMessage?.createdAt ?? c.updatedAt ?? c.createdAt
     const byRecent = [...pool].sort((a, b) => new Date(lastActive(b)).getTime() - new Date(lastActive(a)).getTime())
 

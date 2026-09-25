@@ -61,9 +61,9 @@ describe('find_past_tasks', () => {
         }
     })
 
-    it('matches by title, skips the current and archived tasks, and summarizes the best match', async () => {
+    it('matches by title, skips the current task, keeps archived ones, and summarizes the best match', async () => {
         const out = await run({ query: 'the red car ad' }, ctx({ idToken: 'tok', conversationId: ID.current }))
-        expect(out.tasks.map(t => t.taskId)).toEqual([ID.redCar])
+        expect(out.tasks.map(t => t.taskId)).toEqual([ID.redCar, ID.archived])
         expect(out.summary).toEqual({
             taskId: ID.redCar,
             title: 'Red car Instagram ad',
@@ -76,7 +76,7 @@ describe('find_past_tasks', () => {
 
     it('lists recent tasks without reading any transcript when there is no query', async () => {
         const out = await run({}, ctx({ idToken: 'tok', conversationId: ID.current }))
-        expect(out.tasks.map(t => t.title)).toEqual(['30s gym reel script', 'Red car Instagram ad'])
+        expect(out.tasks.map(t => t.title)).toEqual(['30s gym reel script', 'Red car Instagram ad', 'Red car old draft'])
         expect(out.summary).toBeUndefined()
         expect(fetchMock).toHaveBeenCalledTimes(1)
     })

@@ -37,7 +37,6 @@ export function useChatPage() {
     const conversationIdRef = useRef(conversationId);
     conversationIdRef.current = conversationId;
 
-    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [agentSelectorOpen, setAgentSelectorOpen] = useState(false);
     const [activePill, setActivePill] = useState<PillType | null>(null);
     const autoCreatingRef = useRef(false);
@@ -162,7 +161,15 @@ export function useChatPage() {
         mutationFn: (id: string) => api.del(`/api/v1/conversations/${id}`),
         onSuccess: (_, deletedId) => {
             queryClient.invalidateQueries({ queryKey: ['conversations'] });
-            toast.success('Conversation archived');
+            // Archiving is reversible, so it goes straight through with an Undo
+            // rather than a confirm dialog. The chat stays under View all → Archived.
+            toast.success('Chat archived', {
+                action: {
+                    label: 'Undo',
+                    onClick: () => api.patch(`/api/v1/conversations/${deletedId}`, { status: 'active' })
+                        .then(() => queryClient.invalidateQueries({ queryKey: ['conversations'] })),
+                },
+            });
             if (conversationId === deletedId) router.push(`/${tenantSlug}/dashboard/chat`);
         },
         onError: (err: any) => { toast.error(err.data?.message || 'Failed to archive conversation'); },
@@ -229,7 +236,6 @@ export function useChatPage() {
         providers, activeAgents, isLoadingAgents, draftAgent,
         conversations, isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
-        isDeleteDialogOpen, setIsDeleteDialogOpen,
         agentSelectorOpen, setAgentSelectorOpen,
         activePill, setActivePill,
         queryClient, createConversation, updateAgentMutation, deleteConversation,

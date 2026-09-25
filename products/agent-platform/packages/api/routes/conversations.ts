@@ -297,6 +297,10 @@ conversationsRoutes.patch('/:id', async (c) => {
                 skillId: z.string().uuid(),
                 name: z.string().min(1).max(100),
             })).max(8).nullable().optional(),
+            // Pinned chats sit above the rest of the chat list. Stored as
+            // metadata.pinnedAt (newest pin first) — no column needed for a
+            // per-chat display preference.
+            pinned: z.boolean().optional(),
         });
 
         const result = schema.safeParse(await c.req.json());
@@ -307,9 +311,9 @@ conversationsRoutes.patch('/:id', async (c) => {
             return c.json({ error: 'No fields provided for update', code: 'VALIDATION_ERROR' }, 400);
         }
 
-        const { folderScope, allowMode, testSkillInstallId, invokedSkills, ...rest } = result.data;
+        const { folderScope, allowMode, testSkillInstallId, invokedSkills, pinned, ...rest } = result.data;
         const patch: Record<string, unknown> = { ...rest };
-        if (folderScope !== undefined || allowMode !== undefined || testSkillInstallId !== undefined || invokedSkills !== undefined) {
+        if (folderScope !== undefined || allowMode !== undefined || testSkillInstallId !== undefined || invokedSkills !== undefined || pinned !== undefined) {
             // Merge in SQL, not read-merge-write: the orchestrator now writes
             // metadata (invokedSkills) on every "/" turn, so a JS
             // read-then-write here could clobber a concurrent write to a
@@ -333,6 +337,10 @@ conversationsRoutes.patch('/:id', async (c) => {
             if (invokedSkills !== undefined) {
                 if (invokedSkills === null) removeKeys.push('invokedSkills');
                 else setFields.invokedSkills = invokedSkills;
+            }
+            if (pinned !== undefined) {
+                if (pinned) setFields.pinnedAt = new Date().toISOString();
+                else removeKeys.push('pinnedAt');
             }
 
             let metadataExpr = sql`(coalesce(${conversations.metadata}, '{}'::jsonb) || ${JSON.stringify(setFields)}::jsonb)`;

@@ -37,10 +37,6 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Message, MessagesResponse } from "@/components/platform/chat/types";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "@/components/platform/chat/pendingRequests";
-import {
-    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { parseFolderId } from "@/lib/folderScope";
 import { CreativeLibrary } from '@/components/platform/chat/CreativeLibrary';
@@ -85,7 +81,6 @@ function ChatPage() {
         providers, activeAgents, isLoadingAgents, draftAgent,
         isLoadingConversations, isErrorConversations,
         selectedConversation, messages, isLoadingMessages,
-        isDeleteDialogOpen, setIsDeleteDialogOpen,
         agentSelectorOpen, setAgentSelectorOpen,
         activePill, setActivePill,
         createConversation, updateAgentMutation, deleteConversation,
@@ -617,7 +612,7 @@ function ChatPage() {
                                     isCanvasOpen={isCanvasOpen}
                                     hasActivity={hasActivity}
                                     toggleCanvas={toggleCanvas}
-                                    onArchive={() => setIsDeleteDialogOpen(true)}
+                                    onArchive={() => { if (conversationId) deleteConversation.mutate(conversationId); }}
                                 />
                                 {showConversationWelcome ? (
                                     activePill !== null ? (
@@ -785,19 +780,6 @@ function ChatPage() {
                     )}
                 </div>
             </div>
-
-            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Archive Conversation?</AlertDialogTitle>
-                        <AlertDialogDescription>This will move the conversation to your archives. You can still access it later if needed.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { if (conversationId) { deleteConversation.mutate(conversationId); setIsDeleteDialogOpen(false); } }}>Archive</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
 
             <AgentSelector
                 open={agentSelectorOpen}
