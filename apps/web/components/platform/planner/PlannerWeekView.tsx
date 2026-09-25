@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { addDays, format, isSameDay, isToday } from "date-fns";
 import { AlertTriangle, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,17 +15,21 @@ export function PlannerWeekView({
     items,
     employees,
     onPlan,
+    emptyState,
 }: {
     weekStart: Date;
     items: PlannerItem[];
     employees: PlannerEmployee[];
     onPlan?: (day: Date) => void;
+    // Shown centred over the grid (which gets shorter) instead of a second
+    // empty box below it.
+    emptyState?: ReactNode;
 }) {
     const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
     const colorOf = (employeeId?: string) => employees.find((e) => e.id === employeeId)?.color;
 
     return (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        <div className="relative overflow-x-auto rounded-xl border border-border bg-card">
             <div className="grid min-w-[840px] grid-cols-7 divide-x divide-border">
                 {days.map((day) => {
                     const today = isToday(day);
@@ -32,7 +37,7 @@ export function PlannerWeekView({
                         .filter((item) => isSameDay(new Date(item.scheduledAt), day))
                         .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
                     return (
-                        <div key={day.toISOString()} className={cn("flex min-h-[420px] flex-col", today && "bg-accent/30")}>
+                        <div key={day.toISOString()} className={cn("flex flex-col", emptyState ? "min-h-[320px]" : "min-h-[420px]", today && "bg-accent/30")}>
                             <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
                                 <span className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground">{format(day, "EEE")}</span>
                                 <span
@@ -49,7 +54,7 @@ export function PlannerWeekView({
                                 {dayItems.map((item) => (
                                     <PlannerItemCard key={item.id} item={item} employeeColor={colorOf(item.employeeId)} />
                                 ))}
-                                {onPlan && (
+                                {onPlan && !emptyState && (
                                     <button
                                         type="button"
                                         onClick={() => onPlan(day)}
@@ -63,6 +68,11 @@ export function PlannerWeekView({
                     );
                 })}
             </div>
+            {emptyState && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 top-11 flex items-center justify-center p-4">
+                    <div className="pointer-events-auto">{emptyState}</div>
+                </div>
+            )}
         </div>
     );
 }

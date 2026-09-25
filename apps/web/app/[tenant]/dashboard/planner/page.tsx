@@ -90,33 +90,39 @@ function Planner() {
                 <PlannerFilter items={weekItems} employees={employees} value={filter} onChange={setFilter} />
             </div>
 
-            <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                <span><span className="font-medium text-foreground">{planned}</span> scheduled</span>
-                <span><span className="font-medium text-foreground">{channels}</span> channels</span>
-                <span><span className="font-medium text-foreground">{variations}</span> variations</span>
-                <span className={needsAttention > 0 ? "inline-flex items-center gap-1 text-destructive" : undefined}>
-                    {needsAttention > 0 && <AlertTriangle className="h-3.5 w-3.5" />}
-                    <span className={needsAttention > 0 ? "font-medium" : "font-medium text-foreground"}>{needsAttention}</span> need attention
-                </span>
-                {isDemo && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Demo data</span>}
-            </p>
-
-            <PlannerWeekView weekStart={weekStart} items={visible} employees={employees} onPlan={comingSoon} />
-
-            {items.length === 0 && (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border px-6 py-10 text-center">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/60">
-                        <CalendarDays className="h-5 w-5 text-muted-foreground" />
+            {items.length > 0 && (
+                <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                    <span><span className="font-medium text-foreground">{planned}</span> scheduled</span>
+                    <span><span className="font-medium text-foreground">{channels}</span> channels</span>
+                    <span><span className="font-medium text-foreground">{variations}</span> variations</span>
+                    <span className={needsAttention > 0 ? "inline-flex items-center gap-1 text-destructive" : undefined}>
+                        {needsAttention > 0 && <AlertTriangle className="h-3.5 w-3.5" />}
+                        <span className={needsAttention > 0 ? "font-medium" : "font-medium text-foreground"}>{needsAttention}</span> need attention
                     </span>
-                    <p className="text-sm font-medium text-foreground">Nothing planned yet</p>
-                    <p className="max-w-sm text-sm text-muted-foreground">
-                        Plan posts for your channels, or have an employee make new variations of an ad on a schedule.
-                    </p>
-                    <Button variant="outline" size="sm" onClick={comingSoon}>
-                        <Plus className="h-4 w-4 mr-1.5" /> Plan your first content
-                    </Button>
-                </div>
+                    {isDemo && <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Demo data</span>}
+                </p>
             )}
+
+            <PlannerWeekView
+                weekStart={weekStart}
+                items={visible}
+                employees={employees}
+                onPlan={comingSoon}
+                emptyState={items.length === 0 ? (
+                    <div className="flex max-w-sm flex-col items-center gap-3 rounded-xl border border-border bg-background px-6 py-7 text-center shadow-sm">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/60">
+                            <CalendarDays className="h-5 w-5 text-muted-foreground" />
+                        </span>
+                        <p className="text-sm font-medium text-foreground">Nothing planned yet</p>
+                        <p className="text-sm text-muted-foreground">
+                            Plan posts for your channels, or have an employee make new variations of an ad on a schedule.
+                        </p>
+                        <Button variant="outline" size="sm" onClick={comingSoon}>
+                            <Plus className="h-4 w-4 mr-1.5" /> Plan your first content
+                        </Button>
+                    </div>
+                ) : undefined}
+            />
         </div>
     );
 }
