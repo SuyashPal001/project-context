@@ -17,7 +17,7 @@ import {
     KanbanSquare,
     LayoutList,
     Brain,
-
+    CalendarDays,
 } from "lucide-react";
 import React from 'react';
 
@@ -51,6 +51,9 @@ export function getSidebarItems(
     // 1. MAIN SECTION — all users
     items.push({ label: "Chat", href: `${base}/chat`, icon: MessageSquare });
     items.push({ label: "Employees", href: `${base}/agents`, icon: Bot });
+    // "Planner" is the word Meta Business Suite, Canva and Hootsuite use for
+    // scheduling content, which is what our users already know.
+    items.push({ label: "Planner", href: `${base}/planner`, icon: CalendarDays });
     if (FEATURE_FLAGS.board) items.push({ label: "Board", href: `${base}/board`, icon: KanbanSquare });
     if (FEATURE_FLAGS.plans) items.push({ label: "Projects", href: `${base}/plans`, icon: LayoutList });
     items.push({ label: "Drive", href: `${base}/drive`, icon: FolderOpen });
