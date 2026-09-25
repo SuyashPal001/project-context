@@ -15,6 +15,7 @@ import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import { getAgentTypeIcon } from "../agents/agentTypeIcon";
 import { cn } from "@/lib/utils";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
+import { WORK_ITEM } from "./workItemLabels";
 import { toast } from "sonner";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -51,7 +52,7 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
                 )}
             >
                 <span className="truncate text-[13px] w-[calc(100%-1.25rem)]">
-                    {conversation.title || 'Untitled task'}
+                    {conversation.title || WORK_ITEM.untitled}
                 </span>
             </button>
             <div className={cn(
@@ -161,7 +162,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
             <div className="relative group">
             <button
                 onClick={onToggle}
-                title={isExpanded ? "Collapse" : `${conversations.length} task${conversations.length === 1 ? '' : 's'}`}
+                title={isExpanded ? "Collapse" : `${conversations.length} ${(conversations.length === 1 ? WORK_ITEM.singular : WORK_ITEM.plural).toLowerCase()}`}
                 className={cn(
                     "w-full flex items-center gap-2.5 pl-2 pr-9 py-1.5 rounded-xl text-left transition-colors",
                     hasSelectedConversation ? "bg-accent/60" : "hover:bg-accent/60"
@@ -199,7 +200,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
             {/* New task with this employee, without opening them first. */}
             <button
                 onClick={() => onNewChat(agent.id)}
-                title={`New task with ${agent.name}`}
+                title={`${WORK_ITEM.new} with ${agent.name}`}
                 className="absolute right-7 top-1/2 -translate-y-1/2 h-6 w-6 hidden group-hover:flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
             >
                 <Plus className="h-3.5 w-3.5" />
@@ -213,7 +214,7 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                             onClick={() => onNewChat(agent.id)}
                             className="w-full text-left px-2.5 py-2 text-[12px] text-muted-foreground/40 hover:text-muted-foreground transition-colors rounded-md hover:bg-accent/30"
                         >
-                            Start a task…
+                            {WORK_ITEM.start}
                         </button>
                     ) : (
                         <>
@@ -332,6 +333,9 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
 
     const isLoading = loadingConvs || loadingAgents;
 
+    // Flat list (Employees off): every chat, most recently active first.
+    const flatConversations = [...filtered].sort((a, b) => lastActivity(b) - lastActivity(a));
+
     // One employee open at a time; with nothing chosen yet, the pinned one.
     const openAgentId = expandedAgentId === undefined ? pinnedAgents[0]?.id ?? null : expandedAgentId;
 
@@ -365,10 +369,10 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
     return (
         <div className="flex flex-col h-full bg-[var(--messages-panel)] border-r border-border">
             <div className="pt-6 px-4 pb-3 flex items-center justify-between">
-                <h2 className="text-base font-semibold text-foreground">Tasks</h2>
+                <h2 className="text-base font-semibold text-foreground">{WORK_ITEM.plural}</h2>
                 <Button onClick={() => onNewChat()} size="icon" variant="ghost"
                     className="h-8 w-8 rounded-full hover:bg-accent/50 transition-colors"
-                    title="New task"
+                    title={WORK_ITEM.new}
                 >
                     <Plus className="h-4 w-4" />
                 </Button>
@@ -379,7 +383,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                     <input
                         type="text"
-                        placeholder="Search employees, tasks…"
+                        placeholder={FEATURE_FLAGS.employees ? `Search employees, ${WORK_ITEM.plural.toLowerCase()}…` : `Search ${WORK_ITEM.plural.toLowerCase()}…`}
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         className="w-full h-9 bg-secondary border border-border rounded-lg pl-9 pr-4 text-sm focus:ring-1 focus:ring-primary/20 outline-none transition-all"
@@ -413,6 +417,27 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                             </div>
                         ))}
                     </div>
+                ) : !FEATURE_FLAGS.employees ? (
+                    // One employee (Olmo) and no hiring: grouping under his name
+                    // adds a layer that separates nothing. Flat, newest first.
+                    flatConversations.length === 0 ? (
+                        <div className="py-10 text-center text-sm text-muted-foreground px-4">
+                            {query ? `No ${WORK_ITEM.plural.toLowerCase()} match "${search.trim()}".` : WORK_ITEM.empty}
+                        </div>
+                    ) : (
+                        <div className="space-y-0.5">
+                            {flatConversations.map(conv => (
+                                <ConversationRow
+                                    key={conv.id}
+                                    conversation={conv}
+                                    isSelected={selectedId === conv.id}
+                                    onSelect={() => onSelect(conv)}
+                                    onArchive={() => { setActionType('archive'); setDeleteId(conv.id); }}
+                                    onDelete={() => { setActionType('delete'); setDeleteId(conv.id); }}
+                                />
+                            ))}
+                        </div>
+                    )
                 ) : activeAgents.length > 0 ? (
                     <>
                         {/* Labels only once there is more than one group — with just

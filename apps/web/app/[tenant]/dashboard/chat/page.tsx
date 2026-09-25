@@ -20,7 +20,7 @@ import { AgentSelector } from "@/components/platform/chat/AgentSelector";
 import { Canvas } from "@/components/platform/canvas/Canvas";
 import { VoiceModal } from "@/components/platform/voice";
 import { ChatHeader } from "./ChatHeader";
-import { TasksPanelToggle } from "./TasksPanelToggle";
+import { ChatListToggle } from "./ChatListToggle";
 import { usePersonaAnimationState } from "@/components/platform/personas/usePersonaAnimationState";
 import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
@@ -555,7 +555,7 @@ function ChatPage() {
     }, [conversationId, queryClient, sendUploadAnswer]);
 
     const sidebarToggleButton = (
-        <TasksPanelToggle
+        <ChatListToggle
             collapsed={isChatSidebarCollapsed}
             onToggle={toggleChatSidebar}
             className="absolute top-6 left-4 z-10"
