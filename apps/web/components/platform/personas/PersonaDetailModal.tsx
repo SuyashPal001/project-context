@@ -49,7 +49,7 @@ export function PersonaDetailModal({ persona, open, onOpenChange, onHire, onAssi
                                 {persona.name}
                             </DialogTitle>
                             {persona.isOfficial && (
-                                <Badge variant="outline" className="mt-1 gap-1 text-amber-600 border-amber-300">
+                                <Badge variant="outline" className="mt-1 gap-1 text-muted-foreground border-border">
                                     <Pin className="h-3 w-3" /> Official
                                 </Badge>
                             )}
