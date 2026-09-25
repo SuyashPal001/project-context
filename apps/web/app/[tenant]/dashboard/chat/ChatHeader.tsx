@@ -1,5 +1,6 @@
 'use client';
-import { MoreVertical, PanelRight, PanelLeftClose, PanelLeftOpen, Archive, Calculator } from 'lucide-react';
+import { MoreVertical, PanelRight, Archive, Calculator } from 'lucide-react';
+import { TasksPanelToggle } from './TasksPanelToggle';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -35,15 +36,7 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
     return (
         <div className="flex items-center justify-between px-6 pt-6 pb-4 bg-background z-10 shrink-0">
             <div className="flex items-center gap-3">
-                <Button
-                    variant="ghost" size="icon"
-                    onClick={toggleChatSidebar}
-                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                >
-                    {isChatSidebarCollapsed
-                        ? <PanelLeftOpen className="h-4 w-4" />
-                        : <PanelLeftClose className="h-4 w-4" />}
-                </Button>
+                <TasksPanelToggle collapsed={isChatSidebarCollapsed} onToggle={toggleChatSidebar} />
                 <PersonaAvatar persona={selectedConversation.agent?.persona} avatarUrl={selectedConversation.agent?.avatarUrl} size={36} className="rounded-full" icon={getAgentTypeIcon(selectedConversation.agent?.type)} isDefault={selectedConversation.agent?.origin === "built_in"} />
                 <div>
                     <div className="flex items-center gap-2">

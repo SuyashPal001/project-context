@@ -20,13 +20,14 @@ import { AgentSelector } from "@/components/platform/chat/AgentSelector";
 import { Canvas } from "@/components/platform/canvas/Canvas";
 import { VoiceModal } from "@/components/platform/voice";
 import { ChatHeader } from "./ChatHeader";
+import { TasksPanelToggle } from "./TasksPanelToggle";
 import { usePersonaAnimationState } from "@/components/platform/personas/usePersonaAnimationState";
 import { useChatPage } from "./useChatPage";
 import { useChatStream } from "./useChatStream";
 import { shouldShowConversationWelcome } from "./conversationWelcomeState";
 import { useCanvas } from "@/hooks/useCanvas";
 import { useVoice } from "@/hooks/useVoice";
-import { MessageSquare, RefreshCw, PanelLeftClose, PanelLeftOpen, Calculator, Check, LayoutTemplate, UserRound, Package, Music, Zap } from "lucide-react";
+import { MessageSquare, RefreshCw, Calculator, Check, LayoutTemplate, UserRound, Package, Music, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -554,15 +555,11 @@ function ChatPage() {
     }, [conversationId, queryClient, sendUploadAnswer]);
 
     const sidebarToggleButton = (
-        <Button
-            variant="ghost" size="icon"
-            onClick={toggleChatSidebar}
-            className="absolute top-6 left-4 z-10 h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-        >
-            {isChatSidebarCollapsed
-                ? <PanelLeftOpen className="h-4 w-4" />
-                : <PanelLeftClose className="h-4 w-4" />}
-        </Button>
+        <TasksPanelToggle
+            collapsed={isChatSidebarCollapsed}
+            onToggle={toggleChatSidebar}
+            className="absolute top-6 left-4 z-10"
+        />
     );
 
     const modelChangeProps = {
