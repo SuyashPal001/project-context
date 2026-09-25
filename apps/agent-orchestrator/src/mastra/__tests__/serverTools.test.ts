@@ -67,6 +67,9 @@ describe('SERVER_TOOLS', () => {
       'check_credit_plan',
       'draft_skill',
       'find_in_folder',
+      'find_past_tasks',
+      // Present while OLMO_DIRECT_IMAGE is not '0' (the default).
+      'generate_image',
       'get_task_thread',
       'internet_search',
       'list_casting_assets',

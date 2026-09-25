@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight } from "lucide-react";
+import { Plus, Search, MoreVertical, Trash2, Archive, LockKeyhole, ChevronRight, ArrowRight } from "lucide-react";
 import { format, isToday, isThisWeek } from "date-fns";
 import { Conversation, ConversationsResponse } from "./types";
 import { Agent, AgentsResponse } from "../agents/types";
@@ -49,7 +50,7 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
                 )}
             >
                 <span className="truncate text-[13px] w-[calc(100%-1.25rem)]">
-                    {conversation.title || `Chat with ${conversation.agent?.name || 'Agent'}`}
+                    {conversation.title || 'Untitled task'}
                 </span>
             </button>
             <div className={cn(
@@ -84,16 +85,20 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
 
 // ─── AgentSection ─────────────────────────────────────────────────────────────
 //
-// Collapsed by default: one row per agent (avatar + name only). Clicking
-// toggles it open to reveal that agent's conversations nested underneath.
-// The row's left slot shows the avatar normally and swaps to a chevron
-// (inside a pill hover background) on hover/expanded state, rather than
-// showing both at once — matches the reference's collapsed-list treatment.
+// One row per employee (avatar + name, plus last-active time while closed).
+// Clicking toggles it open to reveal that employee's tasks nested underneath;
+// only one employee is open at a time (see ConversationList). Starting a new
+// task lives in the panel header's ⊕, or the row's hover + for a specific
+// employee — not a "New chat" row repeated under every employee.
 
 // How many conversation rows show per agent before a "See more" click is
 // needed — an agent with dozens of chats (real scenario at scale) shouldn't
 // dump every single one into the sidebar at once.
 const CONVERSATIONS_PAGE_SIZE = 5;
+
+// Unpinned employees shown in RECENT before "All employees" takes over — the
+// list stays short however many employees a workspace grows to.
+const RECENT_EMPLOYEES_LIMIT = 5;
 
 // "3:45 PM" for today, weekday name within the last 7 days, else "Mar 4" —
 // matches the reference inbox pattern (today's time, otherwise a day/date).
@@ -107,6 +112,10 @@ function formatConversationTimestamp(iso: string): string {
 // The agent's most recently active conversation — drives the timestamp +
 // preview snippet shown on the collapsed row, same as picking the newest
 // thread in an inbox list.
+function lastActivity(c: Conversation): number {
+    return new Date(c.lastMessage?.createdAt ?? c.createdAt).getTime();
+}
+
 function mostRecentConversation(conversations: Conversation[]): Conversation | null {
     return conversations.reduce<Conversation | null>((latest, c) => {
         const ts = c.lastMessage?.createdAt ?? c.createdAt;
@@ -148,66 +157,62 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
 
     return (
         <div className="mb-1.5">
+            <div className="relative group">
             <button
                 onClick={onToggle}
-                title={isExpanded ? "Collapse" : `${conversations.length} conversation${conversations.length === 1 ? '' : 's'}`}
+                title={isExpanded ? "Collapse" : `${conversations.length} task${conversations.length === 1 ? '' : 's'}`}
                 className={cn(
-                    "w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left transition-colors group",
+                    "w-full flex items-center gap-2.5 pl-2 pr-9 py-1.5 rounded-xl text-left transition-colors",
                     hasSelectedConversation ? "bg-accent/60" : "hover:bg-accent/60"
                 )}
             >
                 <PersonaAvatar
                     persona={agent.persona}
                     avatarUrl={agent.avatarUrl}
-                    size={36}
-                    className="rounded-full h-9 w-9 shrink-0"
+                    size={28}
+                    className="rounded-full h-7 w-7 shrink-0"
                     iconClassName="text-foreground/50"
                     icon={getAgentTypeIcon(agent.type)}
                     isDefault={agent.origin === "built_in"}
                 />
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                        <span className={cn(
-                            "text-[15px] truncate",
-                            hasSelectedConversation ? "font-semibold text-foreground" : "font-medium text-foreground/80"
-                        )}>
-                            {agent.name}
-                        </span>
-                        {recent && (
-                            <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0">
-                                {formatConversationTimestamp(recent.lastMessage?.createdAt ?? recent.createdAt)}
-                            </span>
-                        )}
-                    </div>
-                    {recent?.lastMessage ? (
-                        <p className="text-[12px] text-muted-foreground/65 truncate text-left">
-                            {recent.lastMessage.content}
-                        </p>
-                    ) : agent.description ? (
-                        // No real message yet (agent has no conversations, or its
-                        // conversations only contain placeholders) — show what the
-                        // agent can do instead of leaving the row blank.
-                        <p className="text-[12px] text-muted-foreground/50 italic truncate text-left">
-                            {agent.description}
-                        </p>
-                    ) : null}
-                </div>
+                <span className={cn(
+                    "flex-1 min-w-0 text-[14px] truncate",
+                    hasSelectedConversation ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                )}>
+                    {agent.name}
+                </span>
+                {/* Last-active time only while closed — open, the tasks
+                    underneath already say what happened. */}
+                {!isExpanded && recent && (
+                    <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0 group-hover:hidden">
+                        {formatConversationTimestamp(recent.lastMessage?.createdAt ?? recent.createdAt)}
+                    </span>
+                )}
                 <ChevronRight
                     className={cn(
-                        "h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform",
+                        "absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-transform",
                         isExpanded && "rotate-90"
                     )}
                 />
             </button>
+            {/* New task with this employee, without opening them first. */}
+            <button
+                onClick={() => onNewChat(agent.id)}
+                title={`New task with ${agent.name}`}
+                className="absolute right-7 top-1/2 -translate-y-1/2 h-6 w-6 hidden group-hover:flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+                <Plus className="h-3.5 w-3.5" />
+            </button>
+            </div>
 
             {isExpanded && (
-                <div className="relative ml-[22px] pl-[26px] pt-1 border-l border-border/60">
+                <div className="relative ml-[21px] pl-[18px] pt-0.5 pb-1 border-l border-border/60">
                     {conversations.length === 0 ? (
                         <button
                             onClick={() => onNewChat(agent.id)}
                             className="w-full text-left px-2.5 py-2 text-[12px] text-muted-foreground/40 hover:text-muted-foreground transition-colors rounded-md hover:bg-accent/30"
                         >
-                            Start a conversation…
+                            Start a task…
                         </button>
                     ) : (
                         <>
@@ -231,13 +236,6 @@ function AgentSection({ agent, conversations, selectedId, isExpanded, onToggle, 
                             )}
                         </>
                     )}
-                    <button
-                        onClick={() => onNewChat(agent.id)}
-                        className="w-full flex items-center gap-1.5 h-9 px-2.5 rounded-md text-[13px] text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors"
-                    >
-                        <Plus className="h-3.5 w-3.5" />
-                        New chat
-                    </button>
                 </div>
             )}
         </div>
@@ -250,7 +248,9 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [actionType, setActionType] = useState<'archive' | 'delete'>('archive');
     const [search, setSearch] = useState('');
-    const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
+    // undefined = the user hasn't opened or closed anything yet (default applies);
+    // null = explicitly all closed.
+    const [expandedAgentId, setExpandedAgentId] = useState<string | null | undefined>(undefined);
     // Tracks the last selectedId we auto-expanded for, so a manual collapse by
     // the user (clicking the same section closed again) doesn't get immediately
     // re-forced open on the next render — only a genuinely NEW selection (e.g.
@@ -294,8 +294,12 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
     const activeAgents = (agentsData?.data ?? []).filter(a => a.status === 'active');
     const lockedAgents = (agentsData?.data ?? []).filter(a => a.status === 'paused');
     const allConvs = (conversationsData?.data ?? []).filter(c => c.status !== 'archived');
-    const filtered = search.trim()
-        ? allConvs.filter(c => (c.title || '').toLowerCase().includes(search.toLowerCase()))
+    const query = search.trim().toLowerCase();
+    // Search covers employees and tasks: an employee whose name matches shows
+    // all their tasks; otherwise only tasks whose title matches.
+    const nameMatchedAgentIds = new Set(query ? activeAgents.filter(a => a.name.toLowerCase().includes(query)).map(a => a.id) : []);
+    const filtered = query
+        ? allConvs.filter(c => nameMatchedAgentIds.has(c.agentId) || (c.title || '').toLowerCase().includes(query))
         : allConvs;
 
     const convsByAgent = filtered.reduce<Record<string, Conversation[]>>((acc, c) => {
@@ -303,7 +307,32 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
         return acc;
     }, {});
 
+    // PINNED: the built-in employee (keyed off origin, never the name — a
+    // rename once broke name-keyed checks). RECENT: everyone else, most
+    // recently active first, capped; the rest are on the Employees page.
+    const { pinnedAgents, recentAgents, hiddenAgentCount } = useMemo(() => {
+        const latestByAgent = new Map<string, number>();
+        for (const c of allConvs) latestByAgent.set(c.agentId, Math.max(latestByAgent.get(c.agentId) ?? 0, lastActivity(c)));
+        const pinned = activeAgents.filter(a => a.origin === 'built_in');
+        const others = activeAgents
+            .filter(a => a.origin !== 'built_in')
+            .sort((a, b) => (latestByAgent.get(b.id) ?? 0) - (latestByAgent.get(a.id) ?? 0) || a.name.localeCompare(b.name));
+        // While searching, show every employee with a hit rather than the cap.
+        const shown = query
+            ? others.filter(a => (convsByAgent[a.id]?.length ?? 0) > 0 || nameMatchedAgentIds.has(a.id))
+            : others.slice(0, RECENT_EMPLOYEES_LIMIT);
+        // Never cap away the employee whose task is open right now.
+        const selectedAgentId = allConvs.find(c => c.id === selectedId)?.agentId;
+        const selectedAgent = others.find(a => a.id === selectedAgentId);
+        if (!query && selectedAgent && !shown.includes(selectedAgent)) shown.push(selectedAgent);
+        return { pinnedAgents: pinned, recentAgents: shown, hiddenAgentCount: query ? 0 : others.length - shown.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [agentsData, conversationsData, query, selectedId]);
+
     const isLoading = loadingConvs || loadingAgents;
+
+    // One employee open at a time; with nothing chosen yet, the pinned one.
+    const openAgentId = expandedAgentId === undefined ? pinnedAgents[0]?.id ?? null : expandedAgentId;
 
     useEffect(() => {
         if (!selectedId || selectedId === lastAutoExpandedForRef.current) return;
@@ -313,13 +342,32 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
         lastAutoExpandedForRef.current = selectedId;
     }, [selectedId, allConvs]);
 
+    const renderAgent = (agent: Agent) => (
+        <AgentSection
+            key={agent.id}
+            agent={agent}
+            conversations={convsByAgent[agent.id] ?? []}
+            selectedId={selectedId}
+            // A search in progress overrides collapse state so matching
+            // conversations are actually visible rather than hidden inside
+            // a closed section the user has no reason to think to open.
+            isExpanded={query ? (convsByAgent[agent.id]?.length ?? 0) > 0 : openAgentId === agent.id}
+            onToggle={() => setExpandedAgentId(openAgentId === agent.id ? null : agent.id)}
+            onSelect={onSelect}
+            onNewChat={onNewChat}
+            onArchive={(id) => { setActionType('archive'); setDeleteId(id); }}
+            onDelete={(id) => { setActionType('delete'); setDeleteId(id); }}
+            hasSelectedConversation={!!selectedId && (convsByAgent[agent.id] ?? []).some(c => c.id === selectedId)}
+        />
+    );
+
     return (
         <div className="flex flex-col h-full bg-[var(--messages-panel)] border-r border-border">
             <div className="pt-6 px-4 pb-3 flex items-center justify-between">
-                <h2 className="text-base font-semibold text-foreground">Messages</h2>
+                <h2 className="text-base font-semibold text-foreground">Tasks</h2>
                 <Button onClick={() => onNewChat()} size="icon" variant="ghost"
                     className="h-8 w-8 rounded-full hover:bg-accent/50 transition-colors"
-                    title="New conversation"
+                    title="New task"
                 >
                     <Plus className="h-4 w-4" />
                 </Button>
@@ -330,7 +378,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
                     <input
                         type="text"
-                        placeholder="Search chats..."
+                        placeholder="Search employees, tasks…"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         className="w-full h-9 bg-secondary border border-border rounded-lg pl-9 pr-4 text-sm focus:ring-1 focus:ring-primary/20 outline-none transition-all"
@@ -366,27 +414,27 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                     </div>
                 ) : activeAgents.length > 0 ? (
                     <>
-                        <p className="px-2.5 pb-1.5 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest">
-                            Your Team
-                        </p>
-                        {activeAgents.map(agent => (
-                            <AgentSection
-                                key={agent.id}
-                                agent={agent}
-                                conversations={convsByAgent[agent.id] ?? []}
-                                selectedId={selectedId}
-                                // A search in progress overrides collapse state so matching
-                                // conversations are actually visible rather than hidden inside
-                                // a closed section the user has no reason to think to open.
-                                isExpanded={search.trim() ? (convsByAgent[agent.id]?.length ?? 0) > 0 : expandedAgentId === agent.id}
-                                onToggle={() => setExpandedAgentId(id => id === agent.id ? null : agent.id)}
-                                onSelect={onSelect}
-                                onNewChat={onNewChat}
-                                onArchive={(id) => { setActionType('archive'); setDeleteId(id); }}
-                                onDelete={(id) => { setActionType('delete'); setDeleteId(id); }}
-                                hasSelectedConversation={!!selectedId && (convsByAgent[agent.id] ?? []).some(c => c.id === selectedId)}
-                            />
-                        ))}
+                        {/* Labels only once there is more than one group — with just
+                            the built-in employee, a lone "PINNED" header is noise. */}
+                        {pinnedAgents.length > 0 && recentAgents.length > 0 && (
+                            <p className="px-2.5 pb-1 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest">Pinned</p>
+                        )}
+                        {pinnedAgents.map(renderAgent)}
+                        {recentAgents.length > 0 && (
+                            <p className="px-2.5 pt-2 pb-1 text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-widest">
+                                {pinnedAgents.length > 0 ? 'Recent' : 'Employees'}
+                            </p>
+                        )}
+                        {recentAgents.map(renderAgent)}
+                        {hiddenAgentCount > 0 && (
+                            <Link
+                                href={`/${tenantSlug}/dashboard/agents`}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-muted-foreground/70 hover:text-foreground rounded-md hover:bg-accent/30 transition-colors"
+                            >
+                                All employees ({activeAgents.length})
+                                <ArrowRight className="h-3 w-3" />
+                            </Link>
+                        )}
                         {lockedAgents.map(agent => (
                             <div key={agent.id} className="mb-4">
                                 <div className="flex items-start justify-between px-2 mb-1">

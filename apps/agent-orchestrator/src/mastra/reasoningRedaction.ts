@@ -33,6 +33,7 @@ const REDACTIONS: Array<[RegExp, string]> = [
   [/\bdraft_skill\b/gi, 'drafting a skill'],
   [/\bsave_skill\b/gi, 'saving the skill'],
   [/\blist_folder\b/gi, 'listing the folder'],
+  [/\bfind_past_tasks\b/gi, 'looking through your earlier tasks'],
   [/\bfind_in_folder\b/gi, 'searching the folder'],
   [/\bread_file\b/gi, 'reading the file'],
   [/\bpcTools_GMAIL_\w+\b/gi, 'using Gmail'],
