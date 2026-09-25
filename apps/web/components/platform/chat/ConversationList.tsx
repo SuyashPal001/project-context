@@ -51,9 +51,15 @@ function ConversationRow({ conversation, isSelected, onSelect, onArchive, onDele
                         : "text-muted-foreground hover:bg-accent/50 hover:text-foreground font-medium"
                 )}
             >
-                <span className="truncate text-[13px] w-[calc(100%-1.25rem)]">
+                <span className="truncate text-[13px] min-w-0 flex-1 pr-5">
                     {conversation.title || WORK_ITEM.untitled}
                 </span>
+                {/* Not on the open chat — its card is already in front of you. */}
+                {conversation.needsReply && !isSelected && (
+                    <span className="shrink-0 mr-6 text-[11px] font-medium text-shimmer-accent">
+                        Needs reply
+                    </span>
+                )}
             </button>
             <div className={cn(
                 "absolute right-1 top-1/2 -translate-y-1/2",

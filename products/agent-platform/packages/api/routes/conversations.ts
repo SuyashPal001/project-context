@@ -131,6 +131,22 @@ conversationsRoutes.get('/', async (c) => {
                     order by m.created_at desc
                     limit 1
                 )`,
+                // Waiting on the user: a clarification, upload, generation-confirm or
+                // tool-approval card still 'pending' in the chat. Clarification and
+                // upload rows are trustworthy — the watchdog flips orphaned ones to
+                // 'expired'. Confirm/approval rows are not: the watchdog declines an
+                // abandoned run after 24h through Mastra but never rewrites the
+                // message row, so those only count while younger than that.
+                needsReply: sql<boolean>`exists(
+                    select 1 from ${messages} m
+                    where m.conversation_id = ${conversations.id}
+                      and m.tenant_id = ${conversations.tenantId}
+                      and (m.clarification_request->>'status' = 'pending'
+                        or m.upload_request->>'status' = 'pending'
+                        or ((m.generation_confirm_request->>'status' = 'pending'
+                             or m.approval_request->>'status' = 'pending')
+                            and m.created_at > now() - interval '24 hours'))
+                )`,
                 agent: {
                     id: agents.id, name: agents.name, type: agents.type,
                     avatarFileId: agents.avatarFileId, isDefault: agents.isDefault, origin: agents.origin,

@@ -258,6 +258,8 @@ export interface Conversation {
     /** Newest user/assistant message, truncated server-side to 160 chars.
      *  Null for a conversation with nothing but placeholders in it. */
     lastMessage?: { role: string; content: string; createdAt: string } | null;
+    /** A question, upload or approval card in this chat is waiting on the user (list endpoint only). */
+    needsReply?: boolean;
     /** Server-side grant: which Drive folder this conversation's agent may read.
      *  Enforcement lives in the orchestrator's tools — this is display only.
      *  allowMode: 'ask' (default) shows the ApproveCost card before every
