@@ -153,7 +153,7 @@ export function Sidebar() {
         },
         staleTime: 5 * 60 * 1000,
     })
-    const brandName = branding?.brandName || "OlmoWorks"
+    const brandName = branding?.brandName || "AdsPlatform"
     const brandLogoUrl = branding?.logoUrl
     const { isSidebarCollapsed, toggleSidebar } = useSidebar()
     const pathname = usePathname()
@@ -237,7 +237,13 @@ export function Sidebar() {
                             ) : (
                                 <OlmoMark height={24} />
                             )}
-                            <span className="text-base font-semibold text-foreground tracking-tight truncate">{brandName}</span>
+                            <span className="flex flex-col min-w-0">
+                                <span className="text-base font-semibold text-foreground tracking-tight truncate leading-tight">{brandName}</span>
+                                {/* Platform credit only under the platform's own name, not a tenant's custom brand. */}
+                                {!branding?.brandName && (
+                                    <span className="text-[10px] text-muted-foreground leading-none truncate">by IndicLabs</span>
+                                )}
+                            </span>
                         </Link>
                     )}
                     <Tooltip delayDuration={0}>

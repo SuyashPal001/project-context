@@ -4,6 +4,10 @@ import React, { useEffect, useState } from "react";
 import { OlmoMark } from "./platform/OlmoMark";
 import { HyperspaceSceneBoundary } from "./hyperspace/hyperspace-scene-boundary";
 
+const PLATFORM_NAME = 'AdsPlatform';
+// Name fill per sequence step (0-5). Step 4 is where the loader waits on data.
+const FILL_BY_STEP = [10, 28, 48, 68, 92, 100];
+
 interface HyperspaceLoaderProps {
     active: boolean;
     isDone?: boolean;
@@ -43,6 +47,18 @@ function HyperspaceSequence({ isDone, onComplete, statusMessage, mode = 'signin'
     const arrival = step >= 6;
     const isDark = visualTheme === 'dark';
     const arrivalLabel = mode === 'signup' ? 'Account created' : 'Workspace ready';
+    // The platform name fills bottom to top as the sequence advances. While
+    // step 4 waits on data it creeps slowly toward 92% instead of freezing.
+    const progress = FILL_BY_STEP[Math.min(step, FILL_BY_STEP.length - 1)];
+    // Capitals only occupy roughly 18%-90% of the line box (descender space
+    // below the baseline, ascender slack above), so map progress onto that
+    // band — otherwise the first fifth of the fill rises through empty space.
+    const fillPercent = progress >= 100 ? 100 : 18 + progress * 0.72;
+    const fillDuration = step === 4 ? '8s' : '700ms';
+    // leading-none so the text box is just the glyphs and the fill level
+    // tracks the letters, not empty line-height above and below them.
+    const nameClass = 'font-sans text-[20px] leading-none font-semibold uppercase tracking-[0.3em] whitespace-nowrap';
+    const nameColor = isDark ? 'text-[#f1dfd5]' : 'text-[#40342f]';
 
     return (
         <div className={`fixed inset-0 z-[9999] pointer-events-none flex flex-col items-center justify-center overflow-hidden ${isDark ? 'bg-[#070504] text-[#f3e7df]' : 'bg-[#f6efe8] text-[#29221f]'}`}>
@@ -60,22 +76,39 @@ function HyperspaceSequence({ isDone, onComplete, statusMessage, mode = 'signin'
                         centered
                         className={`absolute bottom-[calc(100%+12px)] left-1/2 -translate-x-1/2 opacity-90 ${isDark ? '!text-[#f1dfd5]' : '!text-[#40342f]'}`}
                     />
-                    <div className={`font-sans text-[15px] font-medium uppercase tracking-[0.3em] ${isDark ? 'text-[#f1dfd5] [text-shadow:0_1px_16px_rgba(0,0,0,0.95)]' : 'text-[#40342f] [text-shadow:0_1px_14px_rgba(255,255,255,0.95)]'}`}>
-                        OlmoWorks
+                    <div className="relative">
+                        {/* Unfilled track: the same name, faint. */}
+                        <div className={`${nameClass} ${nameColor} opacity-25`}>
+                            {PLATFORM_NAME}
+                        </div>
+                        {/* Filled part: rises from the bottom like liquid in a
+                            glass, clipped to the current progress, shimmering. */}
+                        <div
+                            className="absolute inset-x-0 bottom-0 flex items-end overflow-hidden ease-out"
+                            style={{ height: `${fillPercent}%`, transitionProperty: 'height', transitionDuration: fillDuration }}
+                            aria-hidden="true"
+                        >
+                            <div className={`${nameClass} ${nameColor} shimmer-text`}>
+                                {PLATFORM_NAME}
+                            </div>
+                        </div>
                     </div>
+
+                    {/* The filling name is the progress indicator; this line only
+                        appears when a caller sets an explicit status. */}
+                    {statusMessage && (
+                        <div className="absolute top-[calc(100%+14px)] left-1/2 -translate-x-1/2">
+                            <p
+                                key={statusMessage}
+                                className="animate-in fade-in duration-300 font-mono text-[11px] tracking-[0.08em]"
+                                style={{ color: isDark ? '#bca9a0' : '#8c7c74' }}
+                            >
+                                {statusMessage}
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
-
-            {statusMessage && !arrival && (
-                <div className="absolute bottom-12 left-0 right-0 flex justify-center z-10 pointer-events-none">
-                    <p
-                        className="font-mono text-[11px] tracking-[0.08em] transition-opacity duration-500"
-                        style={{ color: isDark ? '#bca9a0' : '#8c7c74' }}
-                    >
-                        {statusMessage}
-                    </p>
-                </div>
-            )}
 
             <div className={`absolute inset-0 z-20 flex items-center justify-center transition-opacity duration-700 ${arrival ? `opacity-100 ${isDark ? 'bg-[#070504]/80' : 'bg-[#f6efe8]/70'}` : 'opacity-0 pointer-events-none'}`}>
                 <div className={`text-[16px] font-medium tracking-wide transition-all duration-700 ${arrival ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>

@@ -1,55 +1,55 @@
 "use client"
 
+import { useId } from "react"
 import { cn } from "@/lib/utils"
 
 interface OlmoMarkProps {
     height?: number
     className?: string
-    /** Tight, symmetric viewBox around the shape's actual bounding box
-     * (x:186-814, y:42-654), instead of the default's top-padded one. The
-     * default padding exists so the mark's visual weight lines up with
-     * adjacent wordmark text (Sidebar, SaarthiLogo, auth screens) — that
-     * same padding reads as visibly off-center when the mark stands alone
-     * inside a centered avatar circle (AgentOrb, PersonaAvatar). Use this
-     * there instead of changing the default and breaking wordmark layouts. */
+    /** Tight viewBox around the circle, for when the mark stands alone inside
+     * a centered avatar circle (AgentOrb, PersonaAvatar). The default keeps
+     * a hairline of padding so it sits evenly beside wordmark text. */
     centered?: boolean
 }
 
-// Theme-aware mark: black in light mode, white in dark mode via currentColor.
-// viewBox is padded on top (vs the tight favicon crop) so the shape's visual
-// weight lines up with adjacent wordmark text instead of floating high.
+// Theme-aware platform mark (ads-platform-mark.svg): a disc with a play-card
+// and hook cut out of it. Filled with currentColor so it is black in light
+// mode and white in dark mode; the cut-outs show whatever is behind it.
 export function OlmoMark({ height = 24, className, centered = false }: OlmoMarkProps) {
+    // Each instance needs its own mask id — several marks render on one page.
+    const maskId = `platform-mark-cut-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`
+
     return (
         <svg
-            viewBox={centered ? "186 42 628 612" : "179 -8 642 670"}
+            viewBox={centered ? "1 1 62 62" : "0 0 64 64"}
             className={cn("shrink-0 text-foreground", className)}
             style={{ height, width: "auto" }}
             aria-hidden="true"
         >
-            <path
-                fill="currentColor"
-                d="
-                    M 500, 42
-                    C 536, 42  554, 70  553, 118
-                    C 552, 126  548, 134  542, 140
-                    C 538, 144  534, 150  534, 160
-                    C 534, 202  550, 248  592, 290
-                    C 638, 336  700, 362  772, 376
-                    C 804, 382  814, 394  810, 404
-                    C 804, 416  768, 432  720, 448
-                    C 620, 482  540, 560  506, 646
-                    C 503, 654  497, 654  494, 646
-                    C 460, 560  380, 482  280, 448
-                    C 232, 432  196, 416  190, 404
-                    C 186, 394  196, 382  228, 376
-                    C 300, 362  362, 336  408, 290
-                    C 450, 248  466, 202  466, 160
-                    C 466, 150  462, 144  458, 140
-                    C 452, 134  448, 126  447, 118
-                    C 446, 70  464, 42  500, 42
-                    Z
-                "
-            />
+            <defs>
+                <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+                    <rect width="64" height="64" fill="#fff" />
+                    <path
+                        d="M45 8V37a12.5 12.5 0 0 1-25 0v-9"
+                        fill="none"
+                        stroke="#000"
+                        strokeWidth="3.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                    <rect x="24.5" y="24.5" width="18" height="22" rx="5" fill="#fff" transform="rotate(-8 33 36)" />
+                    <rect x="27" y="27" width="13" height="17" rx="3" fill="#000" transform="rotate(-8 33 36)" />
+                    <path
+                        d="M31 32.5v7l5.5-3.5Z"
+                        fill="#fff"
+                        stroke="#fff"
+                        strokeWidth="1"
+                        strokeLinejoin="round"
+                        transform="rotate(-8 33 36)"
+                    />
+                </mask>
+            </defs>
+            <circle cx="32" cy="32" r="31" fill="currentColor" mask={`url(#${maskId})`} />
         </svg>
     )
 }
