@@ -1,7 +1,6 @@
 "use client";
 
-import { Pin, Brain } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { BadgeCheck, Brain } from "lucide-react";
 import { EmployeeCard } from "@/components/platform/shared/EmployeeCard";
 import { PersonaAvatar } from "./PersonaAvatar";
 import type { PersonaSummary } from "./types";
@@ -28,9 +27,9 @@ export function PersonaCard({ persona, isHired, href }: PersonaCardProps) {
             name={persona.name}
             headerBadge={
                 persona.isOfficial ? (
-                    <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
-                        <Pin className="h-3 w-3" /> Official
-                    </Badge>
+                    <span title="Official" aria-label="Official" className="inline-flex">
+                        <BadgeCheck className="h-5 w-5 fill-foreground text-primary" />
+                    </span>
                 ) : undefined
             }
             subtitle={
