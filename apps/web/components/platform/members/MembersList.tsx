@@ -21,6 +21,7 @@ import { useMembersData } from "./useMembersData";
 import { ChangeRoleDialog } from "./ChangeRoleDialog";
 import { MemberStatusCell } from "./MemberStatusCell";
 import { MemberActionsCell } from "./MemberActionsCell";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 
 export function MembersList({ onInviteClick }: { onInviteClick?: () => void }) {
     const { tenantId, userId, permissions = [] } = useTenant();
@@ -89,7 +90,7 @@ export function MembersList({ onInviteClick }: { onInviteClick?: () => void }) {
                             </Button>
                         </PermissionGate>
                     )}
-                    {activeTab === "agents" && (
+                    {activeTab === "agents" && FEATURE_FLAGS.employees && (
                         <Link href={`/${tenantId}/dashboard/agents`}>
                             <Button variant="outline" size="sm">Manage Agents</Button>
                         </Link>

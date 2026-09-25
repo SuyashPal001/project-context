@@ -6,4 +6,5 @@ export const FEATURE_FLAGS = {
     chatUpload:   true,   // + attach button in chat input
     chatCanvas:   true,   // Canvas panel and toggle button in chat
     chatVoice:    false,  // Voice orb / mic button in chat
+    employees:    false,  // Employees section (hire/explore catalog) — its catalog is still the old PM product's
 } as const;

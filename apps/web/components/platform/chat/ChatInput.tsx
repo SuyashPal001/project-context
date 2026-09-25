@@ -729,9 +729,10 @@ export function ChatInput({
                                 // visible door ("+" -> From Drive, drag, paste),
                                 // and the hint line only has room to teach the
                                 // two keys that have no other affordance.
-                                placeholder={canUseSlash
-                                    ? "Ask anything, / for skills, @ for AI employees..."
-                                    : "Ask anything, @ for AI employees..."}
+                                // "@" is only advertised while the Employees
+                                // section is on — with it hidden there is
+                                // nobody to mention but the employee you're in.
+                                placeholder={`Ask anything${canUseSlash ? ', / for skills' : ''}${FEATURE_FLAGS.employees ? ', @ for AI employees' : ''}...`}
                                 className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50 caret-primary"
                                 disabled={disabled}
                             />

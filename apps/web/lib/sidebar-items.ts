@@ -50,7 +50,7 @@ export function getSidebarItems(
 
     // 1. MAIN SECTION — all users
     items.push({ label: "Chat", href: `${base}/chat`, icon: MessageSquare });
-    items.push({ label: "Employees", href: `${base}/agents`, icon: Bot });
+    if (FEATURE_FLAGS.employees) items.push({ label: "Employees", href: `${base}/agents`, icon: Bot });
     // "Planner" is the word Meta Business Suite, Canva and Hootsuite use for
     // scheduling content, which is what our users already know.
     items.push({ label: "Planner", href: `${base}/planner`, icon: CalendarDays });

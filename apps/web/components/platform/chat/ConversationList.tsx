@@ -14,6 +14,7 @@ import { Agent, AgentsResponse } from "../agents/types";
 import { PersonaAvatar } from "@/components/platform/personas/PersonaAvatar";
 import { getAgentTypeIcon } from "../agents/agentTypeIcon";
 import { cn } from "@/lib/utils";
+import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { toast } from "sonner";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -426,7 +427,7 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                             </p>
                         )}
                         {recentAgents.map(renderAgent)}
-                        {hiddenAgentCount > 0 && (
+                        {FEATURE_FLAGS.employees && hiddenAgentCount > 0 && (
                             <Link
                                 href={`/${tenantSlug}/dashboard/agents`}
                                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] text-muted-foreground/70 hover:text-foreground rounded-md hover:bg-accent/30 transition-colors"
@@ -435,7 +436,8 @@ export function ConversationList({ selectedId, onSelect, onNewChat }: Conversati
                                 <ArrowRight className="h-3 w-3" />
                             </Link>
                         )}
-                        {lockedAgents.map(agent => (
+                        {/* Locked employees link to the Employees section — hidden with it. */}
+                        {FEATURE_FLAGS.employees && lockedAgents.map(agent => (
                             <div key={agent.id} className="mb-4">
                                 <div className="flex items-start justify-between px-2 mb-1">
                                     <button

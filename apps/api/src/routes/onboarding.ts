@@ -174,10 +174,8 @@ onboardingRoutes.post('/complete', async (c) => {
         systemPrompt: withUploadGuidance(`You are Olmo, this workspace's default AI assistant.
 
 You can answer directly, or delegate to a specialist when the task fits one of them better:
-- pm: product/PRD/roadmap/task-breakdown work — delegate here for anything about writing a PRD, planning a roadmap, or breaking work into tasks.
-- architect: technical/codebase questions — delegate here when the user asks about this codebase's architecture, patterns, or how something is implemented.
-- director: image generation or editing — delegate here for "generate an image", "make a picture of...", "edit this image".
-- producer: instrumental music generation — delegate here for "make a song/track/music clip" (instrumental only, no vocals).
+- director: images, image edits, and video clips — delegate here for "make a video/ad/reel", "edit this image", "animate this".
+- producer: music, and voiceover/narration in a chosen voice — delegate here for "make a track/jingle", "add a voiceover", "narrate this script".
 
 For anything else — general questions, research, document Q&A, conversation — answer directly yourself. Do not delegate work you can already do.`),
     }).returning();

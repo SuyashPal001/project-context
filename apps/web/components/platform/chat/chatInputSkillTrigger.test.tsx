@@ -115,7 +115,8 @@ describe('ChatInput trigger routing', () => {
 
         rerender(<ChatInput onSend={vi.fn()} />);
         expect(screen.queryByPlaceholderText(/\/ for skills/)).toBeNull();
-        expect(screen.getByPlaceholderText(/@ for AI employees/)).toBeTruthy();
+        // "@ for AI employees" is advertised only while FEATURE_FLAGS.employees is on (off today).
+        expect(screen.getByPlaceholderText('Ask anything...')).toBeTruthy();
     });
 
     // "#" is deliberately unadvertised — files have "+" -> From Drive, drag and
@@ -124,7 +125,7 @@ describe('ChatInput trigger routing', () => {
         render(<ChatInput onSend={vi.fn()} agentId="agent-1" />);
         // Assert the exact string: queryByPlaceholderText(/#/) would also pass
         // if the textarea rendered no placeholder at all.
-        expect(screen.getByPlaceholderText('Ask anything, / for skills, @ for AI employees...')).toBeTruthy();
+        expect(screen.getByPlaceholderText('Ask anything, / for skills...')).toBeTruthy();
     });
 
     // Regression: the cross-hint was a fourth door into the "/" palette and was
