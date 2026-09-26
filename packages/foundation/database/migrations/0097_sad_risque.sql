@@ -1,0 +1,1 @@
+ALTER TABLE "voice_catalogue" ADD COLUMN "generated_preview_keys" jsonb;

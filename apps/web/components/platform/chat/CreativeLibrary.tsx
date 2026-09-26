@@ -307,13 +307,13 @@ function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | nu
     </div>;
 }
 
-function VoiceCard({ voice, languageLabel, playing, selected, onPreview, onSelect }: { voice: Voice; languageLabel: string; playing: boolean; selected: boolean; onPreview: () => void; onSelect: () => void }) {
+function VoiceCard({ voice, languageLabel, loading, playing, selected, onPreview, onSelect }: { voice: Voice; languageLabel: string; loading: boolean; playing: boolean; selected: boolean; onPreview: () => void; onSelect: () => void }) {
     return <div className={cn("relative rounded-xl border bg-muted/30 p-3 transition-colors hover:border-foreground/30", selected ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}>
         <div className="flex min-w-0 gap-3">
             <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-muted">
                 {creativeVoiceArtwork(voice.name) && <Image src={creativeVoiceArtwork(voice.name)!} alt="" fill sizes="96px" className="object-cover" />}
-                <button type="button" onClick={onPreview} disabled={!voice.hasPreview} aria-label={`${playing ? 'Stop' : `Preview ${languageLabel} sample of`} ${voice.name}`} className="absolute inset-0 m-auto flex h-9 w-9 items-center justify-center rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur-sm transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-                    {playing ? <Square className="h-3.5 w-3.5 fill-current" /> : voice.hasPreview ? <Play className="ml-0.5 h-3.5 w-3.5 fill-current" /> : <Music2 className="h-3.5 w-3.5" />}
+                <button type="button" onClick={onPreview} disabled={!voice.hasPreview || loading} aria-label={`${playing ? 'Stop' : `Preview ${languageLabel} sample of`} ${voice.name}`} className="absolute inset-0 m-auto flex h-9 w-9 items-center justify-center rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur-sm transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+                    {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : playing ? <Square className="h-3.5 w-3.5 fill-current" /> : voice.hasPreview ? <Play className="ml-0.5 h-3.5 w-3.5 fill-current" /> : <Music2 className="h-3.5 w-3.5" />}
                 </button>
             </div>
             <button type="button" aria-pressed={selected} onClick={onSelect} aria-label={`Use ${voice.name} voice`} className="flex min-w-0 flex-1 flex-col rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -332,9 +332,15 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
     const [language, setLanguage] = useState('en');
     const [search, setSearch] = useState('');
     const [playingId, setPlayingId] = useState<string | null>(null);
+    const [loadingId, setLoadingId] = useState<string | null>(null);
     const playerRef = useRef<HTMLAudioElement | null>(null);
-    const playerUrlRef = useRef<string | null>(null);
     const previewRequestRef = useRef(0);
+    const abortRef = useRef<AbortController | null>(null);
+    // Blob URLs for samples already fetched this session — the audio for a
+    // given (voice, language) never changes, so a replay just reuses the
+    // object URL instead of hitting the network (and, before that, Cartesia)
+    // again. Not revoked between plays, only on unmount.
+    const audioCacheRef = useRef<Map<string, string>>(new Map());
     const { data, isPending, isError, error, refetch } = useQuery({
         queryKey: ['creative-voices', language],
         queryFn: async (): Promise<VoicePage> => {
@@ -350,40 +356,58 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
 
     useEffect(() => () => {
         previewRequestRef.current++;
+        abortRef.current?.abort();
         playerRef.current?.pause();
-        if (playerUrlRef.current) URL.revokeObjectURL(playerUrlRef.current);
+        for (const url of audioCacheRef.current.values()) URL.revokeObjectURL(url);
+        audioCacheRef.current.clear();
     }, []);
     function stopPreview() {
         previewRequestRef.current++;
+        abortRef.current?.abort();
         playerRef.current?.pause();
         playerRef.current = null;
-        if (playerUrlRef.current) URL.revokeObjectURL(playerUrlRef.current);
-        playerUrlRef.current = null;
         setPlayingId(null);
+        setLoadingId(null);
     }
     async function togglePreview(voice: Voice) {
         if (playingId === voice.id) { stopPreview(); return; }
-        if (!voice.hasPreview) return;
+        if (!voice.hasPreview || loadingId) return;
         stopPreview();
         const requestId = previewRequestRef.current;
-        setPlayingId(voice.id);
+        const cacheKey = `${voice.id}:${language}`;
+
+        function playUrl(url: string) {
+            const audio = new Audio(url);
+            playerRef.current = audio;
+            setLoadingId(null);
+            setPlayingId(voice.id);
+            audio.onended = stopPreview;
+            audio.onerror = () => { stopPreview(); toast.error('Voice preview is unavailable.'); };
+            void audio.play();
+        }
+
+        const cachedUrl = audioCacheRef.current.get(cacheKey);
+        if (cachedUrl) { playUrl(cachedUrl); return; }
+
+        setLoadingId(voice.id);
+        const controller = new AbortController();
+        abortRef.current = controller;
         try {
             const params = new URLSearchParams({ id: voice.id, language });
-            const response = await fetchCreativeVoice(`/api/creative/voices/preview?${params}`);
-            if (!response.ok) throw new Error('Voice preview is unavailable.');
+            const response = await fetchCreativeVoice(`/api/creative/voices/preview?${params}`, { signal: controller.signal });
+            if (requestId !== previewRequestRef.current) return;
+            if (!response.ok) {
+                throw new Error(response.status === 429 ? 'Too many previews at once — try again in a moment.' : 'Voice preview is unavailable.');
+            }
             const blob = await response.blob();
             if (requestId !== previewRequestRef.current) return;
             const url = URL.createObjectURL(blob);
-            playerUrlRef.current = url;
-            const audio = new Audio(url);
-            playerRef.current = audio;
-            audio.onended = stopPreview;
-            audio.onerror = () => { stopPreview(); toast.error('Voice preview is unavailable.'); };
-            await audio.play();
-        } catch {
-            if (requestId === previewRequestRef.current) {
+            audioCacheRef.current.set(cacheKey, url);
+            playUrl(url);
+        } catch (err) {
+            if (requestId === previewRequestRef.current && !(err instanceof DOMException && err.name === 'AbortError')) {
                 stopPreview();
-                toast.error('Voice preview could not play.');
+                toast.error(err instanceof Error ? err.message : 'Voice preview could not play.');
             }
         }
     }
@@ -402,7 +426,7 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
                     <div className="grid gap-3 sm:grid-cols-2">
                         {voices.map(voice => {
                             const languageLabel = LANGUAGES.find(item => item.value === language)?.label ?? language;
-                            return <VoiceCard key={voice.id} voice={voice} languageLabel={languageLabel} playing={playingId === voice.id} selected={selected?.id === voice.id && selected.language === language} onPreview={() => void togglePreview(voice)} onSelect={() => onSelect({ kind: 'voice', id: voice.id, name: voice.name, tagline: voice.tagline, language, languageLabel })} />;
+                            return <VoiceCard key={voice.id} voice={voice} languageLabel={languageLabel} loading={loadingId === voice.id} playing={playingId === voice.id} selected={selected?.id === voice.id && selected.language === language} onPreview={() => void togglePreview(voice)} onSelect={() => onSelect({ kind: 'voice', id: voice.id, name: voice.name, tagline: voice.tagline, language, languageLabel })} />;
                         })}
                     </div>}
     </div>;

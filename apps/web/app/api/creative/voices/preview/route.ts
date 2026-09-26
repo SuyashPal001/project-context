@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, voiceCatalogue } from '@serverless-saas/database';
+import { storageService } from '@serverless-saas/storage';
 import { verifyVoiceLibrarySession } from '../session';
 
 export const runtime = 'nodejs';
@@ -36,6 +37,12 @@ function sampleResponse(sample: CachedSample): NextResponse {
         'Cache-Control': 'private, max-age=86400',
         'CDN-Cache-Control': 'public, s-maxage=31536000, stale-while-revalidate=86400',
     } });
+}
+
+// (voice, language) -> the audio is always the same fixed transcript synthesized
+// with the same voice, so once generated it never needs regenerating.
+function generatedPreviewStorageKey(providerId: string, language: string): string {
+    return `creative-library/voice-previews/${providerId}/${language}.wav`;
 }
 
 function reserveGeneration(): boolean {
@@ -78,6 +85,26 @@ export async function GET(request: NextRequest) {
         if (language !== 'en' && voice.accents?.length && !voice.accents.some(accent => accent.locale.split(/[-_]/)[0] === language)) {
             return NextResponse.json({ error: 'This voice does not support that language.' }, { status: 404 });
         }
+
+        // Our own persisted copy of a previously-generated sample — checked first,
+        // for every language, before either the Cartesia-hosted preview or a fresh
+        // TTS call. This is what turns "call Cartesia on every preview" into
+        // "call Cartesia once per (voice, language), ever."
+        const existingGeneratedKey = voice.generatedPreviewKeys?.[language];
+        if (existingGeneratedKey) {
+            try {
+                const bytes = await storageService.getLibraryAssetBytes(existingGeneratedKey);
+                return new NextResponse(bytes, { headers: {
+                    'Content-Type': 'audio/wav',
+                    'Cache-Control': 'private, max-age=86400',
+                    'CDN-Cache-Control': 'public, s-maxage=31536000, stale-while-revalidate=86400',
+                } });
+            } catch {
+                // Object missing/unreadable — fall through and regenerate below,
+                // which will also repair generatedPreviewKeys.
+            }
+        }
+
         if (language === 'en') {
             // Static clip first, then the bundled local asset; if neither exists (or the static clip
             // fetch fails) fall through to on-demand TTS below so every English voice stays previewable.
@@ -133,6 +160,20 @@ export async function GET(request: NextRequest) {
         try {
             const generated = await pending;
             cacheSample(cacheKey, generated);
+            // Write-through to S3 + DB so this (voice, language) never has to hit
+            // Cartesia again. Only pays this extra latency once ever, per
+            // (voice, language) — best-effort: a failure here still lets the
+            // user hear the preview they just paid a generation for, it just
+            // stays uncached and the next request retries the write-through.
+            try {
+                const storageKey = generatedPreviewStorageKey(id, language);
+                await storageService.putLibraryAsset(storageKey, Buffer.from(generated.bytes), generated.contentType);
+                await db.update(voiceCatalogue)
+                    .set({ generatedPreviewKeys: { ...(voice.generatedPreviewKeys ?? {}), [language]: storageKey } })
+                    .where(eq(voiceCatalogue.providerId, id));
+            } catch {
+                // Swallow — see comment above.
+            }
             return sampleResponse(generated);
         } finally {
             pendingSamples.delete(cacheKey);

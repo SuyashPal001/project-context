@@ -22,5 +22,15 @@ export const voiceCatalogue = pgTable('voice_catalogue', {
   accents: jsonb('accents').$type<VoiceAccent[]>(),
   previewFileUrl: text('preview_file_url'),
   localPreviewAsset: text('local_preview_asset'),
+  // Populated on first-ever on-demand TTS generation for a (voice, language)
+  // pair — see apps/web/app/api/creative/voices/preview/route.ts. Keyed by
+  // language code (e.g. "es" -> S3 key) because the audio differs per
+  // language; a single column would have one language's generation
+  // overwrite another's pointer. Once a language's key is set, every later
+  // request for that (voice, language) is served from S3 instead of calling
+  // Cartesia again. Unlike previewFileUrl (Cartesia-hosted) and
+  // localPreviewAsset (bundled in apps/web/public, English-only), this
+  // covers every language and is the platform's own S3 object.
+  generatedPreviewKeys: jsonb('generated_preview_keys').$type<Record<string, string>>(),
   refreshedAt: timestamp('refreshed_at', { withTimezone: true }).notNull().defaultNow(),
 });

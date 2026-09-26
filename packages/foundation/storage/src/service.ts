@@ -174,6 +174,28 @@ export class StorageService {
     return provider.getDownloadUrl(storageKey);
   }
 
+  // Same platform-bucket, no-tenant-lookup shape as getLibraryAssetDownloadUrl,
+  // but returns bytes directly rather than a presigned URL — for callers (like
+  // the voice preview route) that want to stream/cache the object themselves
+  // rather than hand a signed S3 URL to the browser.
+  async getLibraryAssetBytes(storageKey: string): Promise<Buffer> {
+    const bucket = await getBucketFromSSM();
+    const provider = new S3StorageProvider({
+      region: process.env.AWS_REGION || 'ap-south-1',
+      bucket,
+    });
+    return provider.getObject(storageKey);
+  }
+
+  async putLibraryAsset(storageKey: string, body: Buffer, contentType: string): Promise<void> {
+    const bucket = await getBucketFromSSM();
+    const provider = new S3StorageProvider({
+      region: process.env.AWS_REGION || 'ap-south-1',
+      bucket,
+    });
+    await provider.putObject(storageKey, body, contentType);
+  }
+
   async getDownloadUrl(tenantId: string, fileId: string): Promise<string> {
     const [file] = await db
       .select()

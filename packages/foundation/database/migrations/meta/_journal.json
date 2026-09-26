@@ -680,6 +680,13 @@
       "when": 1790190228445,
       "tag": "0096_tough_tiger_shark",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1790452091433,
+      "tag": "0097_sad_risque",
+      "breakpoints": true
     }
   ]
 }
