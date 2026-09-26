@@ -140,6 +140,18 @@ describe('generateSong tool', () => {
     expect(result).toEqual({ refused: true, refusalReason: 'GENERATION_FAILED' })
   })
 
+  // Same regression guard as generateImage.test.ts: agentId must stay
+  // undefined, not '', or spendCredits' actorId hits Postgres as ''::uuid
+  // and every charge throws.
+  it('passes agentId as undefined (not empty string) to spendCredits when requestContext has no agentId set', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ audioBase64: 'QUJD', mimeType: 'audio/wav' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'song.wav', type: 'audio/wav', size: 3 })
+
+    await generateSong.execute!({ prompt: 'a calm lo-fi beat' } as never, ctx({ tenantId: 't1', conversationId: 'c1', idToken: 'tok' }))
+
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ actorId: undefined }))
+  })
+
   it('requireApproval delegates to shouldRequireApproval with music_generation/MUSIC_MODEL', async () => {
     shouldRequireApproval.mockResolvedValue(true)
     const ctxArg = baseCtx()

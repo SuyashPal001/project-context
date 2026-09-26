@@ -8,7 +8,7 @@ import { getPool } from '../../usage.js'
 // from in-memory state, and the refund grant inherits the SHORTEST expiry
 // among the grants the original debit drew from.
 export async function refundMusicCharge(
-  tenantId: string, agentId: string, chargeKey: string,
+  tenantId: string, agentId: string | undefined, chargeKey: string,
   rateId: string | null, rateVersion: number | null,
 ): Promise<void> {
   try {

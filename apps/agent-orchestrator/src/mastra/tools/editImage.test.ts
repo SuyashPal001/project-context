@@ -211,6 +211,18 @@ describe('editImage tool', () => {
     expect(result).toEqual({ refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' })
   })
 
+  // Same regression guard as generateImage.test.ts: agentId must stay
+  // undefined, not '', or spendCredits' actorId hits Postgres as ''::uuid
+  // and every charge throws.
+  it('passes agentId as undefined (not empty string) to spendCredits when requestContext has no agentId set', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    await editImage.execute!(baseInput as never, ctx({ tenantId: 't1', conversationId: 'c1', idToken: 'tok' }))
+
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ actorId: undefined }))
+  })
+
   it('requireApproval delegates to shouldRequireApproval with image_generation/IMAGE_MODEL', async () => {
     shouldRequireApproval.mockResolvedValue(true)
     const ctxArg = baseCtx()

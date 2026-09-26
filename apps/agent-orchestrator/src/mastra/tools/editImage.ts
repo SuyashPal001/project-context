@@ -43,7 +43,9 @@ export const editImage = createTool({
   execute: async (inputData, execContext) => {
     const { prompt, sourceFileId, sourceMimeType } = inputData as { prompt: string; sourceFileId: string; sourceMimeType: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
-    const agentId = execContext?.requestContext?.get('agentId') as string | undefined ?? ''
+    // Left undefined, not '' — '' reaches Postgres as ''::uuid and every charge
+    // throws. Same fix as generateImage.ts.
+    const agentId = execContext?.requestContext?.get('agentId') as string | undefined
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
