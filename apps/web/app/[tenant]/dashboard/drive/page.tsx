@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/lib/hooks/usePermissions";
 import { Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { uploadLabelForPrefix } from "@/components/platform/files/systemFolders";
 
 export default function FilesPage() {
     const { can } = usePermissions();
@@ -32,7 +33,7 @@ export default function FilesPage() {
                     {canUpload && (
                         <Button onClick={() => setIsUploadOpen(true)}>
                             <Upload className="w-4 h-4 mr-2" />
-                            {currentPrefix ? 'Add Files' : 'Upload'}
+                            {uploadLabelForPrefix(currentPrefix)}
                         </Button>
                     )}
                 </div>

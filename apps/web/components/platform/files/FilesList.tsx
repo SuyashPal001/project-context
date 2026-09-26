@@ -166,23 +166,27 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         return { folderPersonFolderId: personFolderId, folderAllDone: allDone };
     }, [prefix, allFiles]);
 
+    // Below the pill/search toolbar, right above the grid — not at the very
+    // top, where it used to sit above the toolbar itself. Rendered from both
+    // branches below so navigating back out of an empty folder still works.
+    const breadcrumbNav = prefix && (
+        <div className="flex items-center text-base text-muted-foreground">
+            <button onClick={() => onPrefixChange("")} className="hover:text-foreground transition-colors">
+                Drive
+            </button>
+            {breadcrumbs.map((crumb, idx) => (
+                <div key={crumb.path} className="flex items-center">
+                    <ChevronRight className="w-4 h-4 mx-1 opacity-50" />
+                    <button onClick={() => onPrefixChange(crumb.path)} className={`hover:text-foreground transition-colors ${idx === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}`}>
+                        {idx === 0 ? (SYSTEM_FOLDER_LABELS[crumb.name] ?? crumb.name) : crumb.name}
+                    </button>
+                </div>
+            ))}
+        </div>
+    );
+
     return (
         <div className="space-y-4">
-            {/* Breadcrumb — hidden at the root, where it only repeats the page title */}
-            <div className={`items-center text-base text-muted-foreground ${prefix ? 'flex' : 'hidden'}`}>
-                <button onClick={() => onPrefixChange("")} className={`hover:text-foreground transition-colors ${!prefix ? 'text-foreground font-medium' : ''}`}>
-                    Drive
-                </button>
-                {breadcrumbs.map((crumb, idx) => (
-                    <div key={crumb.path} className="flex items-center">
-                        <ChevronRight className="w-4 h-4 mx-1 opacity-50" />
-                        <button onClick={() => onPrefixChange(crumb.path)} className={`hover:text-foreground transition-colors ${idx === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}`}>
-                            {idx === 0 ? (SYSTEM_FOLDER_LABELS[crumb.name] ?? crumb.name) : crumb.name}
-                        </button>
-                    </div>
-                ))}
-            </div>
-
             {/* Outside the loading/empty branches below, and above the folder
                 contents: a tenant near their ceiling should see it whichever
                 folder they happen to be standing in, including an empty one. */}
@@ -200,13 +204,16 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     <p>Loading documents...</p>
                 </div>
             ) : files.length === 0 && virtualFolders.length === 0 ? (
-                <div className="py-8">
-                    <EmptyState
-                        icon={<FolderOpen className="w-12 h-12" />}
-                        title={prefix ? "This folder is empty" : "No files yet"}
-                        description="Upload files to begin."
-                        action={canUpload ? { label: "Upload", onClick: onUploadClick } : undefined}
-                    />
+                <div className="space-y-4">
+                    {breadcrumbNav}
+                    <div className="py-8">
+                        <EmptyState
+                            icon={<FolderOpen className="w-12 h-12" />}
+                            title={prefix ? "This folder is empty" : "No files yet"}
+                            description="Upload files to begin."
+                            action={canUpload ? { label: "Upload", onClick: onUploadClick } : undefined}
+                        />
+                    </div>
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -260,14 +267,14 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     )}
                     <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <div className="relative w-56 max-w-full">
-                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                            <div className="relative flex-1 max-w-md">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <input
                                     type="text"
                                     value={filters.search}
                                     onChange={e => filters.onSearchChange(e.target.value)}
                                     placeholder="Search files..."
-                                    className="w-full h-8 pl-8 pr-2 text-xs rounded-lg bg-secondary border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                    className="w-full h-9 pl-9 pr-3 text-sm rounded-lg bg-secondary border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
                             </div>
                             {files.length > 0 && <FilesFilter
@@ -299,6 +306,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </Button>
                         </div>
                     </div>
+                    {breadcrumbNav}
                     {showPipelineDetails && hasParseableFiles && (
                         <div className="flex justify-end">
                             <Button
@@ -317,7 +325,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     )}
                     {/* Bulk action bar */}
                     {selection.selectedIds.size > 0 && (
-                        <div className="flex items-center justify-between px-4 py-2 rounded-lg bg-secondary border border-border text-sm">
+                        <div className="flex items-center justify-between py-1 text-sm">
                             <span className="text-foreground/80">Selected: <strong>{selection.selectedIds.size}</strong> {selection.selectedIds.size === 1 ? 'file' : 'files'}</span>
                             <div className="flex items-center gap-2">
                                 {tooManySelected && (

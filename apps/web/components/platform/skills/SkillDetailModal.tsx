@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { X } from "lucide-react";
-import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { ModalShell } from "@/components/platform/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { api, ApiError } from "@/lib/api";
@@ -125,47 +124,33 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
     };
 
     return (
-        <Dialog open={skillId !== null} onOpenChange={onOpenChange}>
-            <DialogContent
-                showCloseButton={false}
-                className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[90dvh] sm:max-h-[90dvh] sm:w-[90vw] sm:max-w-[1100px] sm:rounded-xl"
-            >
-                <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0">
-                    <DialogTitle className="text-sm font-semibold text-muted-foreground">Skill Details</DialogTitle>
-                    <DialogClose aria-label="Close skill details" className="flex h-7 w-7 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-                        <X className="h-3.5 w-3.5" />
-                    </DialogClose>
+        <ModalShell open={skillId !== null} onOpenChange={onOpenChange} title="Skill Details" size="lg">
+            {isLoading ? (
+                <div className="space-y-4 p-6">
+                    <Skeleton className="h-9 w-64" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
                 </div>
-
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                    {isLoading ? (
-                        <div className="space-y-4 p-6">
-                            <Skeleton className="h-9 w-64" />
-                            <Skeleton className="h-4 w-full" />
-                            <Skeleton className="h-4 w-3/4" />
-                        </div>
-                    ) : isError || !skill ? (
-                        <Alert variant="destructive" className="m-6 w-auto">
-                            <AlertTitle>Skill not found</AlertTitle>
-                            <AlertDescription>
-                                This skill doesn&apos;t exist, or you don&apos;t have access to it.
-                            </AlertDescription>
-                        </Alert>
-                    ) : (
-                        <SkillDetailContent
-                            skill={skill}
-                            isOwner={skill.ownerTenantId === tenantId}
-                            files={files ?? []}
-                            filesLoading={filesLoading}
-                            onInstall={handleInstall}
-                            onUninstall={handleUninstall}
-                            onPublish={handlePublish}
-                            onTest={handleTest}
-                            isTesting={isTesting}
-                        />
-                    )}
-                </div>
-            </DialogContent>
-        </Dialog>
+            ) : isError || !skill ? (
+                <Alert variant="destructive" className="m-6 w-auto">
+                    <AlertTitle>Skill not found</AlertTitle>
+                    <AlertDescription>
+                        This skill doesn&apos;t exist, or you don&apos;t have access to it.
+                    </AlertDescription>
+                </Alert>
+            ) : (
+                <SkillDetailContent
+                    skill={skill}
+                    isOwner={skill.ownerTenantId === tenantId}
+                    files={files ?? []}
+                    filesLoading={filesLoading}
+                    onInstall={handleInstall}
+                    onUninstall={handleUninstall}
+                    onPublish={handlePublish}
+                    onTest={handleTest}
+                    isTesting={isTesting}
+                />
+            )}
+        </ModalShell>
     );
 }

@@ -5,3 +5,4 @@ export { CopyButton } from './CopyButton';
 export { SlideOutPanel } from './SlideOutPanel';
 export { EmployeeCard } from './EmployeeCard';
 export type { EmployeeOutcome } from './EmployeeCard';
+export { ModalShell } from './ModalShell';

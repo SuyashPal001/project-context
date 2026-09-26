@@ -25,42 +25,42 @@ export function FilesFilter({ workspaceNames, filterWorkspace, filterClassificat
     return (
         <div className="flex gap-2">
             <Select value={filterCategory} onValueChange={onCategoryChange}>
-                <SelectTrigger className="w-36 h-8 text-xs bg-secondary border-border">
+                <SelectTrigger className="w-36 h-9 text-sm bg-secondary border-border">
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-secondary border-border">
-                    <SelectItem value="all" className="text-xs">All Types</SelectItem>
+                    <SelectItem value="all" className="text-sm">All Types</SelectItem>
                     {CATEGORIES.map(c => (
-                        <SelectItem key={c} value={c} className="text-xs">{FILE_CATEGORY_LABELS[c]}</SelectItem>
+                        <SelectItem key={c} value={c} className="text-sm">{FILE_CATEGORY_LABELS[c]}</SelectItem>
                     ))}
                 </SelectContent>
             </Select>
             <Select value={filterTimeRange} onValueChange={(v) => onTimeRangeChange(v as TimeRange)}>
-                <SelectTrigger className="w-40 h-8 text-xs bg-secondary border-border">
+                <SelectTrigger className="w-40 h-9 text-sm bg-secondary border-border">
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-secondary border-border">
                     {TIME_RANGES.map(r => (
-                        <SelectItem key={r} value={r} className="text-xs">{TIME_RANGE_LABELS[r]}</SelectItem>
+                        <SelectItem key={r} value={r} className="text-sm">{TIME_RANGE_LABELS[r]}</SelectItem>
                     ))}
                 </SelectContent>
             </Select>
             {showPipelineDetails && (
                 <Select value={filterWorkspace} onValueChange={onWorkspaceChange}>
-                    <SelectTrigger className="w-36 h-8 text-xs bg-secondary border-border">
+                    <SelectTrigger className="w-36 h-9 text-sm bg-secondary border-border">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-secondary border-border">
                         <SelectItem value="all" className="text-xs">All Workspaces</SelectItem>
                         {workspaceNames.map(c => (
-                            <SelectItem key={c} value={c} className="text-xs">{c}</SelectItem>
+                            <SelectItem key={c} value={c} className="text-sm">{c}</SelectItem>
                         ))}
                     </SelectContent>
                 </Select>
             )}
             {showPipelineDetails && (
                 <Select value={filterClassification} onValueChange={onClassificationChange}>
-                    <SelectTrigger className="w-44 h-8 text-xs bg-secondary border-border">
+                    <SelectTrigger className="w-44 h-9 text-sm bg-secondary border-border">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-secondary border-border">
