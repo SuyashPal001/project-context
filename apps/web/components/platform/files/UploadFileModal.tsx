@@ -8,6 +8,7 @@ import { UploadCloud, File, X, CheckCircle2, Loader2, AlertCircle, FolderOpen } 
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { formatFileSize } from "./lib/fileIcons"
+import { folderNameError } from "./systemFolders"
 
 interface UploadFileModalProps {
   open: boolean
@@ -45,7 +46,8 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
 
   const [newFolderName, setNewFolderName] = useState('')
   const folderName = isInsideFolder ? prefixFolderName : newFolderName.trim()
-  const folderReady = folderName.length > 0
+  const nameError = isInsideFolder ? null : folderNameError(newFolderName)
+  const folderReady = folderName.length > 0 && !nameError
 
   const [selectedFiles, setSelectedFiles] = useState<globalThis.File[]>([])
   const [isDragActive, setIsDragActive] = useState(false)
@@ -230,6 +232,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
                 className="h-9 rounded-none border-0 border-b border-border bg-transparent px-0 text-sm shadow-none focus-visible:border-foreground focus-visible:ring-0"
                 autoFocus
               />
+              {nameError && <p className="text-xs text-red-400">{nameError}</p>}
             </div>
           )}
 

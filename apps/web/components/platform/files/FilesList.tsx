@@ -4,7 +4,7 @@ import { EmptyState, ConfirmDialog } from "@/components/platform/shared";
 import {
     Loader2, FolderOpen, ChevronRight, ChevronLeft, MessageSquare, LayoutGrid, List as ListIcon, Play, Trash2, Search
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -120,13 +120,23 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // folder. The pill list is remembered from the root listing, because inside
     // a folder virtualFolders holds that folder's children, not the root's —
     // without this the tabs vanished as soon as one was clicked.
-    const rootSystemFoldersRef = useRef<string[]>([]);
-    if (!prefix && !isLoading) rootSystemFoldersRef.current = virtualFolders.filter(isSystemFolder);
+    const [rootSystemFolders, setRootSystemFolders] = useState<string[]>([]);
+    if (!prefix && !isLoading) {
+        const fresh = virtualFolders.filter(isSystemFolder);
+        if (fresh.join('|') !== rootSystemFolders.join('|')) setRootSystemFolders(fresh);
+    }
     const currentSystemFolder = prefix ? prefix.split('/')[0] : null;
-    const systemFolderPills = currentSystemFolder && isSystemFolder(currentSystemFolder) && !rootSystemFoldersRef.current.includes(currentSystemFolder)
-        ? [...rootSystemFoldersRef.current, currentSystemFolder]
-        : rootSystemFoldersRef.current;
-    const activeSystemFolder = !prefix ? null : prefix.split('/')[0];
+    // Opened straight into a folder, so the root was never loaded: show all four
+    // rather than only the current one. A folder's pill is also kept when it was
+    // missing from an earlier root load (e.g. its first file was just uploaded).
+    const systemFolderPills = rootSystemFolders.length === 0 && prefix
+        ? Object.keys(SYSTEM_FOLDER_LABELS)
+        : currentSystemFolder && isSystemFolder(currentSystemFolder) && !rootSystemFolders.includes(currentSystemFolder)
+            ? [...rootSystemFolders, currentSystemFolder]
+            : rootSystemFolders;
+    // Inside one of the user's own folders no system pill matches, so "All" is
+    // the active one — the folder lives under it.
+    const activeSystemFolder = currentSystemFolder && isSystemFolder(currentSystemFolder) ? currentSystemFolder : null;
 
     const allFolderCards: FolderCard[] = useMemo(() => virtualFolders
         .filter(folderName => prefix || !isSystemFolder(folderName))

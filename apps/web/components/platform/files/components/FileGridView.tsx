@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Download, Trash2, Folder as FolderIcon, Play, RefreshCw } from "lucide-react";
+import { Loader2, Download, Trash2, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FileThumbnail } from "../FileThumbnail";
@@ -79,11 +79,10 @@ function FileTileArt({ file, category, onPreview }: { file: FileRecord; category
  *  the file-type icon for everything else. */
 function FolderPreviewCard({ file }: { file: FileRecord }) {
     const assetType = assetTypeForFile(file.contentType, file.filename);
-    const typeStyle = TYPE_STYLES[assetType];
     const TypeIcon = TYPE_ICONS[assetType];
     const videoFrameUrl = useVideoFrameThumbnail(file.id, assetType === 'video');
     return (
-        <div className={`relative h-full w-full overflow-hidden ${typeStyle.bg}`}>
+        <div className="relative h-full w-full overflow-hidden bg-background">
             {getFileCategory(file.contentType, file.filename) === 'image' ? (
                 <FileThumbnail fileId={file.id} alt="" />
             ) : videoFrameUrl ? (
@@ -91,7 +90,7 @@ function FolderPreviewCard({ file }: { file: FileRecord }) {
                 <img src={videoFrameUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
             ) : (
                 <div className="flex h-full w-full items-center justify-center">
-                    <TypeIcon className={`h-6 w-6 ${typeStyle.icon}`} />
+                    <TypeIcon className="h-5 w-5 text-muted-foreground" />
                 </div>
             )}
         </div>
@@ -102,25 +101,25 @@ function FolderPreviewCard({ file }: { file: FileRecord }) {
  *  fanned out behind a lighter front panel, so a folder with contents reads as
  *  full and an empty one reads as empty. */
 function FolderArt({ files }: { files: FileRecord[] }) {
-    const tilts = files.length === 1 ? [0] : files.length === 2 ? [-7, 7] : [-10, 0, 10];
+    const tilts = files.length === 1 ? [0] : files.length === 2 ? [-6, 6] : [-8, 0, 8];
+    const lefts = files.length === 1 ? [37] : files.length === 2 ? [27, 47] : [22, 37, 52];
     return (
         <div className="absolute inset-0">
-            <div className="absolute left-[14%] top-[20%] h-[9%] w-[32%] rounded-t-lg bg-primary" />
-            <div className="absolute inset-x-[14%] top-[27%] bottom-[22%] rounded-xl rounded-tl-none bg-primary" />
+            <div className="absolute left-[12%] top-[23%] h-[9%] w-[30%] rounded-t-lg bg-primary" />
+            <div className="absolute inset-x-[12%] top-[30%] bottom-[18%] rounded-xl rounded-tl-none bg-primary" />
             {files.map((file, i) => (
                 <div
                     key={file.id}
-                    className="absolute bottom-[34%] h-[40%] w-[30%] overflow-hidden rounded-md border-2 border-background shadow-md"
-                    style={{
-                        left: files.length === 1 ? '35%' : `${22 + i * (files.length === 2 ? 26 : 20)}%`,
-                        transform: `rotate(${tilts[i]}deg)`,
-                        zIndex: i,
-                    }}
+                    className="absolute top-[28%] h-[36%] w-[26%] overflow-hidden rounded-md border-2 border-background shadow-md"
+                    style={{ left: `${lefts[i]}%`, transform: `rotate(${tilts[i]}deg)`, zIndex: i }}
                 >
                     <FolderPreviewCard file={file} />
                 </div>
             ))}
-            <div className="absolute inset-x-[14%] bottom-[22%] h-[40%] rounded-xl bg-gradient-to-b from-primary/60 to-primary/80 shadow-[0_-2px_6px_rgba(0,0,0,0.10)]" style={{ zIndex: 10 }} />
+            <div
+                className="absolute inset-x-[12%] bottom-[18%] top-[44%] rounded-xl border-t border-white/50 bg-[color-mix(in_oklab,var(--primary)_55%,var(--background))] shadow-[0_-3px_8px_rgba(0,0,0,0.12)]"
+                style={{ zIndex: 10 }}
+            />
         </div>
     );
 }

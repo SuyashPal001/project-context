@@ -31,3 +31,15 @@ export function uploadLabelForPrefix(prefix: string): string {
     const folderName = prefix.split('/')[0];
     return UPLOAD_LABELS[folderName] ?? 'Add Files';
 }
+
+/** Why a new folder name can't be used, or null if it can. Folders are just key
+ *  prefixes, so a slash would silently nest one and a platform name would turn
+ *  the folder into that pill. */
+export function folderNameError(name: string): string | null {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    if (/[\\/]/.test(trimmed)) return "Folder names can't contain slashes.";
+    if (trimmed === '.' || trimmed === '..') return "That isn't a valid folder name.";
+    if (isSystemFolder(trimmed.toLowerCase())) return 'That name is reserved for the platform.';
+    return null;
+}
