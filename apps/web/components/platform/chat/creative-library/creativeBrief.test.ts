@@ -12,6 +12,7 @@ import {
     createEmptyCreativeBrief,
     updateCreativeBrief,
     type CreativeBrief,
+    type ProductRecordSelection,
 } from './creativeBriefModel';
 
 const avatarAttachment = { fileId: 'avatar-file', name: 'arjun.jpg', type: 'image/jpeg', size: 120 };
@@ -253,4 +254,48 @@ describe('imported product-url wiring', () => {
     );
     expect(merged).toHaveLength(1);
   });
+});
+
+const productRecord = (over: Partial<ProductRecordSelection> = {}): ProductRecordSelection => ({
+    kind: 'product', id: 'p1', name: 'The Ordinary Niacinamide serum', description: 'A white dropper bottle.',
+    price: '₹590', sourceUrl: 'https://theordinary.com/p/1', namingStatus: 'done',
+    attachment: { fileId: 'f1', name: 'serum.png', type: 'image/png', size: 3 }, ...over,
+});
+
+describe('product record selections', () => {
+    it('sends the name, description, price and source, and says an image is attached', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord() };
+        const message = buildCreativeBriefMessage('', brief);
+        expect(message).toContain('- Product: The Ordinary Niacinamide serum\n  A white dropper bottle. ₹590\n  Source: https://theordinary.com/p/1\n  Use the attached product image as the visual reference.');
+    });
+
+    it('omits empty optional lines', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord({ description: null, price: null, sourceUrl: null }) };
+        expect(buildCreativeBriefMessage('', brief)).toContain('- Product: The Ordinary Niacinamide serum\n  Use the attached product image as the visual reference.');
+    });
+
+    it('tells Olmo to ask when the name is not known yet', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord({ name: 'Untitled product', namingStatus: 'pending', description: null, price: null, sourceUrl: null }) };
+        const message = buildCreativeBriefMessage('', brief);
+        expect(message).toContain('- Product: name not known yet — ask the user what this product is before planning.');
+        expect(message).not.toContain('Untitled product\n');
+    });
+
+    it('attaches the main image and hides it from the transcript as a brief attachment', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord() };
+        expect(mergeCreativeBriefAttachments(undefined, brief)).toEqual([productRecord().attachment]);
+        expect(creativeBriefAttachmentIds(brief)).toEqual(new Set(['f1']));
+    });
+
+    it('round-trips through the persisted draft and rejects a record without an attachment', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord() };
+        expect(parseCreativeBriefDraft(JSON.stringify(brief)).product).toEqual(productRecord());
+        const broken = { ...brief, product: { ...productRecord(), attachment: undefined } };
+        expect(parseCreativeBriefDraft(JSON.stringify(broken)).product).toBeNull();
+    });
+
+    it('still restores the old product-image kind from earlier messages', () => {
+        const old = { kind: 'product-image', id: 'f9', name: '_.jpeg', attachment: { fileId: 'f9', name: '_.jpeg', type: 'image/jpeg', size: 1 } };
+        expect(parseCreativeBriefDraft(JSON.stringify({ product: old })).product).toEqual(old);
+    });
 });

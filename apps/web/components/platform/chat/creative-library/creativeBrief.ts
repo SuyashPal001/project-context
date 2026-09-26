@@ -29,6 +29,19 @@ function selectedImportedImage(brief: CreativeBrief): Attachment | undefined {
     return imported.images.find(image => image.fileId === imported.selectedImageId);
 }
 
+function productRecordLines(selection: Extract<CreativeSelection, { kind: 'product' }>): string {
+    if (selection.namingStatus !== 'done') {
+        return '- Product: name not known yet — ask the user what this product is before planning.\n  Use the attached product image as the visual reference.';
+    }
+    const details = [selection.description, selection.price].filter(Boolean).join(' ');
+    return [
+        `- Product: ${selection.name}`,
+        details ? `  ${details}` : null,
+        selection.sourceUrl ? `  Source: ${selection.sourceUrl}` : null,
+        '  Use the attached product image as the visual reference.',
+    ].filter((line): line is string => line !== null).join('\n');
+}
+
 export function buildCreativeBriefMessage(direction: string, brief: CreativeBrief): string {
     const trimmedDirection = direction.trim();
     const productSelection = brief.product;
@@ -41,8 +54,8 @@ export function buildCreativeBriefMessage(direction: string, brief: CreativeBrie
         product = [`${lead} (${productSelection.url})`, imported?.description, imported?.price]
             .filter(Boolean)
             .join(' — ');
-    } else {
-        product = productSelection?.name;
+    } else if (productSelection?.kind === 'product-image') {
+        product = productSelection.name;
     }
     // "Has an image actually attached" must match mergeCreativeBriefAttachments's
     // own condition below, or this line can claim an attachment that was never
@@ -53,7 +66,9 @@ export function buildCreativeBriefMessage(direction: string, brief: CreativeBrie
         'Creative brief:',
         brief.template ? `- Template: ${brief.template.title} (${brief.template.category})\n  Template slug: ${brief.template.id}` : null,
         brief.avatar ? `- Avatar: ${brief.avatar.name} · ${brief.avatar.role} · ${brief.avatar.tone}\n  Use the attached still image as the presenter reference.` : null,
-        product ? `- Product: ${product}${hasSelectedImage ? '\n  Use the attached product image as the visual reference.' : '\n  Treat the URL as a source to inspect; verify product details before making claims.'}` : null,
+        productSelection?.kind === 'product'
+            ? productRecordLines(productSelection)
+            : product ? `- Product: ${product}${hasSelectedImage ? '\n  Use the attached product image as the visual reference.' : '\n  Treat the URL as a source to inspect; verify product details before making claims.'}` : null,
         brief.voice ? `- Voice: ${brief.voice.name}${brief.voice.tagline ? ` · ${brief.voice.tagline}` : ''}\n  Voice ID: ${brief.voice.id}\n  Narration language: ${brief.voice.languageLabel} (${brief.voice.language})` : null,
         'Create the ad from this brief. Do not invent product claims, prices, customer quotes, or results.',
     ];
@@ -97,6 +112,7 @@ export function creativeBriefAttachmentIds(brief: CreativeBrief): Set<string> {
     return new Set([
         brief.avatar?.attachment.fileId,
         brief.product?.kind === 'product-image' ? brief.product.attachment.fileId : undefined,
+        brief.product?.kind === 'product' ? brief.product.attachment.fileId : undefined,
         selectedImportedImage(brief)?.fileId,
     ].filter((fileId): fileId is string => Boolean(fileId)));
 }
@@ -106,6 +122,7 @@ export function mergeCreativeBriefAttachments(existing: Attachment[] | undefined
         ...(existing ?? []),
         brief.avatar?.attachment,
         brief.product?.kind === 'product-image' ? brief.product.attachment : undefined,
+        brief.product?.kind === 'product' ? brief.product.attachment : undefined,
         selectedImportedImage(brief),
     ].filter((attachment): attachment is Attachment => Boolean(attachment));
     const unique = [...new Map(candidates.map(attachment => [attachment.fileId, attachment])).values()];
@@ -163,6 +180,11 @@ function isProductSelection(value: unknown): value is NonNullable<CreativeBrief[
         // marker is parsed from persisted user messages on every render.
         if (value.imported !== undefined && !isImportedProductData(value.imported)) delete value.imported;
         return true;
+    }
+    if (value.kind === 'product') {
+        return ['pending', 'done', 'failed'].includes(value.namingStatus as string)
+            && isStringOrNull(value.description) && isStringOrNull(value.price) && isStringOrNull(value.sourceUrl)
+            && isAttachment(value.attachment);
     }
     return value.kind === 'product-image' && isAttachment(value.attachment);
 }
