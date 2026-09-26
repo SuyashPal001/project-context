@@ -351,7 +351,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                     disabled={tooManySelected || !defaultAgentId}
                                     onPick={addSelectionToChat}
                                 />
-                                <Button size="sm" variant="destructive" className="h-7 text-xs gap-1" onClick={selection.bulkDelete} disabled={selection.bulkDeleting}>
+                                <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={selection.bulkDelete} disabled={selection.bulkDeleting}>
                                     {selection.bulkDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                                     Delete Selected
                                 </Button>
