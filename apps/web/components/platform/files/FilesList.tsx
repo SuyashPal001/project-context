@@ -2,7 +2,7 @@
 
 import { EmptyState, ConfirmDialog } from "@/components/platform/shared";
 import {
-    Loader2, FolderOpen, ChevronRight, ChevronLeft, MessageSquare, LayoutGrid, List as ListIcon, Play, Trash2
+    Loader2, FolderOpen, ChevronRight, ChevronLeft, MessageSquare, LayoutGrid, List as ListIcon, Play, Trash2, Search
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,7 @@ import { FilesFilter } from "./FilesFilter";
 import { stagePendingAttachments } from "@/lib/pendingAttachments";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
+import { SYSTEM_FOLDER_LABELS, isSystemFolder } from "./systemFolders";
 import { FileGridView } from "./components/FileGridView";
 import { FileListView } from "./components/FileListView";
 import { IngestionSidePanel } from "./IngestionSidePanel";
@@ -52,7 +53,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const storageUsage = useStorageUsage();
 
     const [selectedFile, setSelectedFile] = useState<FileRecord | null>(null);
-    const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+    const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
     // Held as an id, not a record, so the lightbox's prev/next can hand back an
     // Asset and still resolve to the row it came from.
     const [previewFileId, setPreviewFileId] = useState<string | null>(null);
@@ -112,7 +113,18 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         addToChat(allFiles.filter(f => selection.selectedIds.has(f.id)), conversationId);
     };
 
-    const allFolderCards: FolderCard[] = useMemo(() => virtualFolders.map(folderName => {
+    // System-managed prefixes (chat uploads, creative library, generated media)
+    // surface as pills below, not folder tiles — an empty-looking "generated/"
+    // card conveyed nothing a pill can't say better. Only hidden at the root:
+    // a same-named folder nested inside a real user folder is just a folder.
+    const systemFolderPills = useMemo(
+        () => (prefix ? [] : virtualFolders.filter(isSystemFolder)),
+        [virtualFolders, prefix]);
+    const activeSystemFolder = !prefix ? null : prefix.split('/')[0];
+
+    const allFolderCards: FolderCard[] = useMemo(() => virtualFolders
+        .filter(folderName => prefix || !isSystemFolder(folderName))
+        .map(folderName => {
         const folderPrefix = `${prefix}${folderName}/`;
         const folderFiles = allFiles.filter(f => f.key.startsWith(folderPrefix));
         const allDone = folderFiles.length > 0 && folderFiles.every(f => f.ingestionStatus === 'done');
@@ -165,7 +177,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     <div key={crumb.path} className="flex items-center">
                         <ChevronRight className="w-4 h-4 mx-1 opacity-50" />
                         <button onClick={() => onPrefixChange(crumb.path)} className={`hover:text-foreground transition-colors ${idx === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}`}>
-                            {crumb.name}
+                            {idx === 0 ? (SYSTEM_FOLDER_LABELS[crumb.name] ?? crumb.name) : crumb.name}
                         </button>
                     </div>
                 ))}
@@ -225,14 +237,47 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </Button>
                         </div>
                     )}
+                    {systemFolderPills.length > 0 && (
+                        <div className="flex gap-1 rounded-full bg-muted p-1 w-fit flex-wrap">
+                            <button
+                                type="button"
+                                onClick={() => onPrefixChange("")}
+                                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${!activeSystemFolder ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                All
+                            </button>
+                            {systemFolderPills.map(folderName => (
+                                <button
+                                    key={folderName}
+                                    type="button"
+                                    onClick={() => onPrefixChange(`${folderName}/`)}
+                                    className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeSystemFolder === folderName ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+                                >
+                                    {SYSTEM_FOLDER_LABELS[folderName]}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     <div className="flex items-center justify-between gap-2">
-                        {files.length > 0 ? <FilesFilter
-                            workspaceNames={workspaceNames} filterWorkspace={filters.filterWorkspace} onWorkspaceChange={filters.onWorkspaceChange}
-                            filterClassification={filters.filterClassification} onClassificationChange={filters.onClassificationChange}
-                            filterCategory={filters.filterCategory} onCategoryChange={filters.onCategoryChange}
-                            filterTimeRange={filters.filterTimeRange} onTimeRangeChange={filters.onTimeRangeChange}
-                            showPipelineDetails={showPipelineDetails}
-                        /> : <div />}
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <div className="relative w-56 max-w-full">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                                <input
+                                    type="text"
+                                    value={filters.search}
+                                    onChange={e => filters.onSearchChange(e.target.value)}
+                                    placeholder="Search files..."
+                                    className="w-full h-8 pl-8 pr-2 text-xs rounded-lg bg-secondary border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                />
+                            </div>
+                            {files.length > 0 && <FilesFilter
+                                workspaceNames={workspaceNames} filterWorkspace={filters.filterWorkspace} onWorkspaceChange={filters.onWorkspaceChange}
+                                filterClassification={filters.filterClassification} onClassificationChange={filters.onClassificationChange}
+                                filterCategory={filters.filterCategory} onCategoryChange={filters.onCategoryChange}
+                                filterTimeRange={filters.filterTimeRange} onTimeRangeChange={filters.onTimeRangeChange}
+                                showPipelineDetails={showPipelineDetails}
+                            />}
+                        </div>
                         <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-secondary border border-border">
                             <Button
                                 variant={viewMode === 'list' ? 'secondary' : 'ghost'}

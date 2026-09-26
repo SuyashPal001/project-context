@@ -5,6 +5,7 @@ import type { FileRecord } from "../types";
 const PAGE_SIZE = 10;
 
 export function useFileFilters(files: FileRecord[], folderCount = 0) {
+    const [search, setSearch] = useState("");
     const [filterWorkspace, setFilterWorkspace] = useState("all");
     const [filterClassification, setFilterClassification] = useState("all");
     const [filterCategory, setFilterCategory] = useState("all");
@@ -15,7 +16,9 @@ export function useFileFilters(files: FileRecord[], folderCount = 0) {
     // no longer exist under the new filtered set.
     const withPageReset = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setCurrentPage(1); };
 
+    const normalizedSearch = search.trim().toLowerCase();
     const filteredFiles = files.filter(f =>
+        (!normalizedSearch || f.filename.toLowerCase().includes(normalizedSearch)) &&
         (filterWorkspace === "all" || f.workspaceName === filterWorkspace) &&
         (filterClassification === "all" || f.classification === filterClassification) &&
         (filterCategory === "all" || getFileCategory(f.contentType, f.filename) === filterCategory) &&
@@ -46,6 +49,7 @@ export function useFileFilters(files: FileRecord[], folderCount = 0) {
     );
 
     return {
+        search, onSearchChange: withPageReset(setSearch),
         filterWorkspace, onWorkspaceChange: withPageReset(setFilterWorkspace),
         filterClassification, onClassificationChange: withPageReset(setFilterClassification),
         filterCategory, onCategoryChange: withPageReset(setFilterCategory),

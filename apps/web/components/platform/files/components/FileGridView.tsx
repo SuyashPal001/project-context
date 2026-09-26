@@ -91,7 +91,7 @@ export function FileGridView({
                         <FolderIcon className="w-5 h-5 text-amber-500 fill-amber-500/20 shrink-0" />
                         <span className="font-medium text-foreground text-sm truncate" title={`${folderName}/`}>{folderName}/</span>
                     </div>
-                    <div className="flex items-center justify-end gap-1 mt-auto opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1 mt-auto" onClick={e => e.stopPropagation()}>
                         <AddToChatMenu
                             conversations={conversations}
                             variant="icon"
@@ -149,7 +149,7 @@ export function FileGridView({
                                 )}
                             </div>
                         </div>
-                        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                        <div className="absolute top-2 right-2 flex items-center gap-1" onClick={e => e.stopPropagation()}>
                             <AddToChatMenu
                                 conversations={conversations}
                                 variant="icon"
