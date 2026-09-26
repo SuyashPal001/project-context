@@ -34,7 +34,7 @@ describe('creative library', () => {
     it('attaches a selected presenter preset directly, with no upload round-trip', async () => {
         const { onSelect } = renderLibrary('avatars');
 
-        expect(screen.getAllByRole('button', { name: /avatar$/ })).toHaveLength(6);
+        expect(screen.getAllByRole('button', { name: /avatar$/ })).toHaveLength(50);
         fireEvent.click(screen.getByRole('button', { name: 'Use Arjun avatar' }));
 
         await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
@@ -190,10 +190,10 @@ describe('creative library', () => {
         const { onSelect } = renderLibrary('audio');
         fireEvent.change(screen.getByRole('combobox', { name: 'Voice language' }), { target: { value: 'hi' } });
         await screen.findByText('Coworker');
-        fireEvent.click(screen.getByRole('button', { name: 'Select' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Use Cathy voice' }));
         expect(onSelect).toHaveBeenCalledWith({ kind: 'voice', id: 'cathy-id', name: 'Cathy', tagline: 'Coworker', language: 'hi', languageLabel: 'Hindi' });
         expect(screen.getAllByText('Hindi').length).toBeGreaterThan(0);
         fireEvent.click(screen.getByRole('button', { name: 'Preview Hindi sample of Cathy' }));
-        await waitFor(() => expect(fetchCreativeVoice).toHaveBeenCalledWith('/api/creative/voices/preview?id=cathy-id&language=hi'));
+        await waitFor(() => expect(fetchCreativeVoice).toHaveBeenCalledWith('/api/creative/voices/preview?id=cathy-id&language=hi', expect.objectContaining({ signal: expect.any(AbortSignal) })));
     });
 });

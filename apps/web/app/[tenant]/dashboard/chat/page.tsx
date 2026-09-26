@@ -39,7 +39,7 @@ import type { Message, MessagesResponse } from "@/components/platform/chat/types
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "@/components/platform/chat/pendingRequests";
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { parseFolderId } from "@/lib/folderScope";
-import { CreativeLibrary } from '@/components/platform/chat/CreativeLibrary';
+import { CreativeEmptyState } from '@/components/platform/chat/CreativeEmptyState';
 import { CreativeBriefChips } from '@/components/platform/chat/creative-library/CreativeBriefChips';
 import {
     buildCreativeBriefMessage,
@@ -57,18 +57,6 @@ import {
 } from '@/components/platform/chat/creative-library/creativeBriefModel';
 import { useCreativeBriefDraft } from '@/components/platform/chat/creative-library/useCreativeBriefDraft';
 import type { Attachment } from '@/types/agent-events';
-
-// Category shortcuts under the no-conversation-selected composer — Templates
-// (proven ad-structure starting points), Avatars, Products, Audio. No "Browse"
-// tab: research on comparable ad-creation tools (Creatify, Arcads,
-// AdCreative.ai) turned up no evidence of a generic "browse everything" tab
-// at any of them, only these four named, revenue-driving categories.
-const EMPTY_STATE_LIBRARY_TABS = [
-    { id: 'templates', label: 'Templates', icon: LayoutTemplate },
-    { id: 'avatars', label: 'Avatars', icon: UserRound },
-    { id: 'products', label: 'Products', icon: Package },
-    { id: 'audio', label: 'Audio', icon: Music },
-] as const;
 
 function ChatPage() {
     const searchParams = useSearchParams();
@@ -619,6 +607,52 @@ function ChatPage() {
                                         <WizardView pill={activePill} onBack={() => setActivePill(null)} onSubmit={(prompt) => sendMessage(prompt)}>
                                             <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
                                         </WizardView>
+                                    ) : selectedConversation.agent?.origin === 'built_in' ? (
+                                        <div className="flex-1 flex flex-col items-center p-8 text-center bg-background h-full relative overflow-y-auto">
+                                            <div className="flex-1 min-h-0" />
+                                            <CreativeEmptyState
+                                                agent={selectedConversation.agent ?? null}
+                                                firstName={firstName}
+                                                planName={currentPlanName}
+                                                upgradeHref={nextPlan ? `/${tenantSlug}/dashboard/billing` : null}
+                                                brief={creativeBrief}
+                                                activeTab={activeEmptyStateTab}
+                                                onTabChange={setActiveEmptyStateTab}
+                                                onSelect={selectCreativeAsset}
+                                            >
+                                                <ChatInput
+                                                    onSend={(text, attachments) => {
+                                                        const message = creativeBriefStarted ? buildCreativeBriefMessage(text, creativeBrief) : text;
+                                                        const mergedAttachments = creativeBriefStarted ? mergeCreativeBriefAttachments(attachments, creativeBrief) : attachments;
+                                                        sendMessage(message, mergedAttachments);
+                                                        if (creativeBriefStarted) {
+                                                            clearCreativeBrief();
+                                                            setActiveEmptyStateTab(null);
+                                                        }
+                                                    }}
+                                                    onStop={cancel}
+                                                    onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined}
+                                                    onMediaClick={(t) => toast.info(`Adding ${t}...`)}
+                                                    isLoading={isPreparingMessage}
+                                                    isStreaming={isStreaming}
+                                                    disabled={selectedConversation.status !== 'active'}
+                                                    hasSupplementalContent={creativeBriefStarted}
+                                                    supplementalContent={
+                                                        <CreativeBriefChips
+                                                            brief={creativeBrief}
+                                                            onEdit={(field) => setActiveEmptyStateTab(tabForField(field))}
+                                                            onRemove={removeCreativeAsset}
+                                                        />
+                                                    }
+                                                    beforeSend={validateCreativeBrief}
+                                                    {...folderScopeProps}
+                                                    {...modelChangeProps}
+                                                    {...allowModeProps}
+                                                    {...skillProps}
+                                                />
+                                            </CreativeEmptyState>
+                                            <div className="flex-1 min-h-0" />
+                                        </div>
                                     ) : (
                                         <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={(text) => setInputPrefill(text)} avatarLiveState={displayState}>
                                             <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
@@ -681,41 +715,16 @@ function ChatPage() {
                                     earlier margin-based "shift down" attempt behave unpredictably.
                                     Equal spacers give a true, symmetric center. */}
                                 <div className="flex-1 min-h-0" />
-                                <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
-                                    <div className="flex flex-col items-center gap-2 mb-8">
-                                        {!draftAgent || draftAgent.origin === 'built_in' ? (
-                                            <div className="flex items-center gap-1.5 opacity-80">
-                                                <OlmoMark height={18} />
-                                                <span className="text-sm font-semibold tracking-tight">Olmo Creative Agent</span>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center gap-1.5 opacity-80">
-                                                <PersonaAvatar
-                                                    persona={draftAgent.persona}
-                                                    avatarUrl={draftAgent.avatarUrl}
-                                                    size={18}
-                                                    className="rounded-full h-[18px] w-[18px] shrink-0"
-                                                    iconClassName="text-foreground/50"
-                                                    icon={getAgentTypeIcon(draftAgent.type)}
-                                                />
-                                                <span className="text-sm font-semibold tracking-tight">{draftAgent.name}</span>
-                                            </div>
-                                        )}
-                                        <div className="flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-medium">
-                                            <span className="text-muted-foreground">{currentPlanName} plan</span>
-                                            {nextPlan && (
-                                                <>
-                                                    <span className="text-border">|</span>
-                                                    <Link href={`/${tenantSlug}/dashboard/billing`} className="flex items-center gap-1 font-semibold text-foreground hover:opacity-80 transition-opacity">
-                                                        <Zap className="h-3 w-3 fill-foreground shrink-0" />
-                                                        Upgrade
-                                                    </Link>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <h1 className="text-3xl font-bold tracking-tight mb-8">{firstName ? `Hi ${firstName}, what are we creating today?` : "What are we creating today?"}</h1>
-                                    <div className="w-full">
+                                <CreativeEmptyState
+                                    agent={draftAgent ?? null}
+                                    firstName={firstName}
+                                    planName={currentPlanName}
+                                    upgradeHref={nextPlan ? `/${tenantSlug}/dashboard/billing` : null}
+                                    brief={creativeBrief}
+                                    activeTab={activeEmptyStateTab}
+                                    onTabChange={setActiveEmptyStateTab}
+                                    onSelect={selectCreativeAsset}
+                                >
                                         <ChatInput
                                             onSend={(text, attachments) => {
                                                 const message = creativeBriefStarted ? buildCreativeBriefMessage(text, creativeBrief) : text;
@@ -746,27 +755,7 @@ function ChatPage() {
                                             beforeSend={validateCreativeBrief}
                                             {...modelChangeProps}
                                         />
-                                    </div>
-                                    <div className="-mt-2 flex flex-wrap items-center justify-center gap-2">
-                                        {EMPTY_STATE_LIBRARY_TABS.map((tab) => (
-                                            <button
-                                                key={tab.id}
-                                                type="button"
-                                                onClick={() => setActiveEmptyStateTab((cur) => (cur === tab.id ? null : tab.id))}
-                                                className={cn(
-                                                    "h-9 px-4 flex items-center gap-2 rounded-full border text-sm font-medium transition-colors",
-                                                    activeEmptyStateTab === tab.id
-                                                        ? "bg-foreground text-background border-foreground"
-                                                        : "bg-card border-border text-muted-foreground hover:text-foreground"
-                                                )}
-                                            >
-                                                {creativeBrief[fieldForTab(tab.id)] ? <Check className="h-4 w-4" /> : <tab.icon className="h-4 w-4" />}
-                                                {tab.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    {activeEmptyStateTab && <CreativeLibrary tab={activeEmptyStateTab} brief={creativeBrief} onSelect={selectCreativeAsset} />}
-                                </div>
+                                </CreativeEmptyState>
                                 <div className="flex-1 min-h-0" />
                             </div>
                         )}
