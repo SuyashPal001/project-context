@@ -13,11 +13,13 @@ export function isSystemFolder(folderName: string): boolean {
     return Object.hasOwn(SYSTEM_FOLDER_LABELS, folderName);
 }
 
-// Singular verb-phrase for the upload CTA, keyed by the same system-folder
-// name — "Upload avatar" reads better than "Upload" + the plural pill label.
+// Upload CTA label per system folder, so every pill has a matching action —
+// "New avatar" reads better than "Upload" + the plural pill label.
 const UPLOAD_LABELS: Record<string, string> = {
-    'creative-avatars': 'Upload avatar',
-    'creative-products': 'Upload product',
+    'chat-attachments': 'Upload',
+    'creative-avatars': 'New avatar',
+    'creative-products': 'New product',
+    'generated': 'Upload',
 };
 
 /** currentPrefix is the raw storage prefix (e.g. "creative-avatars/"), same
