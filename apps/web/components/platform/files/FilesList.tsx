@@ -143,6 +143,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             folderName, folderPrefix, allDone,
             isIngesting: ingestion.ingestingFolders.has(folderName),
             fileCount: folderFiles.length, totalSize, latestAddedAt,
+            previewFileIds: folderFiles
+                .filter(f => getFileCategory(f.contentType, f.filename) === 'image')
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                .slice(0, 3)
+                .map(f => f.id),
         };
     }), [virtualFolders, allFiles, prefix, ingestion.ingestingFolders]);
 

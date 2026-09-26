@@ -83,41 +83,67 @@ export function FileGridView({
 }: FileGridViewProps) {
     return (
         <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount }) => (
+            {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount, previewFileIds }) => (
                 <div
                     key={`folder-${folderName}`}
                     onClick={() => onNavigateToFolder(folderPrefix)}
-                    className="group relative flex flex-col p-3 rounded-xl border border-border bg-card hover:bg-secondary/60 transition-colors cursor-pointer"
+                    className="group relative flex flex-col rounded-xl border border-border bg-card hover:bg-secondary/60 transition-colors cursor-pointer overflow-hidden"
                 >
-                    <div className="flex items-center gap-2 mb-2">
-                        <FolderIcon className="w-5 h-5 text-amber-500 fill-amber-500/20 shrink-0" />
-                        <span className="font-medium text-foreground text-sm truncate" title={`${folderName}/`}>{folderName}/</span>
+                    <div className="relative aspect-square w-full overflow-hidden bg-amber-500/5 flex items-center justify-center">
+                        {previewFileIds.length > 0 ? (
+                            // Newest image sits on top; older ones peek out behind it,
+                            // offset and tilted like a stack of photos in a folder.
+                            [...previewFileIds].reverse().map((fileId, i, all) => {
+                                const depth = all.length - 1 - i;
+                                return (
+                                    <div
+                                        key={fileId}
+                                        className="absolute h-[62%] w-[62%] overflow-hidden rounded-lg border-2 border-background shadow-md"
+                                        style={{ transform: `translate(${depth * 14 - 6}%, ${depth * -8 + 4}%) rotate(${depth * 5 - 2}deg)` }}
+                                    >
+                                        <FileThumbnail fileId={fileId} alt="" />
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <FolderIcon className="h-14 w-14 text-amber-500 fill-amber-500/20" />
+                        )}
+                        <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
+                            <FolderIcon className="h-2.5 w-2.5 text-amber-500 fill-amber-500/30" /> FOLDER
+                        </span>
+                        <div className="absolute top-2 right-2 flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                            <AddToChatMenu
+                                conversations={conversations}
+                                variant="icon"
+                                triggerClassName="bg-background/70 backdrop-blur-sm"
+                                disabled={fileCount === 0}
+                                label={folderChatLabel(fileCount)}
+                                onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
+                            />
+                            {showPipelineDetails && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-green-400"
+                                    title="Ingest"
+                                    onClick={() => onIngestFolder(folderName)}
+                                    disabled={allDone || isIngesting}
+                                >
+                                    {isIngesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                                </Button>
+                            )}
+                            {canDelete && (
+                                <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-destructive" onClick={() => onDeleteFolder(folderName)}>
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                            )}
+                        </div>
                     </div>
-                    <div className="flex items-center justify-end gap-1 mt-auto" onClick={e => e.stopPropagation()}>
-                        <AddToChatMenu
-                            conversations={conversations}
-                            variant="icon"
-                            disabled={fileCount === 0}
-                            label={folderChatLabel(fileCount)}
-                            onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
-                        />
-                        {showPipelineDetails && (
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-muted-foreground hover:text-green-400"
-                                title="Ingest"
-                                onClick={() => onIngestFolder(folderName)}
-                                disabled={allDone || isIngesting}
-                            >
-                                {isIngesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-                            </Button>
-                        )}
-                        {canDelete && (
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={() => onDeleteFolder(folderName)}>
-                                <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                        )}
+                    <div className="p-2.5 flex flex-col gap-1">
+                        <span className="text-xs font-medium text-foreground/80 truncate" title={`${folderName}/`}>{folderName}</span>
+                        <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">
+                            {fileCount} {fileCount === 1 ? 'file' : 'files'}
+                        </span>
                     </div>
                 </div>
             ))}
