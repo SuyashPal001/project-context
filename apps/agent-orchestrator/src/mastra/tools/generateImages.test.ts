@@ -50,14 +50,15 @@ describe('generateImages tool', () => {
     expect(spendCredits.mock.calls.map((c) => c[0].key).sort()).toEqual([`image:c1:${stableToolCallId('tc-b')}:0`, `image:c1:${stableToolCallId('tc-b')}:1`])
   })
 
-  it('does not charge an item whose gateway call is refused (image charges only after success)', async () => {
+  it('refunds an item whose gateway call is refused (image charges before the call)', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ refused: true, reason: 'POLICY' }), { status: 200 })) as unknown as typeof fetch
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-50000', expires_at: null }] }) })
 
     const result = await generateImages.execute!({ items: [imgItem('one')] } as never, batchCtx()) as { failed: number; results: Array<Record<string, unknown>> }
 
     expect(result.failed).toBe(1)
     expect(result.results[0]).toMatchObject({ index: 0, refused: true, refusalReason: 'POLICY' })
-    expect(spendCredits).not.toHaveBeenCalled()
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'refund' }))
   })
 
   it('emits batch_item_progress per item as each settles, not just at the end', async () => {

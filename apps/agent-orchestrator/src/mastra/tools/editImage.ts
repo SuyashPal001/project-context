@@ -56,39 +56,9 @@ export const editImage = createTool({
       return { refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' }
     }
 
-    let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
-    try {
-      const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({
-          model: IMAGE_MODEL, prompt,
-          sourceImageBase64: source.base64, sourceMimeType: source.mimeType,
-        }),
-        signal: AbortSignal.timeout(90_000),
-      })
-      if (!res.ok) throw new Error(`gateway returned ${res.status}`)
-      genResult = await res.json()
-    } catch (err) {
-      console.error(`[session:${sessionId}] editImage gateway call failed:`, (err as Error).message)
-      return { refused: true, refusalReason: 'GENERATION_FAILED' }
-    }
-
-    if (genResult.refused) {
-      return { refused: true, refusalReason: genResult.reason ?? 'unknown' }
-    }
-
-    // Validate the success shape BEFORE any charge lands — a missing
-    // imageBase64 on a non-refused response must never leave the tenant
-    // charged for nothing. (Currently unreachable given the gateway's
-    // exhaustive response union, but this keeps the charged→throw window
-    // closed regardless.)
-    if (typeof genResult.imageBase64 !== 'string') {
-      console.error(`[session:${sessionId}] editImage: gateway returned a non-refused response with no imageBase64`)
-      return { refused: true, refusalReason: 'GENERATION_FAILED' }
-    }
-
-    // Success — charge now, before the (best-effort) upload.
+    // Charge BEFORE the vendor call, same as generateImage.ts — a non-balance
+    // spendCredits error must fail before the vendor is paid, not discard a
+    // finished image after. Every failure below refunds.
     const chargeKey = `image:${sessionId}:${randomUUID()}`
     let charged = false
     let rateId: string | null = null
@@ -114,6 +84,38 @@ export const editImage = createTool({
           throw err
         }
       }
+    }
+
+    let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
+    try {
+      const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+        body: JSON.stringify({
+          model: IMAGE_MODEL, prompt,
+          sourceImageBase64: source.base64, sourceMimeType: source.mimeType,
+        }),
+        signal: AbortSignal.timeout(90_000),
+      })
+      if (!res.ok) throw new Error(`gateway returned ${res.status}`)
+      genResult = await res.json()
+    } catch (err) {
+      console.error(`[session:${sessionId}] editImage gateway call failed:`, (err as Error).message)
+      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'GENERATION_FAILED' }
+    }
+
+    if (genResult.refused) {
+      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: genResult.reason ?? 'unknown' }
+    }
+
+    // Currently unreachable given the gateway's exhaustive response union,
+    // but a missing imageBase64 must never leave the tenant charged for nothing.
+    if (typeof genResult.imageBase64 !== 'string') {
+      console.error(`[session:${sessionId}] editImage: gateway returned a non-refused response with no imageBase64`)
+      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'GENERATION_FAILED' }
     }
 
     const buffer = Buffer.from(genResult.imageBase64, 'base64')

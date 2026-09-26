@@ -105,40 +105,15 @@ export async function generateImageItem(
       }
     }
 
-    let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
-    try {
-      const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: IMAGE_MODEL, prompt, ...(aspectRatio ? { aspectRatio } : {}), ...(sourceImages.length ? { sourceImages } : {}) }),
-        signal: AbortSignal.timeout(90_000),
-      })
-      if (!res.ok) throw new Error(`gateway returned ${res.status}`)
-      genResult = await res.json()
-    } catch (err) {
-      console.error(`[session:${sessionId}] generateImage gateway call failed:`, (err as Error).message)
-      return { refused: true, refusalReason: 'GENERATION_FAILED' }
-    }
-
-    if (genResult.refused) {
-      return { refused: true, refusalReason: genResult.reason ?? 'unknown' }
-    }
-
-    // Validate the success shape BEFORE any charge lands — a missing
-    // imageBase64 on a non-refused response must never leave the tenant
-    // charged for nothing. (Currently unreachable given the gateway's
-    // exhaustive response union, but this keeps the charged→throw window
-    // closed regardless.)
-    if (typeof genResult.imageBase64 !== 'string') {
-      console.error(`[session:${sessionId}] generateImage: gateway returned a non-refused response with no imageBase64`)
-      return { refused: true, refusalReason: 'GENERATION_FAILED' }
-    }
-
-    // Success — charge now, before the (best-effort) upload. Deterministic
-    // (conversationId + toolCallId + item index) rather than a random uuid,
-    // so the key is stable per call and has the same shape as
-    // generateVideo.ts's video:${jobId}:${attempt}. The item index occupies
-    // the last slot; the single tool passes 0.
+    // Charge BEFORE the vendor call — docs/media-generation/README.md's
+    // settled rule, same as generateVideo.ts. This tool used to charge after
+    // the image came back, so any non-balance spendCredits error threw away
+    // an image the vendor had already been paid for (seen live 2026-09-25).
+    // Now such an error fails before any vendor spend, and every failure
+    // below refunds. Deterministic (conversationId + toolCallId + item
+    // index) rather than a random uuid, so the key is stable per call and
+    // has the same shape as generateVideo.ts's video:${jobId}:${attempt}.
+    // The item index occupies the last slot; the single tool passes 0.
     // stableToolCallId: a Gemini 3.x toolCallId carries the thoughtSignature and
     // can be ~7KB, over Postgres's btree limit on credit_ledger's idempotency
     // index. That made every charge on Olmo's direct generate_image throw after
@@ -168,6 +143,35 @@ export async function generateImageItem(
           throw err
         }
       }
+    }
+
+    let genResult: { imageBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
+    try {
+      const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+        body: JSON.stringify({ model: IMAGE_MODEL, prompt, ...(aspectRatio ? { aspectRatio } : {}), ...(sourceImages.length ? { sourceImages } : {}) }),
+        signal: AbortSignal.timeout(90_000),
+      })
+      if (!res.ok) throw new Error(`gateway returned ${res.status}`)
+      genResult = await res.json()
+    } catch (err) {
+      console.error(`[session:${sessionId}] generateImage gateway call failed:`, (err as Error).message)
+      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'GENERATION_FAILED' }
+    }
+
+    if (genResult.refused) {
+      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: genResult.reason ?? 'unknown' }
+    }
+
+    // Currently unreachable given the gateway's exhaustive response union,
+    // but a missing imageBase64 must never leave the tenant charged for nothing.
+    if (typeof genResult.imageBase64 !== 'string') {
+      console.error(`[session:${sessionId}] generateImage: gateway returned a non-refused response with no imageBase64`)
+      if (charged) await refundImageCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'GENERATION_FAILED' }
     }
 
     const buffer = Buffer.from(genResult.imageBase64, 'base64')

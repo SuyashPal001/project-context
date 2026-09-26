@@ -50,7 +50,7 @@ beforeEach(() => {
 })
 
 describe('editImage tool', () => {
-  it('calls the gateway, charges credits only after success, uploads the result, and returns metadata only', async () => {
+  it('charges credits, calls the gateway, uploads the result, and returns metadata only', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
 
@@ -91,13 +91,49 @@ describe('editImage tool', () => {
     expect(result).not.toHaveProperty('creditsUsedMicro')
   })
 
-  it('does not call the gateway result into a charge and returns a refusal when Gemini refuses — no charge, nothing to refund', async () => {
+  // Charge BEFORE the vendor call, same as generateImage.ts — a non-balance
+  // charge error must fail before the vendor is paid, not after.
+  it('charges before calling the gateway', async () => {
+    const order: string[] = []
+    spendCredits.mockImplementation(async () => { order.push('charge') })
+    global.fetch = vi.fn(async () => {
+      order.push('gateway')
+      return new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })
+    }) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 3 })
+
+    await editImage.execute!(baseInput as never, baseCtx())
+
+    expect(order).toEqual(['charge', 'gateway'])
+  })
+
+  it('never calls the gateway when the charge fails with a non-balance error', async () => {
+    global.fetch = vi.fn() as unknown as typeof fetch
+    spendCredits.mockRejectedValue(new Error('Failed query: select * from spend_credits(...)'))
+
+    await expect(editImage.execute!(baseInput as never, baseCtx())).rejects.toThrow('spend_credits')
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('refunds and returns the refusal when Gemini refuses', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ refused: true, reason: 'SAFETY' }), { status: 200 })) as unknown as typeof fetch
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-50000', expires_at: null }] }) })
 
     const result = await editImage.execute!(baseInput as never, baseCtx())
 
-    expect(spendCredits).not.toHaveBeenCalled()
+    expect(spendCredits).toHaveBeenCalledTimes(2)
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ amountMicro: 50_000n, kind: 'refund' }))
     expect(result).toEqual({ refused: true, refusalReason: 'SAFETY' })
+  })
+
+  it('refunds and returns GENERATION_FAILED when the gateway call throws', async () => {
+    global.fetch = vi.fn(async () => { throw new Error('ECONNRESET') }) as unknown as typeof fetch
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-50000', expires_at: null }] }) })
+
+    const result = await editImage.execute!(baseInput as never, baseCtx())
+
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ amountMicro: 50_000n, kind: 'refund' }))
+    expect(result).toEqual({ refused: true, refusalReason: 'GENERATION_FAILED' })
   })
 
   it('refunds with the original grants\' shortest expiry when the post-charge upload fails', async () => {
@@ -118,22 +154,24 @@ describe('editImage tool', () => {
     expect(result).toEqual({ refused: true, refusalReason: 'STORAGE_FAILED' })
   })
 
-  it('returns insufficientCredits when spendCredits throws after a successful generation', async () => {
+  it('returns insufficientCredits without calling the gateway when the balance is too low', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'QUJD', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
     spendCredits.mockRejectedValue(Object.assign(new Error('insufficient'), { name: 'InsufficientCreditsError' }))
 
     const result = await editImage.execute!(baseInput as never, baseCtx())
 
+    expect(global.fetch).not.toHaveBeenCalled()
     expect(uploadGeneratedFile).not.toHaveBeenCalled()
     expect(result).toEqual({ insufficientCredits: true })
   })
 
-  it('returns GENERATION_FAILED without charging when a non-refused gateway response is missing imageBase64', async () => {
+  it('refunds and returns GENERATION_FAILED when a non-refused gateway response is missing imageBase64', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-50000', expires_at: null }] }) })
 
     const result = await editImage.execute!(baseInput as never, baseCtx())
 
-    expect(spendCredits).not.toHaveBeenCalled()
+    expect(spendCredits).toHaveBeenLastCalledWith(expect.objectContaining({ amountMicro: 50_000n, kind: 'refund' }))
     expect(uploadGeneratedFile).not.toHaveBeenCalled()
     expect(result).toEqual({ refused: true, refusalReason: 'GENERATION_FAILED' })
   })

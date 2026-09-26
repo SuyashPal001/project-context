@@ -38,39 +38,9 @@ export const generateSong = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = conversationId ?? 'unknown'
 
-    let genResult: { audioBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
-    try {
-      const res = await fetch(`${GATEWAY_URL}/v1/music/generations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: MUSIC_MODEL, prompt }),
-        signal: AbortSignal.timeout(120_000),
-      })
-      if (!res.ok) {
-        // 422 = Lyria rejected this specific prompt — tell the agent to ask for a different description
-        if (res.status === 422) {
-          const body = await res.json().catch(() => ({})) as { error?: { message?: string } }
-          const reason = body?.error?.message ?? 'Lyria could not generate audio for this prompt.'
-          console.warn(`[session:${sessionId}] generateSong prompt rejected by Lyria:`, reason)
-          return { refused: true, refusalReason: `PROMPT_REJECTED: ${reason}` }
-        }
-        throw new Error(`gateway returned ${res.status}`)
-      }
-      genResult = await res.json()
-    } catch (err) {
-      console.error(`[session:${sessionId}] generateSong gateway call failed:`, (err as Error).message)
-      return { refused: true, refusalReason: 'GENERATION_FAILED' }
-    }
-
-    if (genResult.refused) {
-      return { refused: true, refusalReason: genResult.reason ?? 'unknown' }
-    }
-
-    if (typeof genResult.audioBase64 !== 'string') {
-      console.error(`[session:${sessionId}] generateSong: gateway returned a non-refused response with no audioBase64`)
-      return { refused: true, refusalReason: 'GENERATION_FAILED' }
-    }
-
+    // Charge BEFORE the vendor call, same as generateImage.ts — a non-balance
+    // spendCredits error must fail before the vendor is paid, not discard a
+    // finished clip after. Every failure below refunds.
     const chargeKey = `music:${sessionId}:${randomUUID()}`
     let charged = false
     let rateId: string | null = null
@@ -95,6 +65,43 @@ export const generateSong = createTool({
           throw err
         }
       }
+    }
+
+    let genResult: { audioBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
+    try {
+      const res = await fetch(`${GATEWAY_URL}/v1/music/generations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
+        body: JSON.stringify({ model: MUSIC_MODEL, prompt }),
+        signal: AbortSignal.timeout(120_000),
+      })
+      if (!res.ok) {
+        // 422 = Lyria rejected this specific prompt — tell the agent to ask for a different description
+        if (res.status === 422) {
+          const body = await res.json().catch(() => ({})) as { error?: { message?: string } }
+          const reason = body?.error?.message ?? 'Lyria could not generate audio for this prompt.'
+          console.warn(`[session:${sessionId}] generateSong prompt rejected by Lyria:`, reason)
+          if (charged) await refundMusicCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+          return { refused: true, refusalReason: `PROMPT_REJECTED: ${reason}` }
+        }
+        throw new Error(`gateway returned ${res.status}`)
+      }
+      genResult = await res.json()
+    } catch (err) {
+      console.error(`[session:${sessionId}] generateSong gateway call failed:`, (err as Error).message)
+      if (charged) await refundMusicCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'GENERATION_FAILED' }
+    }
+
+    if (genResult.refused) {
+      if (charged) await refundMusicCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: genResult.reason ?? 'unknown' }
+    }
+
+    if (typeof genResult.audioBase64 !== 'string') {
+      console.error(`[session:${sessionId}] generateSong: gateway returned a non-refused response with no audioBase64`)
+      if (charged) await refundMusicCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      return { refused: true, refusalReason: 'GENERATION_FAILED' }
     }
 
     const buffer = Buffer.from(genResult.audioBase64, 'base64')
