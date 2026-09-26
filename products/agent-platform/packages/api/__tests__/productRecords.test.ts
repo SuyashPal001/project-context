@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 vi.mock('../db', () => ({ db: {} }));
 
@@ -34,5 +35,21 @@ describe('dropImageless', () => {
     const allGone = toProductRecord(baseRow, new Map());
     const oneLeft = toProductRecord({ ...baseRow, id: 'p2' }, new Map([['f2', img('f2')]]));
     expect(dropImageless([allGone, oneLeft]).map(p => p.id)).toEqual(['p2']);
+  });
+});
+
+describe('applyNamingResult', () => {
+  it('only updates a product that is still pending, so a user rename wins', async () => {
+    vi.resetModules();
+    const where = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn(() => ({ where }));
+    vi.doMock('../db', () => ({ db: { update: vi.fn(() => ({ set })) } }));
+    const { applyNamingResult } = await import('../lib/productRecords');
+
+    await applyNamingResult('t1', 'p1', { name: 'Serum', description: null });
+
+    const sqlText = new PgDialect().sqlToQuery(where.mock.calls[0][0]).sql;
+    expect(sqlText).toContain('"naming_status" = $');
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ name: 'Serum', namingStatus: 'done' }));
   });
 });
