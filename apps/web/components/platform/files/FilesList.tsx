@@ -14,7 +14,7 @@ import { FilesFilter } from "./FilesFilter";
 import { stagePendingAttachments } from "@/lib/pendingAttachments";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
-import { SYSTEM_FOLDER_LABELS, isSystemFolder } from "./systemFolders";
+import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isMine, isSystemFolder } from "./systemFolders";
 import { FileGridView } from "./components/FileGridView";
 import { FileListView } from "./components/FileListView";
 import { IngestionSidePanel } from "./IngestionSidePanel";
@@ -120,9 +120,20 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // folder. The pill list is remembered from the root listing, because inside
     // a folder virtualFolders holds that folder's children, not the root's —
     // without this the tabs vanished as soon as one was clicked.
+    // "Mine" is a view over the whole listing (every file that is not agent output
+    // or creative library), not a folder, so it can't be expressed as a prefix.
+    const [mineActive, setMineActive] = useState(false);
+    const mine = mineActive && !prefix;
+    const navigate = (nextPrefix: string) => { setMineActive(false); onPrefixChange(nextPrefix); };
+    const mineFiles = useMemo(
+        () => allFiles.filter(f => isMine(f.key)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        [allFiles]);
+    const shownFiles = mine ? mineFiles : files;
+    const shownFolderCount = mine ? 0 : virtualFolders.length;
+
     const [rootSystemFolders, setRootSystemFolders] = useState<string[]>([]);
     if (!prefix && !isLoading) {
-        const fresh = virtualFolders.filter(isSystemFolder);
+        const fresh = virtualFolders.filter(name => (PILL_FOLDERS as readonly string[]).includes(name));
         if (fresh.join('|') !== rootSystemFolders.join('|')) setRootSystemFolders(fresh);
     }
     const currentSystemFolder = prefix ? prefix.split('/')[0] : null;
@@ -130,15 +141,15 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // rather than only the current one. A folder's pill is also kept when it was
     // missing from an earlier root load (e.g. its first file was just uploaded).
     const systemFolderPills = rootSystemFolders.length === 0 && prefix
-        ? Object.keys(SYSTEM_FOLDER_LABELS)
-        : currentSystemFolder && isSystemFolder(currentSystemFolder) && !rootSystemFolders.includes(currentSystemFolder)
+        ? [...PILL_FOLDERS]
+        : currentSystemFolder && (PILL_FOLDERS as readonly string[]).includes(currentSystemFolder) && !rootSystemFolders.includes(currentSystemFolder)
             ? [...rootSystemFolders, currentSystemFolder]
             : rootSystemFolders;
     // Inside one of the user's own folders no system pill matches, so "All" is
     // the active one — the folder lives under it.
-    const activeSystemFolder = currentSystemFolder && isSystemFolder(currentSystemFolder) ? currentSystemFolder : null;
+    const activeSystemFolder = currentSystemFolder && (PILL_FOLDERS as readonly string[]).includes(currentSystemFolder) ? currentSystemFolder : null;
 
-    const allFolderCards: FolderCard[] = useMemo(() => virtualFolders
+    const allFolderCards: FolderCard[] = useMemo(() => (mine ? [] : virtualFolders)
         .filter(folderName => prefix || !isSystemFolder(folderName))
         .map(folderName => {
         const folderPrefix = `${prefix}${folderName}/`;
@@ -157,10 +168,10 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
                 .slice(0, 3),
         };
-    }), [virtualFolders, allFiles, prefix, ingestion.ingestingFolders]);
+    }), [virtualFolders, allFiles, prefix, mine, ingestion.ingestingFolders]);
 
     // Folders share the page budget with files, so the hook needs their count.
-    const filters = useFileFilters(files, allFolderCards.length);
+    const filters = useFileFilters(shownFiles, allFolderCards.length);
     const { pagedFiles, filteredFiles, totalPages, currentPage, setCurrentPage, folderRange } = filters;
     const folderCards = useMemo(
         () => allFolderCards.slice(folderRange.start, folderRange.end),
@@ -174,7 +185,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const previewFile = previewFileId ? pagedFiles.find(f => f.id === previewFileId) ?? null : null;
     const allPageSelected = pagedFiles.length > 0 && pagedFiles.every(f => selection.selectedIds.has(f.id));
 
-    const hasParseableFiles = files.some(isParseable);
+    const hasParseableFiles = shownFiles.some(isParseable);
 
     const { folderPersonFolderId, folderAllDone } = useMemo(() => {
         if (!prefix) return { folderPersonFolderId: null, folderAllDone: false };
@@ -190,13 +201,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // branches below so navigating back out of an empty folder still works.
     const breadcrumbNav = prefix && (
         <div className="flex items-center text-base text-muted-foreground">
-            <button onClick={() => onPrefixChange("")} className="hover:text-foreground transition-colors">
+            <button onClick={() => navigate("")} className="hover:text-foreground transition-colors">
                 Drive
             </button>
             {breadcrumbs.map((crumb, idx) => (
                 <div key={crumb.path} className="flex items-center">
                     <ChevronRight className="w-4 h-4 mx-1 opacity-50" />
-                    <button onClick={() => onPrefixChange(crumb.path)} className={`hover:text-foreground transition-colors ${idx === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}`}>
+                    <button onClick={() => navigate(crumb.path)} className={`hover:text-foreground transition-colors ${idx === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}`}>
                         {idx === 0 ? (SYSTEM_FOLDER_LABELS[crumb.name] ?? crumb.name) : crumb.name}
                     </button>
                 </div>
@@ -217,20 +228,27 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 />
             )}
 
-                {systemFolderPills.length > 0 && (
+                {(
                     <div className="flex gap-1 rounded-full bg-muted p-1 w-fit flex-wrap">
                         <button
                             type="button"
-                            onClick={() => onPrefixChange("")}
-                            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${!activeSystemFolder ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+                            onClick={() => navigate("")}
+                            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${!activeSystemFolder && !mine ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             All
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { onPrefixChange(""); setMineActive(true); }}
+                            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${mine ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            Mine
                         </button>
                         {systemFolderPills.map(folderName => (
                             <button
                                 key={folderName}
                                 type="button"
-                                onClick={() => onPrefixChange(`${folderName}/`)}
+                                onClick={() => navigate(`${folderName}/`)}
                                 className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeSystemFolder === folderName ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
                             >
                                 {SYSTEM_FOLDER_LABELS[folderName]}
@@ -244,7 +262,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     <Loader2 className="w-8 h-8 animate-spin" />
                     <p>Loading documents...</p>
                 </div>
-            ) : files.length === 0 && virtualFolders.length === 0 ? (
+            ) : shownFiles.length === 0 && shownFolderCount === 0 ? (
                 <div className="space-y-4">
                     {breadcrumbNav}
                     <div className="py-8">
@@ -297,7 +315,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                     className="w-full h-9 pl-9 pr-3 text-sm rounded-lg bg-secondary border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
                             </div>
-                            {files.length > 0 && <FilesFilter
+                            {shownFiles.length > 0 && <FilesFilter
                                 workspaceNames={workspaceNames} filterWorkspace={filters.filterWorkspace} onWorkspaceChange={filters.onWorkspaceChange}
                                 filterClassification={filters.filterClassification} onClassificationChange={filters.onClassificationChange}
                                 filterCategory={filters.filterCategory} onCategoryChange={filters.onCategoryChange}
@@ -333,7 +351,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 size="sm"
                                 variant="outline"
                                 className="h-7 text-xs gap-1.5"
-                                onClick={() => ingestion.ingestAllInFolder(files)}
+                                onClick={() => ingestion.ingestAllInFolder(shownFiles)}
                                 disabled={ingestion.isIngestingAllInFolder}
                             >
                                 {ingestion.isIngestingAllInFolder
@@ -378,7 +396,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             ingestingFiles={ingestion.ingestingFiles}
                             onIngestFile={ingestion.ingestFile}
                             onIngestFolder={(folderName) => ingestion.ingestFolder(folderName, allFiles)}
-                            onNavigateToFolder={onPrefixChange}
+                            onNavigateToFolder={navigate}
                             onPreviewFile={setPreviewFileId}
                             onDownload={mutations.downloadFile}
                             canDelete={canDelete}
@@ -402,7 +420,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             ingestingFiles={ingestion.ingestingFiles}
                             onIngestFile={ingestion.ingestFile}
                             onIngestFolder={(folderName) => ingestion.ingestFolder(folderName, allFiles)}
-                            onNavigateToFolder={onPrefixChange}
+                            onNavigateToFolder={navigate}
                             onPreviewFile={setPreviewFileId}
                             onDownload={mutations.downloadFile}
                             canDelete={canDelete}

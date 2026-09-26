@@ -3,7 +3,7 @@
 // implementation detail that used to leak into Drive as empty-looking folder
 // tiles. Surfaced as pills instead so the raw prefix name never shows.
 export const SYSTEM_FOLDER_LABELS: Record<string, string> = {
-    'chat-attachments': 'Uploads',
+    'chat-attachments': 'Chat uploads',
     'creative-avatars': 'Avatars',
     'creative-products': 'Products',
     'generated': 'Generated',
@@ -11,6 +11,19 @@ export const SYSTEM_FOLDER_LABELS: Record<string, string> = {
 
 export function isSystemFolder(folderName: string): boolean {
     return Object.hasOwn(SYSTEM_FOLDER_LABELS, folderName);
+}
+
+// The folders that get their own pill. chat-attachments is a system folder too
+// (hidden as a tile) but has no pill: it is part of "Mine".
+export const PILL_FOLDERS = ['creative-avatars', 'creative-products', 'generated'] as const;
+
+const AGENT_OR_LIBRARY_PREFIXES = PILL_FOLDERS.map(folder => `${folder}/`);
+
+/** "Mine": everything the user put in themselves — chat attachments, their own
+ *  folders and loose files — as opposed to agent output and the creative
+ *  library, which have their own pills. */
+export function isMine(key: string): boolean {
+    return !AGENT_OR_LIBRARY_PREFIXES.some(prefix => key.startsWith(prefix));
 }
 
 // Upload CTA label per system folder, so every pill has a matching action —
