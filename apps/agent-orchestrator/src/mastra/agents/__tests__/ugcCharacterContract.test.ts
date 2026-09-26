@@ -12,7 +12,7 @@ describe('UGC_CHARACTER_CONTRACT', () => {
   })
 
   it('still requires the cast sheet first and board approval before any video', () => {
-    expect(UGC_CHARACTER_CONTRACT).toContain('generate the cast sheet')
+    expect(UGC_CHARACTER_CONTRACT).toContain('generate or reuse the cast sheet')
     expect(UGC_CHARACTER_CONTRACT).toContain('approve the set as a whole')
   })
 })

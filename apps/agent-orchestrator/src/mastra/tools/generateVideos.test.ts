@@ -20,6 +20,7 @@ vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
 import { generateVideos } from './generateVideos.js'
 import { uploadGeneratedFile } from '../../persistence.js'
+import { stableToolCallId } from '../../credits.js'
 
 function batchCtx() {
   const requestContext = new RequestContext()
@@ -49,7 +50,7 @@ describe('generateVideos tool', () => {
     expect(result.results.map((r) => r.index)).toEqual([0, 1])
     expect(result.results.map((r) => r.fileId).sort()).toEqual(['f0', 'f1'])
     const keys = spendCredits.mock.calls.map((c) => c[0].key).sort()
-    expect(keys).toEqual(['video:c1:tc-b:0', 'video:c1:tc-b:1'])
+    expect(keys).toEqual([`video:c1:${stableToolCallId('tc-b')}:0`, `video:c1:${stableToolCallId('tc-b')}:1`])
   })
 
   it('refuses an invalid item without charging it while its sibling still generates', async () => {
@@ -63,7 +64,7 @@ describe('generateVideos tool', () => {
     expect(result.results[1]).toMatchObject({ index: 1, fileId: 'f1' })
     expect(result).toMatchObject({ succeeded: 1, failed: 1 })
     expect(spendCredits).toHaveBeenCalledTimes(1)
-    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'video:c1:tc-b:1' }))
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: `video:c1:${stableToolCallId('tc-b')}:1` }))
   })
 
   it('refunds only the failed item when one gateway call fails', async () => {

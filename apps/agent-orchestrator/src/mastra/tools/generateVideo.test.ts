@@ -22,6 +22,7 @@ vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
 import { generateVideo, generateVideoItem } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
+import { stableToolCallId } from '../../credits.js'
 
 function ctx(values: Record<string, string>) {
   const requestContext = new RequestContext()
@@ -49,7 +50,7 @@ describe('generateVideo tool', () => {
       2,
     )
 
-    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'video:c1:tc-9:2' }))
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: `video:c1:${stableToolCallId('tc-9')}:2` }))
   })
 
   it('the single generateVideo tool still charges under index 0', async () => {
@@ -62,7 +63,7 @@ describe('generateVideo tool', () => {
       execCtx as never,
     )
 
-    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: 'video:c1:tc-9:0' }))
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: `video:c1:${stableToolCallId('tc-9')}:0` }))
   })
 
   it('calls the gateway, charges credits only after success, uploads the result, and returns metadata only', async () => {
