@@ -16,7 +16,7 @@ vi.mock('./productsApi', async (orig) => ({
     describeProduct: vi.fn(), renameProduct: vi.fn(), deleteProduct: vi.fn(),
 }));
 vi.mock('@/components/platform/files/FileThumbnail', () => ({ FileThumbnail: ({ alt }: { alt: string }) => <span>{alt}</span> }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }));
 
 // Radix menus need these in jsdom. jsdom has no PointerEvent constructor at
 // all (only MouseEvent), so Radix's pointerdown-based open/close handlers
@@ -33,6 +33,8 @@ class MockPointerEvent extends MouseEvent {
 beforeAll(() => {
     Object.assign(window, { PointerEvent: MockPointerEvent });
     Object.assign(window.HTMLElement.prototype, { hasPointerCapture: () => false, releasePointerCapture: () => {}, scrollIntoView: () => {} });
+    // jsdom has no URL.createObjectURL/revokeObjectURL at all.
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:preview'), revokeObjectURL: vi.fn() });
 });
 
 const image = (fileId: string) => ({ fileId, name: `${fileId}.png`, type: 'image/png', size: 3 });
@@ -56,7 +58,7 @@ describe('ProductsPanel', () => {
     it('shows one drop zone and the skip line when there are no products', async () => {
         renderPanel();
         expect(await screen.findByText('Paste a product link or drop photos')).toBeTruthy();
-        expect(screen.getByText('You can skip this. Olmo will ask about your product in chat.')).toBeTruthy();
+        expect(await screen.findByText('You can skip this. Olmo will ask about your product in chat.')).toBeTruthy();
     });
 
     it('uploads dropped photos, creates a product, selects it, then selects the AI-named version', async () => {
@@ -74,6 +76,21 @@ describe('ProductsPanel', () => {
         // The parent passes the selection back down, as ChatComposer does.
         rerender(<QueryClientProvider client={new QueryClient()}><ProductsPanel selected={{ ...productsApi.productSelection(record({ namingStatus: 'pending' })) }} onSelect={onSelect} /></QueryClientProvider>);
         await waitFor(() => expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'product', name: 'Niacinamide serum', namingStatus: 'done' })));
+    });
+
+    it('shows a preview of the first dropped photo and "Naming…" while the upload is in flight', async () => {
+        let resolveStore!: (value: ReturnType<typeof image>) => void;
+        vi.mocked(storeCreativeImage).mockReturnValue(new Promise(resolve => { resolveStore = resolve; }));
+        renderPanel();
+        const file = new File(['a'], 'a.png', { type: 'image/png' });
+
+        fireEvent.drop(await screen.findByTestId('product-drop-zone'), { dataTransfer: { files: [file] } });
+
+        expect(await screen.findByText('Naming…')).toBeTruthy();
+        expect(URL.createObjectURL).toHaveBeenCalledWith(file);
+        // Left unresolved deliberately: the assertion above is the point of this test, and
+        // RTL's automatic unmount after the test exercises the cleanup-time revoke path.
+        void resolveStore;
     });
 
     it('does not override a different product the user picked while naming ran', async () => {
@@ -164,6 +181,7 @@ describe('ProductsPanel', () => {
         await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
 
         expect(screen.queryByText('Niacinamide serum')).toBeNull();
+        expect(toast.success).toHaveBeenCalledWith('Product deleted', expect.objectContaining({ id: 'p1', duration: 5000 }));
         const undo = vi.mocked(toast.success).mock.calls[0][1] as unknown as { action: { onClick: () => void } };
         act(() => undo.action.onClick());
         expect(await screen.findByText('Niacinamide serum')).toBeTruthy();

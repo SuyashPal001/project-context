@@ -37,6 +37,8 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
     const [hidden, setHidden] = useState<Set<string>>(() => new Set());
     const [renamingId, setRenamingId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState('');
+    const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+    const photoPreviewUrlRef = useRef<string | null>(null);
     selectedIdRef.current = selected?.kind === 'product' ? selected.id : null;
 
     const { data, isPending, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
@@ -46,19 +48,19 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
         getNextPageParam: (last, pages) => last.data.length === PRODUCTS_PAGE_SIZE ? pages.length * PRODUCTS_PAGE_SIZE : undefined,
     });
     const products = (data?.pages.flatMap(page => page.data) ?? []).filter(product => !hidden.has(product.id));
-    // Deliberately not gated on `isPending`: a brand-new tenant's very first load is the
-    // common case this line exists for, and it should read immediately rather than flash
-    // in only once the (usually empty) initial fetch resolves.
-    const isEmpty = !isError && products.length === 0 && !search.trim();
+    const isEmpty = !isPending && !isError && products.length === 0 && !search.trim();
 
     useEffect(() => {
         mountedRef.current = true;
         const deletes = pendingDeletes.current;
         return () => {
             mountedRef.current = false;
-            // Leaving the panel commits any delete still inside its undo window.
-            for (const [id, timer] of deletes) { clearTimeout(timer); void deleteProduct(id).catch(() => {}); }
+            // Leaving the panel commits any delete still inside its undo window. The
+            // toasts for those deletes are dismissed too, so a lingering Undo button
+            // can't report a restore that no longer happens.
+            for (const [id, timer] of deletes) { clearTimeout(timer); toast.dismiss(id); void deleteProduct(id).catch(() => {}); }
             deletes.clear();
+            if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
         };
     }, []);
 
@@ -84,6 +86,9 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
         if (files.length > MAX_PHOTOS) { toast.error(`Add up to ${MAX_PHOTOS} photos of one product at a time.`); return; }
         if (files.some(file => !IMAGE_TYPES.has(file.type))) { toast.error('Choose JPG, PNG, or WebP images.'); return; }
         if (files.some(file => file.size > MAX_PHOTO_BYTES)) { toast.error('Product images must be under 35 MB.'); return; }
+        const previewUrl = URL.createObjectURL(files[0]);
+        photoPreviewUrlRef.current = previewUrl;
+        setPhotoPreviewUrl(previewUrl);
         setBusy('photos');
         setLinkError(null);
         try {
@@ -98,6 +103,9 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
             if (mountedRef.current) toast.error('Could not add the product photos. Please try again.');
         } finally {
             if (mountedRef.current) setBusy(null);
+            URL.revokeObjectURL(previewUrl);
+            photoPreviewUrlRef.current = null;
+            if (mountedRef.current) setPhotoPreviewUrl(null);
         }
     }
 
@@ -153,6 +161,7 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
         setHidden(prev => new Set(prev).add(product.id));
         const timer = setTimeout(() => {
             pendingDeletes.current.delete(product.id);
+            toast.dismiss(product.id);
             deleteProduct(product.id).then(refresh).catch(() => {
                 if (!mountedRef.current) return;
                 unhide(product.id);
@@ -160,7 +169,12 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
             });
         }, DELETE_UNDO_MS);
         pendingDeletes.current.set(product.id, timer);
+        // A fixed id lets the unmount cleanup and the timer above dismiss this exact
+        // toast; an explicit duration matching the undo window keeps sonner's own
+        // default (~4s) from hiding Undo before the delete actually commits.
         toast.success('Product deleted', {
+            id: product.id,
+            duration: DELETE_UNDO_MS,
             action: { label: 'Undo', onClick: () => { clearTimeout(timer); pendingDeletes.current.delete(product.id); unhide(product.id); } },
         });
     }
@@ -201,8 +215,13 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
                 products.length === 0 && !busy ? (search.trim() ? <p className="py-10 text-center text-sm text-muted-foreground">No products match your search.</p> : null) :
                     <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
                         {busy && <div className="min-w-0" aria-live="polite">
-                            <div className="flex aspect-square items-center justify-center rounded-xl border border-border bg-muted"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-                            <span className="mt-2 block text-sm text-muted-foreground">Adding…</span>
+                            <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
+                                {busy === 'photos' && photoPreviewUrl
+                                    // eslint-disable-next-line @next/next/no-img-element -- local blob preview, not a next/image asset
+                                    ? <img src={photoPreviewUrl} alt="" className="h-full w-full object-cover" />
+                                    : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+                            </div>
+                            <span className="mt-2 block text-sm text-muted-foreground">{busy === 'photos' ? 'Naming…' : 'Adding…'}</span>
                         </div>}
                         {products.map(product => <ProductCard
                             key={product.id}
@@ -227,6 +246,7 @@ function ProductCard({ product, selected, renaming, renameValue, onRenameChange,
     onRenameChange: (value: string) => void; onRenameCommit: () => void; onRenameCancel: () => void;
     onStartRename: () => void; onDelete: () => void; onUse: () => void;
 }) {
+    const renameRequested = useRef(false);
     const main = product.images[0];
     const pending = product.namingStatus === 'pending';
     const label = pending ? 'Naming…' : product.name;
@@ -248,14 +268,25 @@ function ProductCard({ product, selected, renaming, renameValue, onRenameChange,
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={`More options for ${product.name}`}><MoreHorizontal className="h-4 w-4" /></Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    {/* Radix restores focus to the trigger asynchronously (a rAF-timed step) as the
-                        menu closes. Mounting the autoFocus rename input synchronously inside onSelect
-                        (or even on the next tick via setTimeout 0) races that restore: it steals focus
-                        back from the input and fires our onBlur-commit before the user typed anything.
-                        A short delay — longer than Radix's own restore step — lets that settle first,
-                        the pattern Radix's own docs use for opening a dialog from a menu item. */}
-                    <DropdownMenuItem onSelect={() => { setTimeout(onStartRename, 50); }}>Rename</DropdownMenuItem>
+                <DropdownMenuContent
+                    align="end"
+                    onCloseAutoFocus={event => {
+                        // Radix returns focus to the trigger when the content unmounts (after its
+                        // exit animation), not synchronously on select. Entering rename mode inside
+                        // onSelect (immediately or via any fixed delay) races that restore step — it
+                        // can steal focus back off the autoFocus rename input and fire its onBlur
+                        // commit before the user types anything. Hooking the menu's own
+                        // onCloseAutoFocus is the deterministic point Radix actually gives us for
+                        // "run this after the menu has fully closed and would otherwise refocus the
+                        // trigger": prevent that default refocus and start renaming instead.
+                        if (renameRequested.current) {
+                            event.preventDefault();
+                            renameRequested.current = false;
+                            onStartRename();
+                        }
+                    }}
+                >
+                    <DropdownMenuItem onSelect={() => { renameRequested.current = true; }}>Rename</DropdownMenuItem>
                     <DropdownMenuItem onSelect={onDelete} className="text-destructive">Delete</DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
