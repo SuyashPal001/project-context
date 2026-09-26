@@ -61,21 +61,48 @@ describe('ProductsPanel', () => {
         expect(await screen.findByText('You can skip this. Olmo will ask about your product in chat.')).toBeTruthy();
     });
 
-    it('uploads dropped photos, creates a product, selects it, then selects the AI-named version', async () => {
+    it('uploads dropped photos, creates a product, selects it, then reports the AI-named version via onProductNamed', async () => {
         vi.mocked(storeCreativeImage).mockResolvedValueOnce(image('f1')).mockResolvedValueOnce(image('f2'));
         vi.mocked(productsApi.createProductFromFiles).mockResolvedValue(record({ name: 'Untitled product', namingStatus: 'pending', images: [image('f1'), image('f2')] }));
         vi.mocked(productsApi.describeProduct).mockResolvedValue(record({ images: [image('f1'), image('f2')] }));
         const onSelect = vi.fn();
-        const { rerender } = renderPanel(onSelect);
+        const onProductNamed = vi.fn();
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={onSelect} onProductNamed={onProductNamed} /></QueryClientProvider>);
         const files = [new File(['a'], 'a.png', { type: 'image/png' }), new File(['b'], 'b.png', { type: 'image/png' })];
 
         fireEvent.drop(await screen.findByTestId('product-drop-zone'), { dataTransfer: { files } });
 
         await waitFor(() => expect(productsApi.createProductFromFiles).toHaveBeenCalledWith(['f1', 'f2']));
         await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product', id: 'p1', namingStatus: 'pending' })));
-        // The parent passes the selection back down, as ChatComposer does.
-        rerender(<QueryClientProvider client={new QueryClient()}><ProductsPanel selected={{ ...productsApi.productSelection(record({ namingStatus: 'pending' })) }} onSelect={onSelect} /></QueryClientProvider>);
-        await waitFor(() => expect(onSelect).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'product', name: 'Niacinamide serum', namingStatus: 'done' })));
+        await waitFor(() => expect(onProductNamed).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product', name: 'Niacinamide serum', namingStatus: 'done' })));
+    });
+
+    it('naming that finishes after the panel unmounts still reports the named product via onProductNamed', async () => {
+        vi.mocked(storeCreativeImage).mockResolvedValue(image('f1'));
+        vi.mocked(productsApi.createProductFromFiles).mockResolvedValue(record({ namingStatus: 'pending' }));
+        let finishNaming: (r: ProductRecord) => void = () => {};
+        vi.mocked(productsApi.describeProduct).mockReturnValue(new Promise(resolve => { finishNaming = resolve; }));
+        const onSelect = vi.fn();
+        const onProductNamed = vi.fn();
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const { unmount } = render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={onSelect} onProductNamed={onProductNamed} /></QueryClientProvider>);
+
+        fireEvent.drop(await screen.findByTestId('product-drop-zone'), { dataTransfer: { files: [new File(['a'], 'a.png', { type: 'image/png' })] } });
+        await waitFor(() => expect(productsApi.describeProduct).toHaveBeenCalled());
+        unmount();
+        await act(async () => finishNaming(record()));
+
+        expect(onProductNamed).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product', name: 'Niacinamide serum', namingStatus: 'done' }));
+    });
+
+    it('refreshes a stale pending selection from the loaded list', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record({ namingStatus: 'done' })] });
+        const onSelect = vi.fn();
+        const pendingSelection = productsApi.productSelection(record({ namingStatus: 'pending' }));
+        renderPanel(onSelect, pendingSelection);
+
+        await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product', id: 'p1', namingStatus: 'done' })));
     });
 
     it('shows a preview of the first dropped photo and "Naming…" while the upload is in flight', async () => {
@@ -173,6 +200,51 @@ describe('ProductsPanel', () => {
         await waitFor(() => expect(productsApi.renameProduct).toHaveBeenCalledWith('p1', 'My serum'));
     });
 
+    it('does not select a rename result with no images; refreshes instead', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        vi.mocked(productsApi.renameProduct).mockResolvedValue(record({ name: 'My serum', images: [] }));
+        const onSelect = vi.fn();
+        const user = userEvent.setup();
+        renderPanel(onSelect, productsApi.productSelection(record()));
+        await user.click(await screen.findByRole('button', { name: 'More options for Niacinamide serum' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+        const field = await screen.findByLabelText('Product name');
+        await user.clear(field);
+        await user.type(field, 'My serum{Enter}');
+        await waitFor(() => expect(productsApi.renameProduct).toHaveBeenCalledWith('p1', 'My serum'));
+        expect(onSelect).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'My serum' }));
+    });
+
+    it('debounces search input before it drives the products query', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        renderPanel();
+        await screen.findByText('Niacinamide serum');
+        const callsBefore = vi.mocked(productsApi.listProducts).mock.calls.length;
+        const input = screen.getByLabelText('Search products');
+        fireEvent.change(input, { target: { value: 'a' } });
+        fireEvent.change(input, { target: { value: 'ab' } });
+        expect(productsApi.listProducts).toHaveBeenCalledTimes(callsBefore);
+        await waitFor(() => expect(productsApi.listProducts).toHaveBeenLastCalledWith('ab', 0), { timeout: 1000 });
+    }, 10_000);
+
+    it('retries naming once for a pending product left stale for 30+ seconds', async () => {
+        const staleCreatedAt = new Date(Date.now() - 60_000).toISOString();
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record({ namingStatus: 'pending', createdAt: staleCreatedAt })] });
+        vi.mocked(productsApi.describeProduct).mockResolvedValue(record({ namingStatus: 'done' }));
+        renderPanel();
+        await waitFor(() => expect(productsApi.describeProduct).toHaveBeenCalledWith('p1'));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        expect(productsApi.describeProduct).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry naming for a pending product created less than 30 seconds ago', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record({ namingStatus: 'pending', createdAt: new Date().toISOString() })] });
+        renderPanel();
+        await screen.findByText('Naming…');
+        await new Promise(resolve => setTimeout(resolve, 50));
+        expect(productsApi.describeProduct).not.toHaveBeenCalled();
+    });
+
     it('deletes after the undo window, and Undo cancels it', async () => {
         vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
         const user = userEvent.setup();
@@ -188,4 +260,10 @@ describe('ProductsPanel', () => {
         await new Promise(resolve => setTimeout(resolve, 5100));
         expect(productsApi.deleteProduct).not.toHaveBeenCalled();
     }, 10_000);
+});
+
+describe('productSelection', () => {
+    it('returns null for a record with no images, instead of a selection with no attachment', () => {
+        expect(productsApi.productSelection(record({ images: [] }))).toBeNull();
+    });
 });

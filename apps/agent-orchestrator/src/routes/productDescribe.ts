@@ -56,7 +56,11 @@ productDescribeRouter.post('/internal/products/describe', async (c) => {
       body: JSON.stringify({
         model: MODEL,
         temperature: 0.1,
-        max_tokens: 200,
+        // Gemini 3.x thinking tokens count against maxOutputTokens and the gateway
+        // sets no separate thinking budget, so a low cap can consume the whole
+        // budget on thinking and leave nothing for the JSON output. Output length
+        // is still bounded below by MAX_NAME/MAX_DESCRIPTION truncation.
+        max_tokens: 1024,
         messages: [{
           role: 'user',
           content: [

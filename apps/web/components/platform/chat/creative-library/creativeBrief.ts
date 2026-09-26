@@ -30,12 +30,15 @@ function selectedImportedImage(brief: CreativeBrief): Attachment | undefined {
 }
 
 function productRecordLines(selection: Extract<CreativeSelection, { kind: 'product' }>): string {
-    if (selection.namingStatus !== 'done') {
-        return '- Product: name not known yet — ask the user what this product is before planning.\n  Use the attached product image as the visual reference.';
-    }
+    // Price and source appear whenever present, regardless of naming status —
+    // a pending name shouldn't hide details the user already gave us (e.g. a
+    // sourceUrl from an imported link the naming call hasn't finished for).
     const details = [selection.description, selection.price].filter(Boolean).join(' ');
+    const lead = selection.namingStatus !== 'done'
+        ? '- Product: name not known yet — ask the user what this product is before planning.'
+        : `- Product: ${selection.name}`;
     return [
-        `- Product: ${selection.name}`,
+        lead,
         details ? `  ${details}` : null,
         selection.sourceUrl ? `  Source: ${selection.sourceUrl}` : null,
         '  Use the attached product image as the visual reference.',

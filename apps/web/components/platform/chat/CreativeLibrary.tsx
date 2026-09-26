@@ -18,6 +18,7 @@ import type {
     CreativeBrief,
     CreativeLibraryTab,
     CreativeSelection,
+    ProductRecordSelection,
     TemplateSelection,
     VoiceSelection,
 } from './creative-library/creativeBriefModel';
@@ -274,10 +275,15 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
     </div>;
 }
 
-export function CreativeLibrary({ tab, brief, onSelect }: { tab: CreativeLibraryTab; brief: CreativeBrief; onSelect: (selection: CreativeSelection) => void }) {
+export function CreativeLibrary({ tab, brief, onSelect, onProductNamed }: {
+    tab: CreativeLibraryTab;
+    brief: CreativeBrief;
+    onSelect: (selection: CreativeSelection) => void;
+    onProductNamed?: (product: ProductRecordSelection) => void;
+}) {
     return <section aria-label={`${tab} library`} className="mt-8 w-full text-left">
         {tab === 'templates' && <TemplatesPanel selected={brief.template} onSelect={onSelect} />}
-        {tab === 'products' && <ProductsPanel selected={brief.product} onSelect={onSelect} />}
+        {tab === 'products' && <ProductsPanel selected={brief.product} onSelect={onSelect} onProductNamed={onProductNamed} />}
         {tab === 'audio' && <AudioPanel selected={brief.voice} onSelect={onSelect} />}
         {tab === 'avatars' && <AvatarsPanel selected={brief.avatar} onSelect={onSelect} />}
     </section>;

@@ -70,7 +70,7 @@ export async function listProducts(tenantId: string, opts: { q?: string; limit: 
       eq(creativeProducts.tenantId, tenantId),
       pattern ? or(ilike(creativeProducts.name, pattern), ilike(creativeProducts.description, pattern)) : undefined,
     ))
-    .orderBy(desc(creativeProducts.createdAt))
+    .orderBy(desc(creativeProducts.createdAt), desc(creativeProducts.id))
     .limit(opts.limit)
     .offset(opts.offset);
   return withImages(tenantId, rows);

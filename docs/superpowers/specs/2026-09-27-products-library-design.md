@@ -245,13 +245,21 @@ A one-off script, `products/agent-platform/packages/api/scripts/backfill-creativ
 
 ## Deployment
 
-- Generate and apply the migration.
-- Run `sam build` / `sam deploy` for the API Lambda, from the main checkout,
-  never a worktree.
-- Rebuild the orchestrator and run `pm2 restart` on it (`./deploy.sh` does not
-  restart the orchestrator).
-- Rebuild the web app.
-- Run the backfill.
+Order matters here — each step depends on the previous one being live:
+
+1. Generate and apply the migration.
+2. Rebuild the orchestrator and run `pm2 restart` on it (`./deploy.sh` does not
+   restart the orchestrator). This is additive and safe to ship first. If the
+   API Lambda goes out before this, every describe call 404s against the old
+   orchestrator and the affected products are permanently stuck `failed`.
+3. Run `sam build` / `sam deploy` for the API Lambda, from the main checkout,
+   never a worktree.
+4. Rebuild the web app. A web-first deploy 404s `GET /products` against the
+   not-yet-deployed API.
+5. Run the backfill on the VM, in a quiet window, once the orchestrator is up.
+
+Before any of this, confirm the proxy in front of `agent-orchestrator-url`
+accepts request bodies of about 14 MB (a 10 MB image, base64-encoded).
 
 ## Out of scope
 

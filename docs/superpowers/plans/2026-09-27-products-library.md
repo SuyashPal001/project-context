@@ -2325,8 +2325,12 @@ Expected: exactly one hit, the `PRODUCT_PREFIX` constant in `ProductsPanel.tsx`.
 
 - [ ] **Step 3: Write down the deploy steps for the user (do not run them)**
 
+Order matters — each step depends on the previous one being live:
+
 1. Apply the migration: `cd packages/foundation/database && pnpm exec drizzle-kit migrate`, against the dev `DATABASE_URL`.
-2. `sam build --config-file samconfig.dev.toml && sam deploy --config-file samconfig.dev.toml`, from the main checkout, never a worktree.
-3. On the VM: pull, rebuild the orchestrator, and `pm2 restart` it (`./deploy.sh` does not). Then run `./deploy.sh` for the web app.
-4. Run the backfill on the VM, where `AGENT_ORCHESTRATOR_URL=http://localhost:3001` resolves: `pnpm --filter <api package name> backfill:creative-products`.
-5. Live check: drop a photo in the Products tab, and see it become a card that names itself within a few seconds. Paste a Shopify product link. Send a brief, and check Olmo's reply contains the one-line product check.
+2. On the VM: pull, rebuild the orchestrator, and `pm2 restart` it (`./deploy.sh` does not). This is additive and safe to ship first — if the Lambda goes out before it, every describe call 404s against the old orchestrator and the affected products are permanently stuck `failed`.
+3. `sam build --config-file samconfig.dev.toml && sam deploy --config-file samconfig.dev.toml` for the API, from the main checkout, never a worktree.
+4. Run `./deploy.sh` for the web app. A web-first deploy 404s `GET /products` against the not-yet-deployed API.
+5. Run the backfill on the VM, where `AGENT_ORCHESTRATOR_URL=http://localhost:3001` resolves, after the orchestrator is up, in a quiet window: `pnpm --filter <api package name> backfill:creative-products`.
+6. Before any of this, confirm the proxy in front of `agent-orchestrator-url` accepts request bodies of about 14 MB (a 10 MB image, base64-encoded).
+7. Live check: drop a photo in the Products tab, and see it become a card that names itself within a few seconds. Paste a Shopify product link. Send a brief, and check Olmo's reply contains the one-line product check.

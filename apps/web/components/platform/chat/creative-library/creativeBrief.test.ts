@@ -281,6 +281,17 @@ describe('product record selections', () => {
         expect(message).not.toContain('Untitled product\n');
     });
 
+    it('keeps price and source even while the name is still pending', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord({ name: 'Untitled product', namingStatus: 'pending' }) };
+        const message = buildCreativeBriefMessage('', brief);
+        expect(message).toContain(
+            '- Product: name not known yet — ask the user what this product is before planning.\n'
+            + '  A white dropper bottle. ₹590\n'
+            + '  Source: https://theordinary.com/p/1\n'
+            + '  Use the attached product image as the visual reference.'
+        );
+    });
+
     it('attaches the main image and hides it from the transcript as a brief attachment', () => {
         const brief = { ...createEmptyCreativeBrief(), product: productRecord() };
         expect(mergeCreativeBriefAttachments(undefined, brief)).toEqual([productRecord().attachment]);

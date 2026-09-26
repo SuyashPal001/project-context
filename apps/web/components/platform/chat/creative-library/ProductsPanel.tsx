@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ClipboardEvent } from 'react';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ImagePlus, Loader2, MoreHorizontal, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { FileThumbnail } from '@/components/platform/files/FileThumbnail';
 import { cn } from '@/lib/utils';
-import type { ProductSelection } from './creativeBriefModel';
+import type { ProductRecordSelection, ProductSelection } from './creativeBriefModel';
 import { storeCreativeImage } from './storeCreativeImage';
 import {
     PRODUCTS_PAGE_SIZE, createProductFromFiles, deleteProduct, describeProduct, importProductFromUrl,
@@ -22,14 +22,30 @@ const MAX_PHOTOS = 6;
 const MAX_PHOTO_BYTES = 35 * 1024 * 1024;
 const DELETE_UNDO_MS = 5000;
 const LINK_FAILED = "Couldn't read this page. Drop a product photo instead.";
+const SEARCH_DEBOUNCE_MS = 250;
+const STALE_PENDING_MS = 30_000;
 
-export function ProductsPanel({ selected, onSelect }: { selected: ProductSelection | null; onSelect: (selection: ProductSelection) => void }) {
+export function ProductsPanel({ selected, onSelect, onProductNamed }: {
+    selected: ProductSelection | null;
+    onSelect: (selection: ProductSelection) => void;
+    /**
+     * Reports a product whose AI name finished, independent of what the panel
+     * itself has selected — the panel is only mounted while the Products tab
+     * is open, so naming that completes after the user has moved on (or sent
+     * the message) must still reach the brief. The caller decides whether
+     * this still matches the current brief selection; the panel doesn't guard
+     * it (see F1 in the products-library final-fix brief).
+     */
+    onProductNamed?: (product: ProductRecordSelection) => void;
+}) {
     const queryClient = useQueryClient();
     const inputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
     const selectedIdRef = useRef<string | null>(null);
     const pendingDeletes = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+    const staleNamingAttempted = useRef(new Set<string>());
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [link, setLink] = useState('');
     const [busy, setBusy] = useState<'link' | 'photos' | null>(null);
     const [linkError, setLinkError] = useState<string | null>(null);
@@ -41,14 +57,50 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
     const photoPreviewUrlRef = useRef<string | null>(null);
     selectedIdRef.current = selected?.kind === 'product' ? selected.id : null;
 
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+        return () => clearTimeout(timer);
+    }, [search]);
+
     const { data, isPending, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-        queryKey: ['creative-products', search.trim()],
+        queryKey: ['creative-products', debouncedSearch.trim()],
         initialPageParam: 0,
-        queryFn: ({ pageParam }) => listProducts(search, pageParam),
+        queryFn: ({ pageParam }) => listProducts(debouncedSearch, pageParam),
         getNextPageParam: (last, pages) => last.data.length === PRODUCTS_PAGE_SIZE ? pages.length * PRODUCTS_PAGE_SIZE : undefined,
+        placeholderData: keepPreviousData,
     });
     const products = (data?.pages.flatMap(page => page.data) ?? []).filter(product => !hidden.has(product.id));
     const isEmpty = !isPending && !isError && products.length === 0 && !search.trim();
+
+    // F1(b): if naming finished (or the name/status otherwise changed) while
+    // this panel wasn't mounted to hear it directly, reconcile the currently
+    // selected product from the freshly loaded list. Guarded on an actual
+    // difference so this can't loop against the onSelect it triggers.
+    useEffect(() => {
+        if (selected?.kind !== 'product') return;
+        const match = products.find(product => product.id === selected.id);
+        if (!match) return;
+        if (match.name === selected.name && match.namingStatus === selected.namingStatus) return;
+        const selection = productSelection(match);
+        if (selection) onSelect(selection);
+    }, [products, selected, onSelect]);
+
+    // F6: a product can be left `pending` forever if the original describe
+    // call failed silently (network blip, cold gateway). Once per mounted
+    // session, retry naming for any pending product old enough that the
+    // normal in-flight describe (kicked off right after creation) must have
+    // already finished or failed.
+    useEffect(() => {
+        const now = Date.now();
+        for (const product of products) {
+            if (product.namingStatus !== 'pending') continue;
+            if (staleNamingAttempted.current.has(product.id)) continue;
+            if (now - new Date(product.createdAt).getTime() < STALE_PENDING_MS) continue;
+            staleNamingAttempted.current.add(product.id);
+            void nameIfPending(product);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- nameIfPending is stable enough here; including it would re-run this on every render since it closes over onProductNamed/refresh.
+    }, [products]);
 
     useEffect(() => {
         mountedRef.current = true;
@@ -71,8 +123,13 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
         if (product.namingStatus !== 'pending') return;
         try {
             const named = await describeProduct(product.id);
-            // Only update the brief if the user still has this product picked.
-            if (mountedRef.current && selectedIdRef.current === named.id) onSelect(productSelection(named));
+            // No mountedRef/selectedIdRef guard here: the panel only mounts while
+            // the Products tab is open, so a guard here would drop the AI name
+            // whenever the user switches tabs or sends before it resolves. The
+            // caller (the chat page) decides whether this still matches the
+            // brief's current product selection.
+            const selection = productSelection(named);
+            if (selection) onProductNamed?.(selection);
         } catch {
             // Naming failed: the card and brief keep the placeholder; Olmo asks.
         } finally {
@@ -97,7 +154,8 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
             await refresh();
             if (!mountedRef.current) return;
             selectedIdRef.current = product.id;
-            onSelect(productSelection(product));
+            const selection = productSelection(product);
+            if (selection) onSelect(selection);
             void nameIfPending(product);
         } catch {
             if (mountedRef.current) toast.error('Could not add the product photos. Please try again.');
@@ -127,7 +185,8 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
             if (!mountedRef.current) return;
             setLink('');
             selectedIdRef.current = product.id;
-            onSelect(productSelection(product));
+            const selection = productSelection(product);
+            if (selection) onSelect(selection);
             void nameIfPending(product);
         } catch {
             if (mountedRef.current) setLinkError(LINK_FAILED);
@@ -150,7 +209,10 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
         if (!name || name === product.name) return;
         try {
             const updated = await renameProduct(product.id, name);
-            if (selectedIdRef.current === updated.id) onSelect(productSelection(updated));
+            if (selectedIdRef.current === updated.id) {
+                const selection = productSelection(updated);
+                if (selection) onSelect(selection);
+            }
             await refresh();
         } catch {
             toast.error('Could not rename the product.');
@@ -234,7 +296,12 @@ export function ProductsPanel({ selected, onSelect }: { selected: ProductSelecti
                             onRenameCancel={() => { setRenameValue(product.name); setRenamingId(null); }}
                             onStartRename={() => { setRenameValue(product.name); setRenamingId(product.id); }}
                             onDelete={() => removeProduct(product)}
-                            onUse={() => { selectedIdRef.current = product.id; onSelect(productSelection(product)); }}
+                            onUse={() => {
+                                const selection = productSelection(product);
+                                if (!selection) { void refresh(); return; }
+                                selectedIdRef.current = product.id;
+                                onSelect(selection);
+                            }}
                         />)}
                     </div>}
         {hasNextPage && <div className="flex justify-center"><Button variant="outline" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>{isFetchingNextPage ? 'Loading…' : 'Load more products'}</Button></div>}

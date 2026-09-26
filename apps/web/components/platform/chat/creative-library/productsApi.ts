@@ -41,10 +41,16 @@ export async function deleteProduct(id: string): Promise<void> {
     await api.del(`/api/v1/products/${id}`);
 }
 
-export function productSelection(product: ProductRecord): ProductRecordSelection {
+// Rename and describe responses (unlike listProducts) don't pass through
+// dropImageless, so images can be empty. Returning null instead of a
+// selection with an undefined `attachment` keeps callers from building a
+// brief entry with no image to show.
+export function productSelection(product: ProductRecord): ProductRecordSelection | null {
+    const attachment = product.images[0];
+    if (!attachment) return null;
     return {
         kind: 'product', id: product.id, name: product.name, description: product.description,
         price: product.price, sourceUrl: product.sourceUrl, namingStatus: product.namingStatus,
-        attachment: product.images[0],
+        attachment,
     };
 }
