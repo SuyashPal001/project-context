@@ -14,7 +14,7 @@ import { FilesFilter } from "./FilesFilter";
 import { stagePendingAttachments } from "@/lib/pendingAttachments";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
-import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isMine, isSystemFolder } from "./systemFolders";
+import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isUpload, isSystemFolder } from "./systemFolders";
 import { FileGridView } from "./components/FileGridView";
 import { FileListView } from "./components/FileListView";
 import { IngestionSidePanel } from "./IngestionSidePanel";
@@ -120,16 +120,25 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // folder. The pill list is remembered from the root listing, because inside
     // a folder virtualFolders holds that folder's children, not the root's —
     // without this the tabs vanished as soon as one was clicked.
-    // "Mine" is a view over the whole listing (every file that is not agent output
-    // or creative library), not a folder, so it can't be expressed as a prefix.
-    const [mineActive, setMineActive] = useState(false);
-    const mine = mineActive && !prefix;
-    const navigate = (nextPrefix: string) => { setMineActive(false); onPrefixChange(nextPrefix); };
-    const mineFiles = useMemo(
-        () => allFiles.filter(f => isMine(f.key)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    // "Uploads" is a view over the whole listing (every file that is not agent
+    // output or creative library), not a folder, so it can't be expressed as a
+    // prefix.
+    const [uploadsActive, setUploadsActive] = useState(false);
+    const uploads = uploadsActive && !prefix;
+    const navigate = (nextPrefix: string) => { setUploadsActive(false); onPrefixChange(nextPrefix); };
+    const uploadFiles = useMemo(
+        () => allFiles.filter(f => isUpload(f.key)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
         [allFiles]);
-    const shownFiles = mine ? mineFiles : files;
-    const shownFolderCount = mine ? 0 : virtualFolders.length;
+    // "All" at the top level is every file that is not inside one of the user's
+    // own folders (those open from their tiles), newest first — not just the
+    // few loose ones, which hid chat uploads, generated files and the library.
+    const topLevelFiles = useMemo(
+        () => allFiles
+            .filter(f => { const [first, ...rest] = f.key.split('/'); return rest.length === 0 || isSystemFolder(first); })
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        [allFiles]);
+    const shownFiles = uploads ? uploadFiles : !prefix ? topLevelFiles : files;
+    const shownFolderCount = uploads ? 0 : virtualFolders.length;
 
     const [rootSystemFolders, setRootSystemFolders] = useState<string[]>([]);
     if (!prefix && !isLoading) {
@@ -149,7 +158,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // the active one — the folder lives under it.
     const activeSystemFolder = currentSystemFolder && (PILL_FOLDERS as readonly string[]).includes(currentSystemFolder) ? currentSystemFolder : null;
 
-    const allFolderCards: FolderCard[] = useMemo(() => (mine ? [] : virtualFolders)
+    const allFolderCards: FolderCard[] = useMemo(() => (uploads ? [] : virtualFolders)
         .filter(folderName => prefix || !isSystemFolder(folderName))
         .map(folderName => {
         const folderPrefix = `${prefix}${folderName}/`;
@@ -168,7 +177,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
                 .slice(0, 3),
         };
-    }), [virtualFolders, allFiles, prefix, mine, ingestion.ingestingFolders]);
+    }), [virtualFolders, allFiles, prefix, uploads, ingestion.ingestingFolders]);
 
     // Folders share the page budget with files, so the hook needs their count.
     const filters = useFileFilters(shownFiles, allFolderCards.length);
@@ -233,16 +242,16 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         <button
                             type="button"
                             onClick={() => navigate("")}
-                            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${!activeSystemFolder && !mine ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+                            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${!activeSystemFolder && !uploads ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             All
                         </button>
                         <button
                             type="button"
-                            onClick={() => { onPrefixChange(""); setMineActive(true); }}
-                            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${mine ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+                            onClick={() => { onPrefixChange(""); setUploadsActive(true); }}
+                            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${uploads ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
                         >
-                            Mine
+                            Uploads
                         </button>
                         {systemFolderPills.map(folderName => (
                             <button

@@ -14,15 +14,15 @@ export function isSystemFolder(folderName: string): boolean {
 }
 
 // The folders that get their own pill. chat-attachments is a system folder too
-// (hidden as a tile) but has no pill: it is part of "Mine".
+// (hidden as a tile) but has no pill: it is part of "Uploads".
 export const PILL_FOLDERS = ['creative-avatars', 'creative-products', 'generated'] as const;
 
 const AGENT_OR_LIBRARY_PREFIXES = PILL_FOLDERS.map(folder => `${folder}/`);
 
-/** "Mine": everything the user put in themselves — chat attachments, their own
- *  folders and loose files — as opposed to agent output and the creative
- *  library, which have their own pills. */
-export function isMine(key: string): boolean {
+/** "Uploads": everything the user brought in themselves — chat attachments,
+ *  their own folders and loose files — as opposed to agent output ("Generated")
+ *  and the creative library, which have their own pills. */
+export function isUpload(key: string): boolean {
     return !AGENT_OR_LIBRARY_PREFIXES.some(prefix => key.startsWith(prefix));
 }
 
