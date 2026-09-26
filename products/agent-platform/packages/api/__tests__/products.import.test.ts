@@ -14,6 +14,13 @@ vi.mock('@serverless-saas/agent-worker-handlers/lib/ssrf-guard', () => ({
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
 
+const createProductMock = vi.fn();
+vi.mock('../lib/productRecords', () => ({
+  PRODUCT_NAME_PLACEHOLDER: 'Untitled product',
+  createProduct: (...a: unknown[]) => createProductMock(...a),
+}));
+vi.mock('../db', () => ({ db: {} }));
+
 function htmlResponse(html: string, url = 'https://shop.example.com/p/1', status = 200) {
   return {
     ok: status >= 200 && status < 300,
@@ -80,9 +87,13 @@ describe('POST /products/import', () => {
     putFileForTenantMock.mockReset();
     assertPublicHttpUrlMock.mockReset().mockResolvedValue(undefined);
     fetchMock.mockReset();
+    createProductMock.mockReset().mockImplementation(async (input: Record<string, unknown>) => ({
+      id: 'p1', name: input.name, description: input.description, price: input.price, sourceUrl: input.sourceUrl,
+      namingStatus: input.namingStatus, images: [], createdAt: '2026-09-27T00:00:00.000Z',
+    }));
   });
 
-  it('returns extracted fields and no images when the page has none', async () => {
+  it('returns 422 and saves nothing when the page has no importable images', async () => {
     fetchMock.mockResolvedValueOnce({
       ...htmlResponse('<html><head><meta property="og:title" content="Mug"></head></html>'),
       headers: withGet(new Map([['content-type', 'text/html']])),
@@ -95,11 +106,53 @@ describe('POST /products/import', () => {
       body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
     });
 
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.title).toBe('Mug');
-    expect(body.data.images).toEqual([]);
+    expect(res.status).toBe(422);
+    expect((await res.json()).message).toBe('No product images found on that page');
+    expect(createProductMock).not.toHaveBeenCalled();
     expect(assertPublicHttpUrlMock).toHaveBeenCalledWith('https://shop.example.com/p/1');
+  });
+
+  it('saves a named product with every imported image in page order', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ...htmlResponse('<html><head><meta property="og:title" content="Mug"><meta property="og:description" content="Stoneware"><meta property="og:image" content="https://cdn.example.com/a.jpg"></head></html>'),
+        headers: withGet(new Map([['content-type', 'text/html']])),
+      })
+      .mockResolvedValueOnce({ ...imageResponse(new Uint8Array([1, 2, 3])), headers: withGet(new Map([['content-type', 'image/jpeg']])) });
+    putFileForTenantMock.mockResolvedValue({ fileId: 'file-a' });
+
+    const app = await buildApp();
+    const res = await app.request('/products/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(createProductMock).toHaveBeenCalledWith({
+      tenantId: 'tenant-1', createdBy: 'user-1', name: 'Mug', description: 'Stoneware', price: null,
+      sourceUrl: 'https://shop.example.com/p/1', imageFileIds: ['file-a'], namingStatus: 'done',
+    });
+    expect((await res.json()).data.name).toBe('Mug');
+  });
+
+  it('saves a pending product with the placeholder name when the page has images but no title', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ...htmlResponse('<html><head><meta property="og:image" content="https://cdn.example.com/a.jpg"></head></html>'),
+        headers: withGet(new Map([['content-type', 'text/html']])),
+      })
+      .mockResolvedValueOnce({ ...imageResponse(new Uint8Array([1])), headers: withGet(new Map([['content-type', 'image/jpeg']])) });
+    putFileForTenantMock.mockResolvedValue({ fileId: 'file-a' });
+
+    const app = await buildApp();
+    await app.request('/products/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
+    });
+
+    expect(createProductMock).toHaveBeenCalledWith(expect.objectContaining({ name: 'Untitled product', namingStatus: 'pending' }));
   });
 
   it('rejects a non-https URL with 400 before any fetch', async () => {
@@ -202,8 +255,7 @@ describe('POST /products/import', () => {
     });
 
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.images).toEqual([{ fileId: 'file-9', name: expect.any(String), type: 'image/jpeg', size: 3 }]);
+    expect(createProductMock).toHaveBeenCalledWith(expect.objectContaining({ imageFileIds: ['file-9'] }));
     const [, , userKey] = putFileForTenantMock.mock.calls[0];
     expect(userKey).toMatch(/^imported-products\//);
   });
@@ -231,11 +283,13 @@ describe('POST /products/import', () => {
       body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
     });
 
-    const body = await res.json();
+    expect(res.status).toBe(200);
     const [, , key] = putFileForTenantMock.mock.calls[0];
     expect(key).toMatch(/^imported-products\//);
     expect(key.length).toBeLessThan(200);
-    const name = body.data.images[0].name;
+    // uuid-<safe filename> tail: pull the filename back out of the stored key
+    // to check the same safety bound the response used to expose directly.
+    const name = key.replace(/^imported-products\/[0-9a-f-]+-/, '');
     expect(name.length).toBeLessThanOrEqual(120);
     expect(name).toMatch(/^[A-Za-z0-9._-]+$/);
     expect(key.endsWith(`-${name}`)).toBe(true);
@@ -270,9 +324,8 @@ describe('POST /products/import', () => {
       body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
     });
 
-    const body = await res.json();
-    expect(body.data.images).toHaveLength(1);
-    expect(body.data.images[0].fileId).toBe('file-good');
+    expect(res.status).toBe(200);
+    expect(createProductMock).toHaveBeenCalledWith(expect.objectContaining({ imageFileIds: ['file-good'] }));
   });
 
   it('rejects a redirect to a private address on the hop and never fetches it', async () => {
@@ -376,10 +429,7 @@ describe('POST /products/import', () => {
       await vi.advanceTimersByTimeAsync(10_000);
       const res = await pending;
       expect(res.status).toBe(200);
-      const body = await res.json();
-      expect(body.data.title).toBe('Mug');
-      expect(body.data.images).toHaveLength(1);
-      expect(body.data.images[0].fileId).toBe('file-good');
+      expect(createProductMock).toHaveBeenCalledWith(expect.objectContaining({ name: 'Mug', imageFileIds: ['file-good'] }));
     } finally {
       vi.useRealTimers();
     }
