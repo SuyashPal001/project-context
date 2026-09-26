@@ -49,10 +49,12 @@ function FileTileArt({ file, category, onPreview }: { file: FileRecord; category
         <button
             type="button"
             onClick={e => { e.stopPropagation(); onPreview(); }}
-            className={`relative aspect-square w-full flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${typeStyle.bg}`}
+            className={`relative aspect-square w-full overflow-hidden flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset ${typeStyle.bg}`}
         >
             {category === 'image' ? (
-                <FileThumbnail fileId={file.id} alt={file.filename} />
+                <div className="absolute inset-0">
+                    <FileThumbnail fileId={file.id} alt={file.filename} />
+                </div>
             ) : assetType === 'video' ? (
                 <>
                     {/* eslint-disable-next-line @next/next/no-img-element -- a captured data: URI, nothing next/image can optimize */}
