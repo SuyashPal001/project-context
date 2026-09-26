@@ -82,7 +82,7 @@ function FolderPreviewCard({ file }: { file: FileRecord }) {
     const TypeIcon = TYPE_ICONS[assetType];
     const videoFrameUrl = useVideoFrameThumbnail(file.id, assetType === 'video');
     return (
-        <div className="relative h-full w-full overflow-hidden bg-background">
+        <div className="relative h-full w-full overflow-hidden bg-neutral-100">
             {getFileCategory(file.contentType, file.filename) === 'image' ? (
                 <FileThumbnail fileId={file.id} alt="" />
             ) : videoFrameUrl ? (
@@ -90,7 +90,7 @@ function FolderPreviewCard({ file }: { file: FileRecord }) {
                 <img src={videoFrameUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
             ) : (
                 <div className="flex h-full w-full items-center justify-center">
-                    <TypeIcon className="h-5 w-5 text-muted-foreground" />
+                    <TypeIcon className="h-5 w-5 text-neutral-500" />
                 </div>
             )}
         </div>
@@ -110,14 +110,14 @@ function FolderArt({ files }: { files: FileRecord[] }) {
             {files.map((file, i) => (
                 <div
                     key={file.id}
-                    className="absolute top-[28%] h-[36%] w-[26%] overflow-hidden rounded-md border-2 border-background shadow-md"
+                    className="absolute top-[24%] h-[38%] w-[27%] overflow-hidden rounded-md border-2 border-background shadow-md"
                     style={{ left: `${lefts[i]}%`, transform: `rotate(${tilts[i]}deg)`, zIndex: i }}
                 >
                     <FolderPreviewCard file={file} />
                 </div>
             ))}
             <div
-                className="absolute inset-x-[12%] bottom-[18%] top-[44%] rounded-xl border-t border-white/50 bg-[color-mix(in_oklab,var(--primary)_55%,var(--background))] shadow-[0_-3px_8px_rgba(0,0,0,0.12)]"
+                className="absolute inset-x-[12%] bottom-[18%] top-[44%] rounded-xl border-t border-white/50 bg-[color-mix(in_oklab,var(--primary)_70%,white)] shadow-[0_-3px_8px_rgba(0,0,0,0.12)]"
                 style={{ zIndex: 10 }}
             />
         </div>
