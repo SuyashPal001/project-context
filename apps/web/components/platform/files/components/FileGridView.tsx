@@ -110,7 +110,7 @@ function FolderArt({ files }: { files: FileRecord[] }) {
             {files.map((file, i) => (
                 <div
                     key={file.id}
-                    className="absolute top-[24%] h-[38%] w-[27%] overflow-hidden rounded-md border-2 border-background shadow-md"
+                    className="absolute top-[24%] h-[38%] w-[27%] overflow-hidden rounded-md shadow-[0_2px_6px_rgba(0,0,0,0.25)]"
                     style={{ left: `${lefts[i]}%`, transform: `rotate(${tilts[i]}deg)`, zIndex: i }}
                 >
                     <FolderPreviewCard file={file} />
