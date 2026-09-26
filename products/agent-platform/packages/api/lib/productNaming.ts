@@ -1,8 +1,9 @@
 import { storageService } from '@serverless-saas/storage';
 import { applyNamingResult, getProduct, type ProductImage, type ProductRecord } from './productRecords';
 
-// Base64 inflates ~33%; 10 MB keeps the relay body well under the gateway's
-// 40 MB request cap and the Lambda's memory. Bigger images simply fail naming.
+// The orchestrator sends the image to the gateway as base64 (~33% larger); 10 MB
+// keeps that well under the gateway's 40 MB request cap. Bigger images simply
+// fail naming. Checked here from files.size and again on download.
 export const MAX_NAMING_IMAGE_BYTES = 10 * 1024 * 1024;
 const ORCHESTRATOR_TIMEOUT_MS = 20_000;
 
@@ -20,16 +21,19 @@ export async function describeProductImage(
     console.error('[productNaming] AGENT_ORCHESTRATOR_URL or INTERNAL_SERVICE_KEY not set — skipping naming');
     return null;
   }
+  if (image.size > MAX_NAMING_IMAGE_BYTES) {
+    console.warn('[productNaming] image over size cap, skipping', { tenantId, fileId: image.fileId, bytes: image.size });
+    return null;
+  }
   try {
-    const buffer = await storageService.downloadFile(tenantId, image.fileId);
-    if (buffer.length > MAX_NAMING_IMAGE_BYTES) {
-      console.warn('[productNaming] image over size cap, skipping', { tenantId, fileId: image.fileId, bytes: buffer.length });
-      return null;
-    }
+    // A presigned link, not the bytes: base64 in the request body hit the VM
+    // proxy's body limit (413) for ordinary 1-2 MB product photos. The
+    // orchestrator downloads the image itself and re-checks the size cap.
+    const imageUrl = await storageService.getDownloadUrl(tenantId, image.fileId);
     const res = await fetch(`${baseUrl}/internal/products/describe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Service-Key': serviceKey },
-      body: JSON.stringify({ tenantId, imageBase64: buffer.toString('base64'), mimeType: image.type }),
+      body: JSON.stringify({ tenantId, imageUrl, mimeType: image.type }),
       signal: AbortSignal.timeout(ORCHESTRATOR_TIMEOUT_MS),
     });
     if (!res.ok) {

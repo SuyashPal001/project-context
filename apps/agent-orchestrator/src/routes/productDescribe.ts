@@ -7,6 +7,9 @@ const MODEL = 'gemini-3.6-flash' // same model analyzeImage.ts uses
 const GATEWAY_TIMEOUT_MS = 15_000
 const MAX_NAME = 60
 const MAX_DESCRIPTION = 140
+// With the 15 s gateway call this stays inside the API's 20 s wait for this route.
+const IMAGE_TIMEOUT_MS = 5_000
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024 // matches the API's MAX_NAMING_IMAGE_BYTES
 
 const PROMPT = `You are naming a product photo for a creative library.
 Return ONLY a JSON object: {"name": string, "description": string}.
@@ -32,23 +35,47 @@ export function parseProductDescription(raw: string): { name: string; descriptio
   return { name, description: description || null }
 }
 
+/** Fetches a presigned image link; null on a failed download or an image over the cap. */
+async function downloadImageBase64(imageUrl: string): Promise<string | null> {
+  const url = new URL(imageUrl)
+  // Same fix as analyzeImage.ts: the checksum-mode param breaks presigned GETs.
+  url.searchParams.delete('x-amz-checksum-mode')
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(IMAGE_TIMEOUT_MS) })
+  if (!res.ok) return null
+  if (Number(res.headers.get('content-length') ?? 0) > MAX_IMAGE_BYTES) return null
+  const bytes = Buffer.from(await res.arrayBuffer())
+  if (bytes.length > MAX_IMAGE_BYTES) return null
+  return bytes.toString('base64')
+}
+
 export const productDescribeRouter = new Hono()
 
 productDescribeRouter.post('/internal/products/describe', async (c) => {
   if (!isInternalServiceKey(c.req.header('X-Service-Key'))) return c.json({ error: 'Unauthorized' }, 401)
 
-  let body: { tenantId?: unknown; imageBase64?: unknown; mimeType?: unknown }
+  let body: { tenantId?: unknown; imageUrl?: unknown; imageBase64?: unknown; mimeType?: unknown }
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Invalid JSON' }, 400)
   }
-  const { tenantId, imageBase64, mimeType } = body
-  if (typeof tenantId !== 'string' || typeof imageBase64 !== 'string' || !imageBase64 || typeof mimeType !== 'string' || !mimeType.startsWith('image/')) {
-    return c.json({ error: 'tenantId, imageBase64 and an image mimeType are required' }, 400)
+  const { tenantId, imageUrl, mimeType } = body
+  const hasUrl = typeof imageUrl === 'string' && imageUrl.startsWith('https://')
+  const hasInline = typeof body.imageBase64 === 'string' && body.imageBase64 !== ''
+  if (typeof tenantId !== 'string' || (!hasUrl && !hasInline) || typeof mimeType !== 'string' || !mimeType.startsWith('image/')) {
+    return c.json({ error: 'tenantId, an https imageUrl (or imageBase64) and an image mimeType are required' }, 400)
   }
 
   try {
+    // The API sends a presigned link, not the bytes: base64 in the request body
+    // hit the VM proxy's body limit (413) for ordinary 1-2 MB product photos.
+    // imageBase64 is still accepted so an API deployed before this change keeps working.
+    const imageBase64 = hasUrl ? await downloadImageBase64(imageUrl as string) : body.imageBase64 as string
+    if (!imageBase64) {
+      console.error(`[productDescribe] image download failed or over ${MAX_IMAGE_BYTES} bytes tenantId=${tenantId}`)
+      return c.json({ error: 'Naming failed' }, 502)
+    }
+
     const response = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
       method: 'POST',
       signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),

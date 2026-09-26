@@ -77,4 +77,48 @@ describe('POST /internal/products/describe', () => {
     const res = await post({ tenantId: 't1', imageBase64: 'QUJD', mimeType: 'image/png' })
     expect(res.status).toBe(502)
   })
+
+  // The API sends a presigned link instead of the bytes: base64 in the body hit
+  // the VM proxy's body limit (413) for ordinary 1-2 MB product photos.
+  describe('imageUrl', () => {
+    const image = (bytes: Uint8Array, contentType = 'image/png', ok = true) => ({
+      ok, status: ok ? 200 : 403,
+      headers: new Headers({ 'content-type': contentType, 'content-length': String(bytes.length) }),
+      arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    })
+
+    it('downloads the image from the link and sends it to the gateway as base64', async () => {
+      fetchMock
+        .mockResolvedValueOnce(image(new Uint8Array([65, 66, 67])))
+        .mockResolvedValueOnce(gateway('{"name":"Light blue compression t-shirt"}'))
+      const res = await post({ tenantId: 't1', imageUrl: 'https://bucket.s3.amazonaws.com/k?X-Amz-Signature=s&x-amz-checksum-mode=ENABLED', mimeType: 'image/png' })
+
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ name: 'Light blue compression t-shirt', description: null })
+      // Same fix as analyzeImage.ts: the checksum-mode param breaks presigned GETs.
+      expect(fetchMock.mock.calls[0][0]).toBe('https://bucket.s3.amazonaws.com/k?X-Amz-Signature=s')
+      const body = JSON.parse(fetchMock.mock.calls[1][1].body)
+      expect(body.messages[0].content[0]).toEqual({ type: 'image_url', image_url: { url: 'data:image/png;base64,QUJD' } })
+    })
+
+    it('rejects a non-https link without fetching it', async () => {
+      const res = await post({ tenantId: 't1', imageUrl: 'http://169.254.169.254/latest', mimeType: 'image/png' })
+      expect(res.status).toBe(400)
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('returns 502 when the image download fails', async () => {
+      fetchMock.mockResolvedValueOnce(image(new Uint8Array([1]), 'image/png', false))
+      const res = await post({ tenantId: 't1', imageUrl: 'https://bucket.s3.amazonaws.com/k', mimeType: 'image/png' })
+      expect(res.status).toBe(502)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns 502 for an image over 10 MB without calling the gateway', async () => {
+      fetchMock.mockResolvedValueOnce(image(new Uint8Array(10 * 1024 * 1024 + 1)))
+      const res = await post({ tenantId: 't1', imageUrl: 'https://bucket.s3.amazonaws.com/k', mimeType: 'image/png' })
+      expect(res.status).toBe(502)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+  })
 })
