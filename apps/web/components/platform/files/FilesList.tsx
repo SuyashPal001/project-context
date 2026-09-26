@@ -69,10 +69,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
 
     // conversationId null opens a new session; otherwise the files land in that
     // existing chat. Either way ChatInput consumes the staged payload on mount,
-    // so the destination is just which route we navigate to.
+    // so the destination is just which route we navigate to. A new session opens
+    // the empty composer rather than creating a conversation up front, which
+    // left an untitled chat behind on every click that never sent anything.
     const addToChat = (chosen: FileRecord[], conversationId: string | null) => {
         if (chosen.length === 0) return;
-        if (!conversationId && !defaultAgentId) return;
         stagePendingAttachments(chosen.map(f => ({
             fileId: f.id,
             name: f.filename,
@@ -81,7 +82,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         })));
         router.push(conversationId
             ? `/${tenant}/dashboard/chat?id=${conversationId}`
-            : `/${tenant}/dashboard/chat?agentId=${defaultAgentId}`);
+            : `/${tenant}/dashboard/chat`);
     };
 
     // A folder is granted, not attached. Attaching pushed every file's bytes into
