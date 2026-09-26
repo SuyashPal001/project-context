@@ -687,6 +687,13 @@
       "when": 1790452091433,
       "tag": "0097_sad_risque",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1790453672260,
+      "tag": "0098_slow_scrambler",
+      "breakpoints": true
     }
   ]
 }

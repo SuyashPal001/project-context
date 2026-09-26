@@ -29,6 +29,7 @@ import { skillsRoutes } from './routes/skills';
 import { tenantMemoryRoutes } from './routes/tenant-memory';
 import { creativeLibraryAssetsRoutes } from './routes/creativeLibraryAssets';
 import { productsImportRoutes } from './routes/products.import';
+import { productsRoutes } from './routes/products';
 
 // Internal routes
 import internalRetrieveRoute from './routes/internal/retrieve';
@@ -91,6 +92,7 @@ export function mountApiRoutes(api: Hono<AppEnv>): void {
     api.route('/tenant-memory', tenantMemoryRoutes);
     api.route('/creative-library-assets', creativeLibraryAssetsRoutes);
     api.route('/products/import', productsImportRoutes);
+    api.route('/products', productsRoutes);
 }
 
 export function mountInternalRoutes(internalApi: Hono<AppEnv>): void {

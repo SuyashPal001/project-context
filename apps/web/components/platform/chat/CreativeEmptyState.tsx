@@ -14,6 +14,7 @@ import {
     type CreativeBrief,
     type CreativeLibraryTab,
     type CreativeSelection,
+    type ProductRecordSelection,
 } from "./creative-library/creativeBriefModel";
 
 // Category shortcuts under the composer — Templates (proven ad-structure
@@ -38,6 +39,8 @@ interface CreativeEmptyStateProps {
     activeTab: CreativeLibraryTab | null;
     onTabChange: (update: (current: CreativeLibraryTab | null) => CreativeLibraryTab | null) => void;
     onSelect: (selection: CreativeSelection) => void;
+    /** Called when a product's AI naming finishes, even after the Products tab closed. */
+    onProductNamed?: (product: ProductRecordSelection) => void;
     /** The composer — differs between the no-conversation screen and an empty existing chat. */
     children: ReactNode;
 }
@@ -46,7 +49,7 @@ interface CreativeEmptyStateProps {
  *  no-conversation composer and an existing-but-empty chat, so both show the
  *  same header, greeting and creative-library shortcuts instead of an older
  *  generic welcome with pills that don't match what the agent does. */
-export function CreativeEmptyState({ agent, firstName, planName, upgradeHref, brief, activeTab, onTabChange, onSelect, children }: CreativeEmptyStateProps) {
+export function CreativeEmptyState({ agent, firstName, planName, upgradeHref, brief, activeTab, onTabChange, onSelect, onProductNamed, children }: CreativeEmptyStateProps) {
     return (
         <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
             <div className="flex flex-col items-center gap-2 mb-8">
@@ -101,7 +104,7 @@ export function CreativeEmptyState({ agent, firstName, planName, upgradeHref, br
                     </button>
                 ))}
             </div>
-            {activeTab && <CreativeLibrary tab={activeTab} brief={brief} onSelect={onSelect} />}
+            {activeTab && <CreativeLibrary tab={activeTab} brief={brief} onSelect={onSelect} onProductNamed={onProductNamed} />}
         </div>
     );
 }

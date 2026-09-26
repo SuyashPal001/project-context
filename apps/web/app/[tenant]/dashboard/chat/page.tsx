@@ -54,6 +54,7 @@ import {
     type CreativeBriefField,
     type CreativeLibraryTab,
     type CreativeSelection,
+    type ProductRecordSelection,
 } from '@/components/platform/chat/creative-library/creativeBriefModel';
 import { useCreativeBriefDraft } from '@/components/platform/chat/creative-library/useCreativeBriefDraft';
 import type { Attachment } from '@/types/agent-events';
@@ -308,6 +309,18 @@ function ChatPage() {
 
     const selectCreativeAsset = (selection: CreativeSelection) => {
         setCreativeBrief(current => updateCreativeBrief(current, selection));
+    };
+
+    // The Products panel unmounts once the user leaves the tab (or sends the
+    // message), so an AI name that finishes naming afterwards can't reach the
+    // brief through the normal onSelect path. This reports it directly, but
+    // only replaces the brief's product when it's still the same one pending
+    // a name — never a different product the user picked in the meantime.
+    const onProductNamed = (product: ProductRecordSelection) => {
+        setCreativeBrief(current =>
+            current.product?.kind === 'product' && current.product.id === product.id
+                ? { ...current, product }
+                : current);
     };
 
     const removeCreativeAsset = (field: CreativeBriefField) => {
@@ -619,6 +632,7 @@ function ChatPage() {
                                                 activeTab={activeEmptyStateTab}
                                                 onTabChange={setActiveEmptyStateTab}
                                                 onSelect={selectCreativeAsset}
+                                                onProductNamed={onProductNamed}
                                             >
                                                 <ChatInput
                                                     onSend={(text, attachments) => {
@@ -724,6 +738,7 @@ function ChatPage() {
                                     activeTab={activeEmptyStateTab}
                                     onTabChange={setActiveEmptyStateTab}
                                     onSelect={selectCreativeAsset}
+                                    onProductNamed={onProductNamed}
                                 >
                                         <ChatInput
                                             onSend={(text, attachments) => {

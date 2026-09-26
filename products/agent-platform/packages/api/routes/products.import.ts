@@ -6,6 +6,7 @@ import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 import { assertPublicHttpUrl, SsrfBlockedError } from '@serverless-saas/agent-worker-handlers/lib/ssrf-guard';
 import { extractProductPage } from '../lib/productPageExtract';
+import { createProduct, PRODUCT_NAME_PLACEHOLDER } from '../lib/productRecords';
 
 export const productsImportRoutes = new Hono<AppEnv>();
 
@@ -182,13 +183,22 @@ productsImportRoutes.post(
       }
     }
 
-    return c.json({
-      data: {
-        title: extracted.title,
-        description: extracted.description,
-        price: extracted.price,
-        images,
-      },
+    if (images.length === 0) {
+      return c.json({ error: 'Import failed', message: 'No product images found on that page' }, 422);
+    }
+
+    const title = extracted.title?.trim().slice(0, 120) || null;
+    const product = await createProduct({
+      tenantId,
+      createdBy: userId,
+      name: title ?? PRODUCT_NAME_PLACEHOLDER,
+      description: extracted.description?.trim() || null,
+      price: extracted.price,
+      sourceUrl: url,
+      imageFileIds: images.map((image) => image.fileId),
+      namingStatus: title ? 'done' : 'pending',
     });
+
+    return c.json({ data: product });
   },
 );

@@ -76,7 +76,7 @@ export function CreativeBriefChips({ brief, onEdit, onRemove, readOnly = false }
 }
 
 function SelectionThumbnail({ selection }: { selection: CreativeSelection }) {
-    if (selection.kind === 'product-image') {
+    if (selection.kind === 'product-image' || selection.kind === 'product') {
         return <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted"><FileThumbnail fileId={selection.attachment.fileId} alt="" /></span>;
     }
     if (selection.kind === 'product-url') {
@@ -100,7 +100,7 @@ function SelectionPreview({ field, selection }: { field: CreativeBriefField; sel
         ? '/creative/products/add-link.jpg'
         : selection.kind === 'voice'
             ? creativeVoiceArtwork(selection.name)
-            : selection.kind === 'product-image'
+            : selection.kind === 'product-image' || selection.kind === 'product'
                 ? undefined
                 : selection.image;
     const subtitle = selection.kind === 'template'
@@ -115,7 +115,7 @@ function SelectionPreview({ field, selection }: { field: CreativeBriefField; sel
 
     return <div>
         <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
-            {selection.kind === 'product-image' || (selection.kind === 'avatar' && !selection.image)
+            {selection.kind === 'product-image' || selection.kind === 'product' || (selection.kind === 'avatar' && !selection.image)
                 ? <FileThumbnail fileId={selection.attachment.fileId} alt={selection.name} />
                 : selection.kind === 'product-url' && selection.imported?.selectedImageId
                     ? <FileThumbnail fileId={selection.imported.selectedImageId} alt={selection.name} />

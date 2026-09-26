@@ -46,7 +46,22 @@ export interface ProductUrlSelection {
     imported?: ImportedProductData;
 }
 
-export type ProductSelection = ProductImageSelection | ProductUrlSelection;
+export type ProductNamingStatus = 'pending' | 'done' | 'failed';
+
+/** A saved creative_products row. The only kind new selections use; the two above stay parseable for already-sent briefs. */
+export interface ProductRecordSelection {
+    kind: 'product';
+    id: string;
+    name: string;
+    description: string | null;
+    price: string | null;
+    sourceUrl: string | null;
+    namingStatus: ProductNamingStatus;
+    /** The product's main image. */
+    attachment: Attachment;
+}
+
+export type ProductSelection = ProductImageSelection | ProductUrlSelection | ProductRecordSelection;
 
 export interface VoiceSelection {
     kind: 'voice';
