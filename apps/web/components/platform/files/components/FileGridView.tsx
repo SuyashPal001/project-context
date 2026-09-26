@@ -98,15 +98,15 @@ function FolderPreviewCard({ file }: { file: FileRecord }) {
     );
 }
 
-/** A folder drawn like the macOS one: tabbed back panel, the newest files
+/** A folder drawn like the macOS one, in the platform theme colour: tabbed back panel, the newest files
  *  fanned out behind a lighter front panel, so a folder with contents reads as
  *  full and an empty one reads as empty. */
 function FolderArt({ files }: { files: FileRecord[] }) {
     const tilts = files.length === 1 ? [0] : files.length === 2 ? [-7, 7] : [-10, 0, 10];
     return (
         <div className="absolute inset-0">
-            <div className="absolute left-[14%] top-[20%] h-[9%] w-[32%] rounded-t-lg bg-sky-500/85" />
-            <div className="absolute inset-x-[14%] top-[27%] bottom-[22%] rounded-xl rounded-tl-none bg-sky-500/85" />
+            <div className="absolute left-[14%] top-[20%] h-[9%] w-[32%] rounded-t-lg bg-primary" />
+            <div className="absolute inset-x-[14%] top-[27%] bottom-[22%] rounded-xl rounded-tl-none bg-primary" />
             {files.map((file, i) => (
                 <div
                     key={file.id}
@@ -120,7 +120,7 @@ function FolderArt({ files }: { files: FileRecord[] }) {
                     <FolderPreviewCard file={file} />
                 </div>
             ))}
-            <div className="absolute inset-x-[14%] bottom-[22%] h-[40%] rounded-xl bg-gradient-to-b from-sky-300 to-sky-400 shadow-[0_-2px_6px_rgba(0,0,0,0.10)]" style={{ zIndex: 10 }} />
+            <div className="absolute inset-x-[14%] bottom-[22%] h-[40%] rounded-xl bg-gradient-to-b from-primary/60 to-primary/80 shadow-[0_-2px_6px_rgba(0,0,0,0.10)]" style={{ zIndex: 10 }} />
         </div>
     );
 }
