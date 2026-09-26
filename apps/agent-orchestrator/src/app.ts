@@ -12,6 +12,7 @@ import { skillsRouter } from './routes/skills.js'
 import { ingestRoute } from './routes/ingest.js'
 import { composioRouter } from './routes/composio.js'
 import { memoryInsightsRouter } from './routes/memoryInsights.js'
+import { productDescribeRouter } from './routes/productDescribe.js'
 
 import {
   API_BASE_URL, sessions,
@@ -35,6 +36,7 @@ app.route('', skillsRouter)
 app.route('', ingestRoute)
 app.route('', composioRouter)
 app.route('', memoryInsightsRouter)
+app.route('', productDescribeRouter)
 
 
 await initStudio(app)
