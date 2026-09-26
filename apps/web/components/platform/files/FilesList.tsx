@@ -4,7 +4,7 @@ import { EmptyState, ConfirmDialog } from "@/components/platform/shared";
 import {
     Loader2, FolderOpen, ChevronRight, ChevronLeft, MessageSquare, LayoutGrid, List as ListIcon, Play, Trash2, Search
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -114,12 +114,18 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     };
 
     // System-managed prefixes (chat uploads, creative library, generated media)
-    // surface as pills below, not folder tiles — an empty-looking "generated/"
-    // card conveyed nothing a pill can't say better. Only hidden at the root:
-    // a same-named folder nested inside a real user folder is just a folder.
-    const systemFolderPills = useMemo(
-        () => (prefix ? [] : virtualFolders.filter(isSystemFolder)),
-        [virtualFolders, prefix]);
+    // surface as pills, not folder tiles — an empty-looking "generated/" card
+    // conveyed nothing a pill can't say better. Folder tiles are only hidden at
+    // the root: a same-named folder nested inside a real user folder is just a
+    // folder. The pill list is remembered from the root listing, because inside
+    // a folder virtualFolders holds that folder's children, not the root's —
+    // without this the tabs vanished as soon as one was clicked.
+    const rootSystemFoldersRef = useRef<string[]>([]);
+    if (!prefix && !isLoading) rootSystemFoldersRef.current = virtualFolders.filter(isSystemFolder);
+    const currentSystemFolder = prefix ? prefix.split('/')[0] : null;
+    const systemFolderPills = currentSystemFolder && isSystemFolder(currentSystemFolder) && !rootSystemFoldersRef.current.includes(currentSystemFolder)
+        ? [...rootSystemFoldersRef.current, currentSystemFolder]
+        : rootSystemFoldersRef.current;
     const activeSystemFolder = !prefix ? null : prefix.split('/')[0];
 
     const allFolderCards: FolderCard[] = useMemo(() => virtualFolders
@@ -198,6 +204,28 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 />
             )}
 
+                {systemFolderPills.length > 0 && (
+                    <div className="flex gap-1 rounded-full bg-muted p-1 w-fit flex-wrap">
+                        <button
+                            type="button"
+                            onClick={() => onPrefixChange("")}
+                            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${!activeSystemFolder ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            All
+                        </button>
+                        {systemFolderPills.map(folderName => (
+                            <button
+                                key={folderName}
+                                type="button"
+                                onClick={() => onPrefixChange(`${folderName}/`)}
+                                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeSystemFolder === folderName ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                {SYSTEM_FOLDER_LABELS[folderName]}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
             {isLoading ? (
                 <div className="flex justify-center py-12 flex-col items-center gap-4 text-muted-foreground border border-border rounded-lg bg-card">
                     <Loader2 className="w-8 h-8 animate-spin" />
@@ -242,27 +270,6 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                                 <MessageSquare className="w-3 h-3" />
                                 Chat with Agent
                             </Button>
-                        </div>
-                    )}
-                    {systemFolderPills.length > 0 && (
-                        <div className="flex gap-1 rounded-full bg-muted p-1 w-fit flex-wrap">
-                            <button
-                                type="button"
-                                onClick={() => onPrefixChange("")}
-                                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${!activeSystemFolder ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
-                            >
-                                All
-                            </button>
-                            {systemFolderPills.map(folderName => (
-                                <button
-                                    key={folderName}
-                                    type="button"
-                                    onClick={() => onPrefixChange(`${folderName}/`)}
-                                    className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeSystemFolder === folderName ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
-                                >
-                                    {SYSTEM_FOLDER_LABELS[folderName]}
-                                </button>
-                            ))}
                         </div>
                     )}
                     <div className="flex items-center justify-between gap-2">
