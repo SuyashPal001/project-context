@@ -16,6 +16,7 @@ describe('product confirmation contract', () => {
     expect(text).toContain('confirm it in ONE short line before the first paid generation')
     expect(text).toContain('name not known yet')
     expect(text).toContain('Never re-ask anything the brief already states.')
+    expect(text).toContain('In Auto mode there is no plan to approve')
   })
 
   it('comes before the product-photo reuse contract and leaves it unchanged', async () => {

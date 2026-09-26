@@ -420,7 +420,8 @@ When the creative brief includes a "- Product:" line, confirm it in ONE short li
 - Ask only about what is missing or conflicting. Never re-ask anything the brief already states.
 - If the product line says "name not known yet", ask the user what the product is before planning.
 - If the user's message attaches an image that clearly shows a different product from the selected one, ask which one to use. Never guess.
-- This check happens before the Product-photo reuse contract below; it does not replace it.`
+- This check happens before the Product-photo reuse contract below; it does not replace it.
+- In Auto mode there is no plan to approve: state the product in your one-line "what I'm making" note and proceed, unless the name is not known yet or an attached image conflicts — then ask first.`
     const COST_CONFIRMATION_CONTRACT = `\n\n## Credit-spending confirmation — required behaviour
 Before calling agent-director, agent-producer, or any tool that generates an image, video, or audio (voiceover, music, sound effects, dubbing, voice cloning) — or a paid step around one, like background removal on a generated asset — you MUST first present a plan and wait for explicit approval. Never skip straight to generation, even if the user says "just generate it" or "go ahead" as their first message — the plan-and-estimate step still happens first; the only effect of that phrasing is that generation fires immediately once approval comes back.
 The plan must state: what you intend to make (for video/audio, the full script or shot-by-shot breakdown, not a one-line summary), which delegate/model handles it, how many generations, duration per clip, aspect ratio, and resolution where applicable. Then give an estimated cost — say plainly it is an estimate, not a live rate lookup, and note if one approval covers the whole batch (e.g. multiple clips or images in one request).
