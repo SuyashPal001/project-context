@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useMemo } from "react"
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog"
+import { ModalShell } from "@/components/platform/shared"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { UploadCloud, File, X, CheckCircle2, Loader2, AlertCircle, FolderOpen } from "lucide-react"
@@ -190,17 +188,36 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
     selectedFiles.every(f => ['done', 'error'].includes(fileStatuses[f.name]?.status ?? ''))
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md bg-popover border-border">
-        <DialogHeader>
-          <DialogTitle>{isInsideFolder ? 'Add Files' : 'Upload Files'}</DialogTitle>
-          <DialogDescription>
-            {isInsideFolder
-              ? `Upload files into the ${prefixFolderName} folder.`
-              : 'Enter a folder name, then select files to upload.'}
-          </DialogDescription>
-        </DialogHeader>
-
+    <ModalShell
+      open={open}
+      onOpenChange={handleClose}
+      size="sm"
+      fixedHeight={false}
+      title={isInsideFolder ? 'Add Files' : 'Upload Files'}
+      description={isInsideFolder
+        ? `Upload files into the ${prefixFolderName} folder.`
+        : 'Enter a folder name, then select files to upload.'}
+      footer={
+        allSettled ? (
+          <Button onClick={handleClose} className="w-full">Done</Button>
+        ) : (
+          <div className="ml-auto flex gap-2">
+            <Button variant="outline" onClick={handleClose} disabled={isUploading}>Cancel</Button>
+            <Button onClick={handleUpload} disabled={!selectedFiles.length || isUploading || !folderReady}>
+              {isUploading
+                ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading</>
+                : `Upload ${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}`}
+            </Button>
+          </div>
+        )
+      }
+    >
+      <div className="overflow-y-auto px-6">
+        <p className="pt-4 text-sm text-muted-foreground">
+          {isInsideFolder
+            ? `Upload files into the ${prefixFolderName} folder.`
+            : 'Enter a folder name, then select files to upload.'}
+        </p>
         <div className="py-4 space-y-4">
           {!isInsideFolder && (
             <div className="space-y-2">
@@ -210,14 +227,14 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
                 value={newFolderName}
                 onChange={e => setNewFolderName(e.target.value)}
                 disabled={isUploading || allSettled}
-                className="bg-secondary border-border text-sm font-mono"
+                className="h-9 rounded-none border-0 border-b border-border bg-transparent px-0 text-sm shadow-none focus-visible:border-foreground focus-visible:ring-0"
                 autoFocus
               />
             </div>
           )}
 
           {folderName && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary border border-border text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <FolderOpen className="h-3.5 w-3.5 text-amber-500 shrink-0" />
               <span className="font-mono text-foreground/80">{folderName}/</span>
             </div>
@@ -227,7 +244,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
 
           {selectedFiles.length === 0 ? (
             <div
-              className={`border-2 border-dashed rounded-lg p-10 flex flex-col items-center text-center transition-all duration-200 ${
+              className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center text-center transition-all duration-200 ${
                 folderReady ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'
               } ${
                 isDragActive
@@ -253,7 +270,7 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
                   const s = fileStatuses[file.name]
                   const isDuplicate = duplicateNames.has(file.name)
                   return (
-                    <div key={file.name} className={`border rounded-lg p-3 bg-secondary ${isDuplicate ? 'border-amber-500/40' : 'border-border'}`}>
+                    <div key={file.name} className={`border-b py-3 ${isDuplicate ? 'border-amber-500/40' : 'border-border/60'}`}>
                       <div className="flex items-center gap-3">
                         <File className="h-4 w-4 text-muted-foreground/70 shrink-0" />
                         <div className="flex-1 min-w-0">
@@ -306,27 +323,12 @@ export function UploadFileModal({ open, onOpenChange, currentPrefix, onSuccess }
         </div>
 
         {uploadError && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-950/40 border border-red-900/50 text-xs text-red-400">
+          <div className="flex items-center gap-2 text-xs text-red-400">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
             <span>{uploadError}</span>
           </div>
         )}
-
-        <DialogFooter className="pt-4 border-t border-border/50">
-          {allSettled ? (
-            <Button onClick={handleClose} className="w-full">Done</Button>
-          ) : (
-            <>
-              <Button variant="outline" onClick={handleClose} disabled={isUploading}>Cancel</Button>
-              <Button onClick={handleUpload} disabled={!selectedFiles.length || isUploading || !folderReady}>
-                {isUploading
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading</>
-                  : `Upload ${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}`}
-              </Button>
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </ModalShell>
   )
 }
