@@ -75,6 +75,56 @@ function FileTileArt({ file, category, onPreview }: { file: FileRecord; category
     );
 }
 
+/** One card peeking out of a folder: a real thumbnail for images and videos,
+ *  the file-type icon for everything else. */
+function FolderPreviewCard({ file }: { file: FileRecord }) {
+    const assetType = assetTypeForFile(file.contentType, file.filename);
+    const typeStyle = TYPE_STYLES[assetType];
+    const TypeIcon = TYPE_ICONS[assetType];
+    const videoFrameUrl = useVideoFrameThumbnail(file.id, assetType === 'video');
+    return (
+        <div className={`relative h-full w-full overflow-hidden ${typeStyle.bg}`}>
+            {getFileCategory(file.contentType, file.filename) === 'image' ? (
+                <FileThumbnail fileId={file.id} alt="" />
+            ) : videoFrameUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- a captured data: URI, nothing next/image can optimize
+                <img src={videoFrameUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                    <TypeIcon className={`h-6 w-6 ${typeStyle.icon}`} />
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** A folder drawn like the macOS one: tabbed back panel, the newest files
+ *  fanned out behind a lighter front panel, so a folder with contents reads as
+ *  full and an empty one reads as empty. */
+function FolderArt({ files }: { files: FileRecord[] }) {
+    const tilts = files.length === 1 ? [0] : files.length === 2 ? [-7, 7] : [-10, 0, 10];
+    return (
+        <div className="absolute inset-0">
+            <div className="absolute left-[14%] top-[20%] h-[9%] w-[32%] rounded-t-lg bg-sky-500/85" />
+            <div className="absolute inset-x-[14%] top-[27%] bottom-[22%] rounded-xl rounded-tl-none bg-sky-500/85" />
+            {files.map((file, i) => (
+                <div
+                    key={file.id}
+                    className="absolute bottom-[34%] h-[40%] w-[30%] overflow-hidden rounded-md border-2 border-background shadow-md"
+                    style={{
+                        left: files.length === 1 ? '35%' : `${22 + i * (files.length === 2 ? 26 : 20)}%`,
+                        transform: `rotate(${tilts[i]}deg)`,
+                        zIndex: i,
+                    }}
+                >
+                    <FolderPreviewCard file={file} />
+                </div>
+            ))}
+            <div className="absolute inset-x-[14%] bottom-[22%] h-[40%] rounded-xl bg-gradient-to-b from-sky-300 to-sky-400 shadow-[0_-2px_6px_rgba(0,0,0,0.10)]" style={{ zIndex: 10 }} />
+        </div>
+    );
+}
+
 export function FileGridView({
     folderCards, files, selectedFile, onSelectFile, selectedIds, onToggleSelect,
     ingestingFiles, onIngestFile, onIngestFolder, onNavigateToFolder, onPreviewFile, onDownload,
@@ -83,34 +133,14 @@ export function FileGridView({
 }: FileGridViewProps) {
     return (
         <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount, previewFileIds }) => (
+            {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount, previewFiles }) => (
                 <div
                     key={`folder-${folderName}`}
                     onClick={() => onNavigateToFolder(folderPrefix)}
                     className="group relative flex flex-col rounded-xl border border-border bg-card hover:bg-secondary/60 transition-colors cursor-pointer overflow-hidden"
                 >
-                    <div className="relative aspect-square w-full overflow-hidden bg-amber-500/5 flex items-center justify-center">
-                        {previewFileIds.length > 0 ? (
-                            // Newest image sits on top; older ones peek out behind it,
-                            // offset and tilted like a stack of photos in a folder.
-                            [...previewFileIds].reverse().map((fileId, i, all) => {
-                                const depth = all.length - 1 - i;
-                                return (
-                                    <div
-                                        key={fileId}
-                                        className="absolute h-[62%] w-[62%] overflow-hidden rounded-lg border-2 border-background shadow-md"
-                                        style={{ transform: `translate(${depth * 14 - 6}%, ${depth * -8 + 4}%) rotate(${depth * 5 - 2}deg)` }}
-                                    >
-                                        <FileThumbnail fileId={fileId} alt="" />
-                                    </div>
-                                );
-                            })
-                        ) : (
-                            <FolderIcon className="h-14 w-14 text-amber-500 fill-amber-500/20" />
-                        )}
-                        <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
-                            <FolderIcon className="h-2.5 w-2.5 text-amber-500 fill-amber-500/30" /> FOLDER
-                        </span>
+                    <div className="relative aspect-square w-full overflow-hidden bg-muted/30">
+                        <FolderArt files={previewFiles} />
                         <div className="absolute top-2 right-2 flex items-center gap-1" onClick={e => e.stopPropagation()}>
                             <AddToChatMenu
                                 conversations={conversations}

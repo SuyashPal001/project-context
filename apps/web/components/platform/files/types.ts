@@ -35,6 +35,6 @@ export interface FolderCard {
      *  instead of spanning past them. */
     totalSize: number;
     latestAddedAt: string | null;
-    /** Newest image files in the folder, for the grid tile's stacked preview. */
-    previewFileIds: string[];
+    /** Newest files in the folder, for the grid tile's stacked preview. */
+    previewFiles: FileRecord[];
 }
