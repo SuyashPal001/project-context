@@ -144,7 +144,7 @@ export function FileGridView({
                             <AddToChatMenu
                                 conversations={conversations}
                                 variant="icon"
-                                triggerClassName="bg-background/70 backdrop-blur-sm"
+                                triggerClassName="bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 hover:text-white"
                                 disabled={fileCount === 0}
                                 label={folderChatLabel(fileCount)}
                                 onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
@@ -153,7 +153,7 @@ export function FileGridView({
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-green-400"
+                                    className="h-6 w-6 bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 hover:text-white"
                                     title="Ingest"
                                     onClick={() => onIngestFolder(folderName)}
                                     disabled={allDone || isIngesting}
@@ -162,7 +162,7 @@ export function FileGridView({
                                 </Button>
                             )}
                             {canDelete && (
-                                <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-destructive" onClick={() => onDeleteFolder(folderName)}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 hover:text-white" onClick={() => onDeleteFolder(folderName)}>
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                             )}
@@ -189,7 +189,7 @@ export function FileGridView({
                         <div className="absolute top-2 left-2 z-10" onClick={e => e.stopPropagation()}>
                             <Checkbox
                                 checked={isSelected}
-                                className="bg-background/70 backdrop-blur-sm"
+                                className="bg-black/40 backdrop-blur-sm border-white/70"
                                 onCheckedChange={() => onToggleSelect(file.id)}
                             />
                         </div>
@@ -210,17 +210,17 @@ export function FileGridView({
                             <AddToChatMenu
                                 conversations={conversations}
                                 variant="icon"
-                                triggerClassName="bg-background/70 backdrop-blur-sm"
+                                triggerClassName="bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 hover:text-white"
                                 onPick={(conversationId) => onAddToChat([file], conversationId)}
                             />
-                            <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-foreground" onClick={() => onDownload(file.id)}>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 hover:text-white" onClick={() => onDownload(file.id)}>
                                 <Download className="w-3 h-3" />
                             </Button>
                             {showPipelineDetails && isParseable(file) && (
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-green-400"
+                                    className="h-6 w-6 bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 hover:text-white"
                                     title="Ingest"
                                     onClick={() => onIngestFile(file.id)}
                                     disabled={ingestingFiles.has(file.id)}
@@ -229,7 +229,7 @@ export function FileGridView({
                                 </Button>
                             )}
                             {canDelete && (
-                                <Button variant="ghost" size="icon" className="h-6 w-6 bg-background/70 backdrop-blur-sm text-muted-foreground hover:text-destructive" onClick={() => onDeleteFile(file.id)}>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 hover:text-white" onClick={() => onDeleteFile(file.id)}>
                                     <Trash2 className="w-3 h-3" />
                                 </Button>
                             )}
