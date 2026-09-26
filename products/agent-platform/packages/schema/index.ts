@@ -7,6 +7,7 @@ export * from './handover';
 export * from './conversations';
 export * from './creativeTemplates';
 export * from './creativeLibraryAssets';
+export * from './creativeProducts';
 export * from './skills';
 export * from './documents';
 export * from './knowledge';
