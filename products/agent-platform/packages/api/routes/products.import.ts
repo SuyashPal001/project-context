@@ -16,6 +16,8 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_CONCURRENT_IMAGE_FETCHES = 3;
 const PAGE_FETCH_TIMEOUT_MS = 8000;
 const IMAGE_FETCH_TIMEOUT_MS = 5000;
+// Leave headroom under the web proxy's 15 s abort for the whole request.
+const REQUEST_BUDGET_MS = 13_000;
 const MAX_REDIRECTS = 3; // matches the shared guard's own redirect budget
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const IMPORTED_IMAGE_PREFIX = 'imported-products/'; // deliberately outside creative-products/ — see CreativeLibrary.tsx's PRODUCT_PREFIX filter
@@ -126,6 +128,7 @@ productsImportRoutes.post(
   '/',
   zValidator('json', z.object({ url: z.string().url() })),
   async (c) => {
+    const startedAt = Date.now();
     const requestContext = c.get('requestContext') as any;
     const tenantId = requestContext?.tenant?.id;
     const userId = c.get('userId');
@@ -200,7 +203,11 @@ productsImportRoutes.post(
       namingStatus: title ? 'done' : 'pending',
     });
 
-    // A title-less import is AI-named here, in the same request.
-    return c.json({ data: await nameCreatedProduct(tenantId, product) });
+    // A title-less import is AI-named here, in the same request, with whatever
+    // time is left before the web proxy's 15 s abort (page + image fetches
+    // already spent some). Too little left → it returns pending and the
+    // client's retry names it.
+    const namingBudgetMs = Math.min(10_000, REQUEST_BUDGET_MS - (Date.now() - startedAt));
+    return c.json({ data: await nameCreatedProduct(tenantId, product, namingBudgetMs) });
   },
 );

@@ -15,6 +15,9 @@ export const productsRoutes = new Hono<AppEnv>();
 
 const uuid = z.string().uuid();
 const MAX_IMAGES = 6;
+// Kept well under the web proxy's 15 s abort; past it the product returns
+// still pending and the client's retry names it.
+const INLINE_NAMING_BUDGET_MS = 10_000;
 
 type Action = 'read' | 'create' | 'delete';
 
@@ -63,7 +66,7 @@ productsRoutes.post(
       tenantId: g.tenantId, createdBy: g.userId, name: PRODUCT_NAME_PLACEHOLDER, description: null,
       price: null, sourceUrl: null, imageFileIds: fileIds, namingStatus: 'pending',
     });
-    return c.json({ data: await nameCreatedProduct(g.tenantId, product) }, 201);
+    return c.json({ data: await nameCreatedProduct(g.tenantId, product, INLINE_NAMING_BUDGET_MS) }, 201);
   },
 );
 
