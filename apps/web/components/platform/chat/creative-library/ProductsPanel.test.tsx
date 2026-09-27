@@ -267,3 +267,24 @@ describe('productSelection', () => {
         expect(productsApi.productSelection(record({ images: [] }))).toBeNull();
     });
 });
+
+describe('ProductsPanel reuse props', () => {
+    it('opens instead of selecting when onOpen is given', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        const onOpen = vi.fn();
+        const onSelect = vi.fn();
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={onSelect} onOpen={onOpen} /></QueryClientProvider>);
+        fireEvent.click(await screen.findByRole('button', { name: 'Open Niacinamide serum' }));
+        expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
+        expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('hides the heading and uses a custom empty hint', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={vi.fn()} hideHeading emptyHint="Add your first product." /></QueryClientProvider>);
+        expect(await screen.findByText('Add your first product.')).toBeTruthy();
+        expect(screen.queryByRole('heading', { name: 'Products' })).toBeNull();
+        expect(screen.queryByText('You can skip this. Olmo will ask about your product in chat.')).toBeNull();
+    });
+});

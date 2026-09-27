@@ -25,7 +25,7 @@ const LINK_FAILED = "Couldn't read this page. Drop a product photo instead.";
 const SEARCH_DEBOUNCE_MS = 250;
 const STALE_PENDING_MS = 30_000;
 
-export function ProductsPanel({ selected, onSelect, onProductNamed }: {
+export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hideHeading, emptyHint }: {
     selected: ProductSelection | null;
     onSelect: (selection: ProductSelection) => void;
     /**
@@ -37,6 +37,12 @@ export function ProductsPanel({ selected, onSelect, onProductNamed }: {
      * it (see F1 in the products-library final-fix brief).
      */
     onProductNamed?: (product: ProductRecordSelection) => void;
+    /** When set, clicking a card calls this instead of selecting the product. */
+    onOpen?: (product: ProductRecord) => void;
+    /** Hides the "Products" heading; the search box still renders. */
+    hideHeading?: boolean;
+    /** Replaces the default first-visit hint line. */
+    emptyHint?: string;
 }) {
     const queryClient = useQueryClient();
     const inputRef = useRef<HTMLInputElement>(null);
@@ -243,7 +249,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed }: {
 
     return <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-semibold tracking-tight text-foreground">Products</h2>
+            {!hideHeading && <h2 className="text-xl font-semibold tracking-tight text-foreground">Products</h2>}
             {!isEmpty && <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search products" aria-label="Search products" className="h-9 pl-9" />
@@ -268,7 +274,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed }: {
                 </Button>
             </form>
             {linkError && <p role="alert" className="text-xs text-destructive">{linkError}</p>}
-            {isEmpty && <p className="text-xs text-muted-foreground">You can skip this. Olmo will ask about your product in chat.</p>}
+            {isEmpty && <p className="text-xs text-muted-foreground">{emptyHint ?? 'You can skip this. Olmo will ask about your product in chat.'}</p>}
             <input ref={inputRef} type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Upload product photos"
                 onChange={event => { const files = event.target.files; if (files?.length) void addPhotos(files); event.target.value = ''; }} />
         </div>
@@ -291,12 +297,14 @@ export function ProductsPanel({ selected, onSelect, onProductNamed }: {
                             selected={selected?.kind === 'product' && selected.id === product.id}
                             renaming={renamingId === product.id}
                             renameValue={renameValue}
+                            useLabel={onOpen ? 'Open' : 'Use'}
                             onRenameChange={setRenameValue}
                             onRenameCommit={() => void commitRename(product)}
                             onRenameCancel={() => { setRenameValue(product.name); setRenamingId(null); }}
                             onStartRename={() => { setRenameValue(product.name); setRenamingId(product.id); }}
                             onDelete={() => removeProduct(product)}
                             onUse={() => {
+                                if (onOpen) { onOpen(product); return; }
                                 const selection = productSelection(product);
                                 if (!selection) { void refresh(); return; }
                                 selectedIdRef.current = product.id;
@@ -308,8 +316,8 @@ export function ProductsPanel({ selected, onSelect, onProductNamed }: {
     </div>;
 }
 
-function ProductCard({ product, selected, renaming, renameValue, onRenameChange, onRenameCommit, onRenameCancel, onStartRename, onDelete, onUse }: {
-    product: ProductRecord; selected: boolean; renaming: boolean; renameValue: string;
+function ProductCard({ product, selected, renaming, renameValue, useLabel, onRenameChange, onRenameCommit, onRenameCancel, onStartRename, onDelete, onUse }: {
+    product: ProductRecord; selected: boolean; renaming: boolean; renameValue: string; useLabel: string;
     onRenameChange: (value: string) => void; onRenameCommit: () => void; onRenameCancel: () => void;
     onStartRename: () => void; onDelete: () => void; onUse: () => void;
 }) {
@@ -318,7 +326,7 @@ function ProductCard({ product, selected, renaming, renameValue, onRenameChange,
     const pending = product.namingStatus === 'pending';
     const label = pending ? 'Naming…' : product.name;
     return <div className="group min-w-0">
-        <button type="button" aria-pressed={selected} aria-label={`Use ${product.name}`} onClick={onUse}
+        <button type="button" aria-pressed={selected} aria-label={`${useLabel} ${product.name}`} onClick={onUse}
             className="block w-full rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <div className={cn('relative aspect-square overflow-hidden rounded-xl border bg-muted transition-colors group-hover:border-foreground/50', selected ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}>
                 {main && <FileThumbnail fileId={main.fileId} alt="" />}
