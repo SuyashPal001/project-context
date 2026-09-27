@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { NextResponse, type NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, voiceCatalogue } from '@serverless-saas/database';
@@ -94,7 +96,7 @@ export async function GET(request: NextRequest) {
         if (existingGeneratedKey) {
             try {
                 const bytes = await storageService.getLibraryAssetBytes(existingGeneratedKey);
-                return new NextResponse(bytes, { headers: {
+                return new NextResponse(new Uint8Array(bytes), { headers: {
                     'Content-Type': 'audio/wav',
                     'Cache-Control': 'private, max-age=86400',
                     'CDN-Cache-Control': 'public, s-maxage=31536000, stale-while-revalidate=86400',
@@ -123,9 +125,23 @@ export async function GET(request: NextRequest) {
                 }
             }
             if (voice.localPreviewAsset) {
-                return NextResponse.redirect(new URL(voice.localPreviewAsset, request.url), {
-                    headers: { 'Cache-Control': 'private, no-store' },
-                });
+                // Read the bundled file from disk rather than redirecting to it: a
+                // redirect resolves against `request.url`'s host, which is not
+                // always what a browser can reach (e.g. a dev server bound to
+                // 0.0.0.0 — a wildcard bind address, not a real destination —
+                // produced a redirect to https://0.0.0.0:3000/... that every
+                // browser refuses to connect to). Serving the bytes directly
+                // works the same in every environment.
+                try {
+                    const bytes = await readFile(path.join(process.cwd(), 'public', voice.localPreviewAsset));
+                    return new NextResponse(new Uint8Array(bytes), { headers: {
+                        'Content-Type': 'audio/wav',
+                        'Cache-Control': 'private, no-store',
+                    } });
+                } catch {
+                    // Bundled file missing on disk — fall through to on-demand
+                    // TTS below so the voice stays previewable.
+                }
             }
         }
         const cacheKey = `${id}:${language}`;

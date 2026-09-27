@@ -345,6 +345,9 @@ importers:
       '@serverless-saas/database':
         specifier: workspace:*
         version: link:../../packages/foundation/database
+      '@serverless-saas/storage':
+        specifier: workspace:*
+        version: link:../../packages/foundation/storage
       '@tanstack/react-query':
         specifier: ^5.90.21
         version: 5.90.21(react@19.2.3)

@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import path from 'node:path';
 import { NextRequest } from 'next/server';
 import { verifyVoiceLibrarySession } from '../session';
 
 const findFirstMock = vi.fn();
+const readFileMock = vi.fn();
+vi.mock('node:fs/promises', () => ({ readFile: (...a: unknown[]) => readFileMock(...a) }));
 vi.mock('../session', () => ({ verifyVoiceLibrarySession: vi.fn() }));
 vi.mock('@serverless-saas/database', () => ({
   db: { query: { voiceCatalogue: { findFirst: (...a: unknown[]) => findFirstMock(...a) } } },
@@ -53,12 +56,31 @@ it('does not send the provider key to an untrusted preview host', async () => {
     expect(calledUrls.some(url => url.startsWith('https://example.com'))).toBe(false);
 });
 
-it('uses the fixed sample for a catalogue row without a provider preview', async () => {
+it('reads the fixed sample from disk for a catalogue row without a provider preview', async () => {
     findFirstMock.mockResolvedValue({ providerId: 'voice-1', name: 'Lauren', tagline: 'Lively Narrator', previewFileUrl: null, localPreviewAsset: '/creative/voices/lauren-lively-narrator.wav', accents: null });
+    vi.mocked(readFileMock).mockResolvedValue(Buffer.from([1, 2, 3]));
     const { GET } = await import('./route');
     const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-1'));
-    expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/creative/voices/lauren-lively-narrator.wav');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('audio/wav');
+    expect(readFileMock).toHaveBeenCalledWith(expect.stringContaining(path.join('public', 'creative', 'voices', 'lauren-lively-narrator.wav')));
+    expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual([1, 2, 3]);
+});
+
+it('falls back to on-demand synthesis when the bundled sample file is missing on disk', async () => {
+    // A providerId no other test in this file uses: the in-memory sample cache
+    // is module-scoped and survives across tests (`await import('./route')`
+    // reuses the same module instance), so reusing 'voice-1' here would
+    // silently hit another test's cached result instead of exercising the
+    // fallback fetch.
+    findFirstMock.mockResolvedValue({ providerId: 'voice-4', name: 'Lauren', tagline: 'Lively Narrator', previewFileUrl: null, localPreviewAsset: '/creative/voices/lauren-lively-narrator.wav', accents: null });
+    vi.mocked(readFileMock).mockRejectedValue(new Error('ENOENT'));
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, headers: new Headers({ 'content-type': 'audio/wav' }), arrayBuffer: async () => new Uint8Array([9]).buffer });
+    vi.stubGlobal('fetch', fetchMock);
+    const { GET } = await import('./route');
+    const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-4'));
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls[0][0].toString()).toBe('https://api.cartesia.ai/tts/bytes');
 });
 
 it('synthesises English on demand when neither a provider preview nor a local sample exists', async () => {
@@ -108,10 +130,11 @@ it('looks up the voice by the requested id', async () => {
         { providerId: 'voice-2', name: 'Lauren', tagline: 'Lively Narrator', previewFileUrl: null, localPreviewAsset: '/creative/voices/lauren-lively-narrator.wav', accents: null },
     ];
     findFirstMock.mockImplementation(({ where }: { where: { value: string } }) => rows.find(row => row.providerId === where.value));
+    vi.mocked(readFileMock).mockResolvedValue(Buffer.from([1]));
     const { GET } = await import('./route');
     const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-2'));
-    expect(response.status).toBe(307);
-    expect(response.headers.get('location')).toBe('http://localhost/creative/voices/lauren-lively-narrator.wav');
+    expect(response.status).toBe(200);
+    expect(readFileMock).toHaveBeenCalledWith(expect.stringContaining(path.join('public', 'creative', 'voices', 'lauren-lively-narrator.wav')));
 });
 
 it('returns 502 when the catalogue query fails', async () => {
