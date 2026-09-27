@@ -41,6 +41,10 @@ export async function deleteProduct(id: string): Promise<void> {
     await api.del(`/api/v1/products/${id}`);
 }
 
+export async function listProductImageFileIds(): Promise<string[]> {
+    return (await api.get<{ data: string[] }>('/api/v1/products/image-file-ids')).data;
+}
+
 // Rename and describe responses (unlike listProducts) don't pass through
 // dropImageless, so images can be empty. Returning null instead of a
 // selection with an undefined `attachment` keeps callers from building a

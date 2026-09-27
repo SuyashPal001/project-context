@@ -245,6 +245,22 @@ describe('ProductsPanel', () => {
         expect(productsApi.describeProduct).not.toHaveBeenCalled();
     });
 
+    it('commits a pending delete on unmount and invalidates creative-products so Uploads sees it', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        vi.mocked(productsApi.deleteProduct).mockResolvedValue(undefined);
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+        const user = userEvent.setup();
+        const { unmount } = render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={vi.fn()} /></QueryClientProvider>);
+        await user.click(await screen.findByRole('button', { name: 'More options for Niacinamide serum' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+
+        unmount();
+
+        await waitFor(() => expect(productsApi.deleteProduct).toHaveBeenCalledWith('p1'));
+        await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ['creative-products'] })));
+    });
+
     it('deletes after the undo window, and Undo cancels it', async () => {
         vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
         const user = userEvent.setup();
@@ -265,5 +281,26 @@ describe('ProductsPanel', () => {
 describe('productSelection', () => {
     it('returns null for a record with no images, instead of a selection with no attachment', () => {
         expect(productsApi.productSelection(record({ images: [] }))).toBeNull();
+    });
+});
+
+describe('ProductsPanel reuse props', () => {
+    it('opens instead of selecting when onOpen is given', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        const onOpen = vi.fn();
+        const onSelect = vi.fn();
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={onSelect} onOpen={onOpen} /></QueryClientProvider>);
+        fireEvent.click(await screen.findByRole('button', { name: 'Open Niacinamide serum' }));
+        expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'p1' }));
+        expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('hides the heading and uses a custom empty hint', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={vi.fn()} hideHeading emptyHint="Add your first product." /></QueryClientProvider>);
+        expect(await screen.findByText('Add your first product.')).toBeTruthy();
+        expect(screen.queryByRole('heading', { name: 'Products' })).toBeNull();
+        expect(screen.queryByText('You can skip this. Olmo will ask about your product in chat.')).toBeNull();
     });
 });

@@ -5,7 +5,7 @@ import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 import {
   ALLOWED_PRODUCT_IMAGE_TYPES, PRODUCT_NAME_PLACEHOLDER,
-  createProduct, deleteProduct, listProducts, loadProductImages, renameProduct,
+  createProduct, deleteProduct, listProducts, listProductImageFileIds, loadProductImages, renameProduct,
 } from '../lib/productRecords';
 import { nameProduct } from '../lib/productNaming';
 
@@ -37,6 +37,14 @@ productsRoutes.get('/', async (c) => {
   const q = c.req.query('q') ?? undefined;
   const data = await listProducts(g.tenantId, { q, limit, offset });
   return c.json({ data });
+});
+
+// Every image file a product uses — Drive's Uploads view needs it to show a
+// product photo there only once no product references it anymore.
+productsRoutes.get('/image-file-ids', async (c) => {
+  const g = guard(c, 'read');
+  if (g instanceof Response) return g;
+  return c.json({ data: await listProductImageFileIds(g.tenantId) });
 });
 
 productsRoutes.post(

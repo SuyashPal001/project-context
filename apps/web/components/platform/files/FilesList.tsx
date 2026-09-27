@@ -14,7 +14,10 @@ import { FilesFilter } from "./FilesFilter";
 import { stagePendingAttachments } from "@/lib/pendingAttachments";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
-import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isUpload, isSystemFolder } from "./systemFolders";
+import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isSystemFolder, uploadsWithOrphanProductFiles, withProductsPill } from "./systemFolders";
+import { DriveProducts } from "./DriveProducts";
+import { listProductImageFileIds } from "@/components/platform/chat/creative-library/productsApi";
+import type { Attachment } from "@/types/agent-events";
 import { FileGridView } from "./components/FileGridView";
 import { FileListView } from "./components/FileListView";
 import { IngestionSidePanel } from "./IngestionSidePanel";
@@ -65,6 +68,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     });
     const conversations = conversationsData?.data ?? [];
 
+    // The product panel's mutations invalidate ['creative-products'], which
+    // refreshes this too.
+    const { data: productImageIds } = useQuery({ queryKey: ['creative-products', '__image-file-ids'], queryFn: listProductImageFileIds });
+    const referencedProductImageIds = useMemo(() => productImageIds ? new Set(productImageIds) : null, [productImageIds]);
+
     const tooManySelected = selection.selectedIds.size > MAX_ATTACHMENTS_PER_MESSAGE;
 
     // conversationId null opens a new session; otherwise the files land in that
@@ -72,17 +80,21 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // so the destination is just which route we navigate to. A new session opens
     // the empty composer rather than creating a conversation up front, which
     // left an untitled chat behind on every click that never sent anything.
+    const addAttachmentsToChat = (attachments: Attachment[], conversationId: string | null) => {
+        if (attachments.length === 0) return;
+        stagePendingAttachments(attachments);
+        router.push(conversationId
+            ? `/${tenant}/dashboard/chat?id=${conversationId}`
+            : `/${tenant}/dashboard/chat`);
+    };
+
     const addToChat = (chosen: FileRecord[], conversationId: string | null) => {
-        if (chosen.length === 0) return;
-        stagePendingAttachments(chosen.map(f => ({
+        addAttachmentsToChat(chosen.map(f => ({
             fileId: f.id,
             name: f.filename,
             type: f.contentType,
             size: f.size,
-        })));
-        router.push(conversationId
-            ? `/${tenant}/dashboard/chat?id=${conversationId}`
-            : `/${tenant}/dashboard/chat`);
+        })), conversationId);
     };
 
     // A folder is granted, not attached. Attaching pushed every file's bytes into
@@ -126,10 +138,10 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // prefix.
     const [uploadsActive, setUploadsActive] = useState(false);
     const uploads = uploadsActive && !prefix;
-    const navigate = (nextPrefix: string) => { setUploadsActive(false); onPrefixChange(nextPrefix); };
+    const navigate = (nextPrefix: string) => { setUploadsActive(false); onPrefixChange(nextPrefix); selection.clearSelection(); };
     const uploadFiles = useMemo(
-        () => allFiles.filter(f => isUpload(f.key)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-        [allFiles]);
+        () => uploadsWithOrphanProductFiles(allFiles, referencedProductImageIds).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        [allFiles, referencedProductImageIds]);
     // "All" at the top level is every file that is not inside one of the user's
     // own folders (those open from their tiles), newest first — not just the
     // few loose ones, which hid chat uploads, generated files and the library.
@@ -150,11 +162,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // Opened straight into a folder, so the root was never loaded: show all four
     // rather than only the current one. A folder's pill is also kept when it was
     // missing from an earlier root load (e.g. its first file was just uploaded).
-    const systemFolderPills = rootSystemFolders.length === 0 && prefix
+    const systemFolderPills = withProductsPill(rootSystemFolders.length === 0 && prefix
         ? [...PILL_FOLDERS]
         : currentSystemFolder && (PILL_FOLDERS as readonly string[]).includes(currentSystemFolder) && !rootSystemFolders.includes(currentSystemFolder)
             ? [...rootSystemFolders, currentSystemFolder]
-            : rootSystemFolders;
+            : rootSystemFolders);
     // Inside one of the user's own folders no system pill matches, so "All" is
     // the active one — the folder lives under it.
     const activeSystemFolder = currentSystemFolder && (PILL_FOLDERS as readonly string[]).includes(currentSystemFolder) ? currentSystemFolder : null;
@@ -249,7 +261,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         </button>
                         <button
                             type="button"
-                            onClick={() => { onPrefixChange(""); setUploadsActive(true); }}
+                            onClick={() => { onPrefixChange(""); setUploadsActive(true); selection.clearSelection(); }}
                             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${uploads ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Uploads
@@ -267,12 +279,12 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     </div>
                 )}
 
-            {isLoading ? (
+            {isLoading && activeSystemFolder !== 'creative-products' ? (
                 <div className="flex justify-center py-12 flex-col items-center gap-4 text-muted-foreground border border-border rounded-lg bg-card">
                     <Loader2 className="w-8 h-8 animate-spin" />
                     <p>Loading documents...</p>
                 </div>
-            ) : shownFiles.length === 0 && shownFolderCount === 0 ? (
+            ) : activeSystemFolder !== 'creative-products' && shownFiles.length === 0 && shownFolderCount === 0 ? (
                 <div className="space-y-4">
                     {breadcrumbNav}
                     <div className="py-8">
@@ -313,6 +325,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </Button>
                         </div>
                     )}
+                    {activeSystemFolder !== 'creative-products' && (
                     <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                             <div className="relative flex-1 max-w-md">
@@ -354,8 +367,9 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </Button>
                         </div>
                     </div>
+                    )}
                     {breadcrumbNav}
-                    {showPipelineDetails && hasParseableFiles && (
+                    {activeSystemFolder !== 'creative-products' && showPipelineDetails && hasParseableFiles && (
                         <div className="flex justify-end">
                             <Button
                                 size="sm"
@@ -372,7 +386,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         </div>
                     )}
                     {/* Bulk action bar */}
-                    {selection.selectedIds.size > 0 && (
+                    {activeSystemFolder !== 'creative-products' && selection.selectedIds.size > 0 && (
                         <div className="flex items-center justify-between py-1 text-sm">
                             <span className="text-foreground/80">Selected: <strong>{selection.selectedIds.size}</strong> {selection.selectedIds.size === 1 ? 'file' : 'files'}</span>
                             <div className="flex items-center gap-2">
@@ -395,7 +409,14 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         </div>
                     )}
                     <div className="flex gap-4 items-start">
-                    {viewMode === 'grid' ? (
+                    {activeSystemFolder === 'creative-products' ? (
+                        <DriveProducts
+                            conversations={conversations}
+                            canAddToChat={!!defaultAgentId}
+                            onAddToChat={addAttachmentsToChat}
+                            onDownload={mutations.downloadFile}
+                        />
+                    ) : viewMode === 'grid' ? (
                         <FileGridView
                             folderCards={folderCards}
                             files={pagedFiles}
@@ -450,7 +471,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     </div>
 
                     {/* Pagination */}
-                    {totalPages > 1 && (
+                    {activeSystemFolder !== 'creative-products' && totalPages > 1 && (
                         <div className="flex items-center justify-between pt-1">
                             <div className="flex items-center gap-1">
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
