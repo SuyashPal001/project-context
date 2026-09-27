@@ -18,6 +18,8 @@ vi.mock('../lib/productRecords', async (orig) => ({
 }));
 const nameProductMock = vi.fn();
 vi.mock('../lib/productNaming', () => ({ nameProduct: (...a: unknown[]) => nameProductMock(...a) }));
+const deleteUnusedProductFilesMock = vi.fn();
+vi.mock('../lib/productFileCleanup', () => ({ deleteUnusedProductFiles: (...a: unknown[]) => deleteUnusedProductFilesMock(...a) }));
 vi.mock('../db', () => ({ db: {} }));
 
 const F1 = '11111111-1111-4111-8111-111111111111';
@@ -123,10 +125,30 @@ describe('/products routes', () => {
   });
 
   it('deletes, and 404s an unknown product', async () => {
-    lib.deleteProduct.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    lib.deleteProduct.mockResolvedValueOnce([F1]).mockResolvedValueOnce(null);
     const a = await app();
     expect((await a.request(`/products/${P1}`, { method: 'DELETE' })).status).toBe(204);
     expect((await a.request(`/products/${P1}`, { method: 'DELETE' })).status).toBe(404);
+  });
+
+  it('deleting a product deletes its photos too', async () => {
+    lib.deleteProduct.mockResolvedValueOnce([F1, F2]);
+    const res = await (await app()).request(`/products/${P1}`, { method: 'DELETE' });
+    expect(res.status).toBe(204);
+    expect(deleteUnusedProductFilesMock).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', fileIds: [F1, F2], actorId: 'user-1' }));
+  });
+
+  it('still deletes the product when cleaning up its photos fails', async () => {
+    lib.deleteProduct.mockResolvedValueOnce([F1]);
+    deleteUnusedProductFilesMock.mockRejectedValueOnce(new Error('queue down'));
+    const res = await (await app()).request(`/products/${P1}`, { method: 'DELETE' });
+    expect(res.status).toBe(204);
+  });
+
+  it('does not touch photos when the product was not found', async () => {
+    lib.deleteProduct.mockResolvedValueOnce(null);
+    await (await app()).request(`/products/${P1}`, { method: 'DELETE' });
+    expect(deleteUnusedProductFilesMock).not.toHaveBeenCalled();
   });
 
   it('requires files:delete to delete', async () => {

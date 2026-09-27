@@ -8,6 +8,7 @@ import {
   createProduct, deleteProduct, listProducts, listProductImageFileIds, loadProductImages, renameProduct,
 } from '../lib/productRecords';
 import { nameProduct } from '../lib/productNaming';
+import { deleteUnusedProductFiles } from '../lib/productFileCleanup';
 
 export const productsRoutes = new Hono<AppEnv>();
 
@@ -92,5 +93,15 @@ productsRoutes.delete('/:id', async (c) => {
   if (g instanceof Response) return g;
   const id = c.req.param('id');
   if (!uuid.safeParse(id).success) return notFound(c);
-  return (await deleteProduct(g.tenantId, id)) ? c.body(null, 204) : notFound(c);
+  const imageFileIds = await deleteProduct(g.tenantId, id);
+  if (imageFileIds === null) return notFound(c);
+  // The product is gone either way; a failed photo cleanup is logged, not fatal.
+  try {
+    await deleteUnusedProductFiles({
+      tenantId: g.tenantId, fileIds: imageFileIds, actorId: g.userId ?? 'system', traceId: (c.get('traceId') as string | undefined) ?? '',
+    });
+  } catch (error) {
+    console.error('[products] deleting product photos failed', { tenantId: g.tenantId, productId: id, error: (error as Error).message });
+  }
+  return c.body(null, 204);
 });
