@@ -75,7 +75,8 @@ describe('platformAgent instructions — credit-confirmation contract, no backen
     expect(section).toMatch(/UUIDs/)
     // But ids still pass through exactly in delegation/tool calls/working memory.
     expect(section).toMatch(/pass every id exactly and unchanged/)
-    expect(section).toContain('fileId/Voice ID pass-through')
+    expect(section).toContain('exact fileId, Voice ID and template-slug pass-through')
+    expect(section).toContain('ask_clarifying_questions: its option labels and rationales are shown to the user')
   })
 
   it('does not ask the model to name a delegate/model in the plan (resolves the delegate-line contradiction)', async () => {
