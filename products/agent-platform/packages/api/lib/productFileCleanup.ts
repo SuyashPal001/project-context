@@ -12,32 +12,38 @@ import { listProductImageFileIds } from './productRecords';
  * Call only after the product row itself is deleted.
  */
 export async function deleteUnusedProductFiles(input: {
-  tenantId: string; fileIds: string[]; actorId: string; traceId: string;
+  tenantId: string; fileIds: string[]; actorId: string | null; traceId: string; ipAddress?: string;
 }): Promise<void> {
   const unique = [...new Set(input.fileIds)];
   if (unique.length === 0) return;
   const stillUsed = new Set(await listProductImageFileIds(input.tenantId));
   const queueUrl = process.env.SQS_PROCESSING_QUEUE_URL;
 
+  // Best effort per photo: one failure must not leave the rest behind.
   for (const fileId of unique) {
     if (stillUsed.has(fileId)) continue;
-    const deletedKey = await storageService.deleteFile(input.tenantId, fileId);
-    // Null means nothing was deleted (not this tenant's file, or already gone).
-    if (!deletedKey) continue;
-    if (queueUrl) {
-      await publishToQueue(queueUrl, { type: 'storage.purge', payload: { tenantId: input.tenantId, key: deletedKey } });
-    } else {
-      console.error('[productFileCleanup] SQS_PROCESSING_QUEUE_URL unset — object not purged', { tenantId: input.tenantId, key: deletedKey });
+    try {
+      const deletedKey = await storageService.deleteFile(input.tenantId, fileId);
+      // Null means nothing was deleted (not this tenant's file, or already gone).
+      if (!deletedKey) continue;
+      if (queueUrl) {
+        await publishToQueue(queueUrl, { type: 'storage.purge', payload: { tenantId: input.tenantId, key: deletedKey } });
+      } else {
+        console.error('[productFileCleanup] SQS_PROCESSING_QUEUE_URL unset — object not purged', { tenantId: input.tenantId, key: deletedKey });
+      }
+      await db.insert(auditLog).values({
+        tenantId: input.tenantId,
+        actorId: input.actorId ?? 'system',
+        actorType: input.actorId ? 'human' : 'system',
+        action: 'file_deleted',
+        resource: 'file',
+        resourceId: fileId,
+        metadata: { reason: 'product_deleted' },
+        traceId: input.traceId,
+        ipAddress: input.ipAddress,
+      });
+    } catch (error) {
+      console.error('[productFileCleanup] deleting product photo failed', { tenantId: input.tenantId, fileId, error: (error as Error).message });
     }
-    await db.insert(auditLog).values({
-      tenantId: input.tenantId,
-      actorId: input.actorId,
-      actorType: 'human',
-      action: 'file_deleted',
-      resource: 'file',
-      resourceId: fileId,
-      metadata: { reason: 'product_deleted' },
-      traceId: input.traceId,
-    });
   }
 }

@@ -43,6 +43,18 @@ describe('deleteUnusedProductFiles', () => {
     expect(auditValues).not.toHaveBeenCalled();
   });
 
+  it('keeps deleting the other photos when one fails', async () => {
+    deleteFileMock.mockRejectedValueOnce(new Error('db blip')).mockImplementation(async (_t: string, id: string) => `key/${id}`);
+    await deleteUnusedProductFiles({ tenantId: 't1', fileIds: ['f1', 'f2'], actorId: 'u1', traceId: '' });
+    expect(deleteFileMock.mock.calls).toEqual([['t1', 'f1'], ['t1', 'f2']]);
+    expect(publishToQueueMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a system actor when no user is known', async () => {
+    await deleteUnusedProductFiles({ tenantId: 't1', fileIds: ['f1'], actorId: null, traceId: '' });
+    expect(auditValues).toHaveBeenCalledWith(expect.objectContaining({ actorId: 'system', actorType: 'system' }));
+  });
+
   it('dedupes ids and does nothing for an empty list', async () => {
     await deleteUnusedProductFiles({ tenantId: 't1', fileIds: ['f1', 'f1'], actorId: 'u1', traceId: '' });
     expect(deleteFileMock).toHaveBeenCalledTimes(1);

@@ -98,7 +98,8 @@ productsRoutes.delete('/:id', async (c) => {
   // The product is gone either way; a failed photo cleanup is logged, not fatal.
   try {
     await deleteUnusedProductFiles({
-      tenantId: g.tenantId, fileIds: imageFileIds, actorId: g.userId ?? 'system', traceId: (c.get('traceId') as string | undefined) ?? '',
+      tenantId: g.tenantId, fileIds: imageFileIds, actorId: g.userId, traceId: (c.get('traceId') as string | undefined) ?? '',
+      ipAddress: c.get('clientIp') as string | undefined,
     });
   } catch (error) {
     console.error('[products] deleting product photos failed', { tenantId: g.tenantId, productId: id, error: (error as Error).message });
