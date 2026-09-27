@@ -59,6 +59,53 @@ describe('platformAgent instructions — talking-head contract', () => {
   })
 })
 
+describe('platformAgent instructions — credit-confirmation contract, no backend ids or LaTeX', () => {
+  it('forbids opaque identifiers in plans and replies, while requiring exact id pass-through internally', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+
+    const costIdx = text.indexOf('## Credit-spending confirmation')
+    expect(costIdx).toBeGreaterThanOrEqual(0)
+    const nextSectionIdx = text.indexOf('\n\n## ', costIdx + 1)
+    const section = text.slice(costIdx, nextSectionIdx > 0 ? nextSectionIdx : undefined)
+
+    // Forbidden in what the user sees.
+    expect(section).toMatch(/file ids, voice ids, template slugs/)
+    expect(section).toMatch(/UUIDs/)
+    // But ids still pass through exactly in delegation/tool calls/working memory.
+    expect(section).toMatch(/pass every id exactly and unchanged/)
+    expect(section).toContain('exact fileId, Voice ID and template-slug pass-through')
+    expect(section).toContain('ask_clarifying_questions: its option labels and rationales are shown to the user')
+  })
+
+  it('does not ask the model to name a delegate/model in the plan (resolves the delegate-line contradiction)', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+
+    const costIdx = text.indexOf('## Credit-spending confirmation')
+    const nextSectionIdx = text.indexOf('\n\n## ', costIdx + 1)
+    const section = text.slice(costIdx, nextSectionIdx > 0 ? nextSectionIdx : undefined)
+
+    expect(section).not.toMatch(/which delegate\/model handles it/)
+    expect(section).toContain('skip any "Delegate/Model" line')
+  })
+
+  it('bans LaTeX in plans and replies', async () => {
+    const requestContext = new RequestContext()
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+
+    const costIdx = text.indexOf('## Credit-spending confirmation')
+    const nextSectionIdx = text.indexOf('\n\n## ', costIdx + 1)
+    const section = text.slice(costIdx, nextSectionIdx > 0 ? nextSectionIdx : undefined)
+
+    expect(section).toMatch(/never LaTeX/)
+    expect(section).toContain('$\\rightarrow$')
+  })
+})
+
 describe('platformAgent instructions — short-drama-stitch contract', () => {
   it('includes the short-drama-stitch contract with its no-generation mutual-exclusion clause', async () => {
     const requestContext = new RequestContext()
