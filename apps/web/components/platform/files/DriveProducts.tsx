@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowLeft, Download } from 'lucide-react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -11,17 +11,39 @@ import type { ProductRecord } from '@/components/platform/chat/creative-library/
 import type { Attachment } from '@/types/agent-events';
 import type { Conversation } from '@/components/platform/chat/types';
 
+type ProductsPage = { pages: { data: ProductRecord[] }[] };
+
+/** `['creative-products']` is a prefix match, not an exact one — it also
+ *  catches FilesList's `['creative-products', '__image-file-ids']` query,
+ *  whose data is a plain `string[]`. Any cache entry that isn't shaped like
+ *  the products infinite-query (an object with an array `pages`) is skipped
+ *  rather than assumed. */
+function isProductsPage(value: unknown): value is ProductsPage {
+    return !!value && typeof value === 'object' && Array.isArray((value as { pages?: unknown }).pages);
+}
+
 /** Reads the current copy of a product straight out of `ProductsPanel`'s own
  *  infinite-query cache (every cached search variant, every page), so the
  *  opened view reflects a rename or a naming update instead of the stale
  *  snapshot captured when it was opened. */
 function findCachedProduct(queryClient: QueryClient, id: string): ProductRecord | undefined {
-    const entries = queryClient.getQueriesData<{ pages: { data: ProductRecord[] }[] }>({ queryKey: ['creative-products'] });
+    const entries = queryClient.getQueriesData({ queryKey: ['creative-products'] });
     for (const [, data] of entries) {
-        const match = data?.pages.flatMap(page => page.data).find(product => product.id === id);
+        if (!isProductsPage(data)) continue;
+        const match = data.pages.flatMap(page => page.data).find(product => product.id === id);
         if (match) return match;
     }
     return undefined;
+}
+
+/** A cheap string fingerprint of the currently-open product, if the cache has
+ *  one — just enough to change when a rename or naming update lands, so the
+ *  useSyncExternalStore subscription below knows to re-render. */
+function cacheFingerprint(queryClient: QueryClient, openId: string | null): string {
+    if (!openId) return '';
+    const product = findCachedProduct(queryClient, openId);
+    if (!product) return '';
+    return `${product.id}:${product.name}:${product.namingStatus}:${product.images.map(image => image.fileId).join(',')}`;
 }
 
 /** Drive's Products tab is the product library itself — the same list, cards,
@@ -43,6 +65,16 @@ export function DriveProducts({ conversations, canAddToChat, onAddToChat, onDown
     // page (e.g. it no longer matches a search that ran while it was open),
     // the opened view still has something to show instead of blanking out.
     const openSnapshot = useRef(new Map<string, ProductRecord>());
+    // Deriving `open` from the cache during render is not by itself reactive —
+    // nothing here re-renders this component when the cache changes underneath
+    // it (e.g. a rename or naming update lands while the product is open).
+    // Subscribing to the query cache's own change events makes that happen;
+    // the fingerprint value itself is unused beyond being the thing that changes.
+    useSyncExternalStore(
+        onChange => queryClient.getQueryCache().subscribe(onChange),
+        () => cacheFingerprint(queryClient, openId),
+        () => '',
+    );
     const open = openId ? findCachedProduct(queryClient, openId) ?? openSnapshot.current.get(openId) ?? null : null;
 
     return <div className="space-y-4">

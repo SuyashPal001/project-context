@@ -22,12 +22,11 @@ const images = [
 ];
 const product = { id: 'p1', name: 'Serum', description: null, price: null, sourceUrl: null, namingStatus: 'done' as const, images, createdAt: '2026-09-27T00:00:00.000Z' };
 
-function renderDrive(props: Partial<Parameters<typeof DriveProducts>[0]> = {}) {
+function renderDrive(props: Partial<Parameters<typeof DriveProducts>[0]> = {}, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
     const onAddToChat = vi.fn();
     const onDownload = vi.fn();
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><DriveProducts conversations={[]} canAddToChat onAddToChat={onAddToChat} onDownload={onDownload} {...props} /></QueryClientProvider>);
-    return { onAddToChat, onDownload };
+    return { onAddToChat, onDownload, client };
 }
 
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [product] }); });
@@ -62,5 +61,31 @@ describe('DriveProducts', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Open Serum' }));
         fireEvent.click(screen.getByRole('button', { name: /Back to products/ }));
         expect((await screen.findByLabelText('Search products') as HTMLInputElement).value).toBe('ser');
+    });
+
+    // ['creative-products'] is a prefix match on the query cache — it also
+    // matches FilesList's ['creative-products', '__image-file-ids'] query,
+    // whose data is a plain string[], not { pages: [...] }. Opening a product
+    // must not throw when that entry (or the older key it replaced) is present.
+    it('opens a product without throwing when the cache also holds an unrelated creative-products entry', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        client.setQueryData(['creative-products', '__image-file-ids'], ['f1']);
+        client.setQueryData(['creative-products', 'image-file-ids'], ['f1']);
+        renderDrive({}, client);
+        const openButton = await screen.findByRole('button', { name: 'Open Serum' });
+        expect(() => fireEvent.click(openButton)).not.toThrow();
+        expect(screen.getByText('Serum (2).png')).toBeTruthy();
+    });
+
+    it('shows a live rename in the opened header, not the snapshot taken when it was opened', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        renderDrive({}, client);
+        fireEvent.click(await screen.findByRole('button', { name: 'Open Serum' }));
+        expect(screen.getByRole('heading', { name: 'Serum' })).toBeTruthy();
+
+        const renamed = { ...product, name: 'Renamed Serum' };
+        client.setQueryData(['creative-products', ''], { pages: [{ data: [renamed] }], pageParams: [0] });
+
+        expect(await screen.findByRole('heading', { name: 'Renamed Serum' })).toBeTruthy();
     });
 });
