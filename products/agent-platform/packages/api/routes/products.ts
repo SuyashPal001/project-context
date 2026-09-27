@@ -5,15 +5,18 @@ import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 import {
   ALLOWED_PRODUCT_IMAGE_TYPES, PRODUCT_NAME_PLACEHOLDER,
-  createProduct, deleteProduct, listProducts, listProductImageFileIds, loadProductImages, renameProduct,
+  createProduct, deleteProduct, getProduct, listProducts, listProductImageFileIds, loadProductImages, renameProduct,
 } from '../lib/productRecords';
-import { nameProduct } from '../lib/productNaming';
+import { nameCreatedProduct } from '../lib/nameCreatedProduct';
 import { deleteUnusedProductFiles } from '../lib/productFileCleanup';
 
 export const productsRoutes = new Hono<AppEnv>();
 
 const uuid = z.string().uuid();
 const MAX_IMAGES = 6;
+// Kept well under the web proxy's 15 s abort; past it the product returns
+// still pending and the client's retry names it.
+const INLINE_NAMING_BUDGET_MS = 10_000;
 
 type Action = 'read' | 'create' | 'delete';
 
@@ -62,7 +65,7 @@ productsRoutes.post(
       tenantId: g.tenantId, createdBy: g.userId, name: PRODUCT_NAME_PLACEHOLDER, description: null,
       price: null, sourceUrl: null, imageFileIds: fileIds, namingStatus: 'pending',
     });
-    return c.json({ data: product }, 201);
+    return c.json({ data: await nameCreatedProduct(g.tenantId, product, INLINE_NAMING_BUDGET_MS) }, 201);
   },
 );
 
@@ -71,8 +74,11 @@ productsRoutes.post('/:id/describe', async (c) => {
   if (g instanceof Response) return g;
   const id = c.req.param('id');
   if (!uuid.safeParse(id).success) return notFound(c);
-  const product = await nameProduct(g.tenantId, id);
-  return product ? c.json({ data: product }) : notFound(c);
+  const product = await getProduct(g.tenantId, id);
+  if (!product) return notFound(c);
+  // Same budget as create: past it the product comes back still pending rather
+  // than the web proxy's 15 s abort turning a slow naming into a 504.
+  return c.json({ data: await nameCreatedProduct(g.tenantId, product, INLINE_NAMING_BUDGET_MS) });
 });
 
 productsRoutes.patch(
