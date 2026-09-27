@@ -7,6 +7,7 @@ export const SYSTEM_FOLDER_LABELS: Record<string, string> = {
     'creative-avatars': 'Avatars',
     'creative-products': 'Products',
     'generated': 'Generated',
+    'imported-products': 'Imported products',
 };
 
 export function isSystemFolder(folderName: string): boolean {
@@ -17,13 +18,27 @@ export function isSystemFolder(folderName: string): boolean {
 // (hidden as a tile) but has no pill: it is part of "Uploads".
 export const PILL_FOLDERS = ['creative-avatars', 'creative-products', 'generated'] as const;
 
-const AGENT_OR_LIBRARY_PREFIXES = PILL_FOLDERS.map(folder => `${folder}/`);
+const AGENT_OR_LIBRARY_PREFIXES = [...PILL_FOLDERS.map(folder => `${folder}/`), 'imported-products/'];
 
 /** "Uploads": everything the user brought in themselves — chat attachments,
  *  their own folders and loose files — as opposed to agent output ("Generated")
  *  and the creative library, which have their own pills. */
 export function isUpload(key: string): boolean {
     return !AGENT_OR_LIBRARY_PREFIXES.some(prefix => key.startsWith(prefix));
+}
+
+/** Where product photos live: uploaded ones and ones downloaded by a link import. */
+export const PRODUCT_PREFIXES = ['creative-products/', 'imported-products/'] as const;
+
+export function isProductFileKey(key: string): boolean {
+    return PRODUCT_PREFIXES.some(prefix => key.startsWith(prefix));
+}
+
+/** Uploads plus product photos that no product uses anymore (e.g. after the
+ *  product was deleted) — they're still the user's files. While the referenced
+ *  ids are unknown (null), no product photo is shown, so none flash in. */
+export function uploadsWithOrphanProductFiles<T extends { id: string; key: string }>(files: T[], referencedIds: Set<string> | null): T[] {
+    return files.filter(f => isUpload(f.key) || (referencedIds !== null && isProductFileKey(f.key) && !referencedIds.has(f.id)));
 }
 
 // Upload CTA label per system folder, so every pill has a matching action —

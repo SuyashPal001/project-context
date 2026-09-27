@@ -14,7 +14,10 @@ import { FilesFilter } from "./FilesFilter";
 import { stagePendingAttachments } from "@/lib/pendingAttachments";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
-import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isUpload, isSystemFolder } from "./systemFolders";
+import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isSystemFolder, uploadsWithOrphanProductFiles } from "./systemFolders";
+import { DriveProducts } from "./DriveProducts";
+import { listProductImageFileIds } from "@/components/platform/chat/creative-library/productsApi";
+import type { Attachment } from "@/types/agent-events";
 import { FileGridView } from "./components/FileGridView";
 import { FileListView } from "./components/FileListView";
 import { IngestionSidePanel } from "./IngestionSidePanel";
@@ -65,6 +68,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     });
     const conversations = conversationsData?.data ?? [];
 
+    // The product panel's mutations invalidate ['creative-products'], which
+    // refreshes this too.
+    const { data: productImageIds } = useQuery({ queryKey: ['creative-products', 'image-file-ids'], queryFn: listProductImageFileIds });
+    const referencedProductImageIds = useMemo(() => productImageIds ? new Set(productImageIds) : null, [productImageIds]);
+
     const tooManySelected = selection.selectedIds.size > MAX_ATTACHMENTS_PER_MESSAGE;
 
     // conversationId null opens a new session; otherwise the files land in that
@@ -72,17 +80,21 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // so the destination is just which route we navigate to. A new session opens
     // the empty composer rather than creating a conversation up front, which
     // left an untitled chat behind on every click that never sent anything.
+    const addAttachmentsToChat = (attachments: Attachment[], conversationId: string | null) => {
+        if (attachments.length === 0) return;
+        stagePendingAttachments(attachments);
+        router.push(conversationId
+            ? `/${tenant}/dashboard/chat?id=${conversationId}`
+            : `/${tenant}/dashboard/chat`);
+    };
+
     const addToChat = (chosen: FileRecord[], conversationId: string | null) => {
-        if (chosen.length === 0) return;
-        stagePendingAttachments(chosen.map(f => ({
+        addAttachmentsToChat(chosen.map(f => ({
             fileId: f.id,
             name: f.filename,
             type: f.contentType,
             size: f.size,
-        })));
-        router.push(conversationId
-            ? `/${tenant}/dashboard/chat?id=${conversationId}`
-            : `/${tenant}/dashboard/chat`);
+        })), conversationId);
     };
 
     // A folder is granted, not attached. Attaching pushed every file's bytes into
@@ -128,8 +140,8 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     const uploads = uploadsActive && !prefix;
     const navigate = (nextPrefix: string) => { setUploadsActive(false); onPrefixChange(nextPrefix); };
     const uploadFiles = useMemo(
-        () => allFiles.filter(f => isUpload(f.key)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-        [allFiles]);
+        () => uploadsWithOrphanProductFiles(allFiles, referencedProductImageIds).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        [allFiles, referencedProductImageIds]);
     // "All" at the top level is every file that is not inside one of the user's
     // own folders (those open from their tiles), newest first — not just the
     // few loose ones, which hid chat uploads, generated files and the library.
@@ -313,6 +325,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </Button>
                         </div>
                     )}
+                    {activeSystemFolder !== 'creative-products' && (
                     <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                             <div className="relative flex-1 max-w-md">
@@ -354,6 +367,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </Button>
                         </div>
                     </div>
+                    )}
                     {breadcrumbNav}
                     {showPipelineDetails && hasParseableFiles && (
                         <div className="flex justify-end">
@@ -395,7 +409,14 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         </div>
                     )}
                     <div className="flex gap-4 items-start">
-                    {viewMode === 'grid' ? (
+                    {activeSystemFolder === 'creative-products' ? (
+                        <DriveProducts
+                            conversations={conversations}
+                            canAddToChat={!!defaultAgentId}
+                            onAddToChat={addAttachmentsToChat}
+                            onDownload={mutations.downloadFile}
+                        />
+                    ) : viewMode === 'grid' ? (
                         <FileGridView
                             folderCards={folderCards}
                             files={pagedFiles}

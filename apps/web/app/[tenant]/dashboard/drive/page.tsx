@@ -30,7 +30,7 @@ export default function FilesPage() {
                             Upload once — then put any file to work in a chat.
                         </p>
                     </div>
-                    {canUpload && (
+                    {canUpload && !currentPrefix.startsWith('creative-products/') && (
                         <Button onClick={() => setIsUploadOpen(true)}>
                             <Upload className="w-4 h-4 mr-2" />
                             {uploadLabelForPrefix(currentPrefix)}
