@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 const lib = {
   listProducts: vi.fn(), getProduct: vi.fn(), createProduct: vi.fn(),
   renameProduct: vi.fn(), deleteProduct: vi.fn(), loadProductImages: vi.fn(),
+  listProductImageFileIds: vi.fn(),
 };
 vi.mock('../lib/productRecords', async (orig) => ({
   ...(await orig<typeof import('../lib/productRecords')>()),
@@ -13,6 +14,7 @@ vi.mock('../lib/productRecords', async (orig) => ({
   renameProduct: (...a: unknown[]) => lib.renameProduct(...a),
   deleteProduct: (...a: unknown[]) => lib.deleteProduct(...a),
   loadProductImages: (...a: unknown[]) => lib.loadProductImages(...a),
+  listProductImageFileIds: (...a: unknown[]) => lib.listProductImageFileIds(...a),
 }));
 const nameProductMock = vi.fn();
 vi.mock('../lib/productNaming', () => ({ nameProduct: (...a: unknown[]) => nameProductMock(...a) }));
@@ -136,5 +138,18 @@ describe('/products routes', () => {
     const res = await (await app()).request('/products/not-a-uuid', { method: 'DELETE' });
     expect(res.status).toBe(404);
     expect(lib.deleteProduct).not.toHaveBeenCalled();
+  });
+
+  it('lists the tenant\'s product image file ids', async () => {
+    lib.listProductImageFileIds.mockResolvedValue([F1, F2]);
+    const res = await (await app()).request('/products/image-file-ids');
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([F1, F2]);
+    expect(lib.listProductImageFileIds).toHaveBeenCalledWith('tenant-1');
+  });
+
+  it('requires files:read for image file ids', async () => {
+    const res = await (await app([{ resource: 'files', action: 'create' }])).request('/products/image-file-ids');
+    expect(res.status).toBe(403);
   });
 });
