@@ -86,6 +86,15 @@ export function splitSourceConversation(active: Conversation[], sourceConversati
     return { pinned: active[idx], rest: [...active.slice(0, idx), ...active.slice(idx + 1)] };
 }
 
+/** The pinned row already answers "is there a chat" when it's showing, so
+ *  "No chats yet." underneath it would be contradicting a row one line up —
+ *  that only happens when the source chat is the tenant's only active one.
+ *  A typed search is exempt: the pinned row hides then, so an empty `matches`
+ *  really does mean nothing matched. */
+export function showsEmptyChatList(matchCount: number, hasPinnedRow: boolean, hasQuery: boolean): boolean {
+    return matchCount === 0 && (!hasPinnedRow || hasQuery);
+}
+
 interface AddToChatMenuProps {
     conversations: Conversation[];
     disabled?: boolean;
@@ -210,11 +219,11 @@ export function AddToChatMenu({
                 </div>
 
                 <div className="max-h-72 overflow-y-auto">
-                    {matches.length === 0 ? (
+                    {showsEmptyChatList(matches.length, !!pinned, !!q) ? (
                         <p className="px-2 py-3 text-xs text-muted-foreground text-center">
                             {query ? 'No chats match.' : 'No chats yet.'}
                         </p>
-                    ) : (
+                    ) : matches.length > 0 ? (
                         groupByAgent(visible).map(group => (
                             <div key={group.agentId} className="mb-1 last:mb-0">
                                 {/* Identity stated once per agent. Not a button: the
@@ -265,7 +274,7 @@ export function AddToChatMenu({
                                 ))}
                             </div>
                         ))
-                    )}
+                    ) : null}
                     {hiddenCount > 0 && (
                         <button
                             type="button"

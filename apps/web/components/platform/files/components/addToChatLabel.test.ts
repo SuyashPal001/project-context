@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { folderChatLabel, groupByAgent, messagePreview, relativeAge, splitSourceConversation } from './AddToChatMenu';
+import { folderChatLabel, groupByAgent, messagePreview, relativeAge, showsEmptyChatList, splitSourceConversation } from './AddToChatMenu';
 import type { Conversation } from '@/components/platform/chat/types';
 import { MAX_ATTACHMENTS_PER_MESSAGE } from '@/components/platform/chat/useFileUpload';
 
@@ -115,5 +115,27 @@ describe('splitSourceConversation', () => {
         const { pinned, rest } = splitSourceConversation(active, 'not-in-the-list');
         expect(pinned).toBeNull();
         expect(rest).toEqual(active);
+    });
+});
+
+// The pinned "Created here" row already tells you a chat exists, so
+// "No chats yet." right under it would be contradicting the row a line up.
+// That situation is exactly: the source chat is the tenant's only active one.
+describe('showsEmptyChatList', () => {
+    it('hides the empty-state line when the pinned row is the only chat and there is no search', () => {
+        expect(showsEmptyChatList(0, true, false)).toBe(false);
+    });
+
+    it('shows the empty-state line once a search is typed, even with a pinned row', () => {
+        expect(showsEmptyChatList(0, true, true)).toBe(true);
+    });
+
+    it('shows the empty-state line when there is no pinned row at all', () => {
+        expect(showsEmptyChatList(0, false, false)).toBe(true);
+    });
+
+    it('never shows the empty-state line while chats are matching', () => {
+        expect(showsEmptyChatList(3, false, false)).toBe(false);
+        expect(showsEmptyChatList(3, true, true)).toBe(false);
     });
 });

@@ -550,7 +550,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 open={!!mutations.deletingFolderName}
                 onOpenChange={(open) => !open && mutations.setDeletingFolderName(null)}
                 title="Delete Folder"
-                description={`Delete folder "${mutations.deletingFolderName}" and all its files? This cannot be undone.`}
+                // Same fallback as the folder tiles: the raw name (a conversation
+                // id here) only shows when no chat matches it.
+                description={`Delete folder "${
+                    mutations.deletingFolderName && prefix === 'generated/'
+                        ? generatedFolderDisplayName(mutations.deletingFolderName, conversations) ?? mutations.deletingFolderName
+                        : mutations.deletingFolderName
+                }" and all its files? This cannot be undone.`}
                 confirmLabel="Delete Folder"
                 variant="danger"
                 onConfirm={() => { if (mutations.deletingFolderName) mutations.deleteFolder(mutations.deletingFolderName, prefix, allFiles); }}
