@@ -90,7 +90,7 @@ export function FileListView({
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount, totalSize, latestAddedAt }) => (
+                    {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount, totalSize, latestAddedAt, displayName, sourceConversationId }) => (
                         <TableRow
                             key={`folder-${folderName}`}
                             onClick={() => onNavigateToFolder(folderPrefix)}
@@ -100,7 +100,7 @@ export function FileListView({
                             <TableCell className="py-3">
                                 <div className="flex items-center gap-2">
                                     <FolderIcon className="w-4 h-4 text-amber-500 fill-amber-500/20" />
-                                    <span className="font-medium text-foreground">{folderName}/</span>
+                                    <span className="font-medium text-foreground" title={`${displayName ?? folderName}/`}>{displayName ?? folderName}/</span>
                                 </div>
                             </TableCell>
                             {/* A folder has a size and a date like anything else — the sum of
@@ -119,6 +119,7 @@ export function FileListView({
                                         triggerClassName="-ml-2.5"
                                         disabled={fileCount === 0}
                                         label={folderChatLabel(fileCount)}
+                                        sourceConversationId={sourceConversationId}
                                         onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
                                     />
                                     {(canDelete || showPipelineDetails) && (

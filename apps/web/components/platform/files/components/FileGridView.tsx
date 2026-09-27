@@ -132,7 +132,7 @@ export function FileGridView({
 }: FileGridViewProps) {
     return (
         <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount, previewFiles }) => (
+            {folderCards.map(({ folderName, folderPrefix, allDone, isIngesting, fileCount, previewFiles, displayName, sourceConversationId }) => (
                 <div
                     key={`folder-${folderName}`}
                     onClick={() => onNavigateToFolder(folderPrefix)}
@@ -147,6 +147,7 @@ export function FileGridView({
                                 triggerClassName="bg-black/50 backdrop-blur-sm text-white hover:bg-black/70 hover:text-white"
                                 disabled={fileCount === 0}
                                 label={folderChatLabel(fileCount)}
+                                sourceConversationId={sourceConversationId}
                                 onPick={(conversationId) => onAddFolderToChat(folderPrefix, conversationId)}
                             />
                             {showPipelineDetails && (
@@ -169,7 +170,7 @@ export function FileGridView({
                         </div>
                     </div>
                     <div className="p-2.5 flex flex-col gap-1">
-                        <span className="text-xs font-medium text-foreground/80 truncate" title={`${folderName}/`}>{folderName}</span>
+                        <span className="text-xs font-medium text-foreground/80 truncate" title={`${displayName ?? folderName}/`}>{displayName ?? folderName}</span>
                         <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wide">
                             {fileCount} {fileCount === 1 ? 'file' : 'files'}
                         </span>

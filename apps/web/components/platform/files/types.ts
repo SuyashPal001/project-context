@@ -37,4 +37,13 @@ export interface FolderCard {
     latestAddedAt: string | null;
     /** Newest files in the folder, for the grid tile's stacked preview. */
     previewFiles: FileRecord[];
+    /** The owning chat's title, for a generated/<conversationId>/ folder whose
+     *  chat still exists — undefined for every other folder, and for one whose
+     *  chat was deleted, so the view falls back to `folderName` (the raw id). */
+    displayName?: string;
+    /** The chat that produced this folder, when it's a generated/<conversationId>/
+     *  one — handed to AddToChatMenu so it can pin that chat in the picker.
+     *  `folderName`/`folderPrefix` stay the real key for navigation, deletion
+     *  and grants; this only ever affects what's shown or pre-selected. */
+    sourceConversationId?: string;
 }
