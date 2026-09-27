@@ -13,7 +13,16 @@ const SKIP_IMAGE_FILENAME = /logo|icon|sprite/i;
 
 function resolveUrl(candidate: string, pageUrl: string): string | null {
   try {
-    return new URL(candidate, pageUrl).href;
+    const url = new URL(candidate, pageUrl);
+    // Real storefronts (Shopify's theme, among others) commonly emit
+    // `og:image` as a plain http:// URL and put the https:// variant in a
+    // separate `og:image:secure_url` tag, per the legacy OpenGraph spec —
+    // we only ever read og:image. The import route requires https:// for
+    // every image fetch, so left as-is this silently drops an otherwise
+    // perfectly good image. Every image CDN that serves one scheme serves
+    // the other at the same path, so upgrading here is safe.
+    if (url.protocol === 'http:') url.protocol = 'https:';
+    return url.href;
   } catch {
     return null; // malformed src — skip rather than throw, one bad <img> must not fail the whole extract
   }

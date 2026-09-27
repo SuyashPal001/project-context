@@ -94,6 +94,13 @@ describe('extractProductPage', () => {
     ]);
   });
 
+  it('upgrades a plain http:// og:image to https:// (real Shopify pages emit og:image as http with a separate og:image:secure_url)', () => {
+    const html = `<html><head><meta property="og:image" content="http://shop.example.com/cdn/a.jpg"></head></html>`;
+    expect(extractProductPage(html, 'https://shop.example.com/p/1').imageUrls).toEqual([
+      'https://shop.example.com/cdn/a.jpg',
+    ]);
+  });
+
   it('resolves a protocol-relative image URL against the page URL scheme', () => {
     const html = `<html><head><meta property="og:image" content="//cdn.example.com/a.jpg"></head></html>`;
     expect(extractProductPage(html, 'https://shop.example.com/p/1').imageUrls).toEqual([
