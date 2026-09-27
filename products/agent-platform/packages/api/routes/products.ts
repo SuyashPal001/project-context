@@ -5,9 +5,8 @@ import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 import {
   ALLOWED_PRODUCT_IMAGE_TYPES, PRODUCT_NAME_PLACEHOLDER,
-  createProduct, deleteProduct, listProducts, listProductImageFileIds, loadProductImages, renameProduct,
+  createProduct, deleteProduct, getProduct, listProducts, listProductImageFileIds, loadProductImages, renameProduct,
 } from '../lib/productRecords';
-import { nameProduct } from '../lib/productNaming';
 import { nameCreatedProduct } from '../lib/nameCreatedProduct';
 import { deleteUnusedProductFiles } from '../lib/productFileCleanup';
 
@@ -75,8 +74,11 @@ productsRoutes.post('/:id/describe', async (c) => {
   if (g instanceof Response) return g;
   const id = c.req.param('id');
   if (!uuid.safeParse(id).success) return notFound(c);
-  const product = await nameProduct(g.tenantId, id);
-  return product ? c.json({ data: product }) : notFound(c);
+  const product = await getProduct(g.tenantId, id);
+  if (!product) return notFound(c);
+  // Same budget as create: past it the product comes back still pending rather
+  // than the web proxy's 15 s abort turning a slow naming into a 504.
+  return c.json({ data: await nameCreatedProduct(g.tenantId, product, INLINE_NAMING_BUDGET_MS) });
 });
 
 productsRoutes.patch(

@@ -123,6 +123,7 @@ describe('/products routes', () => {
   });
 
   it('describes a product and returns the named record', async () => {
+    lib.getProduct.mockResolvedValue(product({ namingStatus: 'pending', name: 'Untitled product' }));
     nameProductMock.mockResolvedValue(product({ name: 'Niacinamide serum' }));
     const res = await (await app()).request(`/products/${P1}/describe`, { method: 'POST' });
     expect(res.status).toBe(200);
@@ -131,9 +132,27 @@ describe('/products routes', () => {
   });
 
   it('404s describe for a product the tenant does not own', async () => {
-    nameProductMock.mockResolvedValue(null);
+    lib.getProduct.mockResolvedValue(null);
     const res = await (await app()).request(`/products/${P1}/describe`, { method: 'POST' });
     expect(res.status).toBe(404);
+    expect(nameProductMock).not.toHaveBeenCalled();
+  });
+
+  // /describe is bounded like create: the web proxy aborts at 15 s, and a 504
+  // left the brief chip on the placeholder even though naming later landed.
+  it('describe returns the product still pending when naming outlasts the budget', async () => {
+    vi.useFakeTimers();
+    try {
+      lib.getProduct.mockResolvedValue(product({ namingStatus: 'pending', name: 'Untitled product' }));
+      nameProductMock.mockReturnValue(new Promise(() => {}));
+      const pendingRes = (await app()).request(`/products/${P1}/describe`, { method: 'POST' });
+      await vi.advanceTimersByTimeAsync(10_000);
+      const res = await pendingRes;
+      expect(res.status).toBe(200);
+      expect((await res.json()).data).toEqual(expect.objectContaining({ namingStatus: 'pending' }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('renames with a trimmed name', async () => {
