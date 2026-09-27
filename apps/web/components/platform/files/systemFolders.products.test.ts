@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isProductFileKey, isSystemFolder, isUpload, uploadsWithOrphanProductFiles } from './systemFolders';
+import { isProductFileKey, isSystemFolder, isUpload, uploadsWithOrphanProductFiles, withProductsPill } from './systemFolders';
 
 const file = (id: string, key: string) => ({ id, key });
 
@@ -20,5 +20,12 @@ describe('product files in Drive', () => {
     it('shows no product photos in Uploads while the referenced ids are still loading', () => {
         const files = [file('u1', 'chat-attachments/a.png'), file('p1', 'creative-products/b.png')];
         expect(uploadsWithOrphanProductFiles(files, null).map(f => f.id)).toEqual(['u1']);
+    });
+
+    it('always includes the Products pill, ordered by PILL_FOLDERS, even for a tenant with no creative-products files', () => {
+        expect(withProductsPill([])).toEqual(['creative-products']);
+        expect(withProductsPill(['generated'])).toEqual(['creative-products', 'generated']);
+        expect(withProductsPill(['creative-avatars', 'generated'])).toEqual(['creative-avatars', 'creative-products', 'generated']);
+        expect(withProductsPill(['creative-products'])).toEqual(['creative-products']);
     });
 });

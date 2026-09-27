@@ -41,6 +41,16 @@ export function uploadsWithOrphanProductFiles<T extends { id: string; key: strin
     return files.filter(f => isUpload(f.key) || (referencedIds !== null && isProductFileKey(f.key) && !referencedIds.has(f.id)));
 }
 
+/** The Products pill must always be reachable, even for a tenant whose product
+ *  photos are all link imports (stored under imported-products/, which has no
+ *  files under creative-products/) or who has no products yet — otherwise there
+ *  is no way into DriveProducts. Order follows PILL_FOLDERS. */
+export function withProductsPill(pills: string[]): string[] {
+    const present = new Set(pills);
+    present.add('creative-products');
+    return PILL_FOLDERS.filter(folder => present.has(folder));
+}
+
 // Upload CTA label per system folder, so every pill has a matching action —
 // "New avatar" reads better than "Upload" + the plural pill label.
 const UPLOAD_LABELS: Record<string, string> = {

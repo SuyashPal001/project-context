@@ -14,7 +14,7 @@ import { FilesFilter } from "./FilesFilter";
 import { stagePendingAttachments } from "@/lib/pendingAttachments";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileUpload";
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
-import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isSystemFolder, uploadsWithOrphanProductFiles } from "./systemFolders";
+import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isSystemFolder, uploadsWithOrphanProductFiles, withProductsPill } from "./systemFolders";
 import { DriveProducts } from "./DriveProducts";
 import { listProductImageFileIds } from "@/components/platform/chat/creative-library/productsApi";
 import type { Attachment } from "@/types/agent-events";
@@ -70,7 +70,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
 
     // The product panel's mutations invalidate ['creative-products'], which
     // refreshes this too.
-    const { data: productImageIds } = useQuery({ queryKey: ['creative-products', 'image-file-ids'], queryFn: listProductImageFileIds });
+    const { data: productImageIds } = useQuery({ queryKey: ['creative-products', '__image-file-ids'], queryFn: listProductImageFileIds });
     const referencedProductImageIds = useMemo(() => productImageIds ? new Set(productImageIds) : null, [productImageIds]);
 
     const tooManySelected = selection.selectedIds.size > MAX_ATTACHMENTS_PER_MESSAGE;
@@ -162,11 +162,11 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // Opened straight into a folder, so the root was never loaded: show all four
     // rather than only the current one. A folder's pill is also kept when it was
     // missing from an earlier root load (e.g. its first file was just uploaded).
-    const systemFolderPills = rootSystemFolders.length === 0 && prefix
+    const systemFolderPills = withProductsPill(rootSystemFolders.length === 0 && prefix
         ? [...PILL_FOLDERS]
         : currentSystemFolder && (PILL_FOLDERS as readonly string[]).includes(currentSystemFolder) && !rootSystemFolders.includes(currentSystemFolder)
             ? [...rootSystemFolders, currentSystemFolder]
-            : rootSystemFolders;
+            : rootSystemFolders);
     // Inside one of the user's own folders no system pill matches, so "All" is
     // the active one — the folder lives under it.
     const activeSystemFolder = currentSystemFolder && (PILL_FOLDERS as readonly string[]).includes(currentSystemFolder) ? currentSystemFolder : null;
@@ -279,12 +279,12 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     </div>
                 )}
 
-            {isLoading ? (
+            {isLoading && activeSystemFolder !== 'creative-products' ? (
                 <div className="flex justify-center py-12 flex-col items-center gap-4 text-muted-foreground border border-border rounded-lg bg-card">
                     <Loader2 className="w-8 h-8 animate-spin" />
                     <p>Loading documents...</p>
                 </div>
-            ) : shownFiles.length === 0 && shownFolderCount === 0 ? (
+            ) : activeSystemFolder !== 'creative-products' && shownFiles.length === 0 && shownFolderCount === 0 ? (
                 <div className="space-y-4">
                     {breadcrumbNav}
                     <div className="py-8">
