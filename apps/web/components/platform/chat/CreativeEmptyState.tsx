@@ -18,15 +18,19 @@ import {
 } from "./creative-library/creativeBriefModel";
 
 // Category shortcuts under the composer — Templates (proven ad-structure
-// starting points), Avatars, Products, Audio. No "Browse" tab: research on
+// starting points), Avatars, Products, Voices. No "Browse" tab: research on
 // comparable ad-creation tools (Creatify, Arcads, AdCreative.ai) turned up no
 // evidence of a generic "browse everything" tab at any of them, only these
 // four named, revenue-driving categories.
+// The tab's `id` stays 'audio' (used as the CreativeLibraryTab key
+// elsewhere, e.g. `tab === 'audio'`) — only the label users see changed to
+// "Voices", since the panel is a picker of curated voices, not a general
+// audio library.
 const LIBRARY_TABS = [
     { id: 'templates', label: 'Templates', icon: LayoutTemplate },
     { id: 'avatars', label: 'Avatars', icon: UserRound },
     { id: 'products', label: 'Products', icon: Package },
-    { id: 'audio', label: 'Audio', icon: Music },
+    { id: 'audio', label: 'Voices', icon: Music },
 ] as const;
 
 interface CreativeEmptyStateProps {
