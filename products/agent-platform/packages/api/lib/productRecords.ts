@@ -157,12 +157,14 @@ export async function renameProduct(tenantId: string, id: string, name: string):
   return toProductRecord(row, await loadProductImages(tenantId, row.imageFileIds));
 }
 
-export async function deleteProduct(tenantId: string, id: string): Promise<boolean> {
-  const deleted = await db
+/** Deletes the product row. Returns its image file ids so the caller can delete
+ *  the photos too, or null when the tenant has no such product. */
+export async function deleteProduct(tenantId: string, id: string): Promise<string[] | null> {
+  const [deleted] = await db
     .delete(creativeProducts)
     .where(and(eq(creativeProducts.tenantId, tenantId), eq(creativeProducts.id, id)))
-    .returning({ id: creativeProducts.id });
-  return deleted.length > 0;
+    .returning({ imageFileIds: creativeProducts.imageFileIds });
+  return deleted ? deleted.imageFileIds : null;
 }
 
 export async function applyNamingResult(
