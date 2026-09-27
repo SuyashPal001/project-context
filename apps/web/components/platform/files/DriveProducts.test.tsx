@@ -39,15 +39,28 @@ describe('DriveProducts', () => {
         expect(screen.queryByText('Serum (2).png')).toBeNull();
     });
 
-    it('opens a product to show its photos, adds them all to chat, downloads them, and goes back', async () => {
+    it('opens a product to show its photos, adds them all to chat, downloads one, and goes back', async () => {
         const { onAddToChat, onDownload } = renderDrive();
         fireEvent.click(await screen.findByRole('button', { name: 'Open Serum' }));
         expect(screen.getByText('Serum (2).png')).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Add photos to chat' }));
         expect(onAddToChat).toHaveBeenCalledWith(images, null);
-        fireEvent.click(screen.getByRole('button', { name: /Download photos/ }));
-        expect(onDownload.mock.calls.map(c => c[0])).toEqual(['f1', 'f2']);
+        // Per-photo download only — no bulk "Download photos" button. A bulk
+        // click-once-per-image button would rely on window.open firing more
+        // than once per user gesture, which browsers block.
+        expect(screen.queryByRole('button', { name: /Download photos/ })).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Download Serum (2).png' }));
+        expect(onDownload).toHaveBeenCalledWith('f2');
         fireEvent.click(screen.getByRole('button', { name: /Back to products/ }));
         expect(await screen.findByRole('button', { name: 'Open Serum' })).toBeTruthy();
+    });
+
+    it('keeps the product list mounted (search survives) while a product is open', async () => {
+        renderDrive();
+        const search = await screen.findByLabelText('Search products');
+        fireEvent.change(search, { target: { value: 'ser' } });
+        fireEvent.click(await screen.findByRole('button', { name: 'Open Serum' }));
+        fireEvent.click(screen.getByRole('button', { name: /Back to products/ }));
+        expect((await screen.findByLabelText('Search products') as HTMLInputElement).value).toBe('ser');
     });
 });
