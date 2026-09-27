@@ -28,7 +28,6 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             voices: matching.map(row => {
                 const supportedLocales = row.accents?.map(accent => accent.locale) ?? (row.language ? [row.language] : []);
-                const supportsRequestedLanguage = supportedLocales.some(locale => locale.split(/[-_]/)[0] === language);
                 return {
                     id: row.providerId,
                     name: row.name,
@@ -38,7 +37,11 @@ export async function GET(request: NextRequest) {
                     gender: row.gender ?? undefined,
                     country: row.country ?? undefined,
                     supportedLocales,
-                    hasPreview: supportsRequestedLanguage || Boolean(row.previewFileUrl || row.localPreviewAsset),
+                    // `accents` is native-sound metadata, not a hard limit — the
+                    // preview route synthesizes any voice in any language this
+                    // route offers (see preview/route.ts), so every voice is
+                    // previewable regardless of which one is selected.
+                    hasPreview: true,
                 };
             }),
         }, { headers: { 'Cache-Control': 'private, no-store' } });

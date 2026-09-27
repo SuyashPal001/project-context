@@ -32,13 +32,13 @@ interface CuratedVoice {
 // catalogue has distinct voices sharing a name (several Carson variants).
 const CURATED_VOICES: readonly CuratedVoice[] = [
   { name: 'Lauren', tagline: 'Lively Narrator', localPreviewAsset: '/creative/voices/lauren-lively-narrator.wav' },
-  { name: 'Cathy', tagline: 'Coworker' },
+  { name: 'Cathy', tagline: 'Coworker', localPreviewAsset: '/creative/voices/cathy-coworker.wav' },
   { name: 'Nandi', tagline: 'Poised Concierge', localPreviewAsset: '/creative/voices/nandi-poised-concierge.wav' },
-  { name: 'Carson', tagline: 'Curious Conversationalist' },
-  { name: 'Corey', tagline: 'Supportive Buddy' },
-  { name: 'Connie', tagline: 'Candid Conversationalist' },
-  { name: 'Theo', tagline: 'Modern Narrator' },
-  { name: 'Asher', tagline: 'Podcaster' },
+  { name: 'Carson', tagline: 'Curious Conversationalist', localPreviewAsset: '/creative/voices/carson-curious-conversationalist.wav' },
+  { name: 'Corey', tagline: 'Supportive Buddy', localPreviewAsset: '/creative/voices/corey-supportive-buddy.wav' },
+  { name: 'Connie', tagline: 'Candid Conversationalist', localPreviewAsset: '/creative/voices/connie-candid-conversationalist.wav' },
+  { name: 'Theo', tagline: 'Modern Narrator', localPreviewAsset: '/creative/voices/theo-modern-narrator.wav' },
+  { name: 'Asher', tagline: 'Podcaster', localPreviewAsset: '/creative/voices/asher-podcaster.wav' },
 ];
 
 interface CartesiaListVoice {

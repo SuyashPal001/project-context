@@ -84,9 +84,11 @@ export async function GET(request: NextRequest) {
         const voice = await db.query.voiceCatalogue.findFirst({ where: eq(voiceCatalogue.providerId, id) });
         if (!voice) return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
 
-        if (language !== 'en' && voice.accents?.length && !voice.accents.some(accent => accent.locale.split(/[-_]/)[0] === language)) {
-            return NextResponse.json({ error: 'This voice does not support that language.' }, { status: 404 });
-        }
+        // `accents` records which languages sound most native for a voice — it is
+        // not a hard technical limit. Cartesia's model can synthesize any of the
+        // languages in SAMPLE_TRANSCRIPTS with any voice id, so every voice stays
+        // previewable in every offered language instead of only its recorded
+        // accents; the earlier restriction here 404'd voices that in fact worked.
 
         // Our own persisted copy of a previously-generated sample — checked first,
         // for every language, before either the Cartesia-hosted preview or a fresh
@@ -108,22 +110,10 @@ export async function GET(request: NextRequest) {
         }
 
         if (language === 'en') {
-            // Static clip first, then the bundled local asset; if neither exists (or the static clip
-            // fetch fails) fall through to on-demand TTS below so every English voice stays previewable.
-            if (voice.previewFileUrl) {
-                const previewUrl = new URL(voice.previewFileUrl);
-                if (previewUrl.protocol === 'https:' && (previewUrl.hostname === 'cartesia.ai' || previewUrl.hostname.endsWith('.cartesia.ai'))) {
-                    const preview = await fetch(previewUrl, { headers: { Authorization: `Bearer ${key}`, 'Cartesia-Version': '2026-08-14' }, redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(10_000) });
-                    const contentType = preview.headers.get('content-type') ?? '';
-                    const length = Number(preview.headers.get('content-length') ?? 0);
-                    if (preview.ok && (contentType.startsWith('audio/') || contentType === 'application/octet-stream') && length <= 10 * 1024 * 1024) {
-                        const bytes = await preview.arrayBuffer();
-                        if (bytes.byteLength <= 10 * 1024 * 1024) {
-                            return new NextResponse(bytes, { headers: { 'Content-Type': contentType, 'Cache-Control': 'private, no-store' } });
-                        }
-                    }
-                }
-            }
+            // Bundled local asset first — every curated voice has one (see
+            // refreshVoiceCatalogue.ts's CURATED_VOICES) — then the Cartesia-hosted
+            // static clip as a fallback, then on-demand TTS below, so every English
+            // voice stays previewable even if a step above fails.
             if (voice.localPreviewAsset) {
                 // Read the bundled file from disk rather than redirecting to it: a
                 // redirect resolves against `request.url`'s host, which is not
@@ -139,8 +129,22 @@ export async function GET(request: NextRequest) {
                         'Cache-Control': 'private, no-store',
                     } });
                 } catch {
-                    // Bundled file missing on disk — fall through to on-demand
-                    // TTS below so the voice stays previewable.
+                    // Bundled file missing on disk — fall through to the remote
+                    // clip or on-demand TTS below so the voice stays previewable.
+                }
+            }
+            if (voice.previewFileUrl) {
+                const previewUrl = new URL(voice.previewFileUrl);
+                if (previewUrl.protocol === 'https:' && (previewUrl.hostname === 'cartesia.ai' || previewUrl.hostname.endsWith('.cartesia.ai'))) {
+                    const preview = await fetch(previewUrl, { headers: { Authorization: `Bearer ${key}`, 'Cartesia-Version': '2026-08-14' }, redirect: 'manual', cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+                    const contentType = preview.headers.get('content-type') ?? '';
+                    const length = Number(preview.headers.get('content-length') ?? 0);
+                    if (preview.ok && (contentType.startsWith('audio/') || contentType === 'application/octet-stream') && length <= 10 * 1024 * 1024) {
+                        const bytes = await preview.arrayBuffer();
+                        if (bytes.byteLength <= 10 * 1024 * 1024) {
+                            return new NextResponse(bytes, { headers: { 'Content-Type': contentType, 'Cache-Control': 'private, no-store' } });
+                        }
+                    }
                 }
             }
         }

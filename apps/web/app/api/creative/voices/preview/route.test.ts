@@ -107,14 +107,20 @@ it('generates the sample in the requested supported language', async () => {
     expect(JSON.parse(request.body)).toEqual(expect.objectContaining({ language: 'hi', transcript: expect.stringMatching(/[ऀ-ॿ]/), voice: { mode: 'id', id: 'voice-1' } }));
 });
 
-it('does not synthesize a language the catalogue row does not support', async () => {
-    findFirstMock.mockResolvedValue({ providerId: 'voice-1', name: 'Cathy', tagline: 'Coworker', previewFileUrl: null, localPreviewAsset: null, accents: [{ accent: 'american', locale: 'en-US', is_native: true }] });
-    const fetchMock = vi.fn();
+it('synthesizes a language outside the catalogue row\'s recorded accents', async () => {
+    // `accents` is native-sound metadata, not a technical limit — a voice
+    // recorded with only an English accent must still synthesize Hindi (or
+    // any other offered language) via Cartesia, same as any other voice.
+    // A fresh providerId: the in-memory sample cache is module-scoped and
+    // survives across tests, and 'voice-1:hi' is already populated by an
+    // earlier test in this file.
+    findFirstMock.mockResolvedValue({ providerId: 'voice-5', name: 'Cathy', tagline: 'Coworker', previewFileUrl: null, localPreviewAsset: null, accents: [{ accent: 'american', locale: 'en-US', is_native: true }] });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, headers: new Headers({ 'content-type': 'audio/wav' }), arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer });
     vi.stubGlobal('fetch', fetchMock);
     const { GET } = await import('./route');
-    const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-1&language=hi'));
-    expect(response.status).toBe(404);
-    expect(fetchMock).not.toHaveBeenCalled();
+    const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-5&language=hi'));
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.cartesia.ai/tts/bytes');
 });
 
 it('returns 404 for an id with no catalogue row', async () => {

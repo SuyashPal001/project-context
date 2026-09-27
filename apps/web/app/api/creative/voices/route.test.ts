@@ -60,18 +60,23 @@ it('enables synthesis when the requested language is supported by the catalogue 
   expect((await response.json()).voices).toEqual([{ id: 'cathy-id', name: 'Cathy', tagline: 'Coworker', description: undefined, language: 'en', gender: undefined, country: undefined, supportedLocales: ['en-US', 'hi-IN'], hasPreview: true }]);
 });
 
-it('returns all catalogue rows regardless of requested language, disabling preview for unsupported ones', async () => {
+it('returns every catalogue row as previewable regardless of its recorded accents', async () => {
+  // `accents` is native-sound metadata, not a technical limit — Cartesia
+  // synthesizes any voice in any offered language, so a voice recorded with
+  // only English accents must still report hasPreview:true for Arabic (or
+  // any other offered language), matching what the preview route actually
+  // does (see preview/route.ts, which no longer 404s on an accent mismatch).
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
   findManyMock.mockResolvedValue([
     { providerId: 'english-only', name: 'Lauren', tagline: 'Lively Narrator', description: undefined, language: 'en', gender: undefined, country: undefined, accents: [{ accent: 'american', locale: 'en-US', is_native: true }], previewFileUrl: null, localPreviewAsset: null },
     { providerId: 'hindi-capable', name: 'Cathy', tagline: 'Coworker', description: undefined, language: 'en', gender: undefined, country: undefined, accents: [{ accent: 'american', locale: 'en-US', is_native: true }, { accent: 'indian', locale: 'hi-IN', is_native: false }], previewFileUrl: null, localPreviewAsset: null },
   ]);
   const { GET } = await import('./route');
-  const response = await GET(new NextRequest('http://localhost/api/creative/voices?language=hi'));
+  const response = await GET(new NextRequest('http://localhost/api/creative/voices?language=ar'));
   const body = await response.json();
   expect(response.status).toBe(200);
   expect(body.voices).toHaveLength(2);
-  expect(body.voices.find((v: { id: string }) => v.id === 'english-only')).toEqual(expect.objectContaining({ hasPreview: false }));
+  expect(body.voices.find((v: { id: string }) => v.id === 'english-only')).toEqual(expect.objectContaining({ hasPreview: true }));
   expect(body.voices.find((v: { id: string }) => v.id === 'hindi-capable')).toEqual(expect.objectContaining({ hasPreview: true }));
 });
 
