@@ -83,6 +83,32 @@ describe('/products routes', () => {
     });
   });
 
+  // Naming used to depend on the browser sending a second /describe request;
+  // when it never came (tab switched, page left, network drop) the product
+  // stayed "Untitled product" / pending forever. Seen live 2026-09-27.
+  it('names the product in the same request and returns it already named', async () => {
+    lib.loadProductImages.mockResolvedValue(new Map([[F1, { fileId: F1, name: 'a.png', type: 'image/png', size: 3 }]]));
+    lib.createProduct.mockResolvedValue(product({ namingStatus: 'pending', name: 'Untitled product' }));
+    nameProductMock.mockResolvedValue(product({ namingStatus: 'done', name: 'Campus Shoes' }));
+
+    const res = await (await app()).request('/products', json({ fileIds: [F1] }));
+
+    expect(res.status).toBe(201);
+    expect(nameProductMock).toHaveBeenCalledWith('tenant-1', P1);
+    expect((await res.json()).data).toEqual(expect.objectContaining({ name: 'Campus Shoes', namingStatus: 'done' }));
+  });
+
+  it('still returns the created product when naming throws', async () => {
+    lib.loadProductImages.mockResolvedValue(new Map([[F1, { fileId: F1, name: 'a.png', type: 'image/png', size: 3 }]]));
+    lib.createProduct.mockResolvedValue(product({ namingStatus: 'pending', name: 'Untitled product' }));
+    nameProductMock.mockRejectedValue(new Error('db blip'));
+
+    const res = await (await app()).request('/products', json({ fileIds: [F1] }));
+
+    expect(res.status).toBe(201);
+    expect((await res.json()).data).toEqual(expect.objectContaining({ name: 'Untitled product' }));
+  });
+
   it('rejects files that are missing, from another tenant, or not images', async () => {
     lib.loadProductImages.mockResolvedValue(new Map([[F1, { fileId: F1, name: 'a.pdf', type: 'application/pdf', size: 3 }]]));
     const res = await (await app()).request('/products', json({ fileIds: [F1, F2] }));

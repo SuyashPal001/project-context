@@ -14,6 +14,8 @@ vi.mock('@serverless-saas/agent-worker-handlers/lib/ssrf-guard', () => ({
 const fetchMock = vi.fn();
 vi.stubGlobal('fetch', fetchMock);
 
+const nameProductMock = vi.fn();
+vi.mock('../lib/productNaming', () => ({ nameProduct: (...a: unknown[]) => nameProductMock(...a) }));
 const createProductMock = vi.fn();
 vi.mock('../lib/productRecords', () => ({
   PRODUCT_NAME_PLACEHOLDER: 'Untitled product',
@@ -87,6 +89,7 @@ describe('POST /products/import', () => {
     putFileForTenantMock.mockReset();
     assertPublicHttpUrlMock.mockReset().mockResolvedValue(undefined);
     fetchMock.mockReset();
+    nameProductMock.mockReset().mockResolvedValue(null);
     createProductMock.mockReset().mockImplementation(async (input: Record<string, unknown>) => ({
       id: 'p1', name: input.name, description: input.description, price: input.price, sourceUrl: input.sourceUrl,
       namingStatus: input.namingStatus, images: [], createdAt: '2026-09-27T00:00:00.000Z',
@@ -153,6 +156,27 @@ describe('POST /products/import', () => {
     });
 
     expect(createProductMock).toHaveBeenCalledWith(expect.objectContaining({ name: 'Untitled product', namingStatus: 'pending' }));
+    // A title-less import is named in the same request, not left for the browser.
+    expect(nameProductMock).toHaveBeenCalledWith('tenant-1', 'p1');
+  });
+
+  it('does not run AI naming when the page already had a title', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ...htmlResponse('<html><head><meta property="og:title" content="Mug"><meta property="og:image" content="https://cdn.example.com/a.jpg"></head></html>'),
+        headers: withGet(new Map([['content-type', 'text/html']])),
+      })
+      .mockResolvedValueOnce({ ...imageResponse(new Uint8Array([1])), headers: withGet(new Map([['content-type', 'image/jpeg']])) });
+    putFileForTenantMock.mockResolvedValue({ fileId: 'file-a' });
+
+    const app = await buildApp();
+    await app.request('/products/import', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: 'https://shop.example.com/p/1' }),
+    });
+
+    expect(nameProductMock).not.toHaveBeenCalled();
   });
 
   it('rejects a non-https URL with 400 before any fetch', async () => {

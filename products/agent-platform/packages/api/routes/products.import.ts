@@ -7,6 +7,7 @@ import type { AppEnv } from '@serverless-saas/types';
 import { assertPublicHttpUrl, SsrfBlockedError } from '@serverless-saas/agent-worker-handlers/lib/ssrf-guard';
 import { extractProductPage } from '../lib/productPageExtract';
 import { createProduct, PRODUCT_NAME_PLACEHOLDER } from '../lib/productRecords';
+import { nameCreatedProduct } from '../lib/nameCreatedProduct';
 
 export const productsImportRoutes = new Hono<AppEnv>();
 
@@ -199,6 +200,7 @@ productsImportRoutes.post(
       namingStatus: title ? 'done' : 'pending',
     });
 
-    return c.json({ data: product });
+    // A title-less import is AI-named here, in the same request.
+    return c.json({ data: await nameCreatedProduct(tenantId, product) });
   },
 );

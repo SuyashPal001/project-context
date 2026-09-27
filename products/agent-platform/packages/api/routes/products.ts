@@ -8,6 +8,7 @@ import {
   createProduct, deleteProduct, listProducts, listProductImageFileIds, loadProductImages, renameProduct,
 } from '../lib/productRecords';
 import { nameProduct } from '../lib/productNaming';
+import { nameCreatedProduct } from '../lib/nameCreatedProduct';
 import { deleteUnusedProductFiles } from '../lib/productFileCleanup';
 
 export const productsRoutes = new Hono<AppEnv>();
@@ -62,7 +63,7 @@ productsRoutes.post(
       tenantId: g.tenantId, createdBy: g.userId, name: PRODUCT_NAME_PLACEHOLDER, description: null,
       price: null, sourceUrl: null, imageFileIds: fileIds, namingStatus: 'pending',
     });
-    return c.json({ data: product }, 201);
+    return c.json({ data: await nameCreatedProduct(g.tenantId, product) }, 201);
   },
 );
 
