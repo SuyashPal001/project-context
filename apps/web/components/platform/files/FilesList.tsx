@@ -33,6 +33,7 @@ import type { ConversationsResponse } from "@/components/platform/chat/types";
 import { AddToChatMenu } from "./components/AddToChatMenu";
 import { AssetLightbox } from "@/components/platform/canvas/AssetLightbox";
 import { fileToAsset } from "./lib/assetFromFile";
+import { generatedFolderConversationId, generatedFolderDisplayName } from "./lib/generatedFolder";
 
 interface FilesListProps {
     prefix: string;
@@ -182,6 +183,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
         // something, which is what you sort and scan by.
         const latestAddedAt = folderFiles.reduce<string | null>(
             (latest, f) => (!latest || f.createdAt > latest ? f.createdAt : latest), null);
+        // Only a folder directly under generated/ is named by a conversation id —
+        // resolve its chat's title for display, but keep folderName/folderPrefix
+        // as the real key everywhere else (navigation, deletion, grants).
+        const sourceConversationId = generatedFolderConversationId(prefix, folderName);
+        const displayName = sourceConversationId
+            ? generatedFolderDisplayName(sourceConversationId, conversations) ?? undefined
+            : undefined;
         return {
             folderName, folderPrefix, allDone,
             isIngesting: ingestion.ingestingFolders.has(folderName),
@@ -189,8 +197,10 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             previewFiles: [...folderFiles]
                 .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
                 .slice(0, 3),
+            displayName,
+            sourceConversationId: sourceConversationId ?? undefined,
         };
-    }), [virtualFolders, allFiles, prefix, uploads, ingestion.ingestingFolders]);
+    }), [virtualFolders, allFiles, prefix, uploads, ingestion.ingestingFolders, conversations]);
 
     // Folders share the page budget with files, so the hook needs their count.
     const filters = useFileFilters(shownFiles, allFolderCards.length);
@@ -226,14 +236,25 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             <button onClick={() => navigate("")} className="hover:text-foreground transition-colors">
                 Drive
             </button>
-            {breadcrumbs.map((crumb, idx) => (
-                <div key={crumb.path} className="flex items-center">
-                    <ChevronRight className="w-4 h-4 mx-1 opacity-50" />
-                    <button onClick={() => navigate(crumb.path)} className={`hover:text-foreground transition-colors ${idx === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}`}>
-                        {idx === 0 ? (SYSTEM_FOLDER_LABELS[crumb.name] ?? crumb.name) : crumb.name}
-                    </button>
-                </div>
-            ))}
+            {breadcrumbs.map((crumb, idx) => {
+                // The second crumb under generated/ is a conversation id, not a
+                // folder a person named — show its chat's title instead, same
+                // fallback as the folder tiles when that chat no longer exists.
+                const inGeneratedConversation = idx === 1 && breadcrumbs[0]?.name === 'generated';
+                const label = idx === 0
+                    ? (SYSTEM_FOLDER_LABELS[crumb.name] ?? crumb.name)
+                    : inGeneratedConversation
+                        ? generatedFolderDisplayName(crumb.name, conversations) ?? crumb.name
+                        : crumb.name;
+                return (
+                    <div key={crumb.path} className="flex items-center">
+                        <ChevronRight className="w-4 h-4 mx-1 opacity-50" />
+                        <button onClick={() => navigate(crumb.path)} className={`hover:text-foreground transition-colors ${idx === breadcrumbs.length - 1 ? 'text-foreground font-medium' : ''}`}>
+                            {label}
+                        </button>
+                    </div>
+                );
+            })}
         </div>
     );
 
@@ -529,7 +550,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                 open={!!mutations.deletingFolderName}
                 onOpenChange={(open) => !open && mutations.setDeletingFolderName(null)}
                 title="Delete Folder"
-                description={`Delete folder "${mutations.deletingFolderName}" and all its files? This cannot be undone.`}
+                // Same fallback as the folder tiles: the raw name (a conversation
+                // id here) only shows when no chat matches it.
+                description={`Delete folder "${
+                    mutations.deletingFolderName && prefix === 'generated/'
+                        ? generatedFolderDisplayName(mutations.deletingFolderName, conversations) ?? mutations.deletingFolderName
+                        : mutations.deletingFolderName
+                }" and all its files? This cannot be undone.`}
                 confirmLabel="Delete Folder"
                 variant="danger"
                 onConfirm={() => { if (mutations.deletingFolderName) mutations.deleteFolder(mutations.deletingFolderName, prefix, allFiles); }}

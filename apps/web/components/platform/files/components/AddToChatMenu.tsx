@@ -67,6 +67,34 @@ export function folderChatLabel(fileCount: number): string {
     return 'Add to chat';
 }
 
+export interface SourceConversationSplit {
+    /** The chat that produced this folder, if it's still active — surfaced as a
+     *  pinned row above the search box. */
+    pinned: Conversation | null;
+    /** Every other active chat, in their original order — the source chat is
+     *  never duplicated into this list. */
+    rest: Conversation[];
+}
+
+/** Pulls the folder's source chat to the front so it doesn't have to be found
+ *  by scrolling or searching — but only while it's still one you could pick:
+ *  an archived or already-deleted source behaves like it was never passed. */
+export function splitSourceConversation(active: Conversation[], sourceConversationId: string | null | undefined): SourceConversationSplit {
+    if (!sourceConversationId) return { pinned: null, rest: active };
+    const idx = active.findIndex(c => c.id === sourceConversationId);
+    if (idx === -1) return { pinned: null, rest: active };
+    return { pinned: active[idx], rest: [...active.slice(0, idx), ...active.slice(idx + 1)] };
+}
+
+/** The pinned row already answers "is there a chat" when it's showing, so
+ *  "No chats yet." underneath it would be contradicting a row one line up —
+ *  that only happens when the source chat is the tenant's only active one.
+ *  A typed search is exempt: the pinned row hides then, so an empty `matches`
+ *  really does mean nothing matched. */
+export function showsEmptyChatList(matchCount: number, hasPinnedRow: boolean, hasQuery: boolean): boolean {
+    return matchCount === 0 && (!hasPinnedRow || hasQuery);
+}
+
 interface AddToChatMenuProps {
     conversations: Conversation[];
     disabled?: boolean;
@@ -78,26 +106,37 @@ interface AddToChatMenuProps {
     variant?: 'row' | 'bulk' | 'icon';
     /** Lets a caller match local chrome (the grid's translucent overlay). */
     triggerClassName?: string;
+    /** The chat that produced this folder (generated/<conversationId>/), so it
+     *  can be pinned above the picker instead of making the person hunt for it.
+     *  Omitted everywhere else. */
+    sourceConversationId?: string;
 }
 
 export function AddToChatMenu({
     conversations, disabled, label = 'Add to chat', onPick, variant = 'row',
-    triggerClassName = '',
+    triggerClassName = '', sourceConversationId,
 }: AddToChatMenuProps) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [showAll, setShowAll] = useState(false);
 
-    const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const { pinned, rest } = useMemo(() => {
         const active = conversations.filter(c => c.status === 'active');
-        const q = query.trim().toLowerCase();
-        if (!q) return active;
+        return splitSourceConversation(active, sourceConversationId);
+    }, [conversations, sourceConversationId]);
+    // A search looks past the pinned row too — hiding it there would make an
+    // exact-title search for the source chat come up empty.
+    const searchPool = q ? [...(pinned ? [pinned] : []), ...rest] : rest;
+
+    const matches = useMemo(() => {
+        if (!q) return searchPool;
         // The agent name is on the row now, so it has to be searchable — a visible
         // field that does not match is read as broken search.
-        return active.filter(c =>
+        return searchPool.filter(c =>
             `${c.title || 'Untitled'} ${c.agent?.name ?? ''} ${messagePreview(c)}`
                 .toLowerCase().includes(q));
-    }, [conversations, query]);
+    }, [searchPool, q]);
 
     // A search is an explicit request to look past the recent ones, so it never
     // collapses — a hidden match reads as a broken search.
@@ -149,6 +188,25 @@ export function AddToChatMenu({
                     New session
                 </button>
 
+                {/* The chat that made this folder — pinned so it's never the one
+                    result you have to search or scroll for. Hidden once a search
+                    is typed: it then appears in `matches` like any other chat. */}
+                {pinned && !q && (
+                    <button
+                        type="button"
+                        onClick={() => pick(pinned.id)}
+                        className="w-full flex items-baseline gap-2 px-2 py-1.5 rounded-md text-sm text-left hover:bg-secondary/60 transition-colors"
+                        title={pinned.title || 'Untitled'}
+                    >
+                        <span className="truncate leading-tight flex-1">
+                            {pinned.title || 'Untitled'}
+                        </span>
+                        <span className="shrink-0 text-[10px] leading-tight uppercase tracking-wide text-muted-foreground">
+                            Created here
+                        </span>
+                    </button>
+                )}
+
                 <div className="relative my-1.5">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                     <Input
@@ -161,11 +219,11 @@ export function AddToChatMenu({
                 </div>
 
                 <div className="max-h-72 overflow-y-auto">
-                    {matches.length === 0 ? (
+                    {showsEmptyChatList(matches.length, !!pinned, !!q) ? (
                         <p className="px-2 py-3 text-xs text-muted-foreground text-center">
                             {query ? 'No chats match.' : 'No chats yet.'}
                         </p>
-                    ) : (
+                    ) : matches.length > 0 ? (
                         groupByAgent(visible).map(group => (
                             <div key={group.agentId} className="mb-1 last:mb-0">
                                 {/* Identity stated once per agent. Not a button: the
@@ -216,7 +274,7 @@ export function AddToChatMenu({
                                 ))}
                             </div>
                         ))
-                    )}
+                    ) : null}
                     {hiddenCount > 0 && (
                         <button
                             type="button"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { folderChatLabel, groupByAgent, messagePreview, relativeAge } from './AddToChatMenu';
+import { folderChatLabel, groupByAgent, messagePreview, relativeAge, showsEmptyChatList, splitSourceConversation } from './AddToChatMenu';
 import type { Conversation } from '@/components/platform/chat/types';
 import { MAX_ATTACHMENTS_PER_MESSAGE } from '@/components/platform/chat/useFileUpload';
 
@@ -90,5 +90,52 @@ describe('messagePreview', () => {
 
     it('treats a whitespace-only placeholder as no preview', () => {
         expect(messagePreview(withLast('assistant', '   '))).toBe('');
+    });
+});
+
+// splitSourceConversation only ever sees the already-active-filtered list (the
+// component filters before calling it), so "inactive" here means the source
+// chat isn't in that list at all — same shape as one that was deleted.
+describe('splitSourceConversation', () => {
+    const active = [conv('a', 'agent-1', 'Scout'), conv('b', 'agent-1', 'Scout'), conv('c', 'agent-2', 'Rex')];
+
+    it('pulls the source chat out to the front and excludes it from the rest', () => {
+        const { pinned, rest } = splitSourceConversation(active, 'b');
+        expect(pinned?.id).toBe('b');
+        expect(rest.map(c => c.id)).toEqual(['a', 'c']);
+    });
+
+    it('pins nothing when no source id is given', () => {
+        const { pinned, rest } = splitSourceConversation(active, undefined);
+        expect(pinned).toBeNull();
+        expect(rest).toBe(active);
+    });
+
+    it('pins nothing when the source chat is missing from the active list (archived or deleted)', () => {
+        const { pinned, rest } = splitSourceConversation(active, 'not-in-the-list');
+        expect(pinned).toBeNull();
+        expect(rest).toEqual(active);
+    });
+});
+
+// The pinned "Created here" row already tells you a chat exists, so
+// "No chats yet." right under it would be contradicting the row a line up.
+// That situation is exactly: the source chat is the tenant's only active one.
+describe('showsEmptyChatList', () => {
+    it('hides the empty-state line when the pinned row is the only chat and there is no search', () => {
+        expect(showsEmptyChatList(0, true, false)).toBe(false);
+    });
+
+    it('shows the empty-state line once a search is typed, even with a pinned row', () => {
+        expect(showsEmptyChatList(0, true, true)).toBe(true);
+    });
+
+    it('shows the empty-state line when there is no pinned row at all', () => {
+        expect(showsEmptyChatList(0, false, false)).toBe(true);
+    });
+
+    it('never shows the empty-state line while chats are matching', () => {
+        expect(showsEmptyChatList(3, false, false)).toBe(false);
+        expect(showsEmptyChatList(3, true, true)).toBe(false);
     });
 });
