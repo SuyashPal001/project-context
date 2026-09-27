@@ -55,6 +55,53 @@ export function dropImageless(records: ProductRecord[]): ProductRecord[] {
   return records.filter((p) => p.images.length > 0);
 }
 
+const EXT_BY_MIME: Record<string, string> = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' };
+const MAX_FILE_NAME = 255; // files.name is varchar(255)
+
+/** Display name for a product's photo: "<product>.<ext>", then "<product> (2).<ext>"… */
+export function productFileName(productName: string, index: number, currentName: string, mimeType: string | null): string {
+  const match = /\.[A-Za-z0-9]{1,5}$/.exec(currentName);
+  const ext = match ? match[0].toLowerCase() : (EXT_BY_MIME[mimeType ?? ''] ?? '');
+  const suffix = index === 0 ? '' : ` (${index + 1})`;
+  const base = productName.trim().replace(/[/\\]/g, '-');
+  return `${base.slice(0, MAX_FILE_NAME - suffix.length - ext.length).trimEnd()}${suffix}${ext}`;
+}
+
+/** Renames the product's photo files (display name only — never the S3 key) so
+ *  the # picker, attachments, Drive and downloads show the product's name. */
+export async function renameProductFiles(tenantId: string, imageFileIds: string[], productName: string): Promise<void> {
+  if (imageFileIds.length === 0) return;
+  const rows = await db
+    .select({ id: files.id, name: files.name, mimeType: files.mimeType })
+    .from(files)
+    .where(and(eq(files.tenantId, tenantId), inArray(files.id, imageFileIds), isNull(files.deletedAt)));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  await Promise.all(imageFileIds.map((id, index) => {
+    const file = byId.get(id);
+    if (!file) return undefined;
+    const name = productFileName(productName, index, file.name, file.mimeType);
+    if (name === file.name) return undefined;
+    return db.update(files).set({ name, updatedAt: new Date() }).where(and(eq(files.tenantId, tenantId), eq(files.id, id)));
+  }));
+}
+
+/** The product name is the source of truth; a failed file rename is logged, never fatal. */
+async function syncProductFileNames(tenantId: string, imageFileIds: string[], productName: string): Promise<void> {
+  try {
+    await renameProductFiles(tenantId, imageFileIds, productName);
+  } catch (error) {
+    console.error('[productRecords] renaming product files failed', { tenantId, error: (error as Error).message });
+  }
+}
+
+export async function listProductImageFileIds(tenantId: string): Promise<string[]> {
+  const rows = await db
+    .select({ imageFileIds: creativeProducts.imageFileIds })
+    .from(creativeProducts)
+    .where(eq(creativeProducts.tenantId, tenantId));
+  return [...new Set(rows.flatMap((r) => r.imageFileIds))];
+}
+
 async function withImages(tenantId: string, rows: CreativeProduct[]): Promise<ProductRecord[]> {
   const imagesById = await loadProductImages(tenantId, rows.flatMap((r) => r.imageFileIds));
   return dropImageless(rows.map((r) => toProductRecord(r, imagesById)));
@@ -92,6 +139,7 @@ export async function createProduct(input: {
   price: string | null; sourceUrl: string | null; imageFileIds: string[]; namingStatus: ProductNamingStatus;
 }): Promise<ProductRecord> {
   const [row] = await db.insert(creativeProducts).values(input).returning();
+  if (row.namingStatus === 'done') await syncProductFileNames(input.tenantId, row.imageFileIds, row.name);
   const imagesById = await loadProductImages(input.tenantId, row.imageFileIds);
   return toProductRecord(row, imagesById);
 }
@@ -105,6 +153,7 @@ export async function renameProduct(tenantId: string, id: string, name: string):
     .where(and(eq(creativeProducts.tenantId, tenantId), eq(creativeProducts.id, id)))
     .returning();
   if (!row) return null;
+  await syncProductFileNames(tenantId, row.imageFileIds, row.name);
   return toProductRecord(row, await loadProductImages(tenantId, row.imageFileIds));
 }
 
@@ -121,7 +170,7 @@ export async function applyNamingResult(
 ): Promise<void> {
   // Only a still-pending product takes the AI result — see renameProduct.
   // COALESCE keeps a description the link import already found.
-  await db
+  const [updated] = await db
     .update(creativeProducts)
     .set(result
       ? { name: result.name, description: sql`coalesce(${creativeProducts.description}, ${result.description})`, namingStatus: 'done' as const }
@@ -130,5 +179,7 @@ export async function applyNamingResult(
       eq(creativeProducts.tenantId, tenantId),
       eq(creativeProducts.id, id),
       eq(creativeProducts.namingStatus, 'pending'),
-    ));
+    ))
+    .returning({ imageFileIds: creativeProducts.imageFileIds, name: creativeProducts.name });
+  if (result && updated) await syncProductFileNames(tenantId, updated.imageFileIds, updated.name);
 }
