@@ -39,5 +39,7 @@ export function useFileSelection() {
         }
     };
 
-    return { selectedIds, toggleSelect, toggleSelectAll, bulkDeleting, bulkDelete };
+    const clearSelection = () => setSelectedIds(new Set());
+
+    return { selectedIds, toggleSelect, toggleSelectAll, bulkDeleting, bulkDelete, clearSelection };
 }

@@ -116,7 +116,11 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
             // Leaving the panel commits any delete still inside its undo window. The
             // toasts for those deletes are dismissed too, so a lingering Undo button
             // can't report a restore that no longer happens.
-            for (const [id, timer] of deletes) { clearTimeout(timer); toast.dismiss(id); void deleteProduct(id).catch(() => {}); }
+            for (const [id, timer] of deletes) {
+                clearTimeout(timer);
+                toast.dismiss(id);
+                void deleteProduct(id).then(() => queryClient.invalidateQueries({ queryKey: ['creative-products'] })).catch(() => {});
+            }
             deletes.clear();
             if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
         };

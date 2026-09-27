@@ -138,7 +138,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
     // prefix.
     const [uploadsActive, setUploadsActive] = useState(false);
     const uploads = uploadsActive && !prefix;
-    const navigate = (nextPrefix: string) => { setUploadsActive(false); onPrefixChange(nextPrefix); };
+    const navigate = (nextPrefix: string) => { setUploadsActive(false); onPrefixChange(nextPrefix); selection.clearSelection(); };
     const uploadFiles = useMemo(
         () => uploadsWithOrphanProductFiles(allFiles, referencedProductImageIds).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
         [allFiles, referencedProductImageIds]);
@@ -261,7 +261,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         </button>
                         <button
                             type="button"
-                            onClick={() => { onPrefixChange(""); setUploadsActive(true); }}
+                            onClick={() => { onPrefixChange(""); setUploadsActive(true); selection.clearSelection(); }}
                             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${uploads ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Uploads
@@ -369,7 +369,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     </div>
                     )}
                     {breadcrumbNav}
-                    {showPipelineDetails && hasParseableFiles && (
+                    {activeSystemFolder !== 'creative-products' && showPipelineDetails && hasParseableFiles && (
                         <div className="flex justify-end">
                             <Button
                                 size="sm"
@@ -386,7 +386,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                         </div>
                     )}
                     {/* Bulk action bar */}
-                    {selection.selectedIds.size > 0 && (
+                    {activeSystemFolder !== 'creative-products' && selection.selectedIds.size > 0 && (
                         <div className="flex items-center justify-between py-1 text-sm">
                             <span className="text-foreground/80">Selected: <strong>{selection.selectedIds.size}</strong> {selection.selectedIds.size === 1 ? 'file' : 'files'}</span>
                             <div className="flex items-center gap-2">
@@ -471,7 +471,7 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     </div>
 
                     {/* Pagination */}
-                    {totalPages > 1 && (
+                    {activeSystemFolder !== 'creative-products' && totalPages > 1 && (
                         <div className="flex items-center justify-between pt-1">
                             <div className="flex items-center gap-1">
                                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>

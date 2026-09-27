@@ -63,7 +63,7 @@ export function productFileName(productName: string, index: number, currentName:
   const match = /\.[A-Za-z0-9]{1,5}$/.exec(currentName);
   const ext = match ? match[0].toLowerCase() : (EXT_BY_MIME[mimeType ?? ''] ?? '');
   const suffix = index === 0 ? '' : ` (${index + 1})`;
-  const base = productName.trim().replace(/[/\\]/g, '-');
+  const base = productName.trim().replace(/[/\\]/g, '-').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/ {2,}/g, ' ').trim();
   return `${base.slice(0, MAX_FILE_NAME - suffix.length - ext.length).trimEnd()}${suffix}${ext}`;
 }
 

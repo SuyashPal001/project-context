@@ -71,6 +71,10 @@ describe('productFileName', () => {
     expect(name.startsWith('a-b-')).toBe(true);
     expect(name.endsWith(' (3).jpg')).toBe(true);
   });
+
+  it('strips control characters and collapses the resulting runs of spaces', () => {
+    expect(productFileName('Serum\nNew\tPack', 0, 'a.png', 'image/png')).toBe('Serum New Pack.png');
+  });
 });
 
 describe('renameProductFiles', () => {
