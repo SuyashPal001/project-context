@@ -582,7 +582,14 @@ export function ChatInput({
                     )}
                     <div
                         className={cn(
-                            "relative z-10 flex flex-col rounded-[28px] bg-card transition-all shadow-elevated overflow-hidden",
+                            // A mild lift at rest, growing into a wider, softer shadow once
+                            // you click in — the same "floating" cue chat composers like
+                            // this one use, and duration-300 so the growth reads as a
+                            // deliberate lift rather than a snap. shadow-composer is its own
+                            // token (globals.css), not the shared shadow-elevated used by
+                            // dropdowns/cards elsewhere, so nothing else on the page changes.
+                            "relative z-10 flex flex-col rounded-[28px] bg-card transition-all duration-300 overflow-hidden",
+                            "shadow-composer focus-within:shadow-composer-focus",
                             !isActive && "border border-border/60",
                             isDraggingFile && "ring-2 ring-primary/60",
                         )}

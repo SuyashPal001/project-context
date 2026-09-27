@@ -67,6 +67,12 @@
   /* Soft, large-radius, low-opacity shadow for resting card surfaces — diffused enough that
      it reads as the card floating rather than a hard-edged drop shadow underneath it. */
   --shadow-card: var(--shadow-card-value);
+  /* Composer-only elevation: a milder rest shadow than --shadow-elevated, growing into a
+     wider one on focus-within — the "lift on click" cue. Its own token rather than reusing
+     --shadow-elevated because that one is shared by 5+ other surfaces (dropdowns, approval
+     cards); bumping it there would change all of them for a request about the composer only. */
+  --shadow-composer: var(--shadow-composer-value);
+  --shadow-composer-focus: var(--shadow-composer-focus-value);
 }
 
 :root {
@@ -77,6 +83,8 @@
   /* Soft/premium reference shadow: large blur, tiny offset, very low opacity so it diffuses
      into the background instead of outlining the card. */
   --shadow-card-value: 0 1px 2px -1px rgb(0 0 0 / 0.03), 0 20px 40px -12px rgb(0 0 0 / 0.09);
+  --shadow-composer-value: 0 2px 8px -2px rgb(0 0 0 / 0.06), 0 12px 28px -10px rgb(0 0 0 / 0.12);
+  --shadow-composer-focus-value: 0 4px 12px -2px rgb(0 0 0 / 0.08), 0 24px 56px -12px rgb(0 0 0 / 0.22);
   --messages-panel: var(--card); /* sidebar itself renders bg-card, not bg-background — match that, not background */
   --background: oklch(0.985 0 0);
   --foreground: oklch(0.145 0 0);
@@ -124,6 +132,10 @@
   /* Same soft/diffused shape as light mode, deepened so it still reads against near-black;
      inset highlight cues "lifted" the same way --shadow-elevated does on this theme. */
   --shadow-card-value: 0 20px 50px -12px rgb(0 0 0 / 0.45), 0 4px 12px -4px rgb(0 0 0 / 0.3), inset 0 1px 0 0 rgb(255 255 255 / 0.04);
+  /* Same inset-highlight-for-elevation trick as --shadow-elevated above: a black shadow alone
+     is nearly invisible against this theme's near-black background. */
+  --shadow-composer-value: 0 6px 20px -6px rgb(0 0 0 / 0.45), 0 2px 8px -2px rgb(0 0 0 / 0.3), inset 0 1px 0 0 rgb(255 255 255 / 0.05);
+  --shadow-composer-focus-value: 0 10px 30px -8px rgb(0 0 0 / 0.55), 0 30px 70px -12px rgb(0 0 0 / 0.5), inset 0 1px 0 0 rgb(255 255 255 / 0.08);
   /* Ops-portal palette, promoted to the global dark theme: zinc neutrals + a violet brand accent. */
   /* Progressive lightening per feedback: 6% -> 9% -> 13% -> 16% -> 19%.
      Still visibly darker than --card (21%, chrome) so the two layers
