@@ -55,6 +55,9 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/phone screen, phone bezel, status bar, recording icon or any camera UI/)
     expect(AVATAR_CREATION_SECTION).not.toMatch(/relaxed natural expression/)
     expect(AVATAR_CREATION_SECTION).toMatch(/eyes looking straight into the lens, never off to the side/)
+    // Portraits become the first frame of talking videos: a relaxed, slightly open mouth, not mid-word.
+    expect(AVATAR_CREATION_SECTION).toMatch(/lips slightly parted and relaxed, not wide open/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/a wide-open mouth mid-word/)
   })
 
   it('rolls distinct details in code before writing the variations, with the brief winning over the roll', () => {
