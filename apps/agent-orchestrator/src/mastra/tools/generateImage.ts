@@ -8,6 +8,7 @@ import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
 import { emitGenerationStarted } from './generationStarted.js'
 import { stableToolCallId } from '../../credits.js'
+import { expandAvatarReferences } from './avatarReferences.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 export const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -86,11 +87,14 @@ export async function generateImageItem(
       console.warn(`[session:${sessionId}] generateImage: referenceFileIds set with no identityAnchor — verify this omission was intentional`)
     }
 
+    // An attached tenant avatar brings its reference sheet along (avatarReferences.ts).
+    const resolvedReferenceIds = referenceFileIds?.length ? await expandAvatarReferences(tenantId, referenceFileIds) : referenceFileIds
+
     let sourceImages: Array<{ base64: string; mimeType: string }> = []
-    if (referenceFileIds?.length) {
+    if (resolvedReferenceIds?.length) {
       if (!idToken) return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }
       let totalBytes = 0
-      for (const fileId of referenceFileIds) {
+      for (const fileId of resolvedReferenceIds) {
         const source = await resolveSourceImage(idToken, fileId, 'image/png', sessionId)
         if (!source) return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }
         const decodedBytes = Buffer.byteLength(source.base64, 'base64')

@@ -53,6 +53,24 @@ describe('listCastingAssets tool', () => {
     expect(client.release).toHaveBeenCalled()
   })
 
+  it('surfaces identityAnchor for a tenant avatar carrying terseTag/styleLock, and omits it otherwise', async () => {
+    const client = mockClient([
+      { id: 'a1', name: 'Riya', attributes: { role: 'Fitness creator', tone: 'Energetic', terseTag: 'Riya, wavy hair', styleLock: 'photoreal' } },
+      { id: 'a2', name: 'Arjun', attributes: { role: 'Tech presenter', tone: 'Clear' } },
+    ])
+    pool.connect.mockResolvedValue(client)
+
+    const result = await listCastingAssets.execute!({ kind: 'avatar' } as never, ctx({ tenantId: 't1' }))
+
+    expect(result).toEqual({
+      items: [
+        { id: 'a1', name: 'Riya', description: 'Fitness creator · Energetic', identityAnchor: { terseTag: 'Riya, wavy hair', styleLock: 'photoreal' } },
+        { id: 'a2', name: 'Arjun', description: 'Tech presenter · Clear' },
+      ],
+    })
+    expect((result as { items: Record<string, unknown>[] }).items[1]).not.toHaveProperty('identityAnchor')
+  })
+
   it('does not filter avatars by tenant when tenantId is unresolved', async () => {
     const client = mockClient([])
     pool.connect.mockResolvedValue(client)

@@ -21,6 +21,13 @@ vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
 const { resolveSourceImage } = vi.hoisted(() => ({ resolveSourceImage: vi.fn() }))
 vi.mock('../../media.js', () => ({ resolveSourceImage }))
 
+// Passthrough so existing tests keep their exact reference lists; avatarReferences.ts's
+// own DB-backed behavior is covered by avatarReferences.test.ts.
+const { expandAvatarReferences } = vi.hoisted(() => ({
+  expandAvatarReferences: vi.fn(async (_tenantId: string, ids: string[]) => ids),
+}))
+vi.mock('./avatarReferences.js', () => ({ expandAvatarReferences }))
+
 const { shouldRequireApproval } = vi.hoisted(() => ({
   shouldRequireApproval: vi.fn(),
 }))
@@ -46,6 +53,7 @@ beforeEach(() => {
   isUnlimited.mockResolvedValue(false)
   resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 50_000 } })
   shouldRequireApproval.mockResolvedValue(false)
+  expandAvatarReferences.mockImplementation(async (_tenantId: string, ids: string[]) => ids)
 })
 
 describe('generateImage tool', () => {
@@ -263,6 +271,28 @@ describe('generateImage tool', () => {
     const sentBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
     expect(sentBody.sourceImages).toEqual([{ base64: 'AAAA', mimeType: 'image/png' }])
     expect((result as { fileId?: string }).fileId).toBe('f1')
+  })
+
+  it('resolves every id expandAvatarReferences returns, including a sheet it added', async () => {
+    resolveSourceImage.mockResolvedValue({ base64: 'AAAA', mimeType: 'image/png' })
+    expandAvatarReferences.mockResolvedValue([
+      '11111111-1111-1111-1111-111111111111',
+      '22222222-2222-2222-2222-222222222222',
+    ])
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'ZZZZ', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 10 })
+
+    await generateImage.execute!(
+      {
+        prompt: 'the woman in the yellow cardigan making coffee, warm morning light, 35mm lens',
+        referenceFileIds: ['11111111-1111-1111-1111-111111111111'],
+        identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light, 35mm lens' },
+      } as never,
+      baseCtx(),
+    )
+
+    expect(resolveSourceImage).toHaveBeenCalledWith('tok', '11111111-1111-1111-1111-111111111111', 'image/png', 'c1')
+    expect(resolveSourceImage).toHaveBeenCalledWith('tok', '22222222-2222-2222-2222-222222222222', 'image/png', 'c1')
   })
 
   // Regression test mirroring generateVideo.test.ts's existing "actorId:
