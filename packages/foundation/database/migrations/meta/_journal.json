@@ -708,6 +708,13 @@
       "when": 1790690557557,
       "tag": "0100_faulty_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1790706666309,
+      "tag": "0101_add_product_category_and_usps",
+      "breakpoints": true
     }
   ]
 }
