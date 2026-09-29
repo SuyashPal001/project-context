@@ -26,6 +26,7 @@ import { mixMusicBed } from '../tools/mixMusicBed.js'
 import { generateSong } from '../tools/generateSong.js'
 import { trimClip } from '../tools/trimClip.js'
 import { saveAsAvatar } from '../tools/saveAsAvatar.js'
+import { rollAvatarVariationsTool } from '../tools/rollAvatarVariations.js'
 import { showFilesTool } from '../tools/showFiles.js'
 import { IMAGE_PROMPT_CRAFT } from './imagePromptCraft.js'
 
@@ -35,12 +36,13 @@ const DIRECTOR_DESCRIPTION = 'Generates and edits images from a text description
 
 export const AVATAR_CREATION_SECTION = `\n\n## Avatar creation — variations, reference sheet, save
 When Olmo delegates creating a reusable avatar:
+- Variety roll first: call roll_avatar_variations once, with the look exactly as Olmo's brief gives it, the gender (or "any" if the brief leaves it open) and the brief's age range (22 to 45 if it gives none). It returns one set of details per variation — age, face shape, skin tone, hair, outfit, place and gesture — all different across the set. Build each prompt from its own set; where Olmo's brief states a detail, the brief wins over the roll.
 - Variations: one generate_images call with 4 items, aspectRatio "3:4", no referenceFileIds. The avatar will present UGC video ads, so each prompt describes a real phone-video frame of a creator caught mid-sentence — never a posed portrait or headshot. Write each prompt as labeled lines, in this order, filling every line with concrete specifics:
   Use case: photorealistic-natural
   Asset type: reusable AI presenter avatar for <what Olmo says it is for, e.g. skincare & beauty UGC video ads>
   Primary request: a believable phone-video frame of a <vibe> <look> <gender> creator talking directly to camera, caught naturally mid-sentence rather than posing
   Scene/backdrop: one specific lived-in real place that fits the use (bedroom with a vanity, apartment kitchen, balcony with plants, living room, home office), softly blurred, everyday and uncluttered
-  Subject: an exact age; face shape; skin tone; hair length, texture and style; expression with the mouth mid-word and direct eye contact; one natural hand gesture entering the lower frame
+  Subject: an exact age; face shape; skin tone; hair length, texture and style; expression with the mouth mid-word and eyes looking straight into the lens, never off to the side; one natural hand gesture entering the lower frame
   Wardrobe: specific everyday clothes and small accessories that fit the person and the look; no visible brands
   Style/medium: photorealistic candid smartphone front-camera video still, slight phone-camera grain, real skin texture, not editorial
   Composition/framing: vertical 3:4; chest-up at eye level; arm's-length phone viewpoint with slight handheld asymmetry; gaze into lens
@@ -233,7 +235,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, show_files: showFilesTool },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, show_files: showFilesTool },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -252,6 +254,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, show_files: showFilesTool },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, show_files: showFilesTool },
   errorProcessors: [streamErrorRetry()],
 })

@@ -49,6 +49,12 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
     }
     expect(AVATAR_CREATION_SECTION).toMatch(/Avoid: posed stock headshot/)
     expect(AVATAR_CREATION_SECTION).not.toMatch(/relaxed natural expression/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/eyes looking straight into the lens, never off to the side/)
+  })
+
+  it('rolls distinct details in code before writing the variations, with the brief winning over the roll', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/call roll_avatar_variations once/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/the brief wins over the roll/)
   })
 
   it('requires fresh approval before regenerating rejected variations', () => {
