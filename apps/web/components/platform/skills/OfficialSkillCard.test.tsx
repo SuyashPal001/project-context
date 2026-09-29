@@ -38,16 +38,39 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
 }
 
 describe("OfficialSkillCard", () => {
-    it("renders the thumbnail, name, Platform owner line, OFFICIAL badge, description and best-for chips", () => {
-        render(<OfficialSkillCard skill={makeSkill()} onClick={vi.fn()} onStart={vi.fn()} />);
+    it("renders the pixel icon (no <img>), name, Platform owner line, OFFICIAL badge and description", () => {
+        const { container } = render(<OfficialSkillCard skill={makeSkill()} onClick={vi.fn()} onStart={vi.fn()} />);
 
-        expect(screen.getByAltText("Avatar Creator")).toBeTruthy();
+        expect(container.querySelector("img")).toBeNull();
+        expect(container.querySelector("svg")).toBeTruthy();
         expect(screen.getByText("Avatar Creator")).toBeTruthy();
         expect(screen.getByText("Platform")).toBeTruthy();
         expect(screen.getByText("Official")).toBeTruthy();
         expect(screen.getByText("Generate a branded avatar from a product photo.")).toBeTruthy();
-        expect(screen.getByText("Fitness coaches")).toBeTruthy();
-        expect(screen.getByText("Wellness brands")).toBeTruthy();
+    });
+
+    it("shows the full best-for line when there are 2 or fewer tags", () => {
+        render(<OfficialSkillCard skill={makeSkill()} onClick={vi.fn()} onStart={vi.fn()} />);
+
+        expect(screen.getByText("Fitness coaches · Wellness brands")).toBeTruthy();
+    });
+
+    it("shows the first two best-for tags plus a +N count when there are more than 2", () => {
+        render(
+            <OfficialSkillCard
+                skill={makeSkill({
+                    showcase: {
+                        imageUrl: "/creative/avatars/beginner-fitness-instructor.jpg",
+                        bestFor: ["Product explainers", "Testimonials", "Founder updates"],
+                        starterPrompt: "Create an avatar for my fitness brand",
+                    },
+                })}
+                onClick={vi.fn()}
+                onStart={vi.fn()}
+            />,
+        );
+
+        expect(screen.getByText("Product explainers · Testimonials +1")).toBeTruthy();
     });
 
     it("opens the detail view when the card is clicked", async () => {

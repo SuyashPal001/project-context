@@ -1,5 +1,12 @@
 // Deterministic pixel-art identicon, seeded by the skill's id — same skill
 // always renders the same icon, no images or external assets involved.
+//
+// Official skills can instead supply a hand-designed `pattern` (see
+// OFFICIAL_SKILL_PATTERNS below) so their icon reads as a recognisable glyph
+// instead of random noise. Passing no pattern keeps the original seeded
+// random behaviour, used by the Community card.
+
+export type SkillIconPattern = boolean[][];
 
 function hashSeed(seed: string): number {
     let hash = 0;
@@ -13,7 +20,7 @@ function hashSeed(seed: string): number {
 const GRID = 5;
 const HALF = Math.ceil(GRID / 2);
 
-export function SkillIcon({ seed, className }: { seed: string; className?: string }) {
+function randomCells(seed: string): boolean[][] {
     const hash = hashSeed(seed);
 
     const cells: boolean[][] = [];
@@ -29,6 +36,41 @@ export function SkillIcon({ seed, className }: { seed: string; className?: strin
         const mirrored = [...rowCells, ...rowCells.slice(0, GRID - HALF).reverse()];
         cells.push(mirrored);
     }
+    return cells;
+}
+
+// Hand-designed 5x5 glyphs for Official skills, keyed by slug. An unknown
+// official slug falls back to the seeded random pattern below.
+export const OFFICIAL_SKILL_PATTERNS: Record<string, SkillIconPattern> = {
+    // Pixel video camera: viewfinder bump on top, a 4x4 body, lens sticking
+    // out to the left at mid-height.
+    "talking-head": [
+        [false, false, true, false, false],
+        [false, true, true, true, true],
+        [true, true, true, true, true],
+        [false, true, true, true, true],
+        [false, true, true, true, true],
+    ],
+    // Pixel head-and-shoulders bust with a small "+" badge at the top right.
+    "avatar-creator": [
+        [true, true, false, true, false],
+        [true, true, true, true, true],
+        [false, false, false, true, false],
+        [true, true, true, true, true],
+        [true, true, true, true, true],
+    ],
+};
+
+export function SkillIcon({
+    seed,
+    className,
+    pattern,
+}: {
+    seed: string;
+    className?: string;
+    pattern?: SkillIconPattern;
+}) {
+    const cells = pattern ?? randomCells(seed);
 
     return (
         <svg

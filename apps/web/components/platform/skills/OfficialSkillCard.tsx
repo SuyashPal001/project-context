@@ -1,8 +1,8 @@
-import Image from "next/image";
 import { ArrowUpRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { OFFICIAL_SKILL_PATTERNS, SkillIcon } from "./SkillIcon";
 import type { Skill } from "./types";
 
 interface OfficialSkillCardProps {
@@ -15,18 +15,24 @@ interface OfficialSkillCardProps {
 /**
  * Official-skill card, aligned to the same outer card shape/size/grid as the
  * Community <SkillCard> — the big showcase image lives only in the detail
- * modal (OfficialSkillDetail). Here the icon slot is a small thumbnail of
- * showcase.imageUrl instead of the pixel identicon, the owner line reads
- * "Platform", the bottom-left stats are Best-for chips instead of
- * runs/downloads/version, and the bottom-right action is "Recreate" instead
- * of "Install". No install button, no run/download counts, no version: those
- * are community-card concepts, and Official skills are curated, always-latest
- * presets rather than something a tenant installs and tracks. The caller
- * (skills/page.tsx) only renders this when `skill.showcase` is present;
- * falls back to plain <SkillCard> otherwise.
+ * modal (OfficialSkillDetail). The icon slot uses the same pixel <SkillIcon>
+ * as the Community card, but with a hand-designed pattern keyed by slug
+ * (OFFICIAL_SKILL_PATTERNS) instead of the seeded random one — unknown
+ * official slugs fall back to the random pattern. The owner line reads
+ * "Platform", the bottom row mirrors the Community card's bottom row exactly
+ * (Best-for tags as one truncated line on the left, "Recreate" in place of
+ * "Install" on the right). No install button, no run/download counts, no
+ * version: those are community-card concepts, and Official skills are
+ * curated, always-latest presets rather than something a tenant installs and
+ * tracks. The caller (skills/page.tsx) only renders this when
+ * `skill.showcase` is present; falls back to plain <SkillCard> otherwise.
  */
 export function OfficialSkillCard({ skill, onClick, onStart, isStarting = false }: OfficialSkillCardProps) {
     const bestFor = skill.showcase?.bestFor ?? [];
+    const visibleTags = bestFor.slice(0, 2);
+    const remainingCount = bestFor.length - visibleTags.length;
+    const tagsLine =
+        remainingCount > 0 ? `${visibleTags.join(" · ")} +${remainingCount}` : visibleTags.join(" · ");
 
     return (
         // Not a <button>: the Recreate control below is a real nested button, and
@@ -50,16 +56,11 @@ export function OfficialSkillCard({ skill, onClick, onStart, isStarting = false 
                 <CardContent className="pt-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
-                                {skill.showcase?.imageUrl && (
-                                    <Image
-                                        src={skill.showcase.imageUrl}
-                                        alt={skill.name}
-                                        fill
-                                        className="object-cover"
-                                    />
-                                )}
-                            </div>
+                            <SkillIcon
+                                seed={skill.id}
+                                pattern={OFFICIAL_SKILL_PATTERNS[skill.slug]}
+                                className="h-12 w-12 rounded-lg border border-border shrink-0"
+                            />
                             <div className="min-w-0 space-y-0.5">
                                 <h3 className="text-sm font-semibold text-foreground truncate">{skill.name}</h3>
                                 <p className="text-xs text-muted-foreground truncate">Platform</p>
@@ -80,13 +81,12 @@ export function OfficialSkillCard({ skill, onClick, onStart, isStarting = false 
                     </p>
 
                     <div className="flex items-center justify-between gap-2 pt-2 text-xs text-muted-foreground">
-                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                            {bestFor.map((tag) => (
-                                <Badge key={tag} variant="outline" className="text-[10px] font-medium">
-                                    {tag}
-                                </Badge>
-                            ))}
-                        </div>
+                        <span
+                            className="min-w-0 truncate"
+                            title={remainingCount > 0 ? bestFor.join(" · ") : undefined}
+                        >
+                            {tagsLine}
+                        </span>
 
                         <Button
                             type="button"
