@@ -141,6 +141,7 @@ export async function getTenantAvatar(tenantId: string, where: { id: string } | 
     .innerJoin(files, eq(files.id, creativeLibraryAssets.fileId))
     .where(and(
       eq(creativeLibraryAssets.tenantId, tenantId),
+      eq(creativeLibraryAssets.kind, 'avatar'),
       'id' in where ? eq(creativeLibraryAssets.id, where.id) : eq(creativeLibraryAssets.fileId, where.fileId),
       eq(files.tenantId, tenantId),
       isNull(files.deletedAt),
@@ -195,11 +196,20 @@ export async function nameTenantAvatar(tenantId: string, id: string): Promise<Te
   const avatar = await getTenantAvatar(tenantId, { id });
   if (!avatar || avatar.namingStatus !== 'pending') return avatar;
   const result = await describeAvatarImage(tenantId, avatar);
+  // Merge into attributes via jsonb `||`, never replace it: setAvatarReference
+  // can pin referenceSheetFileId/terseTag/styleLock onto a still-pending
+  // avatar before naming finishes (inline budget 10s vs orchestrator's 20s
+  // timeout, or the picker's own retry loop calling describe on a pending
+  // avatar) — a plain-object .set() here would silently wipe them (Finding #1).
+  const patch: AvatarAttributes = result
+    ? { role: result.role, tone: result.tone, namingStatus: 'done' }
+    : { namingStatus: 'failed' };
   const [updated] = await db
     .update(creativeLibraryAssets)
-    .set(result
-      ? { name: result.name, attributes: { role: result.role, tone: result.tone, namingStatus: 'done' } satisfies AvatarAttributes }
-      : { attributes: { namingStatus: 'failed' } satisfies AvatarAttributes })
+    .set({
+      ...(result ? { name: result.name } : {}),
+      attributes: sql`${creativeLibraryAssets.attributes} || ${JSON.stringify(patch)}::jsonb`,
+    })
     .where(and(
       eq(creativeLibraryAssets.tenantId, tenantId),
       eq(creativeLibraryAssets.id, id),
