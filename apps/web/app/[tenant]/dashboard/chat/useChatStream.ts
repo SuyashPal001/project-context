@@ -237,6 +237,22 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         setTraceAfterSeq(partSeqRef.current);
     };
 
+    // Clears all live-trace state (active/completed tool calls, reasoning, batch
+    // progress, trace-position marker). Shared by the post-'done' settle timeout
+    // and the conversation-switch effect below — a run suspended on a clarifying
+    // question never reaches 'done', so its trace state would otherwise survive
+    // into the next conversation (see the 8th live-test bug this fixes).
+    const resetTrace = useCallback(() => {
+        setActiveToolCalls(new Map());
+        setCompletedToolCalls([]);
+        completedToolCallsRef.current = [];
+        batchSeenIndicesRef.current.clear();
+        setReasoningText('');
+        reasoningTextRef.current = '';
+        traceAfterSeqRef.current = null;
+        setTraceAfterSeq(null);
+    }, []);
+
     const handleToolDone = useCallback((toolCallId: string, results?: Array<{ title: string; domain: string; favicon?: string }>, result?: Record<string, unknown>) => {
         const call = activeToolCalls.get(toolCallId);
         if (!call) return;
@@ -381,7 +397,12 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 }
                 return { data: [...data].sort(sortByDate) };
             });
-            setTimeout(() => { setActiveToolCalls(new Map()); setCompletedToolCalls([]); completedToolCallsRef.current = []; batchSeenIndicesRef.current.clear(); setReasoningText(''); reasoningTextRef.current = ''; traceAfterSeqRef.current = null; setTraceAfterSeq(null); }, 1500);
+            // Guard against a stale timer: if the user switches conversations inside
+            // this 1500ms window, the conversation-switch effect below already reset
+            // this trace synchronously for the new conversation — firing this timer
+            // unguarded would wipe the NEW conversation's live trace instead.
+            const doneForConversation = conversationIdRef.current;
+            setTimeout(() => { if (conversationIdRef.current === doneForConversation) resetTrace(); }, 1500);
             setTimeout(() => {
                 const conversationId = conversationIdRef.current;
                 if (!conversationId) return;
@@ -424,7 +445,7 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
                 queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
                 queryClient.invalidateQueries({ queryKey: ['conversation-assets', conversationId] });
             }, 2000);
-        }, [queryClient, handleCanvasUpdate]),
+        }, [queryClient, handleCanvasUpdate, resetTrace]),
 
         onError: useCallback((code: string, message: string) => {
             emitStreamEvent('error');
@@ -608,7 +629,13 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
     // actual conversation switch should cancel it.
     const prevConversationIdRef = useRef(conversationId);
     useEffect(() => {
-        if (prevConversationIdRef.current !== conversationId) cancel();
+        if (prevConversationIdRef.current !== conversationId) {
+            cancel();
+            // A run suspended on a clarifying/upload question never emits 'done',
+            // so its trace state (tool rows, reasoning) never gets the settle-timeout
+            // cleanup below — without this it leaks into the new conversation's view.
+            resetTrace();
+        }
         prevConversationIdRef.current = conversationId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [conversationId]);

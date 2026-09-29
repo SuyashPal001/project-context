@@ -15,6 +15,9 @@ const chatMock = vi.hoisted(() => ({
         onGenerationConfirmRequired?: (...args: unknown[]) => void;
         onToolCall?: (...args: unknown[]) => void;
         onBatchItemProgress?: (...args: unknown[]) => void;
+        onReasoning?: (...args: unknown[]) => void;
+        onToolDone?: (...args: unknown[]) => void;
+        onDone?: (...args: unknown[]) => void;
     },
 }));
 
@@ -23,6 +26,9 @@ vi.mock('@/hooks/useChat', () => ({
         onGenerationConfirmRequired?: (...args: unknown[]) => void;
         onToolCall?: (...args: unknown[]) => void;
         onBatchItemProgress?: (...args: unknown[]) => void;
+        onReasoning?: (...args: unknown[]) => void;
+        onToolDone?: (...args: unknown[]) => void;
+        onDone?: (...args: unknown[]) => void;
     }) => {
         chatMock.lastOptions = options;
         return {
@@ -305,5 +311,93 @@ describe('useChatStream batch item progress', () => {
         });
         expect(result.current.activeToolCalls.get('tc-delegate')?.batchProgress).toEqual({ done: 1, total: 4 });
         expect(result.current.activeToolCalls.has('inner-batch-id')).toBe(false);
+    });
+});
+
+describe('useChatStream conversation-switch trace reset', () => {
+    // Regression for the 8th live-test bug: a run suspended on
+    // ask_clarifying_questions never emits 'done', so the only place that used
+    // to clear activeToolCalls/completedToolCalls/reasoningText was the 1500ms
+    // settle-timeout after 'done' — which never fired. Switching conversations
+    // mid-run left the previous conversation's whole tool trace showing on top
+    // of the new conversation's "Working for Ns" indicator.
+    function setup(conversationId: string) {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const wrapper = ({ children }: { children: ReactNode }) => (
+            <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        );
+        const conversationIdRef = { current: conversationId };
+        const view = renderHook(
+            (props: { conversationId: string }) => {
+                conversationIdRef.current = props.conversationId;
+                return useChatStream({
+                    conversationId: props.conversationId,
+                    conversationIdRef,
+                    agentId: 'agent-1',
+                    selectedConversation: undefined,
+                    messages: [],
+                    handleCanvasUpdate: vi.fn(),
+                    openCanvas: vi.fn(),
+                });
+            },
+            { wrapper, initialProps: { conversationId } },
+        );
+        return { client, conversationIdRef, ...view };
+    }
+
+    it('clears completedToolCalls/activeToolCalls/reasoning when conversationId changes', () => {
+        const { result, rerender } = setup('conversation-A');
+
+        act(() => {
+            chatMock.lastOptions!.onToolCall!('generate_image', 'tc-1', {});
+        });
+        act(() => {
+            chatMock.lastOptions!.onReasoning!('thinking about it...');
+        });
+        expect(result.current.activeToolCalls.size).toBe(1);
+        expect(result.current.reasoningText).not.toBe('');
+
+        rerender({ conversationId: 'conversation-B' });
+
+        expect(result.current.activeToolCalls.size).toBe(0);
+        expect(result.current.completedToolCalls).toEqual([]);
+        expect(result.current.reasoningText).toBe('');
+        expect(result.current.traceAfterSeq).toBeNull();
+    });
+
+    it('a pending reset timer from conversation A does not wipe conversation B\'s trace', () => {
+        vi.useFakeTimers();
+        try {
+            const { result, rerender } = setup('conversation-A');
+
+            act(() => {
+                chatMock.lastOptions!.onToolCall!('generate_image', 'tc-1', {});
+                chatMock.lastOptions!.onToolDone!('tc-1', 'generate_image', {});
+            });
+            // Fires the 'done' handler for conversation A, which schedules the
+            // 1500ms settle-timeout still pending when we switch below.
+            act(() => {
+                chatMock.lastOptions!.onDone!('done text', 'msg-1', 'conversation-A');
+            });
+
+            rerender({ conversationId: 'conversation-B' });
+
+            // Conversation B starts its own run with a live tool call.
+            act(() => {
+                chatMock.lastOptions!.onToolCall!('generate_video', 'tc-2', {});
+            });
+            expect(result.current.activeToolCalls.size).toBe(1);
+
+            // Let conversation A's stale 1500ms timer fire.
+            act(() => {
+                vi.advanceTimersByTime(1600);
+            });
+
+            // Conversation B's live trace must survive the stale timer.
+            expect(result.current.activeToolCalls.size).toBe(1);
+            expect(result.current.activeToolCalls.has('tc-2')).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });
