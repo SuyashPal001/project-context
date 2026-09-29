@@ -72,4 +72,9 @@ describe('image-to-avatar contract', () => {
   it('tells Olmo to set skipAvatarExpansion for the inspired-by intent', () => {
     expect(AVATAR_FROM_IMAGE_SECTION).toContain('skipAvatarExpansion')
   })
+
+  it('keeps avatar variations off Olmo\'s direct single-image path so they go out as one batch', () => {
+    expect(AVATAR_CREATION_CONTRACT).toMatch(/never call your own generate_image/i)
+    expect(AVATAR_CREATION_CONTRACT).toMatch(/ONE generate_images batch/)
+  })
 })
