@@ -40,6 +40,13 @@ When Olmo delegates creating a reusable avatar:
 - Call save_as_avatar with portraitFileId (the pick), referenceSheetFileId (the sheet), terseTag and styleLock. Report back the avatar's name, role, tone and referenceSheet exactly as returned; if referenceSheet is false, say so plainly — never claim the sheet saved.
 - Apply the batch rules from the UGC character section unchanged: check every result item for its own fileId, never retry a refused item without a new approval.`
 
+export const AVATAR_FROM_IMAGE_SECTION = `\n\n## Image-to-avatar — variations from a reference photo
+When Olmo delegates creating an avatar from a reference photo, with an intent and the reference image's fileId:
+- Variations: one generate_images call with 4 items, aspectRatio "3:4", each with referenceFileIds set to [the user's image fileId].
+- Same person: each prompt says to keep the exact same face, identity and skin tone as the reference and vary only outfit, setting and framing, keeping the realism rules of the Avatar creation section above (photoreal waist-up portrait, relaxed natural expression, soft natural light, natural skin texture, no text, logos or products in frame).
+- Inspired by: each prompt says to create a different person, not the person in the reference, matching its styling, setting, lighting and mood.
+- After the pick, the sheet and save follow the Avatar creation section above unchanged, with one difference: the reference sheet's referenceFileIds uses the picked portrait as its only reference, not the original photo.`
+
 const directorInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
   // Per-agent override takes precedence over the hardcoded default below — same
   // pattern as platformAgent.ts. Set by chatStream.ts from agents.systemPrompt.
@@ -197,7 +204,7 @@ When Olmo delegates a short-drama-stitch ad build (the user has uploaded existin
   const OVERLAY_TEXT_SECTION = `\n\n## On-screen text overlays\nWhen Olmo asks for hook copy, a title, or any on-screen text on a finished video, call overlay_text (videoFileId plus overlays with text, startSeconds/endSeconds, position top|center|bottom) as a post step — never ask generate_image or generate_video to render the words. If it returns refusalReason "SUBTITLES_FILTER_UNAVAILABLE", tell Olmo the host cannot burn text overlays.`
   const STRETCH_CLIP_SECTION = `\n\n## Lengthening a clip\nWhen Olmo asks to fill a longer runtime from an existing short clip, call stretch_clip (videoFileId, targetDurationSeconds, mode). Use loop for atmospheric or repeatable footage (audio repeats too, hard cut at the seam), slow only for a modest lengthening (refused beyond 2x the original), hold to freeze the last frame (audio plays once then goes silent). It only lengthens — use trim_clip to shorten. If it refuses with STRETCH_TOO_LARGE, tell Olmo which mode limit was hit rather than retrying the same request.`
 
-  const base = (override || defaultInstructions) + IMAGE_PROMPT_CRAFT + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + AVATAR_CREATION_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
+  const base = (override || defaultInstructions) + IMAGE_PROMPT_CRAFT + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + AVATAR_CREATION_SECTION + AVATAR_FROM_IMAGE_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }

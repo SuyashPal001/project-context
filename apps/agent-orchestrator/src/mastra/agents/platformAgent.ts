@@ -335,6 +335,13 @@ When the user wants a new reusable avatar/presenter/character for their ads — 
 - Once they pick, map the chosen option to that variation's fileId — Director is a delegate and cannot see your working memory or which option the user picked, so pass that fileId explicitly in the delegation message, together with the brief. Delegate to agent-director to generate the reference sheet from that portrait and save it with save_as_avatar. While we are testing consistency, show the reference sheet in your reply and say it is what keeps the face the same in later ads.
 - Then tell the user the avatar's name and that it is in Drive › Avatars and under "Yours" in the avatar picker. If the result says referenceSheet is false, say plainly the consistency views didn't save, so later ads may drift, but the avatar itself is saved and usable.`
 
+export const AVATAR_FROM_IMAGE_CONTRACT = `\n\n## Image-to-avatar — a reference photo drives the variations
+When the user wants a new avatar AND has attached, or pointed at, an image to base it on:
+- Two intents: same person keeps this exact face and identity, and restyles the outfit, setting and framing for ads; inspired by uses a different person with a similar look, styling and mood, never the same face. Infer the intent from the user's words. If it's unclear, that inference is the ONE question the Avatar creation contract allows — never a second question on top of it: one single-select ask_clarifying_questions question with options "Same person, restyled" and "A new person with this look".
+- Same person is only for the user themselves or someone they say agreed to it. Never recreate a recognizable public figure or celebrity. If the photo looks like a well-known person, go to inspired by and say plainly why — that the request would recreate a recognizable person's likeness.
+- Delegate to agent-director: pass the image's fileId explicitly, together with the chosen intent and the brief — Director is a delegate and cannot see your working memory or the attached image otherwise.
+- After the variations, follow the Avatar creation contract above unchanged: pick, reference sheet, save_as_avatar, and show the reference sheet while we are testing consistency.`
+
 export const platformAgent = new Agent({
   id: 'olmo',
   name: 'Olmo',
@@ -523,7 +530,7 @@ You only remember the current task. When the user refers to earlier work from an
     const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
     const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT + PAST_TASKS_CONTRACT
-      + DELEGATION_CONTRACT + ROUTING_CONTRACT + (DIRECT_IMAGE ? ROUTING_DIRECT_IMAGE_NOTE : '') + BRIEF_SELECTIONS_CONTRACT + PRODUCT_CONFIRMATION_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + (DIRECT_IMAGE ? DIRECT_IMAGE_CONTRACT : IMAGE_ONE_STEP_CONTRACT) + CANCELLED_GENERATION_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + AVATAR_CREATION_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
+      + DELEGATION_CONTRACT + ROUTING_CONTRACT + (DIRECT_IMAGE ? ROUTING_DIRECT_IMAGE_NOTE : '') + BRIEF_SELECTIONS_CONTRACT + PRODUCT_CONFIRMATION_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + (DIRECT_IMAGE ? DIRECT_IMAGE_CONTRACT : IMAGE_ONE_STEP_CONTRACT) + CANCELLED_GENERATION_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + AVATAR_CREATION_CONTRACT + AVATAR_FROM_IMAGE_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
