@@ -264,6 +264,7 @@ describe('platformAgent instructions — working memory contract', () => {
     const instructions = await platformAgent.getInstructions({ requestContext })
     const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
 
+    expect(text).toMatch(/Delegating to a sub-agent is always a tool call, never text/)
     expect(text).toContain('## Working memory — what goes where')
     expect(text).toMatch(/at most once per turn/)
     expect(text).toMatch(/Never fill it from one task's choices/)

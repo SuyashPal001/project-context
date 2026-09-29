@@ -62,6 +62,10 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/the brief wins over the roll/)
   })
 
+  it('delegates by calling the agent-director tool, never by writing a request to it', () => {
+    expect(AVATAR_SKILL_TEXT).toMatch(/Delegate by calling the agent-director tool — never by writing a message to it in your reply/)
+  })
+
   it('records the avatar brief under Key Decisions only, and Director leaves working memory alone', () => {
     expect(AVATAR_SKILL_TEXT).toMatch(/under Key Decisions only — never in Brand Context or User Preferences/)
     expect(DIRECTOR_WORKING_MEMORY_SECTION).toMatch(/never set User Preferences or Brand Context/)
