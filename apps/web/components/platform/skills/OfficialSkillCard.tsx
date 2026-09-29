@@ -59,7 +59,6 @@ export function OfficialSkillCard({ skill, onClick, onStart, isStarting = false 
                             <SkillIcon
                                 seed={skill.id}
                                 pattern={OFFICIAL_SKILL_PATTERNS[skill.slug]}
-                                inverted
                                 className="h-12 w-12 rounded-lg border border-border shrink-0"
                             />
                             <div className="min-w-0 space-y-0.5">
