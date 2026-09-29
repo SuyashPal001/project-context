@@ -14,6 +14,7 @@ vi.mock('./productsApi', async (orig) => ({
     ...(await orig<typeof import('./productsApi')>()),
     listProducts: vi.fn(), createProductFromFiles: vi.fn(), importProductFromUrl: vi.fn(),
     describeProduct: vi.fn(), renameProduct: vi.fn(), deleteProduct: vi.fn(),
+    createProduct: vi.fn(), updateProduct: vi.fn(),
 }));
 vi.mock('@/components/platform/files/FileThumbnail', () => ({ FileThumbnail: ({ alt }: { alt: string }) => <span>{alt}</span> }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() } }));
@@ -213,6 +214,46 @@ describe('ProductsPanel', () => {
         await user.type(field, 'My serum{Enter}');
         await waitFor(() => expect(productsApi.renameProduct).toHaveBeenCalledWith('p1', 'My serum'));
         expect(onSelect).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'My serum' }));
+    });
+
+    it('creates a product manually from the New product form and selects it', async () => {
+        vi.mocked(productsApi.createProduct).mockResolvedValue(record({ id: 'p2', name: 'Mug', category: 'Home & Kitchen' }));
+        const onSelect = vi.fn();
+        const user = userEvent.setup();
+        renderPanel(onSelect);
+        await user.click(await screen.findByRole('button', { name: 'New product' }));
+        await user.type(await screen.findByLabelText('Product name'), 'Mug');
+        await user.click(screen.getByRole('button', { name: 'Create product' }));
+        await waitFor(() => expect(productsApi.createProduct).toHaveBeenCalledWith({ name: 'Mug', category: null, description: null, usps: [] }));
+        expect(onSelect).toHaveBeenCalledWith(productsApi.productSelection(record({ id: 'p2', name: 'Mug', category: 'Home & Kitchen' })));
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('edits a product from the menu, prefilled, and updates the selection if it is the current one', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        vi.mocked(productsApi.updateProduct).mockResolvedValue(record({ category: 'Beauty & Personal Care', usps: ['Vegan'] }));
+        const onSelect = vi.fn();
+        const user = userEvent.setup();
+        renderPanel(onSelect, productsApi.productSelection(record()));
+        await user.click(await screen.findByRole('button', { name: 'More options for Niacinamide serum' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+        expect(await screen.findByLabelText('Product name')).toHaveProperty('value', 'Niacinamide serum');
+        await user.click(screen.getByRole('button', { name: 'Save changes' }));
+        await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalledWith('p1', { name: 'Niacinamide serum', category: null, description: 'A dropper bottle.', usps: [] }));
+        expect(onSelect).toHaveBeenCalledWith(productsApi.productSelection(record({ category: 'Beauty & Personal Care', usps: ['Vegan'] })));
+    });
+
+    it('does not reselect an edited product that is not the current selection', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        vi.mocked(productsApi.updateProduct).mockResolvedValue(record({ category: 'Electronics' }));
+        const onSelect = vi.fn();
+        const user = userEvent.setup();
+        renderPanel(onSelect, null);
+        await user.click(await screen.findByRole('button', { name: 'More options for Niacinamide serum' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+        await user.click(await screen.findByRole('button', { name: 'Save changes' }));
+        await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalled());
+        expect(onSelect).not.toHaveBeenCalled();
     });
 
     it('debounces search input before it drives the products query', async () => {

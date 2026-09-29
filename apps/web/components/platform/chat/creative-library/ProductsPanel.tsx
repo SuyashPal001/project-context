@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ClipboardEvent } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ImagePlus, Loader2, MoreHorizontal, Search } from 'lucide-react';
+import { Check, ImagePlus, Loader2, MoreHorizontal, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,9 +11,10 @@ import { FileThumbnail } from '@/components/platform/files/FileThumbnail';
 import { cn } from '@/lib/utils';
 import type { ProductRecordSelection, ProductSelection } from './creativeBriefModel';
 import { storeCreativeImage } from './storeCreativeImage';
+import { ProductSetupModal, type ProductSetupSubmission } from './ProductSetupModal';
 import {
-    PRODUCTS_PAGE_SIZE, createProductFromFiles, deleteProduct, describeProduct, importProductFromUrl,
-    listProducts, productSelection, renameProduct, type ProductRecord,
+    PRODUCTS_PAGE_SIZE, createProduct, createProductFromFiles, deleteProduct, describeProduct, importProductFromUrl,
+    listProducts, productSelection, renameProduct, updateProduct, type ProductRecord,
 } from './productsApi';
 
 const PRODUCT_PREFIX = 'creative-products/';
@@ -61,6 +62,10 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
     const [renameValue, setRenameValue] = useState('');
     const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
     const photoPreviewUrlRef = useRef<string | null>(null);
+    const [setupOpen, setSetupOpen] = useState(false);
+    // The product being edited — undefined while closed, null in create mode
+    // (blank form), a record in edit mode (prefilled).
+    const [setupProduct, setSetupProduct] = useState<ProductRecord | null>(null);
     selectedIdRef.current = selected?.kind === 'product' ? selected.id : null;
 
     useEffect(() => {
@@ -229,6 +234,22 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
         }
     }
 
+    async function handleSetupSave(fields: ProductSetupSubmission) {
+        try {
+            const saved = setupProduct ? await updateProduct(setupProduct.id, fields) : await createProduct(fields);
+            await refresh();
+            if (!mountedRef.current) return;
+            if (!setupProduct) selectedIdRef.current = saved.id;
+            if (selectedIdRef.current === saved.id) {
+                const selection = productSelection(saved);
+                if (selection) onSelect(selection);
+            }
+            setSetupOpen(false);
+        } catch {
+            toast.error(setupProduct ? 'Could not update the product.' : 'Could not create the product.');
+        }
+    }
+
     function removeProduct(product: ProductRecord) {
         setHidden(prev => new Set(prev).add(product.id));
         const timer = setTimeout(() => {
@@ -254,10 +275,15 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
     return <div className="space-y-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             {!hideHeading && <h2 className="text-xl font-semibold tracking-tight text-foreground">Products</h2>}
-            {!isEmpty && <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search products" aria-label="Search products" className="h-9 pl-9" />
-            </div>}
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+                {!isEmpty && <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search products" aria-label="Search products" className="h-9 pl-9" />
+                </div>}
+                <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => { setSetupProduct(null); setSetupOpen(true); }}>
+                    <Plus className="mr-1 h-4 w-4" />New product
+                </Button>
+            </div>
         </div>
         <div
             data-testid="product-drop-zone"
@@ -306,6 +332,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
                             onRenameCommit={() => void commitRename(product)}
                             onRenameCancel={() => { setRenameValue(product.name); setRenamingId(null); }}
                             onStartRename={() => { setRenameValue(product.name); setRenamingId(product.id); }}
+                            onEdit={() => { setSetupProduct(product); setSetupOpen(true); }}
                             onDelete={() => removeProduct(product)}
                             onUse={() => {
                                 if (onOpen) { onOpen(product); return; }
@@ -317,13 +344,14 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
                         />)}
                     </div>}
         {hasNextPage && <div className="flex justify-center"><Button variant="outline" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>{isFetchingNextPage ? 'Loading…' : 'Load more products'}</Button></div>}
+        <ProductSetupModal open={setupOpen} onOpenChange={setSetupOpen} product={setupProduct} onSave={fields => void handleSetupSave(fields)} />
     </div>;
 }
 
-function ProductCard({ product, selected, renaming, renameValue, useLabel, onRenameChange, onRenameCommit, onRenameCancel, onStartRename, onDelete, onUse }: {
+function ProductCard({ product, selected, renaming, renameValue, useLabel, onRenameChange, onRenameCommit, onRenameCancel, onStartRename, onEdit, onDelete, onUse }: {
     product: ProductRecord; selected: boolean; renaming: boolean; renameValue: string; useLabel: string;
     onRenameChange: (value: string) => void; onRenameCommit: () => void; onRenameCancel: () => void;
-    onStartRename: () => void; onDelete: () => void; onUse: () => void;
+    onStartRename: () => void; onEdit: () => void; onDelete: () => void; onUse: () => void;
 }) {
     const renameRequested = useRef(false);
     const main = product.images[0];
@@ -366,6 +394,7 @@ function ProductCard({ product, selected, renaming, renameValue, useLabel, onRen
                     }}
                 >
                     <DropdownMenuItem onSelect={() => { renameRequested.current = true; }}>Rename</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={onEdit}>Edit</DropdownMenuItem>
                     <DropdownMenuItem onSelect={onDelete} className="text-destructive">Delete</DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
