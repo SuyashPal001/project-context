@@ -80,6 +80,7 @@ describe('SERVER_TOOLS', () => {
       'retrieve_documents',
       'retrieve_template',
       'save_skill',
+      'show_files',
       'start_task',
       'web_fetch',
     ])
