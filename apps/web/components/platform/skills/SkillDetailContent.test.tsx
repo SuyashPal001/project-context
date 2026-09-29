@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render as rtlRender, screen, cleanup, type RenderResult } from "@testing-library/react";
+import { render as rtlRender, screen, within, cleanup, type RenderResult } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { SkillDetailContent } from "./SkillDetailContent";
@@ -189,5 +190,154 @@ describe("SkillDetailContent test button", () => {
             />,
         );
         expect(screen.queryByRole("button", { name: "Test in chat" })).toBeNull();
+    });
+});
+
+describe("SkillDetailContent unpublish/delete button visibility", () => {
+    it("shows Publish, hides Unpublish and shows Delete for the owner's private skill", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ visibility: "private" })}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onTest={noop}
+                isTesting={false}
+            />,
+        );
+        expect(screen.getByRole("button", { name: "Publish" })).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "Unpublish" })).toBeNull();
+        expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+    });
+
+    it("shows Unpublish, hides Publish and shows Delete for the owner's public skill", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ visibility: "public" })}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onTest={noop}
+                isTesting={false}
+            />,
+        );
+        expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+        expect(screen.getByRole("button", { name: "Unpublish" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+    });
+
+    it("hides Publish, Unpublish and Delete for a non-owner viewing a public skill", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ visibility: "public" })}
+                isOwner={false}
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onTest={noop}
+                isTesting={false}
+            />,
+        );
+        expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Unpublish" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    });
+
+    it("hides Unpublish and Delete for an Official skill even when isOwner is (incorrectly) true", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ visibility: "public", isOfficial: true, ownerTenantId: null })}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onTest={noop}
+                isTesting={false}
+            />,
+        );
+        expect(screen.queryByRole("button", { name: "Unpublish" })).toBeNull();
+        expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+    });
+});
+
+describe("SkillDetailContent unpublish confirm flow", () => {
+    it("asks for confirmation before calling onUnpublish", async () => {
+        const user = userEvent.setup();
+        const onUnpublish = vi.fn();
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ visibility: "public" })}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onUnpublish={onUnpublish}
+                onTest={noop}
+                isTesting={false}
+            />,
+        );
+
+        await user.click(screen.getByRole("button", { name: "Unpublish" }));
+        expect(onUnpublish).not.toHaveBeenCalled();
+        expect(screen.getByText(/People who installed it keep their copy/)).toBeTruthy();
+
+        const dialog = screen.getByRole("alertdialog");
+        await user.click(within(dialog).getByRole("button", { name: "Unpublish" }));
+        expect(onUnpublish).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("SkillDetailContent delete confirm flow", () => {
+    it("asks for confirmation before calling onDelete", async () => {
+        const user = userEvent.setup();
+        const onDelete = vi.fn();
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ visibility: "private" })}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onDelete={onDelete}
+                onTest={noop}
+                isTesting={false}
+            />,
+        );
+
+        await user.click(screen.getByRole("button", { name: "Delete" }));
+        expect(onDelete).not.toHaveBeenCalled();
+        expect(screen.getByText("This permanently deletes the skill and its versions.")).toBeTruthy();
+
+        const dialog = screen.getByRole("alertdialog");
+        await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+        expect(onDelete).toHaveBeenCalledTimes(1);
+    });
+
+    it("disables the Delete button and shows a pending label while isDeleting", () => {
+        render(
+            <SkillDetailContent
+                skill={makeSkill({ visibility: "private" })}
+                isOwner
+                files={[]}
+                onInstall={noop}
+                onUninstall={noop}
+                onPublish={noop}
+                onDelete={noop}
+                onTest={noop}
+                isTesting={false}
+                isDeleting
+            />,
+        );
+        const button = screen.getByRole("button", { name: "Deleting…" }) as HTMLButtonElement;
+        expect(button).toBeTruthy();
+        expect(button.disabled).toBe(true);
     });
 });

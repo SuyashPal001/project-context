@@ -14,7 +14,7 @@ vi.mock("@/lib/api", () => {
 });
 
 import { api, ApiError } from "@/lib/api";
-import { attachSkillToAgent, detachSkillFromAgent, resolveDefaultAgent, startSkillTestChat } from "./actions";
+import { attachSkillToAgent, deleteSkill, detachSkillFromAgent, resolveDefaultAgent, startSkillTestChat, unpublishSkill } from "./actions";
 import type { Skill } from "./types";
 import type { Agent } from "@/components/platform/agents/types";
 
@@ -159,6 +159,32 @@ describe("detachSkillFromAgent", () => {
         vi.mocked(api.del).mockResolvedValue(undefined as never);
         await detachSkillFromAgent("agent-1", "row-1");
         expect(api.del).toHaveBeenCalledWith("/api/v1/agents/agent-1/skills/row-1");
+    });
+});
+
+describe("unpublishSkill", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("POSTs to /skills/:id/unpublish", async () => {
+        vi.mocked(api.post).mockResolvedValueOnce({});
+        await unpublishSkill("skill-1");
+        expect(api.post).toHaveBeenCalledWith("/api/v1/skills/skill-1/unpublish");
+    });
+});
+
+describe("deleteSkill", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("DELETEs /skills/:id", async () => {
+        vi.mocked(api.del).mockResolvedValue(undefined as never);
+        await deleteSkill("skill-1");
+        expect(api.del).toHaveBeenCalledWith("/api/v1/skills/skill-1");
+    });
+
+    it("propagates a 409 IN_USE ApiError untouched, for the caller to surface", async () => {
+        const err = new ApiError(409, { error: "Skill is installed in other workspaces", code: "IN_USE", workspaces: 3 });
+        vi.mocked(api.del).mockRejectedValueOnce(err);
+        await expect(deleteSkill("skill-1")).rejects.toBe(err);
     });
 });
 

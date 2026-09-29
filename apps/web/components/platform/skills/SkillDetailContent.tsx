@@ -1,6 +1,17 @@
+import { useState } from "react";
 import { Download, Package, Plus, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { SkillFilesPanel } from "./SkillFilesPanel";
 import { SkillIcon } from "./SkillIcon";
@@ -29,7 +40,7 @@ function relativeTime(value: string | undefined | null): string {
 }
 
 export function SkillDetailContent({
-    skill, isOwner, files, filesLoading = false, onInstall, onUninstall, onPublish, onTest, isTesting,
+    skill, isOwner, files, filesLoading = false, onInstall, onUninstall, onPublish, onUnpublish, onDelete, onTest, isTesting, isDeleting = false,
 }: {
     skill: Skill;
     isOwner: boolean;
@@ -38,11 +49,21 @@ export function SkillDetailContent({
     onInstall: () => void;
     onUninstall: () => void;
     onPublish: () => void;
+    /** Owner + public only. Official skills never call this — the button never renders for them. */
+    onUnpublish?: () => void;
+    /** Owner + non-Official only — the button never renders otherwise. */
+    onDelete?: () => void;
     onTest: () => void;
     isTesting: boolean;
+    isDeleting?: boolean;
 }) {
     const { importFailed, hasReadyVersion, dead, importing } = skillImportState(skill);
     const visibilityStatus = skillVisibilityStatus(skill);
+    const [showUnpublishConfirm, setShowUnpublishConfirm] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    // Official skills (platform-owned, ownerTenantId null) can never be
+    // unpublished or deleted from the app — same rule the API enforces.
+    const canManage = isOwner && !skill.isOfficial;
 
     return (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -113,9 +134,24 @@ export function SkillDetailContent({
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-4 sm:pb-4">
-                {isOwner && skill.visibility === "private" && hasReadyVersion ? (
-                    <Button variant="ghost" onClick={onPublish}>Publish</Button>
-                ) : <span />}
+                <div className="flex flex-wrap items-center gap-2">
+                    {canManage && skill.visibility === "private" && hasReadyVersion && (
+                        <Button variant="ghost" onClick={onPublish}>Publish</Button>
+                    )}
+                    {canManage && skill.visibility === "public" && (
+                        <Button variant="ghost" onClick={() => setShowUnpublishConfirm(true)}>Unpublish</Button>
+                    )}
+                    {canManage && (
+                        <Button
+                            variant="outline"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setShowDeleteConfirm(true)}
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? "Deleting…" : "Delete"}
+                        </Button>
+                    )}
+                </div>
                 <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                     {skill.installed ? (
                         <>
@@ -132,6 +168,55 @@ export function SkillDetailContent({
                     )}
                 </div>
             </div>
+
+            <AlertDialog open={showUnpublishConfirm} onOpenChange={setShowUnpublishConfirm}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Unpublish &quot;{skill.name}&quot;?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            People who installed it keep their copy; it disappears from Community and
+                            can&apos;t be installed anymore.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={(e) => {
+                                e.preventDefault();
+                                setShowUnpublishConfirm(false);
+                                onUnpublish?.();
+                            }}
+                        >
+                            Unpublish
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete &quot;{skill.name}&quot;?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This permanently deletes the skill and its versions.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            disabled={isDeleting}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                setShowDeleteConfirm(false);
+                                onDelete?.();
+                            }}
+                        >
+                            {isDeleting ? "Deleting…" : "Delete"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

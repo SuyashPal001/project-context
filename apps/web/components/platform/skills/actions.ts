@@ -45,6 +45,20 @@ export async function publishSkill(skillId: string): Promise<void> {
     await api.post(`/api/v1/skills/${skillId}/publish`);
 }
 
+export async function unpublishSkill(skillId: string): Promise<void> {
+    await api.post(`/api/v1/skills/${skillId}/unpublish`);
+}
+
+/**
+ * Throws ApiError with status 409 and data.code === "IN_USE" (plus
+ * data.workspaces: number) when other tenants still have an active install —
+ * nothing is deleted in that case, and the caller should tell the owner to
+ * unpublish instead.
+ */
+export async function deleteSkill(skillId: string): Promise<void> {
+    await api.del(`/api/v1/skills/${skillId}`);
+}
+
 export async function installSkill(skillId: string): Promise<void> {
     await api.post(`/api/v1/skills/${skillId}/install`);
 }
