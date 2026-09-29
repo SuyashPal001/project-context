@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
 import { getAllowedOrigin, INTERNAL_SERVICE_KEY, sseApprovalChannels, pendingMcpApprovals, pendingClarifications, pendingToolApprovals, sessionActiveToolApprovals, pendingUploads, sessionActiveUpload, type ClarificationAnswer, type UploadedFileRef } from '../types.js'
 import { validateToken } from '../auth.js'
+import { acceptFreshIdToken } from '../freshIdToken.js'
 import { updateClarificationRequest, saveApprovalRequest, updateApprovalRequest, updateUploadRequest } from '../persistence.js'
 
 export const sessionsRouter = new Hono()
@@ -13,7 +14,7 @@ sessionsRouter.options('/api/chat/approval', (c) => {
     headers: {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Id-Token',
       'Access-Control-Allow-Credentials': 'true',
       'Vary': 'Origin',
     },
@@ -27,7 +28,7 @@ sessionsRouter.options('/api/chat/clarification', (c) => {
     headers: {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Id-Token',
       'Access-Control-Allow-Credentials': 'true',
       'Vary': 'Origin',
     },
@@ -41,7 +42,7 @@ sessionsRouter.options('/api/chat/upload', (c) => {
     headers: {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Id-Token',
       'Access-Control-Allow-Credentials': 'true',
       'Vary': 'Origin',
     },
@@ -55,7 +56,7 @@ sessionsRouter.options('/api/chat/generation-confirm', (c) => {
     headers: {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Id-Token',
       'Access-Control-Allow-Credentials': 'true',
       'Vary': 'Origin',
     },
@@ -141,9 +142,11 @@ sessionsRouter.post('/api/chat/approval', async (c) => {
   if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
 
   let callerTenantId = ''
+  let callerSub = ''
   try {
     const payload = await validateToken(token)
     callerTenantId = payload['custom:tenantId'] ?? ''
+    callerSub = payload.sub
   } catch {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
@@ -190,9 +193,11 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
 
   let callerTenantId = ''
+  let callerSub = ''
   try {
     const payload = await validateToken(token)
     callerTenantId = payload['custom:tenantId'] ?? ''
+    callerSub = payload.sub
   } catch {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
@@ -216,6 +221,9 @@ sessionsRouter.post('/api/chat/clarification', async (c) => {
   if (!callerTenantId || pending.tenantId !== callerTenantId) {
     return c.json({ ok: false, error: 'clarification_not_found' }, 404, corsHeaders)
   }
+  // A fresh id token from the browser replaces the turn's aging one (see freshIdToken.ts).
+  const freshIdToken = await acceptFreshIdToken(pending.conversationId, c.req.header('X-Id-Token'), callerSub)
+  if (freshIdToken) pending.idToken = freshIdToken
 
   // We only have `expectedCount` at this layer (the question/option definitions
   // live in the tool that issued the clarification, not in pendingClarifications),
@@ -322,9 +330,11 @@ sessionsRouter.post('/api/chat/upload', async (c) => {
   if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
 
   let callerTenantId = ''
+  let callerSub = ''
   try {
     const payload = await validateToken(token)
     callerTenantId = payload['custom:tenantId'] ?? ''
+    callerSub = payload.sub
   } catch {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
@@ -342,6 +352,9 @@ sessionsRouter.post('/api/chat/upload', async (c) => {
   if (!callerTenantId || pending.tenantId !== callerTenantId) {
     return c.json({ ok: false, error: 'upload_not_found' }, 404, corsHeaders)
   }
+  // A fresh id token from the browser replaces the turn's aging one (see freshIdToken.ts).
+  const freshIdToken = await acceptFreshIdToken(pending.conversationId, c.req.header('X-Id-Token'), callerSub)
+  if (freshIdToken) pending.idToken = freshIdToken
 
   // 2000, then 8000, both proved too tight for legitimate use — a
   // clarification like Olmo's "what should this skill teach me?" invites
@@ -407,9 +420,11 @@ sessionsRouter.post('/api/chat/generation-confirm', async (c) => {
   if (!token) return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
 
   let callerTenantId = ''
+  let callerSub = ''
   try {
     const payload = await validateToken(token)
     callerTenantId = payload['custom:tenantId'] ?? ''
+    callerSub = payload.sub
   } catch {
     return c.json({ ok: false, error: 'Unauthorized' }, 401, corsHeaders)
   }
@@ -435,6 +450,9 @@ sessionsRouter.post('/api/chat/generation-confirm', async (c) => {
   if (!callerTenantId || pending.tenantId !== callerTenantId) {
     return c.json({ ok: false, error: 'confirmation_not_found' }, 404, corsHeaders)
   }
+  // A fresh id token from the browser replaces the turn's aging one (see freshIdToken.ts).
+  const freshIdToken = await acceptFreshIdToken(pending.conversationId, c.req.header('X-Id-Token'), callerSub)
+  if (freshIdToken) pending.idToken = freshIdToken
 
   pendingToolApprovals.delete(confirmationId)
   for (const [sessionId, ids] of sessionActiveToolApprovals.entries()) {

@@ -21,6 +21,7 @@ import { quickGeminiCall } from '../llm/quickCall.js'
 import type { Attachment, DownloadedMedia } from '../types.js'
 import { lastRagResult } from '../types.js'
 import { pendingToolApprovals, sessionActiveToolApprovals } from '../types.js'
+import { latestIdToken, clearFreshIdToken } from '../freshIdToken.js'
 import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/generationApproval.js'
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle } from '../persistence.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
@@ -247,6 +248,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     workingMemoryPromise, sendEvent, sendHeartbeat, closeStream, isStreamClosed,
     folderId, folderPrefix, allowMode, skillsUsed, isFirstMessage,
   } = opts
+  // The newest id token for this conversation — see freshIdToken.ts.
+  const liveIdToken = (): string => latestIdToken(conversationId, idToken)
 
   // Heartbeat while any tool call is in flight — see sendHeartbeat's doc
   // comment in chat.ts. activeToolCalls tracks concurrent calls (tool-call
@@ -342,6 +345,8 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     })
     requestContext.set('sessionId', sessionId)
     requestContext.set('conversationId', conversationId)
+    // This turn starts with the request's own token; any older hand-over is stale.
+    clearFreshIdToken(conversationId)
     requestContext.set('idToken', idToken)
     if (folderId) requestContext.set('folderId', folderId)
     applyFolderScope(requestContext, folderPrefix)
@@ -537,7 +542,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
     // normal finish path and the instant-cancel path.
     const saveTurn = (): void => {
       const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-      saveUserMessage(idToken, conversationId, displayMessage, atts, skillsUsed)
+      saveUserMessage(liveIdToken(), conversationId, displayMessage, atts, skillsUsed)
       // Mirrors the frontend's own hadTrace gate (useChatStream.ts onDone) so a
       // turn that's too fast/toolless to show a summary live doesn't get one
       // materialize after a reload either.
@@ -548,7 +553,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       const completedTrace = (toolCallCount > 0 || elapsedSec >= 2 || !!reasoningText)
         ? { elapsedSec, toolCallCount, ...(reasoningText ? { reasoningText } : {}), ...(reasoningElapsedSec !== undefined ? { reasoningElapsedSec } : {}) }
         : null
-      saveAssistantMessage(idToken, conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
+      saveAssistantMessage(liveIdToken(), conversationId, redactUnverifiedFileIds(fullText, pendingAttachments), assistantMessageId, pendingArtifactRef, completedTrace, pendingAttachments)
     }
 
     // Settles when Mastra's background title call reports back (or is skipped),
@@ -569,7 +574,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         onTitleGenerated: (title: string) => {
           const clean = title.trim().replace(/^["']|["']$/g, '').slice(0, 255)
           if (isFirstMessage && conversationId && clean) {
-            saveConversationTitle(idToken, conversationId, clean)
+            saveConversationTitle(liveIdToken(), conversationId, clean)
             if (!isStreamClosed()) sendEvent('title', { conversationId, title: clean })
           }
           settleTitle()
@@ -717,7 +722,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           })
 
           if (conversationId && idToken) {
-            saveGenerationConfirmRequest(idToken, conversationId, approvalMessageId, {
+            saveGenerationConfirmRequest(liveIdToken(), conversationId, approvalMessageId, {
               id: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label, status: 'pending',
               ...(preview ? { preview } : {}),
               ...(count ? { count } : {}),
@@ -741,15 +746,19 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           const { confirmed, declineReason } = await new Promise<{ confirmed: boolean; declineReason?: string }>((resolve) => {
             pendingToolApprovals.set(toolCallId, {
               resolve, tenantId, runId, toolCallId,
-              messageId: approvalMessageId, conversationId, idToken,
+              messageId: approvalMessageId, conversationId, idToken: liveIdToken(),
             })
           })
 
           sessionActiveToolApprovals.get(sessionId)?.delete(toolCallId)
           if (sessionActiveToolApprovals.get(sessionId)?.size === 0) sessionActiveToolApprovals.delete(sessionId)
 
+          // The user just answered the card, so the browser handed over a fresh
+          // token (sessions.ts) — everything after this, tools included, uses it.
+          requestContext.set('idToken', liveIdToken())
+
           if (conversationId && idToken) {
-            updateGenerationConfirmRequest(idToken, conversationId, approvalMessageId, {
+            updateGenerationConfirmRequest(liveIdToken(), conversationId, approvalMessageId, {
               status: confirmed ? 'approved' : 'declined',
               decisionAt: new Date().toISOString(),
               ...(declineReason ? { declineReason } : {}),
@@ -993,7 +1002,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       // The finish path is never reached when the turn throws, so this is the only
       // opportunity to durably persist the user turn.
       const atts = attachments.map(a => ({ fileId: a.fileId, name: a.name ?? a.fileId ?? 'attachment', type: a.type ?? '', size: a.size }))
-      saveUserMessage(idToken, conversationId, message, atts, skillsUsed)
+      saveUserMessage(liveIdToken(), conversationId, message, atts, skillsUsed)
     }
     closeStream()
   } finally {

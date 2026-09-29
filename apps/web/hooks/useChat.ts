@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Attachment } from '@/types/agent-events';
 import { SSEParser } from './useChat/sseParser';
-import { getAuthTokens, attemptRefresh } from './useChat/auth';
+import { getAuthTokens, getFreshAuthTokens, attemptRefresh } from './useChat/auth';
 import type { ClarificationQuestion } from '@/components/platform/chat/types';
 
 const CHAT_ENDPOINT = `${process.env.NEXT_PUBLIC_AGENT_CHAT_URL ?? 'https://projectcontext.co'}/api/chat`;
@@ -185,7 +185,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
 
         pendingRetryPayloadRef.current = { text, attachments, skillsUsed, isFirstMessage };
 
-        let { accessToken: token, idToken } = getAuthTokens();
+        let { accessToken: token, idToken } = await getFreshAuthTokens();
 
         if (!token) {
             clearRetry();
@@ -542,7 +542,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         decision: 'approved' | 'declined',
         reason?: string,
     ): Promise<boolean> => {
-        const { accessToken } = getAuthTokens();
+        const { accessToken, idToken } = await getFreshAuthTokens();
         if (!accessToken) return false;
 
         try {
@@ -551,6 +551,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${accessToken}`,
+                    // Hands the running turn a fresh id token (orchestrator freshIdToken.ts).
+                    ...(idToken ? { 'X-Id-Token': idToken } : {}),
                 },
                 body: JSON.stringify({ confirmationId, decision, ...(reason ? { reason } : {}) }),
             });
@@ -565,7 +567,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         questionIndex: number,
         answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] },
     ): Promise<boolean | 'expired'> => {
-        const { accessToken } = getAuthTokens();
+        const { accessToken, idToken } = await getFreshAuthTokens();
         if (!accessToken) return false;
 
         try {
@@ -574,6 +576,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${accessToken}`,
+                    // Hands the running turn a fresh id token (orchestrator freshIdToken.ts).
+                    ...(idToken ? { 'X-Id-Token': idToken } : {}),
                 },
                 body: JSON.stringify({ clarificationId, questionIndex, ...answer }),
             });
@@ -591,7 +595,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         uploadId: string,
         answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean },
     ): Promise<boolean> => {
-        const { accessToken } = getAuthTokens();
+        const { accessToken, idToken } = await getFreshAuthTokens();
         if (!accessToken) return false;
 
         try {
@@ -600,6 +604,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${accessToken}`,
+                    // Hands the running turn a fresh id token (orchestrator freshIdToken.ts).
+                    ...(idToken ? { 'X-Id-Token': idToken } : {}),
                 },
                 body: JSON.stringify({ uploadId, ...answer }),
             });

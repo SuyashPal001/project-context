@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { latestIdToken } from '../../freshIdToken.js'
 import { pendingUploads, sessionActiveUpload, UPLOAD_TIMEOUT_MS } from '../../types.js'
 import { saveUploadRequest, updateUploadRequest } from '../../persistence.js'
 
@@ -82,6 +83,9 @@ export const requestUploadTool = createTool({
     })
 
     if (sessionId) sessionActiveUpload.delete(sessionId)
+    // The user just answered, so the browser handed over a fresh id token
+    // (freshIdToken.ts) — later calls in this turn, tools included, use it.
+    if (conversationId && idToken) execContext?.requestContext?.set('idToken', latestIdToken(conversationId, idToken))
 
     return {
       files: answer.files,

@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { latestIdToken } from '../../freshIdToken.js'
 import { pendingClarifications, sessionActiveClarification } from '../../types.js'
 import { saveClarificationRequest, updateClarificationRequest } from '../../persistence.js'
 
@@ -103,6 +104,9 @@ export const askClarifyingQuestionsTool = createTool({
     })
 
     if (sessionId) sessionActiveClarification.delete(sessionId)
+    // The user just answered, so the browser handed over a fresh id token
+    // (freshIdToken.ts) — later calls in this turn, tools included, use it.
+    if (conversationId && idToken) execContext?.requestContext?.set('idToken', latestIdToken(conversationId, idToken))
 
     return {
       answers: answers.map((a, i) => ({
