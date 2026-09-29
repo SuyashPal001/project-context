@@ -9,6 +9,23 @@ interface RouterLike {
 }
 
 /**
+ * Installs (or re-installs, moving the tenant's install to the latest
+ * version — POST /skills/:id/install is idempotent) an Official skill.
+ * Shows a toast and returns false on failure; callers must not proceed
+ * (send/navigate) when this returns false, so the user isn't dropped into a
+ * chat that silently doesn't have the skill.
+ */
+export async function installOfficialSkill(skill: Pick<Skill, "id" | "name">): Promise<boolean> {
+    try {
+        await api.post(`/api/v1/skills/${skill.id}/install`);
+        return true;
+    } catch {
+        toast.error(`Failed to start "${skill.name}".`);
+        return false;
+    }
+}
+
+/**
  * Runs an Official skill's "Start" action: installs (or re-installs, moving the
  * tenant's install to the latest version — POST /skills/:id/install is
  * idempotent) and then opens a fresh chat seeded with the showcase's starter
@@ -24,12 +41,8 @@ export async function startOfficialSkill(
     tenantSlug: string,
     router: RouterLike,
 ): Promise<void> {
-    try {
-        await api.post(`/api/v1/skills/${skill.id}/install`);
-    } catch {
-        toast.error(`Failed to start "${skill.name}".`);
-        return;
-    }
+    const installed = await installOfficialSkill(skill);
+    if (!installed) return;
 
     const prompt = skill.showcase?.starterPrompt ?? `Use the ${skill.name} skill`;
     router.push(

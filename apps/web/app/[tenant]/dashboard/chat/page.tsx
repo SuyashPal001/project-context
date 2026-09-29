@@ -40,7 +40,9 @@ import { findPendingClarification, findPendingGenerationConfirm, findPendingUplo
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { parseFolderId } from "@/lib/folderScope";
 import { CreativeEmptyState } from '@/components/platform/chat/CreativeEmptyState';
-import { CREATE_AVATAR_PROMPT } from '@/components/platform/files/NewAvatarButton';
+import { CREATE_AVATAR_PROMPT, AVATAR_CREATOR_SKILL_SLUG } from '@/components/platform/files/NewAvatarButton';
+import { useOfficialSkill } from '@/components/platform/skills/useOfficialSkill';
+import { resolveCreateAvatarSkillsUsed } from '@/components/platform/skills/createAvatarSkillsUsed';
 import { CreativeBriefChips } from '@/components/platform/chat/creative-library/CreativeBriefChips';
 import {
     buildCreativeBriefMessage,
@@ -88,6 +90,10 @@ function ChatPage() {
 
     const queryClient = useQueryClient();
     const { isCanvasOpen, isCanvasExpanded, hasActivity, toggleCanvas, toggleExpand, openCanvas, handleCanvasUpdate, flushPending } = useCanvas();
+    // "Create with AI" in the avatar picker starts the Official Avatar
+    // creator skill when it's seeded, same as NewAvatarButton (Drive) —
+    // falls back to today's plain-prompt send/stage when it isn't.
+    const avatarCreatorSkill = useOfficialSkill(AVATAR_CREATOR_SKILL_SLUG);
 
     // Auto-collapse the conversation list the moment Canvas opens, giving
     // chat+canvas the room the two-column layout needs — same collapse the
@@ -679,7 +685,11 @@ function ChatPage() {
                                                 // image-to-avatar call — and never touches/clears the brief.
                                                 onCreateAvatar={() => {
                                                     if (isStreaming || isPreparingMessage || selectedConversation.status !== 'active') return;
-                                                    sendMessage(CREATE_AVATAR_PROMPT);
+                                                    void (async () => {
+                                                        const skillsUsed = await resolveCreateAvatarSkillsUsed(avatarCreatorSkill);
+                                                        if (skillsUsed === null) return; // install failed — already toasted
+                                                        sendMessage(CREATE_AVATAR_PROMPT, undefined, skillsUsed);
+                                                    })();
                                                 }}
                                                 createAvatarDisabled={isStreaming || isPreparingMessage || selectedConversation.status !== 'active'}
                                             >
@@ -785,9 +795,14 @@ function ChatPage() {
                                     // just via the pre-conversation staging path instead of sendMessage directly.
                                     onCreateAvatar={() => {
                                         if (createConversation.isPending) return;
-                                        setPendingFirstMessage(CREATE_AVATAR_PROMPT);
-                                        setPendingFirstAttachments(undefined);
-                                        handleNewChat(draftAgent?.id);
+                                        void (async () => {
+                                            const skillsUsed = await resolveCreateAvatarSkillsUsed(avatarCreatorSkill);
+                                            if (skillsUsed === null) return; // install failed — already toasted
+                                            setPendingFirstMessage(CREATE_AVATAR_PROMPT);
+                                            setPendingFirstAttachments(undefined);
+                                            setPendingSkillsUsed(skillsUsed);
+                                            handleNewChat(draftAgent?.id);
+                                        })();
                                     }}
                                     createAvatarDisabled={createConversation.isPending}
                                 >
