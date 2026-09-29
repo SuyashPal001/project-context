@@ -107,6 +107,53 @@ export async function fetchTestSkill(installId: string, tenantId: string): Promi
   }
 }
 
+const OFFICIAL_SKILLS_CACHE_TTL_MS = 60_000
+let officialSkillsCache: { skills: InlineSkill[]; expiresAt: number } | null = null
+
+/**
+ * Official, platform-owned skills (skills.is_official = true) — always
+ * available to every tenant's agent, on top of whatever it has attached or
+ * invoked with "/". Not tenant-scoped on purpose: Official skills are
+ * platform content, identical for every tenant, so there is nothing to
+ * filter by tenantId. Records no runs — run counts on skill_installs track
+ * per-tenant installs, and an Official skill has none.
+ *
+ * Cached in memory for 60s, the same style as platformAgent.ts's
+ * mcpToolsCache, since this content changes rarely and every tenant's
+ * resolver call would otherwise re-run the same query. Fails closed to []
+ * on a query error, like fetchToolGovernance/fetchAgentPolicy — the
+ * resolver's Promise.all must never reject because the Official-skills
+ * fetch failed.
+ */
+export async function fetchOfficialSkills(): Promise<InlineSkill[]> {
+  if (officialSkillsCache && officialSkillsCache.expiresAt > Date.now()) return officialSkillsCache.skills
+  const p = getPool()
+  try {
+    const res = await p.query<{ name: string; description: string | null; body: string | null }>(
+      `SELECT s.name, sv.manifest->>'description' AS description, sv.manifest->>'body' AS body
+       FROM skills s
+       JOIN skill_versions sv ON sv.skill_id = s.id AND sv.version = s.latest_version
+       WHERE s.is_official = true AND sv.status = 'ready'`,
+    )
+    const skills: InlineSkill[] = []
+    for (const row of res.rows) {
+      const body = row.body?.trim()
+      if (!body) continue
+      const description = (row.description?.trim() || `Use when the task matches "${row.name}".`).slice(0, 1024)
+      try {
+        skills.push(createSkill({ name: toMastraSkillName(row.name), description, instructions: body }))
+      } catch (err) {
+        console.error('[usage] fetchOfficialSkills createSkill validation failed for', row.name, ':', (err as Error).message)
+      }
+    }
+    officialSkillsCache = { skills, expiresAt: Date.now() + OFFICIAL_SKILLS_CACHE_TTL_MS }
+    return skills
+  } catch (err) {
+    console.error('[usage] fetchOfficialSkills error:', (err as Error).message)
+    return []
+  }
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**

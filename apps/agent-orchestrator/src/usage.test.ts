@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest'
 
 const mockPoolQuery = vi.fn()
 vi.mock('@serverless-saas/database', () => ({ db: {} }))
@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, fetchOfficialSkills, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -260,6 +260,63 @@ describe('fetchTestSkill', () => {
     // this test exists to prove the clamp works, not to prove the catch fires.
     expect(skill).not.toBeNull()
     expect(skill!.description.length).toBeLessThanOrEqual(1024)
+  })
+})
+
+describe('fetchOfficialSkills', () => {
+  // A single monotonic fake clock for the whole block: reinstalling fake
+  // timers per-test (via beforeEach) resets to the real wall clock each
+  // time, which made the 60s cache's absolute expiresAt from an earlier test
+  // outlive a later test's rebased "now" and mask that test's own query.
+  // One clock, only ever advanced forward, keeps the cache math honest.
+  beforeAll(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+  })
+
+  afterAll(() => {
+    vi.useRealTimers()
+  })
+
+  it('returns a Mastra Skill for each official, ready row', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'Avatar Creator', description: 'Use when making an avatar.', body: 'Avatar body.' },
+      { name: 'Talking Head', description: 'Use when making a talking-head ad.', body: 'Talking head body.' },
+    ] })
+    const skills = await fetchOfficialSkills()
+    expect(skills).toHaveLength(2)
+    expect(skills.map((s) => s.name)).toEqual(['avatar-creator', 'talking-head'])
+    expect(skills[0].instructions).toBe('Avatar body.')
+  })
+
+  it('skips a row with an empty body', async () => {
+    vi.advanceTimersByTime(61_000) // bust the cache from the previous test
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'Empty Skill', description: 'Use when empty.', body: '   ' },
+    ] })
+    const skills = await fetchOfficialSkills()
+    expect(skills).toEqual([])
+  })
+
+  it('returns [] instead of throwing on a query error', async () => {
+    vi.advanceTimersByTime(61_000)
+    mockPoolQuery.mockRejectedValueOnce(new Error('db down'))
+    await expect(fetchOfficialSkills()).resolves.toEqual([])
+  })
+
+  it('does not query again within 60s of a successful call', async () => {
+    vi.advanceTimersByTime(61_000)
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'Cached Skill', description: 'Use when cached.', body: 'Cached body.' },
+    ] })
+    const first = await fetchOfficialSkills()
+    expect(first).toHaveLength(1)
+
+    mockPoolQuery.mockClear()
+    vi.advanceTimersByTime(30_000) // still inside the 60s window
+    const second = await fetchOfficialSkills()
+    expect(second).toEqual(first)
+    expect(mockPoolQuery).not.toHaveBeenCalled()
   })
 })
 

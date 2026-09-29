@@ -12,7 +12,7 @@ import { SKILL_CONTENT_QUALITY_BAR } from '../../skills/generationPrompt.js'
 import { selectModel } from './modelSelection.js'
 import type { TenantContext } from '../context.js'
 import { getOlmoMemory } from '../memory.js'
-import { fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills } from '../../usage.js'
+import { fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, fetchOfficialSkills } from '../../usage.js'
 import { invokedSkillsInstruction, mergeSkillSets } from '../skillInvocation.js'
 import { getMCPClientForTenant } from '../tools.js'
 import { isComposioEnabled, getComposioTools } from '../composio.js'
@@ -573,11 +573,12 @@ You only remember the current task. When the user refers to earlier work from an
     // bypass chatStream.ts's check; dropping fetchInvokedSkills's own
     // resolution would bypass the load-time one.
     const invokedIds = (requestContext?.get('invokedSkillInstallIds') as string[] | undefined) ?? []
-    const [attached, invoked] = await timed('skills.fetch', requestContext, () => Promise.all([
+    const [attached, invoked, official] = await timed('skills.fetch', requestContext, () => Promise.all([
       fetchAttachedSkills(agentId, tenantId),
       invokedIds.length > 0 ? fetchInvokedSkills(invokedIds, tenantId) : Promise.resolve([]),
+      fetchOfficialSkills(),
     ]))
-    return mergeSkillSets(attached, invoked)
+    return mergeSkillSets(mergeSkillSets(attached, invoked), official)
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext<TenantContext> }) => {
