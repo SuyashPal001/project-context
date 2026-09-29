@@ -36,6 +36,49 @@ describe('askClarifyingQuestionsTool', () => {
     clearTimeout(pending.timer)
   })
 
+  it('accepts imageFileId on an option and carries it through to the clarification_request event', async () => {
+    const sendEvent = vi.fn()
+    const requestContext = {
+      get: (key: string) =>
+        key === 'sendEvent' ? sendEvent
+        : key === 'sessionId' ? 'session-image'
+        : key === 'tenantId' ? 'tenant-1'
+        : key === 'userId' ? 'user-1'
+        : undefined,
+    }
+
+    const imageFileId = '11111111-1111-1111-1111-111111111111'
+    const input = {
+      questions: [
+        {
+          prompt: 'Which one should become your avatar?',
+          options: [
+            { label: 'Option 1', imageFileId },
+            { label: 'None of these — change something' },
+          ],
+        },
+      ],
+    }
+
+    const resultPromise = askClarifyingQuestionsTool.execute!(input as any, { requestContext } as any)
+    await vi.waitFor(() => expect(pendingClarifications.size).toBe(1))
+    const [[clarificationId, pending]] = pendingClarifications.entries()
+    pending.collected.push({ questionIndex: 0, selectedIndex: 0 })
+    pending.resolve(pending.collected)
+    pendingClarifications.delete(clarificationId)
+    await resultPromise
+
+    expect(sendEvent).toHaveBeenCalledWith('clarification_request', expect.objectContaining({
+      questions: [expect.objectContaining({
+        options: [
+          expect.objectContaining({ label: 'Option 1', imageFileId }),
+          expect.objectContaining({ label: 'None of these — change something' }),
+        ],
+      })],
+    }))
+    clearTimeout(pending.timer)
+  })
+
   it('returns no_active_session when sendEvent/sessionId are missing', async () => {
     const requestContext = { get: () => undefined }
     // Must satisfy the tool's inputSchema (questions: min 1) — Mastra's createTool

@@ -29,6 +29,12 @@ describe('avatar creation contract', () => {
     expect(AVATAR_CREATION_CONTRACT).toMatch(/pass that fileId explicitly/i)
   })
 
+  it('sets each pick option\'s imageFileId to its own variation, so the user sees the actual faces instead of bare "Option N" text', () => {
+    expect(AVATAR_CREATION_CONTRACT).toMatch(/imageFileId/)
+    expect(AVATAR_CREATION_CONTRACT).toMatch(/Option 1 = the first variation's fileId/i)
+    expect(AVATAR_CREATION_CONTRACT).toMatch(/never set imageFileId on the "None of these" option/i)
+  })
+
   it('limits demographic inference to what the user or the product\'s stated audience explicitly says, never a market or region', () => {
     expect(AVATAR_CREATION_CONTRACT).toMatch(/product's stated audience states/i)
     expect(AVATAR_CREATION_CONTRACT).not.toMatch(/product's stated audience implies/i)

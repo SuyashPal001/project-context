@@ -10,12 +10,28 @@ import { ImageIcon } from "lucide-react";
 // instead of re-fetching it — it's valid for a full hour (see
 // storageService.getDownloadUrl's default expiresIn), plenty of headroom
 // for a single grid session.
-export function FileThumbnail({ fileId, alt }: { fileId: string; alt: string }) {
+export function FileThumbnail({ fileId, alt, fallbackToLibraryAsset }: {
+    fileId: string;
+    alt: string;
+    // When true, a 404 on the tenant files lookup retries against
+    // creative_library_assets — the id can be either one (e.g. a clarifying-
+    // question option pointing at a platform library preset rather than a
+    // generated file). Same fallback idea as the orchestrator's mediaCache.
+    // Off by default so existing Drive/grid callers (always real file ids)
+    // don't pay for a second request on every genuine miss.
+    fallbackToLibraryAsset?: boolean;
+}) {
     const { data, isError } = useQuery({
-        queryKey: ['file-download-url', fileId],
+        queryKey: ['file-download-url', fileId, fallbackToLibraryAsset ?? false],
         queryFn: async () => {
-            const res = await api.get<{ data: { downloadUrl: string } }>(`/api/v1/files/${fileId}/download`);
-            return res.data.downloadUrl;
+            try {
+                const res = await api.get<{ data: { downloadUrl: string } }>(`/api/v1/files/${fileId}/download`);
+                return res.data.downloadUrl;
+            } catch (err) {
+                if (!fallbackToLibraryAsset || (err as { status?: number }).status !== 404) throw err;
+                const res = await api.get<{ presignedUrl: string }>(`/api/v1/creative-library-assets/${fileId}/presigned-url`);
+                return res.presignedUrl;
+            }
         },
         staleTime: 30 * 60 * 1000,
     });

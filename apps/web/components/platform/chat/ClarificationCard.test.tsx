@@ -7,6 +7,11 @@ import { uploadToS3 } from './useFileUpload';
 vi.mock('./useFileUpload', () => ({ uploadToS3: vi.fn(), MAX_FILES_PER_SELECTION: 5, MAX_ATTACHMENTS_PER_MESSAGE: 20 }));
 vi.mock('./AttachmentStrip', () => ({ AttachmentStrip: ({ attachments, onRemove }: any) => attachments.map((file: any) => <button key={file.fileId} onClick={() => onRemove(file.fileId)}>{file.name}</button>) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('@/components/platform/files/FileThumbnail', () => ({
+    FileThumbnail: ({ fileId, alt, fallbackToLibraryAsset }: any) => (
+        <img data-testid="clarification-thumb" data-file-id={fileId} data-fallback={String(!!fallbackToLibraryAsset)} alt={alt} />
+    ),
+}));
 const request = { id: 'q1', status: 'pending' as const, questions: [
     { prompt: 'Upload your product image', options: [], allowSkip: true },
     { prompt: 'Choose a style', options: [{ label: 'Simple' }], allowSkip: true },
@@ -88,5 +93,43 @@ describe('multiSelect', () => {
         fireEvent.click(screen.getByText('4. Liquid Life')); // 4th click while already at max — should no-op
         fireEvent.click(screen.getByText('Submit'));
         await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ questionIndex: 0, selectedIndices: [0, 1, 2] }, true));
+    });
+});
+
+describe('image-backed options (avatar/casting picks)', () => {
+    const imageRequest = { id: 'q3', status: 'pending' as const, questions: [
+        { prompt: 'Which one should become your avatar?', allowSkip: true, options: [
+            { label: 'Option 1', imageFileId: '11111111-1111-1111-1111-111111111111' },
+            { label: 'Option 2', imageFileId: '22222222-2222-2222-2222-222222222222' },
+            { label: 'None of these — change something' },
+        ] },
+    ] };
+
+    it('renders image tiles for options with imageFileId and plain text rows for the rest', () => {
+        render(<ClarificationCard request={imageRequest} onAnswer={vi.fn()} />);
+        const thumbs = screen.getAllByTestId('clarification-thumb');
+        expect(thumbs).toHaveLength(2);
+        expect(thumbs[0].getAttribute('data-file-id')).toBe('11111111-1111-1111-1111-111111111111');
+        expect(thumbs[0].getAttribute('data-fallback')).toBe('true');
+        expect(screen.getByText('1. Option 1')).toBeTruthy();
+        expect(screen.getByText('2. Option 2')).toBeTruthy();
+        // The no-image option stays a plain text row, not a tile.
+        expect(screen.getByText('3. None of these — change something')).toBeTruthy();
+    });
+
+    it('clicking a tile selects it and submits the same answer shape as a text option', async () => {
+        const onAnswer = vi.fn().mockResolvedValue(true);
+        render(<ClarificationCard request={imageRequest} onAnswer={onAnswer} />);
+        fireEvent.click(screen.getByText('2. Option 2'));
+        fireEvent.click(screen.getByText('Submit'));
+        await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ questionIndex: 0, selectedIndex: 1 }, true));
+    });
+
+    it('clicking the text-only "none of these" option still works normally', async () => {
+        const onAnswer = vi.fn().mockResolvedValue(true);
+        render(<ClarificationCard request={imageRequest} onAnswer={onAnswer} />);
+        fireEvent.click(screen.getByText('3. None of these — change something'));
+        fireEvent.click(screen.getByText('Submit'));
+        await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ questionIndex: 0, selectedIndex: 2 }, true));
     });
 });

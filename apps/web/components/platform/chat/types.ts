@@ -52,6 +52,10 @@ export interface GenerationConfirmRequest {
 export interface ClarificationOption {
     label: string;
     rationale?: string;
+    /** fileId (or creative_library_assets id) of an image this option stands
+     *  for, e.g. a generated avatar variation or a casting match — the card
+     *  renders it as a thumbnail tile instead of a plain text row. */
+    imageFileId?: string;
 }
 
 export interface ClarificationQuestion {

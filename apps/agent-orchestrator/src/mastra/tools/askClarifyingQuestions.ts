@@ -23,6 +23,7 @@ export const askClarifyingQuestionsTool = createTool({
       options: z.array(z.object({
         label: z.string(),
         rationale: z.string().optional(),
+        imageFileId: z.string().uuid().optional().describe('fileId of an image this option stands for (e.g. a generated variation); the card shows it as a thumbnail'),
       })).min(0).optional().default([]),
       allowFreeText: z.boolean().optional().default(true),
       allowSkip: z.boolean().optional().default(true),

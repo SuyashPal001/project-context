@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { ClarificationRequest, UploadedFileRef } from './types';
 import { AttachmentStrip } from './AttachmentStrip';
+import { FileThumbnail } from '@/components/platform/files/FileThumbnail';
 import { uploadToS3, MAX_FILES_PER_SELECTION, MAX_ATTACHMENTS_PER_MESSAGE, PendingUpload } from './useFileUpload';
 import { toast } from 'sonner';
 
@@ -175,6 +176,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
             return { ...prev, [pageIndex]: current };
         });
     };
+    const hasImageOptions = question.options.some(o => !!o.imageFileId);
     const freeText = currentFreeText;
     const isLast = pageIndex === total - 1;
     const hasAnswer = multiSelect ? multiSelectSatisfied : selectedIndex !== undefined;
@@ -266,7 +268,41 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                 )}
                 {question.options.length > 0 && (
                 <div className="flex flex-col gap-1.5">
+                    {hasImageOptions && (
+                        <div className="flex flex-wrap gap-3">
+                            {question.options.map((opt, i) => {
+                                if (!opt.imageFileId) return null;
+                                const isChecked = multiSelect ? selectedIndices.has(i) : selectedIndex === i;
+                                const atCapUnselected = !!multiSelect && !isChecked && selectedIndices.size >= multiSelect.max;
+                                return (
+                                    <button
+                                        key={opt.label}
+                                        type="button"
+                                        disabled={atCapUnselected}
+                                        onClick={() => multiSelect ? toggleOption(i) : setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
+                                        className="flex flex-col gap-1.5 w-[140px] shrink-0 text-left group"
+                                    >
+                                        <div className={cn(
+                                            "w-[140px] h-[186px] rounded-xl overflow-hidden bg-muted/30 transition-shadow",
+                                            isChecked
+                                                ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
+                                                : atCapUnselected
+                                                    ? "opacity-40 cursor-not-allowed"
+                                                    : "group-hover:ring-2 group-hover:ring-border",
+                                        )}>
+                                            <FileThumbnail fileId={opt.imageFileId} alt={opt.label} fallbackToLibraryAsset />
+                                        </div>
+                                        <div className="text-sm font-medium px-0.5">{i + 1}. {opt.label}</div>
+                                        {opt.rationale && (
+                                            <div className="text-xs text-muted-foreground px-0.5">{opt.rationale}</div>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                     {question.options.map((opt, i) => {
+                        if (opt.imageFileId) return null;
                         const isChecked = multiSelect ? selectedIndices.has(i) : selectedIndex === i;
                         const atCapUnselected = !!multiSelect && !isChecked && selectedIndices.size >= multiSelect.max;
                         return (
@@ -285,7 +321,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                     ? "border-primary/40 bg-primary/5"
                                     : atCapUnselected
                                         ? "border-transparent opacity-40 cursor-not-allowed"
-                                        : i === 0 && !multiSelect && selectedIndex === undefined
+                                        : i === 0 && !multiSelect && selectedIndex === undefined && !hasImageOptions
                                             ? "border-transparent bg-accent/60 hover:bg-accent"
                                             : "border-transparent hover:bg-accent"
                             )}
