@@ -22,13 +22,24 @@ beforeAll(() => {
 })
 
 describe('avatar creation contract (Avatar creator Official skill)', () => {
-  it('caps intake at one card of at most two multiple-choice questions and forbids a demographic quiz', () => {
+  it('caps intake at one card of at most three multiple-choice questions and forbids a demographic quiz', () => {
     expect(AVATAR_SKILL_TEXT).toContain('at most ONE ask_clarifying_questions card')
-    expect(AVATAR_SKILL_TEXT).toContain('at most two single-select questions')
+    expect(AVATAR_SKILL_TEXT).toContain('at most three single-select questions')
     expect(AVATAR_SKILL_TEXT).toMatch(/never a bare free-text question/i)
     expect(AVATAR_SKILL_TEXT).toContain('(Recommended)')
-    expect(AVATAR_SKILL_TEXT).toMatch(/never ask separately about gender, age or ethnicity/i)
+    expect(AVATAR_SKILL_TEXT).toMatch(/never ask separately about gender or age, never ask about ethnicity except as question 3/i)
+    expect(AVATAR_SKILL_TEXT).toContain('"A mix — 4 different looks (Recommended)" and "Indian"')
+    expect(AVATAR_SKILL_TEXT).toMatch(/Skip the whole card only when the brief already says both what the avatar is for and the look/)
     expect(AVATAR_SKILL_TEXT).toMatch(/never infer .* from a name/i)
+  })
+
+  it('makes the four variations real alternatives in 3:4, stated in the plan before approval', () => {
+    expect(AVATAR_SKILL_TEXT).toMatch(/the look is "a mix" — four clearly different people/i)
+    expect(AVATAR_SKILL_TEXT).toMatch(/pass aspectRatio "3:4" to agent-director, never 1:1/i)
+    expect(AVATAR_SKILL_TEXT).toMatch(/The plan names who the four will be/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/Always use aspectRatio "3:4" for these four/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/Never four near-identical people/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/never add freckles unless the brief asks for them/)
   })
 
   it('requires fresh approval before regenerating rejected variations', () => {
