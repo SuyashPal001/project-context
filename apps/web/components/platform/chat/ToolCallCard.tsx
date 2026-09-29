@@ -248,6 +248,9 @@ function ToolIcon({ toolName }: { toolName: string }) {
 
 function toolLabel(toolName: string, query: string, status: 'loading' | 'done'): { prefix: string; highlight: string } {
     const done = status === 'done';
+    // A delegate's "query" is Olmo's instruction to it, which can carry file
+    // ids ("(fileId: 5c05…)") — never show ids to the user.
+    query = stripIds(query);
     const truncatedQuery = query.length > 60 ? `${query.slice(0, 60)}…` : query;
     const q = query ? `"${truncatedQuery}"` : '';
 
@@ -416,6 +419,16 @@ export function groupImageToolCalls<T extends { toolName: string }>(items: T[]):
 function isMediaGenDelegateOrTool(toolName: string): boolean {
   return isImageGenTool(toolName) || isSongGenTool(toolName) || isVideoGenTool(toolName)
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
+}
+
+/** Removes uuids and "fileId: …" mentions from label text. */
+export function stripIds(text: string): string {
+  return text
+    .replace(/\(?\s*file ?ids?\s*:?\s*[0-9a-f]{8}-[0-9a-f-]{27}\s*\)?/gi, '')
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls, statusText, statusDetails }: ToolCallCardProps) {

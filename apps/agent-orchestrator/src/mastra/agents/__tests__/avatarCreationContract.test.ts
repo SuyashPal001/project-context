@@ -62,6 +62,12 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/the brief wins over the roll/)
   })
 
+  it('never claims an avatar was saved, or names it, without a successful save_as_avatar result', () => {
+    expect(AVATAR_SKILL_TEXT).toMatch(/Only say the avatar is saved when Director reports a save_as_avatar result with saved true/)
+    expect(AVATAR_SKILL_TEXT).toMatch(/never make up a name/)
+    expect(AVATAR_SKILL_TEXT).toMatch(/the avatar was NOT saved/)
+  })
+
   it('delegates by calling the agent-director tool, never by writing a request to it', () => {
     expect(AVATAR_SKILL_TEXT).toMatch(/Delegate by calling the agent-director tool — never by writing a message to it in your reply/)
   })
