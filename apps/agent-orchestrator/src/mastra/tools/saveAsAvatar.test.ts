@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const p = vi.hoisted(() => ({ uploadFileWithKey: vi.fn(), registerTenantAvatar: vi.fn(), setTenantAvatarReference: vi.fn() }))
+const p = vi.hoisted(() => ({ uploadFileWithKey: vi.fn(), registerTenantAvatar: vi.fn(), setTenantAvatarReference: vi.fn(), findTenantAvatarBySource: vi.fn() }))
 vi.mock('../../persistence.js', () => p)
 const resolveSourceImage = vi.hoisted(() => vi.fn())
 vi.mock('../../media.js', () => ({ resolveSourceImage }))
@@ -22,6 +22,7 @@ beforeEach(() => {
   p.uploadFileWithKey.mockImplementation(async (_t: string, i: { key: string; name: string }) => ({ fileId: i.key.startsWith('creative-avatars/') ? 'portrait-copy' : 'sheet-copy', name: i.name, type: 'image/png', size: 3 }))
   p.registerTenantAvatar.mockResolvedValue({ id: 'a1', fileId: 'portrait-copy', name: 'Riya', role: 'Fitness creator', tone: 'Energetic' })
   p.setTenantAvatarReference.mockResolvedValue(true)
+  p.findTenantAvatarBySource.mockResolvedValue(null)
 })
 
 describe('save_as_avatar', () => {
@@ -32,6 +33,26 @@ describe('save_as_avatar', () => {
     expect(keys[0]).toMatch(/^creative-avatars\/[0-9a-f-]{36}-avatar\.png$/)
     expect(keys[1]).toMatch(/^avatar-refs\/a1\/[0-9a-f-]{36}-sheet\.png$/)
     expect(p.setTenantAvatarReference).toHaveBeenCalledWith('tok', 'a1', { referenceSheetFileId: 'sheet-copy', terseTag: input.terseTag, styleLock: input.styleLock })
+    expect(p.registerTenantAvatar).toHaveBeenCalledWith('tok', 'portrait-copy', input.portraitFileId)
+  })
+
+  it('returns the existing avatar untouched when the picked portrait already has a sheet', async () => {
+    p.findTenantAvatarBySource.mockResolvedValue({ id: 'existing1', fileId: 'existing-file', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', referenceSheetFileId: 'sheet-existing' })
+    const out = await run(input)
+    expect(out).toEqual({ saved: true, avatarId: 'existing1', fileId: 'existing-file', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', referenceSheet: true })
+    expect(p.uploadFileWithKey).not.toHaveBeenCalled()
+    expect(p.registerTenantAvatar).not.toHaveBeenCalled()
+    expect(p.setTenantAvatarReference).not.toHaveBeenCalled()
+  })
+
+  it('runs only the sheet step when the existing avatar has no sheet yet', async () => {
+    p.findTenantAvatarBySource.mockResolvedValue({ id: 'existing1', fileId: 'existing-file', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', referenceSheetFileId: null })
+    const out = await run(input)
+    expect(out).toEqual({ saved: true, avatarId: 'existing1', fileId: 'existing-file', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', referenceSheet: true })
+    expect(p.uploadFileWithKey).toHaveBeenCalledTimes(1)
+    expect(p.uploadFileWithKey.mock.calls[0][1].key).toMatch(/^avatar-refs\/existing1\/[0-9a-f-]{36}-sheet\.png$/)
+    expect(p.registerTenantAvatar).not.toHaveBeenCalled()
+    expect(p.setTenantAvatarReference).toHaveBeenCalledWith('tok', 'existing1', { referenceSheetFileId: 'sheet-copy', terseTag: input.terseTag, styleLock: input.styleLock })
   })
 
   it('keeps the saved avatar when the sheet step fails', async () => {

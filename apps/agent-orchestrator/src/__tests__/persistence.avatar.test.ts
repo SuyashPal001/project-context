@@ -32,11 +32,48 @@ describe('tenant avatar helpers', () => {
     const { registerTenantAvatar } = await import('../persistence.js')
     expect(await registerTenantAvatar('tok', 'f1')).toMatchObject({ id: 'a1', name: 'Riya' })
     expect(fetchMock.mock.calls[0][0]).toBe('https://api.example/api/v1/creative-library-assets/avatars')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ fileId: 'f1' })
+  })
+
+  it('registers with sourceFileId when given', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ data: { id: 'a1', fileId: 'f1', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', referenceSheetFileId: null } }))
+    const { registerTenantAvatar } = await import('../persistence.js')
+    const result = await registerTenantAvatar('tok', 'f1', 'src1')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ fileId: 'f1', sourceFileId: 'src1' })
+    expect(result).toMatchObject({ referenceSheetFileId: null })
   })
 
   it('reports a failed reference pin as false', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 400, text: async () => '' })
     const { setTenantAvatarReference } = await import('../persistence.js')
     expect(await setTenantAvatarReference('tok', 'a1', { referenceSheetFileId: 's1', terseTag: 't', styleLock: 's' })).toBe(false)
+  })
+})
+
+describe('findTenantAvatarBySource', () => {
+  it('returns the avatar record on a hit', async () => {
+    fetchMock.mockResolvedValueOnce(ok({ data: { id: 'a1', fileId: 'f1', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', referenceSheetFileId: 'sheet1' } }))
+    const { findTenantAvatarBySource } = await import('../persistence.js')
+    const out = await findTenantAvatarBySource('tok', 'src1')
+    expect(out).toEqual({ id: 'a1', fileId: 'f1', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', referenceSheetFileId: 'sheet1' })
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.example/api/v1/creative-library-assets/avatars/by-source/src1')
+  })
+
+  it('returns null on a 404', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404, text: async () => '' })
+    const { findTenantAvatarBySource } = await import('../persistence.js')
+    expect(await findTenantAvatarBySource('tok', 'src1')).toBeNull()
+  })
+
+  it('returns null on any other failure, logged', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'boom' })
+    const { findTenantAvatarBySource } = await import('../persistence.js')
+    expect(await findTenantAvatarBySource('tok', 'src1')).toBeNull()
+  })
+
+  it('returns null when fetch throws', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('network'))
+    const { findTenantAvatarBySource } = await import('../persistence.js')
+    expect(await findTenantAvatarBySource('tok', 'src1')).toBeNull()
   })
 })

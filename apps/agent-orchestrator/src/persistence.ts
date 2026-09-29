@@ -607,13 +607,38 @@ export function fireArtifactNotification(
   })
 }
 
-export async function registerTenantAvatar(idToken: string, fileId: string): Promise<{ id: string; fileId: string; name: string; role: string | null; tone: string | null } | null> {
+export interface TenantAvatarRecord {
+  id: string
+  fileId: string
+  name: string
+  role: string | null
+  tone: string | null
+  referenceSheetFileId: string | null
+}
+
+export async function registerTenantAvatar(idToken: string, fileId: string, sourceFileId?: string): Promise<TenantAvatarRecord | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/creative-library-assets/avatars`, { method: 'POST', headers: authHeaders(idToken), body: JSON.stringify({ fileId }) })
+    const body: Record<string, string> = { fileId }
+    if (sourceFileId) body.sourceFileId = sourceFileId
+    const res = await fetch(`${API_BASE}/api/v1/creative-library-assets/avatars`, { method: 'POST', headers: authHeaders(idToken), body: JSON.stringify(body) })
     if (!res.ok) { console.error('[persistence] registerTenantAvatar failed:', res.status, await res.text().catch(() => '')); return null }
-    return ((await res.json()) as { data?: { id: string; fileId: string; name: string; role: string | null; tone: string | null } }).data ?? null
+    return ((await res.json()) as { data?: TenantAvatarRecord }).data ?? null
   } catch (err) {
     console.error('[persistence] registerTenantAvatar error:', (err as Error).message)
+    return null
+  }
+}
+
+export async function findTenantAvatarBySource(idToken: string, sourceFileId: string): Promise<TenantAvatarRecord | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/creative-library-assets/avatars/by-source/${sourceFileId}`, { headers: authHeaders(idToken) })
+    if (!res.ok) {
+      if (res.status !== 404) console.error('[persistence] findTenantAvatarBySource failed:', res.status, await res.text().catch(() => ''))
+      return null
+    }
+    return ((await res.json()) as { data?: TenantAvatarRecord }).data ?? null
+  } catch (err) {
+    console.error('[persistence] findTenantAvatarBySource error:', (err as Error).message)
     return null
   }
 }
