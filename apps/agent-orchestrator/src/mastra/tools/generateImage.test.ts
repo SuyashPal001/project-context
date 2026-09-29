@@ -23,10 +23,11 @@ vi.mock('../../media.js', () => ({ resolveSourceImage }))
 
 // Passthrough so existing tests keep their exact reference lists; avatarReferences.ts's
 // own DB-backed behavior is covered by avatarReferences.test.ts.
-const { expandAvatarReferences } = vi.hoisted(() => ({
-  expandAvatarReferences: vi.fn(async (_tenantId: string, ids: string[]) => ids),
+type AvatarResolution = { fileIds: string[]; anchor: { terseTag: string; styleLock: string } | null }
+const { resolveAvatarReferences } = vi.hoisted(() => ({
+  resolveAvatarReferences: vi.fn(async (_tenantId: string, ids: string[]): Promise<AvatarResolution> => ({ fileIds: ids, anchor: null })),
 }))
-vi.mock('./avatarReferences.js', () => ({ expandAvatarReferences }))
+vi.mock('./avatarReferences.js', () => ({ resolveAvatarReferences }))
 
 const { shouldRequireApproval } = vi.hoisted(() => ({
   shouldRequireApproval: vi.fn(),
@@ -53,7 +54,7 @@ beforeEach(() => {
   isUnlimited.mockResolvedValue(false)
   resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 50_000 } })
   shouldRequireApproval.mockResolvedValue(false)
-  expandAvatarReferences.mockImplementation(async (_tenantId: string, ids: string[]) => ids)
+  resolveAvatarReferences.mockImplementation(async (_tenantId: string, ids: string[]) => ({ fileIds: ids, anchor: null }))
 })
 
 describe('generateImage tool', () => {
@@ -273,12 +274,15 @@ describe('generateImage tool', () => {
     expect((result as { fileId?: string }).fileId).toBe('f1')
   })
 
-  it('resolves every id expandAvatarReferences returns, including a sheet it added', async () => {
+  it('resolves every id resolveAvatarReferences returns, including a sheet it added', async () => {
     resolveSourceImage.mockResolvedValue({ base64: 'AAAA', mimeType: 'image/png' })
-    expandAvatarReferences.mockResolvedValue([
-      '11111111-1111-1111-1111-111111111111',
-      '22222222-2222-2222-2222-222222222222',
-    ])
+    resolveAvatarReferences.mockResolvedValue({
+      fileIds: [
+        '11111111-1111-1111-1111-111111111111',
+        '22222222-2222-2222-2222-222222222222',
+      ],
+      anchor: null,
+    })
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'ZZZZ', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 10 })
 
@@ -295,13 +299,13 @@ describe('generateImage tool', () => {
     expect(resolveSourceImage).toHaveBeenCalledWith('tok', '22222222-2222-2222-2222-222222222222', 'image/png', 'c1')
   })
 
-  // Finding #4: an auto-added sheet from expandAvatarReferences that fails to
+  // Finding #4: an auto-added sheet from resolveAvatarReferences that fails to
   // resolve must not refuse the whole call — only an ORIGINAL referenceFileId
   // keeps today's refusal behaviour. Best-effort: skip it and proceed.
-  it('does not refuse when an avatar reference sheet added by expandAvatarReferences fails to resolve — proceeds with only the original reference', async () => {
+  it('does not refuse when an avatar reference sheet added by resolveAvatarReferences fails to resolve — proceeds with only the original reference', async () => {
     const ORIGINAL = '11111111-1111-1111-1111-111111111111'
     const ADDED_SHEET = '22222222-2222-2222-2222-222222222222'
-    expandAvatarReferences.mockResolvedValue([ORIGINAL, ADDED_SHEET])
+    resolveAvatarReferences.mockResolvedValue({ fileIds: [ORIGINAL, ADDED_SHEET], anchor: null })
     resolveSourceImage.mockImplementation(async (_tok: string, fileId: string) =>
       fileId === ADDED_SHEET ? null : { base64: 'AAAA', mimeType: 'image/png' })
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'ZZZZ', mimeType: 'image/png' }), { status: 200 })) as unknown as ReturnType<typeof vi.fn>
@@ -325,7 +329,7 @@ describe('generateImage tool', () => {
 
   it('still refuses when an ORIGINAL referenceFileId (not one added by expansion) fails to resolve', async () => {
     const ORIGINAL = '11111111-1111-1111-1111-111111111111'
-    expandAvatarReferences.mockResolvedValue([ORIGINAL])
+    resolveAvatarReferences.mockResolvedValue({ fileIds: [ORIGINAL], anchor: null })
     resolveSourceImage.mockResolvedValue(null)
 
     const result = await generateImage.execute!(
@@ -375,5 +379,55 @@ describe('generateImage tool', () => {
     await generateImageItem({ prompt: 'a red bicycle' }, execCtx as never, 3)
 
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: `image:c1:${stableToolCallId('tc-7')}:3` }))
+  })
+
+  describe('identity anchor from a resolved avatar reference', () => {
+    const ORIGINAL = '11111111-1111-1111-1111-111111111111'
+    const ANCHOR = { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light, 35mm lens' }
+
+    beforeEach(() => {
+      resolveSourceImage.mockResolvedValue({ base64: 'AAAA', mimeType: 'image/png' })
+      ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 10 })
+      global.fetch = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'ZZZZ', mimeType: 'image/png' }), { status: 200 })) as unknown as typeof fetch
+    })
+
+    it('appends the anchor sentence to the gateway prompt when no identityAnchor was passed', async () => {
+      resolveAvatarReferences.mockResolvedValue({ fileIds: [ORIGINAL], anchor: ANCHOR })
+
+      await generateImage.execute!(
+        { prompt: 'making coffee', referenceFileIds: [ORIGINAL] } as never,
+        baseCtx(),
+      )
+
+      const sentBody = JSON.parse((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string)
+      expect(sentBody.prompt).toBe(`making coffee Same person as the reference: ${ANCHOR.terseTag}. ${ANCHOR.styleLock}.`)
+      expect(sentBody.prompt).not.toContain('"')
+    })
+
+    it('leaves the prompt unchanged when the caller passed an identityAnchor', async () => {
+      resolveAvatarReferences.mockResolvedValue({ fileIds: [ORIGINAL], anchor: ANCHOR })
+      const prompt = `${ANCHOR.terseTag} making coffee, ${ANCHOR.styleLock}`
+
+      await generateImage.execute!(
+        { prompt, referenceFileIds: [ORIGINAL], identityAnchor: ANCHOR } as never,
+        baseCtx(),
+      )
+
+      const sentBody = JSON.parse((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string)
+      expect(sentBody.prompt).toBe(prompt)
+    })
+
+    it('does not append the anchor sentence twice when the prompt already contains the terseTag', async () => {
+      resolveAvatarReferences.mockResolvedValue({ fileIds: [ORIGINAL], anchor: ANCHOR })
+      const prompt = `${ANCHOR.terseTag} making coffee`
+
+      await generateImage.execute!(
+        { prompt, referenceFileIds: [ORIGINAL] } as never,
+        baseCtx(),
+      )
+
+      const sentBody = JSON.parse((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string)
+      expect(sentBody.prompt).toBe(prompt)
+    })
   })
 })

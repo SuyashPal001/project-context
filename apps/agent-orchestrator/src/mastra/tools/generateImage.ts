@@ -8,7 +8,7 @@ import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
 import { emitGenerationStarted } from './generationStarted.js'
 import { stableToolCallId } from '../../credits.js'
-import { expandAvatarReferences } from './avatarReferences.js'
+import { resolveAvatarReferences } from './avatarReferences.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 export const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -87,8 +87,20 @@ export async function generateImageItem(
       console.warn(`[session:${sessionId}] generateImage: referenceFileIds set with no identityAnchor — verify this omission was intentional`)
     }
 
-    // An attached tenant avatar brings its reference sheet along (avatarReferences.ts).
-    const resolvedReferenceIds = referenceFileIds?.length ? await expandAvatarReferences(tenantId, referenceFileIds) : referenceFileIds
+    // An attached tenant avatar brings its reference sheet along, and its
+    // identity anchor (terseTag/styleLock), if any (avatarReferences.ts).
+    const { fileIds: resolvedReferenceIds, anchor } = referenceFileIds?.length
+      ? await resolveAvatarReferences(tenantId, referenceFileIds)
+      : { fileIds: referenceFileIds, anchor: null }
+
+    // The caller's own identityAnchor always wins and is already enforced
+    // (verbatim in `prompt`) by the gate above. Only when the caller passed
+    // none do we fold in the resolved avatar's anchor — and only into the
+    // prompt sent to the gateway, never the user-visible input, and never if
+    // the prompt already carries the terseTag (avoid a duplicated sentence).
+    const gatewayPrompt = !identityAnchor && anchor && !prompt.includes(anchor.terseTag)
+      ? `${prompt} Same person as the reference: ${anchor.terseTag}. ${anchor.styleLock}.`
+      : prompt
 
     let sourceImages: Array<{ base64: string; mimeType: string }> = []
     if (resolvedReferenceIds?.length) {
@@ -174,7 +186,7 @@ export async function generateImageItem(
       const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: IMAGE_MODEL, prompt, ...(aspectRatio ? { aspectRatio } : {}), ...(sourceImages.length ? { sourceImages } : {}) }),
+        body: JSON.stringify({ model: IMAGE_MODEL, prompt: gatewayPrompt, ...(aspectRatio ? { aspectRatio } : {}), ...(sourceImages.length ? { sourceImages } : {}) }),
         signal: AbortSignal.timeout(90_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
