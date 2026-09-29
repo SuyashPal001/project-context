@@ -19,6 +19,11 @@ interface ToolCallCardProps {
   generationStarted?: boolean;
   /** "9:16", "1:1", ... — shapes the generating skeleton like the result. 16:9 when unknown. */
   aspectRatio?: string;
+  /** Live per-item progress for a batch generation call (generate_images/generate_videos). */
+  batchProgress?: { done: number; total: number };
+  /** Item count for a batch call, known from generation_started before any item has
+   *  settled — lets the skeleton render N tiles immediately instead of just one. */
+  mediaCount?: number;
 }
 
 // Director's tools are registered under the underscore key (generate_image,
@@ -278,7 +283,7 @@ export function parseAspectRatio(value: string | undefined): number | null {
   return w > 0 && h > 0 ? w / h : null;
 }
 
-function MediaProgressSkeleton({ type, aspectRatio }: { type: 'image' | 'audio' | 'video'; aspectRatio?: string }) {
+function MediaProgressSkeleton({ type, aspectRatio, complete }: { type: 'image' | 'audio' | 'video'; aspectRatio?: string; complete?: boolean }) {
   // Audio has no picture, so it keeps the default card shape.
   const ratio = type === 'audio' ? null : parseAspectRatio(aspectRatio);
   const portrait = ratio !== null && ratio < 1;
@@ -286,10 +291,13 @@ function MediaProgressSkeleton({ type, aspectRatio }: { type: 'image' | 'audio' 
   const [startedAt] = useState(() => Date.now());
   const [now, setNow] = useState(startedAt);
   useEffect(() => {
+    // A tile whose batch item already finished (batchProgress.done) holds at
+    // 100% rather than ticking — nothing left to estimate.
+    if (complete) return;
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, []);
-  const pct = estimatedProgress(now - startedAt, EXPECTED_MS[type]);
+  }, [complete]);
+  const pct = complete ? 100 : estimatedProgress(now - startedAt, EXPECTED_MS[type]);
 
   return (
     <div
@@ -302,7 +310,7 @@ function MediaProgressSkeleton({ type, aspectRatio }: { type: 'image' | 'audio' 
       <span className="absolute top-1.5 left-1.5 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded bg-background/90 border border-border/60">
         {TYPE_BADGES[type]}
       </span>
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />
+      {!complete && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-shimmer" />}
       <span data-testid="media-progress-pct" className="relative z-10 text-xs font-medium tabular-nums text-muted-foreground">
         {pct}%
       </span>
@@ -317,12 +325,57 @@ function MediaProgressSkeleton({ type, aspectRatio }: { type: 'image' | 'audio' 
   );
 }
 
+// N skeleton tiles side by side for a batch generation (generate_images/
+// generate_videos), instead of ToolCallCard's usual single skeleton — the
+// only way N images-in-flight ever read as N, not one growing bar. `total`
+// comes from batchProgress.total once known, or from generationCount (the
+// generation_started event's item count) before the first item settles;
+// `done` (from batchProgress) marks the leading tiles complete.
+function MediaProgressTiles({ type, aspectRatio, total, done }: { type: 'image' | 'audio' | 'video'; aspectRatio?: string; total: number; done: number }) {
+  return (
+    <div className="flex flex-wrap gap-2" data-testid="media-progress-tiles">
+      {Array.from({ length: total }, (_, i) => (
+        <MediaProgressSkeleton key={i} type={type} aspectRatio={aspectRatio} complete={i < done} />
+      ))}
+    </div>
+  );
+}
+
+// Whether this tool renders as an image tile — used both for the media
+// skeleton (isImageGenTool alone) and for grouping consecutive tool-call
+// rows into one wrapping line (below), which also groups the Director
+// delegate wrapper (see isDirectorDelegateTool's comment: it stands in for
+// a whole generate_image/generate_video turn that never reaches this card
+// as its own event).
+export function isImageTileTool(toolName: string): boolean {
+  return isImageGenTool(toolName) || isDirectorDelegateTool(toolName);
+}
+
+// Groups consecutive image-generation rows (several single generate_image
+// calls, or Director delegate calls, back to back in the same turn) so the
+// caller can render each group's cards in one flex-wrap row instead of one
+// per line. Non-image rows, and any image row that isn't adjacent to
+// another, come back as their own singleton group so callers can treat
+// every group uniformly.
+export function groupImageToolCalls<T extends { toolName: string }>(items: T[]): T[][] {
+  const groups: T[][] = [];
+  for (const item of items) {
+    const last = groups[groups.length - 1];
+    if (isImageTileTool(item.toolName) && last && last.every(t => isImageTileTool(t.toolName))) {
+      last.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+  return groups;
+}
+
 function isMediaGenDelegateOrTool(toolName: string): boolean {
   return isImageGenTool(toolName) || isSongGenTool(toolName) || isVideoGenTool(toolName)
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
 }
 
-export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio }: ToolCallCardProps) {
+export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
   // The orchestrator closes a cancelled generation out with { cancelled: true } so the
@@ -348,6 +401,11 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
     : (isSongGenTool(toolName) || isProducerDelegateTool(toolName)) ? 'audio'
     : isVideoGenTool(toolName) ? 'video' : null;
   const showMediaSkeleton = status === 'loading' && mediaSkeletonType !== null && !awaitingApproval && !preparing;
+  // Total tile count: batchProgress.total once the batch tool's own progress events
+  // have arrived, else generation_started's count (known from the very first event),
+  // else undefined — a single call with neither falls back to the one-tile skeleton.
+  const tileTotal = batchProgress?.total ?? mediaCount;
+  const tileDone = batchProgress?.done ?? 0;
 
   return (
     <div className="my-1.5 text-foreground">
@@ -400,7 +458,11 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
         )}
       </div>
 
-      {showMediaSkeleton && mediaSkeletonType && <MediaProgressSkeleton type={mediaSkeletonType} aspectRatio={aspectRatio} />}
+      {showMediaSkeleton && mediaSkeletonType && (
+        tileTotal && tileTotal > 1
+          ? <MediaProgressTiles type={mediaSkeletonType} aspectRatio={aspectRatio} total={tileTotal} done={tileDone} />
+          : <MediaProgressSkeleton type={mediaSkeletonType} aspectRatio={aspectRatio} />
+      )}
 
       {hasResults && expanded && (
         <div className="flex gap-2.5 mt-1.5 pl-0.5">

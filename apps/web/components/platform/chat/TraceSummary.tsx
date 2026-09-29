@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CompletedToolCall } from "./types";
-import { ToolCallCard } from "./ToolCallCard";
+import { ToolCallCard, groupImageToolCalls } from "./ToolCallCard";
 import { ReasoningRow } from "./ThinkingIndicator";
 
 export interface TraceSummaryProps {
@@ -41,8 +41,16 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
             </button>
             {!collapsed && (toolCalls.length > 0 || reasoningText) && (
                 <div className="ml-4 flex flex-col gap-1 normal-case">
-                    {toolCalls.map(tc => (
-                        <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} />
+                    {groupImageToolCalls(toolCalls).map((group, gi) => (
+                        group.length > 1 ? (
+                            <div key={gi} className="flex flex-wrap gap-2">
+                                {group.map(tc => (
+                                    <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} />
+                                ))}
+                            </div>
+                        ) : (
+                            <ToolCallCard key={group[0].id} toolName={group[0].toolName} query={group[0].query} status="done" results={group[0].results} result={group[0].result} />
+                        )
                     ))}
                     {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
                 </div>

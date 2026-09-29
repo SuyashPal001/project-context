@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall } from "./types";
-import { ToolCallCard } from "./ToolCallCard";
+import { ToolCallCard, groupImageToolCalls } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
@@ -223,25 +223,59 @@ export function LiveTrace({
                     </div>
                 )}
                 <ReasoningRow text={reasoningText} />
-                {completedToolCalls.map(tc => (
-                    <ToolCallCard
-                        key={tc.id}
-                        toolName={tc.toolName}
-                        query={tc.query}
-                        status="done"
-                        results={tc.results}
-                        result={tc.result}
-                    />
+                {groupImageToolCalls(completedToolCalls).map((group, gi) => (
+                    group.length > 1 ? (
+                        <div key={gi} className="flex flex-wrap gap-2">
+                            {group.map(tc => (
+                                <ToolCallCard
+                                    key={tc.id}
+                                    toolName={tc.toolName}
+                                    query={tc.query}
+                                    status="done"
+                                    results={tc.results}
+                                    result={tc.result}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <ToolCallCard
+                            key={group[0].id}
+                            toolName={group[0].toolName}
+                            query={group[0].query}
+                            status="done"
+                            results={group[0].results}
+                            result={group[0].result}
+                        />
+                    )
                 ))}
-                {loadingTools.map(tool => (
-                    <ToolCallCard
-                        key={tool.id}
-                        toolName={tool.toolName}
-                        query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
-                        status="loading"
-                        generationStarted={tool.generationStarted}
-                        aspectRatio={tool.generationAspectRatio ?? (typeof tool.arguments?.aspectRatio === 'string' ? tool.arguments.aspectRatio : undefined)}
-                    />
+                {groupImageToolCalls(loadingTools).map((group, gi) => (
+                    group.length > 1 ? (
+                        <div key={gi} className="flex flex-wrap gap-2">
+                            {group.map(tool => (
+                                <ToolCallCard
+                                    key={tool.id}
+                                    toolName={tool.toolName}
+                                    query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
+                                    status="loading"
+                                    generationStarted={tool.generationStarted}
+                                    aspectRatio={tool.generationAspectRatio ?? (typeof tool.arguments?.aspectRatio === 'string' ? tool.arguments.aspectRatio : undefined)}
+                                    batchProgress={tool.batchProgress}
+                                    mediaCount={tool.generationCount}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <ToolCallCard
+                            key={group[0].id}
+                            toolName={group[0].toolName}
+                            query={String(group[0].arguments?.query ?? group[0].arguments?.filename ?? group[0].arguments?.subject ?? '')}
+                            status="loading"
+                            generationStarted={group[0].generationStarted}
+                            aspectRatio={group[0].generationAspectRatio ?? (typeof group[0].arguments?.aspectRatio === 'string' ? group[0].arguments.aspectRatio : undefined)}
+                            batchProgress={group[0].batchProgress}
+                            mediaCount={group[0].generationCount}
+                        />
+                    )
                 ))}
             </div>
         );

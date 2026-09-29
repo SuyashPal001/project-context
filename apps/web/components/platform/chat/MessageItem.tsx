@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { chatMarkdownComponents } from './markdownComponents';
-import { ToolCallCard } from "./ToolCallCard";
+import { ToolCallCard, groupImageToolCalls } from "./ToolCallCard";
 import { TraceSummary } from "./TraceSummary";
 import { LiveTrace } from "./ThinkingIndicator";
 import { ApprovalCard } from "./ApprovalCard";
@@ -435,13 +435,26 @@ export function MessageItem({
 
                 {message.toolCalls && message.toolCalls.length > 0 && (
                     <div className="w-full mt-2">
-                        {message.toolCalls.map(tool => (
-                            <ToolCallCard
-                                key={tool.id}
-                                toolName={tool.toolName}
-                                query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? tool.arguments?.task ?? '')}
-                                status={tool.isLoading ? 'loading' : 'done'}
-                            />
+                        {groupImageToolCalls(message.toolCalls).map((group, gi) => (
+                            group.length > 1 ? (
+                                <div key={gi} className="flex flex-wrap gap-2">
+                                    {group.map(tool => (
+                                        <ToolCallCard
+                                            key={tool.id}
+                                            toolName={tool.toolName}
+                                            query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? tool.arguments?.task ?? '')}
+                                            status={tool.isLoading ? 'loading' : 'done'}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <ToolCallCard
+                                    key={group[0].id}
+                                    toolName={group[0].toolName}
+                                    query={String(group[0].arguments?.query ?? group[0].arguments?.filename ?? group[0].arguments?.subject ?? group[0].arguments?.task ?? '')}
+                                    status={group[0].isLoading ? 'loading' : 'done'}
+                                />
+                            )
                         ))}
                     </div>
                 )}

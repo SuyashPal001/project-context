@@ -19,6 +19,10 @@ export interface ToolCall {
     /** Aspect ratio of the media being generated ("9:16"), from generation_started, so the
      *  skeleton has the result's shape. */
     generationAspectRatio?: string;
+    /** Item count for a batch generation call (generate_images/generate_videos), from
+     *  generation_started's `count` — known before any batch_item_progress event arrives,
+     *  so N skeleton tiles render from the start instead of just one growing in. */
+    generationCount?: number;
 }
 
 export interface ApprovalRequest {

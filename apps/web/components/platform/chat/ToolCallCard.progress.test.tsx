@@ -40,3 +40,32 @@ describe('skeleton shape', () => {
     expect(sk.className).toContain('aspect-video');
   });
 });
+
+describe('batch generation tiles', () => {
+  it('renders N skeleton tiles side by side when the batch total is known via mediaCount', () => {
+    render(<ToolCallCard toolName="generate_images" query="" status="loading" mediaCount={4} />);
+    const tiles = screen.getAllByTestId('media-progress-skeleton');
+    expect(tiles).toHaveLength(4);
+    const row = screen.getByTestId('media-progress-tiles');
+    expect(row.className).toContain('flex-wrap');
+  });
+
+  it('renders N tiles from batchProgress.total and marks the done ones complete', () => {
+    render(<ToolCallCard toolName="generate_images" query="" status="loading" batchProgress={{ done: 2, total: 4 }} />);
+    const pcts = screen.getAllByTestId('media-progress-pct');
+    expect(pcts).toHaveLength(4);
+    expect(pcts.filter(el => el.textContent === '100%')).toHaveLength(2);
+  });
+
+  it('falls back to a single tile when the batch total is unknown', () => {
+    render(<ToolCallCard toolName="generate_images" query="" status="loading" />);
+    expect(screen.getAllByTestId('media-progress-skeleton')).toHaveLength(1);
+    expect(screen.queryByTestId('media-progress-tiles')).toBeNull();
+  });
+
+  it('ignores a total of 1 and renders the plain single skeleton', () => {
+    render(<ToolCallCard toolName="generate_images" query="" status="loading" mediaCount={1} />);
+    expect(screen.getAllByTestId('media-progress-skeleton')).toHaveLength(1);
+    expect(screen.queryByTestId('media-progress-tiles')).toBeNull();
+  });
+});
