@@ -99,8 +99,10 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                             <X className="h-4 w-4" />
                         </DialogClose>
 
-                        <div className="relative h-[45vh] w-full shrink-0 overflow-hidden bg-black sm:h-auto sm:w-[440px] sm:shrink-0 sm:self-stretch">
-                            <div className="absolute inset-0 sm:aspect-[4/5] sm:h-auto">
+                        {/* The pane owns a 4:5 shape (440×550) instead of stretching to the text
+                            column's height — a short column made it a wide box that cropped portraits. */}
+                        <div className="relative h-[45vh] w-full shrink-0 overflow-hidden bg-black sm:aspect-[4/5] sm:h-auto sm:w-[440px] sm:shrink-0 sm:self-start">
+                            <div className="absolute inset-0">
                                 {videoUrl ? (
                                     <>
                                         {showBackdrop && imageUrl && (
@@ -157,7 +159,7 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                             </div>
                         </div>
 
-                        <div className="flex min-h-0 flex-1 flex-col p-8 sm:w-[520px] sm:p-10">
+                        <div className="flex min-h-0 flex-1 flex-col p-8 sm:w-[520px] sm:justify-center sm:p-10">
                             <h1 className="pr-10 text-3xl font-semibold tracking-tight text-foreground">
                                 {skill.name}
                             </h1>
