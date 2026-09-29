@@ -119,6 +119,9 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
   it('draws the reference sheet as plain photo crops with a complete everyday outfit', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/never a cut-out or circle-cropped floating bust/)
     expect(AVATAR_CREATION_SECTION).toMatch(/everyday bottoms and shoes/)
+    // "three-quarter left, three-quarter right" was read as the same side twice.
+    expect(AVATAR_CREATION_SECTION).toMatch(/turned toward the viewer's LEFT/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/turned toward the viewer's RIGHT, the mirror of panel 2/)
   })
 })
 
