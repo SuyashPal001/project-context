@@ -25,6 +25,11 @@ describe('rollAvatarVariations', () => {
     }
   })
 
+  it('puts an Indian look in Indian homes', () => {
+    const set = rollAvatarVariations({ count: 4, look: 'Indian', gender: 'any', ageMin: 22, ageMax: 45 }, seeded(9))
+    expect(set.every((v) => /Indian|steel|tulsi|jute|brass|grill|chikankari/i.test(v.place))).toBe(true)
+  })
+
   it('makes a mix four different looks', () => {
     const set = rollAvatarVariations({ count: 4, look: 'a mix of 4 different looks', gender: 'woman', ageMin: 25, ageMax: 40 }, seeded(7))
     expect(distinct(set.map((v) => v.look))).toBe(true)

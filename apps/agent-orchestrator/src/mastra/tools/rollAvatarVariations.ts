@@ -80,6 +80,17 @@ const PLACES = [
   'bathroom vanity with a large mirror and pale tile',
 ]
 
+// Homes that read as Indian at a glance, for an Indian look — the general
+// list above renders as Western suburban interiors.
+const PLACES_INDIAN = [
+  'bedroom in an Indian apartment with printed cotton curtains and a wooden dressing table, softly blurred',
+  'Indian home kitchen with steel utensils on open shelves and a window with a metal grill',
+  'balcony of an Indian apartment block with potted tulsi and money plants and a railing',
+  'living room with a wooden sofa, cotton cushions, a jute rug and a brass lamp',
+  'study corner in an Indian flat with a steel almirah and a window grill behind',
+  'bathroom with a small wall mirror, a steel bucket and patterned tiles',
+]
+
 const GESTURES = [
   'one open palm lifted as if explaining a point',
   'index finger loosely raised for emphasis',
@@ -146,6 +157,7 @@ export function rollAvatarVariations(input: AvatarRollInput, random: () => numbe
   const skinTones = shuffled(INDIAN_SKIN_TONES, random)
   const faces = shuffled(FACE_SHAPES, random)
   const places = shuffled(PLACES, random)
+  const placesIndian = shuffled(PLACES_INDIAN, random)
   const gestures = shuffled(GESTURES, random)
   const hair = { woman: shuffled(HAIR.woman, random), man: shuffled(HAIR.man, random) }
   const wardrobe = {
@@ -168,7 +180,7 @@ export function rollAvatarVariations(input: AvatarRollInput, random: () => numbe
       faceShape: faces[i % faces.length],
       hair: hair[g][hairUsed[g]++ % hair[g].length],
       wardrobe: wardrobe[pool][g][wardrobeUsed[pool][g]++ % wardrobe[pool][g].length],
-      place: places[i % places.length],
+      place: indianLook ? placesIndian[i % placesIndian.length] : places[i % places.length],
       gesture: gestures[i % gestures.length],
     }
   })
