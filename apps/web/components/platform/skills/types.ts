@@ -10,10 +10,11 @@ export interface Skill {
     visibility: SkillVisibility;
     isOfficial: boolean;
     latestVersion: number;
-    ownerTenantId: string;
-    /** Display name of the user who created the skill. Null if the creator row is gone. */
+    /** Null for an Official skill — those are platform-owned, not tenant-owned. */
+    ownerTenantId: string | null;
+    /** Display name of the user who created the skill. Null if the creator row is gone, or for an Official skill. */
     ownerName: string | null;
-    /** Creator's email — only populated for the owning tenant; null cross-tenant. */
+    /** Creator's email — only populated for the owning tenant; null cross-tenant, and for an Official skill. */
     ownerEmail: string | null;
     createdAt: string;
     updatedAt: string;
@@ -30,6 +31,10 @@ export interface Skill {
     runCount: number;
     /** Times this skill has been installed, counted globally across all tenants (skills.download_count). */
     downloadCount: number;
+    /** Curated showcase content for an Official skill's card/detail view. Null/absent for a
+     *  community or private skill, or an Official skill that hasn't been curated yet — the
+     *  caller falls back to the plain community-style card in that case. */
+    showcase?: { imageUrl: string; bestFor: string[]; starterPrompt: string } | null;
 }
 
 export interface SkillsResponse {

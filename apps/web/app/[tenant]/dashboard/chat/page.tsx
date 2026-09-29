@@ -59,6 +59,7 @@ import {
 } from '@/components/platform/chat/creative-library/creativeBriefModel';
 import { useCreativeBriefDraft } from '@/components/platform/chat/creative-library/useCreativeBriefDraft';
 import type { Attachment } from '@/types/agent-events';
+import { seededSkillsUsedFromParams } from './seededSkill';
 
 function ChatPage() {
     const searchParams = useSearchParams();
@@ -272,6 +273,11 @@ function ChatPage() {
     // load never re-sends it.
     const [pendingFirstMessage, setPendingFirstMessage] = useState<string | null>(null);
     const [pendingFirstAttachments, setPendingFirstAttachments] = useState<Attachment[] | undefined>();
+    // Set alongside pendingFirstMessage when the seed URL carries
+    // ?skill=<id>&skillName=<name> (OfficialSkillDetail's Start button) — sent
+    // as sendMessage's skillsUsed argument in the same effect that fires the
+    // seeded message, then cleared, exactly like pendingFirstAttachments.
+    const [pendingSkillsUsed, setPendingSkillsUsed] = useState<Array<{ id: string; name: string }> | undefined>();
     // Allow-mode toggled in that same pre-conversation composer — allowMode is
     // stored on the conversation row, so there's nothing to PATCH until one
     // exists. Held here and applied once, same as pendingFirstMessage above.
@@ -381,9 +387,10 @@ function ChatPage() {
             if (allowModeToApply) {
                 try { await setAllowMode.mutateAsync(allowModeToApply); } catch { /* toasted */ }
             }
-            sendMessage(message, attachments);
+            sendMessage(message, attachments, pendingSkillsUsed);
             setPendingFirstMessage(null);
             setPendingFirstAttachments(undefined);
+            setPendingSkillsUsed(undefined);
             if (pendingCreativeBrief) {
                 clearCreativeBrief();
                 setActiveEmptyStateTab(null);
@@ -391,7 +398,7 @@ function ChatPage() {
             }
             setPendingAllowMode(null);
         })();
-    }, [pendingFirstMessage, conversationId, isLoadingMessages, messages.length, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [pendingFirstMessage, conversationId, isLoadingMessages, messages.length, sendMessage, pendingSkillsUsed]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // A caller (e.g. the Skills page's "+ Create skill" button, or
     // SkillDetailModal's "Test in chat") can seed the very first message via
@@ -409,19 +416,26 @@ function ChatPage() {
     //     dropping `prompt` before this effect ever sees it.
     // Guarded by a ref so a re-render before either path settles never
     // queues it twice.
+    // OfficialSkillDetail's Start button additionally carries
+    // ?skill=<id>&skillName=<name> alongside ?prompt= — seededSkillsUsedFromParams
+    // turns that into sendMessage's skillsUsed argument, in both shapes below.
     const seededPromptFiredRef = useRef(false);
     useEffect(() => {
         const seededPrompt = searchParams.get('prompt');
         if (!seededPrompt || seededPromptFiredRef.current) return;
         // searchParams.get already URL-decodes — decoding again here would
         // throw on a prompt containing a literal '%' character.
+        const seededSkillsUsed = seededSkillsUsedFromParams(searchParams);
         if (conversationId) {
             if (isLoadingMessages) return;
             seededPromptFiredRef.current = true;
             // An existing conversation may already have messages (e.g. the
             // param survived a back-navigation) — never inject into one that
             // isn't actually fresh.
-            if (messages.length === 0) setPendingFirstMessage(seededPrompt);
+            if (messages.length === 0) {
+                setPendingFirstMessage(seededPrompt);
+                setPendingSkillsUsed(seededSkillsUsed);
+            }
             // No onSuccess push to piggyback on here (unlike the create-skill
             // path below) — this conversation already existed, so strip the
             // param ourselves once consumed, or a reload would leave a stale
@@ -436,6 +450,7 @@ function ChatPage() {
         // ever finding Olmo. Wait for it to settle first.
         if (isLoadingAgents) return;
         seededPromptFiredRef.current = true;
+        setPendingSkillsUsed(seededSkillsUsed);
         setPendingFirstMessage(seededPrompt);
         handleNewChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps

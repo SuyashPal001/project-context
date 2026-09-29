@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SkillCard, skillImportState } from "@/components/platform/skills/SkillCard";
+import { OfficialSkillCard } from "@/components/platform/skills/OfficialSkillCard";
+import { OfficialSkillDetail } from "@/components/platform/skills/OfficialSkillDetail";
 import { SkillDetailModal } from "@/components/platform/skills/SkillDetailModal";
 import { installSkill, listSkills } from "@/components/platform/skills/actions";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
@@ -48,6 +50,9 @@ export default function SkillsPage() {
     const { tenantId } = useTenant();
     const [tab, setTab] = useState<"mine" | "explore">("mine");
     const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+    // Official showcase cards open OfficialSkillDetail with the full Skill the
+    // list query already has — no separate fetch-by-id like SkillDetailModal.
+    const [selectedOfficialSkill, setSelectedOfficialSkill] = useState<Skill | null>(null);
     // Last known dead/stuck state per skill, so we only toast on a live
     // transition into that state (not for a skill that was already dead
     // before this page load — that one gets silently filtered, no toast).
@@ -159,6 +164,7 @@ export default function SkillsPage() {
                             skills={officialSkills}
                             isLoading={officialLoading}
                             onSelect={setSelectedSkillId}
+                            onSelectOfficial={setSelectedOfficialSkill}
                             onInstall={handleInstall}
                             emptyMessage="No official skills yet."
                         />
@@ -181,6 +187,11 @@ export default function SkillsPage() {
                 tenantId={tenantId}
                 onOpenChange={(open) => !open && setSelectedSkillId(null)}
             />
+
+            <OfficialSkillDetail
+                skill={selectedOfficialSkill}
+                onOpenChange={(open) => !open && setSelectedOfficialSkill(null)}
+            />
         </div>
     );
 }
@@ -189,12 +200,17 @@ function SkillGrid({
     skills,
     isLoading,
     onSelect,
+    onSelectOfficial,
     onInstall,
     emptyMessage,
 }: {
     skills: Skill[];
     isLoading: boolean;
     onSelect: (skillId: string) => void;
+    // Only passed for the Official grid — a skill with a showcase renders
+    // OfficialSkillCard and opens this instead of SkillDetailModal. Undefined
+    // for Mine/Community, which always render the plain SkillCard.
+    onSelectOfficial?: (skill: Skill) => void;
     onInstall: (skillId: string) => void;
     emptyMessage: string;
 }) {
@@ -216,14 +232,22 @@ function SkillGrid({
 
     return (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {skills.map((skill) => (
-                <SkillCard
-                    key={skill.id}
-                    skill={skill}
-                    onClick={() => onSelect(skill.id)}
-                    onInstall={() => onInstall(skill.id)}
-                />
-            ))}
+            {skills.map((skill) =>
+                skill.showcase && onSelectOfficial ? (
+                    <OfficialSkillCard
+                        key={skill.id}
+                        skill={skill}
+                        onClick={() => onSelectOfficial(skill)}
+                    />
+                ) : (
+                    <SkillCard
+                        key={skill.id}
+                        skill={skill}
+                        onClick={() => onSelect(skill.id)}
+                        onInstall={() => onInstall(skill.id)}
+                    />
+                )
+            )}
         </div>
     );
 }
