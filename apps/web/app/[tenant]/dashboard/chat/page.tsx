@@ -62,6 +62,7 @@ import {
 } from '@/components/platform/chat/creative-library/creativeBriefModel';
 import { useCreativeBriefDraft } from '@/components/platform/chat/creative-library/useCreativeBriefDraft';
 import type { Attachment } from '@/types/agent-events';
+import { expiredClarificationMessage } from '@/components/platform/chat/expiredClarificationMessage';
 import { seededSkillsUsedFromParams } from './seededSkill';
 import { buildDraftComposerStart } from './draftComposerStart';
 
@@ -540,8 +541,34 @@ function ChatPage() {
     const clarificationAnswersRef = useRef<Map<string, Record<number, { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }>>>(new Map());
 
     const handleClarificationAnswer = useCallback(async (messageId: string, clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }, allAnswered?: boolean): Promise<boolean> => {
-        const ok = await sendClarificationAnswer(clarificationId, questionIndex, answer);
-        if (!ok) {
+        const result = await sendClarificationAnswer(clarificationId, questionIndex, answer);
+        if (result === 'expired') {
+            // The orchestrator stopped waiting on this card (timed out or
+            // restarted). Send what the user picked as their next chat message
+            // instead of an error they can't recover from, and close the card.
+            const request = queryClient.getQueryData<MessagesResponse>(['messages', conversationId])?.data
+                .find(m => m.id === messageId)?.clarificationRequests?.find(r => r.id === clarificationId);
+            const answers = { ...(clarificationAnswersRef.current.get(clarificationId) ?? request?.answers ?? {}), [questionIndex]: answer };
+            const text = request ? expiredClarificationMessage(request, answers) : null;
+            if (text && (isStreaming || isPreparingMessage)) {
+                toast.error('That question expired — type your answer in the chat when the reply finishes.');
+                return false;
+            }
+            clarificationAllSkippedRef.current.delete(clarificationId);
+            clarificationAnswersRef.current.delete(clarificationId);
+            queryClient.setQueryData<MessagesResponse>(['messages', conversationId], old =>
+                old ? { data: old.data.map(m => m.id === messageId ? {
+                    ...m,
+                    clarificationRequests: m.clarificationRequests?.map(r => r.id === clarificationId
+                        ? { ...r, status: 'expired' as const, answeredAt: new Date().toISOString(), answers }
+                        : r),
+                } : m) } : old
+            );
+            const files = Object.values(answers).flatMap(a => a.files ?? []);
+            if (text) sendMessage(text, files.length ? files : undefined);
+            return true;
+        }
+        if (!result) {
             toast.error('Could not submit your answer. Please try again.');
             return false;
         }
@@ -586,7 +613,7 @@ function ChatPage() {
             );
         }
         return true;
-    }, [conversationId, queryClient, sendClarificationAnswer]);
+    }, [conversationId, queryClient, sendClarificationAnswer, sendMessage, isStreaming, isPreparingMessage]);
 
     const handleUploadAnswer = useCallback(async (messageId: string, uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }): Promise<boolean> => {
         const ok = await sendUploadAnswer(uploadId, answer);

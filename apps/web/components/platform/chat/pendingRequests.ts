@@ -42,7 +42,7 @@ export function requestsOfKind(message: Message, kind: RequestKind): AnyRequest[
  * block, and the scan stops there rather than falling through to an older turn.
  *
  * The one case this genuinely can't see through is a request the *server* gave
- * up on: askClarifyingQuestions/requestUpload time out after 120s and flip their
+ * up on: askClarifyingQuestions (30 min) and requestUpload (10 min) time out and flip their
  * DB row out of 'pending', but send no SSE event, so the client's copy stays
  * 'pending' and keeps the overlay up. No scan order fixes that — the client is
  * simply never told — so it wants a `clarification_expired` / `upload_expired`

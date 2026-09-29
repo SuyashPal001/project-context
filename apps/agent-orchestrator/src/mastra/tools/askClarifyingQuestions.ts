@@ -3,7 +3,12 @@ import { z } from 'zod'
 import { pendingClarifications, sessionActiveClarification } from '../../types.js'
 import { saveClarificationRequest, updateClarificationRequest } from '../../persistence.js'
 
-const CLARIFICATION_TIMEOUT_MS = 120_000
+// Long enough to compare four generated faces or think about a brief. The SSE
+// heartbeat keeps the stream open while this tool waits, and a client
+// disconnect resolves the wait early (routes/chat.ts), so a long timeout never
+// strands the agent. A late answer after this fires is re-sent by the web
+// client as a normal chat message.
+const CLARIFICATION_TIMEOUT_MS = 30 * 60_000
 
 // Lets the platform agent pause mid-conversation to ask 1+ multiple-choice
 // clarifying questions instead of generating output on an ambiguous request.

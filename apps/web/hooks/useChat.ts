@@ -46,7 +46,7 @@ export interface UseChatReturn {
     sendMessage: (text: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>, isFirstMessage?: boolean) => Promise<void>;
     sendApproval: (approvalId: string, decision: 'approved' | 'dismissed') => Promise<boolean>;
     sendGenerationConfirm: (confirmationId: string, decision: 'approved' | 'declined', reason?: string) => Promise<boolean>;
-    sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }) => Promise<boolean>;
+    sendClarificationAnswer: (clarificationId: string, questionIndex: number, answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] }) => Promise<boolean | 'expired'>;
     sendUploadAnswer: (uploadId: string, answer: { files: { fileId: string; name: string; type: string }[]; freeText?: string; skipped?: boolean }) => Promise<boolean>;
     cancel: () => void;
     isStreaming: boolean;
@@ -551,7 +551,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         clarificationId: string,
         questionIndex: number,
         answer: { selectedIndex?: number; selectedIndices?: number[]; freeText?: string; skipped?: boolean; files?: { fileId: string; name: string; type: string }[] },
-    ): Promise<boolean> => {
+    ): Promise<boolean | 'expired'> => {
         const { accessToken } = getAuthTokens();
         if (!accessToken) return false;
 
@@ -564,6 +564,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                 },
                 body: JSON.stringify({ clarificationId, questionIndex, ...answer }),
             });
+            // 404 = the orchestrator no longer holds this question (it timed out,
+            // or the orchestrator restarted) — the caller re-sends the answer as a
+            // normal chat message instead of losing it.
+            if (res.status === 404) return 'expired';
             return res.ok;
         } catch {
             return false;

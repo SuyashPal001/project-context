@@ -121,7 +121,7 @@ describe('askClarifyingQuestionsTool', () => {
       const [[, pending]] = pendingClarifications.entries()
       pending.collected.push({ questionIndex: 0, selectedIndex: 1 })
 
-      await vi.advanceTimersByTimeAsync(120_000)
+      await vi.advanceTimersByTimeAsync(30 * 60_000)
 
       const result = await resultPromise
       expect((result as any).answers).toHaveLength(1)
