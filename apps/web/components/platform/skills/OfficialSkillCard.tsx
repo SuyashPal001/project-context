@@ -69,7 +69,7 @@ export function OfficialSkillCard({ skill, onClick, onStart, isStarting = false 
                         <div className="flex shrink-0 items-center gap-1.5">
                             <Badge
                                 variant="outline"
-                                className="text-[10px] font-semibold uppercase tracking-wider shrink-0 border-primary/40 text-primary"
+                                className="text-[10px] font-semibold uppercase tracking-wider shrink-0 border-rose-600/30 text-rose-700 dark:border-rose-400/30 dark:text-rose-300"
                             >
                                 Official
                             </Badge>
