@@ -32,6 +32,7 @@
     "db:seed:llm-providers-openrouter": "tsx seeds/llm-providers-openrouter.ts",
     "db:seed:creative-templates": "tsx seeds/creative-templates.ts",
     "db:seed:creative-library-assets": "tsx seeds/creative-library-assets.ts",
+    "db:seed:official-skills": "tsx seeds/official-skills.ts",
     "backfill:creative-products": "tsx scripts/backfill-creative-products.ts",
     "rename:product-files": "tsx scripts/rename-product-files.ts"
   },

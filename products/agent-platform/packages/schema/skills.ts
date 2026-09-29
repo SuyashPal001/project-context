@@ -15,7 +15,8 @@ export const skillInstallStatusEnum = pgEnum('skill_install_status', ['active', 
 // time, so a still-importing version never looks installable.
 export const skills = pgTable('skills', {
   id: uuid('id').primaryKey().defaultRandom(),
-  ownerTenantId: uuid('owner_tenant_id').notNull().references(() => tenants.id),
+  // NULL = platform-owned Official skill, same convention as creative_library_assets.tenant_id
+  ownerTenantId: uuid('owner_tenant_id').references(() => tenants.id),
   name: text('name').notNull(),
   slug: text('slug').notNull(),
   description: text('description'),
@@ -25,11 +26,14 @@ export const skills = pgTable('skills', {
   // Global across all tenants — "times installed", the product's only download
   // event. Deliberately NOT per-tenant, unlike skill_installs.run_count.
   downloadCount: integer('download_count').notNull().default(0),
-  createdBy: uuid('created_by').notNull().references(() => users.id),
+  // NULL = platform-owned Official skill, same convention as creative_library_assets.tenant_id
+  createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow().$onUpdate(() => new Date()),
+  // Official skills only: { imageUrl, bestFor: string[], starterPrompt }
+  showcase: jsonb('showcase'),
 }, (t) => ({
-  ownerSlugUniq: unique().on(t.ownerTenantId, t.slug),
+  ownerSlugUniq: unique().on(t.ownerTenantId, t.slug).nullsNotDistinct(),
   visibilityIdx: index('skills_visibility_idx').on(t.visibility),
   officialIdx: index('skills_official_idx').on(t.isOfficial),
 }));

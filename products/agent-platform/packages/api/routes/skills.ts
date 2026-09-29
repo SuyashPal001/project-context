@@ -142,7 +142,7 @@ skillsRoutes.get('/', async (c) => {
       .select({
         id: skills.id, name: skills.name, slug: skills.slug, description: skills.description,
         visibility: skills.visibility, isOfficial: skills.isOfficial, latestVersion: skills.latestVersion,
-        downloadCount: skills.downloadCount,
+        downloadCount: skills.downloadCount, showcase: skills.showcase,
         ownerTenantId: skills.ownerTenantId, createdBy: skills.createdBy, createdAt: skills.createdAt, updatedAt: skills.updatedAt,
         installId: skillInstalls.id,
         installedVersion: skillInstalls.installedVersion, installStatus: skillInstalls.status,
@@ -172,13 +172,16 @@ skillsRoutes.get('/', async (c) => {
       for (const v of versionRows) latestBySkill.set(v.skillId, { status: v.status, failureReason: v.failureReason });
     }
 
-    const ownerById = await resolveOwners([...new Set(rows.map((r) => r.createdBy).filter(Boolean))]);
+    // A platform-owned Official skill has createdBy: null — excluded from the
+    // lookup set and from the .get() below, same null-safety resolveOwners
+    // itself applies to an empty list.
+    const ownerById = await resolveOwners([...new Set(rows.map((r) => r.createdBy).filter((id): id is string => Boolean(id)))]);
 
     return c.json({
       data: rows.map((r) => {
         const latest = latestBySkill.get(r.id);
         const { createdBy, ...rest } = r;
-        const owner = ownerById.get(createdBy);
+        const owner = createdBy ? ownerById.get(createdBy) : undefined;
         return {
           ...rest,
           installed: r.installStatus === 'active',
@@ -240,8 +243,11 @@ skillsRoutes.get('/:id', async (c) => {
       .orderBy(desc(skillVersions.version))
       .limit(1);
 
-    const ownerById = await resolveOwners([skill.createdBy]);
-    const owner = ownerById.get(skill.createdBy);
+    // skill.createdBy is NULL for a platform-owned Official skill — resolveOwners
+    // already treats an empty list as a no-op, but must not be handed [null],
+    // which would turn into `inArray(users.id, [null])`.
+    const ownerById = await resolveOwners(skill.createdBy ? [skill.createdBy] : []);
+    const owner = skill.createdBy ? ownerById.get(skill.createdBy) : undefined;
 
     // Only a 'ready' version's manifest was written by a completed import — a
     // pending/failed row's manifest column is whatever the previous version left
@@ -254,7 +260,7 @@ skillsRoutes.get('/:id', async (c) => {
       data: {
         id: skill.id, name: skill.name, slug: skill.slug, description: skill.description,
         visibility: skill.visibility, isOfficial: skill.isOfficial, latestVersion: skill.latestVersion,
-        downloadCount: skill.downloadCount,
+        downloadCount: skill.downloadCount, showcase: skill.showcase,
         ownerTenantId: skill.ownerTenantId, ownerName: owner?.name ?? null, ownerEmail: isOwner ? (owner?.email ?? null) : null,
         createdAt: skill.createdAt, updatedAt: skill.updatedAt,
         installId: install?.id ?? null,
