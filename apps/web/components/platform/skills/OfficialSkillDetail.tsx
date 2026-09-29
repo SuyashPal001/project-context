@@ -159,7 +159,9 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                             </div>
                         </div>
 
-                        <div className="flex min-h-0 flex-1 flex-col p-8 sm:w-[520px] sm:justify-center sm:p-10">
+                        {/* Content anchors to the top (level with the close button); Recreate pins to the
+                            bottom edge on desktop — matches the reference layout instead of floating centred. */}
+                        <div className="flex min-h-0 flex-1 flex-col p-8 sm:w-[520px] sm:p-10 sm:pt-12">
                             <h1 className="pr-10 text-3xl font-semibold tracking-tight text-foreground">
                                 {skill.name}
                             </h1>
@@ -184,7 +186,9 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                             )}
 
                             <Button
-                                className="mt-8 h-11 w-full rounded-xl bg-black text-white hover:bg-black/90"
+                                // foreground/background tokens, not bg-black: inverts in dark mode (white
+                                // button on the dark panel) so it never disappears into the background.
+                                className="mt-8 h-12 w-full rounded-xl bg-foreground text-background hover:bg-foreground/90 sm:mt-auto"
                                 onClick={handleStart}
                                 disabled={isStarting}
                             >
