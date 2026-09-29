@@ -25,6 +25,7 @@ import { stretchClip } from '../tools/stretchClip.js'
 import { mixMusicBed } from '../tools/mixMusicBed.js'
 import { generateSong } from '../tools/generateSong.js'
 import { trimClip } from '../tools/trimClip.js'
+import { saveAsAvatar } from '../tools/saveAsAvatar.js'
 import { IMAGE_PROMPT_CRAFT } from './imagePromptCraft.js'
 
 const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, delayMs: 500 })
@@ -203,7 +204,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -222,6 +223,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar },
   errorProcessors: [streamErrorRetry()],
 })
