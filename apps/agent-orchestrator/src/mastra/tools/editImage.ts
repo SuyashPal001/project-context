@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { fileTitleSchema, fileTitle } from './fileTitle.js'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { resolveSourceImage } from '../../media.js'
@@ -36,12 +37,13 @@ export const editImage = createTool({
     // instead of round-tripping to the API's presigned-url lookup for a 404.
     sourceFileId: z.string().uuid().describe('fileId (uuid) of the source image already present in the conversation'),
     sourceMimeType: z.string().describe('MIME type of the source image, e.g. image/png'),
+    title: fileTitleSchema,
   }),
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    const { prompt, sourceFileId, sourceMimeType } = inputData as { prompt: string; sourceFileId: string; sourceMimeType: string }
+    const { prompt, sourceFileId, sourceMimeType, title } = inputData as { prompt: string; sourceFileId: string; sourceMimeType: string; title?: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, not '' — '' reaches Postgres as ''::uuid and every charge
     // throws. Same fix as generateImage.ts.
@@ -124,7 +126,7 @@ export const editImage = createTool({
     const extension = (genResult.mimeType ?? 'image/png').split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png'
     const attachment = conversationId && idToken
       ? await uploadGeneratedFile(idToken, {
-          conversationId, title: 'Edited Image', content: buffer,
+          conversationId, title: fileTitle(title, 'Edited Image'), content: buffer,
           contentType: genResult.mimeType, extension,
         })
       : null

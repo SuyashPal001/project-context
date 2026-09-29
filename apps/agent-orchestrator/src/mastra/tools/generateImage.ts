@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { fileTitleSchema, fileTitle } from './fileTitle.js'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { resolveSourceImage } from '../../media.js'
@@ -46,6 +47,7 @@ export const imageItemSchema = z.object({
   }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code. Required whenever referenceFileIds includes a cast sheet.'),
   skipAvatarExpansion: z.boolean().optional()
     .describe("Set true when the reference image must NOT be treated as the same person (e.g. a new person inspired by a reference's look): skips adding the avatar's reference sheet and identity sentence."),
+  title: fileTitleSchema,
 })
 
 export type ImageItemInput = z.infer<typeof imageItemSchema>
@@ -55,7 +57,7 @@ export async function generateImageItem(
   execContext: MediaExecContext | undefined,
   itemIndex: number,
 ) {
-    const { prompt, aspectRatio, referenceFileIds, identityAnchor, skipAvatarExpansion } = inputData
+    const { prompt, aspectRatio, referenceFileIds, identityAnchor, skipAvatarExpansion, title } = inputData
 
     // Identity-anchor gate — enforced in tool code, not prose, mirroring
     // generateVideo.ts's extractQuotedSpans/approvedDialogue check. Refuses
@@ -222,7 +224,7 @@ export async function generateImageItem(
     const extension = (genResult.mimeType ?? 'image/png').split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png'
     const attachment = conversationId && idToken
       ? await uploadGeneratedFile(idToken, {
-          conversationId, title: 'Generated Image', content: buffer,
+          conversationId, title: fileTitle(title, 'Generated Image'), content: buffer,
           contentType: genResult.mimeType, extension,
         })
       : null

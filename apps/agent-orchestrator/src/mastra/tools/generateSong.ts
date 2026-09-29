@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { fileTitleSchema, fileTitle } from './fileTitle.js'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { refundMusicCharge } from './musicCredits.js'
@@ -25,13 +26,14 @@ export const generateSong = createTool({
   description: 'Generates a ~30-second instrumental music clip from a text prompt using Lyria. No vocals, no lyrics, no song structure. Use when the user asks Producer to create or generate instrumental music.',
   inputSchema: z.object({
     prompt: z.string().describe('Mood/genre/style description of the instrumental clip to generate'),
+    title: fileTitleSchema,
   }),
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'music_generation', subject: MUSIC_MODEL }, ctx),
   execute: async (inputData, execContext) => {
     emitGenerationStarted(execContext)
-    const { prompt } = inputData as { prompt: string }
+    const { prompt, title } = inputData as { prompt: string; title?: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, not '' — '' reaches Postgres as ''::uuid and every charge
     // throws. Same fix as generateImage.ts.
@@ -110,7 +112,7 @@ export const generateSong = createTool({
     const extension = (genResult.mimeType ?? 'audio/wav').split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'wav'
     const attachment = conversationId && idToken
       ? await uploadGeneratedFile(idToken, {
-          conversationId, title: 'Generated Song', content: buffer,
+          conversationId, title: fileTitle(title, 'Generated Song'), content: buffer,
           contentType: genResult.mimeType, extension,
         })
       : null
