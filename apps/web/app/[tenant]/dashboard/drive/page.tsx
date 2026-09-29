@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { PermissionGate } from "@/components/platform/PermissionGate";
 import { FilesList } from "@/components/platform/files/FilesList";
+import { NewAvatarButton } from "@/components/platform/files/NewAvatarButton";
 import { UploadFileModal } from "@/components/platform/files/UploadFileModal";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/lib/hooks/usePermissions";
@@ -31,10 +32,12 @@ export default function FilesPage() {
                         </p>
                     </div>
                     {canUpload && !currentPrefix.startsWith('creative-products/') && (
-                        <Button onClick={() => setIsUploadOpen(true)}>
-                            <Upload className="w-4 h-4 mr-2" />
-                            {uploadLabelForPrefix(currentPrefix)}
-                        </Button>
+                        currentPrefix.startsWith('creative-avatars/')
+                            ? <NewAvatarButton onUpload={() => setIsUploadOpen(true)} />
+                            : <Button onClick={() => setIsUploadOpen(true)}>
+                                <Upload className="w-4 h-4 mr-2" />
+                                {uploadLabelForPrefix(currentPrefix)}
+                            </Button>
                     )}
                 </div>
                 

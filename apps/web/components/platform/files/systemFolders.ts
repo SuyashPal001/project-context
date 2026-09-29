@@ -8,6 +8,7 @@ export const SYSTEM_FOLDER_LABELS: Record<string, string> = {
     'creative-products': 'Products',
     'generated': 'Generated',
     'imported-products': 'Imported products',
+    'avatar-refs': 'Avatar references',
 };
 
 export function isSystemFolder(folderName: string): boolean {
@@ -18,7 +19,7 @@ export function isSystemFolder(folderName: string): boolean {
 // (hidden as a tile) but has no pill: it is part of "Uploads".
 export const PILL_FOLDERS = ['creative-avatars', 'creative-products', 'generated'] as const;
 
-const AGENT_OR_LIBRARY_PREFIXES = [...PILL_FOLDERS.map(folder => `${folder}/`), 'imported-products/'];
+const AGENT_OR_LIBRARY_PREFIXES = [...PILL_FOLDERS.map(folder => `${folder}/`), 'imported-products/', 'avatar-refs/'];
 
 /** "Uploads": everything the user brought in themselves — chat attachments,
  *  their own folders and loose files — as opposed to agent output ("Generated")
