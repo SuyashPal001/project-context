@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, Music2, Play, Search, Square, UploadCloud } from 'lucide-react';
+import { Check, Loader2, Music2, Play, Search, Sparkles, Square, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,7 +111,7 @@ function AvatarCard({ label, name, detail, selected, busy, disabled, onClick, ch
     </button>;
 }
 
-function AvatarsPanel({ selected, onSelect }: { selected: AvatarSelection | null; onSelect: (selection: AvatarSelection) => void }) {
+function AvatarsPanel({ selected, onSelect, onCreateAvatar }: { selected: AvatarSelection | null; onSelect: (selection: AvatarSelection) => void; onCreateAvatar?: () => void }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
     const namingAttempted = useRef(new Set<string>());
@@ -170,10 +170,16 @@ function AvatarsPanel({ selected, onSelect }: { selected: AvatarSelection | null
         <LibraryHeader title="Choose presenter" search={search} onSearch={setSearch} placeholder="Search avatars" />
         <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">Original still-image presets. Select one to attach it to your brief; talking video is not available yet.</p>
-            <Button type="button" variant="outline" size="sm" disabled={uploading !== null} onClick={() => inputRef.current?.click()}>
-                {uploading === 'custom' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
-                Upload your own
-            </Button>
+            <div className="flex items-center gap-2">
+                {onCreateAvatar && <Button type="button" variant="outline" size="sm" disabled={uploading !== null} onClick={onCreateAvatar}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Create with AI
+                </Button>}
+                <Button type="button" variant="outline" size="sm" disabled={uploading !== null} onClick={() => inputRef.current?.click()}>
+                    {uploading === 'custom' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-2 h-4 w-4" />}
+                    Upload your own
+                </Button>
+            </div>
             <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Upload presenter image" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadOwnImage(file); event.target.value = ''; }} />
         </div>
         {ownMatches.length > 0 && <section className="space-y-3">
@@ -331,16 +337,18 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
     </div>;
 }
 
-export function CreativeLibrary({ tab, brief, onSelect, onProductNamed }: {
+export function CreativeLibrary({ tab, brief, onSelect, onProductNamed, onCreateAvatar }: {
     tab: CreativeLibraryTab;
     brief: CreativeBrief;
     onSelect: (selection: CreativeSelection) => void;
     onProductNamed?: (product: ProductRecordSelection) => void;
+    /** Present only where the chat page can send a message through the composer; shows "Create with AI" next to "Upload your own". */
+    onCreateAvatar?: () => void;
 }) {
     return <section aria-label={`${tab} library`} className="mt-8 w-full text-left">
         {tab === 'templates' && <TemplatesPanel selected={brief.template} onSelect={onSelect} />}
         {tab === 'products' && <ProductsPanel selected={brief.product} onSelect={onSelect} onProductNamed={onProductNamed} />}
         {tab === 'audio' && <AudioPanel selected={brief.voice} onSelect={onSelect} />}
-        {tab === 'avatars' && <AvatarsPanel selected={brief.avatar} onSelect={onSelect} />}
+        {tab === 'avatars' && <AvatarsPanel selected={brief.avatar} onSelect={onSelect} onCreateAvatar={onCreateAvatar} />}
     </section>;
 }

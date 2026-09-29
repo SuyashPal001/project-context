@@ -12,9 +12,9 @@ vi.mock('./creativeVoiceFetch', () => ({ fetchCreativeVoice: vi.fn() }));
 vi.mock('@/components/platform/files/FileThumbnail', () => ({ FileThumbnail: ({ alt }: { alt: string }) => <span>{alt}</span> }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-function renderLibrary(tab: 'templates' | 'avatars' | 'products' | 'audio', onSelect = vi.fn(), brief: CreativeBrief = createEmptyCreativeBrief()) {
+function renderLibrary(tab: 'templates' | 'avatars' | 'products' | 'audio', onSelect = vi.fn(), brief: CreativeBrief = createEmptyCreativeBrief(), onCreateAvatar?: () => void) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    return { onSelect, ...render(<QueryClientProvider client={client}><CreativeLibrary tab={tab} brief={brief} onSelect={onSelect} /></QueryClientProvider>) };
+    return { onSelect, ...render(<QueryClientProvider client={client}><CreativeLibrary tab={tab} brief={brief} onSelect={onSelect} onCreateAvatar={onCreateAvatar} /></QueryClientProvider>) };
 }
 
 beforeEach(() => {
@@ -41,6 +41,19 @@ describe('creative library', () => {
             attachment: { fileId: '8b6e9254-cc47-492c-bdc7-557ac6302e01', name: 'Arjun', type: 'image/jpeg', size: 0 },
         })));
         expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('shows "Create with AI" when onCreateAvatar is passed, and calls it on click', () => {
+        const onCreateAvatar = vi.fn();
+        renderLibrary('avatars', vi.fn(), createEmptyCreativeBrief(), onCreateAvatar);
+        const button = screen.getByRole('button', { name: 'Create with AI' });
+        fireEvent.click(button);
+        expect(onCreateAvatar).toHaveBeenCalledTimes(1);
+    });
+
+    it('has no "Create with AI" button when onCreateAvatar is absent', () => {
+        renderLibrary('avatars');
+        expect(screen.queryByRole('button', { name: 'Create with AI' })).toBeNull();
     });
 
     it('allows a presenter image upload and attaches it to the brief', async () => {

@@ -40,6 +40,7 @@ import { findPendingClarification, findPendingGenerationConfirm, findPendingUplo
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { parseFolderId } from "@/lib/folderScope";
 import { CreativeEmptyState } from '@/components/platform/chat/CreativeEmptyState';
+import { CREATE_AVATAR_PROMPT } from '@/components/platform/files/NewAvatarButton';
 import { CreativeBriefChips } from '@/components/platform/chat/creative-library/CreativeBriefChips';
 import {
     buildCreativeBriefMessage,
@@ -334,6 +335,30 @@ function ChatPage() {
             return false;
         }
         return true;
+    };
+
+    // The composer's own onSend for the empty-but-existing conversation screen,
+    // pulled out so "Create with AI" in the avatar picker can send
+    // CREATE_AVATAR_PROMPT through the exact same path as a typed message.
+    const sendComposerMessage = (text: string, attachments?: Attachment[]) => {
+        const message = creativeBriefStarted ? buildCreativeBriefMessage(text, creativeBrief) : text;
+        const mergedAttachments = creativeBriefStarted ? mergeCreativeBriefAttachments(attachments, creativeBrief) : attachments;
+        sendMessage(message, mergedAttachments);
+        if (creativeBriefStarted) {
+            clearCreativeBrief();
+            setActiveEmptyStateTab(null);
+        }
+    };
+
+    // Same idea for the no-conversation (draft) composer: stages the first
+    // message and starts the new chat, rather than sending directly.
+    const startDraftComposerMessage = (text: string, attachments?: Attachment[]) => {
+        const message = creativeBriefStarted ? buildCreativeBriefMessage(text, creativeBrief) : text;
+        const mergedAttachments = creativeBriefStarted ? mergeCreativeBriefAttachments(attachments, creativeBrief) : attachments;
+        setPendingFirstMessage(message);
+        setPendingFirstAttachments(mergedAttachments);
+        setPendingCreativeBrief(creativeBriefStarted);
+        handleNewChat(draftAgent?.id);
     };
 
     const firstSendStartedRef = useRef(false);
@@ -633,17 +658,10 @@ function ChatPage() {
                                                 onTabChange={setActiveEmptyStateTab}
                                                 onSelect={selectCreativeAsset}
                                                 onProductNamed={onProductNamed}
+                                                onCreateAvatar={() => sendComposerMessage(CREATE_AVATAR_PROMPT)}
                                             >
                                                 <ChatInput
-                                                    onSend={(text, attachments) => {
-                                                        const message = creativeBriefStarted ? buildCreativeBriefMessage(text, creativeBrief) : text;
-                                                        const mergedAttachments = creativeBriefStarted ? mergeCreativeBriefAttachments(attachments, creativeBrief) : attachments;
-                                                        sendMessage(message, mergedAttachments);
-                                                        if (creativeBriefStarted) {
-                                                            clearCreativeBrief();
-                                                            setActiveEmptyStateTab(null);
-                                                        }
-                                                    }}
+                                                    onSend={(text, attachments) => sendComposerMessage(text, attachments)}
                                                     onStop={cancel}
                                                     onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined}
                                                     onMediaClick={(t) => toast.info(`Adding ${t}...`)}
@@ -739,15 +757,11 @@ function ChatPage() {
                                     onTabChange={setActiveEmptyStateTab}
                                     onSelect={selectCreativeAsset}
                                     onProductNamed={onProductNamed}
+                                    onCreateAvatar={() => startDraftComposerMessage(CREATE_AVATAR_PROMPT)}
                                 >
                                         <ChatInput
                                             onSend={(text, attachments) => {
-                                                const message = creativeBriefStarted ? buildCreativeBriefMessage(text, creativeBrief) : text;
-                                                const mergedAttachments = creativeBriefStarted ? mergeCreativeBriefAttachments(attachments, creativeBrief) : attachments;
-                                                setPendingFirstMessage(message);
-                                                setPendingFirstAttachments(mergedAttachments);
-                                                setPendingCreativeBrief(creativeBriefStarted);
-                                                handleNewChat(draftAgent?.id);
+                                                startDraftComposerMessage(text, attachments);
                                                 // Keep the pre-conversation composer intact. A successful
                                                 // creation replaces this view; a failure remains fully editable.
                                                 return false;
