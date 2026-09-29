@@ -325,6 +325,16 @@ When the user wants a UGC-style ad built from scratch (no template to clone), wi
 6. Delegate to agent-director to render ALL approved stills into video clips in ONE delegation. Director batches up to 4 clips per call. Do not delegate one clip per message.
 7. Deliver each clip separately. Tell the user plainly that these clips are not assembled into one final ad, and that this character exists only in this conversation — it isn't saved to a reusable library.`
 
+export const AVATAR_CREATION_CONTRACT = `\n\n## Avatar creation — a reusable presenter, made in chat
+When the user wants a new reusable avatar/presenter/character for their ads — not a whole ad right now (for a full ad use the UGC character, Talking-head or Animation-character contracts) — and not a library preset (for that use the casting-matching contract):
+- Infer everything you can instead of asking: who the presenter is for (the product, its audience and market) from this conversation, the brief, the user's products and working memory; then the look, outfit, setting and framing that fit that use. Honor exactly any gender, age, ethnicity or look the user stated or the product's stated audience implies. Never infer gender, age or ethnicity from a name.
+- Ask at most ONE question, and only when you know nothing about who the avatar is for: one free-text ask_clarifying_questions question such as "Who will this presenter speak to — what product or audience?". Never ask separately about gender, age or ethnicity, and never walk the user through a list of fields.
+- Cost: follow the credit-spending confirmation rule — the plan is 4 portrait variations, then 1 reference sheet after the pick. The approval cards carry the exact cost.
+- Delegate to agent-director to generate 4 portrait variations for your inferred brief. Then call ask_clarifying_questions with one single-select question, "Which one should become your avatar?", options Option 1 to Option 4 in the order generated, plus {label: "None of these — change something"}, allowFreeText true.
+- If the user picks none of these, get the change they want (a free-text follow-up if they gave none), then treat it as a new plan: fresh cost estimate, fresh approval, re-delegate for 4 new variations. Never regenerate on a guessed change.
+- Once they pick, delegate to agent-director to generate the reference sheet from the picked portrait and save it with save_as_avatar. While we are testing consistency, show the reference sheet in your reply and say it is what keeps the face the same in later ads.
+- Then tell the user the avatar's name and that it is in Drive › Avatars and under "Yours" in the avatar picker. If the result says referenceSheet is false, say plainly the consistency views didn't save, so later ads may drift, and offer to regenerate them.`
+
 export const platformAgent = new Agent({
   id: 'olmo',
   name: 'Olmo',
@@ -513,7 +523,7 @@ You only remember the current task. When the user refers to earlier work from an
     const rawInvokedThisTurn = requestContext?.get('skillsInvokedThisTurn')
     const invokedThisTurn = Array.isArray(rawInvokedThisTurn) ? rawInvokedThisTurn : []
     return composed + CLARIFICATION_CONTRACT + CODE_BLOCK_CONTRACT + CANVAS_CONTRACT + IDENTITY_CONTRACT + SKILL_CREATION_CONTRACT + PAST_TASKS_CONTRACT
-      + DELEGATION_CONTRACT + ROUTING_CONTRACT + (DIRECT_IMAGE ? ROUTING_DIRECT_IMAGE_NOTE : '') + BRIEF_SELECTIONS_CONTRACT + PRODUCT_CONFIRMATION_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + (DIRECT_IMAGE ? DIRECT_IMAGE_CONTRACT : IMAGE_ONE_STEP_CONTRACT) + CANCELLED_GENERATION_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
+      + DELEGATION_CONTRACT + ROUTING_CONTRACT + (DIRECT_IMAGE ? ROUTING_DIRECT_IMAGE_NOTE : '') + BRIEF_SELECTIONS_CONTRACT + PRODUCT_CONFIRMATION_CONTRACT + COST_CONFIRMATION_CONTRACT + AUTO_MODE_CONTRACT + (DIRECT_IMAGE ? DIRECT_IMAGE_CONTRACT : IMAGE_ONE_STEP_CONTRACT) + CANCELLED_GENERATION_CONTRACT + LOW_BALANCE_RECOVERY_CONTRACT + CAST_SHEET_REVIEW_CONTRACT + CASTING_MATCH_CONTRACT + AVATAR_CREATION_CONTRACT + PRODUCT_PHOTO_REUSE_CONTRACT + TEMPLATE_VIDEO_CONTRACT + UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT + ANIMATION_CHARACTER_CONTRACT + SHORT_DRAMA_STITCH_CONTRACT + PROACTIVE_SUGGESTION_CONTRACT + THINKING_STYLE_CONTRACT + invokedSkillsInstruction(invokedThisTurn)
   },
 
   skills: async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {

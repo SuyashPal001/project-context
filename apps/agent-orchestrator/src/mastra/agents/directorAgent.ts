@@ -32,6 +32,14 @@ const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, de
 
 const DIRECTOR_DESCRIPTION = 'Generates and edits images from a text description.'
 
+export const AVATAR_CREATION_SECTION = `\n\n## Avatar creation — variations, reference sheet, save
+When Olmo delegates creating a reusable avatar:
+- Variations: one generate_images call with 4 items, aspectRatio "3:4", no referenceFileIds. Each prompt is a photoreal waist-up portrait of one person looking into the camera, relaxed natural expression, soft natural light, a simple uncluttered setting that fits their role, natural skin texture. No text, logos or products in frame. Keep every item true to Olmo's brief and vary only what the brief leaves open (hair, styling, setting), so the four are real alternatives.
+- Reference sheet, after the user picks: one generate_image call, aspectRatio "16:9", referenceFileIds set to the picked portrait's fileId only, no identityAnchor. The prompt: a character reference sheet of this exact person on a plain light-grey background, same outfit, five panels left to right — front head-and-shoulders, three-quarter left, three-quarter right, profile, full body standing — neutral expression, even soft studio light, no text or labels.
+- Then write a terseTag (a short identity line: first-impression look, hair, outfit, e.g. woman in early 30s, long wavy black hair, light blue long-sleeve top) and a styleLock (photographic look: e.g. photoreal, soft natural daylight, 50mm, shallow depth of field). Never describe ethnicity in either unless Olmo's brief stated it.
+- Call save_as_avatar with portraitFileId (the pick), referenceSheetFileId (the sheet), terseTag and styleLock. Report back the avatar's name, role, tone and referenceSheet exactly as returned; if referenceSheet is false, say so plainly — never claim the sheet saved.
+- Apply the batch rules from the UGC character section unchanged: check every result item for its own fileId, never retry a refused item without a new approval.`
+
 const directorInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {
   // Per-agent override takes precedence over the hardcoded default below — same
   // pattern as platformAgent.ts. Set by chatStream.ts from agents.systemPrompt.
@@ -189,7 +197,7 @@ When Olmo delegates a short-drama-stitch ad build (the user has uploaded existin
   const OVERLAY_TEXT_SECTION = `\n\n## On-screen text overlays\nWhen Olmo asks for hook copy, a title, or any on-screen text on a finished video, call overlay_text (videoFileId plus overlays with text, startSeconds/endSeconds, position top|center|bottom) as a post step — never ask generate_image or generate_video to render the words. If it returns refusalReason "SUBTITLES_FILTER_UNAVAILABLE", tell Olmo the host cannot burn text overlays.`
   const STRETCH_CLIP_SECTION = `\n\n## Lengthening a clip\nWhen Olmo asks to fill a longer runtime from an existing short clip, call stretch_clip (videoFileId, targetDurationSeconds, mode). Use loop for atmospheric or repeatable footage (audio repeats too, hard cut at the seam), slow only for a modest lengthening (refused beyond 2x the original), hold to freeze the last frame (audio plays once then goes silent). It only lengthens — use trim_clip to shorten. If it refuses with STRETCH_TOO_LARGE, tell Olmo which mode limit was hit rather than retrying the same request.`
 
-  const base = (override || defaultInstructions) + IMAGE_PROMPT_CRAFT + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
+  const base = (override || defaultInstructions) + IMAGE_PROMPT_CRAFT + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + AVATAR_CREATION_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }
