@@ -107,6 +107,7 @@ const updateProductSchema = z.object({
   category: z.enum(PRODUCT_CATEGORIES).nullable().optional(),
   description: z.string().trim().max(5000).nullable().optional().transform(v => v === '' ? null : v),
   usps: z.array(z.string().trim().min(1).max(200)).max(3).optional(),
+  imageFileIds: z.array(uuid).max(MAX_IMAGES).optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,
   { message: 'Provide at least one field to update' },
@@ -120,7 +121,15 @@ productsRoutes.patch(
     if (g instanceof Response) return g;
     const id = c.req.param('id');
     if (!uuid.safeParse(id).success) return notFound(c);
-    const product = await updateProduct(g.tenantId, id, c.req.valid('json'));
+    const body = c.req.valid('json');
+    if (body.imageFileIds) {
+      const uniqueIds = [...new Set(body.imageFileIds)];
+      const images = await loadProductImages(g.tenantId, uniqueIds);
+      const valid = uniqueIds.every((imgId) => ALLOWED_PRODUCT_IMAGE_TYPES.has(images.get(imgId)?.type ?? ''));
+      if (!valid) return c.json({ error: 'Invalid images', message: 'Every file must be your own JPG, PNG or WebP image' }, 400);
+      body.imageFileIds = uniqueIds;
+    }
+    const product = await updateProduct(g.tenantId, id, body);
     return product ? c.json({ data: product }) : notFound(c);
   },
 );
