@@ -1,20 +1,29 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Loader2, Plus, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { FileThumbnail } from '@/components/platform/files/FileThumbnail';
+import type { Attachment } from '@/types/agent-events';
 import { PRODUCT_CATEGORIES } from './productCategories';
+import { storeCreativeImage } from './storeCreativeImage';
 import type { ProductRecord } from './productsApi';
 
 const MAX_USPS = 3;
 const MAX_NAME = 120;
 const MAX_DESCRIPTION = 5000;
 const MAX_USP_LENGTH = 200;
+// Same caps ProductsPanel's own photo-drop path enforces.
+const MAX_PHOTOS = 6;
+const MAX_PHOTO_BYTES = 35 * 1024 * 1024;
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const PRODUCT_PREFIX = 'creative-products/';
 
 /** The form always supplies a trimmed name in both create and edit mode — the
  *  "Create product" button stays disabled until create mode has one. Kept
@@ -25,6 +34,8 @@ export interface ProductSetupSubmission {
     category: string | null;
     description: string | null;
     usps: string[];
+    /** Ordered; the first id is the cover image. */
+    imageFileIds: string[];
 }
 
 export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
@@ -43,6 +54,9 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
     const [category, setCategory] = useState<string | null>(() => product?.category ?? null);
     const [description, setDescription] = useState(() => product?.description ?? '');
     const [usps, setUsps] = useState<string[]>(() => product && product.usps.length > 0 ? product.usps : ['']);
+    const [images, setImages] = useState<Attachment[]>(() => product?.images ?? []);
+    const [uploading, setUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     // React's documented pattern for resetting state on a prop change (done
     // synchronously during render, not inside an effect — an effect here
     // would set state on the render right after the one that opened the
@@ -55,7 +69,9 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
             setCategory(product?.category ?? null);
             setDescription(product?.description ?? '');
             setUsps(product && product.usps.length > 0 ? product.usps : ['']);
+            setImages(product?.images ?? []);
             setSaving(false);
+            setUploading(false);
         }
     }
 
@@ -63,6 +79,24 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
 
     const trimmedName = name.trim();
     const canSubmit = trimmedName.length > 0 && !saving;
+
+    async function addPhotos(fileList: FileList | null) {
+        const files = Array.from(fileList ?? []);
+        if (files.length === 0) return;
+        const room = MAX_PHOTOS - images.length;
+        if (files.length > room) { toast.error(`Add up to ${MAX_PHOTOS} photos total.`); return; }
+        if (files.some(file => !IMAGE_TYPES.has(file.type))) { toast.error('Choose JPG, PNG, or WebP images.'); return; }
+        if (files.some(file => file.size > MAX_PHOTO_BYTES)) { toast.error('Product images must be under 35 MB.'); return; }
+        setUploading(true);
+        try {
+            const uploaded = await Promise.all(files.map(file => storeCreativeImage(file, PRODUCT_PREFIX)));
+            setImages(prev => [...prev, ...uploaded]);
+        } catch {
+            toast.error('Could not add the product photos. Please try again.');
+        } finally {
+            setUploading(false);
+        }
+    }
 
     async function submit() {
         setSaving(true);
@@ -72,6 +106,7 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
                 category,
                 description: description.trim() || null,
                 usps: usps.map(u => u.trim()).filter(Boolean),
+                imageFileIds: images.map(image => image.fileId),
             });
         } finally {
             // Harmless if onSave already closed the dialog (onOpenChange(false)):
@@ -125,6 +160,29 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
                         onClick={() => setUsps(prev => [...prev, ''])}>
                         <Plus className="mr-1 h-4 w-4" />Add one more
                     </Button>}
+                </div>
+                <div className="space-y-2">
+                    <Label>Media</Label>
+                    <p className="text-xs text-muted-foreground">The first photo is the cover.</p>
+                    <div className="flex flex-wrap gap-2">
+                        {images.map((image, index) => <div key={image.fileId} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-border bg-muted">
+                            <FileThumbnail fileId={image.fileId} alt={image.name} />
+                            <button type="button" aria-label={`Remove ${image.name}`}
+                                className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background/90 text-foreground"
+                                onClick={() => setImages(prev => prev.filter((_, i) => i !== index))}>
+                                <X className="h-3 w-3" />
+                            </button>
+                        </div>)}
+                        {images.length < MAX_PHOTOS && <>
+                            <button type="button" disabled={uploading}
+                                onClick={() => fileInputRef.current?.click()}
+                                className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground hover:border-foreground/50 disabled:pointer-events-none disabled:opacity-50">
+                                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-5 w-5" />}
+                            </button>
+                            <input ref={fileInputRef} type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden"
+                                aria-label="Add product photos" onChange={event => { void addPhotos(event.target.files); event.target.value = ''; }} />
+                        </>}
+                    </div>
                 </div>
             </div>
             <DialogFooter>

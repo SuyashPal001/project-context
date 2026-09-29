@@ -233,7 +233,7 @@ describe('ProductsPanel', () => {
         await user.click(await screen.findByRole('button', { name: 'New product' }));
         await user.type(await screen.findByLabelText('Product name'), 'Mug');
         await user.click(screen.getByRole('button', { name: 'Create product' }));
-        await waitFor(() => expect(productsApi.createProduct).toHaveBeenCalledWith({ name: 'Mug', category: null, description: null, usps: [] }));
+        await waitFor(() => expect(productsApi.createProduct).toHaveBeenCalledWith({ name: 'Mug', category: null, description: null, usps: [], imageFileIds: [] }));
         expect(onSelect).toHaveBeenCalledWith(productsApi.productSelection(record({ id: 'p2', name: 'Mug', category: 'Home & Kitchen' })));
         expect(screen.queryByRole('dialog')).toBeNull();
     });
@@ -248,7 +248,7 @@ describe('ProductsPanel', () => {
         await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
         expect(await screen.findByLabelText('Product name')).toHaveProperty('value', 'Niacinamide serum');
         await user.click(screen.getByRole('button', { name: 'Save changes' }));
-        await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalledWith('p1', { name: undefined, category: null, description: 'A dropper bottle.', usps: [] }));
+        await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalledWith('p1', { name: undefined, category: null, description: 'A dropper bottle.', usps: [], imageFileIds: ['f1'] }));
         expect(onSelect).toHaveBeenCalledWith(productsApi.productSelection(record({ category: 'Beauty & Personal Care', usps: ['Vegan'] })));
     });
 
@@ -264,6 +264,18 @@ describe('ProductsPanel', () => {
         await user.type(field, 'New name');
         await user.click(screen.getByRole('button', { name: 'Save changes' }));
         await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalledWith('p1', expect.objectContaining({ name: 'New name' })));
+    });
+
+    it('forwards the image set from the setup modal on edit', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        vi.mocked(productsApi.updateProduct).mockResolvedValue(record());
+        const user = userEvent.setup();
+        renderPanel();
+        await user.click(await screen.findByRole('button', { name: 'More options for Niacinamide serum' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+        await user.click(await screen.findByRole('button', { name: 'Remove f1.png' }));
+        await user.click(screen.getByRole('button', { name: 'Save changes' }));
+        await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalledWith('p1', expect.objectContaining({ imageFileIds: [] })));
     });
 
     it('does not reselect an edited product that is not the current selection', async () => {

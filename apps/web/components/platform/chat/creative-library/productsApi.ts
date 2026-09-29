@@ -20,6 +20,7 @@ export interface ProductSetupFields {
     category?: string | null;
     description?: string | null;
     usps?: string[];
+    imageFileIds?: string[];
 }
 
 export const PRODUCTS_PAGE_SIZE = 50;

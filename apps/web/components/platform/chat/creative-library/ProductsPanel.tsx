@@ -315,7 +315,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
         {isPending ? <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> :
             isError ? <div className="py-10 text-center text-sm text-muted-foreground">Could not load products. <Button variant="link" onClick={() => void refetch()}>Retry</Button></div> :
                 products.length === 0 && !busy ? (search.trim() ? <p className="py-10 text-center text-sm text-muted-foreground">No products match your search.</p> : null) :
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                         {busy && <div className="min-w-0" aria-live="polite">
                             <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
                                 {busy === 'photos' && photoPreviewUrl
