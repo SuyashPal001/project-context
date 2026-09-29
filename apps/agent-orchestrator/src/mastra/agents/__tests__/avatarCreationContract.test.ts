@@ -48,6 +48,7 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
       expect(AVATAR_CREATION_SECTION).toContain(label)
     }
     expect(AVATAR_CREATION_SECTION).toMatch(/Avoid: posed stock headshot/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/phone screen, phone bezel, status bar, recording icon or any camera UI/)
     expect(AVATAR_CREATION_SECTION).not.toMatch(/relaxed natural expression/)
     expect(AVATAR_CREATION_SECTION).toMatch(/eyes looking straight into the lens, never off to the side/)
   })
