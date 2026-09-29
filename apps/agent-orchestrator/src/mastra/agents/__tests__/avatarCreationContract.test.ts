@@ -42,6 +42,15 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/never add freckles unless the brief asks for them/)
   })
 
+  it('writes each variation prompt as a labeled phone-video frame caught mid-sentence, with an avoid list', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/caught mid-sentence — never a posed portrait or headshot/)
+    for (const label of ['Use case:', 'Scene/backdrop:', 'Subject:', 'Wardrobe:', 'Style/medium:', 'Composition/framing:', 'Constraints:', 'Avoid:']) {
+      expect(AVATAR_CREATION_SECTION).toContain(label)
+    }
+    expect(AVATAR_CREATION_SECTION).toMatch(/Avoid: posed stock headshot/)
+    expect(AVATAR_CREATION_SECTION).not.toMatch(/relaxed natural expression/)
+  })
+
   it('requires fresh approval before regenerating rejected variations', () => {
     expect(AVATAR_SKILL_TEXT).toMatch(/none of these/i)
     expect(AVATAR_SKILL_TEXT).toMatch(/fresh cost estimate, fresh approval/i)
