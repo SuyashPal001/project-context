@@ -20,7 +20,7 @@ const images = [
     { fileId: 'f1', name: 'Serum.png', type: 'image/png', size: 3 },
     { fileId: 'f2', name: 'Serum (2).png', type: 'image/png', size: 3 },
 ];
-const product = { id: 'p1', name: 'Serum', description: null, price: null, sourceUrl: null, namingStatus: 'done' as const, images, createdAt: '2026-09-27T00:00:00.000Z' };
+const product = { id: 'p1', name: 'Serum', category: null, description: null, price: null, sourceUrl: null, usps: [], namingStatus: 'done' as const, images, createdAt: '2026-09-27T00:00:00.000Z' };
 
 function renderDrive(props: Partial<Parameters<typeof DriveProducts>[0]> = {}, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
     const onAddToChat = vi.fn();

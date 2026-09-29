@@ -40,10 +40,13 @@ function productRecordLines(selection: Extract<CreativeSelection, { kind: 'produ
     return [
         lead,
         details ? `  ${details}` : null,
+        selection.category ? `  Category: ${selection.category}` : null,
+        selection.usps.length > 0 ? `  Selling points: ${selection.usps.join('; ')}` : null,
         selection.sourceUrl ? `  Source: ${selection.sourceUrl}` : null,
         '  Use the attached product image as the visual reference.',
     ].filter((line): line is string => line !== null).join('\n');
 }
+
 
 export function buildCreativeBriefMessage(direction: string, brief: CreativeBrief): string {
     const trimmedDirection = direction.trim();
@@ -185,9 +188,15 @@ function isProductSelection(value: unknown): value is NonNullable<CreativeBrief[
         return true;
     }
     if (value.kind === 'product') {
-        return ['pending', 'done', 'failed'].includes(value.namingStatus as string)
+        if (!(['pending', 'done', 'failed'].includes(value.namingStatus as string)
             && isStringOrNull(value.description) && isStringOrNull(value.price) && isStringOrNull(value.sourceUrl)
-            && isAttachment(value.attachment);
+            && isAttachment(value.attachment))) return false;
+        // Older persisted messages predate category/usps entirely; a malformed
+        // value of either is dropped to its empty default rather than failing
+        // the whole selection, matching the imported-payload rule above.
+        if (!isStringOrNull(value.category)) value.category = null;
+        if (!(Array.isArray(value.usps) && value.usps.every(u => typeof u === 'string'))) value.usps = [];
+        return true;
     }
     return value.kind === 'product-image' && isAttachment(value.attachment);
 }

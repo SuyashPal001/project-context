@@ -39,8 +39,8 @@ beforeAll(() => {
 
 const image = (fileId: string) => ({ fileId, name: `${fileId}.png`, type: 'image/png', size: 3 });
 const record = (over: Partial<ProductRecord> = {}): ProductRecord => ({
-    id: 'p1', name: 'Niacinamide serum', description: 'A dropper bottle.', price: null, sourceUrl: null,
-    namingStatus: 'done', images: [image('f1')], createdAt: '2026-09-27T00:00:00.000Z', ...over,
+    id: 'p1', name: 'Niacinamide serum', category: null, description: 'A dropper bottle.', price: null, sourceUrl: null,
+    usps: [], namingStatus: 'done', images: [image('f1')], createdAt: '2026-09-27T00:00:00.000Z', ...over,
 });
 
 function renderPanel(onSelect = vi.fn(), selected: Parameters<typeof ProductsPanel>[0]['selected'] = null) {
