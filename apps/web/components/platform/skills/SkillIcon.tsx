@@ -98,7 +98,7 @@ export function SkillIcon({
             {cells.map((row, r) =>
                 row.map((filled, c) =>
                     filled ? (
-                        <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill={inverted ? "var(--primary-foreground)" : "var(--primary)"} />
+                        <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill={inverted ? "#ffffff" : "var(--primary)"} />
                     ) : null
                 )
             )}
