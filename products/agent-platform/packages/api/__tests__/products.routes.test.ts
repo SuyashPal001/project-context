@@ -99,6 +99,18 @@ describe('/products routes', () => {
     expect(nameProductMock).not.toHaveBeenCalled();
   });
 
+  it('normalizes an empty-string description to null on create', async () => {
+    lib.createProduct.mockResolvedValue(product({ name: 'Mug' }));
+    await (await app()).request('/products', json({ name: 'Mug', description: '' }));
+    expect(lib.createProduct).toHaveBeenCalledWith(expect.objectContaining({ description: null }));
+  });
+
+  it('normalizes an empty-string description to null on update', async () => {
+    lib.updateProduct.mockResolvedValue(product());
+    await (await app()).request(`/products/${P1}`, { ...json({ description: '' }), method: 'PATCH' });
+    expect(lib.updateProduct).toHaveBeenCalledWith('tenant-1', P1, { description: null });
+  });
+
   it('rejects a manual create with neither a name nor any photos', async () => {
     const res = await (await app()).request('/products', json({}));
     expect(res.status).toBe(400);

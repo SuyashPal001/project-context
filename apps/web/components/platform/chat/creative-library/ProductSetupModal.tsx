@@ -14,6 +14,7 @@ import type { ProductRecord } from './productsApi';
 const MAX_USPS = 3;
 const MAX_NAME = 120;
 const MAX_DESCRIPTION = 5000;
+const MAX_USP_LENGTH = 200;
 
 /** The form always supplies a trimmed name in both create and edit mode — the
  *  "Create product" button stays disabled until create mode has one. Kept
@@ -61,7 +62,7 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
     if (!open) return null;
 
     const trimmedName = name.trim();
-    const canSubmit = (product !== null || trimmedName.length > 0) && !saving;
+    const canSubmit = trimmedName.length > 0 && !saving;
 
     async function submit() {
         setSaving(true);
@@ -113,7 +114,7 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
                 <div className="space-y-2">
                     <Label>Selling points (USPs)</Label>
                     {usps.map((value, index) => <div key={index} className="flex items-center gap-2">
-                        <Input aria-label={`Selling point ${index + 1}`} value={value} placeholder="e.g. Soft cotton blend, Sporty street style"
+                        <Input aria-label={`Selling point ${index + 1}`} value={value} maxLength={MAX_USP_LENGTH} placeholder="e.g. Soft cotton blend, Sporty street style"
                             onChange={event => setUsps(prev => prev.map((u, i) => i === index ? event.target.value : u))} />
                         {usps.length > 1 && <Button type="button" variant="outline" size="icon" aria-label="Remove selling point"
                             onClick={() => setUsps(prev => prev.filter((_, i) => i !== index))}>

@@ -56,7 +56,7 @@ const createProductSchema = z.object({
   fileIds: z.array(uuid).max(MAX_IMAGES).optional(),
   name: z.string().trim().min(1).max(120).optional(),
   category: z.enum(PRODUCT_CATEGORIES).nullable().optional(),
-  description: z.string().trim().max(5000).nullable().optional(),
+  description: z.string().trim().max(5000).nullable().optional().transform(v => v === '' ? null : v),
   usps: z.array(z.string().trim().min(1).max(200)).max(3).optional(),
 }).refine(
   (data) => (data.fileIds?.length ?? 0) > 0 || (data.name?.trim().length ?? 0) > 0,
@@ -105,7 +105,7 @@ productsRoutes.post('/:id/describe', async (c) => {
 const updateProductSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   category: z.enum(PRODUCT_CATEGORIES).nullable().optional(),
-  description: z.string().trim().max(5000).nullable().optional(),
+  description: z.string().trim().max(5000).nullable().optional().transform(v => v === '' ? null : v),
   usps: z.array(z.string().trim().min(1).max(200)).max(3).optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,

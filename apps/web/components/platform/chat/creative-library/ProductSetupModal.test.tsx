@@ -52,6 +52,19 @@ describe('ProductSetupModal', () => {
         expect(screen.getByRole('button', { name: 'Create product' })).toHaveProperty('disabled', false);
     });
 
+    it('disables the submit button in edit mode too if the name is cleared to empty', () => {
+        render(<ProductSetupModal open onOpenChange={vi.fn()} product={product()} onSave={vi.fn()} />);
+        const button = screen.getByRole('button', { name: 'Save changes' });
+        expect(button).toHaveProperty('disabled', false);
+        fireEvent.change(screen.getByLabelText('Product name'), { target: { value: '   ' } });
+        expect(button).toHaveProperty('disabled', true);
+    });
+
+    it('caps each selling-point input at 200 characters, matching the API validation', () => {
+        render(<ProductSetupModal open onOpenChange={vi.fn()} product={null} onSave={vi.fn()} />);
+        expect(screen.getAllByLabelText(/^Selling point \d+$/)[0]).toHaveProperty('maxLength', 200);
+    });
+
     it('adds and removes usp rows, up to 3', () => {
         render(<ProductSetupModal open onOpenChange={vi.fn()} product={null} onSave={vi.fn()} />);
         expect(screen.getAllByLabelText(/^Selling point \d+$/)).toHaveLength(1);

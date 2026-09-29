@@ -106,6 +106,15 @@ describe('ProductsPanel', () => {
         await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ kind: 'product', id: 'p1', namingStatus: 'done' })));
     });
 
+    it('reconciles a category/usps change made elsewhere (not just name/namingStatus)', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record({ category: 'Electronics', usps: ['Waterproof'] })] });
+        const onSelect = vi.fn();
+        const staleSelection = productsApi.productSelection(record({ category: null, usps: [] }));
+        renderPanel(onSelect, staleSelection);
+
+        await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ category: 'Electronics', usps: ['Waterproof'] })));
+    });
+
     it('shows a preview of the first dropped photo and "Naming…" while the upload is in flight', async () => {
         let resolveStore!: (value: ReturnType<typeof image>) => void;
         vi.mocked(storeCreativeImage).mockReturnValue(new Promise(resolve => { resolveStore = resolve; }));
