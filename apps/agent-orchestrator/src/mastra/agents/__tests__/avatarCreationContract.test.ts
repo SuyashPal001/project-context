@@ -121,6 +121,10 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/everyday bottoms and shoes/)
     // "three-quarter left, three-quarter right" was read as the same side twice.
     expect(AVATAR_CREATION_SECTION).toMatch(/turned toward the viewer's LEFT/)
+    // Full-body framing for avatars whose outfit or body is the product.
+    expect(AVATAR_SKILL_TEXT).toMatch(/Framing: full body when the outfit or body is part of what the avatar sells/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/When Olmo's brief says "framing: full body"/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/the face large and sharp enough to read clearly/)
     expect(AVATAR_CREATION_SECTION).toMatch(/turned toward the viewer's RIGHT, the mirror of panel 2/)
   })
 })

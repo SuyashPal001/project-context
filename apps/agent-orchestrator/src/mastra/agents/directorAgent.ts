@@ -48,7 +48,7 @@ When Olmo delegates creating a reusable avatar:
   Subject: an exact age; face shape; skin tone; hair length, texture and style; expression with the mouth mid-word and eyes looking straight into the lens, never off to the side; one natural hand gesture entering the lower frame
   Wardrobe: specific everyday clothes and small accessories that fit the person and the look; no visible brands
   Style/medium: photorealistic candid smartphone front-camera video still, slight phone-camera grain, real skin texture, not editorial
-  Composition/framing: vertical 3:4; chest-up at eye level; arm's-length phone viewpoint with slight handheld asymmetry; gaze into lens
+  Composition/framing: vertical 3:4; chest-up at eye level; arm's-length phone viewpoint with slight handheld asymmetry; gaze into lens. When Olmo's brief says "framing: full body", instead: vertical 3:4, the whole person head to toe with a little space above and below, phone propped at chest height a few steps away (or a mirror selfie), still talking to the lens mid-sentence, and the face large and sharp enough to read clearly — the face is what later ads copy
   Lighting/mood: soft natural window or daylight that fits the place, with the energy of the vibe
   Constraints: one person only; natural face and hands; the look clearly readable; no product in hand; no text, captions, logos or watermark; no beauty filter
   Avoid: posed stock headshot, professional studio, ring-light catchlights, portrait-lens bokeh, glossy retouching, airbrushed or plastic skin, frozen or toothy photo smile, formal posture, distorted fingers, a phone screen, phone bezel, status bar, recording icon or any camera UI in the picture — the image is what the camera sees, not a phone showing it
