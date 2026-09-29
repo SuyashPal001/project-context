@@ -1,12 +1,12 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { forwardRef, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowLeft, Download } from 'lucide-react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { FileThumbnail } from './FileThumbnail';
 import { AddToChatMenu } from './components/AddToChatMenu';
-import { ProductsPanel } from '@/components/platform/chat/creative-library/ProductsPanel';
+import { ProductsPanel, type ProductsPanelHandle } from '@/components/platform/chat/creative-library/ProductsPanel';
 import type { ProductRecord } from '@/components/platform/chat/creative-library/productsApi';
 import type { Attachment } from '@/types/agent-events';
 import type { Conversation } from '@/components/platform/chat/types';
@@ -53,12 +53,15 @@ function cacheFingerprint(queryClient: QueryClient, openId: string | null): stri
  *  is open: unmounting it would run its own cleanup, which commits every
  *  pending delete still inside its undo window and drops the in-progress
  *  search. */
-export function DriveProducts({ conversations, canAddToChat, onAddToChat, onDownload }: {
+export const DriveProducts = forwardRef<ProductsPanelHandle, {
     conversations: Conversation[];
     canAddToChat: boolean;
     onAddToChat: (attachments: Attachment[], conversationId: string | null) => void;
     onDownload: (fileId: string) => void;
-}) {
+    /** Page-level search bar (FilesList), same as every other Drive tab. */
+    search: string;
+    onSearchChange: (value: string) => void;
+}>(function DriveProducts({ conversations, canAddToChat, onAddToChat, onDownload, search, onSearchChange }, ref) {
     const queryClient = useQueryClient();
     const [openId, setOpenId] = useState<string | null>(null);
     // Snapshot fallback only: if the product ever falls out of every cached
@@ -79,7 +82,8 @@ export function DriveProducts({ conversations, canAddToChat, onAddToChat, onDown
 
     return <div className="space-y-4">
         <div hidden={openId !== null}>
-            <ProductsPanel selected={null} onSelect={() => {}} hideHeading
+            <ProductsPanel ref={ref} selected={null} onSelect={() => {}} hideHeading
+                search={search} onSearchChange={onSearchChange}
                 emptyHint="Paste a product link or drop photos to add your first product."
                 onOpen={product => { openSnapshot.current.set(product.id, product); setOpenId(product.id); }} />
         </div>
@@ -113,4 +117,4 @@ export function DriveProducts({ conversations, canAddToChat, onAddToChat, onDown
             </div>
         </div>}
     </div>;
-}
+});

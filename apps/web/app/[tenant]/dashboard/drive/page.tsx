@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { PermissionGate } from "@/components/platform/PermissionGate";
-import { FilesList } from "@/components/platform/files/FilesList";
+import { FilesList, type FilesListHandle } from "@/components/platform/files/FilesList";
 import { NewAvatarButton } from "@/components/platform/files/NewAvatarButton";
 import { UploadFileModal } from "@/components/platform/files/UploadFileModal";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/lib/hooks/usePermissions";
-import { Upload } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { uploadLabelForPrefix } from "@/components/platform/files/systemFolders";
 
@@ -16,8 +16,10 @@ export default function FilesPage() {
     const queryClient = useQueryClient();
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [currentPrefix, setCurrentPrefix] = useState("");
+    const filesListRef = useRef<FilesListHandle>(null);
 
     const canUpload = can('files', 'create');
+    const onProductsTab = currentPrefix.startsWith('creative-products/');
 
     return (
         <PermissionGate resource="files" action="read">
@@ -31,19 +33,25 @@ export default function FilesPage() {
                             Upload once — then put any file to work in a chat.
                         </p>
                     </div>
-                    {canUpload && !currentPrefix.startsWith('creative-products/') && (
-                        currentPrefix.startsWith('creative-avatars/')
-                            ? <NewAvatarButton onUpload={() => setIsUploadOpen(true)} />
-                            : <Button onClick={() => setIsUploadOpen(true)}>
-                                <Upload className="w-4 h-4 mr-2" />
-                                {uploadLabelForPrefix(currentPrefix)}
+                    {canUpload && (
+                        onProductsTab
+                            ? <Button onClick={() => filesListRef.current?.openNewProduct()}>
+                                <Plus className="w-4 h-4 mr-2" />
+                                New product
                             </Button>
+                            : currentPrefix.startsWith('creative-avatars/')
+                                ? <NewAvatarButton onUpload={() => setIsUploadOpen(true)} />
+                                : <Button onClick={() => setIsUploadOpen(true)}>
+                                    <Upload className="w-4 h-4 mr-2" />
+                                    {uploadLabelForPrefix(currentPrefix)}
+                                </Button>
                     )}
                 </div>
-                
-                <FilesList 
-                    prefix={currentPrefix} 
-                    onPrefixChange={setCurrentPrefix} 
+
+                <FilesList
+                    ref={filesListRef}
+                    prefix={currentPrefix}
+                    onPrefixChange={setCurrentPrefix}
                     onUploadClick={() => setIsUploadOpen(true)}
                     canUpload={canUpload}
                     canDelete={can('files', 'delete')}

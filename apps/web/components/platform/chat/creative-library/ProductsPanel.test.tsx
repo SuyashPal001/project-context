@@ -380,4 +380,29 @@ describe('ProductsPanel reuse props', () => {
         expect(screen.queryByRole('heading', { name: 'Products' })).toBeNull();
         expect(screen.queryByText('You can skip this. Olmo will ask about your product in chat.')).toBeNull();
     });
+
+    it('hides its own search box and New product button when hideHeading is set — a parent owns that header', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={vi.fn()} hideHeading /></QueryClientProvider>);
+        await screen.findByText('You can skip this. Olmo will ask about your product in chat.');
+        expect(screen.queryByLabelText('Search products')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'New product' })).toBeNull();
+    });
+
+    it('uses a controlled search value and reports changes via onSearchChange, when hideHeading is set', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        const onSearchChange = vi.fn();
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={vi.fn()} hideHeading search="ser" onSearchChange={onSearchChange} /></QueryClientProvider>);
+        await waitFor(() => expect(productsApi.listProducts).toHaveBeenCalledWith('ser', 0));
+    });
+
+    it('opens the create modal via an imperative ref, for a parent-owned New product button', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const ref = { current: null as null | { openCreate: () => void } };
+        render(<QueryClientProvider client={client}><ProductsPanel ref={ref} selected={null} onSelect={vi.fn()} hideHeading /></QueryClientProvider>);
+        await screen.findByText('You can skip this. Olmo will ask about your product in chat.');
+        ref.current?.openCreate();
+        expect(await screen.findByRole('button', { name: 'Create product' })).toBeTruthy();
+    });
 });

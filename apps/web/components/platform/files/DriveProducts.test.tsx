@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { fireEvent, render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DriveProducts } from './DriveProducts';
@@ -22,10 +23,10 @@ const images = [
 ];
 const product = { id: 'p1', name: 'Serum', category: null, description: null, price: null, sourceUrl: null, usps: [], namingStatus: 'done' as const, images, createdAt: '2026-09-27T00:00:00.000Z' };
 
-function renderDrive(props: Partial<Parameters<typeof DriveProducts>[0]> = {}, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+function renderDrive(props: Partial<ComponentProps<typeof DriveProducts>> = {}, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
     const onAddToChat = vi.fn();
     const onDownload = vi.fn();
-    render(<QueryClientProvider client={client}><DriveProducts conversations={[]} canAddToChat onAddToChat={onAddToChat} onDownload={onDownload} {...props} /></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><DriveProducts conversations={[]} canAddToChat onAddToChat={onAddToChat} onDownload={onDownload} search="" onSearchChange={vi.fn()} {...props} /></QueryClientProvider>);
     return { onAddToChat, onDownload, client };
 }
 
@@ -54,13 +55,13 @@ describe('DriveProducts', () => {
         expect(await screen.findByRole('button', { name: 'Open Serum' })).toBeTruthy();
     });
 
-    it('keeps the product list mounted (search survives) while a product is open', async () => {
-        renderDrive();
-        const search = await screen.findByLabelText('Search products');
-        fireEvent.change(search, { target: { value: 'ser' } });
+    it('passes the parent-owned search through to the product query, and never resets it itself on open/close', async () => {
+        const onSearchChange = vi.fn();
+        renderDrive({ search: 'ser', onSearchChange });
+        await waitFor(() => expect(productsApi.listProducts).toHaveBeenCalledWith('ser', 0));
         fireEvent.click(await screen.findByRole('button', { name: 'Open Serum' }));
         fireEvent.click(screen.getByRole('button', { name: /Back to products/ }));
-        expect((await screen.findByLabelText('Search products') as HTMLInputElement).value).toBe('ser');
+        expect(onSearchChange).not.toHaveBeenCalled();
     });
 
     // ['creative-products'] is a prefix match on the query cache — it also
