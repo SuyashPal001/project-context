@@ -59,6 +59,7 @@ export function OfficialSkillCard({ skill, onClick, onStart, isStarting = false 
                             <SkillIcon
                                 seed={skill.id}
                                 pattern={OFFICIAL_SKILL_PATTERNS[skill.slug]}
+                                inverted
                                 className="h-12 w-12 rounded-lg border border-border shrink-0"
                             />
                             <div className="min-w-0 space-y-0.5">
@@ -69,7 +70,7 @@ export function OfficialSkillCard({ skill, onClick, onStart, isStarting = false 
                         <div className="flex shrink-0 items-center gap-1.5">
                             <Badge
                                 variant="outline"
-                                className="text-[10px] font-semibold uppercase tracking-wider shrink-0 border-indigo-600/30 text-indigo-700 dark:border-indigo-500/30 dark:text-indigo-400"
+                                className="text-[10px] font-semibold uppercase tracking-wider shrink-0 border-primary/40 text-primary"
                             >
                                 Official
                             </Badge>

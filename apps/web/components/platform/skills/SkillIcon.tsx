@@ -76,23 +76,29 @@ export function SkillIcon({
     seed,
     className,
     pattern,
+    inverted = false,
 }: {
     seed: string;
     className?: string;
     pattern?: SkillIconPattern;
+    /** Official skills: solid brand background with light pixels (and a
+     *  little padding so the glyph doesn't touch the edge), instead of
+     *  brand pixels on a pale tint. Same hue, stronger form. */
+    inverted?: boolean;
 }) {
     const cells = pattern ?? randomCells(seed);
+    const pad = inverted ? 0.6 : 0;
 
     return (
         <svg
-            viewBox={`0 0 ${GRID} ${GRID}`}
+            viewBox={`${-pad} ${-pad} ${GRID + pad * 2} ${GRID + pad * 2}`}
             className={className}
-            style={{ backgroundColor: "color-mix(in oklab, var(--primary) 18%, var(--card))" }}
+            style={{ backgroundColor: inverted ? "var(--primary)" : "color-mix(in oklab, var(--primary) 18%, var(--card))" }}
         >
             {cells.map((row, r) =>
                 row.map((filled, c) =>
                     filled ? (
-                        <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill="var(--primary)" />
+                        <rect key={`${r}-${c}`} x={c} y={r} width={1} height={1} fill={inverted ? "var(--primary-foreground)" : "var(--primary)"} />
                     ) : null
                 )
             )}
