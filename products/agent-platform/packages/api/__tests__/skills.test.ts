@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { Hono } from 'hono';
 import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
 import { users } from '@serverless-saas/database/schema/auth';
@@ -360,6 +361,27 @@ describe('GET /skills', () => {
     const body = await res.json();
     expect(body.data[0].ownerName).toBe('Ada Lovelace');
     expect(body.data[0].ownerEmail).toBeNull();
+  });
+
+  it('excludes official skills from the public tab filter, even though the seed marks them visibility public', async () => {
+    const where = vi.fn(() => ({ orderBy: async () => [] }));
+    dbMock.select.mockImplementation(() => ({
+      from: (table: unknown) => {
+        if (table === users) return { where: async () => [] };
+        return { leftJoin: () => ({ where }) };
+      },
+    }));
+
+    const { skillsRoutes } = await import('../routes/skills');
+    const app = appWithContext('read');
+    app.route('/skills', skillsRoutes);
+
+    await app.request('/skills?tab=public');
+
+    const { sql: sqlText, params } = new PgDialect().sqlToQuery(where.mock.calls[0][0]);
+    expect(sqlText).toContain('"visibility" = $');
+    expect(sqlText).toContain('"is_official" = $');
+    expect(params).toContain(false);
   });
 });
 

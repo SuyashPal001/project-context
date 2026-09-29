@@ -133,7 +133,7 @@ skillsRoutes.get('/', async (c) => {
   // The left join below is already scoped to this tenant, so requiring an
   // active install row on it is an inner join in everything but name.
   const filter = tab === 'official' ? eq(skills.isOfficial, true)
-    : tab === 'public' ? eq(skills.visibility, 'public')
+    : tab === 'public' ? and(eq(skills.visibility, 'public'), eq(skills.isOfficial, false))
     : tab === 'installed' ? eq(skillInstalls.status, 'active')
     : eq(skills.ownerTenantId, tenantId);
 
