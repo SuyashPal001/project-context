@@ -93,6 +93,13 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
   it('keeps terseTag and styleLock short — they are matched byte-for-byte in later prompts', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/terseTag \(10.40 characters/i)
     expect(AVATAR_CREATION_SECTION).toMatch(/styleLock \(under 80 characters/i)
+    expect(AVATAR_CREATION_SECTION).toMatch(/never a name: save_as_avatar picks the avatar's name/)
+    expect(AVATAR_CREATION_SECTION).not.toMatch(/"Riya,/)
+  })
+
+  it('draws the reference sheet as plain photo crops with a complete everyday outfit', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/never a cut-out or circle-cropped floating bust/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/everyday bottoms and shoes/)
   })
 })
 
