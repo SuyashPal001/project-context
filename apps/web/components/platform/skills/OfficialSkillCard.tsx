@@ -1,6 +1,5 @@
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import type { Skill } from "./types";
 
 interface OfficialSkillCardProps {
@@ -15,6 +14,9 @@ interface OfficialSkillCardProps {
  * always-latest presets rather than something a tenant installs and tracks.
  * The caller (skills/page.tsx) only renders this when `skill.showcase` is
  * present; falls back to plain <SkillCard> otherwise.
+ *
+ * Compact: the image runs flush to the card's top edge (no padding/strip
+ * above it) and the card clips it via overflow-hidden + rounded corners.
  */
 export function OfficialSkillCard({ skill, onClick }: OfficialSkillCardProps) {
     const bestFor = skill.showcase?.bestFor ?? [];
@@ -33,35 +35,33 @@ export function OfficialSkillCard({ skill, onClick }: OfficialSkillCardProps) {
                     onClick();
                 }
             }}
-            className="block w-full cursor-pointer text-left"
+            className="flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-card text-left transition-colors hover:border-input"
         >
-            <Card className="h-full overflow-hidden transition-colors hover:border-input">
-                <div className="relative aspect-[3/4] w-full bg-muted">
-                    {skill.showcase?.imageUrl && (
-                        <Image
-                            src={skill.showcase.imageUrl}
-                            alt={skill.name}
-                            fill
-                            className="object-cover"
-                        />
-                    )}
-                </div>
-                <CardContent className="space-y-1.5 pt-3">
-                    <h3 className="text-sm font-semibold text-foreground truncate">{skill.name}</h3>
-                    <p className="text-sm text-muted-foreground line-clamp-1">
-                        {skill.description ?? "No description"}
-                    </p>
-                    {bestFor.length > 0 && (
-                        <div className="flex flex-wrap gap-1 pt-0.5">
-                            {bestFor.map((tag) => (
-                                <Badge key={tag} variant="outline" className="text-[10px] font-medium">
-                                    {tag}
-                                </Badge>
-                            ))}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+            <div className="relative aspect-[3/4] w-full shrink-0 bg-muted">
+                {skill.showcase?.imageUrl && (
+                    <Image
+                        src={skill.showcase.imageUrl}
+                        alt={skill.name}
+                        fill
+                        className="object-cover"
+                    />
+                )}
+            </div>
+            <div className="space-y-1 p-3">
+                <h3 className="text-sm font-semibold text-foreground truncate">{skill.name}</h3>
+                <p className="text-sm text-muted-foreground line-clamp-2">
+                    {skill.description ?? "No description"}
+                </p>
+                {bestFor.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                        {bestFor.map((tag) => (
+                            <Badge key={tag} variant="outline" className="text-[10px] font-medium">
+                                {tag}
+                            </Badge>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

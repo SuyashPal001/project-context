@@ -214,9 +214,16 @@ function SkillGrid({
     onInstall: (skillId: string) => void;
     emptyMessage: string;
 }) {
+    // Official showcase cards are compact (portrait image + name/description),
+    // so they fit more per row than the taller community SkillCard.
+    const isOfficialGrid = Boolean(onSelectOfficial);
+    const gridClassName = isOfficialGrid
+        ? "grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+        : "grid gap-4 md:grid-cols-2 lg:grid-cols-3";
+
     if (isLoading) {
         return (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className={gridClassName}>
                 {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[140px] w-full rounded-xl" />)}
             </div>
         );
@@ -231,7 +238,7 @@ function SkillGrid({
     }
 
     return (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className={gridClassName}>
             {skills.map((skill) =>
                 skill.showcase && onSelectOfficial ? (
                     <OfficialSkillCard
