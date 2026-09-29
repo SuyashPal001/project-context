@@ -34,6 +34,9 @@ const streamErrorRetry = () => new StreamErrorRetryProcessor({ maxRetries: 4, de
 
 const DIRECTOR_DESCRIPTION = 'Generates and edits images from a text description.'
 
+export const DIRECTOR_WORKING_MEMORY_SECTION = `\n\n## Working memory
+You are carrying out one piece of work Olmo delegated. Do not rewrite working memory to restate the task, and never set User Preferences or Brand Context from it — those hold only what the user themselves stated. Leave working memory alone unless Olmo's message tells you to record something.`
+
 export const AVATAR_CREATION_SECTION = `\n\n## Avatar creation — variations, reference sheet, save
 When Olmo delegates creating a reusable avatar:
 - Variety roll first: call roll_avatar_variations once, with the look exactly as Olmo's brief gives it, the gender (or "any" if the brief leaves it open) and the brief's age range exactly as stated (22 to 45 if it gives none — never narrow it yourself; "young adult" or a vibe is not a range). It returns one set of details per variation — age, face shape, skin tone, hair, outfit, place and gesture — all different across the set. Build each prompt from its own set; where Olmo's brief states a detail, the brief wins over the roll.
@@ -221,7 +224,7 @@ When Olmo delegates a short-drama-stitch ad build (the user has uploaded existin
   const OVERLAY_TEXT_SECTION = `\n\n## On-screen text overlays\nWhen Olmo asks for hook copy, a title, or any on-screen text on a finished video, call overlay_text (videoFileId plus overlays with text, startSeconds/endSeconds, position top|center|bottom) as a post step — never ask generate_image or generate_video to render the words. If it returns refusalReason "SUBTITLES_FILTER_UNAVAILABLE", tell Olmo the host cannot burn text overlays.`
   const STRETCH_CLIP_SECTION = `\n\n## Lengthening a clip\nWhen Olmo asks to fill a longer runtime from an existing short clip, call stretch_clip (videoFileId, targetDurationSeconds, mode). Use loop for atmospheric or repeatable footage (audio repeats too, hard cut at the seam), slow only for a modest lengthening (refused beyond 2x the original), hold to freeze the last frame (audio plays once then goes silent). It only lengthens — use trim_clip to shorten. If it refuses with STRETCH_TOO_LARGE, tell Olmo which mode limit was hit rather than retrying the same request.`
 
-  const base = (override || defaultInstructions) + IMAGE_PROMPT_CRAFT + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + AVATAR_CREATION_SECTION + AVATAR_FROM_IMAGE_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
+  const base = (override || defaultInstructions) + IMAGE_PROMPT_CRAFT + DIRECTOR_WORKING_MEMORY_SECTION + TEMPLATE_CLONING_SECTION + UGC_CHARACTER_SECTION + AVATAR_CREATION_SECTION + AVATAR_FROM_IMAGE_SECTION + MOTION_CRAFT_SECTION + UGC_FIRST_FRAME_SECTION + TALKING_HEAD_SECTION + ANIMATION_CHARACTER_SECTION + SHORT_DRAMA_STITCH_SECTION + OVERLAY_TEXT_SECTION + STRETCH_CLIP_SECTION
   const persona = requestContext?.get('personaPersonality') as string | undefined
   return persona ? `${persona}\n\n${base}` : base
 }

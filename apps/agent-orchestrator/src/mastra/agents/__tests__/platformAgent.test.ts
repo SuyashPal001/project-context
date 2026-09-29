@@ -256,3 +256,18 @@ describe('platformAgent instructions — UGC first-frame contract', () => {
     expect(section).toMatch(/board-approval turn/)
   })
 })
+
+describe('platformAgent instructions — working memory contract', () => {
+  it('keeps one-task choices and invented preferences out of Brand Context and User Preferences', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('agentSystemPrompt', 'Base override text.')
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+
+    expect(text).toContain('## Working memory — what goes where')
+    expect(text).toMatch(/at most once per turn/)
+    expect(text).toMatch(/Never fill it from one task's choices/)
+    expect(text).toMatch(/Never infer one and never invent one/)
+    expect(text).toMatch(/never option labels such as "\(Recommended\)"/)
+  })
+})

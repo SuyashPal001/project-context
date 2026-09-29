@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { AVATAR_CREATION_SECTION, AVATAR_FROM_IMAGE_SECTION } from '../directorAgent.js'
+import { AVATAR_CREATION_SECTION, AVATAR_FROM_IMAGE_SECTION, DIRECTOR_WORKING_MEMORY_SECTION } from '../directorAgent.js'
 
 // The Avatar creation and Image-to-avatar contracts moved out of Olmo's
 // always-on instructions into the Avatar creator Official skill (see
@@ -60,6 +60,11 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
   it('rolls distinct details in code before writing the variations, with the brief winning over the roll', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/call roll_avatar_variations once/)
     expect(AVATAR_CREATION_SECTION).toMatch(/the brief wins over the roll/)
+  })
+
+  it('records the avatar brief under Key Decisions only, and Director leaves working memory alone', () => {
+    expect(AVATAR_SKILL_TEXT).toMatch(/under Key Decisions only — never in Brand Context or User Preferences/)
+    expect(DIRECTOR_WORKING_MEMORY_SECTION).toMatch(/never set User Preferences or Brand Context/)
   })
 
   it('requires fresh approval before regenerating rejected variations', () => {
