@@ -64,9 +64,9 @@ describe("OfficialSkillDetail", () => {
         expect(screen.getByText("Fitness coaches")).toBeTruthy();
     });
 
-    it("renders a Start button", () => {
+    it("renders a Recreate button", () => {
         renderWithClient(<OfficialSkillDetail skill={makeSkill()} onOpenChange={vi.fn()} />);
-        expect(screen.getByRole("button", { name: /start/i })).toBeTruthy();
+        expect(screen.getByRole("button", { name: /recreate/i })).toBeTruthy();
     });
 
     it("renders a sharp example image and a blurred backdrop copy of it", () => {

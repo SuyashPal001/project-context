@@ -126,7 +126,7 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                                     "Starting…"
                                 ) : (
                                     <>
-                                        Start
+                                        Recreate
                                         <ArrowUpRight className="h-4 w-4" />
                                     </>
                                 )}

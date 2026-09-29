@@ -12,6 +12,7 @@ import { OfficialSkillCard } from "@/components/platform/skills/OfficialSkillCar
 import { OfficialSkillDetail } from "@/components/platform/skills/OfficialSkillDetail";
 import { SkillDetailModal } from "@/components/platform/skills/SkillDetailModal";
 import { installSkill, listSkills } from "@/components/platform/skills/actions";
+import { startOfficialSkill } from "@/components/platform/skills/startOfficialSkill";
 import type { Skill, SkillTab } from "@/components/platform/skills/types";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 
@@ -53,6 +54,9 @@ export default function SkillsPage() {
     // Official showcase cards open OfficialSkillDetail with the full Skill the
     // list query already has — no separate fetch-by-id like SkillDetailModal.
     const [selectedOfficialSkill, setSelectedOfficialSkill] = useState<Skill | null>(null);
+    // Tracks which Official card's "Recreate" is in flight, so only that card
+    // shows the spinner/disabled state instead of every card on the grid.
+    const [startingSkillId, setStartingSkillId] = useState<string | null>(null);
     // Last known dead/stuck state per skill, so we only toast on a live
     // transition into that state (not for a skill that was already dead
     // before this page load — that one gets silently filtered, no toast).
@@ -123,6 +127,15 @@ export default function SkillsPage() {
         }
     };
 
+    const handleStartOfficial = async (skill: Skill) => {
+        setStartingSkillId(skill.id);
+        try {
+            await startOfficialSkill(skill, tenantSlug, router, queryClient);
+        } finally {
+            setStartingSkillId(null);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex items-start justify-between">
@@ -166,6 +179,8 @@ export default function SkillsPage() {
                             onSelect={setSelectedSkillId}
                             onSelectOfficial={setSelectedOfficialSkill}
                             onInstall={handleInstall}
+                            onStartOfficial={handleStartOfficial}
+                            startingSkillId={startingSkillId}
                             emptyMessage="No official skills yet."
                         />
                     </div>
@@ -202,6 +217,8 @@ function SkillGrid({
     onSelect,
     onSelectOfficial,
     onInstall,
+    onStartOfficial,
+    startingSkillId,
     emptyMessage,
 }: {
     skills: Skill[];
@@ -212,14 +229,13 @@ function SkillGrid({
     // for Mine/Community, which always render the plain SkillCard.
     onSelectOfficial?: (skill: Skill) => void;
     onInstall: (skillId: string) => void;
+    // Only used by the Official grid's Recreate button.
+    onStartOfficial?: (skill: Skill) => void;
+    startingSkillId?: string | null;
     emptyMessage: string;
 }) {
-    // Official showcase cards are compact (portrait image + name/description),
-    // so they fit more per row than the taller community SkillCard.
-    const isOfficialGrid = Boolean(onSelectOfficial);
-    const gridClassName = isOfficialGrid
-        ? "grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-        : "grid gap-4 md:grid-cols-2 lg:grid-cols-3";
+    // Official cards mirror the Community card's shape/size — same grid.
+    const gridClassName = "grid gap-4 md:grid-cols-2 lg:grid-cols-3";
 
     if (isLoading) {
         return (
@@ -245,6 +261,8 @@ function SkillGrid({
                         key={skill.id}
                         skill={skill}
                         onClick={() => onSelectOfficial(skill)}
+                        onStart={() => onStartOfficial?.(skill)}
+                        isStarting={startingSkillId === skill.id}
                     />
                 ) : (
                     <SkillCard

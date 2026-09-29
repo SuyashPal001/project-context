@@ -38,19 +38,21 @@ function makeSkill(overrides: Partial<Skill> = {}): Skill {
 }
 
 describe("OfficialSkillCard", () => {
-    it("renders the example image, name, description and best-for chips", () => {
-        render(<OfficialSkillCard skill={makeSkill()} onClick={vi.fn()} />);
+    it("renders the thumbnail, name, Platform owner line, OFFICIAL badge, description and best-for chips", () => {
+        render(<OfficialSkillCard skill={makeSkill()} onClick={vi.fn()} onStart={vi.fn()} />);
 
         expect(screen.getByAltText("Avatar Creator")).toBeTruthy();
         expect(screen.getByText("Avatar Creator")).toBeTruthy();
+        expect(screen.getByText("Platform")).toBeTruthy();
+        expect(screen.getByText("Official")).toBeTruthy();
         expect(screen.getByText("Generate a branded avatar from a product photo.")).toBeTruthy();
         expect(screen.getByText("Fitness coaches")).toBeTruthy();
         expect(screen.getByText("Wellness brands")).toBeTruthy();
     });
 
-    it("opens the detail view when clicked", async () => {
+    it("opens the detail view when the card is clicked", async () => {
         const onClick = vi.fn();
-        render(<OfficialSkillCard skill={makeSkill()} onClick={onClick} />);
+        render(<OfficialSkillCard skill={makeSkill()} onClick={onClick} onStart={vi.fn()} />);
 
         await userEvent.click(screen.getByRole("button", { name: /avatar creator/i }));
 
@@ -59,7 +61,7 @@ describe("OfficialSkillCard", () => {
 
     it("opens the detail view via keyboard (Enter)", async () => {
         const onClick = vi.fn();
-        render(<OfficialSkillCard skill={makeSkill()} onClick={onClick} />);
+        render(<OfficialSkillCard skill={makeSkill()} onClick={onClick} onStart={vi.fn()} />);
 
         const card = screen.getByRole("button", { name: /avatar creator/i });
         card.focus();
@@ -68,11 +70,32 @@ describe("OfficialSkillCard", () => {
         expect(onClick).toHaveBeenCalledTimes(1);
     });
 
+    it("calls onStart and not onClick when Recreate is clicked", async () => {
+        const onClick = vi.fn();
+        const onStart = vi.fn();
+        render(<OfficialSkillCard skill={makeSkill()} onClick={onClick} onStart={onStart} />);
+
+        await userEvent.click(screen.getByRole("button", { name: /recreate/i }));
+
+        expect(onStart).toHaveBeenCalledTimes(1);
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("shows a disabled starting state when isStarting is true", () => {
+        render(<OfficialSkillCard skill={makeSkill()} onClick={vi.fn()} onStart={vi.fn()} isStarting />);
+
+        expect(screen.queryByRole("button", { name: /recreate/i })).toBeNull();
+        const startingButton = screen.getByText("Starting…").closest("button");
+        expect(startingButton).toBeTruthy();
+        expect((startingButton as HTMLButtonElement).disabled).toBe(true);
+    });
+
     it("has no install button, run/download counts or version badge", () => {
         render(
             <OfficialSkillCard
                 skill={makeSkill({ runCount: 5, downloadCount: 20, latestVersion: 3 })}
                 onClick={vi.fn()}
+                onStart={vi.fn()}
             />,
         );
 
@@ -85,7 +108,7 @@ describe("OfficialSkillCard", () => {
         // OfficialSkillCard is only ever rendered by the caller when showcase is
         // present (the page falls back to <SkillCard> otherwise) — this just
         // guards against a crash if it's ever handed a null showcase anyway.
-        render(<OfficialSkillCard skill={makeSkill({ showcase: null })} onClick={vi.fn()} />);
+        render(<OfficialSkillCard skill={makeSkill({ showcase: null })} onClick={vi.fn()} onStart={vi.fn()} />);
         expect(screen.getByText("Avatar Creator")).toBeTruthy();
     });
 });
