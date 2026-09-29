@@ -8,7 +8,7 @@ import { ModalShell } from "@/components/platform/shared";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { api, ApiError } from "@/lib/api";
-import { getSkill, installSkill, listSkillFiles, publishSkill, startSkillTestChat, uninstallSkill } from "./actions";
+import { deleteSkill, getSkill, installSkill, listSkillFiles, publishSkill, startSkillTestChat, uninstallSkill, unpublishSkill } from "./actions";
 import { SkillDetailContent } from "./SkillDetailContent";
 import type { Skill, SkillFile } from "./types";
 import type { Agent } from "@/components/platform/agents/types";
@@ -25,6 +25,7 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
     const params = useParams();
     const tenantSlug = params.tenant as string;
     const [isTesting, setIsTesting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // Same ['agents'] query key the chat page uses, so this shares its cache
     // rather than issuing a second fetch.
@@ -91,6 +92,41 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
         }
     };
 
+    const handleUnpublish = async () => {
+        if (!skillId) return;
+        try {
+            await unpublishSkill(skillId);
+            invalidate();
+            toast.success("Skill unpublished.");
+        } catch {
+            toast.error("Failed to unpublish skill.");
+        }
+    };
+
+    const handleDelete = async () => {
+        if (!skillId) return;
+        setIsDeleting(true);
+        try {
+            await deleteSkill(skillId);
+            invalidate();
+            toast.success("Skill deleted.");
+            onOpenChange(false);
+        } catch (err) {
+            if (err instanceof ApiError && err.status === 409) {
+                const data = err.data as { code?: string; workspaces?: number } | undefined;
+                if (data?.code === "IN_USE") {
+                    toast.error(`Used by ${data.workspaces ?? "other"} workspaces — unpublish it instead.`);
+                } else {
+                    toast.error(err.data?.error ?? "Failed to delete skill.");
+                }
+            } else {
+                toast.error("Failed to delete skill.");
+            }
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     const handleTest = async () => {
         if (!skill) return;
         setIsTesting(true);
@@ -147,8 +183,11 @@ export function SkillDetailModal({ skillId, tenantId, onOpenChange }: SkillDetai
                     onInstall={handleInstall}
                     onUninstall={handleUninstall}
                     onPublish={handlePublish}
+                    onUnpublish={handleUnpublish}
+                    onDelete={handleDelete}
                     onTest={handleTest}
                     isTesting={isTesting}
+                    isDeleting={isDeleting}
                 />
             )}
         </ModalShell>

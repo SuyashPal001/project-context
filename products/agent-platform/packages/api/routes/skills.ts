@@ -1,10 +1,11 @@
 import { Hono } from 'hono';
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { db } from '../db';
 import { skills, skillVersions, skillInstalls } from '@serverless-saas/agent-schema/skills';
+import { agentSkills } from '@serverless-saas/agent-schema/conversations';
 import { auditLog } from '@serverless-saas/database/schema/audit';
 import { users } from '@serverless-saas/database/schema/auth';
 import { hasPermission } from '@serverless-saas/permissions';
@@ -518,6 +519,115 @@ skillsRoutes.post('/:id/publish', async (c) => {
     return c.json({ data: updated });
   } catch (err) {
     console.error('Failed to publish skill:', err);
+    return c.json(INTERNAL_ERROR, 500);
+  }
+});
+
+// POST /skills/:id/unpublish — owner flips visibility back to private,
+// self-serve. Existing installs by other tenants are left alone: they're
+// pinned to a version already imported and keep working, they just stop
+// appearing on the Public tab and can no longer be freshly installed.
+skillsRoutes.post('/:id/unpublish', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  const userId = c.get('userId') as string;
+  if (!hasPermission(permissions, 'skills', 'update')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  if (!uuidSchema.safeParse(skillId).success) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+
+  try {
+    const skill = await resolveSkill(skillId);
+    if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+    // Official skills (ownerTenantId null) can never be unpublished from the
+    // app — same rule as publish, mirrored here.
+    if (!skill.ownerTenantId || skill.ownerTenantId !== tenantId) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+    if (skill.visibility !== 'public') {
+      return c.json({ error: 'Skill is already private', code: 'ALREADY_PRIVATE' }, 409);
+    }
+
+    const [updated] = await db.update(skills).set({ visibility: 'private', updatedAt: new Date() }).where(eq(skills.id, skillId)).returning();
+
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'skill_unpublished', resource: 'skill', resourceId: skillId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch(() => {});
+    return c.json({ data: updated });
+  } catch (err) {
+    console.error('Failed to unpublish skill:', err);
+    return c.json(INTERNAL_ERROR, 500);
+  }
+});
+
+// DELETE /skills/:id — owner only, hard delete. Refused while any other
+// tenant still has an active install (they're pinned to a version and may
+// have it attached to an agent) — unpublish and let them uninstall first, or
+// wait it out. The owner's own install/attachment, and any leftover
+// uninstalled rows from other tenants, are cleaned up as part of the delete.
+skillsRoutes.delete('/:id', async (c) => {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId = requestContext?.tenant?.id;
+  const permissions = requestContext?.permissions ?? [];
+  const userId = c.get('userId') as string;
+  if (!hasPermission(permissions, 'skills', 'delete')) return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+
+  const skillId = c.req.param('id');
+  if (!uuidSchema.safeParse(skillId).success) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+
+  try {
+    const skill = await resolveSkill(skillId);
+    if (!skill) return c.json({ error: 'Skill not found', code: 'NOT_FOUND' }, 404);
+    // Official skills (ownerTenantId null) can never be deleted from the app.
+    if (!skill.ownerTenantId || skill.ownerTenantId !== tenantId) {
+      return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+    }
+
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(skillInstalls)
+      .where(and(
+        eq(skillInstalls.skillId, skillId),
+        sql`${skillInstalls.tenantId} <> ${tenantId}`,
+        eq(skillInstalls.status, 'active'),
+      ));
+
+    if (count > 0) {
+      return c.json({ error: 'Skill is installed in other workspaces', code: 'IN_USE', workspaces: count }, 409);
+    }
+
+    await db.transaction(async (tx) => {
+      // agent_skills.install_id carries no ON DELETE rule, so a dangling
+      // attachment — this tenant's own attach, or an archived row left over
+      // from another tenant's earlier (now uninstalled) install — would block
+      // the skill_installs cascade below with a FK violation. Detach first.
+      const installRows = await tx.select({ id: skillInstalls.id }).from(skillInstalls).where(eq(skillInstalls.skillId, skillId));
+      const installIds = installRows.map((row) => row.id);
+      if (installIds.length > 0) {
+        await tx.delete(agentSkills).where(inArray(agentSkills.installId, installIds));
+      }
+      // Cascades to skill_versions and skill_installs — both declared
+      // `onDelete: 'cascade'` against skills.id.
+      await tx.delete(skills).where(eq(skills.id, skillId));
+    });
+
+    // Best-effort: the skill's package files in S3 are unreachable through the
+    // app once the row is gone, but this is cleanup, not correctness — a
+    // failure here must never look like the delete itself failed.
+    try {
+      const prefix = `skill-packages/${skillId}/`;
+      const listed = await s3.send(new ListObjectsV2Command({ Bucket: process.env.DOCUMENTS_BUCKET!, Prefix: prefix }));
+      const keys = (listed.Contents ?? []).map((obj) => obj.Key).filter((key): key is string => !!key);
+      if (keys.length > 0) {
+        await s3.send(new DeleteObjectsCommand({ Bucket: process.env.DOCUMENTS_BUCKET!, Delete: { Objects: keys.map((Key) => ({ Key })) } }));
+      }
+    } catch (err) {
+      console.error('Failed to clean up S3 objects for deleted skill:', err);
+    }
+
+    db.insert(auditLog).values({ tenantId, actorId: userId, actorType: 'human', action: 'skill_deleted', resource: 'skill', resourceId: skillId, metadata: {}, traceId: c.get('traceId') ?? '' }).catch(() => {});
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete skill:', err);
     return c.json(INTERNAL_ERROR, 500);
   }
 });
