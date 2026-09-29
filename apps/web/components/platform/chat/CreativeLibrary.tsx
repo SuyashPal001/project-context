@@ -111,7 +111,7 @@ function AvatarCard({ label, name, detail, selected, busy, disabled, onClick, ch
     </button>;
 }
 
-function AvatarsPanel({ selected, onSelect, onCreateAvatar }: { selected: AvatarSelection | null; onSelect: (selection: AvatarSelection) => void; onCreateAvatar?: () => void }) {
+function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled }: { selected: AvatarSelection | null; onSelect: (selection: AvatarSelection) => void; onCreateAvatar?: () => void; createAvatarDisabled?: boolean }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
     const namingAttempted = useRef(new Set<string>());
@@ -171,7 +171,7 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar }: { selected: Avatar
         <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">Original still-image presets. Select one to attach it to your brief; talking video is not available yet.</p>
             <div className="flex items-center gap-2">
-                {onCreateAvatar && <Button type="button" variant="outline" size="sm" disabled={uploading !== null} onClick={onCreateAvatar}>
+                {onCreateAvatar && <Button type="button" variant="outline" size="sm" disabled={uploading !== null || createAvatarDisabled} onClick={onCreateAvatar}>
                     <Sparkles className="mr-2 h-4 w-4" />
                     Create with AI
                 </Button>}
@@ -337,18 +337,20 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
     </div>;
 }
 
-export function CreativeLibrary({ tab, brief, onSelect, onProductNamed, onCreateAvatar }: {
+export function CreativeLibrary({ tab, brief, onSelect, onProductNamed, onCreateAvatar, createAvatarDisabled }: {
     tab: CreativeLibraryTab;
     brief: CreativeBrief;
     onSelect: (selection: CreativeSelection) => void;
     onProductNamed?: (product: ProductRecordSelection) => void;
     /** Present only where the chat page can send a message through the composer; shows "Create with AI" next to "Upload your own". */
     onCreateAvatar?: () => void;
+    /** Disables "Create with AI" while a send is already in flight or the conversation is inactive — avoids double-creating conversations. */
+    createAvatarDisabled?: boolean;
 }) {
     return <section aria-label={`${tab} library`} className="mt-8 w-full text-left">
         {tab === 'templates' && <TemplatesPanel selected={brief.template} onSelect={onSelect} />}
         {tab === 'products' && <ProductsPanel selected={brief.product} onSelect={onSelect} onProductNamed={onProductNamed} />}
         {tab === 'audio' && <AudioPanel selected={brief.voice} onSelect={onSelect} />}
-        {tab === 'avatars' && <AvatarsPanel selected={brief.avatar} onSelect={onSelect} onCreateAvatar={onCreateAvatar} />}
+        {tab === 'avatars' && <AvatarsPanel selected={brief.avatar} onSelect={onSelect} onCreateAvatar={onCreateAvatar} createAvatarDisabled={createAvatarDisabled} />}
     </section>;
 }

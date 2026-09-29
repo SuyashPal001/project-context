@@ -47,6 +47,8 @@ interface CreativeEmptyStateProps {
     onProductNamed?: (product: ProductRecordSelection) => void;
     /** Present only where the chat page can send a message through the composer; shows "Create with AI" in the avatar picker. */
     onCreateAvatar?: () => void;
+    /** Disables "Create with AI" while a send is already in flight or the conversation is inactive — avoids double-creating conversations. */
+    createAvatarDisabled?: boolean;
     /** The composer — differs between the no-conversation screen and an empty existing chat. */
     children: ReactNode;
 }
@@ -55,7 +57,7 @@ interface CreativeEmptyStateProps {
  *  no-conversation composer and an existing-but-empty chat, so both show the
  *  same header, greeting and creative-library shortcuts instead of an older
  *  generic welcome with pills that don't match what the agent does. */
-export function CreativeEmptyState({ agent, firstName, planName, upgradeHref, brief, activeTab, onTabChange, onSelect, onProductNamed, onCreateAvatar, children }: CreativeEmptyStateProps) {
+export function CreativeEmptyState({ agent, firstName, planName, upgradeHref, brief, activeTab, onTabChange, onSelect, onProductNamed, onCreateAvatar, createAvatarDisabled, children }: CreativeEmptyStateProps) {
     return (
         <div className="w-full max-w-2xl mx-auto flex flex-col items-center py-8">
             <div className="flex flex-col items-center gap-2 mb-8">
@@ -110,7 +112,7 @@ export function CreativeEmptyState({ agent, firstName, planName, upgradeHref, br
                     </button>
                 ))}
             </div>
-            {activeTab && <CreativeLibrary tab={activeTab} brief={brief} onSelect={onSelect} onProductNamed={onProductNamed} onCreateAvatar={onCreateAvatar} />}
+            {activeTab && <CreativeLibrary tab={activeTab} brief={brief} onSelect={onSelect} onProductNamed={onProductNamed} onCreateAvatar={onCreateAvatar} createAvatarDisabled={createAvatarDisabled} />}
         </div>
     );
 }

@@ -12,9 +12,9 @@ vi.mock('./creativeVoiceFetch', () => ({ fetchCreativeVoice: vi.fn() }));
 vi.mock('@/components/platform/files/FileThumbnail', () => ({ FileThumbnail: ({ alt }: { alt: string }) => <span>{alt}</span> }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-function renderLibrary(tab: 'templates' | 'avatars' | 'products' | 'audio', onSelect = vi.fn(), brief: CreativeBrief = createEmptyCreativeBrief(), onCreateAvatar?: () => void) {
+function renderLibrary(tab: 'templates' | 'avatars' | 'products' | 'audio', onSelect = vi.fn(), brief: CreativeBrief = createEmptyCreativeBrief(), onCreateAvatar?: () => void, createAvatarDisabled?: boolean) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    return { onSelect, ...render(<QueryClientProvider client={client}><CreativeLibrary tab={tab} brief={brief} onSelect={onSelect} onCreateAvatar={onCreateAvatar} /></QueryClientProvider>) };
+    return { onSelect, ...render(<QueryClientProvider client={client}><CreativeLibrary tab={tab} brief={brief} onSelect={onSelect} onCreateAvatar={onCreateAvatar} createAvatarDisabled={createAvatarDisabled} /></QueryClientProvider>) };
 }
 
 beforeEach(() => {
@@ -54,6 +54,18 @@ describe('creative library', () => {
     it('has no "Create with AI" button when onCreateAvatar is absent', () => {
         renderLibrary('avatars');
         expect(screen.queryByRole('button', { name: 'Create with AI' })).toBeNull();
+    });
+
+    // Finding #2: "Create with AI" must not be clickable while the chat page
+    // is mid-send or the conversation is inactive — double-creation risk.
+    it('disables "Create with AI" when createAvatarDisabled is true', () => {
+        renderLibrary('avatars', vi.fn(), createEmptyCreativeBrief(), vi.fn(), true);
+        expect((screen.getByRole('button', { name: 'Create with AI' }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('leaves "Create with AI" enabled when createAvatarDisabled is false or omitted', () => {
+        renderLibrary('avatars', vi.fn(), createEmptyCreativeBrief(), vi.fn(), false);
+        expect((screen.getByRole('button', { name: 'Create with AI' }) as HTMLButtonElement).disabled).toBe(false);
     });
 
     it('allows a presenter image upload and attaches it to the brief', async () => {

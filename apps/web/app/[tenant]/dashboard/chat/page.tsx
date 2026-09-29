@@ -658,7 +658,15 @@ function ChatPage() {
                                                 onTabChange={setActiveEmptyStateTab}
                                                 onSelect={selectCreativeAsset}
                                                 onProductNamed={onProductNamed}
-                                                onCreateAvatar={() => sendComposerMessage(CREATE_AVATAR_PROMPT)}
+                                                // Finding #3: sends ONLY the prompt text, through sendMessage directly —
+                                                // never sendComposerMessage, which would merge in the brief's
+                                                // attachments (e.g. a selected avatar) and silently turn this into an
+                                                // image-to-avatar call — and never touches/clears the brief.
+                                                onCreateAvatar={() => {
+                                                    if (isStreaming || isPreparingMessage || selectedConversation.status !== 'active') return;
+                                                    sendMessage(CREATE_AVATAR_PROMPT);
+                                                }}
+                                                createAvatarDisabled={isStreaming || isPreparingMessage || selectedConversation.status !== 'active'}
                                             >
                                                 <ChatInput
                                                     onSend={(text, attachments) => sendComposerMessage(text, attachments)}
@@ -757,7 +765,16 @@ function ChatPage() {
                                     onTabChange={setActiveEmptyStateTab}
                                     onSelect={selectCreativeAsset}
                                     onProductNamed={onProductNamed}
-                                    onCreateAvatar={() => startDraftComposerMessage(CREATE_AVATAR_PROMPT)}
+                                    // Finding #3: stages ONLY the prompt text (no merged brief attachments,
+                                    // brief left untouched) — same reasoning as the existing-chat site above,
+                                    // just via the pre-conversation staging path instead of sendMessage directly.
+                                    onCreateAvatar={() => {
+                                        if (createConversation.isPending) return;
+                                        setPendingFirstMessage(CREATE_AVATAR_PROMPT);
+                                        setPendingFirstAttachments(undefined);
+                                        handleNewChat(draftAgent?.id);
+                                    }}
+                                    createAvatarDisabled={createConversation.isPending}
                                 >
                                         <ChatInput
                                             onSend={(text, attachments) => {
