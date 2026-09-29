@@ -1,10 +1,13 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { zValidator } from '@hono/zod-validator';
 import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
+import { hasPermission } from '@serverless-saas/permissions';
 import { db } from '../db';
 import { creativeLibraryAssets } from '@serverless-saas/agent-schema/creativeLibraryAssets';
 import { storageService } from '@serverless-saas/storage';
 import type { AppEnv } from '@serverless-saas/types';
+import { AVATAR_PREFIX, getTenantAvatar, listTenantAvatars, nameTenantAvatarWithin, syncTenantAvatars } from '../lib/avatarRecords';
 
 const uuidSchema = z.string().uuid();
 
@@ -41,4 +44,60 @@ creativeLibraryAssetsRoutes.get('/:id/presigned-url', async (c) => {
 
   const presignedUrl = await storageService.getLibraryAssetDownloadUrl(row.storageKey);
   return c.json({ presignedUrl });
+});
+
+// ── The tenant's own avatars ────────────────────────────────────────────────
+// Rows with tenant_id set. Their bytes are ordinary files under the Avatars
+// folder, so the same files permissions guard them as guard Drive.
+
+// Kept under the web proxy's 15 s abort; past it the avatar comes back still
+// pending and the picker's retry names it.
+const INLINE_NAMING_BUDGET_MS = 10_000;
+
+function guard(c: Context<AppEnv>, action: 'read' | 'create'): string | Response {
+  const requestContext = c.get('requestContext') as any;
+  const tenantId: string | undefined = requestContext?.tenant?.id;
+  if (!tenantId) return c.json({ error: 'Tenant resolution failed', code: 'TENANT_NOT_FOUND' }, 400);
+  if (!hasPermission(requestContext?.permissions ?? [], 'files', action)) {
+    return c.json({ error: 'Forbidden', code: 'INSUFFICIENT_PERMISSIONS' }, 403);
+  }
+  return tenantId;
+}
+
+const avatarNotFound = (c: Context<AppEnv>) => c.json({ error: 'Not Found', message: 'Avatar not found' }, 404);
+
+creativeLibraryAssetsRoutes.get('/avatars', async (c) => {
+  const tenantId = guard(c, 'read');
+  if (tenantId instanceof Response) return tenantId;
+  return c.json({ data: await listTenantAvatars(tenantId) });
+});
+
+// Registers a just-uploaded Avatars-folder image and names it in the same
+// request, so the picker can attach it under its new name straight away.
+creativeLibraryAssetsRoutes.post(
+  '/avatars',
+  zValidator('json', z.object({ fileId: uuidSchema })),
+  async (c) => {
+    const tenantId = guard(c, 'create');
+    if (tenantId instanceof Response) return tenantId;
+    const { fileId } = c.req.valid('json');
+    await syncTenantAvatars(tenantId);
+    const avatar = await getTenantAvatar(tenantId, { fileId });
+    // Not found covers another tenant's file, a non-image, and a file outside
+    // the Avatars folder — sync only registers the tenant's own avatar images.
+    if (!avatar) return c.json({ error: 'Invalid avatar', message: `The file must be your own JPG, PNG or WebP image under ${AVATAR_PREFIX}` }, 400);
+    return c.json({ data: await nameTenantAvatarWithin(tenantId, avatar, INLINE_NAMING_BUDGET_MS) }, 201);
+  },
+);
+
+// Finishes naming an avatar that came back pending (budget ran out, or it
+// arrived through Drive's plain upload).
+creativeLibraryAssetsRoutes.post('/avatars/:id/describe', async (c) => {
+  const tenantId = guard(c, 'create');
+  if (tenantId instanceof Response) return tenantId;
+  const id = c.req.param('id');
+  if (!uuidSchema.safeParse(id).success) return avatarNotFound(c);
+  const avatar = await getTenantAvatar(tenantId, { id });
+  if (!avatar) return avatarNotFound(c);
+  return c.json({ data: await nameTenantAvatarWithin(tenantId, avatar, INLINE_NAMING_BUDGET_MS) });
 });

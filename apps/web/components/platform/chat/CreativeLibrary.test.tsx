@@ -55,6 +55,41 @@ describe('creative library', () => {
         })));
     });
 
+    it('names an uploaded presenter and attaches it under that name', async () => {
+        vi.mocked(api.post).mockResolvedValueOnce({ data: { fileId: 'avatar-3', uploadUrl: 'https://storage.example.com/custom' } });
+        vi.mocked(api.post).mockResolvedValueOnce({ success: true });
+        vi.mocked(api.post).mockResolvedValueOnce({ data: {
+            id: 'asset-3', fileId: 'avatar-3', name: 'Riya', role: 'Fitness creator', tone: 'Energetic',
+            namingStatus: 'done', type: 'image/png', size: 6, createdAt: '2026-09-29T00:00:00.000Z',
+        } });
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+        const { onSelect } = renderLibrary('avatars');
+        fireEvent.change(screen.getByLabelText('Upload presenter image'), { target: { files: [new File(['custom'], 'IMG_4432.png', { type: 'image/png' })] } });
+        await waitFor(() => expect(onSelect).toHaveBeenCalledWith({
+            kind: 'avatar', id: 'custom:avatar-3', name: 'Riya', role: 'Fitness creator', tone: 'Energetic',
+            attachment: { fileId: 'avatar-3', name: 'Riya', type: 'image/png', size: 6 },
+        }));
+        expect(api.post).toHaveBeenLastCalledWith('/api/v1/creative-library-assets/avatars', { fileId: 'avatar-3' });
+    });
+
+    it('lists the tenant\'s own avatars above the library and names pending ones', async () => {
+        const own = (over: object) => ({ id: 'asset-1', fileId: 'file-1', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', namingStatus: 'done', type: 'image/jpeg', size: 10, createdAt: '2026-09-29T00:00:00.000Z', ...over });
+        vi.mocked(api.get).mockImplementation(async (url: string) => url === '/api/v1/creative-library-assets/avatars'
+            ? { data: [own({}), own({ id: 'asset-2', fileId: 'file-2', name: 'IMG_1', role: null, tone: null, namingStatus: 'pending' })] }
+            : { data: [] });
+        vi.mocked(api.post).mockResolvedValue({ data: own({ id: 'asset-2', fileId: 'file-2', name: 'Kabir' }) });
+        const { onSelect } = renderLibrary('avatars');
+
+        expect(await screen.findByText('Yours')).toBeTruthy();
+        expect(screen.getByText('Naming…')).toBeTruthy();
+        await waitFor(() => expect(api.post).toHaveBeenCalledWith('/api/v1/creative-library-assets/avatars/asset-2/describe'));
+        fireEvent.click(screen.getByRole('button', { name: 'Use Riya avatar' }));
+        expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
+            kind: 'avatar', id: 'custom:file-1', name: 'Riya', role: 'Fitness creator',
+            attachment: { fileId: 'file-1', name: 'Riya', type: 'image/jpeg', size: 10 },
+        }));
+    });
+
     it('uses the selected language for a multilingual voice brief', async () => {
         vi.mocked(fetchCreativeVoice).mockResolvedValue({
             ok: true,

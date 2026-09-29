@@ -65,15 +65,19 @@ export const listCastingAssets = createTool({
         }
       }
 
-      // Same global-or-tenant scoping as retrieveTemplate.ts: $2 <> '' guards
-      // an unresolved tenantId from being cast against the uuid column, and
-      // every seeded row today is platform-owned (tenant_id IS NULL) —
-      // tenant-authored assets are future scope, not built yet.
+      // Same global-or-tenant scoping as retrieveTemplate.ts: $1 <> '' guards
+      // an unresolved tenantId from being cast against the uuid column.
+      // A tenant's own avatar (tenant_id set) is an ordinary file, so its id
+      // here is the file id — the asset row's own id resolves nowhere
+      // (mediaCache's library fallback only serves platform rows) — and a
+      // deleted file drops it from the list.
       const { rows } = await client.query<{ id: string; name: string; attributes: { role?: string; tone?: string } }>(
-        `SELECT id, name, attributes
-         FROM creative_library_assets
-         WHERE kind = 'avatar' AND status = 'active' AND (tenant_id IS NULL OR ($1 <> '' AND tenant_id = $1::uuid))
-         ORDER BY name`,
+        `SELECT COALESCE(a.file_id, a.id) AS id, a.name, a.attributes
+         FROM creative_library_assets a
+         LEFT JOIN files f ON f.id = a.file_id
+         WHERE a.kind = 'avatar' AND a.status = 'active'
+           AND (a.tenant_id IS NULL OR ($1 <> '' AND a.tenant_id = $1::uuid AND f.deleted_at IS NULL))
+         ORDER BY a.name`,
         [tenantId],
       )
       return {

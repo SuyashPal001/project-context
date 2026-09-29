@@ -1,8 +1,8 @@
 "use client";
 
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, Music2, Play, Search, Square, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import { fetchCreativeVoice } from './creativeVoiceFetch';
 import { cn } from '@/lib/utils';
 import { ProductsPanel } from './creative-library/ProductsPanel';
 import { storeCreativeImage } from './creative-library/storeCreativeImage';
+import { TENANT_AVATARS_QUERY_KEY, createTenantAvatar, describeTenantAvatar, listTenantAvatars, tenantAvatarSelection } from './creative-library/avatarsApi';
+import { FileThumbnail } from '@/components/platform/files/FileThumbnail';
 import type {
     AvatarSelection,
     CreativeBrief,
@@ -93,17 +95,55 @@ function TemplatesPanel({ selected, onSelect }: { selected: TemplateSelection | 
     </div>;
 }
 
+function AvatarCard({ label, name, detail, selected, busy, disabled, onClick, children }: {
+    label: string; name: string; detail: string; selected: boolean; busy: boolean; disabled: boolean; onClick: () => void; children: ReactNode;
+}) {
+    return <button type="button" aria-pressed={selected} disabled={disabled} onClick={() => { if (!selected) onClick(); }} aria-label={label} className="group min-w-0 text-left disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <span className={cn("relative block aspect-[4/5] overflow-hidden rounded-xl border bg-muted transition-colors group-hover:border-foreground/50", selected ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}>
+            {children}
+            {selected && <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background"><Check className="h-3.5 w-3.5" /></span>}
+            <span className="absolute bottom-2 right-2 rounded-md bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Use avatar'}
+            </span>
+        </span>
+        <span className="mt-2 block truncate text-sm font-semibold text-foreground">{name}</span>
+        <span className="block truncate text-xs text-muted-foreground">{detail}</span>
+    </button>;
+}
+
 function AvatarsPanel({ selected, onSelect }: { selected: AvatarSelection | null; onSelect: (selection: AvatarSelection) => void }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
+    const namingAttempted = useRef(new Set<string>());
+    const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
     const [uploading, setUploading] = useState<string | null>(null);
-    const matches = CREATIVE_AVATARS.filter(avatar => `${avatar.name} ${avatar.role} ${avatar.tone}`.toLowerCase().includes(search.toLowerCase()));
+    const query = search.toLowerCase();
+    const matches = CREATIVE_AVATARS.filter(avatar => `${avatar.name} ${avatar.role} ${avatar.tone}`.toLowerCase().includes(query));
+    // The tenant's own avatars (anything in Drive's Avatars folder); platform
+    // presets above stay static. A failed load just shows presets only.
+    const { data: ownAvatars = [] } = useQuery({ queryKey: TENANT_AVATARS_QUERY_KEY, queryFn: listTenantAvatars });
+    const ownMatches = ownAvatars.filter(avatar => `${avatar.name} ${avatar.role ?? ''} ${avatar.tone ?? ''}`.toLowerCase().includes(query));
 
     useEffect(() => {
         mountedRef.current = true;
         return () => { mountedRef.current = false; };
     }, []);
+
+    // An avatar uploaded through Drive (a plain file upload) arrives unnamed,
+    // as does one whose inline naming ran out of time. Name each one once per
+    // session, one at a time.
+    useEffect(() => {
+        const pending = ownAvatars.filter(avatar => avatar.namingStatus === 'pending' && !namingAttempted.current.has(avatar.id));
+        if (pending.length === 0) return;
+        pending.forEach(avatar => namingAttempted.current.add(avatar.id));
+        void (async () => {
+            for (const avatar of pending) {
+                try { await describeTenantAvatar(avatar.id); } catch { /* stays pending; shown by its file name */ }
+            }
+            void queryClient.invalidateQueries({ queryKey: TENANT_AVATARS_QUERY_KEY });
+        })();
+    }, [ownAvatars, queryClient]);
 
     function selectPreset(avatar: CreativeAvatar) {
         onSelect({ kind: 'avatar', ...avatar, attachment: { fileId: avatar.assetId, name: avatar.name, type: 'image/jpeg', size: 0 } });
@@ -115,7 +155,10 @@ function AvatarsPanel({ selected, onSelect }: { selected: AvatarSelection | null
         setUploading('custom');
         try {
             const attachment = await storeCreativeImage(file, AVATAR_PREFIX);
-            if (mountedRef.current) onSelect({ kind: 'avatar', id: `custom:${attachment.fileId}`, name: file.name, role: 'Uploaded presenter', tone: 'Custom', attachment });
+            // Naming is best effort: if it fails the upload still attaches, under the file's own name.
+            const avatar = await createTenantAvatar(attachment.fileId).catch(() => null);
+            if (mountedRef.current) onSelect(avatar ? tenantAvatarSelection(avatar) : { kind: 'avatar', id: `custom:${attachment.fileId}`, name: file.name, role: 'Uploaded presenter', tone: 'Custom', attachment });
+            void queryClient.invalidateQueries({ queryKey: TENANT_AVATARS_QUERY_KEY });
         } catch {
             if (mountedRef.current) toast.error('Could not upload the presenter image. Please try again.');
         } finally {
@@ -133,20 +176,29 @@ function AvatarsPanel({ selected, onSelect }: { selected: AvatarSelection | null
             </Button>
             <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Upload presenter image" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadOwnImage(file); event.target.value = ''; }} />
         </div>
-        {matches.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">No avatars match your search.</p> :
+        {ownMatches.length > 0 && <section className="space-y-3">
+            <h3 className="text-sm font-medium text-muted-foreground">Yours</h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
-                {matches.map(avatar => <button key={avatar.id} type="button" aria-pressed={selected?.id === avatar.id} disabled={uploading !== null} onClick={() => { if (selected?.id !== avatar.id) selectPreset(avatar); }} aria-label={`Use ${avatar.name} avatar`} className="group min-w-0 text-left disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <span className={cn("relative block aspect-[4/5] overflow-hidden rounded-xl border bg-muted transition-colors group-hover:border-foreground/50", selected?.id === avatar.id ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}>
+                {ownMatches.map(avatar => {
+                    const selection = tenantAvatarSelection(avatar);
+                    const naming = avatar.namingStatus === 'pending';
+                    return <AvatarCard key={avatar.id} label={`Use ${avatar.name} avatar`} name={naming ? 'Naming…' : avatar.name} detail={`${selection.role} · ${selection.tone}`}
+                        selected={selected?.id === selection.id} busy={false} disabled={uploading !== null} onClick={() => onSelect(selection)}>
+                        <FileThumbnail fileId={avatar.fileId} alt="" />
+                    </AvatarCard>;
+                })}
+            </div>
+        </section>}
+        {matches.length === 0 && ownMatches.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">No avatars match your search.</p> :
+            matches.length > 0 && <section className="space-y-3">
+                {ownMatches.length > 0 && <h3 className="text-sm font-medium text-muted-foreground">Library</h3>}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
+                    {matches.map(avatar => <AvatarCard key={avatar.id} label={`Use ${avatar.name} avatar`} name={avatar.name} detail={`${avatar.role} · ${avatar.tone}`}
+                        selected={selected?.id === avatar.id} busy={uploading === avatar.id} disabled={uploading !== null} onClick={() => selectPreset(avatar)}>
                         <Image src={avatar.image} alt="" fill sizes="(max-width: 640px) 45vw, 220px" className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
-                        {selected?.id === avatar.id && <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-foreground text-background"><Check className="h-3.5 w-3.5" /></span>}
-                        <span className="absolute bottom-2 right-2 rounded-md bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
-                            {uploading === avatar.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Use avatar'}
-                        </span>
-                    </span>
-                    <span className="mt-2 block truncate text-sm font-semibold text-foreground">{avatar.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{avatar.role} · {avatar.tone}</span>
-                </button>)}
-            </div>}
+                    </AvatarCard>)}
+                </div>
+            </section>}
     </div>;
 }
 
