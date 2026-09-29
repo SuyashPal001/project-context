@@ -8,11 +8,20 @@ import { MAX_NAMING_IMAGE_BYTES } from './productNaming';
 
 /** Drive's "Avatars" folder — the prefix the picker and Drive both upload into. */
 export const AVATAR_PREFIX = 'creative-avatars/';
+/** Identity reference sheets for avatars — images the orchestrator copies here for identity views. */
+export const AVATAR_REFS_PREFIX = 'avatar-refs/';
 const ORCHESTRATOR_TIMEOUT_MS = 20_000;
 const MAX_TENANT_AVATARS = 200;
 
 export type AvatarNamingStatus = 'pending' | 'done' | 'failed';
-export interface AvatarAttributes { role?: string | null; tone?: string | null; namingStatus?: AvatarNamingStatus }
+export interface AvatarAttributes {
+  role?: string | null;
+  tone?: string | null;
+  namingStatus?: AvatarNamingStatus;
+  referenceSheetFileId?: string;
+  terseTag?: string;
+  styleLock?: string;
+}
 export interface TenantAvatarRecord {
   id: string;
   fileId: string;
@@ -20,6 +29,7 @@ export interface TenantAvatarRecord {
   role: string | null;
   tone: string | null;
   namingStatus: AvatarNamingStatus;
+  referenceSheetFileId: string | null;
   type: string;
   size: number;
   createdAt: string;
@@ -54,6 +64,7 @@ function toRecord(row: Row): TenantAvatarRecord {
     role: attrs.role ?? null,
     tone: attrs.tone ?? null,
     namingStatus: attrs.namingStatus ?? 'done',
+    referenceSheetFileId: attrs.referenceSheetFileId ?? null,
     type: row.mimeType ?? 'image/jpeg',
     size: row.size ?? 0,
     createdAt: row.createdAt.toISOString(),
@@ -232,4 +243,26 @@ export async function nameTenantAvatarWithin(tenantId: string, avatar: TenantAva
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Pins a reference sheet (identity views) and its identity anchor to a tenant
+ * avatar. The sheet must be the tenant's own image under avatar-refs/, so it
+ * never shows as an avatar itself. Merges into attributes, keeping naming.
+ * Returns the fresh record, null for an unknown avatar, or 'invalid_sheet'.
+ */
+export async function setAvatarReference(
+  tenantId: string, id: string, input: { referenceSheetFileId: string; terseTag: string; styleLock: string },
+): Promise<TenantAvatarRecord | null | 'invalid_sheet'> {
+  const avatar = await getTenantAvatar(tenantId, { id });
+  if (!avatar) return null;
+  const [sheet] = await db.select({ key: files.key, mimeType: files.mimeType }).from(files)
+    .where(and(eq(files.tenantId, tenantId), eq(files.id, input.referenceSheetFileId), isNull(files.deletedAt)))
+    .limit(1);
+  if (!sheet || !sheet.key.startsWith(AVATAR_REFS_PREFIX) || !ALLOWED_PRODUCT_IMAGE_TYPES.has(sheet.mimeType ?? '')) return 'invalid_sheet';
+  const patch: AvatarAttributes = { referenceSheetFileId: input.referenceSheetFileId, terseTag: input.terseTag, styleLock: input.styleLock };
+  await db.update(creativeLibraryAssets)
+    .set({ attributes: sql`${creativeLibraryAssets.attributes} || ${JSON.stringify(patch)}::jsonb` })
+    .where(and(eq(creativeLibraryAssets.tenantId, tenantId), eq(creativeLibraryAssets.id, id)));
+  return getTenantAvatar(tenantId, { id });
 }

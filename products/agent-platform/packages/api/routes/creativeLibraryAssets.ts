@@ -7,7 +7,7 @@ import { db } from '../db';
 import { creativeLibraryAssets } from '@serverless-saas/agent-schema/creativeLibraryAssets';
 import { storageService } from '@serverless-saas/storage';
 import type { AppEnv } from '@serverless-saas/types';
-import { AVATAR_PREFIX, getTenantAvatar, listTenantAvatars, nameTenantAvatarWithin, syncTenantAvatars } from '../lib/avatarRecords';
+import { AVATAR_PREFIX, getTenantAvatar, listTenantAvatars, nameTenantAvatarWithin, syncTenantAvatars, setAvatarReference } from '../lib/avatarRecords';
 
 const uuidSchema = z.string().uuid();
 
@@ -101,3 +101,25 @@ creativeLibraryAssetsRoutes.post('/avatars/:id/describe', async (c) => {
   if (!avatar) return avatarNotFound(c);
   return c.json({ data: await nameTenantAvatarWithin(tenantId, avatar, INLINE_NAMING_BUDGET_MS) });
 });
+
+// Director's save_as_avatar pins the identity sheet here after copying it
+// into avatar-refs/. Later generations add the sheet automatically whenever
+// this avatar's portrait is a reference (orchestrator avatarReferences.ts).
+creativeLibraryAssetsRoutes.put(
+  '/avatars/:id/reference',
+  zValidator('json', z.object({
+    referenceSheetFileId: uuidSchema,
+    terseTag: z.string().trim().min(1).max(200),
+    styleLock: z.string().trim().min(1).max(200),
+  })),
+  async (c) => {
+    const tenantId = guard(c, 'create');
+    if (tenantId instanceof Response) return tenantId;
+    const id = c.req.param('id');
+    if (!uuidSchema.safeParse(id).success) return avatarNotFound(c);
+    const result = await setAvatarReference(tenantId, id, c.req.valid('json'));
+    if (result === null) return avatarNotFound(c);
+    if (result === 'invalid_sheet') return c.json({ error: 'Invalid sheet', message: 'The sheet must be your own image under avatar-refs/' }, 400);
+    return c.json({ data: result });
+  },
+);

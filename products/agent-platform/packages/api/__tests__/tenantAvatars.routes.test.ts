@@ -3,20 +3,26 @@ import { Hono } from 'hono';
 
 vi.mock('../db', () => ({ db: {} }));
 vi.mock('@serverless-saas/storage', () => ({ storageService: {} }));
+vi.mock('@serverless-saas/permissions', () => ({
+  hasPermission: vi.fn((perms: string[], resource: string, action: string) => {
+    return perms.includes(`${resource}:${action}`);
+  }),
+}));
 
 const records = vi.hoisted(() => ({
   listTenantAvatars: vi.fn(),
   syncTenantAvatars: vi.fn(),
   getTenantAvatar: vi.fn(),
   nameTenantAvatarWithin: vi.fn(),
+  setAvatarReference: vi.fn(),
 }));
-vi.mock('../lib/avatarRecords', () => ({ AVATAR_PREFIX: 'creative-avatars/', ...records }));
+vi.mock('../lib/avatarRecords', () => ({ AVATAR_PREFIX: 'creative-avatars/', AVATAR_REFS_PREFIX: 'avatar-refs/', ...records }));
 
 const FILE_ID = '11111111-1111-4111-8111-111111111111';
 const AVATAR_ID = '22222222-2222-4222-8222-222222222222';
 const avatar = {
   id: AVATAR_ID, fileId: FILE_ID, name: 'IMG_4432', role: null, tone: null,
-  namingStatus: 'pending', type: 'image/jpeg', size: 100, createdAt: '2026-09-29T00:00:00.000Z',
+  namingStatus: 'pending', referenceSheetFileId: null, type: 'image/jpeg', size: 100, createdAt: '2026-09-29T00:00:00.000Z',
 };
 
 async function appWith(permissions: string[] = ['files:read', 'files:create']) {
@@ -81,5 +87,35 @@ describe('tenant avatar routes', () => {
     const res = await (await appWith()).request(`/creative-library-assets/avatars/${AVATAR_ID}/describe`, { method: 'POST' });
     expect(res.status).toBe(200);
     expect((await res.json()).data.name).toBe('Riya');
+  });
+
+  describe('PUT /avatars/:id/reference', () => {
+    const SHEET_ID = '33333333-3333-4333-8333-333333333333';
+    const put = async (body: unknown, id = AVATAR_ID) => (await appWith()).request(`/creative-library-assets/avatars/${id}/reference`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const valid = { referenceSheetFileId: SHEET_ID, terseTag: 'Riya, long wavy black hair', styleLock: 'photoreal, soft daylight' };
+
+    it('attaches the sheet and anchor', async () => {
+      records.setAvatarReference.mockResolvedValue({ ...avatar, referenceSheetFileId: SHEET_ID });
+      const res = await put(valid);
+      expect(res.status).toBe(200);
+      expect(records.setAvatarReference).toHaveBeenCalledWith('t1', AVATAR_ID, valid);
+    });
+
+    it('400s when the sheet is not the tenant\'s own avatar-refs image', async () => {
+      records.setAvatarReference.mockResolvedValue('invalid_sheet');
+      expect((await put(valid)).status).toBe(400);
+    });
+
+    it('404s an unknown avatar', async () => {
+      records.setAvatarReference.mockResolvedValue(null);
+      expect((await put(valid)).status).toBe(404);
+    });
+
+    it('rejects an empty anchor without touching the db', async () => {
+      expect((await put({ ...valid, terseTag: '' })).status).toBe(400);
+      expect(records.setAvatarReference).not.toHaveBeenCalled();
+    });
   });
 });
