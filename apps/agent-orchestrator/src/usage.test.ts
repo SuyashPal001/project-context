@@ -289,6 +289,14 @@ describe('fetchOfficialSkills', () => {
     expect(skills[0].instructions).toBe('Avatar body.')
   })
 
+  it('only selects platform-owned skills (owner_tenant_id IS NULL), not a tenant skill flagged official', async () => {
+    vi.advanceTimersByTime(61_000)
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] })
+    await fetchOfficialSkills()
+    const [sql] = mockPoolQuery.mock.calls[0]
+    expect(sql).toMatch(/owner_tenant_id\s+IS\s+NULL/i)
+  })
+
   it('skips a row with an empty body', async () => {
     vi.advanceTimersByTime(61_000) // bust the cache from the previous test
     mockPoolQuery.mockResolvedValueOnce({ rows: [

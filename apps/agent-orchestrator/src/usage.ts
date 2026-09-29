@@ -133,7 +133,7 @@ export async function fetchOfficialSkills(): Promise<InlineSkill[]> {
       `SELECT s.name, sv.manifest->>'description' AS description, sv.manifest->>'body' AS body
        FROM skills s
        JOIN skill_versions sv ON sv.skill_id = s.id AND sv.version = s.latest_version
-       WHERE s.is_official = true AND sv.status = 'ready'`,
+       WHERE s.is_official = true AND s.owner_tenant_id IS NULL AND sv.status = 'ready'`,
     )
     const skills: InlineSkill[] = []
     for (const row of res.rows) {
