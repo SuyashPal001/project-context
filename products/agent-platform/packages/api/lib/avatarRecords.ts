@@ -173,7 +173,21 @@ export async function findTenantAvatarBySource(tenantId: string, sourceFileId: s
       isNull(files.deletedAt),
     ))
     .limit(1);
-  return row ? toRecord(row) : null;
+  if (!row) return null;
+  const record = toRecord(row);
+  // Finding #4: a reuse hit whose pinned reference sheet was deleted (or
+  // otherwise missing) elsewhere must not report it as present — the caller
+  // (save_as_avatar) relies on this to decide whether it still needs to add
+  // one, and a dangling id would make it skip that.
+  if (record.referenceSheetFileId) {
+    const [sheet] = await db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(eq(files.tenantId, tenantId), eq(files.id, record.referenceSheetFileId), isNull(files.deletedAt)))
+      .limit(1);
+    if (!sheet) record.referenceSheetFileId = null;
+  }
+  return record;
 }
 
 /** Pins the source file this avatar was registered from. Merges into attributes, never replaces it. */

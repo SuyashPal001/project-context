@@ -17,12 +17,16 @@ import { db } from '../db';
  * reference sheet it pinned — would otherwise sit around forever. This finds
  * those rows and retires them.
  *
- * For each orphaned row: if it pinned a reference sheet, delete that sheet
- * the same way lib/productFileCleanup.ts deletes a product photo
- * (storageService.deleteFile → queue storage.purge → audit as 'system'),
- * then mark the row 'deleted'. Best effort per row: one failure must not
- * stop the rest. Never throws — called at the start of listTenantAvatars
- * with no try/catch around the call.
+ * For each orphaned row: claim it first (UPDATE ... WHERE status='active'
+ * RETURNING id) so two concurrent cleanup runs (e.g. two listTenantAvatars
+ * calls racing) can't both act on the same row — only the run whose UPDATE
+ * actually flips a row proceeds. Only then, if it pinned a reference sheet,
+ * delete that sheet the same way lib/productFileCleanup.ts deletes a product
+ * photo (storageService.deleteFile → queue storage.purge → audit as
+ * 'system'). Best effort per row: one failure must not stop the rest. Never
+ * throws — called at the start of listTenantAvatars with no try/catch around
+ * the call. Capped at 50 orphans per call — a bound on this side query, not a
+ * bound on the picker's own MAX_TENANT_AVATARS limit.
  */
 export async function cleanupOrphanedAvatars(tenantId: string): Promise<void> {
   try {
@@ -36,12 +40,23 @@ export async function cleanupOrphanedAvatars(tenantId: string): Promise<void> {
         eq(creativeLibraryAssets.status, 'active'),
         isNotNull(creativeLibraryAssets.fileId),
         isNotNull(files.deletedAt),
-      ));
+      ))
+      .limit(50);
 
     const queueUrl = process.env.SQS_PROCESSING_QUEUE_URL;
 
     for (const orphan of orphans) {
       try {
+        const claimed = await db.update(creativeLibraryAssets)
+          .set({ status: 'deleted' })
+          .where(and(
+            eq(creativeLibraryAssets.tenantId, tenantId),
+            eq(creativeLibraryAssets.id, orphan.id),
+            eq(creativeLibraryAssets.status, 'active'),
+          ))
+          .returning({ id: creativeLibraryAssets.id });
+        if (claimed.length === 0) continue; // another run already claimed this row
+
         const attrs = (orphan.attributes ?? {}) as { referenceSheetFileId?: string };
         if (attrs.referenceSheetFileId) {
           const deletedKey = await storageService.deleteFile(tenantId, attrs.referenceSheetFileId);
@@ -63,9 +78,6 @@ export async function cleanupOrphanedAvatars(tenantId: string): Promise<void> {
             });
           }
         }
-        await db.update(creativeLibraryAssets)
-          .set({ status: 'deleted' })
-          .where(and(eq(creativeLibraryAssets.tenantId, tenantId), eq(creativeLibraryAssets.id, orphan.id)));
       } catch (error) {
         console.error('[avatarCleanup] cleaning up an orphaned avatar failed', { tenantId, id: orphan.id, error: (error as Error).message });
       }

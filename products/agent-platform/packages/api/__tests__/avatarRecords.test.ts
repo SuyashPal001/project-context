@@ -140,6 +140,29 @@ describe('findTenantAvatarBySource', () => {
     mockSelectSequence([[]]);
     expect(await findTenantAvatarBySource('t1', 'src-1')).toBeNull();
   });
+
+  // Finding #4: reuse must not report a deleted sheet as present — a deleted
+  // referenceSheetFileId must come back null so save_as_avatar's "add missing
+  // sheet" branch runs instead of trusting a dangling id.
+  it('returns referenceSheetFileId null when the pinned sheet file is deleted (or missing)', async () => {
+    const row = {
+      id: 'a1', fileId: 'f1', name: 'Riya', attributes: { sourceFileId: 'src-1', referenceSheetFileId: 'sheet-1' },
+      createdAt: new Date('2026-09-29T00:00:00.000Z'), mimeType: 'image/jpeg', size: 1000,
+    };
+    mockSelectSequence([[row], []]); // second select: the sheet file lookup finds no active row
+    const result = await findTenantAvatarBySource('t1', 'src-1');
+    expect(result?.referenceSheetFileId).toBeNull();
+  });
+
+  it('keeps referenceSheetFileId when the pinned sheet file is still active', async () => {
+    const row = {
+      id: 'a1', fileId: 'f1', name: 'Riya', attributes: { sourceFileId: 'src-1', referenceSheetFileId: 'sheet-1' },
+      createdAt: new Date('2026-09-29T00:00:00.000Z'), mimeType: 'image/jpeg', size: 1000,
+    };
+    mockSelectSequence([[row], [{ id: 'sheet-1' }]]);
+    const result = await findTenantAvatarBySource('t1', 'src-1');
+    expect(result?.referenceSheetFileId).toBe('sheet-1');
+  });
 });
 
 describe('setAvatarSource', () => {
