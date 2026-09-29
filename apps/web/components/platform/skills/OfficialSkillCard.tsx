@@ -93,7 +93,7 @@ export function OfficialSkillCard({ skill, onClick, onStart, isStarting = false 
                             type="button"
                             variant="outline"
                             size="xs"
-                            className="shrink-0"
+                            className="shrink-0 font-medium text-foreground"
                             disabled={isStarting}
                             onClick={(e) => {
                                 // Without this the card's own onClick fires too and the

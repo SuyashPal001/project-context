@@ -137,7 +137,7 @@ export function SkillCard({ skill, onClick, onInstall }: SkillCardProps) {
                                 type="button"
                                 variant="outline"
                                 size="xs"
-                                className="shrink-0"
+                                className="shrink-0 font-medium text-foreground"
                                 onClick={(e) => {
                                     // Without this the card's own onClick fires too and the
                                     // detail modal opens on top of the install.
