@@ -1,17 +1,47 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
+import { fileURLToPath } from 'node:url'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { platformAgent } from '../platformAgent.js'
 
-describe('platformAgent instructions — talking-head contract', () => {
-  it('composes the TALKING_HEAD_CONTRACT section into instructions', async () => {
-    const requestContext = new RequestContext()
-    requestContext.set('agentSystemPrompt', 'Base override text.')
-    const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+// The Talking-head contract moved out of Olmo's always-on instructions into
+// the Talking head Official skill (see platformAgent.ts's
+// OFFICIAL_SKILL_POINTERS). The verbatim contract text now lives in this
+// seed file, moved unchanged — these assertions moved with it.
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const TALKING_HEAD_SKILL_PATH = path.resolve(
+  __dirname,
+  '../../../../../../products/agent-platform/packages/api/seeds/official-skills/talking-head.md',
+)
 
-    expect(text).toContain('## Talking-head ad — intake, narration lock, and delivery')
+let TALKING_HEAD_SKILL_TEXT: string
+
+beforeAll(() => {
+  expect(existsSync(TALKING_HEAD_SKILL_PATH)).toBe(true)
+  TALKING_HEAD_SKILL_TEXT = readFileSync(TALKING_HEAD_SKILL_PATH, 'utf8')
+})
+
+describe('Talking head Official skill contract text', () => {
+  it('contains the Talking-head ad contract header', () => {
+    expect(TALKING_HEAD_SKILL_TEXT).toContain('## Talking-head ad — intake, narration lock, and delivery')
   })
 
+  it('narration lock — the contract requires locking BOTH fileId and durationSeconds, and restating them on every later delegation', () => {
+    expect(TALKING_HEAD_SKILL_TEXT).toContain('Locked Reference Artifact IDs')
+    expect(TALKING_HEAD_SKILL_TEXT).toContain('durationSeconds')
+    expect(TALKING_HEAD_SKILL_TEXT).toMatch(/[Rr]estate this locked narration fileId and durationSeconds/)
+    expect(TALKING_HEAD_SKILL_TEXT).toContain('Never re-delegate a fresh generate_narration call')
+  })
+
+  it('states the up-front multi-confirmation cost warning and the board gate', () => {
+    expect(TALKING_HEAD_SKILL_TEXT).toMatch(/8-10 separate cost confirmations/)
+    expect(TALKING_HEAD_SKILL_TEXT).toMatch(/present them together and ask the user to approve the set as a whole/)
+    expect(TALKING_HEAD_SKILL_TEXT).toMatch(/deliberate visible cut/)
+  })
+})
+
+describe('platformAgent instructions — talking-head contract', () => {
   it('routes single-continuous-presenter requests away from the UGC character contract', async () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Base override text.')
@@ -20,42 +50,35 @@ describe('platformAgent instructions — talking-head contract', () => {
 
     const ugcIdx = text.indexOf('## UGC character ad')
     expect(ugcIdx).toBeGreaterThanOrEqual(0)
-    // The UGC contract's own trigger line must now explicitly route a
-    // single-continuous-presenter request to the talking-head contract
-    // instead, so the two contracts' trigger conditions don't overlap.
+    // The UGC contract's own trigger line must still explicitly route a
+    // single-continuous-presenter request to the talking-head flow, even
+    // though that flow now lives in the Talking head Official skill rather
+    // than a contract composed into these same instructions.
     const ugcTriggerLine = text.slice(ugcIdx, ugcIdx + 600)
     expect(ugcTriggerLine).toContain('Talking-head ad contract')
   })
+})
 
-  it('narration lock — the contract requires locking BOTH fileId and durationSeconds, and restating them on every later delegation', async () => {
+describe('platformAgent instructions — Official skill pointers', () => {
+  it('no longer composes the Avatar creation or Talking-head ad contracts directly into instructions', async () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Base override text.')
     const instructions = await platformAgent.getInstructions({ requestContext })
     const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
 
-    const talkingHeadIdx = text.indexOf('## Talking-head ad')
-    expect(talkingHeadIdx).toBeGreaterThanOrEqual(0)
-    const section = text.slice(talkingHeadIdx, talkingHeadIdx + 2500)
-
-    expect(section).toContain('Locked Reference Artifact IDs')
-    expect(section).toContain('durationSeconds')
-    expect(section).toMatch(/[Rr]estate this locked narration fileId and durationSeconds/)
-    expect(section).toContain('Never re-delegate a fresh generate_narration call')
+    expect(text).not.toContain('## Avatar creation — a reusable presenter')
+    expect(text).not.toContain('## Talking-head ad —')
   })
 
-  it('states the up-front multi-confirmation cost warning and the board gate', async () => {
+  it('includes the Official skill pointers section', async () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Base override text.')
     const instructions = await platformAgent.getInstructions({ requestContext })
     const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
 
-    const talkingHeadIdx = text.indexOf('## Talking-head ad')
-    const nextSectionIdx = text.indexOf('\n\n## ', talkingHeadIdx + 1)
-    const section = text.slice(talkingHeadIdx, nextSectionIdx > 0 ? nextSectionIdx : undefined)
-
-    expect(section).toMatch(/8-10 separate cost confirmations/)
-    expect(section).toMatch(/present them together and ask the user to approve the set as a whole/)
-    expect(section).toMatch(/deliberate visible cut/)
+    expect(text).toContain('## Official skills')
+    expect(text).toMatch(/load the Avatar creator skill/i)
+    expect(text).toMatch(/load the Talking head skill/i)
   })
 })
 
@@ -126,17 +149,19 @@ describe('platformAgent instructions — short-drama-stitch contract', () => {
     // proves nothing about whether either contract actually POINTS at the
     // other. This test asserts the actual disambiguating clause is present
     // on all three reciprocal sides, not just that both sections exist.
+    // The Talking-head side of that reciprocal check now lives in the
+    // Talking head Official skill's own text (moved out of these
+    // instructions), so it's checked against TALKING_HEAD_SKILL_TEXT
+    // instead of the composed instructions `text`.
     const ugcIdx = text.indexOf('## UGC character ad')
-    const talkingHeadIdx = text.indexOf('## Talking-head ad')
     const animIdx = text.indexOf('## Animation-character ad')
     const dramaIdx = text.indexOf('## Short-drama-stitch ad')
     expect(ugcIdx).toBeGreaterThan(-1)
-    expect(talkingHeadIdx).toBeGreaterThan(-1)
     expect(animIdx).toBeGreaterThan(-1)
     expect(dramaIdx).toBeGreaterThan(-1)
     const reciprocalClause = 'Short-drama-stitch ad contract below instead'
     expect(text.slice(ugcIdx, ugcIdx + 800)).toContain(reciprocalClause)
-    expect(text.slice(talkingHeadIdx, talkingHeadIdx + 800)).toContain(reciprocalClause)
+    expect(TALKING_HEAD_SKILL_TEXT.slice(0, 800)).toContain(reciprocalClause)
     expect(text.slice(animIdx, animIdx + 800)).toContain(reciprocalClause)
   })
 
@@ -188,17 +213,17 @@ describe('platformAgent instructions — UGC first-frame contract', () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
     const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
-    const talkingHeadIdx = text.indexOf('## Talking-head ad')
     const firstFrameIdx = text.indexOf('## UGC first-frame ad')
-    expect(talkingHeadIdx).toBeGreaterThan(-1)
     expect(firstFrameIdx).toBeGreaterThan(-1)
-    expect(text.slice(talkingHeadIdx, talkingHeadIdx + 800)).toContain('UGC first-frame ad contract')
+    // The Talking-head side of this reciprocal check now lives in the
+    // Talking head Official skill's own text (moved out of these
+    // instructions) rather than at some index within the composed `text` —
+    // the ordering assertion that used to compare the two contracts'
+    // positions in one concatenated string no longer applies now that they
+    // live in separate documents, but both cross-reference clauses below
+    // are unchanged, verbatim text.
+    expect(TALKING_HEAD_SKILL_TEXT.slice(0, 800)).toContain('UGC first-frame ad contract')
     expect(text.slice(firstFrameIdx, firstFrameIdx + 700)).toContain('Talking-head ad contract')
-    // Talking-head is composed AFTER first-frame in the concatenated string
-    // (UGC_CHARACTER_CONTRACT + UGC_FIRST_FRAME_CONTRACT + TALKING_HEAD_CONTRACT),
-    // so first-frame's own cross-reference must say "below", never "above" —
-    // a caught regression: an earlier draft of this fix said "above".
-    expect(firstFrameIdx).toBeLessThan(talkingHeadIdx)
     expect(text.slice(firstFrameIdx, firstFrameIdx + 700)).toContain('Talking-head ad contract below instead')
   })
 
