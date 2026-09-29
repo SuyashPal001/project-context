@@ -42,20 +42,31 @@ function randomCells(seed: string): boolean[][] {
 // Hand-designed 5x5 glyphs for Official skills, keyed by slug. An unknown
 // official slug falls back to the seeded random pattern below.
 export const OFFICIAL_SKILL_PATTERNS: Record<string, SkillIconPattern> = {
-    // Pixel video camera: viewfinder bump on top, a 4x4 body, lens sticking
-    // out to the left at mid-height.
+    // Video camera: a 3x3 body with a lens wedge on the right — the standard
+    // "video" glyph, readable at 5x5.
+    //   · · · · ·
+    //   ■ ■ ■ · ■
+    //   ■ ■ ■ ■ ■
+    //   ■ ■ ■ · ■
+    //   · · · · ·
     "talking-head": [
-        [false, false, true, false, false],
-        [false, true, true, true, true],
+        [false, false, false, false, false],
+        [true, true, true, false, true],
         [true, true, true, true, true],
-        [false, true, true, true, true],
-        [false, true, true, true, true],
+        [true, true, true, false, true],
+        [false, false, false, false, false],
     ],
-    // Pixel head-and-shoulders bust with a small "+" badge at the top right.
+    // Person: a head block, a one-row gap, then shoulders — the standard
+    // "user" glyph. (A "+" badge doesn't fit legibly in 5x5.)
+    //   · ■ ■ ■ ·
+    //   · ■ ■ ■ ·
+    //   · · · · ·
+    //   ■ ■ ■ ■ ■
+    //   ■ ■ ■ ■ ■
     "avatar-creator": [
-        [true, true, false, true, false],
-        [true, true, true, true, true],
-        [false, false, false, true, false],
+        [false, true, true, true, false],
+        [false, true, true, true, false],
+        [false, false, false, false, false],
         [true, true, true, true, true],
         [true, true, true, true, true],
     ],
