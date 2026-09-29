@@ -34,7 +34,14 @@ export interface Skill {
     /** Curated showcase content for an Official skill's card/detail view. Null/absent for a
      *  community or private skill, or an Official skill that hasn't been curated yet — the
      *  caller falls back to the plain community-style card in that case. */
-    showcase?: { imageUrl: string; bestFor: string[]; starterPrompt: string } | null;
+    showcase?: {
+        imageUrl: string;
+        bestFor: string[];
+        starterPrompt: string;
+        /** Optional showcase video — when present, the detail modal plays this (muted,
+         *  looping) instead of the static image, using imageUrl as the <video> poster. */
+        videoUrl?: string;
+    } | null;
 }
 
 export interface SkillsResponse {
