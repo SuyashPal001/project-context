@@ -78,7 +78,7 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
     if (!open) return null;
 
     const trimmedName = name.trim();
-    const canSubmit = trimmedName.length > 0 && !saving;
+    const canSubmit = trimmedName.length > 0 && !saving && !uploading;
 
     async function addPhotos(fileList: FileList | null) {
         const files = Array.from(fileList ?? []);
@@ -89,10 +89,15 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
         if (files.some(file => file.size > MAX_PHOTO_BYTES)) { toast.error('Product images must be under 35 MB.'); return; }
         setUploading(true);
         try {
-            const uploaded = await Promise.all(files.map(file => storeCreativeImage(file, PRODUCT_PREFIX)));
-            setImages(prev => [...prev, ...uploaded]);
-        } catch {
-            toast.error('Could not add the product photos. Please try again.');
+            // allSettled, not all: one failed upload must not discard the others
+            // that already succeeded — those bytes are already written to S3, so
+            // dropping them from `images` would both lose real work and leave an
+            // orphaned file (only referenced product images are ever cleaned up).
+            const results = await Promise.allSettled(files.map(file => storeCreativeImage(file, PRODUCT_PREFIX)));
+            const uploaded = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
+            if (uploaded.length > 0) setImages(prev => [...prev, ...uploaded]);
+            const failedCount = results.length - uploaded.length;
+            if (failedCount > 0) toast.error(`${failedCount} of ${results.length} photos could not be added. Please try again.`);
         } finally {
             setUploading(false);
         }

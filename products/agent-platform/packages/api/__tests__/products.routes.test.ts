@@ -99,6 +99,16 @@ describe('/products routes', () => {
     expect(nameProductMock).not.toHaveBeenCalled();
   });
 
+  it('accepts photos sent as imageFileIds on create (the setup modal\'s field name), not just fileIds', async () => {
+    lib.loadProductImages.mockResolvedValue(new Map([[F1, { fileId: F1, name: 'a.png', type: 'image/png', size: 3 }]]));
+    lib.createProduct.mockResolvedValue(product({ name: 'Mug', images: [{ fileId: F1, name: 'a.png', type: 'image/png', size: 3 }] }));
+
+    const res = await (await app()).request('/products', json({ name: 'Mug', imageFileIds: [F1] }));
+
+    expect(res.status).toBe(201);
+    expect(lib.createProduct).toHaveBeenCalledWith(expect.objectContaining({ imageFileIds: [F1] }));
+  });
+
   it('normalizes an empty-string description to null on create', async () => {
     lib.createProduct.mockResolvedValue(product({ name: 'Mug' }));
     await (await app()).request('/products', json({ name: 'Mug', description: '' }));

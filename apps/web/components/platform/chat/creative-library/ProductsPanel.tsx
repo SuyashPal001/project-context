@@ -57,7 +57,11 @@ export const ProductsPanel = forwardRef<ProductsPanelHandle, {
      *  composer's usage, which renders its own search box). */
     search?: string;
     onSearchChange?: (value: string) => void;
-}>(function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hideHeading, emptyHint, search: controlledSearch, onSearchChange }, ref) {
+    /** Widens the card grid up to 5 columns for a full-page context (Drive).
+     *  Omit for the composer's narrower panel, which stays capped at 3 — at
+     *  full page width, 5 columns of ~120px felt cramped there. */
+    wide?: boolean;
+}>(function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hideHeading, emptyHint, search: controlledSearch, onSearchChange, wide }, ref) {
     const queryClient = useQueryClient();
     const inputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
@@ -333,7 +337,7 @@ export const ProductsPanel = forwardRef<ProductsPanelHandle, {
         {isPending ? <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> :
             isError ? <div className="py-10 text-center text-sm text-muted-foreground">Could not load products. <Button variant="link" onClick={() => void refetch()}>Retry</Button></div> :
                 products.length === 0 && !busy ? (search.trim() ? <p className="py-10 text-center text-sm text-muted-foreground">No products match your search.</p> : null) :
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                    <div className={cn('grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3', wide && 'md:grid-cols-4 lg:grid-cols-5')}>
                         {busy && <div className="min-w-0" aria-live="polite">
                             <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
                                 {busy === 'photos' && photoPreviewUrl

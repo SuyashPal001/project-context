@@ -381,6 +381,21 @@ describe('ProductsPanel reuse props', () => {
         expect(screen.queryByText('You can skip this. Olmo will ask about your product in chat.')).toBeNull();
     });
 
+    it('caps the grid at 3 columns by default (composer usage, a narrower panel)', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        renderPanel();
+        const card = (await screen.findByRole('button', { name: 'Use Niacinamide serum' })).closest('.grid');
+        expect(card?.className).not.toContain('lg:grid-cols-5');
+    });
+
+    it('widens the grid up to 5 columns when wide is set (Drive usage, a full page width)', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={vi.fn()} hideHeading wide /></QueryClientProvider>);
+        const card = (await screen.findByRole('button', { name: 'Use Niacinamide serum' })).closest('.grid');
+        expect(card?.className).toContain('lg:grid-cols-5');
+    });
+
     it('hides its own search box and New product button when hideHeading is set — a parent owns that header', async () => {
         const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
         render(<QueryClientProvider client={client}><ProductsPanel selected={null} onSelect={vi.fn()} hideHeading /></QueryClientProvider>);

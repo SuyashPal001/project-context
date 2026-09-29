@@ -370,7 +370,7 @@ export const FilesList = forwardRef<FilesListHandle, FilesListProps>(function Fi
                                         type="text"
                                         value={isProducts ? productsSearch : filters.search}
                                         onChange={e => isProducts ? setProductsSearch(e.target.value) : filters.onSearchChange(e.target.value)}
-                                        placeholder="Search files..."
+                                        placeholder={isProducts ? "Search products..." : "Search files..."}
                                         className="w-full h-9 pl-9 pr-3 text-sm rounded-lg bg-secondary border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                                     />
                                 </div>

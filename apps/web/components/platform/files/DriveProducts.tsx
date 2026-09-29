@@ -82,7 +82,7 @@ export const DriveProducts = forwardRef<ProductsPanelHandle, {
 
     return <div className="space-y-4">
         <div hidden={openId !== null}>
-            <ProductsPanel ref={ref} selected={null} onSelect={() => {}} hideHeading
+            <ProductsPanel ref={ref} selected={null} onSelect={() => {}} hideHeading wide
                 search={search} onSearchChange={onSearchChange}
                 emptyHint="Paste a product link or drop photos to add your first product."
                 onOpen={product => { openSnapshot.current.set(product.id, product); setOpenId(product.id); }} />

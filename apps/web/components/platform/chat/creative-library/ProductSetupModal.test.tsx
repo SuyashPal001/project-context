@@ -138,6 +138,20 @@ describe('ProductSetupModal', () => {
         expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ imageFileIds: ['f9'] }));
     });
 
+    it('disables the submit button while a photo upload is in flight, so it cannot submit before the upload lands', async () => {
+        let resolveUpload: (value: ReturnType<typeof image>) => void = () => {};
+        vi.mocked(storeCreativeImage).mockReturnValue(new Promise(resolve => { resolveUpload = resolve; }));
+        const onSave = vi.fn();
+        render(<ProductSetupModal open onOpenChange={vi.fn()} product={null} onSave={onSave} />);
+        fireEvent.change(screen.getByLabelText('Product name'), { target: { value: 'Mug' } });
+        const file = new File(['x'], 'mug.png', { type: 'image/png' });
+        fireEvent.change(screen.getByLabelText('Add product photos'), { target: { files: [file] } });
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Create product' })).toHaveProperty('disabled', true));
+        expect(onSave).not.toHaveBeenCalled();
+        resolveUpload(image('f9'));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Create product' })).toHaveProperty('disabled', false));
+    });
+
     it('removes an image from the set on click', () => {
         const onSave = vi.fn();
         render(<ProductSetupModal open onOpenChange={vi.fn()} product={product({ images: [image('f1'), image('f2')] })} onSave={onSave} />);
@@ -145,6 +159,14 @@ describe('ProductSetupModal', () => {
         expect(screen.getAllByTestId('file-thumbnail')).toHaveLength(1);
         fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
         expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ imageFileIds: ['f2'] }));
+    });
+
+    it('keeps photos that uploaded successfully when another in the same batch fails', async () => {
+        vi.mocked(storeCreativeImage).mockResolvedValueOnce(image('f1')).mockRejectedValueOnce(new Error('network'));
+        render(<ProductSetupModal open onOpenChange={vi.fn()} product={null} onSave={vi.fn()} />);
+        const files = [new File(['x'], 'a.png', { type: 'image/png' }), new File(['y'], 'b.png', { type: 'image/png' })];
+        fireEvent.change(screen.getByLabelText('Add product photos'), { target: { files } });
+        await waitFor(() => expect(screen.getAllByTestId('file-thumbnail')).toHaveLength(1));
     });
 
     it('rejects a non-image file without uploading it', () => {
