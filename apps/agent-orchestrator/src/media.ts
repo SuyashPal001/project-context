@@ -183,6 +183,15 @@ export async function downloadMediaAttachment(att: Attachment, sessionId: string
 // round-trips into Gemini's inlineData.mimeType and surfaces as a generation
 // failure, not a security issue. Fixing this properly needs a files-by-id
 // metadata endpoint that doesn't exist yet; out of scope here.
+/** The image type from a file's magic bytes, or null when it isn't one we recognise. */
+export function sniffImageMimeType(head: Buffer): string | null {
+  if (head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg'
+  if (head.length >= 8 && head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png'
+  if (head.length >= 12 && head.toString('ascii', 0, 4) === 'RIFF' && head.toString('ascii', 8, 12) === 'WEBP') return 'image/webp'
+  if (head.length >= 6 && (head.toString('ascii', 0, 6) === 'GIF87a' || head.toString('ascii', 0, 6) === 'GIF89a')) return 'image/gif'
+  return null
+}
+
 export async function resolveSourceImage(
   idToken: string,
   fileId: string,
@@ -198,7 +207,11 @@ export async function resolveSourceImage(
     if (!downloaded || Array.isArray(downloaded)) return null
     const match = downloaded.base64.match(/^data:([^;]+);base64,(.+)$/)
     if (!match) return null
-    return { base64: match[2], mimeType: match[1] }
+    // The caller's mimeType is a guess; the file's own first bytes are not.
+    // Without this a JPEG passed as 'image/png' is re-saved as a .png with a
+    // PNG content type (save_as_avatar did exactly that).
+    const sniffed = sniffImageMimeType(Buffer.from(match[2].slice(0, 32), 'base64'))
+    return { base64: match[2], mimeType: sniffed ?? match[1] }
   } catch (err) {
     console.error(`[session:${sessionId}] resolveSourceImage error:`, (err as Error).message)
     return null
