@@ -1,5 +1,6 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
+import { emitToolStatus } from './generationStarted.js'
 
 // A "variety roll" for avatar variations. Asking the model to "make the four
 // different" still gave four look-alikes, so the differences are picked here in
@@ -173,6 +174,12 @@ export function rollAvatarVariations(input: AvatarRollInput, random: () => numbe
   })
 }
 
+/** "34 · Indian woman · shaded balcony with potted plants · indigo handloom cotton kurta…" — first clause of the place and outfit only, so a line fits. */
+export function castingLine(v: AvatarVariationSpec): string {
+  const short = (s: string) => s.split(/,| with /)[0].trim()
+  return `${v.age} · ${v.look} ${v.gender} · ${short(v.place)} · ${short(v.wardrobe)}`
+}
+
 export const rollAvatarVariationsTool = createTool({
   id: 'roll-avatar-variations',
   description: 'Picks distinct details for avatar variations so no two look alike: per variation an age, face shape, hair, outfit, place and gesture, all different across the set, within the look, gender and age range from the brief. Call once before writing the variation prompts. Free.',
@@ -183,10 +190,14 @@ export const rollAvatarVariationsTool = createTool({
     ageMin: z.number().int().min(18).max(90).describe('Youngest age the brief allows (18 or older)'),
     ageMax: z.number().int().min(18).max(90).describe('Oldest age the brief allows'),
   }),
-  execute: async (inputData) => {
+  execute: async (inputData, execContext) => {
     const { count, look, gender, ageMin, ageMax } = inputData
     const lo = Math.min(ageMin, ageMax)
     const hi = Math.max(ageMin, ageMax)
-    return { variations: rollAvatarVariations({ count, look, gender, ageMin: lo, ageMax: hi }) }
+    const variations = rollAvatarVariations({ count, look, gender, ageMin: lo, ageMax: hi })
+    // Director spends a while writing the prompts after this — show who is
+    // being cast meanwhile, instead of a bare "Preparing…".
+    emitToolStatus(execContext, `Casting ${variations.length} people`, variations.map(castingLine))
+    return { variations }
   },
 })

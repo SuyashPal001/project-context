@@ -23,6 +23,10 @@ export interface ToolCall {
      *  generation_started's `count` — known before any batch_item_progress event arrives,
      *  so N skeleton tiles render from the start instead of just one growing in. */
     generationCount?: number;
+    /** Live status line for a running delegate (tool_status SSE event), e.g. "Casting 4 people". */
+    statusText?: string;
+    /** Optional sub-lines under statusText, e.g. one per person being cast. */
+    statusDetails?: string[];
 }
 
 export interface ApprovalRequest {

@@ -266,6 +266,8 @@ export function LiveTrace({
                                     aspectRatio={tool.generationAspectRatio ?? (typeof tool.arguments?.aspectRatio === 'string' ? tool.arguments.aspectRatio : undefined)}
                                     batchProgress={tool.batchProgress}
                                     mediaCount={tool.generationCount}
+                                    statusText={tool.statusText}
+                                    statusDetails={tool.statusDetails}
                                 />
                             ))}
                         </div>
@@ -279,6 +281,8 @@ export function LiveTrace({
                             aspectRatio={group[0].generationAspectRatio ?? (typeof group[0].arguments?.aspectRatio === 'string' ? group[0].arguments.aspectRatio : undefined)}
                             batchProgress={group[0].batchProgress}
                             mediaCount={group[0].generationCount}
+                            statusText={group[0].statusText}
+                            statusDetails={group[0].statusDetails}
                         />
                     )
                 ))}

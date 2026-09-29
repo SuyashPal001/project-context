@@ -30,6 +30,10 @@ interface ToolCallCardProps {
    *  Lets a completed generation/show_files call render its image inline right
    *  away, instead of only once the whole turn finishes and attachments land. */
   freshUrls?: Record<string, string>;
+  /** Live status line from a tool_status event — replaces the generic "Preparing…" while set. */
+  statusText?: string;
+  /** Sub-lines under the status, e.g. one per person being cast. */
+  statusDetails?: string[];
 }
 
 // The web must re-show generated media the moment a tool call completes — not
@@ -414,7 +418,7 @@ function isMediaGenDelegateOrTool(toolName: string): boolean {
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
 }
 
-export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls }: ToolCallCardProps) {
+export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls, statusText, statusDetails }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
   // The orchestrator closes a cancelled generation out with { cancelled: true } so the
@@ -430,7 +434,10 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
   const awaitingApproval = cardAwaitingApproval && status === 'loading' && isMediaGenDelegateOrTool(toolName);
   const { prefix: labelPrefix, highlight } = toolLabel(toolName, query, status);
   const preparingLabel = isProducerDelegateTool(toolName) ? 'Preparing your audio…' : 'Preparing your image…';
-  const prefix = cancelled ? 'Cancelled' : (failureReason ?? (awaitingApproval ? 'Waiting for your approval' : preparing ? preparingLabel : labelPrefix));
+  const prefix = cancelled ? 'Cancelled' : (failureReason ?? (awaitingApproval ? 'Waiting for your approval' : preparing ? (statusText ? `${statusText}…` : preparingLabel) : labelPrefix));
+  // Who/what the delegate is working on, kept visible through approval and
+  // generation so each loading tile has a person behind it.
+  const showStatusDetails = status === 'loading' && !!statusDetails?.length;
   // Placeholder shaped like InlineAttachmentCard's own thumbnail chip, so the
   // real image/song/video attachment swaps in without the layout jumping once
   // it lands. 'image' / 'audio' / 'video' picks the tile styling
@@ -500,6 +507,12 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
           </>
         )}
       </div>
+
+      {showStatusDetails && (
+        <ul className="mt-1 ml-6 space-y-0.5 text-xs text-muted-foreground" data-testid="tool-status-details">
+          {statusDetails!.map((line, i) => <li key={i} className="truncate">{line}</li>)}
+        </ul>
+      )}
 
       {showMediaSkeleton && mediaSkeletonType && (
         tileTotal && tileTotal > 1

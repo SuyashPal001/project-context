@@ -20,3 +20,13 @@ export function emitGenerationStarted(execContext: unknown, info: { aspectRatio?
   if (count) data.count = count
   sendEvent?.('generation_started', data)
 }
+
+// A short live line for the user during a silent stretch of a delegate's work
+// (writing prompts, saving) — shown on the running card in place of the
+// generic "Preparing…". `details` are optional sub-lines, e.g. one per person
+// about to be generated. Real information only, never filler.
+export function emitToolStatus(execContext: unknown, text: string, details?: string[]): void {
+  const sendEvent = (execContext as { requestContext?: { get: (key: string) => unknown } } | undefined)
+    ?.requestContext?.get('sendEvent') as SendEvent | undefined
+  sendEvent?.('tool_status', details?.length ? { text, details } : { text })
+}

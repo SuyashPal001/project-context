@@ -533,6 +533,20 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             });
         }, []),
 
+        // Same targeting as onGenerationStarted: the tool that emits the status
+        // runs inside a delegate, so mark the most recent loading call.
+        onToolStatus: useCallback((text: string, details?: string[]) => {
+            setActiveToolCalls(prev => {
+                let targetId: string | undefined;
+                for (const [id, call] of prev) if (call.isLoading) targetId = id;
+                const existing = targetId ? prev.get(targetId) : undefined;
+                if (!targetId || !existing) return prev;
+                const next = new Map(prev);
+                next.set(targetId, { ...existing, statusText: text, statusDetails: details });
+                return next;
+            });
+        }, []),
+
         onBatchItemProgress: useCallback((toolCallId: string, index: number, total: number) => {
             let seen = batchSeenIndicesRef.current.get(toolCallId);
             if (!seen) {

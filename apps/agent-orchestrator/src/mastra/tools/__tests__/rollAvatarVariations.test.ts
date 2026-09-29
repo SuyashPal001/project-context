@@ -49,3 +49,14 @@ describe('rollAvatarVariations', () => {
     expect(JSON.stringify(set)).not.toMatch(/freckle|model|symmetr/i)
   })
 })
+
+describe('castingLine', () => {
+  it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
+    const { castingLine } = await import('../rollAvatarVariations.js')
+    expect(castingLine({
+      gender: 'woman', age: 34, look: 'Indian', skinTone: 'warm medium-brown skin', faceShape: 'oval face',
+      hair: 'long braid', wardrobe: 'indigo handloom cotton kurta with a small white geometric print',
+      place: 'shaded balcony with potted plants', gesture: 'open palm',
+    })).toBe('34 · Indian woman · shaded balcony · indigo handloom cotton kurta')
+  })
+})

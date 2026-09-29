@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { resolveSourceImage } from '../../media.js'
+import { emitToolStatus } from './generationStarted.js'
 import { findTenantAvatarBySource, registerTenantAvatar, setTenantAvatarReference, uploadFileWithKey } from '../../persistence.js'
 
 const extensionFor = (mimeType: string) => mimeType.split('/')[1]?.replace(/[^a-z0-9]/gi, '') || 'png'
@@ -38,6 +39,7 @@ export const saveAsAvatar = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = (execContext?.requestContext?.get('conversationId') as string | undefined) ?? 'unknown'
     if (!idToken) return { saved: false, reason: 'NOT_AUTHENTICATED' }
+    emitToolStatus(execContext, 'Saving to Drive › Avatars')
 
     // Idempotent per picked portrait: the same portraitFileId is the source of
     // truth for whether it was already saved, so re-running the tool on the

@@ -27,6 +27,8 @@ export interface UseChatOptions {
     onToolDone?: (toolCallId: string, toolName: string, result: Record<string, unknown>, results?: Array<{ title: string; domain: string; favicon?: string }>) => void;
     onBatchItemProgress?: (toolCallId: string, index: number, total: number) => void;
     onGenerationStarted?: (aspectRatio?: string, count?: number) => void;
+    /** A live status line (+ optional sub-lines) for the running delegate, from a tool_status event. */
+    onToolStatus?: (text: string, details?: string[]) => void;
     // Follow-up suggestion chips arrive after `done` (the server no longer holds
     // `done` for them); messageId is the message `done` just settled.
     onFollowUps?: (suggestions: string[], messageId: string) => void;
@@ -69,6 +71,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         onToolDone,
         onBatchItemProgress,
         onGenerationStarted,
+        onToolStatus,
         onFollowUps,
         onTitle,
         onApprovalRequired,
@@ -98,6 +101,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     const onToolDoneRef = useRef(onToolDone);
     const onBatchItemProgressRef = useRef(onBatchItemProgress);
     const onGenerationStartedRef = useRef(onGenerationStarted);
+    const onToolStatusRef = useRef(onToolStatus);
     const onFollowUpsRef = useRef(onFollowUps);
     const onTitleRef = useRef(onTitle);
     const onApprovalRequiredRef = useRef(onApprovalRequired);
@@ -121,6 +125,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     onToolDoneRef.current = onToolDone;
     onBatchItemProgressRef.current = onBatchItemProgress;
     onGenerationStartedRef.current = onGenerationStarted;
+    onToolStatusRef.current = onToolStatus;
     onFollowUpsRef.current = onFollowUps;
     onTitleRef.current = onTitle;
     onApprovalRequiredRef.current = onApprovalRequired;
@@ -391,6 +396,14 @@ export function useChat(options: UseChatOptions): UseChatReturn {
                                 typeof payload.aspectRatio === 'string' ? payload.aspectRatio : undefined,
                                 typeof payload.count === 'number' ? payload.count : undefined,
                             );
+                            break;
+                        }
+
+                        case 'tool_status': {
+                            if (typeof payload.text === 'string') {
+                                const details = Array.isArray(payload.details) ? (payload.details as unknown[]).filter((d): d is string => typeof d === 'string') : undefined;
+                                onToolStatusRef.current?.(payload.text, details);
+                            }
                             break;
                         }
 
