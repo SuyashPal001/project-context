@@ -11,9 +11,11 @@ export interface ProductImage { fileId: string; name: string; type: string; size
 export interface ProductRecord {
   id: string;
   name: string;
+  category: string | null;
   description: string | null;
   price: string | null;
   sourceUrl: string | null;
+  usps: string[];
   namingStatus: ProductNamingStatus;
   images: ProductImage[];
   createdAt: string;
@@ -28,9 +30,11 @@ export function toProductRecord(row: CreativeProduct, imagesById: Map<string, Pr
   return {
     id: row.id,
     name: row.name,
+    category: row.category,
     description: row.description,
     price: row.price,
     sourceUrl: row.sourceUrl,
+    usps: row.usps,
     namingStatus: row.namingStatus,
     images: row.imageFileIds.flatMap((fileId) => {
       const image = imagesById.get(fileId);
@@ -135,8 +139,8 @@ export async function getProduct(tenantId: string, id: string): Promise<ProductR
 }
 
 export async function createProduct(input: {
-  tenantId: string; createdBy: string | null; name: string; description: string | null;
-  price: string | null; sourceUrl: string | null; imageFileIds: string[]; namingStatus: ProductNamingStatus;
+  tenantId: string; createdBy: string | null; name: string; category: string | null; description: string | null;
+  price: string | null; sourceUrl: string | null; usps: string[]; imageFileIds: string[]; namingStatus: ProductNamingStatus;
 }): Promise<ProductRecord> {
   const [row] = await db.insert(creativeProducts).values(input).returning();
   if (row.namingStatus === 'done') await syncProductFileNames(input.tenantId, row.imageFileIds, row.name);
@@ -144,16 +148,28 @@ export async function createProduct(input: {
   return toProductRecord(row, imagesById);
 }
 
-export async function renameProduct(tenantId: string, id: string, name: string): Promise<ProductRecord | null> {
-  // A user rename is final: naming_status becomes 'done' so an AI naming
-  // result that lands later (applyNamingResult) can't overwrite it.
+export interface ProductUpdateFields {
+  name?: string;
+  category?: string | null;
+  description?: string | null;
+  usps?: string[];
+  imageFileIds?: string[];
+}
+
+/** Partial update for any editable field. A `name` change is final: naming_status
+ *  becomes 'done' so an AI naming result that lands later (applyNamingResult)
+ *  can't overwrite a user's own name. Fields left undefined are untouched —
+ *  editing category doesn't disturb an in-progress AI naming, for example. */
+export async function updateProduct(tenantId: string, id: string, fields: ProductUpdateFields): Promise<ProductRecord | null> {
+  const set: Record<string, unknown> = { ...fields };
+  if (fields.name !== undefined) set.namingStatus = 'done';
   const [row] = await db
     .update(creativeProducts)
-    .set({ name, namingStatus: 'done' })
+    .set(set)
     .where(and(eq(creativeProducts.tenantId, tenantId), eq(creativeProducts.id, id)))
     .returning();
   if (!row) return null;
-  await syncProductFileNames(tenantId, row.imageFileIds, row.name);
+  if (fields.name !== undefined) await syncProductFileNames(tenantId, row.imageFileIds, row.name);
   return toProductRecord(row, await loadProductImages(tenantId, row.imageFileIds));
 }
 

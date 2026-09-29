@@ -14,9 +14,13 @@ export const creativeProducts = pgTable('creative_products', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
   name: text('name').notNull(),
+  category: text('category'), // one of a small fixed list, validated in Zod (see lib/productCategories.ts) — not a DB enum, so adding a category is a code change, not a migration
   description: text('description'),
   price: text('price'),
   sourceUrl: text('source_url'),
+  // Up to 3 selling points, validated in Zod. Postgres text[] has no length
+  // constraint of its own — the cap is enforced at the API boundary.
+  usps: text('usps').array().notNull().default(sql`'{}'::text[]`),
   // Ordered; the first id is the main image. No FK (Postgres can't FK array
   // elements) — reads drop ids whose files row is gone.
   imageFileIds: uuid('image_file_ids').array().notNull().default(sql`'{}'::uuid[]`),

@@ -28,8 +28,8 @@ async function main(): Promise<void> {
 
   for (const file of candidates) {
     const product = await createProduct({
-      tenantId: file.tenantId, createdBy: file.uploadedBy, name: PRODUCT_NAME_PLACEHOLDER, description: null,
-      price: null, sourceUrl: null, imageFileIds: [file.id], namingStatus: 'pending',
+      tenantId: file.tenantId, createdBy: file.uploadedBy, name: PRODUCT_NAME_PLACEHOLDER, category: null, description: null,
+      price: null, sourceUrl: null, usps: [], imageFileIds: [file.id], namingStatus: 'pending',
     });
     const named = await nameProduct(file.tenantId, product.id);
     console.log(`[backfill] file=${file.id} -> product=${product.id} name="${named?.name}" status=${named?.namingStatus}`);

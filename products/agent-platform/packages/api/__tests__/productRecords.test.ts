@@ -6,8 +6,8 @@ vi.mock('../db', () => ({ db: {} }));
 import { dropImageless, escapeLike, toProductRecord, PRODUCT_NAME_PLACEHOLDER, productFileName } from '../lib/productRecords';
 
 const baseRow = {
-  id: 'p1', tenantId: 't1', name: 'Serum', description: null, price: null, sourceUrl: null,
-  imageFileIds: ['f1', 'f2', 'f3'], namingStatus: 'done' as const, createdBy: null,
+  id: 'p1', tenantId: 't1', name: 'Serum', category: null, description: null, price: null, sourceUrl: null,
+  usps: [] as string[], imageFileIds: ['f1', 'f2', 'f3'], namingStatus: 'done' as const, createdBy: null,
   createdAt: new Date('2026-09-27T00:00:00.000Z'), updatedAt: new Date('2026-09-27T00:00:00.000Z'),
 };
 const img = (fileId: string) => ({ fileId, name: `${fileId}.png`, type: 'image/png', size: 10 });
@@ -27,6 +27,12 @@ describe('toProductRecord', () => {
 
   it('exports the exact placeholder name', () => {
     expect(PRODUCT_NAME_PLACEHOLDER).toBe('Untitled product');
+  });
+
+  it('carries category and usps through from the row', () => {
+    const record = toProductRecord({ ...baseRow, category: 'Beauty & Personal Care', usps: ['Cruelty-free', 'Vegan'] }, new Map());
+    expect(record.category).toBe('Beauty & Personal Care');
+    expect(record.usps).toEqual(['Cruelty-free', 'Vegan']);
   });
 });
 
@@ -113,11 +119,15 @@ describe('name wiring', () => {
         update: vi.fn(() => ({
           set: (set: Record<string, unknown>) => ({
             where: () => {
-              if ('namingStatus' in set || 'description' in set) {
-                return { returning: () => Promise.resolve(productRow ? [productRow] : []) };
+              // A files-table rename always sets exactly {name, updatedAt} together
+              // (renameProductFiles); a creativeProducts update never sets updatedAt
+              // itself (drizzle's $onUpdate handles that), regardless of which
+              // fields it touches. That pairing is what tells the two apart here.
+              if ('updatedAt' in set) {
+                fileUpdates.push(set);
+                return Promise.resolve();
               }
-              fileUpdates.push(set);
-              return Promise.resolve();
+              return { returning: () => Promise.resolve(productRow ? [productRow] : []) };
             },
           }),
         })),
@@ -127,23 +137,42 @@ describe('name wiring', () => {
       },
     };
   }
-  const row = { id: 'p1', tenantId: 't1', name: 'Serum', description: null, price: null, sourceUrl: null, imageFileIds: ['f1'], namingStatus: 'done', createdBy: null, createdAt: new Date(0), updatedAt: new Date(0) };
+  const row = { id: 'p1', tenantId: 't1', name: 'Serum', category: null, description: null, price: null, sourceUrl: null, usps: [] as string[], imageFileIds: ['f1'], namingStatus: 'done', createdBy: null, createdAt: new Date(0), updatedAt: new Date(0) };
 
-  it('renameProduct renames the photo files to the new name', async () => {
+  it('updateProduct renames the photo files when the name changes', async () => {
     vi.resetModules();
     const m = mockDb({ returningRow: row });
     vi.doMock('../db', () => ({ db: m.db }));
-    const { renameProduct } = await import('../lib/productRecords');
-    await renameProduct('t1', 'p1', 'Serum');
+    const { updateProduct } = await import('../lib/productRecords');
+    await updateProduct('t1', 'p1', { name: 'Serum' });
     expect(m.fileUpdates).toEqual([expect.objectContaining({ name: 'Serum.png' })]);
   });
 
-  it('renameProduct still succeeds when renaming the files fails', async () => {
+  it('updateProduct still succeeds when renaming the files fails', async () => {
     vi.resetModules();
     const m = mockDb({ returningRow: row, failFileSelect: true });
     vi.doMock('../db', () => ({ db: m.db }));
-    const { renameProduct } = await import('../lib/productRecords');
-    await expect(renameProduct('t1', 'p1', 'Serum')).resolves.not.toBeNull();
+    const { updateProduct } = await import('../lib/productRecords');
+    await expect(updateProduct('t1', 'p1', { name: 'Serum' })).resolves.not.toBeNull();
+  });
+
+  it('updateProduct sets category, description and usps without touching the name', async () => {
+    vi.resetModules();
+    const m = mockDb({ returningRow: { ...row, category: 'Electronics', description: 'Wireless earbuds', usps: ['20h battery'] } });
+    vi.doMock('../db', () => ({ db: m.db }));
+    const { updateProduct } = await import('../lib/productRecords');
+    const result = await updateProduct('t1', 'p1', { category: 'Electronics', description: 'Wireless earbuds', usps: ['20h battery'] });
+    expect(result).toEqual(expect.objectContaining({ category: 'Electronics', description: 'Wireless earbuds', usps: ['20h battery'] }));
+    // No name in the update, so the photo files must not be touched.
+    expect(m.fileUpdates).toHaveLength(0);
+  });
+
+  it('updateProduct returns null for a product the tenant does not own', async () => {
+    vi.resetModules();
+    const m = mockDb({ returningRow: null });
+    vi.doMock('../db', () => ({ db: m.db }));
+    const { updateProduct } = await import('../lib/productRecords');
+    await expect(updateProduct('t1', 'missing', { category: 'Electronics' })).resolves.toBeNull();
   });
 
   it('applyNamingResult renames files only when it actually applied a name', async () => {
@@ -168,14 +197,14 @@ describe('name wiring', () => {
     const named = mockDb({ returningRow: row });
     vi.doMock('../db', () => ({ db: named.db }));
     let mod = await import('../lib/productRecords');
-    await mod.createProduct({ tenantId: 't1', createdBy: null, name: 'Serum', description: null, price: null, sourceUrl: null, imageFileIds: ['f1'], namingStatus: 'done' });
+    await mod.createProduct({ tenantId: 't1', createdBy: null, name: 'Serum', category: null, description: null, price: null, sourceUrl: null, usps: [], imageFileIds: ['f1'], namingStatus: 'done' });
     expect(named.fileUpdates).toHaveLength(1);
 
     vi.resetModules();
     const pending = mockDb({ returningRow: { ...row, name: 'Untitled product', namingStatus: 'pending' } });
     vi.doMock('../db', () => ({ db: pending.db }));
     mod = await import('../lib/productRecords');
-    await mod.createProduct({ tenantId: 't1', createdBy: null, name: 'Untitled product', description: null, price: null, sourceUrl: null, imageFileIds: ['f1'], namingStatus: 'pending' });
+    await mod.createProduct({ tenantId: 't1', createdBy: null, name: 'Untitled product', category: null, description: null, price: null, sourceUrl: null, usps: [], imageFileIds: ['f1'], namingStatus: 'pending' });
     expect(pending.fileUpdates).toHaveLength(0);
   });
 });

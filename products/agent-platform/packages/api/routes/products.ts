@@ -5,8 +5,9 @@ import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 import {
   ALLOWED_PRODUCT_IMAGE_TYPES, PRODUCT_NAME_PLACEHOLDER,
-  createProduct, deleteProduct, getProduct, listProducts, listProductImageFileIds, loadProductImages, renameProduct,
+  createProduct, deleteProduct, getProduct, listProducts, listProductImageFileIds, loadProductImages, updateProduct,
 } from '../lib/productRecords';
+import { PRODUCT_CATEGORIES } from '../lib/productCategories';
 import { nameCreatedProduct } from '../lib/nameCreatedProduct';
 import { deleteUnusedProductFiles } from '../lib/productFileCleanup';
 
@@ -51,19 +52,39 @@ productsRoutes.get('/image-file-ids', async (c) => {
   return c.json({ data: await listProductImageFileIds(g.tenantId) });
 });
 
+const createProductSchema = z.object({
+  fileIds: z.array(uuid).max(MAX_IMAGES).optional(),
+  name: z.string().trim().min(1).max(120).optional(),
+  category: z.enum(PRODUCT_CATEGORIES).nullable().optional(),
+  description: z.string().trim().max(5000).nullable().optional(),
+  usps: z.array(z.string().trim().min(1).max(200)).max(3).optional(),
+}).refine(
+  (data) => (data.fileIds?.length ?? 0) > 0 || (data.name?.trim().length ?? 0) > 0,
+  { message: 'Give the product a name or add at least one photo' },
+);
+
 productsRoutes.post(
   '/',
-  zValidator('json', z.object({ fileIds: z.array(uuid).min(1).max(MAX_IMAGES) })),
+  zValidator('json', createProductSchema),
   async (c) => {
     const g = guard(c, 'create');
     if (g instanceof Response) return g;
-    const fileIds = [...new Set(c.req.valid('json').fileIds)];
-    const images = await loadProductImages(g.tenantId, fileIds);
-    const valid = fileIds.every((id) => ALLOWED_PRODUCT_IMAGE_TYPES.has(images.get(id)?.type ?? ''));
-    if (!valid) return c.json({ error: 'Invalid images', message: 'Every file must be your own JPG, PNG or WebP image' }, 400);
+    const body = c.req.valid('json');
+    const fileIds = [...new Set(body.fileIds ?? [])];
+    if (fileIds.length > 0) {
+      const images = await loadProductImages(g.tenantId, fileIds);
+      const valid = fileIds.every((id) => ALLOWED_PRODUCT_IMAGE_TYPES.has(images.get(id)?.type ?? ''));
+      if (!valid) return c.json({ error: 'Invalid images', message: 'Every file must be your own JPG, PNG or WebP image' }, 400);
+    }
+    // A name given directly is final, same rule updateProduct applies to an
+    // edit: naming_status is 'done' and AI naming never runs. Naming only
+    // kicks in for the photo-drop path, which has no name to give yet.
+    const name = body.name ?? PRODUCT_NAME_PLACEHOLDER;
+    const namingStatus = body.name ? 'done' : 'pending';
     const product = await createProduct({
-      tenantId: g.tenantId, createdBy: g.userId, name: PRODUCT_NAME_PLACEHOLDER, description: null,
-      price: null, sourceUrl: null, imageFileIds: fileIds, namingStatus: 'pending',
+      tenantId: g.tenantId, createdBy: g.userId, name, category: body.category ?? null,
+      description: body.description ?? null, price: null, sourceUrl: null, usps: body.usps ?? [],
+      imageFileIds: fileIds, namingStatus,
     });
     return c.json({ data: await nameCreatedProduct(g.tenantId, product, INLINE_NAMING_BUDGET_MS) }, 201);
   },
@@ -81,15 +102,25 @@ productsRoutes.post('/:id/describe', async (c) => {
   return c.json({ data: await nameCreatedProduct(g.tenantId, product, INLINE_NAMING_BUDGET_MS) });
 });
 
+const updateProductSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  category: z.enum(PRODUCT_CATEGORIES).nullable().optional(),
+  description: z.string().trim().max(5000).nullable().optional(),
+  usps: z.array(z.string().trim().min(1).max(200)).max(3).optional(),
+}).refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'Provide at least one field to update' },
+);
+
 productsRoutes.patch(
   '/:id',
-  zValidator('json', z.object({ name: z.string().trim().min(1).max(120) })),
+  zValidator('json', updateProductSchema),
   async (c) => {
     const g = guard(c, 'create');
     if (g instanceof Response) return g;
     const id = c.req.param('id');
     if (!uuid.safeParse(id).success) return notFound(c);
-    const product = await renameProduct(g.tenantId, id, c.req.valid('json').name);
+    const product = await updateProduct(g.tenantId, id, c.req.valid('json'));
     return product ? c.json({ data: product }) : notFound(c);
   },
 );
