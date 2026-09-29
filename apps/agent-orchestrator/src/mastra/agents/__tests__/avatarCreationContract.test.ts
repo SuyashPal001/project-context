@@ -66,4 +66,10 @@ describe('image-to-avatar contract', () => {
   it('uses the picked portrait — not the original photo — as the reference sheet\'s only reference', () => {
     expect(AVATAR_FROM_IMAGE_SECTION).toMatch(/picked portrait as its only reference/i)
   })
+
+  // Finding #1: inspired-by must not anchor the new person to the reference's
+  // identity — the section must tell Olmo to set skipAvatarExpansion.
+  it('tells Olmo to set skipAvatarExpansion for the inspired-by intent', () => {
+    expect(AVATAR_FROM_IMAGE_SECTION).toContain('skipAvatarExpansion')
+  })
 })

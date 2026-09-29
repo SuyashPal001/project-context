@@ -429,5 +429,40 @@ describe('generateImage tool', () => {
       const sentBody = JSON.parse((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string)
       expect(sentBody.prompt).toBe(prompt)
     })
+
+    // Finding #6: a terseTag/styleLock ending in a period must not yield a
+    // doubled ".." when the anchor sentence appends its own trailing period.
+    it('strips a trailing period from terseTag and styleLock so the anchor sentence never has ".."', async () => {
+      resolveAvatarReferences.mockResolvedValue({
+        fileIds: [ORIGINAL],
+        anchor: { terseTag: 'the woman in the yellow cardigan.', styleLock: 'warm morning light, 35mm lens.' },
+      })
+
+      await generateImage.execute!(
+        { prompt: 'making coffee', referenceFileIds: [ORIGINAL] } as never,
+        baseCtx(),
+      )
+
+      const sentBody = JSON.parse((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string)
+      expect(sentBody.prompt).toBe('making coffee Same person as the reference: the woman in the yellow cardigan. warm morning light, 35mm lens.')
+      expect(sentBody.prompt).not.toContain('..')
+    })
+
+    // Finding #1: "inspired by" must NOT anchor the new person to the
+    // reference's identity — resolveAvatarReferences (and its sheet
+    // expansion / terseTag+styleLock anchor) must be skipped entirely.
+    it('skips resolveAvatarReferences and appends no anchor sentence when skipAvatarExpansion is true', async () => {
+      resolveAvatarReferences.mockResolvedValue({ fileIds: [ORIGINAL], anchor: ANCHOR })
+
+      await generateImage.execute!(
+        { prompt: 'a different person, styled like the reference', referenceFileIds: [ORIGINAL], skipAvatarExpansion: true } as never,
+        baseCtx(),
+      )
+
+      expect(resolveAvatarReferences).not.toHaveBeenCalled()
+      const sentBody = JSON.parse((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string)
+      expect(sentBody.prompt).toBe('a different person, styled like the reference')
+      expect(resolveSourceImage).toHaveBeenCalledWith('tok', ORIGINAL, 'image/png', 'c1')
+    })
   })
 })

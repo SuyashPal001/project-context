@@ -45,6 +45,7 @@ When Olmo delegates creating an avatar from a reference photo, with an intent an
 - Variations: one generate_images call with 4 items, aspectRatio "3:4", each with referenceFileIds set to [the user's image fileId].
 - Same person: each prompt says to keep the exact same face, identity and skin tone as the reference and vary only outfit, setting and framing, keeping the realism rules of the Avatar creation section above (photoreal waist-up portrait, relaxed natural expression, soft natural light, natural skin texture, no text, logos or products in frame).
 - Inspired by: each prompt says to create a different person, not the person in the reference, matching its styling, setting, lighting and mood.
+- For the inspired-by intent, every generate_images item sets skipAvatarExpansion true — the reference is styling inspiration only, never the same-person identity anchor.
 - After the pick, the sheet and save follow the Avatar creation section above unchanged, with one difference: the reference sheet's referenceFileIds uses the picked portrait as its only reference, not the original photo.`
 
 const directorInstructions = async ({ requestContext }: { requestContext?: RequestContext<TenantContext> }) => {

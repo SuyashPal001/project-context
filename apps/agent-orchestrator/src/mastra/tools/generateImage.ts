@@ -44,6 +44,8 @@ export const imageItemSchema = z.object({
     terseTag: z.string(),
     styleLock: z.string(),
   }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code. Required whenever referenceFileIds includes a cast sheet.'),
+  skipAvatarExpansion: z.boolean().optional()
+    .describe("Set true when the reference image must NOT be treated as the same person (e.g. a new person inspired by a reference's look): skips adding the avatar's reference sheet and identity sentence."),
 })
 
 export type ImageItemInput = z.infer<typeof imageItemSchema>
@@ -53,7 +55,7 @@ export async function generateImageItem(
   execContext: MediaExecContext | undefined,
   itemIndex: number,
 ) {
-    const { prompt, aspectRatio, referenceFileIds, identityAnchor } = inputData
+    const { prompt, aspectRatio, referenceFileIds, identityAnchor, skipAvatarExpansion } = inputData
 
     // Identity-anchor gate — enforced in tool code, not prose, mirroring
     // generateVideo.ts's extractQuotedSpans/approvedDialogue check. Refuses
@@ -89,7 +91,10 @@ export async function generateImageItem(
 
     // An attached tenant avatar brings its reference sheet along, and its
     // identity anchor (terseTag/styleLock), if any (avatarReferences.ts).
-    const { fileIds: resolvedReferenceIds, anchor } = referenceFileIds?.length
+    // skipAvatarExpansion (the "inspired by" intent — a new person, not the
+    // same person as the reference) bypasses this entirely: the reference is
+    // used exactly as given, with no sheet added and no identity sentence.
+    const { fileIds: resolvedReferenceIds, anchor } = referenceFileIds?.length && !skipAvatarExpansion
       ? await resolveAvatarReferences(tenantId, referenceFileIds)
       : { fileIds: referenceFileIds, anchor: null }
 
@@ -98,8 +103,11 @@ export async function generateImageItem(
     // none do we fold in the resolved avatar's anchor — and only into the
     // prompt sent to the gateway, never the user-visible input, and never if
     // the prompt already carries the terseTag (avoid a duplicated sentence).
+    // Trailing periods on terseTag/styleLock are stripped first — both
+    // already end sentences composed here, so a stored trailing period would
+    // otherwise yield "..".
     const gatewayPrompt = !identityAnchor && anchor && !prompt.includes(anchor.terseTag)
-      ? `${prompt} Same person as the reference: ${anchor.terseTag}. ${anchor.styleLock}.`
+      ? `${prompt} Same person as the reference: ${anchor.terseTag.replace(/\.+$/, '')}. ${anchor.styleLock.replace(/\.+$/, '')}.`
       : prompt
 
     let sourceImages: Array<{ base64: string; mimeType: string }> = []
