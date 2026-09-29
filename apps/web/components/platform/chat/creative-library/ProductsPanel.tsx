@@ -92,8 +92,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
         const match = products.find(product => product.id === selected.id);
         if (!match) return;
         if (match.name === selected.name && match.namingStatus === selected.namingStatus) return;
-        const selection = productSelection(match);
-        if (selection) onSelect(selection);
+        onSelect(productSelection(match));
     }, [products, selected, onSelect]);
 
     // F6: a product can be left `pending` forever if the original describe
@@ -143,8 +142,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
             // whenever the user switches tabs or sends before it resolves. The
             // caller (the chat page) decides whether this still matches the
             // brief's current product selection.
-            const selection = productSelection(named);
-            if (selection) onProductNamed?.(selection);
+            onProductNamed?.(productSelection(named));
         } catch {
             // Naming failed: the card and brief keep the placeholder; Olmo asks.
         } finally {
@@ -169,8 +167,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
             await refresh();
             if (!mountedRef.current) return;
             selectedIdRef.current = product.id;
-            const selection = productSelection(product);
-            if (selection) onSelect(selection);
+            onSelect(productSelection(product));
             void nameIfPending(product);
         } catch {
             if (mountedRef.current) toast.error('Could not add the product photos. Please try again.');
@@ -200,8 +197,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
             if (!mountedRef.current) return;
             setLink('');
             selectedIdRef.current = product.id;
-            const selection = productSelection(product);
-            if (selection) onSelect(selection);
+            onSelect(productSelection(product));
             void nameIfPending(product);
         } catch {
             if (mountedRef.current) setLinkError(LINK_FAILED);
@@ -224,10 +220,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
         if (!name || name === product.name) return;
         try {
             const updated = await renameProduct(product.id, name);
-            if (selectedIdRef.current === updated.id) {
-                const selection = productSelection(updated);
-                if (selection) onSelect(selection);
-            }
+            if (selectedIdRef.current === updated.id) onSelect(productSelection(updated));
             await refresh();
         } catch {
             toast.error('Could not rename the product.');
@@ -236,14 +229,18 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
 
     async function handleSetupSave(fields: ProductSetupSubmission) {
         try {
-            const saved = setupProduct ? await updateProduct(setupProduct.id, fields) : await createProduct(fields);
+            const saved = setupProduct
+                // Only send `name` when it actually changed — updateProduct finalizes
+                // namingStatus to 'done' whenever `name` is present, so resending the
+                // unchanged name on a category/description/usps-only edit would lock in
+                // "Untitled product" (or an AI-generated name) while naming is still
+                // pending, throwing away the real name once it lands.
+                ? await updateProduct(setupProduct.id, { ...fields, name: fields.name !== setupProduct.name ? fields.name : undefined })
+                : await createProduct(fields);
             await refresh();
             if (!mountedRef.current) return;
             if (!setupProduct) selectedIdRef.current = saved.id;
-            if (selectedIdRef.current === saved.id) {
-                const selection = productSelection(saved);
-                if (selection) onSelect(selection);
-            }
+            if (selectedIdRef.current === saved.id) onSelect(productSelection(saved));
             setSetupOpen(false);
         } catch {
             toast.error(setupProduct ? 'Could not update the product.' : 'Could not create the product.');
@@ -336,15 +333,13 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
                             onDelete={() => removeProduct(product)}
                             onUse={() => {
                                 if (onOpen) { onOpen(product); return; }
-                                const selection = productSelection(product);
-                                if (!selection) { void refresh(); return; }
                                 selectedIdRef.current = product.id;
-                                onSelect(selection);
+                                onSelect(productSelection(product));
                             }}
                         />)}
                     </div>}
         {hasNextPage && <div className="flex justify-center"><Button variant="outline" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>{isFetchingNextPage ? 'Loading…' : 'Load more products'}</Button></div>}
-        <ProductSetupModal open={setupOpen} onOpenChange={setSetupOpen} product={setupProduct} onSave={fields => void handleSetupSave(fields)} />
+        <ProductSetupModal open={setupOpen} onOpenChange={setSetupOpen} product={setupProduct} onSave={handleSetupSave} />
     </div>;
 }
 

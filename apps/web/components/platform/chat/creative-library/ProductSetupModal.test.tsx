@@ -80,6 +80,19 @@ describe('ProductSetupModal', () => {
         expect(onSave).toHaveBeenCalledWith({ name: 'Campus Shoes', category: 'Apparel', description: 'Everyday sneaker', usps: ['Lightweight'] });
     });
 
+    it('disables the submit button while onSave is in flight, and re-enables it on failure', async () => {
+        let resolveOnSave: () => void = () => {};
+        const onSave = vi.fn().mockReturnValue(new Promise<void>(resolve => { resolveOnSave = resolve; }));
+        render(<ProductSetupModal open onOpenChange={vi.fn()} product={product()} onSave={onSave} />);
+        const button = screen.getByRole('button', { name: 'Save changes' });
+        fireEvent.click(button);
+        fireEvent.click(button);
+        expect(onSave).toHaveBeenCalledTimes(1);
+        expect(button).toHaveProperty('disabled', true);
+        resolveOnSave();
+        await Promise.resolve();
+    });
+
     it('drops empty selling-point rows before saving', () => {
         const onSave = vi.fn();
         render(<ProductSetupModal open onOpenChange={vi.fn()} product={null} onSave={onSave} />);

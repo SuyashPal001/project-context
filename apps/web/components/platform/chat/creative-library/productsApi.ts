@@ -64,16 +64,14 @@ export async function listProductImageFileIds(): Promise<string[]> {
     return (await api.get<{ data: string[] }>('/api/v1/products/image-file-ids')).data;
 }
 
-// Rename and describe responses (unlike listProducts) don't pass through
-// dropImageless, so images can be empty. Returning null instead of a
-// selection with an undefined `attachment` keeps callers from building a
-// brief entry with no image to show.
-export function productSelection(product: ProductRecord): ProductRecordSelection | null {
-    const attachment = product.images[0];
-    if (!attachment) return null;
+// A manually-created product can have no photo yet (Setup form, no media
+// required) — attachment is left undefined rather than treating that as an
+// invalid selection. Product-url/product-image selections still always have
+// one, since those kinds only ever exist because an image was picked.
+export function productSelection(product: ProductRecord): ProductRecordSelection {
     return {
         kind: 'product', id: product.id, name: product.name, category: product.category, description: product.description,
         price: product.price, sourceUrl: product.sourceUrl, usps: product.usps, namingStatus: product.namingStatus,
-        attachment,
+        attachment: product.images[0],
     };
 }

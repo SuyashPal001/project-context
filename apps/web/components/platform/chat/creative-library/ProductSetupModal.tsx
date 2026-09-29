@@ -31,8 +31,9 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
     onOpenChange: (open: boolean) => void;
     /** null = create mode, blank form. A record = edit mode, prefilled. */
     product: ProductRecord | null;
-    onSave: (fields: ProductSetupSubmission) => void;
+    onSave: (fields: ProductSetupSubmission) => void | Promise<void>;
 }) {
+    const [saving, setSaving] = useState(false);
     // Lazy initializers seed the first mount correctly whether it starts open
     // or closed; the render-time check below re-seeds a later open of the
     // same mounted instance (this component stays mounted across
@@ -53,21 +54,29 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
             setCategory(product?.category ?? null);
             setDescription(product?.description ?? '');
             setUsps(product && product.usps.length > 0 ? product.usps : ['']);
+            setSaving(false);
         }
     }
 
     if (!open) return null;
 
     const trimmedName = name.trim();
-    const canSubmit = product !== null || trimmedName.length > 0;
+    const canSubmit = (product !== null || trimmedName.length > 0) && !saving;
 
-    function submit() {
-        onSave({
-            name: trimmedName,
-            category,
-            description: description.trim() || null,
-            usps: usps.map(u => u.trim()).filter(Boolean),
-        });
+    async function submit() {
+        setSaving(true);
+        try {
+            await onSave({
+                name: trimmedName,
+                category,
+                description: description.trim() || null,
+                usps: usps.map(u => u.trim()).filter(Boolean),
+            });
+        } finally {
+            // Harmless if onSave already closed the dialog (onOpenChange(false)):
+            // this component stays mounted and just renders null next render.
+            setSaving(false);
+        }
     }
 
     return <Dialog open={open} onOpenChange={onOpenChange}>
@@ -119,7 +128,7 @@ export function ProductSetupModal({ open, onOpenChange, product, onSave }: {
             </div>
             <DialogFooter>
                 <Button variant="ghost" onClick={() => onOpenChange(false)}>Discard</Button>
-                <Button onClick={submit} disabled={!canSubmit}>{product ? 'Save changes' : 'Create product'}</Button>
+                <Button onClick={() => void submit()} disabled={!canSubmit}>{product ? 'Save changes' : 'Create product'}</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>;

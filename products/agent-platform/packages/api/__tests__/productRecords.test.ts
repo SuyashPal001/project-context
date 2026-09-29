@@ -44,6 +44,31 @@ describe('dropImageless', () => {
   });
 });
 
+describe('listProducts', () => {
+  it('keeps a product with no images (manually created, no photo yet) in the list', async () => {
+    vi.resetModules();
+    const productRow = { ...baseRow, id: 'p1', imageFileIds: [] as string[] };
+    // First select() call is the products query (chainable, awaited at the end);
+    // the second is loadProductImages' files lookup (awaited directly).
+    let selectCalls = 0;
+    const chain = { orderBy: () => chain, limit: () => chain, offset: () => Promise.resolve([productRow]) };
+    vi.doMock('../db', () => ({
+      db: {
+        select: vi.fn(() => {
+          selectCalls++;
+          return selectCalls === 1
+            ? { from: () => ({ where: () => chain }) }
+            : { from: () => ({ where: () => Promise.resolve([]) }) };
+        }),
+      },
+    }));
+    const { listProducts } = await import('../lib/productRecords');
+    const result = await listProducts('t1', { limit: 50, offset: 0 });
+    expect(result.map(p => p.id)).toEqual(['p1']);
+    expect(result[0].images).toEqual([]);
+  });
+});
+
 describe('applyNamingResult', () => {
   it('only updates a product that is still pending, so a user rename wins', async () => {
     vi.resetModules();

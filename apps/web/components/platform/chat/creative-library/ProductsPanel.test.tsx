@@ -201,7 +201,7 @@ describe('ProductsPanel', () => {
         await waitFor(() => expect(productsApi.renameProduct).toHaveBeenCalledWith('p1', 'My serum'));
     });
 
-    it('does not select a rename result with no images; refreshes instead', async () => {
+    it('selects a rename result even when it now has no images (a manually-created product with no photo yet)', async () => {
         vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
         vi.mocked(productsApi.renameProduct).mockResolvedValue(record({ name: 'My serum', images: [] }));
         const onSelect = vi.fn();
@@ -213,7 +213,7 @@ describe('ProductsPanel', () => {
         await user.clear(field);
         await user.type(field, 'My serum{Enter}');
         await waitFor(() => expect(productsApi.renameProduct).toHaveBeenCalledWith('p1', 'My serum'));
-        expect(onSelect).not.toHaveBeenCalledWith(expect.objectContaining({ name: 'My serum' }));
+        expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ name: 'My serum', attachment: undefined }));
     });
 
     it('creates a product manually from the New product form and selects it', async () => {
@@ -229,7 +229,7 @@ describe('ProductsPanel', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 
-    it('edits a product from the menu, prefilled, and updates the selection if it is the current one', async () => {
+    it('edits a product from the menu, prefilled, and updates the selection if it is the current one; leaves the unchanged name out of the update so AI naming is not disturbed', async () => {
         vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
         vi.mocked(productsApi.updateProduct).mockResolvedValue(record({ category: 'Beauty & Personal Care', usps: ['Vegan'] }));
         const onSelect = vi.fn();
@@ -239,8 +239,22 @@ describe('ProductsPanel', () => {
         await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
         expect(await screen.findByLabelText('Product name')).toHaveProperty('value', 'Niacinamide serum');
         await user.click(screen.getByRole('button', { name: 'Save changes' }));
-        await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalledWith('p1', { name: 'Niacinamide serum', category: null, description: 'A dropper bottle.', usps: [] }));
+        await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalledWith('p1', { name: undefined, category: null, description: 'A dropper bottle.', usps: [] }));
         expect(onSelect).toHaveBeenCalledWith(productsApi.productSelection(record({ category: 'Beauty & Personal Care', usps: ['Vegan'] })));
+    });
+
+    it('does send the name when the user actually changed it while editing', async () => {
+        vi.mocked(productsApi.listProducts).mockResolvedValue({ data: [record()] });
+        vi.mocked(productsApi.updateProduct).mockResolvedValue(record({ name: 'New name' }));
+        const user = userEvent.setup();
+        renderPanel();
+        await user.click(await screen.findByRole('button', { name: 'More options for Niacinamide serum' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+        const field = await screen.findByLabelText('Product name');
+        await user.clear(field);
+        await user.type(field, 'New name');
+        await user.click(screen.getByRole('button', { name: 'Save changes' }));
+        await waitFor(() => expect(productsApi.updateProduct).toHaveBeenCalledWith('p1', expect.objectContaining({ name: 'New name' })));
     });
 
     it('does not reselect an edited product that is not the current selection', async () => {
@@ -320,8 +334,9 @@ describe('ProductsPanel', () => {
 });
 
 describe('productSelection', () => {
-    it('returns null for a record with no images, instead of a selection with no attachment', () => {
-        expect(productsApi.productSelection(record({ images: [] }))).toBeNull();
+    it('returns a selection with no attachment for a record with no images (a manually-created product with no photo yet)', () => {
+        const selection = productsApi.productSelection(record({ images: [] }));
+        expect(selection).toEqual(expect.objectContaining({ kind: 'product', id: 'p1', attachment: undefined }));
     });
 });
 

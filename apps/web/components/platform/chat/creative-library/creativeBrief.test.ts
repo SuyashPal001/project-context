@@ -312,11 +312,24 @@ describe('product record selections', () => {
         expect(creativeBriefAttachmentIds(brief)).toEqual(new Set(['f1']));
     });
 
-    it('round-trips through the persisted draft and rejects a record without an attachment', () => {
+    it('attaches nothing and omits the "attached image" line for a manually-created product with no photo yet', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord({ attachment: undefined }) };
+        expect(mergeCreativeBriefAttachments(undefined, brief)).toBeUndefined();
+        expect(creativeBriefAttachmentIds(brief)).toEqual(new Set());
+        expect(buildCreativeBriefMessage('', brief)).not.toContain('Use the attached product image');
+    });
+
+    it('round-trips through the persisted draft', () => {
         const brief = { ...createEmptyCreativeBrief(), product: productRecord() };
         expect(parseCreativeBriefDraft(JSON.stringify(brief)).product).toEqual(productRecord());
-        const broken = { ...brief, product: { ...productRecord(), attachment: undefined } };
-        expect(parseCreativeBriefDraft(JSON.stringify(broken)).product).toBeNull();
+    });
+
+    it('round-trips a manually-created record with no image yet (attachment omitted)', () => {
+        const noImage = { ...productRecord(), attachment: undefined };
+        const brief = { ...createEmptyCreativeBrief(), product: noImage };
+        const parsed = parseCreativeBriefDraft(JSON.stringify(brief)).product;
+        expect(parsed).toEqual(expect.objectContaining({ kind: 'product', id: 'p1' }));
+        expect(parsed?.kind === 'product' && parsed.attachment).toBeUndefined();
     });
 
     it('defaults category and usps for an already-sent message that predates those fields', () => {

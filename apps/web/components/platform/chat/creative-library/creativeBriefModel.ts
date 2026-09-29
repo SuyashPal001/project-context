@@ -60,8 +60,8 @@ export interface ProductRecordSelection {
     /** Up to 3 selling points. */
     usps: string[];
     namingStatus: ProductNamingStatus;
-    /** The product's main image. */
-    attachment: Attachment;
+    /** The product's main image — absent for a manually-created product that has no photo yet. */
+    attachment?: Attachment;
 }
 
 export type ProductSelection = ProductImageSelection | ProductUrlSelection | ProductRecordSelection;

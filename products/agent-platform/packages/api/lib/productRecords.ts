@@ -107,8 +107,11 @@ export async function listProductImageFileIds(tenantId: string): Promise<string[
 }
 
 async function withImages(tenantId: string, rows: CreativeProduct[]): Promise<ProductRecord[]> {
+  // A manually-created product legitimately has no images yet (Task: category/usps
+  // setup modal), so an empty images array is no longer "this product decayed" —
+  // dropImageless stays exported as a utility but is not applied to the list.
   const imagesById = await loadProductImages(tenantId, rows.flatMap((r) => r.imageFileIds));
-  return dropImageless(rows.map((r) => toProductRecord(r, imagesById)));
+  return rows.map((r) => toProductRecord(r, imagesById));
 }
 
 export async function listProducts(tenantId: string, opts: { q?: string; limit: number; offset: number }): Promise<ProductRecord[]> {
