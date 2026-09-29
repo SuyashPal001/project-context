@@ -27,7 +27,7 @@ export async function expandAvatarReferences(tenantId: string, fileIds: string[]
       `SELECT a.file_id, a.attributes->>'referenceSheetFileId' AS sheet
        FROM creative_library_assets a
        JOIN files s ON s.id = (a.attributes->>'referenceSheetFileId')::uuid
-       WHERE a.tenant_id = $1::uuid AND a.status = 'active' AND a.file_id = ANY($2::uuid[])
+       WHERE a.tenant_id = $1::uuid AND a.status = 'active' AND a.kind = 'avatar' AND a.file_id = ANY($2::uuid[])
          AND s.tenant_id = $1::uuid AND s.deleted_at IS NULL`,
       [tenantId, fileIds],
     )

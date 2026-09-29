@@ -295,6 +295,51 @@ describe('generateImage tool', () => {
     expect(resolveSourceImage).toHaveBeenCalledWith('tok', '22222222-2222-2222-2222-222222222222', 'image/png', 'c1')
   })
 
+  // Finding #4: an auto-added sheet from expandAvatarReferences that fails to
+  // resolve must not refuse the whole call — only an ORIGINAL referenceFileId
+  // keeps today's refusal behaviour. Best-effort: skip it and proceed.
+  it('does not refuse when an avatar reference sheet added by expandAvatarReferences fails to resolve — proceeds with only the original reference', async () => {
+    const ORIGINAL = '11111111-1111-1111-1111-111111111111'
+    const ADDED_SHEET = '22222222-2222-2222-2222-222222222222'
+    expandAvatarReferences.mockResolvedValue([ORIGINAL, ADDED_SHEET])
+    resolveSourceImage.mockImplementation(async (_tok: string, fileId: string) =>
+      fileId === ADDED_SHEET ? null : { base64: 'AAAA', mimeType: 'image/png' })
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'ZZZZ', mimeType: 'image/png' }), { status: 200 })) as unknown as ReturnType<typeof vi.fn>
+    global.fetch = fetchMock as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 10 })
+
+    const result = await generateImage.execute!(
+      {
+        prompt: 'the woman in the yellow cardigan making coffee, warm morning light, 35mm lens',
+        referenceFileIds: [ORIGINAL],
+        identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light, 35mm lens' },
+      } as never,
+      baseCtx(),
+    )
+
+    expect((result as { refused?: boolean }).refused).toBeUndefined()
+    expect((result as { fileId?: string }).fileId).toBe('f1')
+    const sentBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
+    expect(sentBody.sourceImages).toEqual([{ base64: 'AAAA', mimeType: 'image/png' }])
+  })
+
+  it('still refuses when an ORIGINAL referenceFileId (not one added by expansion) fails to resolve', async () => {
+    const ORIGINAL = '11111111-1111-1111-1111-111111111111'
+    expandAvatarReferences.mockResolvedValue([ORIGINAL])
+    resolveSourceImage.mockResolvedValue(null)
+
+    const result = await generateImage.execute!(
+      {
+        prompt: 'the woman in the yellow cardigan making coffee, warm morning light, 35mm lens',
+        referenceFileIds: [ORIGINAL],
+        identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light, 35mm lens' },
+      } as never,
+      baseCtx(),
+    )
+
+    expect(result).toEqual({ refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' })
+  })
+
   // Regression test mirroring generateVideo.test.ts's existing "actorId:
   // undefined" test (~line 330) for the identical class of bug: agentId must
   // stay undefined, not '', or spendCredits' actorId hits Postgres as

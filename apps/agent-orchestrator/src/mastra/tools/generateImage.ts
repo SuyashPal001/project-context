@@ -95,16 +95,36 @@ export async function generateImageItem(
       if (!idToken) return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }
       let totalBytes = 0
       for (const fileId of resolvedReferenceIds) {
+        // A sheet expandAvatarReferences added on top of the user/model-supplied
+        // referenceFileIds is best-effort: if it can't be resolved or would push
+        // the call over a byte cap, skip it (the original references were fine)
+        // rather than refusing the whole call. An ORIGINAL id keeps today's
+        // refusal behaviour exactly.
+        const isAddedByExpansion = !referenceFileIds?.includes(fileId)
         const source = await resolveSourceImage(idToken, fileId, 'image/png', sessionId)
-        if (!source) return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }
+        if (!source) {
+          if (isAddedByExpansion) {
+            console.warn(`[session:${sessionId}] generateImage: skipping avatar reference sheet ${fileId} — could not be resolved`)
+            continue
+          }
+          return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE' }
+        }
         const decodedBytes = Buffer.byteLength(source.base64, 'base64')
         if (decodedBytes > MAX_REFERENCE_IMAGE_BYTES) {
+          if (isAddedByExpansion) {
+            console.warn(`[session:${sessionId}] generateImage: skipping avatar reference sheet ${fileId} — exceeds the per-file cap`)
+            continue
+          }
+          return { refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' }
+        }
+        if (totalBytes + decodedBytes > MAX_TOTAL_REFERENCE_BYTES) {
+          if (isAddedByExpansion) {
+            console.warn(`[session:${sessionId}] generateImage: skipping avatar reference sheet ${fileId} — would exceed the total reference cap`)
+            continue
+          }
           return { refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' }
         }
         totalBytes += decodedBytes
-        if (totalBytes > MAX_TOTAL_REFERENCE_BYTES) {
-          return { refused: true, refusalReason: 'SOURCE_IMAGE_TOO_LARGE' }
-        }
         sourceImages.push(source)
       }
     }

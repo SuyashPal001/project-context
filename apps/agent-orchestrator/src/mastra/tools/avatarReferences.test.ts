@@ -11,6 +11,12 @@ describe('expandAvatarReferences', () => {
     expect(query.mock.calls[0][1]).toEqual(['t1', ['p1', 'x']])
   })
 
+  it('only expands references whose asset row is kind=avatar', async () => {
+    const query = q([{ file_id: 'p1', sheet: 's1' }])
+    await expandAvatarReferences('t1', ['p1', 'x'], query)
+    expect(query.mock.calls[0][0]).toMatch(/a\.kind\s*=\s*'avatar'/)
+  })
+
   it('never exceeds 3 references, keeping every original', async () => {
     expect(await expandAvatarReferences('t1', ['p1', 'x', 'y'], q([{ file_id: 'p1', sheet: 's1' }]))).toEqual(['p1', 'x', 'y'])
     expect(await expandAvatarReferences('t1', ['p1', 'x'], q([{ file_id: 'p1', sheet: 's1' }, { file_id: 'x', sheet: 's2' }]))).toEqual(['p1', 's1', 'x'])
