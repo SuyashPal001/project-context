@@ -80,7 +80,10 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
         <Dialog open={skill !== null} onOpenChange={onOpenChange}>
             <DialogContent
                 showCloseButton={false}
-                className="relative flex w-[92vw] max-w-[960px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:flex-row"
+                // No `relative`: DialogContent is `fixed` + translate-centred, and the
+                // absolute close button positions against that. `sm:max-w-*` must be
+                // set explicitly or the base `sm:max-w-lg` caps it at 512px.
+                className="flex max-h-[90vh] w-[92vw] max-w-[960px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[960px] sm:flex-row"
             >
                 {skill && (
                     <>
