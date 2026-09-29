@@ -105,8 +105,11 @@ describe('generateVideos tool', () => {
 
     await generateVideos.execute!({ items: [item('one'), item('two')] } as never, ctx)
 
-    // generation_started (once, when execute begins) is separate from the per-item progress events.
-    expect(sendEvent.mock.calls.filter((c) => c[0] === 'generation_started')).toHaveLength(1)
+    // generation_started (once, when execute begins) is separate from the per-item progress events,
+    // and carries the item count so the client can render N skeleton tiles from the start.
+    const started = sendEvent.mock.calls.filter((c) => c[0] === 'generation_started')
+    expect(started).toHaveLength(1)
+    expect(started[0][1]).toMatchObject({ count: 2 })
     const progress = sendEvent.mock.calls.filter((c) => c[0] === 'batch_item_progress')
     expect(progress).toHaveLength(2)
     const calls = progress.map((c) => c[1]).sort((a, b) => a.index - b.index)

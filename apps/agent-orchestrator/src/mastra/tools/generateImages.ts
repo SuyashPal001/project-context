@@ -19,8 +19,8 @@ export const generateImages = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    emitGenerationStarted(execContext, { aspectRatio: (inputData as { items?: Array<{ aspectRatio?: unknown }> }).items?.[0]?.aspectRatio })
     const { items } = inputData as { items: ImageItemInput[] }
+    emitGenerationStarted(execContext, { aspectRatio: (inputData as { items?: Array<{ aspectRatio?: unknown }> }).items?.[0]?.aspectRatio, count: items.length })
     const sendEvent = execContext?.requestContext?.get('sendEvent') as ((event: string, data: object) => void) | undefined
     const toolCallId = (execContext as unknown as MediaExecContext)?.agent?.toolCallId
     return runBatch(

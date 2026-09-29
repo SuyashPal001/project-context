@@ -7,9 +7,16 @@ type SendEvent = (event: string, data: object) => void
 
 // aspectRatio, when the tool has one, lets the client shape the generating
 // skeleton like the result (a 9:16 video gets a vertical placeholder).
-export function emitGenerationStarted(execContext: unknown, info: { aspectRatio?: unknown } = {}): void {
+// count, for a batch call (generate_images/generate_videos), is the number of
+// items in the batch — lets the client render N skeleton tiles from the very
+// first event, instead of waiting for batch_item_progress events to infer N.
+export function emitGenerationStarted(execContext: unknown, info: { aspectRatio?: unknown; count?: unknown } = {}): void {
   const sendEvent = (execContext as { requestContext?: { get: (key: string) => unknown } } | undefined)
     ?.requestContext?.get('sendEvent') as SendEvent | undefined
   const aspectRatio = typeof info.aspectRatio === 'string' && /^\d+:\d+$/.test(info.aspectRatio) ? info.aspectRatio : undefined
-  sendEvent?.('generation_started', aspectRatio ? { aspectRatio } : {})
+  const count = typeof info.count === 'number' && Number.isInteger(info.count) && info.count > 0 ? info.count : undefined
+  const data: { aspectRatio?: string; count?: number } = {}
+  if (aspectRatio) data.aspectRatio = aspectRatio
+  if (count) data.count = count
+  sendEvent?.('generation_started', data)
 }
