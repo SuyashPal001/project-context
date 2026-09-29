@@ -461,14 +461,78 @@ export function generatedFileKey(conversationId: string, title: string, extensio
 }
 
 /**
- * Persist agent-generated content through the same path a browser upload takes:
+ * Upload content to an explicit key through the browser-style upload flow:
  * mint a pending row + presigned URL, PUT the bytes, then confirm.
  *
  * This deliberately uses the browser-style upload flow (three hops) rather than a
  * single write. StorageProvider has putObject and StorageService has
- * putFileForTenant, but this orchestrator path does not use them. Every failure yields null instead of throwing: the
- * canvas has already been streamed to the user by the time this runs, so a failed
- * upload should cost the download, not the reply.
+ * putFileForTenant, but this orchestrator path does not use them. Every failure yields null instead of throwing.
+ */
+export async function uploadFileWithKey(
+  idToken: string,
+  input: {
+    key: string
+    name: string
+    content: string | Buffer
+    contentType: string
+  },
+): Promise<AttachmentPayload | null> {
+  const { key, name, content, contentType } = input
+  const size = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content)
+
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/files/upload`, {
+      method: 'POST',
+      headers: authHeaders(idToken),
+      body: JSON.stringify({
+        filename: name,
+        contentType,
+        key,
+        size,
+      }),
+    })
+    if (!res.ok) {
+      console.error('[persistence] uploadFileWithKey /upload failed:', res.status, await res.text().catch(() => ''))
+      return null
+    }
+    const json = await res.json() as { data?: { fileId?: string; uploadUrl?: string } }
+    const fileId = json.data?.fileId
+    const uploadUrl = json.data?.uploadUrl
+    if (!fileId || !uploadUrl) {
+      console.error('[persistence] uploadFileWithKey: missing fileId/uploadUrl in response')
+      return null
+    }
+
+    const put = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: Buffer.isBuffer(content) ? new Uint8Array(content) : content,
+    })
+    if (!put.ok) {
+      console.error('[persistence] uploadFileWithKey PUT failed:', put.status)
+      return null
+    }
+
+    const confirm = await fetch(`${API_BASE}/api/v1/files/${fileId}/confirm`, {
+      method: 'POST',
+      headers: authHeaders(idToken),
+      body: JSON.stringify({ size }),
+    })
+    if (!confirm.ok) {
+      console.error('[persistence] uploadFileWithKey /confirm failed:', confirm.status, await confirm.text().catch(() => ''))
+      return null
+    }
+
+    return { fileId, name, type: contentType, size }
+  } catch (err) {
+    console.error('[persistence] uploadFileWithKey error:', (err as Error).message)
+    return null
+  }
+}
+
+/**
+ * Persist agent-generated content through the same path a browser upload takes:
+ * mint a pending row + presigned URL, PUT the bytes, then confirm.
  */
 export async function uploadGeneratedFile(
   idToken: string,
@@ -480,60 +544,14 @@ export async function uploadGeneratedFile(
     extension?: string
   },
 ): Promise<AttachmentPayload | null> {
-  const { conversationId, title, content } = input
   const type = input.contentType ?? 'text/markdown'
   const extension = input.extension ?? 'md'
-  const name = `${title}.${extension}`
-  const size = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content)
-
-  try {
-    const res = await fetch(`${API_BASE}/api/v1/files/upload`, {
-      method: 'POST',
-      headers: authHeaders(idToken),
-      body: JSON.stringify({
-        filename: name,
-        contentType: type,
-        key: generatedFileKey(conversationId, title, extension),
-        size,
-      }),
-    })
-    if (!res.ok) {
-      console.error('[persistence] uploadGeneratedFile /upload failed:', res.status, await res.text().catch(() => ''))
-      return null
-    }
-    const json = await res.json() as { data?: { fileId?: string; uploadUrl?: string } }
-    const fileId = json.data?.fileId
-    const uploadUrl = json.data?.uploadUrl
-    if (!fileId || !uploadUrl) {
-      console.error('[persistence] uploadGeneratedFile: missing fileId/uploadUrl in response')
-      return null
-    }
-
-    const put = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': type },
-      body: Buffer.isBuffer(content) ? new Uint8Array(content) : content,
-    })
-    if (!put.ok) {
-      console.error('[persistence] uploadGeneratedFile PUT failed:', put.status)
-      return null
-    }
-
-    const confirm = await fetch(`${API_BASE}/api/v1/files/${fileId}/confirm`, {
-      method: 'POST',
-      headers: authHeaders(idToken),
-      body: JSON.stringify({ size }),
-    })
-    if (!confirm.ok) {
-      console.error('[persistence] uploadGeneratedFile /confirm failed:', confirm.status, await confirm.text().catch(() => ''))
-      return null
-    }
-
-    return { fileId, name, type, size }
-  } catch (err) {
-    console.error('[persistence] uploadGeneratedFile error:', (err as Error).message)
-    return null
-  }
+  return uploadFileWithKey(idToken, {
+    key: generatedFileKey(input.conversationId, input.title, extension),
+    name: `${input.title}.${extension}`,
+    content: input.content,
+    contentType: type,
+  })
 }
 
 export function saveAssistantMessage(
@@ -587,4 +605,26 @@ export function fireArtifactNotification(
   }).catch((err: Error) => {
     console.error('[persistence] fireArtifactNotification error:', err.message)
   })
+}
+
+export async function registerTenantAvatar(idToken: string, fileId: string): Promise<{ id: string; fileId: string; name: string; role: string | null; tone: string | null } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/creative-library-assets/avatars`, { method: 'POST', headers: authHeaders(idToken), body: JSON.stringify({ fileId }) })
+    if (!res.ok) { console.error('[persistence] registerTenantAvatar failed:', res.status, await res.text().catch(() => '')); return null }
+    return ((await res.json()) as { data?: { id: string; fileId: string; name: string; role: string | null; tone: string | null } }).data ?? null
+  } catch (err) {
+    console.error('[persistence] registerTenantAvatar error:', (err as Error).message)
+    return null
+  }
+}
+
+export async function setTenantAvatarReference(idToken: string, avatarId: string, body: { referenceSheetFileId: string; terseTag: string; styleLock: string }): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/creative-library-assets/avatars/${avatarId}/reference`, { method: 'PUT', headers: authHeaders(idToken), body: JSON.stringify(body) })
+    if (!res.ok) console.error('[persistence] setTenantAvatarReference failed:', res.status, await res.text().catch(() => ''))
+    return res.ok
+  } catch (err) {
+    console.error('[persistence] setTenantAvatarReference error:', (err as Error).message)
+    return false
+  }
 }
