@@ -106,6 +106,8 @@ export interface LiveTraceProps {
     activeToolCalls: ToolCall[];
     completedToolCalls: CompletedToolCall[];
     reasoningText?: string;
+    /** fileId -> presigned URL — see ToolCallCard's freshUrls prop. */
+    freshUrls?: Record<string, string>;
 }
 
 export function LiveTrace({
@@ -113,6 +115,7 @@ export function LiveTrace({
     activeToolCalls,
     completedToolCalls,
     reasoningText = '',
+    freshUrls,
 }: LiveTraceProps) {
     const [messageIndex, setMessageIndex] = useState(0);
     const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -234,6 +237,7 @@ export function LiveTrace({
                                     status="done"
                                     results={tc.results}
                                     result={tc.result}
+                                    freshUrls={freshUrls}
                                 />
                             ))}
                         </div>
@@ -245,6 +249,7 @@ export function LiveTrace({
                             status="done"
                             results={group[0].results}
                             result={group[0].result}
+                            freshUrls={freshUrls}
                         />
                     )
                 ))}
@@ -315,6 +320,8 @@ export interface ThinkingIndicatorProps {
     agentPersona?: PersonaSummary | null;
     /** The seeded default agent (Olmo) — see AgentOrb's isDefault prop. */
     agentIsDefault?: boolean;
+    /** fileId -> presigned URL — see ToolCallCard's freshUrls prop. */
+    freshUrls?: Record<string, string>;
 }
 
 export function ThinkingIndicator({
@@ -326,6 +333,7 @@ export function ThinkingIndicator({
     agentAvatarUrl,
     agentPersona,
     agentIsDefault,
+    freshUrls,
 }: ThinkingIndicatorProps) {
     const [stepIndex, setStepIndex] = useState(0);
 
@@ -377,6 +385,7 @@ export function ThinkingIndicator({
                     activeToolCalls={activeToolCalls}
                     completedToolCalls={completedToolCalls}
                     reasoningText={reasoningText}
+                    freshUrls={freshUrls}
                 />
             </div>
         </div>

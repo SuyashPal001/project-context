@@ -1,8 +1,9 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import type { ToolCallSearchResult } from './types';
+import type { ToolCallSearchResult, MessageAttachment } from './types';
 import { TYPE_STYLES, TYPE_BADGES } from '@/components/platform/canvas/assetTypeStyles';
+import { InlineAttachmentCard } from './InlineAttachmentCard';
 
 // True while a generation approval card is waiting on the user. The delegate's
 // "Generating visual…" skeleton would otherwise sit there as if work were under
@@ -24,6 +25,44 @@ interface ToolCallCardProps {
   /** Item count for a batch call, known from generation_started before any item has
    *  settled — lets the skeleton render N tiles immediately instead of just one. */
   mediaCount?: number;
+  /** fileId -> presigned URL, same map MessageItem passes for message.attachments
+   *  (see MessageThread's refreshUrls effect, extended to also scan tool results).
+   *  Lets a completed generation/show_files call render its image inline right
+   *  away, instead of only once the whole turn finishes and attachments land. */
+  freshUrls?: Record<string, string>;
+}
+
+// The web must re-show generated media the moment a tool call completes — not
+// only once the whole turn finishes (message.attachments), because a turn can
+// suspend on ask_clarifying_questions right after several image rows complete,
+// and attachments never land while the turn is suspended. Called for any
+// media-gen tool result (single {fileId,...} or batch {results:[...]}) and for
+// show_files's own {files:[...]} shape, so both render through this one path.
+export function extractResultFiles(
+  toolName: string,
+  result: Record<string, unknown> | undefined,
+): Array<{ fileId: string; name: string; fileType: string; size?: number }> {
+  if (!result) return [];
+  if (!isMediaGenTool(toolName) && toolName !== 'show_files') return [];
+
+  const toEntry = (entry: Record<string, unknown>): { fileId: string; name: string; fileType: string; size?: number } | null => {
+    if (typeof entry.fileId !== 'string') return null;
+    return {
+      fileId: entry.fileId,
+      name: typeof entry.name === 'string' ? entry.name : '',
+      fileType: typeof entry.fileType === 'string' ? entry.fileType : (typeof entry.type === 'string' ? entry.type : ''),
+      size: typeof entry.size === 'number' ? entry.size : undefined,
+    };
+  };
+
+  if (Array.isArray(result.results)) {
+    return (result.results as Array<Record<string, unknown>>).map(toEntry).filter((e): e is NonNullable<typeof e> => e !== null);
+  }
+  if (Array.isArray(result.files)) {
+    return (result.files as Array<Record<string, unknown>>).map(toEntry).filter((e): e is NonNullable<typeof e> => e !== null);
+  }
+  const single = toEntry(result);
+  return single ? [single] : [];
 }
 
 // Director's tools are registered under the underscore key (generate_image,
@@ -375,7 +414,7 @@ function isMediaGenDelegateOrTool(toolName: string): boolean {
     || isDirectorDelegateTool(toolName) || isProducerDelegateTool(toolName);
 }
 
-export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount }: ToolCallCardProps) {
+export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
   // The orchestrator closes a cancelled generation out with { cancelled: true } so the
@@ -406,6 +445,10 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
   // else undefined — a single call with neither falls back to the one-tile skeleton.
   const tileTotal = batchProgress?.total ?? mediaCount;
   const tileDone = batchProgress?.done ?? 0;
+  // Real thumbnails for a completed generation/show_files call — rendered right on
+  // this row, not only once the whole turn finishes as a message.attachment (see
+  // extractResultFiles above). Never shown for a cancelled/failed result.
+  const resultFiles = status === 'done' && !cancelled && !failureReason ? extractResultFiles(toolName, result) : [];
 
   return (
     <div className="my-1.5 text-foreground">
@@ -462,6 +505,18 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
         tileTotal && tileTotal > 1
           ? <MediaProgressTiles type={mediaSkeletonType} aspectRatio={aspectRatio} total={tileTotal} done={tileDone} />
           : <MediaProgressSkeleton type={mediaSkeletonType} aspectRatio={aspectRatio} />
+      )}
+
+      {resultFiles.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-1.5" data-testid="tool-result-media">
+          {resultFiles.map(f => (
+            <InlineAttachmentCard
+              key={f.fileId}
+              file={{ id: f.fileId, fileId: f.fileId, name: f.name, type: f.fileType, size: f.size } satisfies MessageAttachment}
+              url={freshUrls?.[f.fileId] ?? null}
+            />
+          ))}
+        </div>
       )}
 
       {hasResults && expanded && (

@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { useTenant } from "@/app/[tenant]/tenant-provider";
 import { useRouter, useParams } from "next/navigation";
 import { ThinkingIndicator } from "./ThinkingIndicator";
-import { AwaitingApprovalContext } from "./ToolCallCard";
+import { AwaitingApprovalContext, extractResultFiles } from "./ToolCallCard";
 import { MessageItem, messageHasDisplayedContent } from "./MessageItem";
 import { findPendingClarification, findPendingGenerationConfirm, findPendingUpload } from "./pendingRequests";
 import { ClarificationCard } from "./ClarificationCard";
@@ -230,13 +230,28 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
             if (isRefreshingUrlsRef.current) { pendingRefreshRef.current = true; return; }
 
             const now = Date.now();
-            const toRefresh = messages.flatMap(m => m.attachments || [])
+            // Completed tool calls (live trace, or a message's persisted
+            // completedTrace) can carry their own generated/re-shown files —
+            // see ToolCallCard's freshUrls prop. Those need presigned URLs the
+            // same way message.attachments do, so a completed image tool call
+            // renders inline right away instead of waiting for the whole turn
+            // to finish (attachments only land once the message is done).
+            const toolResultAttachments = [
+                ...(completedToolCalls ?? []),
+                ...messages.flatMap(m => m.completedTrace?.toolCalls ?? []),
+            ].flatMap(tc => extractResultFiles(tc.toolName, tc.result))
+                .map(f => ({ fileId: f.fileId, previewUrl: undefined as string | undefined }));
+            const combined = [...messages.flatMap(m => m.attachments || []), ...toolResultAttachments]
                 .filter(att => att.fileId && (!att.previewUrl || att.previewUrl.startsWith('blob:')))
                 .filter(att => {
                     if (freshUrls[att.fileId!]) return false;
                     const failedAt = failedUrlsRef.current.get(att.fileId!);
                     return failedAt === undefined || now - failedAt >= FAILED_URL_RETRY_MS;
                 });
+            // De-dupe by fileId — the same generated file can appear both as a
+            // tool-result entry and (once the turn finishes) as a message
+            // attachment, or across several tool calls in one batch.
+            const toRefresh = Array.from(new Map(combined.map(att => [att.fileId, att])).values());
 
             if (toRefresh.length === 0) return;
 
@@ -296,7 +311,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
         };
 
         refreshUrls();
-    }, [messages]);
+    }, [messages, completedToolCalls]);
 
     const handleCreateInSystem = async (messageId: string, planResult: PlanResult) => {
         if (creatingPlanId) return;
@@ -393,6 +408,7 @@ export function MessageThread({ messages, isLoading, isTyping, isStreaming, isRe
                         agentAvatarUrl={agentAvatarUrl}
                         agentPersona={agentPersona}
                         agentIsDefault={agentIsDefault}
+                        freshUrls={freshUrls}
                     />
                 ) : isTyping && !hasStreamingMessage ? (
                     <ThinkingDots label="Thinking..." avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />

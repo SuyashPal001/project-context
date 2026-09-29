@@ -273,6 +273,7 @@ export function MessageItem({
                         activeToolCalls={activeToolCalls ?? []}
                         completedToolCalls={completedToolCalls ?? []}
                         reasoningText={liveReasoningText}
+                        freshUrls={freshUrls}
                     />
                 ) : isAssistant && !message.isStreaming && message.completedTrace && (
                     <TraceSummary
@@ -280,6 +281,7 @@ export function MessageItem({
                         toolCalls={message.completedTrace.toolCalls ?? []}
                         reasoningText={message.completedTrace.reasoningText}
                         reasoningElapsedSec={message.completedTrace.reasoningElapsedSec}
+                        freshUrls={freshUrls}
                     />
                 )}
 

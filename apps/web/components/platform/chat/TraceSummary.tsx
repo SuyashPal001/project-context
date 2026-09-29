@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CompletedToolCall } from "./types";
-import { ToolCallCard, groupImageToolCalls } from "./ToolCallCard";
+import { ToolCallCard, groupImageToolCalls, extractResultFiles } from "./ToolCallCard";
 import { ReasoningRow } from "./ThinkingIndicator";
 
 export interface TraceSummaryProps {
@@ -12,6 +12,10 @@ export interface TraceSummaryProps {
     reasoningText?: string;
     reasoningElapsedSec?: number;
     defaultCollapsed?: boolean;
+    /** fileId -> presigned URL, forwarded to each ToolCallCard so a completed
+     *  generation/show_files call renders its image inline — see ToolCallCard's
+     *  freshUrls prop. */
+    freshUrls?: Record<string, string>;
 }
 
 // Collapsed "Worked for Ns" row shown after a turn finishes. The outer
@@ -21,11 +25,34 @@ export interface TraceSummaryProps {
 // clicking a tool card also fire the outer collapse toggle, leaving the
 // inner disclosure unusable. The tool call list is rendered as a sibling
 // <div>, shown/hidden off the same `collapsed` state instead.
-export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true }: TraceSummaryProps) {
+export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningElapsedSec, defaultCollapsed = true, freshUrls }: TraceSummaryProps) {
     const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
+    // A tool call that produced media (an image/video/song, or a show_files
+    // result) stays visible even while the rest of the trace is collapsed —
+    // collapsing "N steps" behind one line must not also hide the images the
+    // user just watched generate. Everything else (search rows, delegate
+    // wrappers with no result media, plan/PRD tools, ...) is what collapses.
+    const mediaCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length > 0);
+    const stepCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length === 0);
 
     return (
         <div className="flex flex-col">
+            {mediaCalls.length > 0 && (
+                <div className="flex flex-col gap-1 normal-case">
+                    {groupImageToolCalls(mediaCalls).map((group, gi) => (
+                        group.length > 1 ? (
+                            <div key={gi} className="flex flex-wrap gap-2">
+                                {group.map(tc => (
+                                    <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} freshUrls={freshUrls} />
+                                ))}
+                            </div>
+                        ) : (
+                            <ToolCallCard key={group[0].id} toolName={group[0].toolName} query={group[0].query} status="done" results={group[0].results} result={group[0].result} freshUrls={freshUrls} />
+                        )
+                    ))}
+                </div>
+            )}
             <button
                 type="button"
                 onClick={() => setCollapsed(c => !c)}
@@ -37,19 +64,19 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
                 >
                     <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <span>Worked for {elapsedSec}s</span>
+                <span>Worked for {elapsedSec}s{toolCalls.length > 0 ? ` · ${toolCalls.length} step${toolCalls.length === 1 ? '' : 's'}` : ''}</span>
             </button>
-            {!collapsed && (toolCalls.length > 0 || reasoningText) && (
+            {!collapsed && (stepCalls.length > 0 || reasoningText) && (
                 <div className="ml-4 flex flex-col gap-1 normal-case">
-                    {groupImageToolCalls(toolCalls).map((group, gi) => (
+                    {groupImageToolCalls(stepCalls).map((group, gi) => (
                         group.length > 1 ? (
                             <div key={gi} className="flex flex-wrap gap-2">
                                 {group.map(tc => (
-                                    <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} />
+                                    <ToolCallCard key={tc.id} toolName={tc.toolName} query={tc.query} status="done" results={tc.results} result={tc.result} freshUrls={freshUrls} />
                                 ))}
                             </div>
                         ) : (
-                            <ToolCallCard key={group[0].id} toolName={group[0].toolName} query={group[0].query} status="done" results={group[0].results} result={group[0].result} />
+                            <ToolCallCard key={group[0].id} toolName={group[0].toolName} query={group[0].query} status="done" results={group[0].results} result={group[0].result} freshUrls={freshUrls} />
                         )
                     ))}
                     {reasoningText && <ReasoningRow text={reasoningText} completed elapsedSec={reasoningElapsedSec} />}
