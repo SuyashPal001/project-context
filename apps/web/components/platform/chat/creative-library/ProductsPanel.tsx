@@ -63,8 +63,10 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
     const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
     const photoPreviewUrlRef = useRef<string | null>(null);
     const [setupOpen, setSetupOpen] = useState(false);
-    // The product being edited — undefined while closed, null in create mode
-    // (blank form), a record in edit mode (prefilled).
+    // The product being edited via the setup modal — null in create mode
+    // (blank form), a record in edit mode (prefilled). Ignored while
+    // setupOpen is false; not reset on close, so the closed modal doesn't
+    // flash blank before its next open re-seeds it.
     const [setupProduct, setSetupProduct] = useState<ProductRecord | null>(null);
     selectedIdRef.current = selected?.kind === 'product' ? selected.id : null;
 
@@ -83,15 +85,20 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
     const products = (data?.pages.flatMap(page => page.data) ?? []).filter(product => !hidden.has(product.id));
     const isEmpty = !isPending && !isError && products.length === 0 && !search.trim();
 
-    // F1(b): if naming finished (or the name/status otherwise changed) while
-    // this panel wasn't mounted to hear it directly, reconcile the currently
-    // selected product from the freshly loaded list. Guarded on an actual
-    // difference so this can't loop against the onSelect it triggers.
+    // F1(b): if naming finished, or any field changed (elsewhere — a
+    // different tab, or this same edit landing after the tab was left and
+    // rejoined) while this panel wasn't mounted to hear it directly,
+    // reconcile the currently selected product from the freshly loaded
+    // list. Guarded on an actual difference so this can't loop against the
+    // onSelect it triggers.
     useEffect(() => {
         if (selected?.kind !== 'product') return;
         const match = products.find(product => product.id === selected.id);
         if (!match) return;
-        if (match.name === selected.name && match.namingStatus === selected.namingStatus) return;
+        const unchanged = match.name === selected.name && match.namingStatus === selected.namingStatus
+            && match.category === selected.category && match.description === selected.description
+            && JSON.stringify(match.usps) === JSON.stringify(selected.usps);
+        if (unchanged) return;
         onSelect(productSelection(match));
     }, [products, selected, onSelect]);
 
