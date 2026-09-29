@@ -9,7 +9,7 @@ vi.mock("sonner", () => ({
 
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { startOfficialSkill } from "./startOfficialSkill";
+import { startOfficialSkill, installOfficialSkill } from "./startOfficialSkill";
 import type { Skill } from "./types";
 
 function makeSkill(
@@ -71,5 +71,58 @@ describe("startOfficialSkill", () => {
 
         expect(toast.error).toHaveBeenCalled();
         expect(push).not.toHaveBeenCalled();
+    });
+
+    it("invalidates the installed-skills and skills-list queries after a successful install, so the '/' palette and attach picker aren't stale", async () => {
+        vi.mocked(api.post).mockResolvedValueOnce(undefined);
+        const push = vi.fn();
+        const invalidateQueries = vi.fn();
+
+        await startOfficialSkill(makeSkill(), "acme", { push }, { invalidateQueries });
+
+        expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["skills", "installed"] });
+        expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["skills"] });
+    });
+
+    it("does not invalidate anything when no queryClient is passed", async () => {
+        vi.mocked(api.post).mockResolvedValueOnce(undefined);
+        const push = vi.fn();
+
+        await expect(startOfficialSkill(makeSkill(), "acme", { push })).resolves.toBeUndefined();
+    });
+
+    it("does not invalidate when install fails", async () => {
+        vi.mocked(api.post).mockRejectedValueOnce(new Error("boom"));
+        const push = vi.fn();
+        const invalidateQueries = vi.fn();
+
+        await startOfficialSkill(makeSkill(), "acme", { push }, { invalidateQueries });
+
+        expect(invalidateQueries).not.toHaveBeenCalled();
+    });
+});
+
+describe("installOfficialSkill", () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it("invalidates the installed-skills and skills-list queries on success when a queryClient is passed", async () => {
+        vi.mocked(api.post).mockResolvedValueOnce(undefined);
+        const invalidateQueries = vi.fn();
+
+        const result = await installOfficialSkill({ id: "skill-1", name: "Avatar Creator" }, { invalidateQueries });
+
+        expect(result).toBe(true);
+        expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["skills", "installed"] });
+        expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["skills"] });
+    });
+
+    it("does not invalidate on a failed install", async () => {
+        vi.mocked(api.post).mockRejectedValueOnce(new Error("boom"));
+        const invalidateQueries = vi.fn();
+
+        const result = await installOfficialSkill({ id: "skill-1", name: "Avatar Creator" }, { invalidateQueries });
+
+        expect(result).toBe(false);
+        expect(invalidateQueries).not.toHaveBeenCalled();
     });
 });

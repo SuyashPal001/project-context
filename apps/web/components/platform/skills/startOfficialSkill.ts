@@ -8,16 +8,34 @@ interface RouterLike {
     push: (url: string) => void;
 }
 
+/** Minimal shape of a react-query QueryClient this needs — accepts both the
+ *  real instance and a plain test double. */
+interface QueryClientLike {
+    invalidateQueries: (filters: { queryKey: unknown[] }) => unknown;
+}
+
 /**
  * Installs (or re-installs, moving the tenant's install to the latest
  * version — POST /skills/:id/install is idempotent) an Official skill.
  * Shows a toast and returns false on failure; callers must not proceed
  * (send/navigate) when this returns false, so the user isn't dropped into a
  * chat that silently doesn't have the skill.
+ *
+ * When `queryClient` is passed, a successful install invalidates
+ * `['skills', 'installed']` (the "/" palette, the attach picker) and
+ * `['skills']` (the Skills page lists), so a freshly-installed/updated
+ * Official skill shows up immediately instead of waiting on the next
+ * unrelated refetch. `queryClient` is optional — a caller with no
+ * QueryClient in scope keeps working exactly as before.
  */
-export async function installOfficialSkill(skill: Pick<Skill, "id" | "name">): Promise<boolean> {
+export async function installOfficialSkill(
+    skill: Pick<Skill, "id" | "name">,
+    queryClient?: QueryClientLike,
+): Promise<boolean> {
     try {
         await api.post(`/api/v1/skills/${skill.id}/install`);
+        queryClient?.invalidateQueries({ queryKey: ["skills", "installed"] });
+        queryClient?.invalidateQueries({ queryKey: ["skills"] });
         return true;
     } catch {
         toast.error(`Failed to start "${skill.name}".`);
@@ -40,8 +58,9 @@ export async function startOfficialSkill(
     skill: Pick<Skill, "id" | "name" | "showcase">,
     tenantSlug: string,
     router: RouterLike,
+    queryClient?: QueryClientLike,
 ): Promise<void> {
-    const installed = await installOfficialSkill(skill);
+    const installed = await installOfficialSkill(skill, queryClient);
     if (!installed) return;
 
     const prompt = skill.showcase?.starterPrompt ?? `Use the ${skill.name} skill`;

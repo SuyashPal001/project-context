@@ -43,6 +43,7 @@ import { CreativeEmptyState } from '@/components/platform/chat/CreativeEmptyStat
 import { CREATE_AVATAR_PROMPT, AVATAR_CREATOR_SKILL_SLUG } from '@/components/platform/files/NewAvatarButton';
 import { useOfficialSkill } from '@/components/platform/skills/useOfficialSkill';
 import { resolveCreateAvatarSkillsUsed } from '@/components/platform/skills/createAvatarSkillsUsed';
+import { runCreateAvatarOnce } from '@/components/platform/skills/createAvatarGuard';
 import { CreativeBriefChips } from '@/components/platform/chat/creative-library/CreativeBriefChips';
 import {
     buildCreativeBriefMessage,
@@ -62,6 +63,7 @@ import {
 import { useCreativeBriefDraft } from '@/components/platform/chat/creative-library/useCreativeBriefDraft';
 import type { Attachment } from '@/types/agent-events';
 import { seededSkillsUsedFromParams } from './seededSkill';
+import { buildDraftComposerStart } from './draftComposerStart';
 
 function ChatPage() {
     const searchParams = useSearchParams();
@@ -94,6 +96,17 @@ function ChatPage() {
     // creator skill when it's seeded, same as NewAvatarButton (Drive) —
     // falls back to today's plain-prompt send/stage when it isn't.
     const avatarCreatorSkill = useOfficialSkill(AVATAR_CREATOR_SKILL_SLUG);
+    // Guards "Create with AI" against a double click across its async
+    // install (resolveCreateAvatarSkillsUsed) — without this a second click
+    // installs+sends twice, or fires two handleNewChat calls at the
+    // pre-conversation site. The ref gives a synchronous re-entrancy check;
+    // the state OR's into createAvatarDisabled at both call sites.
+    const createAvatarInFlightRef = useRef(false);
+    const [createAvatarInFlight, setCreateAvatarInFlightState] = useState(false);
+    const setCreateAvatarInFlight = useCallback((value: boolean) => {
+        createAvatarInFlightRef.current = value;
+        setCreateAvatarInFlightState(value);
+    }, []);
 
     // Auto-collapse the conversation list the moment Canvas opens, giving
     // chat+canvas the room the two-column layout needs — same collapse the
@@ -364,11 +377,14 @@ function ChatPage() {
 
     // Same idea for the no-conversation (draft) composer: stages the first
     // message and starts the new chat, rather than sending directly.
+    // Always clears pendingSkillsUsed (buildDraftComposerStart) — otherwise a
+    // skill staged by a prior "Create with AI" attempt whose handleNewChat
+    // failed would leak onto this newly typed message.
     const startDraftComposerMessage = (text: string, attachments?: Attachment[]) => {
-        const message = creativeBriefStarted ? buildCreativeBriefMessage(text, creativeBrief) : text;
-        const mergedAttachments = creativeBriefStarted ? mergeCreativeBriefAttachments(attachments, creativeBrief) : attachments;
-        setPendingFirstMessage(message);
-        setPendingFirstAttachments(mergedAttachments);
+        const draft = buildDraftComposerStart(text, attachments, creativeBriefStarted, creativeBrief);
+        setPendingFirstMessage(draft.message);
+        setPendingFirstAttachments(draft.attachments);
+        setPendingSkillsUsed(draft.pendingSkillsUsed);
         setPendingCreativeBrief(creativeBriefStarted);
         handleNewChat(draftAgent?.id);
     };
@@ -684,14 +700,18 @@ function ChatPage() {
                                                 // attachments (e.g. a selected avatar) and silently turn this into an
                                                 // image-to-avatar call — and never touches/clears the brief.
                                                 onCreateAvatar={() => {
-                                                    if (isStreaming || isPreparingMessage || selectedConversation.status !== 'active') return;
-                                                    void (async () => {
-                                                        const skillsUsed = await resolveCreateAvatarSkillsUsed(avatarCreatorSkill);
-                                                        if (skillsUsed === null) return; // install failed — already toasted
-                                                        sendMessage(CREATE_AVATAR_PROMPT, undefined, skillsUsed);
-                                                    })();
+                                                    if (isStreaming || isPreparingMessage || selectedConversation.status !== 'active' || createAvatarInFlightRef.current) return;
+                                                    void runCreateAvatarOnce(
+                                                        () => createAvatarInFlightRef.current,
+                                                        setCreateAvatarInFlight,
+                                                        async () => {
+                                                            const skillsUsed = await resolveCreateAvatarSkillsUsed(avatarCreatorSkill);
+                                                            if (skillsUsed === null) return; // install failed — already toasted
+                                                            sendMessage(CREATE_AVATAR_PROMPT, undefined, skillsUsed);
+                                                        },
+                                                    );
                                                 }}
-                                                createAvatarDisabled={isStreaming || isPreparingMessage || selectedConversation.status !== 'active'}
+                                                createAvatarDisabled={isStreaming || isPreparingMessage || selectedConversation.status !== 'active' || createAvatarInFlight}
                                             >
                                                 <ChatInput
                                                     onSend={(text, attachments) => sendComposerMessage(text, attachments)}
@@ -794,17 +814,21 @@ function ChatPage() {
                                     // brief left untouched) — same reasoning as the existing-chat site above,
                                     // just via the pre-conversation staging path instead of sendMessage directly.
                                     onCreateAvatar={() => {
-                                        if (createConversation.isPending) return;
-                                        void (async () => {
-                                            const skillsUsed = await resolveCreateAvatarSkillsUsed(avatarCreatorSkill);
-                                            if (skillsUsed === null) return; // install failed — already toasted
-                                            setPendingFirstMessage(CREATE_AVATAR_PROMPT);
-                                            setPendingFirstAttachments(undefined);
-                                            setPendingSkillsUsed(skillsUsed);
-                                            handleNewChat(draftAgent?.id);
-                                        })();
+                                        if (createConversation.isPending || createAvatarInFlightRef.current) return;
+                                        void runCreateAvatarOnce(
+                                            () => createAvatarInFlightRef.current,
+                                            setCreateAvatarInFlight,
+                                            async () => {
+                                                const skillsUsed = await resolveCreateAvatarSkillsUsed(avatarCreatorSkill);
+                                                if (skillsUsed === null) return; // install failed — already toasted
+                                                setPendingFirstMessage(CREATE_AVATAR_PROMPT);
+                                                setPendingFirstAttachments(undefined);
+                                                setPendingSkillsUsed(skillsUsed);
+                                                handleNewChat(draftAgent?.id);
+                                            },
+                                        );
                                     }}
-                                    createAvatarDisabled={createConversation.isPending}
+                                    createAvatarDisabled={createConversation.isPending || createAvatarInFlight}
                                 >
                                         <ChatInput
                                             onSend={(text, attachments) => {

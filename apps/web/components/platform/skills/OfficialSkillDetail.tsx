@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
+import { useQueryClient } from "@tanstack/react-query";
 import { ModalShell } from "@/components/platform/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,13 +26,14 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
     const router = useRouter();
     const params = useParams();
     const tenantSlug = params.tenant as string;
+    const queryClient = useQueryClient();
     const [isStarting, setIsStarting] = useState(false);
 
     const handleStart = async () => {
         if (!skill) return;
         setIsStarting(true);
         try {
-            await startOfficialSkill(skill, tenantSlug, router);
+            await startOfficialSkill(skill, tenantSlug, router, queryClient);
         } finally {
             setIsStarting(false);
         }
