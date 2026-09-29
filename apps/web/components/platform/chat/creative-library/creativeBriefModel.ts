@@ -53,12 +53,15 @@ export interface ProductRecordSelection {
     kind: 'product';
     id: string;
     name: string;
+    category: string | null;
     description: string | null;
     price: string | null;
     sourceUrl: string | null;
+    /** Up to 3 selling points. */
+    usps: string[];
     namingStatus: ProductNamingStatus;
-    /** The product's main image. */
-    attachment: Attachment;
+    /** The product's main image — absent for a manually-created product that has no photo yet. */
+    attachment?: Attachment;
 }
 
 export type ProductSelection = ProductImageSelection | ProductUrlSelection | ProductRecordSelection;

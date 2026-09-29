@@ -133,8 +133,8 @@ describe('POST /products/import', () => {
 
     expect(res.status).toBe(200);
     expect(createProductMock).toHaveBeenCalledWith({
-      tenantId: 'tenant-1', createdBy: 'user-1', name: 'Mug', description: 'Stoneware', price: null,
-      sourceUrl: 'https://shop.example.com/p/1', imageFileIds: ['file-a'], namingStatus: 'done',
+      tenantId: 'tenant-1', createdBy: 'user-1', name: 'Mug', category: null, description: 'Stoneware', price: null,
+      sourceUrl: 'https://shop.example.com/p/1', usps: [], imageFileIds: ['file-a'], namingStatus: 'done',
     });
     expect((await res.json()).data.name).toBe('Mug');
   });

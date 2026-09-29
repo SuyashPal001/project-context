@@ -91,4 +91,14 @@ describe('CreativeBriefChips', () => {
         await waitFor(() => expect(document.querySelector('img[src*="add-link"]')).not.toBeNull());
         expect(screen.queryByTestId('file-thumbnail')).toBeNull();
     });
+
+    it('does not crash for a manually-created product record with no photo yet, and shows the link placeholder', () => {
+        const brief = updateCreativeBrief(createEmptyCreativeBrief(), {
+            kind: 'product' as const, id: 'p1', name: 'Campus Shoes', category: null, description: null,
+            price: null, sourceUrl: null, usps: [], namingStatus: 'done' as const,
+        });
+        render(<CreativeBriefChips brief={brief} readOnly />);
+        expect(screen.queryByTestId('file-thumbnail')).toBeNull();
+        expect(screen.getByLabelText('Product Campus Shoes')).toBeTruthy();
+    });
 });

@@ -257,8 +257,8 @@ describe('imported product-url wiring', () => {
 });
 
 const productRecord = (over: Partial<ProductRecordSelection> = {}): ProductRecordSelection => ({
-    kind: 'product', id: 'p1', name: 'The Ordinary Niacinamide serum', description: 'A white dropper bottle.',
-    price: '₹590', sourceUrl: 'https://theordinary.com/p/1', namingStatus: 'done',
+    kind: 'product', id: 'p1', name: 'The Ordinary Niacinamide serum', category: null, description: 'A white dropper bottle.',
+    price: '₹590', sourceUrl: 'https://theordinary.com/p/1', usps: [], namingStatus: 'done',
     attachment: { fileId: 'f1', name: 'serum.png', type: 'image/png', size: 3 }, ...over,
 });
 
@@ -272,6 +272,20 @@ describe('product record selections', () => {
     it('omits empty optional lines', () => {
         const brief = { ...createEmptyCreativeBrief(), product: productRecord({ description: null, price: null, sourceUrl: null }) };
         expect(buildCreativeBriefMessage('', brief)).toContain('- Product: The Ordinary Niacinamide serum\n  Use the attached product image as the visual reference.');
+    });
+
+    it('includes category and selling points when set', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord({ category: 'Beauty & Personal Care', usps: ['Vegan', 'Fragrance-free'] }) };
+        const message = buildCreativeBriefMessage('', brief);
+        expect(message).toContain('  Category: Beauty & Personal Care');
+        expect(message).toContain('  Selling points: Vegan; Fragrance-free');
+    });
+
+    it('omits category and selling-points lines when absent', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord({ description: null, price: null, sourceUrl: null }) };
+        const message = buildCreativeBriefMessage('', brief);
+        expect(message).not.toContain('Category:');
+        expect(message).not.toContain('Selling points:');
     });
 
     it('tells Olmo to ask when the name is not known yet', () => {
@@ -298,11 +312,37 @@ describe('product record selections', () => {
         expect(creativeBriefAttachmentIds(brief)).toEqual(new Set(['f1']));
     });
 
-    it('round-trips through the persisted draft and rejects a record without an attachment', () => {
+    it('attaches nothing and omits the "attached image" line for a manually-created product with no photo yet', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: productRecord({ attachment: undefined }) };
+        expect(mergeCreativeBriefAttachments(undefined, brief)).toBeUndefined();
+        expect(creativeBriefAttachmentIds(brief)).toEqual(new Set());
+        expect(buildCreativeBriefMessage('', brief)).not.toContain('Use the attached product image');
+    });
+
+    it('round-trips through the persisted draft', () => {
         const brief = { ...createEmptyCreativeBrief(), product: productRecord() };
         expect(parseCreativeBriefDraft(JSON.stringify(brief)).product).toEqual(productRecord());
-        const broken = { ...brief, product: { ...productRecord(), attachment: undefined } };
-        expect(parseCreativeBriefDraft(JSON.stringify(broken)).product).toBeNull();
+    });
+
+    it('round-trips a manually-created record with no image yet (attachment omitted)', () => {
+        const noImage = { ...productRecord(), attachment: undefined };
+        const brief = { ...createEmptyCreativeBrief(), product: noImage };
+        const parsed = parseCreativeBriefDraft(JSON.stringify(brief)).product;
+        expect(parsed).toEqual(expect.objectContaining({ kind: 'product', id: 'p1' }));
+        expect(parsed?.kind === 'product' && parsed.attachment).toBeUndefined();
+    });
+
+    it('defaults category and usps for an already-sent message that predates those fields', () => {
+        const { category: _category, usps: _usps, ...withoutNewFields } = productRecord();
+        const brief = { ...createEmptyCreativeBrief(), product: withoutNewFields };
+        const parsed = parseCreativeBriefDraft(JSON.stringify(brief)).product;
+        expect(parsed).toEqual(expect.objectContaining({ category: null, usps: [] }));
+    });
+
+    it('drops a malformed usps value to an empty array instead of rejecting the whole product', () => {
+        const brief = { ...createEmptyCreativeBrief(), product: { ...productRecord(), usps: 'not an array', category: 42 } };
+        const parsed = parseCreativeBriefDraft(JSON.stringify(brief)).product;
+        expect(parsed).toEqual(expect.objectContaining({ category: null, usps: [] }));
     });
 
     it('still restores the old product-image kind from earlier messages', () => {
