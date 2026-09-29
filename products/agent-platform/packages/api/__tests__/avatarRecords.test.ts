@@ -4,7 +4,7 @@ vi.mock('../db', () => ({ db: { select: vi.fn(), update: vi.fn() } }));
 const getDownloadUrl = vi.fn();
 vi.mock('@serverless-saas/storage', () => ({ storageService: { getDownloadUrl: (...a: unknown[]) => getDownloadUrl(...a) } }));
 
-import { avatarPlaceholderName, describeAvatarImage, isPresetCopy, getTenantAvatar, nameTenantAvatar, type TenantAvatarRecord } from '../lib/avatarRecords';
+import { avatarPlaceholderName, describeAvatarImage, isPresetCopy, getTenantAvatar, nameTenantAvatar, findTenantAvatarBySource, setAvatarSource, type TenantAvatarRecord } from '../lib/avatarRecords';
 import { db } from '../db';
 
 // Drizzle SQL objects are circular (every column points back at its table), so
@@ -114,6 +114,43 @@ describe('getTenantAvatar', () => {
     await getTenantAvatar('t1', { id: 'a1' });
     const whereExpr = whereSpies[0].mock.calls[0][0];
     expect(boundValues(whereExpr)).toContain('avatar');
+  });
+});
+
+describe('findTenantAvatarBySource', () => {
+  it('scopes the lookup to kind=avatar and the sourceFileId attribute', async () => {
+    const whereSpies = mockSelectSequence([[]]);
+    await findTenantAvatarBySource('t1', 'src-1');
+    const whereExpr = whereSpies[0].mock.calls[0][0];
+    expect(boundValues(whereExpr)).toContain('avatar');
+    expect(renderSql(whereExpr)).toContain("->>'sourceFileId' = src-1");
+  });
+
+  it('returns the matching record when found', async () => {
+    const row = {
+      id: 'a1', fileId: 'f1', name: 'Riya', attributes: { sourceFileId: 'src-1' },
+      createdAt: new Date('2026-09-29T00:00:00.000Z'), mimeType: 'image/jpeg', size: 1000,
+    };
+    mockSelectSequence([[row]]);
+    const result = await findTenantAvatarBySource('t1', 'src-1');
+    expect(result?.id).toBe('a1');
+  });
+
+  it('returns null when nothing matches', async () => {
+    mockSelectSequence([[]]);
+    expect(await findTenantAvatarBySource('t1', 'src-1')).toBeNull();
+  });
+});
+
+describe('setAvatarSource', () => {
+  it('merges sourceFileId into attributes via jsonb `||`', async () => {
+    const setSpy = mockUpdateCapture([]);
+    await setAvatarSource('t1', 'a1', 'src-1');
+    const patch = setSpy.mock.calls[0][0];
+    expect(Array.isArray((patch.attributes as { queryChunks?: unknown[] }).queryChunks)).toBe(true);
+    const rendered = renderSql(patch.attributes);
+    expect(rendered).toContain('||');
+    expect(rendered).toContain(JSON.stringify({ sourceFileId: 'src-1' }));
   });
 });
 

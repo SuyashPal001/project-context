@@ -15,6 +15,8 @@ const records = vi.hoisted(() => ({
   getTenantAvatar: vi.fn(),
   nameTenantAvatarWithin: vi.fn(),
   setAvatarReference: vi.fn(),
+  setAvatarSource: vi.fn(),
+  findTenantAvatarBySource: vi.fn(),
 }));
 vi.mock('../lib/avatarRecords', () => ({ AVATAR_PREFIX: 'creative-avatars/', AVATAR_REFS_PREFIX: 'avatar-refs/', ...records }));
 
@@ -72,6 +74,51 @@ describe('tenant avatar routes', () => {
     });
     expect(res.status).toBe(400);
     expect(records.nameTenantAvatarWithin).not.toHaveBeenCalled();
+  });
+
+  const SOURCE_FILE_ID = '44444444-4444-4444-8444-444444444444';
+
+  it('registers a source-file link and merges it into attributes before naming', async () => {
+    records.getTenantAvatar.mockResolvedValue(avatar);
+    records.nameTenantAvatarWithin.mockResolvedValue(avatar);
+    const res = await (await appWith()).request('/creative-library-assets/avatars', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileId: FILE_ID, sourceFileId: SOURCE_FILE_ID }),
+    });
+    expect(res.status).toBe(201);
+    expect(records.setAvatarSource).toHaveBeenCalledWith('t1', avatar.id, SOURCE_FILE_ID);
+  });
+
+  it('does not touch source attribution when sourceFileId is omitted', async () => {
+    records.getTenantAvatar.mockResolvedValue(avatar);
+    records.nameTenantAvatarWithin.mockResolvedValue(avatar);
+    const res = await (await appWith()).request('/creative-library-assets/avatars', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId: FILE_ID }),
+    });
+    expect(res.status).toBe(201);
+    expect(records.setAvatarSource).not.toHaveBeenCalled();
+  });
+
+  describe('GET /avatars/by-source/:fileId', () => {
+    it('returns the tenant\'s active avatar registered for that source file', async () => {
+      records.findTenantAvatarBySource.mockResolvedValue(avatar);
+      const res = await (await appWith()).request(`/creative-library-assets/avatars/by-source/${SOURCE_FILE_ID}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ data: avatar });
+      expect(records.findTenantAvatarBySource).toHaveBeenCalledWith('t1', SOURCE_FILE_ID);
+    });
+
+    it('404s when no avatar is registered for that source file', async () => {
+      records.findTenantAvatarBySource.mockResolvedValue(null);
+      const res = await (await appWith()).request(`/creative-library-assets/avatars/by-source/${SOURCE_FILE_ID}`);
+      expect(res.status).toBe(404);
+    });
+
+    it('404s a malformed id without calling the lib', async () => {
+      const res = await (await appWith()).request('/creative-library-assets/avatars/by-source/not-a-uuid');
+      expect(res.status).toBe(404);
+      expect(records.findTenantAvatarBySource).not.toHaveBeenCalled();
+    });
   });
 
   it('describe 404s an unknown or malformed id', async () => {

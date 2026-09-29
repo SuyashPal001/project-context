@@ -5,6 +5,7 @@ import { creativeLibraryAssets } from '@serverless-saas/agent-schema/creativeLib
 import { db } from '../db';
 import { escapeLike, productFileName, ALLOWED_PRODUCT_IMAGE_TYPES } from './productRecords';
 import { MAX_NAMING_IMAGE_BYTES } from './productNaming';
+import { cleanupOrphanedAvatars } from './avatarCleanup';
 
 /** Drive's "Avatars" folder — the prefix the picker and Drive both upload into. */
 export const AVATAR_PREFIX = 'creative-avatars/';
@@ -21,6 +22,7 @@ export interface AvatarAttributes {
   referenceSheetFileId?: string;
   terseTag?: string;
   styleLock?: string;
+  sourceFileId?: string;
 }
 export interface TenantAvatarRecord {
   id: string;
@@ -116,6 +118,7 @@ export async function syncTenantAvatars(tenantId: string): Promise<void> {
 
 /** The tenant's own avatars, newest first. A deleted file hides its avatar. */
 export async function listTenantAvatars(tenantId: string): Promise<TenantAvatarRecord[]> {
+  await cleanupOrphanedAvatars(tenantId);
   await syncTenantAvatars(tenantId);
   const rows = await db
     .select(selection)
@@ -148,6 +151,37 @@ export async function getTenantAvatar(tenantId: string, where: { id: string } | 
     ))
     .limit(1);
   return row ? toRecord(row) : null;
+}
+
+/**
+ * The tenant's active avatar registered from a given source file (e.g. a
+ * generated portrait the user chose to keep as an avatar), or null when none
+ * is registered yet. Backs idempotent registration: a caller checks this
+ * before creating a new avatar for the same source.
+ */
+export async function findTenantAvatarBySource(tenantId: string, sourceFileId: string): Promise<TenantAvatarRecord | null> {
+  const [row] = await db
+    .select(selection)
+    .from(creativeLibraryAssets)
+    .innerJoin(files, eq(files.id, creativeLibraryAssets.fileId))
+    .where(and(
+      eq(creativeLibraryAssets.tenantId, tenantId),
+      eq(creativeLibraryAssets.kind, 'avatar'),
+      eq(creativeLibraryAssets.status, 'active'),
+      eq(sql`${creativeLibraryAssets.attributes}->>'sourceFileId'`, sourceFileId),
+      eq(files.tenantId, tenantId),
+      isNull(files.deletedAt),
+    ))
+    .limit(1);
+  return row ? toRecord(row) : null;
+}
+
+/** Pins the source file this avatar was registered from. Merges into attributes, never replaces it. */
+export async function setAvatarSource(tenantId: string, id: string, sourceFileId: string): Promise<void> {
+  const patch: AvatarAttributes = { sourceFileId };
+  await db.update(creativeLibraryAssets)
+    .set({ attributes: sql`${creativeLibraryAssets.attributes} || ${JSON.stringify(patch)}::jsonb` })
+    .where(and(eq(creativeLibraryAssets.tenantId, tenantId), eq(creativeLibraryAssets.id, id)));
 }
 
 /**
