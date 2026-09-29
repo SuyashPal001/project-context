@@ -22,8 +22,11 @@ beforeAll(() => {
 })
 
 describe('avatar creation contract (Avatar creator Official skill)', () => {
-  it('caps intake at one question and forbids a demographic quiz', () => {
-    expect(AVATAR_SKILL_TEXT).toContain('at most ONE question')
+  it('caps intake at one card of at most two multiple-choice questions and forbids a demographic quiz', () => {
+    expect(AVATAR_SKILL_TEXT).toContain('at most ONE ask_clarifying_questions card')
+    expect(AVATAR_SKILL_TEXT).toContain('at most two single-select questions')
+    expect(AVATAR_SKILL_TEXT).toMatch(/never a bare free-text question/i)
+    expect(AVATAR_SKILL_TEXT).toContain('(Recommended)')
     expect(AVATAR_SKILL_TEXT).toMatch(/never ask separately about gender, age or ethnicity/i)
     expect(AVATAR_SKILL_TEXT).toMatch(/never infer .* from a name/i)
   })
