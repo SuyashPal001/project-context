@@ -126,9 +126,9 @@ When Olmo delegates creating a reusable avatar:
   Primary request: ONE original adult <look> <gender> of about <age> with <skin> and <hair>, wearing <outfit>, caught in a quiet everyday moment <moment>
   Subject: <expression>, a gentle rounded face with warm expressive eyes, lips relaxed and slightly parted so the face can later talk in a video; natural, modest everyday clothing; the hands busy with the moment in a natural way
   Scene/backdrop: the lived-in, richly detailed place of that moment, painted with soft edges and gently out of focus behind the person
-  Style/medium: warm hand-painted 2D anime film look — soft painterly backgrounds with a watercolour texture, clean gentle linework, soft cel shading, golden afternoon light with dappled shadows, a nostalgic cozy mood
+  Style/medium: warm hand-painted 2D anime film look — soft painterly backgrounds with a watercolour texture, delicate ink contours, watercolour and gouache-like textures with natural imperfect shapes, soft painterly cel shading, warm late-afternoon light with dappled shadows, a gentle earthy palette (pink, sage, cream, terracotta), an intimate lived-in mood; use only the broad mood of a tender hand-painted animated film, never reproducing any existing studio, film, character or artwork
   Composition/framing: vertical 3:4, from the knees or the waist up, the face and the moment both clear
-  Constraints: one person only; an original face, outfit and place; no text, readable signs, name, logo, UI or watermark
+  Constraints: one person only, with no additional people; an original face, outfit and place; fully clothed and modest; no text, readable signs, name, logo, UI or watermark
   Avoid: resemblance to any known film or anime character, glossy digital painting, 3D render, photorealism, harsh contrast, extra fingers
   Give each item a title naming its person and moment the way a user would, e.g. "Woman at a chai stall".
   Reference sheet for storybook anime: the person reference sheet above, painted in the same warm hand-painted anime style with the same outfit in every panel and the full outfit in the full-body panel (never other bottoms and shoes), on a plain warm-cream background. terseTag names the hair and outfit (e.g. "long black hair, maroon handloom saree"); styleLock is e.g. "hand-painted storybook anime, golden light".`

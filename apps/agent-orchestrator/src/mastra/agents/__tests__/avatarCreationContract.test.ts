@@ -202,6 +202,7 @@ describe('animated-character avatars (Animated character creator Official skill)
     expect(AVATAR_CREATION_SECTION).toMatch(/caught in a quiet everyday moment <moment>/)
     expect(AVATAR_CREATION_SECTION).toMatch(/soft painterly backgrounds with a watercolour texture/)
     expect(AVATAR_CREATION_SECTION).not.toMatch(/ghibli/i)
+    expect(AVATAR_CREATION_SECTION).toMatch(/never reproducing any existing studio, film, character or artwork/)
   })
 })
 
