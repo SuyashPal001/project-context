@@ -143,6 +143,26 @@ describe('rollFantasyAnimeVariations', () => {
   })
 })
 
+describe('rollChibiVariations', () => {
+  it('casts four different family members, alternating girls/women and boys/men, all in modest outfits', async () => {
+    const { rollChibiVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 20; seed++) {
+      const set = rollChibiVariations(4, seeded(seed))
+      expect(set.map((v) => v.gender)).toEqual(['woman', 'man', 'woman', 'man'])
+      for (const key of ['who', 'look', 'outfit', 'scene', 'pose'] as const) {
+        expect(distinct(set.map((v) => v[key]))).toBe(true)
+      }
+      expect(JSON.stringify(set)).not.toMatch(/bikini|swim|crop top|lingerie|revealing/i)
+    }
+  })
+
+  it('dresses an Indian look in Indian outfits with Indian skin tones', async () => {
+    const { rollChibiVariations } = await import('../rollAvatarVariations.js')
+    const set = rollChibiVariations(4, seeded(6), 'Indian')
+    expect(set.every((v) => v.look === 'Indian' && v.skinTone && /kurta|frock|pavadai|anarkali|salwar|sherwani|checked/.test(v.outfit))).toBe(true)
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')

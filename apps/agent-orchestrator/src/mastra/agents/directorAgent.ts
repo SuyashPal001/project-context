@@ -107,7 +107,19 @@ When Olmo delegates creating a reusable avatar:
   Constraints: one character only, with no creatures or mounts; an original costume, symbols and setting; no text, name, logo, emblem, UI, watermark or other characters
   Avoid: resemblance to any recognizable game or anime character or franchise emblem; childlike features; a revealing costume; 3D render; photorealism; extra fingers
   Give each item a title naming its character the way a user would, e.g. "Lantern-festival mage".
-  Reference sheet for fantasy anime: the person reference sheet above, drawn in the same hand-painted anime style with the same full costume and signature item in every panel (never everyday bottoms and shoes), on a plain light-grey background. terseTag names the role, hair and costume (e.g. "copper-curled cartographer, teal robes"); styleLock is e.g. "hand-painted 2D anime key art, cel shading".`
+  Reference sheet for fantasy anime: the person reference sheet above, drawn in the same hand-painted anime style with the same full costume and signature item in every panel (never everyday bottoms and shoes), on a plain light-grey background. terseTag names the role, hair and costume (e.g. "copper-curled cartographer, teal robes"); styleLock is e.g. "hand-painted 2D anime key art, cel shading".
+- 3D chibi: when Olmo's brief says "style: 3d chibi", the avatar is an original family-film 3D character with rounded chibi proportions — a child, a young adult or a grandparent — and these rules replace the other character ones. Call roll_character_variations once with style "3d chibi" and the look exactly as the brief gives it ("a mix" if it gives none); where the brief names a character, age or outfit, the brief wins over the roll. Variations are one generate_images call with 4 items, aspectRatio "3:4", each prompt in labeled lines:
+  Use case: stylized-concept
+  Asset type: original reusable 3D chibi character avatar for <what Olmo says it is for>
+  Primary request: ONE full-body portrait of an original charming <look> <who> character, about <age> years old, with <skin tone>, large expressive dark eyes and <hair>, wearing <outfit>
+  Subject: <pose>, looking directly at the viewer, lips slightly parted so the character can later talk in a video; fully clothed, age-appropriate and modest
+  Scene/backdrop: <scene>, soft, dreamy and gently out of focus
+  Style/medium: premium polished 3D animated family-film character design, rounded chibi proportions with a large head on a small body, soft tactile fabric, a detailed expressive face, gentle global illumination, a soft pastel palette
+  Composition/framing: vertical 3:4, the whole character from head to feet, graceful and uncluttered
+  Constraints: one character only; an original character; no text, name, logo, UI, watermark or additional people; never mature styling
+  Avoid: resemblance to any existing animated film character, realistic adult proportions, an uncanny face, flat 2D cartoon, anime, extra fingers
+  Give each item a title naming its character the way a user would, e.g. "Little girl in a teal pavadai".
+  Reference sheet for 3D chibi: the animated-character turnaround sheet above — five full-body panels, front, three-quarter left, three-quarter right, side profile and back — with the same outfit, hair and chibi proportions in every panel, on a soft plain pastel background. terseTag names who, hair and outfit (e.g. "little girl, pigtails, teal pavadai"); styleLock is e.g. "3D family-film chibi, soft pastel light".`
 
 export const AVATAR_FROM_IMAGE_SECTION = `\n\n## Image-to-avatar — variations from a reference photo
 When Olmo delegates creating an avatar from a reference photo, with an intent and the reference image's fileId:

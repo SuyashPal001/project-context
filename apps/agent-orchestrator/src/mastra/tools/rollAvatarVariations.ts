@@ -510,16 +510,118 @@ export function rollFantasyAnimeVariations(count: number, random: () => number =
   })
 }
 
+// 3D chibi: polished family-film 3D characters with rounded chibi
+// proportions, modelled on the concept the user approved (Anika, a little
+// girl in a lehenga in a spring garden). A family cast — children, young
+// adults and grandparents — always fully clothed and age-appropriate.
+const CHIBI_CAST: { who: string; gender: Gender; age: number; hair: string[] }[] = [
+  { who: 'little girl', gender: 'woman', age: 7, hair: ['two puffy pigtails tied with ribbons', 'a short bob with a star-shaped clip', 'a long braid with a small flower'] },
+  { who: 'little boy', gender: 'man', age: 8, hair: ['messy short hair with a cowlick', 'soft curly hair', 'neatly side-parted hair'] },
+  { who: 'young woman', gender: 'woman', age: 28, hair: ['a high ponytail', 'shoulder-length wavy hair', 'a loose low bun'] },
+  { who: 'young man', gender: 'man', age: 30, hair: ['short tousled hair', 'a neat undercut', 'wavy hair swept back'] },
+  { who: 'grandmother', gender: 'woman', age: 66, hair: ['a silver bun', 'short curly grey hair'] },
+  { who: 'grandfather', gender: 'man', age: 68, hair: ['white hair with round glasses', 'a bald crown with a white moustache'] },
+]
+
+const CHIBI_OUTFITS_INDIAN: Record<Gender, string[]> = {
+  woman: ['a mustard cotton frock with a mirror-work yoke', 'a teal silk pavadai with a gold border', 'a lilac anarkali with a light dupatta draped securely', 'a peach cotton salwar kameez with a printed dupatta'],
+  man: ['a white kurta with a saffron nehru jacket', 'a sky-blue kurta pyjama', 'a cream sherwani with a maroon stole', 'a checked half-sleeve shirt with shorts and a small backpack'],
+}
+
+const CHIBI_OUTFITS_GENERAL: Record<Gender, string[]> = {
+  woman: ['a yellow raincoat with red rain boots', 'denim dungarees over a striped tee', 'a floral sundress with a straw hat', 'a cozy knitted cardigan over a pleated skirt'],
+  man: ['a green hoodie with sneakers', 'a checked flannel shirt with corduroy trousers', 'a denim jacket over a white tee', 'a striped polo with khaki shorts'],
+}
+
+const CHIBI_SCENES = [
+  'a sunny courtyard hung with marigold garlands',
+  'a cozy kitchen in soft morning light',
+  'a monsoon street with puddles and bright umbrellas',
+  'a school playground under a big banyan tree',
+  'a rooftop at kite-flying time under a pastel sky',
+  'a lakeside picnic lawn with wildflowers',
+  'a snowy village lane with warm lit windows',
+  'a little bookshop corner with lanterns',
+]
+
+const CHIBI_POSES = [
+  'arms gently folded with a playful, mildly stubborn pout',
+  'a big happy grin while waving',
+  'hands on hips, proud and cheerful',
+  'giggling with both hands to the cheeks',
+  'head tilted with a curious look',
+  'twirling mid-step with a delighted smile',
+]
+
+export interface ChibiVariationSpec {
+  who: string
+  gender: Gender
+  age: number
+  look: string
+  skinTone?: string
+  hair: string
+  outfit: string
+  scene: string
+  pose: string
+}
+
+export function rollChibiVariations(count: number, random: () => number = Math.random, look = 'a mix'): ChibiVariationSpec[] {
+  const trimmed = look.trim()
+  const isMix = /^(a )?mix\b/i.test(trimmed) || trimmed === ''
+  const isIndian = /\bindian\b/i.test(trimmed)
+  // Alternate girls/women and boys/men, spread across the age groups.
+  const women = shuffled(CHIBI_CAST.filter((c) => c.gender === 'woman'), random)
+  const men = shuffled(CHIBI_CAST.filter((c) => c.gender === 'man'), random)
+  const looks = shuffled(MIX_LOOKS, random)
+  const skins = shuffled(INDIAN_SKIN_TONES, random)
+  const scenes = shuffled(CHIBI_SCENES, random)
+  const poses = shuffled(CHIBI_POSES, random)
+  const outfits = {
+    indian: { woman: shuffled(CHIBI_OUTFITS_INDIAN.woman, random), man: shuffled(CHIBI_OUTFITS_INDIAN.man, random) },
+    general: { woman: shuffled(CHIBI_OUTFITS_GENERAL.woman, random), man: shuffled(CHIBI_OUTFITS_GENERAL.man, random) },
+  }
+  const used = { indian: { woman: 0, man: 0 }, general: { woman: 0, man: 0 } }
+  return Array.from({ length: count }, (_, i) => {
+    const cast = i % 2 === 0 ? women[(i / 2) % women.length] : men[((i - 1) / 2) % men.length]
+    const personLook = isMix ? looks[i % looks.length] : trimmed
+    const indianLook = isIndian || personLook === 'Indian'
+    const pool = indianLook ? 'indian' : 'general'
+    return {
+      who: cast.who,
+      gender: cast.gender,
+      age: cast.age,
+      look: personLook,
+      ...(indianLook ? { skinTone: skins[i % skins.length] } : {}),
+      hair: cast.hair[Math.floor(random() * cast.hair.length)],
+      outfit: outfits[pool][cast.gender][used[pool][cast.gender]++ % outfits[pool][cast.gender].length],
+      scene: scenes[i % scenes.length],
+      pose: poses[i % poses.length],
+    }
+  })
+}
+
+/** "Indian little girl · a teal silk pavadai · a sunny courtyard" */
+export function chibiLine(v: ChibiVariationSpec): string {
+  const short = (s: string) => s.split(/,| with | hung | under | in /)[0].trim()
+  return `${v.look} ${v.who} · ${short(v.outfit)} · ${short(v.scene)}`
+}
+
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
-  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Call once before writing animated-character variation prompts. Free.',
+  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Style "3d chibi": per variation a family-cast member (child, young adult or grandparent), look, hair, outfit, scene and pose. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime) or "fantasy anime" (2D anime game key art)'),
+    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime', '3d chibi']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime), "fantasy anime" (2D anime game key art) or "3d chibi" (family-film 3D chibi)'),
+    look: z.string().default('a mix').describe('3D chibi only: the look from the brief exactly as given — "a mix", "Indian", or the user\'s own words'),
     kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('Mascots only, from the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
-    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Everything except mascots, from the brief; "any" alternates woman and man'),
+    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Game heroes, cinematic anime and fantasy anime, from the brief; "any" alternates woman and man'),
   }),
   execute: async (inputData, execContext) => {
+    if (inputData.style === '3d chibi') {
+      const cast = rollChibiVariations(inputData.count, Math.random, inputData.look)
+      emitToolStatus(execContext, `Casting ${cast.length} characters`, cast.map(chibiLine))
+      return { variations: cast }
+    }
     if (inputData.style === 'fantasy anime') {
       const heroes = rollFantasyAnimeVariations(inputData.count, Math.random, inputData.gender)
       emitToolStatus(execContext, `Casting ${heroes.length} characters`, heroes.map(gameHeroLine))
