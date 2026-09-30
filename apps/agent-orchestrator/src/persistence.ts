@@ -643,7 +643,7 @@ export async function findTenantAvatarBySource(idToken: string, sourceFileId: st
   }
 }
 
-export async function setTenantAvatarReference(idToken: string, avatarId: string, body: { referenceSheetFileId: string; terseTag: string; styleLock: string }): Promise<boolean> {
+export async function setTenantAvatarReference(idToken: string, avatarId: string, body: { referenceSheetFileId: string; terseTag: string; styleLock: string; category?: 'UGC' | 'Animation' | 'TVC' }): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/creative-library-assets/avatars/${avatarId}/reference`, { method: 'PUT', headers: authHeaders(idToken), body: JSON.stringify(body) })
     if (!res.ok) console.error('[persistence] setTenantAvatarReference failed:', res.status, await res.text().catch(() => ''))

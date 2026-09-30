@@ -8,7 +8,14 @@ export interface CreativeAvatar {
     // seed) — passed directly as attachment.fileId, no upload round-trip.
     // Fixed values, must match products/agent-platform/packages/api/seeds/creative-library-assets.ts's AVATAR_ASSETS exactly.
     assetId: string;
+    // Picker filter chip. Omitted on the original UGC presenters.
+    category?: AvatarCategory;
 }
+
+export type AvatarCategory = 'UGC' | 'Animation' | 'TVC';
+export const AVATAR_CATEGORIES: readonly AvatarCategory[] = ['UGC', 'Animation', 'TVC'];
+export const avatarCategory = (avatar: { category?: string | null }): AvatarCategory =>
+    avatar.category === 'Animation' || avatar.category === 'TVC' ? avatar.category : 'UGC';
 
 // Original synthetic portrait presets. These are still images, not generated videos.
 export const CREATIVE_AVATARS: readonly CreativeAvatar[] = [
@@ -62,4 +69,34 @@ export const CREATIVE_AVATARS: readonly CreativeAvatar[] = [
     { id: 'outdoor-adventure-host', name: 'Sofia', role: 'Outdoor adventure host', tone: 'Capable', image: '/creative/avatars/outdoor-adventure-host.jpg', assetId: '76a7ca61-cf55-46e8-8510-0bb488b25933' },
     { id: 'menswear-style-presenter', name: 'Karan', role: 'Menswear style presenter', tone: 'Composed', image: '/creative/avatars/menswear-style-presenter.jpg', assetId: '301f60ef-e630-4cd5-9528-75594d106099' },
     { id: 'fashion-accessories-presenter', name: 'Mila', role: 'Fashion accessories presenter', tone: 'Poised', image: '/creative/avatars/fashion-accessories-presenter.jpg', assetId: 'ae8a5191-f39a-4dea-9a24-80e92a20eb20' },
+    { id: 'mascot-lumo', name: 'Lumo', role: 'Cozy 3D mascot · felt lantern', tone: 'Shy & hopeful', image: '/creative/avatars/mascot-lumo.jpg', assetId: '9e991669-46d8-4d3a-93f1-50f0a803ad4d', category: 'Animation' },
+    { id: 'mascot-piko', name: 'Piko', role: 'Cozy 3D mascot · plush moth', tone: 'Brave & bashful', image: '/creative/avatars/mascot-piko.jpg', assetId: '7cb6a1f7-43a7-44c4-b14b-3cb923c3385c', category: 'Animation' },
+    { id: 'mascot-pebbi', name: 'Pebbi', role: 'Cozy 3D mascot · river pebble', tone: 'Quietly determined', image: '/creative/avatars/mascot-pebbi.jpg', assetId: 'ca4d11a4-4348-4401-b803-ba449988e8b2', category: 'Animation' },
+    { id: 'mascot-tali', name: 'Tali', role: 'Cozy 3D mascot · paper bird', tone: 'Curious & clever', image: '/creative/avatars/mascot-tali.jpg', assetId: '7372079d-0c56-40d5-b0b1-700d370721f1', category: 'Animation' },
+    { id: 'mascot-sumi', name: 'Sumi', role: 'Cozy 3D mascot · ink drop', tone: 'Imaginative & mischievous', image: '/creative/avatars/mascot-sumi.jpg', assetId: 'f16cb519-31f8-4e7c-ab01-71afe3457d3d', category: 'Animation' },
+    { id: 'mascot-fizz', name: 'Fizz', role: 'Cozy 3D mascot · gummy star', tone: 'Energetic optimist', image: '/creative/avatars/mascot-fizz.jpg', assetId: 'da7fed61-5d52-4e96-af4a-9e9bb9d6eb32', category: 'Animation' },
+    { id: 'mascot-dotti', name: 'Dotti', role: 'Cozy 3D mascot · ceramic teacup', tone: 'Caring & confident', image: '/creative/avatars/mascot-dotti.jpg', assetId: 'e05b458c-8a30-4f08-9dbc-3fffb928e939', category: 'Animation' },
+    { id: 'mascot-rolo', name: 'Rolo', role: 'Cozy 3D mascot · corduroy snail', tone: 'Relaxed & resourceful', image: '/creative/avatars/mascot-rolo.jpg', assetId: 'cbd78e17-cd66-45c7-b290-89863cc8169f', category: 'Animation' },
+    { id: 'mascot-junu', name: 'Junu', role: 'Cozy 3D mascot · clay seedling', tone: 'Hopeful & resilient', image: '/creative/avatars/mascot-junu.jpg', assetId: '3eb9c30f-fb6d-4e0f-a268-c918062dfb8b', category: 'Animation' },
+    { id: 'mascot-vela', name: 'Vela', role: 'Cozy 3D mascot · moon jelly', tone: 'Thoughtful & playful', image: '/creative/avatars/mascot-vela.jpg', assetId: '64c3f5b3-7ba4-4b69-bd1a-a3b8a0c4e169', category: 'Animation' },
+    { id: 'game-kael', name: 'Kael', role: 'Game hero · forest pathfinder', tone: 'Gentle but formidable', image: '/creative/avatars/game-kael.jpg', assetId: 'deb87863-2ece-4702-ae38-fcc2630aa516', category: 'Animation' },
+    { id: 'game-nera', name: 'Nera', role: 'Game hero · desert relic scholar', tone: 'Adventurous', image: '/creative/avatars/game-nera.jpg', assetId: 'd95cfef2-8325-4ed0-8308-2ae1f0f0be74', category: 'Animation' },
+    { id: 'game-toren', name: 'Toren', role: 'Game hero · frost-forged guardian', tone: 'Calm & protective', image: '/creative/avatars/game-toren.jpg', assetId: 'eb0e577f-ab18-4f0e-9d3c-2acabe9054f0', category: 'Animation' },
+    { id: 'game-mara', name: 'Mara', role: 'Game hero · post-collapse botanist', tone: 'Focused & hopeful', image: '/creative/avatars/game-mara.jpg', assetId: '525f1377-b351-41ef-bfba-a28aeabe2a3e', category: 'Animation' },
+    { id: 'game-kiro', name: 'Kiro', role: 'Game hero · exploration robot', tone: 'Curious & approachable', image: '/creative/avatars/game-kiro.jpg', assetId: 'b5406809-7820-42f4-a724-2edbd8b044cc', category: 'Animation' },
+    { id: 'game-barek', name: 'Barek', role: 'Game hero · volcanic highland guardian', tone: 'Intense & thoughtful', image: '/creative/avatars/game-barek.jpg', assetId: 'f3517870-7c01-4030-9c65-55138ae874e6', category: 'Animation' },
+    { id: 'game-edda', name: 'Edda', role: 'Game hero · veteran sea guardian', tone: 'Fierce calm', image: '/creative/avatars/game-edda.jpg', assetId: 'e2468f80-eb17-4b46-8f1c-810a8285cc21', category: 'Animation' },
+    { id: 'game-silas', name: 'Silas', role: 'Game hero · nocturnal alchemist', tone: 'Analytical', image: '/creative/avatars/game-silas.jpg', assetId: 'c4d56866-6991-4794-bdf2-092ab192920c', category: 'Animation' },
+    { id: 'game-vexa', name: 'Vexa', role: 'Game hero · deep-space salvage pilot', tone: 'Wry & confident', image: '/creative/avatars/game-vexa.jpg', assetId: '53f7035f-96dc-4c69-833c-57d2ffa4eb62', category: 'Animation' },
+    { id: 'anime-leora', name: 'Leora', role: 'Cinematic anime · rooftop lounge', tone: 'Poised & playful', image: '/creative/avatars/anime-leora.jpg', assetId: 'da16c8cb-be8d-4798-90ef-6dc01df42c46', category: 'Animation' },
+    { id: 'anime-ren', name: 'Ren', role: 'Cinematic anime · gallery after dark', tone: 'Quietly charismatic', image: '/creative/avatars/anime-ren.jpg', assetId: '0771b2b8-c254-4777-9efd-be98cbb06035', category: 'Animation' },
+    { id: 'anime-mira', name: 'Mira', role: 'Cinematic anime · coastal terrace', tone: 'Composed & confident', image: '/creative/avatars/anime-mira.jpg', assetId: '5dfa8cc8-1a66-4541-8331-911052953066', category: 'Animation' },
+    { id: 'anime-airi', name: 'Airi', role: 'Fantasy anime · sky-map cartographer', tone: 'Confident & curious', image: '/creative/avatars/anime-airi.jpg', assetId: '8c59c3f1-fa91-4db9-8643-a619a0eaf31d', category: 'Animation' },
+    { id: 'anime-renna', name: 'Renna', role: 'Fantasy anime · glass-garden knight', tone: 'Calm & determined', image: '/creative/avatars/anime-renna.jpg', assetId: '2962dd59-0742-4634-af3e-95b4ce54dffe', category: 'Animation' },
+    { id: 'chibi-anika', name: 'Anika', role: '3D chibi · festive little girl', tone: 'Playful & stubborn', image: '/creative/avatars/chibi-anika.jpg', assetId: '85e30c27-54ca-473e-9cfc-72c7a7d3aab9', category: 'Animation' },
+    { id: 'chibi-ayaan', name: 'Ayaan', role: '3D chibi · determined little boy', tone: 'Funny & stubborn', image: '/creative/avatars/chibi-ayaan.jpg', assetId: '316cad61-bc30-4563-8d19-d78be910fc4b', category: 'Animation' },
+    { id: 'chibi-zuri', name: 'Zuri', role: '3D chibi · cheerful little girl', tone: 'Exuberant', image: '/creative/avatars/chibi-zuri.jpg', assetId: '4fc13bf5-30b2-4e45-95b3-dc7033da0627', category: 'Animation' },
+    { id: 'storybook-kavya', name: 'Kavya', role: 'Storybook anime · home kitchen', tone: 'Kind & quietly amused', image: '/creative/avatars/storybook-kavya.jpg', assetId: 'e79121a5-9ea5-4159-a141-0f0c1f339810', category: 'Animation' },
+    { id: 'storybook-meera', name: 'Meera', role: 'Storybook anime · village bus window', tone: 'Calm & thoughtful', image: '/creative/avatars/storybook-meera.jpg', assetId: 'a0db4ee1-af4a-4a99-a5a8-1c2161682ee2', category: 'Animation' },
+    { id: 'tvc-aroha', name: 'Aroha', role: 'TVC lead actress · evening gown', tone: 'Graceful & confident', image: '/creative/avatars/tvc-aroha.jpg', assetId: 'ec0d606e-07f6-461c-be1e-8b4048dccf5a', category: 'TVC' },
 ];

@@ -130,6 +130,7 @@ creativeLibraryAssetsRoutes.put(
     referenceSheetFileId: uuidSchema,
     terseTag: z.string().trim().min(1).max(200),
     styleLock: z.string().trim().min(1).max(200),
+    category: z.enum(['UGC', 'Animation', 'TVC']).optional(),
   })),
   async (c) => {
     const tenantId = guard(c, 'create');

@@ -33,7 +33,7 @@ describe('creative library', () => {
     it('attaches a selected presenter preset directly, with no upload round-trip', async () => {
         const { onSelect } = renderLibrary('avatars');
 
-        expect(screen.getAllByRole('button', { name: /avatar$/ })).toHaveLength(50);
+        expect(screen.getAllByRole('button', { name: /avatar$/ })).toHaveLength(80);
         fireEvent.click(screen.getByRole('button', { name: 'Use Arjun avatar' }));
 
         await waitFor(() => expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
@@ -41,6 +41,31 @@ describe('creative library', () => {
             attachment: { fileId: '8b6e9254-cc47-492c-bdc7-557ac6302e01', name: 'Arjun', type: 'image/jpeg', size: 0 },
         })));
         expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('filters the library by UGC, Animation and TVC, and shows own avatars only under their own category', async () => {
+        const own = (over: object) => ({ id: 'asset-1', fileId: 'file-1', name: 'Riya', role: 'Fitness creator', tone: 'Energetic', namingStatus: 'done', type: 'image/jpeg', size: 10, createdAt: '2026-09-29T00:00:00.000Z', ...over });
+        vi.mocked(api.get).mockImplementation(async (url: string) => url === '/api/v1/creative-library-assets/avatars'
+            ? { data: [own({ category: 'Animation', name: 'Bolt' }), own({ id: 'asset-2', fileId: 'file-2', name: 'Upload', category: null })] }
+            : { data: [] });
+        renderLibrary('avatars');
+        expect(await screen.findByRole('button', { name: 'Use Bolt avatar' })).toBeTruthy();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Animation' }));
+        expect(screen.getByRole('button', { name: 'Use Lumo avatar' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Use Bolt avatar' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Use Arjun avatar' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Use Upload avatar' })).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'TVC' }));
+        expect(screen.getAllByRole('button', { name: /avatar$/ }).map(b => b.getAttribute('aria-label'))).toEqual(['Use Aroha avatar']);
+
+        fireEvent.click(screen.getByRole('button', { name: 'UGC' }));
+        expect(screen.getByRole('button', { name: 'Use Arjun avatar' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Use Lumo avatar' })).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'All' }));
+        expect(screen.getByRole('button', { name: 'Use Upload avatar' })).toBeTruthy();
     });
 
     it('shows "Create with AI" when onCreateAvatar is passed, and calls it on click', () => {

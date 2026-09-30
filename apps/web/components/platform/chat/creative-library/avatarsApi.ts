@@ -11,6 +11,7 @@ export interface TenantAvatar {
     role: string | null;
     tone: string | null;
     namingStatus: 'pending' | 'done' | 'failed';
+    category?: 'UGC' | 'Animation' | 'TVC' | null;
     type: string;
     size: number;
     createdAt: string;

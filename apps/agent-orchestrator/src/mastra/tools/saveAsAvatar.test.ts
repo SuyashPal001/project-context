@@ -74,4 +74,9 @@ describe('save_as_avatar', () => {
     p.registerTenantAvatar.mockResolvedValue(null)
     expect(await run(input)).toEqual({ saved: false, reason: 'REGISTER_FAILED' })
   })
+
+  it('passes the category through so the picker can filter the saved avatar', async () => {
+    await run({ ...input, category: 'Animation' })
+    expect(p.setTenantAvatarReference).toHaveBeenCalledWith('tok', 'a1', { referenceSheetFileId: 'sheet-copy', terseTag: input.terseTag, styleLock: input.styleLock, category: 'Animation' })
+  })
 })

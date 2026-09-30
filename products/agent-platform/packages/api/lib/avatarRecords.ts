@@ -23,7 +23,10 @@ export interface AvatarAttributes {
   terseTag?: string;
   styleLock?: string;
   sourceFileId?: string;
+  // Picker filter, set when an avatar is saved from an avatar skill.
+  category?: AvatarCategory;
 }
+export type AvatarCategory = 'UGC' | 'Animation' | 'TVC';
 export interface TenantAvatarRecord {
   id: string;
   fileId: string;
@@ -32,6 +35,7 @@ export interface TenantAvatarRecord {
   tone: string | null;
   namingStatus: AvatarNamingStatus;
   referenceSheetFileId: string | null;
+  category: AvatarCategory | null;
   type: string;
   size: number;
   createdAt: string;
@@ -67,6 +71,7 @@ function toRecord(row: Row): TenantAvatarRecord {
     tone: attrs.tone ?? null,
     namingStatus: attrs.namingStatus ?? 'done',
     referenceSheetFileId: attrs.referenceSheetFileId ?? null,
+    category: attrs.category ?? null,
     type: row.mimeType ?? 'image/jpeg',
     size: row.size ?? 0,
     createdAt: row.createdAt.toISOString(),
@@ -310,7 +315,7 @@ export async function nameTenantAvatarWithin(tenantId: string, avatar: TenantAva
  * Returns the fresh record, null for an unknown avatar, or 'invalid_sheet'.
  */
 export async function setAvatarReference(
-  tenantId: string, id: string, input: { referenceSheetFileId: string; terseTag: string; styleLock: string },
+  tenantId: string, id: string, input: { referenceSheetFileId: string; terseTag: string; styleLock: string; category?: AvatarCategory },
 ): Promise<TenantAvatarRecord | null | 'invalid_sheet'> {
   const avatar = await getTenantAvatar(tenantId, { id });
   if (!avatar) return null;
@@ -318,7 +323,10 @@ export async function setAvatarReference(
     .where(and(eq(files.tenantId, tenantId), eq(files.id, input.referenceSheetFileId), isNull(files.deletedAt)))
     .limit(1);
   if (!sheet || !sheet.key.startsWith(AVATAR_REFS_PREFIX) || !ALLOWED_PRODUCT_IMAGE_TYPES.has(sheet.mimeType ?? '')) return 'invalid_sheet';
-  const patch: AvatarAttributes = { referenceSheetFileId: input.referenceSheetFileId, terseTag: input.terseTag, styleLock: input.styleLock };
+  const patch: AvatarAttributes = {
+    referenceSheetFileId: input.referenceSheetFileId, terseTag: input.terseTag, styleLock: input.styleLock,
+    ...(input.category ? { category: input.category } : {}),
+  };
   await db.update(creativeLibraryAssets)
     .set({ attributes: sql`${creativeLibraryAssets.attributes} || ${JSON.stringify(patch)}::jsonb` })
     .where(and(eq(creativeLibraryAssets.tenantId, tenantId), eq(creativeLibraryAssets.id, id)));

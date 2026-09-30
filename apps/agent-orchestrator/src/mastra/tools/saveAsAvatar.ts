@@ -18,6 +18,7 @@ export const saveAsAvatar = createTool({
     referenceSheetFileId: z.string().uuid().describe('fileId of the reference sheet generated from that portrait'),
     terseTag: z.string().min(1).max(200).describe('Short identity description used as identityAnchor.terseTag on later calls'),
     styleLock: z.string().min(1).max(200).describe('Short look/lighting description used as identityAnchor.styleLock on later calls'),
+    category: z.enum(['UGC', 'Animation', 'TVC']).optional().describe('Avatar picker filter: "UGC" for a real-person creator, "Animation" for any animated character style, "TVC" for a TV-commercial lead actor'),
   }),
   outputSchema: z.object({
     saved: z.boolean(),
@@ -30,11 +31,12 @@ export const saveAsAvatar = createTool({
     referenceSheet: z.boolean().optional(),
   }),
   execute: async (inputData, execContext) => {
-    const { portraitFileId, referenceSheetFileId, terseTag, styleLock } = inputData as {
+    const { portraitFileId, referenceSheetFileId, terseTag, styleLock, category } = inputData as {
       portraitFileId: string
       referenceSheetFileId: string
       terseTag: string
       styleLock: string
+      category?: 'UGC' | 'Animation' | 'TVC'
     }
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const sessionId = (execContext?.requestContext?.get('conversationId') as string | undefined) ?? 'unknown'
@@ -76,7 +78,7 @@ export const saveAsAvatar = createTool({
         key: `avatar-refs/${avatar.id}/${randomUUID()}-sheet.${sheetExt}`, name: `${avatar.name} reference.${sheetExt}`,
         content: Buffer.from(sheet.base64, 'base64'), contentType: sheet.mimeType,
       })
-      if (sheetCopy) referenceSheet = await setTenantAvatarReference(idToken, avatar.id, { referenceSheetFileId: sheetCopy.fileId, terseTag, styleLock })
+      if (sheetCopy) referenceSheet = await setTenantAvatarReference(idToken, avatar.id, { referenceSheetFileId: sheetCopy.fileId, terseTag, styleLock, ...(category ? { category } : {}) })
     }
     if (!referenceSheet) console.error(`[session:${sessionId}] saveAsAvatar: avatar ${avatar.id} saved without its reference sheet`)
 

@@ -75,7 +75,7 @@ export const listCastingAssets = createTool({
       // here is the file id — the asset row's own id resolves nowhere
       // (mediaCache's library fallback only serves platform rows) — and a
       // deleted file drops it from the list.
-      const { rows } = await client.query<{ id: string; name: string; attributes: { role?: string; tone?: string; terseTag?: string; styleLock?: string } }>(
+      const { rows } = await client.query<{ id: string; name: string; attributes: { role?: string; tone?: string; terseTag?: string; styleLock?: string; category?: string } }>(
         `SELECT COALESCE(a.file_id, a.id) AS id, a.name, a.attributes
          FROM creative_library_assets a
          LEFT JOIN files f ON f.id = a.file_id
@@ -88,7 +88,8 @@ export const listCastingAssets = createTool({
         items: rows.map((row) => ({
           id: row.id,
           name: row.name,
-          description: [row.attributes?.role, row.attributes?.tone].filter(Boolean).join(' · '),
+          // Category first, so a UGC ad is never cast with an animated mascot.
+          description: [row.attributes?.category, row.attributes?.role, row.attributes?.tone].filter(Boolean).join(' · '),
           // A tenant avatar created in chat carries its identity anchor: pass it
           // as identityAnchor on generate_image/generate_video so the face holds.
           ...(row.attributes?.terseTag && row.attributes?.styleLock

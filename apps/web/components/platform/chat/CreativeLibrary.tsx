@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CREATIVE_TEMPLATES } from './creativeLibraryTemplates';
-import { CREATIVE_AVATARS, type CreativeAvatar } from './creativeLibraryAvatars';
+import { AVATAR_CATEGORIES, CREATIVE_AVATARS, avatarCategory, type AvatarCategory, type CreativeAvatar } from './creativeLibraryAvatars';
 import { fetchCreativeVoice } from './creativeVoiceFetch';
 import { cn } from '@/lib/utils';
 import { ProductsPanel } from './creative-library/ProductsPanel';
@@ -117,13 +117,18 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled
     const namingAttempted = useRef(new Set<string>());
     const queryClient = useQueryClient();
     const [search, setSearch] = useState('');
+    const [category, setCategory] = useState<AvatarCategory | null>(null);
     const [uploading, setUploading] = useState<string | null>(null);
     const query = search.toLowerCase();
-    const matches = CREATIVE_AVATARS.filter(avatar => `${avatar.name} ${avatar.role} ${avatar.tone}`.toLowerCase().includes(query));
+    const matches = CREATIVE_AVATARS.filter(avatar => (category === null || avatarCategory(avatar) === category)
+        && `${avatar.name} ${avatar.role} ${avatar.tone}`.toLowerCase().includes(query));
     // The tenant's own avatars (anything in Drive's Avatars folder); platform
     // presets above stay static. A failed load just shows presets only.
     const { data: ownAvatars = [] } = useQuery({ queryKey: TENANT_AVATARS_QUERY_KEY, queryFn: listTenantAvatars });
-    const ownMatches = ownAvatars.filter(avatar => `${avatar.name} ${avatar.role ?? ''} ${avatar.tone ?? ''}`.toLowerCase().includes(query));
+    // An own avatar without a category (uploaded, or saved before categories)
+    // shows under All only.
+    const ownMatches = ownAvatars.filter(avatar => (category === null || avatar.category === category)
+        && `${avatar.name} ${avatar.role ?? ''} ${avatar.tone ?? ''}`.toLowerCase().includes(query));
 
     useEffect(() => {
         mountedRef.current = true;
@@ -181,6 +186,12 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled
                 </Button>
             </div>
             <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" aria-label="Upload presenter image" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadOwnImage(file); event.target.value = ''; }} />
+        </div>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter avatars">
+            {([null, ...AVATAR_CATEGORIES] as const).map(value => <Button key={value ?? 'all'} type="button" size="sm" className="rounded-full"
+                variant={category === value ? 'outline' : 'ghost'} aria-pressed={category === value} onClick={() => setCategory(value)}>
+                {value ?? 'All'}
+            </Button>)}
         </div>
         {ownMatches.length > 0 && <section className="space-y-3">
             <h3 className="text-sm font-medium text-muted-foreground">Yours</h3>

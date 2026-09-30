@@ -32,7 +32,11 @@ export interface AvatarAssetSeed {
   role: string;
   tone: string;
   localImagePath: string; // relative to apps/web/public
+  // Picker filter. Omitted on the original 50, which are all UGC presenters.
+  category?: AvatarCategory;
 }
+
+export type AvatarCategory = 'UGC' | 'Animation' | 'TVC';
 
 export const AVATAR_ASSETS: AvatarAssetSeed[] = [
   // Original 6 — image bytes refreshed (avatar-037..042 from the avtaar set), same
@@ -89,6 +93,40 @@ export const AVATAR_ASSETS: AvatarAssetSeed[] = [
   { id: '76a7ca61-cf55-46e8-8510-0bb488b25933', slug: 'outdoor-adventure-host', name: 'Sofia', role: 'Outdoor adventure host', tone: 'Capable', localImagePath: 'creative/avatars/outdoor-adventure-host.jpg' },
   { id: '301f60ef-e630-4cd5-9528-75594d106099', slug: 'menswear-style-presenter', name: 'Karan', role: 'Menswear style presenter', tone: 'Composed', localImagePath: 'creative/avatars/menswear-style-presenter.jpg' },
   { id: 'ae8a5191-f39a-4dea-9a24-80e92a20eb20', slug: 'fashion-accessories-presenter', name: 'Mila', role: 'Fashion accessories presenter', tone: 'Poised', localImagePath: 'creative/avatars/fashion-accessories-presenter.jpg' },
+
+  // 30 approved animated and TVC characters (worktree feat/animated-avatars,
+  // docs/design-references/*). Ivo, the tenth game hero, is left out: his
+  // sneakers carry a real brand logo.
+  { id: '9e991669-46d8-4d3a-93f1-50f0a803ad4d', slug: 'mascot-lumo', name: 'Lumo', role: 'Cozy 3D mascot · felt lantern', tone: 'Shy & hopeful', localImagePath: 'creative/avatars/mascot-lumo.jpg', category: 'Animation' },
+  { id: '7cb6a1f7-43a7-44c4-b14b-3cb923c3385c', slug: 'mascot-piko', name: 'Piko', role: 'Cozy 3D mascot · plush moth', tone: 'Brave & bashful', localImagePath: 'creative/avatars/mascot-piko.jpg', category: 'Animation' },
+  { id: 'ca4d11a4-4348-4401-b803-ba449988e8b2', slug: 'mascot-pebbi', name: 'Pebbi', role: 'Cozy 3D mascot · river pebble', tone: 'Quietly determined', localImagePath: 'creative/avatars/mascot-pebbi.jpg', category: 'Animation' },
+  { id: '7372079d-0c56-40d5-b0b1-700d370721f1', slug: 'mascot-tali', name: 'Tali', role: 'Cozy 3D mascot · paper bird', tone: 'Curious & clever', localImagePath: 'creative/avatars/mascot-tali.jpg', category: 'Animation' },
+  { id: 'f16cb519-31f8-4e7c-ab01-71afe3457d3d', slug: 'mascot-sumi', name: 'Sumi', role: 'Cozy 3D mascot · ink drop', tone: 'Imaginative & mischievous', localImagePath: 'creative/avatars/mascot-sumi.jpg', category: 'Animation' },
+  { id: 'da7fed61-5d52-4e96-af4a-9e9bb9d6eb32', slug: 'mascot-fizz', name: 'Fizz', role: 'Cozy 3D mascot · gummy star', tone: 'Energetic optimist', localImagePath: 'creative/avatars/mascot-fizz.jpg', category: 'Animation' },
+  { id: 'e05b458c-8a30-4f08-9dbc-3fffb928e939', slug: 'mascot-dotti', name: 'Dotti', role: 'Cozy 3D mascot · ceramic teacup', tone: 'Caring & confident', localImagePath: 'creative/avatars/mascot-dotti.jpg', category: 'Animation' },
+  { id: 'cbd78e17-cd66-45c7-b290-89863cc8169f', slug: 'mascot-rolo', name: 'Rolo', role: 'Cozy 3D mascot · corduroy snail', tone: 'Relaxed & resourceful', localImagePath: 'creative/avatars/mascot-rolo.jpg', category: 'Animation' },
+  { id: '3eb9c30f-fb6d-4e0f-a268-c918062dfb8b', slug: 'mascot-junu', name: 'Junu', role: 'Cozy 3D mascot · clay seedling', tone: 'Hopeful & resilient', localImagePath: 'creative/avatars/mascot-junu.jpg', category: 'Animation' },
+  { id: '64c3f5b3-7ba4-4b69-bd1a-a3b8a0c4e169', slug: 'mascot-vela', name: 'Vela', role: 'Cozy 3D mascot · moon jelly', tone: 'Thoughtful & playful', localImagePath: 'creative/avatars/mascot-vela.jpg', category: 'Animation' },
+  { id: 'deb87863-2ece-4702-ae38-fcc2630aa516', slug: 'game-kael', name: 'Kael', role: 'Game hero · forest pathfinder', tone: 'Gentle but formidable', localImagePath: 'creative/avatars/game-kael.jpg', category: 'Animation' },
+  { id: 'd95cfef2-8325-4ed0-8308-2ae1f0f0be74', slug: 'game-nera', name: 'Nera', role: 'Game hero · desert relic scholar', tone: 'Adventurous', localImagePath: 'creative/avatars/game-nera.jpg', category: 'Animation' },
+  { id: 'eb0e577f-ab18-4f0e-9d3c-2acabe9054f0', slug: 'game-toren', name: 'Toren', role: 'Game hero · frost-forged guardian', tone: 'Calm & protective', localImagePath: 'creative/avatars/game-toren.jpg', category: 'Animation' },
+  { id: '525f1377-b351-41ef-bfba-a28aeabe2a3e', slug: 'game-mara', name: 'Mara', role: 'Game hero · post-collapse botanist', tone: 'Focused & hopeful', localImagePath: 'creative/avatars/game-mara.jpg', category: 'Animation' },
+  { id: 'b5406809-7820-42f4-a724-2edbd8b044cc', slug: 'game-kiro', name: 'Kiro', role: 'Game hero · exploration robot', tone: 'Curious & approachable', localImagePath: 'creative/avatars/game-kiro.jpg', category: 'Animation' },
+  { id: 'f3517870-7c01-4030-9c65-55138ae874e6', slug: 'game-barek', name: 'Barek', role: 'Game hero · volcanic highland guardian', tone: 'Intense & thoughtful', localImagePath: 'creative/avatars/game-barek.jpg', category: 'Animation' },
+  { id: 'e2468f80-eb17-4b46-8f1c-810a8285cc21', slug: 'game-edda', name: 'Edda', role: 'Game hero · veteran sea guardian', tone: 'Fierce calm', localImagePath: 'creative/avatars/game-edda.jpg', category: 'Animation' },
+  { id: 'c4d56866-6991-4794-bdf2-092ab192920c', slug: 'game-silas', name: 'Silas', role: 'Game hero · nocturnal alchemist', tone: 'Analytical', localImagePath: 'creative/avatars/game-silas.jpg', category: 'Animation' },
+  { id: '53f7035f-96dc-4c69-833c-57d2ffa4eb62', slug: 'game-vexa', name: 'Vexa', role: 'Game hero · deep-space salvage pilot', tone: 'Wry & confident', localImagePath: 'creative/avatars/game-vexa.jpg', category: 'Animation' },
+  { id: 'da16c8cb-be8d-4798-90ef-6dc01df42c46', slug: 'anime-leora', name: 'Leora', role: 'Cinematic anime · rooftop lounge', tone: 'Poised & playful', localImagePath: 'creative/avatars/anime-leora.jpg', category: 'Animation' },
+  { id: '0771b2b8-c254-4777-9efd-be98cbb06035', slug: 'anime-ren', name: 'Ren', role: 'Cinematic anime · gallery after dark', tone: 'Quietly charismatic', localImagePath: 'creative/avatars/anime-ren.jpg', category: 'Animation' },
+  { id: '5dfa8cc8-1a66-4541-8331-911052953066', slug: 'anime-mira', name: 'Mira', role: 'Cinematic anime · coastal terrace', tone: 'Composed & confident', localImagePath: 'creative/avatars/anime-mira.jpg', category: 'Animation' },
+  { id: '8c59c3f1-fa91-4db9-8643-a619a0eaf31d', slug: 'anime-airi', name: 'Airi', role: 'Fantasy anime · sky-map cartographer', tone: 'Confident & curious', localImagePath: 'creative/avatars/anime-airi.jpg', category: 'Animation' },
+  { id: '2962dd59-0742-4634-af3e-95b4ce54dffe', slug: 'anime-renna', name: 'Renna', role: 'Fantasy anime · glass-garden knight', tone: 'Calm & determined', localImagePath: 'creative/avatars/anime-renna.jpg', category: 'Animation' },
+  { id: '85e30c27-54ca-473e-9cfc-72c7a7d3aab9', slug: 'chibi-anika', name: 'Anika', role: '3D chibi · festive little girl', tone: 'Playful & stubborn', localImagePath: 'creative/avatars/chibi-anika.jpg', category: 'Animation' },
+  { id: '316cad61-bc30-4563-8d19-d78be910fc4b', slug: 'chibi-ayaan', name: 'Ayaan', role: '3D chibi · determined little boy', tone: 'Funny & stubborn', localImagePath: 'creative/avatars/chibi-ayaan.jpg', category: 'Animation' },
+  { id: '4fc13bf5-30b2-4e45-95b3-dc7033da0627', slug: 'chibi-zuri', name: 'Zuri', role: '3D chibi · cheerful little girl', tone: 'Exuberant', localImagePath: 'creative/avatars/chibi-zuri.jpg', category: 'Animation' },
+  { id: 'e79121a5-9ea5-4159-a141-0f0c1f339810', slug: 'storybook-kavya', name: 'Kavya', role: 'Storybook anime · home kitchen', tone: 'Kind & quietly amused', localImagePath: 'creative/avatars/storybook-kavya.jpg', category: 'Animation' },
+  { id: 'a0db4ee1-af4a-4a99-a5a8-1c2161682ee2', slug: 'storybook-meera', name: 'Meera', role: 'Storybook anime · village bus window', tone: 'Calm & thoughtful', localImagePath: 'creative/avatars/storybook-meera.jpg', category: 'Animation' },
+  { id: 'ec0d606e-07f6-461c-be1e-8b4048dccf5a', slug: 'tvc-aroha', name: 'Aroha', role: 'TVC lead actress · evening gown', tone: 'Graceful & confident', localImagePath: 'creative/avatars/tvc-aroha.jpg', category: 'TVC' },
 ];
 
 function storageKeyFor(slug: string): string {
@@ -129,7 +167,7 @@ async function run(): Promise<void> {
           id, tenant_id, slug, kind, name, attributes, storage_key, mime_type, status
         ) VALUES (
           ${a.id}, NULL, ${a.slug}, 'avatar', ${a.name},
-          ${sql.json({ role: a.role, tone: a.tone })}, ${storageKeyFor(a.slug)}, 'image/jpeg', 'active'
+          ${sql.json({ role: a.role, tone: a.tone, category: a.category ?? 'UGC' })}, ${storageKeyFor(a.slug)}, 'image/jpeg', 'active'
         )
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
