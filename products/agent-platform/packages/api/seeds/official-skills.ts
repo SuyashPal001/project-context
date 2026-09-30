@@ -50,6 +50,17 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     },
   },
   {
+    slug: 'animated-character-creator',
+    name: 'Animated character creator',
+    description: 'Use when the user wants a new reusable animated 3D character or mascot for their ads — not a real person.',
+    file: officialSkillFile('animated-character-creator.md'),
+    showcase: {
+      imageUrl: '/creative/avatars/animated-character.jpg',
+      bestFor: ['Mascots', 'Kids & family', 'Animated ads'],
+      starterPrompt: 'Create an animated character for my ads',
+    },
+  },
+  {
     slug: 'talking-head',
     name: 'Talking head',
     description: 'Use when the user wants a single presenter speaking one continuous script to camera — a talking-head ad.',

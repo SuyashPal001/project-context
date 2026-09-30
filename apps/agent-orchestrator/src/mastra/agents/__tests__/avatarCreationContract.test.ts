@@ -132,20 +132,35 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
   })
 })
 
-describe('animated-character avatars', () => {
-  it('offers an animated character in the look question and passes the style to Director', () => {
-    expect(AVATAR_SKILL_TEXT).toContain('then "Animated character" (a lovable 3D mascot, not a person)')
-    expect(AVATAR_SKILL_TEXT).toMatch(/Pass "style: animated character" to agent-director/)
-    expect(AVATAR_SKILL_TEXT).toMatch(/no gender, age or ethnicity, and the framing is always the whole character/)
+describe('animated-character avatars (Animated character creator Official skill)', () => {
+  const CHARACTER_SKILL_TEXT = () => readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../animated-character-creator.md'), 'utf8')
+
+  it('is its own skill, leaving the tested Avatar creator skill unchanged', () => {
+    expect(AVATAR_SKILL_TEXT).not.toMatch(/Animated character/)
+    expect(CHARACTER_SKILL_TEXT()).toMatch(/Use the Avatar creator skill/i)
   })
 
-  it('rolls characters, writes a 3D mascot prompt and a full-body turnaround sheet', () => {
+  it('asks what kind of character in one card and passes the style and kind to Director', () => {
+    const text = CHARACTER_SKILL_TEXT()
+    expect(text).toContain('at most ONE ask_clarifying_questions card')
+    expect(text).toContain('"A mix — 2 animals, 2 objects (Recommended)", "Animals", "Objects or food"')
+    expect(text).toMatch(/write "style: animated character"/)
+    expect(text).toMatch(/never has a gender, age or ethnicity/)
+    expect(text).toMatch(/Never recreate an existing cartoon character or another brand's mascot/)
+    expect(text).toMatch(/Delegate by calling the agent-director tool — never by writing a message to it in your reply/)
+    expect(text).toMatch(/ONE generate_images batch/)
+    expect(text).toMatch(/Only say the character is saved when Director reports a save_as_avatar result with saved true/)
+    expect(text).toMatch(/under Key Decisions only/)
+  })
+
+  it('rolls characters by kind, writes a 3D mascot prompt and a full-body turnaround sheet', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/when Olmo's brief says "style: animated character"/)
-    expect(AVATAR_CREATION_SECTION).toMatch(/Call roll_character_variations once instead/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/Call roll_character_variations once instead, with kind "animals", "objects" or "mix"/)
     expect(AVATAR_CREATION_SECTION).toContain('Use case: stylized-3d-character')
     expect(AVATAR_CREATION_SECTION).toMatch(/a small mouth, relaxed and slightly open, so it can later talk in a video/)
     expect(AVATAR_CREATION_SECTION).toMatch(/five full-body panels left to right/)
     expect(AVATAR_CREATION_SECTION).toMatch(/\(5\) back view/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/skipAvatarExpansion true on every item/)
   })
 })
 

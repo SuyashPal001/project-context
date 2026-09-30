@@ -68,6 +68,15 @@ describe('rollCharacterVariations', () => {
     }
   })
 
+  it('keeps to animals or objects when the brief asks for one kind', async () => {
+    const { rollCharacterVariations } = await import('../rollAvatarVariations.js')
+    const objects = /cactus|cloud|dumpling|mushroom|avocado|teacup|dewdrop|peach/
+    const animals = rollCharacterVariations(4, seeded(4), 'animals')
+    const things = rollCharacterVariations(4, seeded(4), 'objects')
+    expect(animals.every((v) => !objects.test(v.character)) && distinct(animals.map((v) => v.character))).toBe(true)
+    expect(things.every((v) => objects.test(v.character)) && distinct(things.map((v) => v.character))).toBe(true)
+  })
+
   it('reads as one short line', async () => {
     const { characterLine } = await import('../rollAvatarVariations.js')
     expect(characterLine({

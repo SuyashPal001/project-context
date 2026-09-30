@@ -193,8 +193,9 @@ export function castingLine(v: AvatarVariationSpec): string {
 }
 
 // Animated characters: lifelike 3D creatures and plush mascots rather than
-// people. Half the set are animals and half are objects, so four characters
-// are never four near-identical furry animals.
+// people. Unless the brief asks for only animals or only objects, half the
+// set are animals and half objects, so four characters are never four
+// near-identical furry animals.
 const CHARACTER_ANIMALS = [
   'long-eared bunny', 'round hedgehog', 'big-eared fennec fox', 'red panda', 'fluffy baby owl',
   'sleepy sloth', 'penguin chick', 'chubby kitten', 'sea otter', 'little frog',
@@ -261,7 +262,9 @@ export interface CharacterVariationSpec {
   expression: string
 }
 
-export function rollCharacterVariations(count: number, random: () => number = Math.random): CharacterVariationSpec[] {
+export type CharacterKind = 'mix' | 'animals' | 'objects'
+
+export function rollCharacterVariations(count: number, random: () => number = Math.random, kind: CharacterKind = 'mix'): CharacterVariationSpec[] {
   const animals = shuffled(CHARACTER_ANIMALS, random)
   const objects = shuffled(CHARACTER_OBJECTS, random)
   const materials = shuffled(CHARACTER_MATERIALS, random)
@@ -270,7 +273,9 @@ export function rollCharacterVariations(count: number, random: () => number = Ma
   const poses = shuffled(CHARACTER_POSES, random)
   const expressions = shuffled(CHARACTER_EXPRESSIONS, random)
   return Array.from({ length: count }, (_, i) => ({
-    character: i % 2 === 0 ? animals[(i / 2) % animals.length] : objects[((i - 1) / 2) % objects.length],
+    character: kind === 'animals' ? animals[i % animals.length]
+      : kind === 'objects' ? objects[i % objects.length]
+      : i % 2 === 0 ? animals[(i / 2) % animals.length] : objects[((i - 1) / 2) % objects.length],
     material: materials[i % materials.length],
     accessory: accessories[i % accessories.length],
     place: places[i % places.length],
@@ -290,9 +295,10 @@ export const rollCharacterVariationsTool = createTool({
   description: 'Picks distinct details for animated-character avatar variations — per variation a character (animals and objects alternate), material, accessory, place, pose and expression, all different across the set. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
+    kind: z.enum(['mix', 'animals', 'objects']).default('mix').describe('From the brief: "animals", "objects" (objects or food), or "mix" (animals and objects alternate) when it leaves this open'),
   }),
   execute: async (inputData, execContext) => {
-    const variations = rollCharacterVariations(inputData.count)
+    const variations = rollCharacterVariations(inputData.count, Math.random, inputData.kind)
     emitToolStatus(execContext, `Casting ${variations.length} characters`, variations.map(characterLine))
     return { variations }
   },
