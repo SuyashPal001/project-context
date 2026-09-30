@@ -17,6 +17,9 @@ export interface AvatarSelection {
     role: string;
     tone: string;
     image?: string;
+    // Library filter category. Animation and TVC avatars need their own ad
+    // look; omitted (or UGC) means a real-person presenter.
+    category?: 'UGC' | 'Animation' | 'TVC' | null;
     attachment: Attachment;
 }
 

@@ -272,3 +272,15 @@ describe('platformAgent instructions — working memory contract', () => {
     expect(text).toMatch(/never option labels such as "\(Recommended\)"/)
   })
 })
+describe('picked library avatars keep their category\'s look', () => {
+  it('routes an Animation avatar to the animated flow and keeps a TVC avatar polished', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('agentSystemPrompt', 'Base override text.')
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toMatch(/"Avatar category: Animation"[^]*route to the Animation-character contract with that character as the identity reference/)
+    expect(text).toMatch(/skip the style question and the cast-sheet generation/)
+    expect(text).toMatch(/"Avatar category: TVC"[^]*never the phone-selfie UGC look/)
+  })
+})
+

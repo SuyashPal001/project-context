@@ -3,8 +3,7 @@ import {
     CREATIVE_BRIEF_FIELDS,
     createEmptyCreativeBrief,
     type CreativeBrief,
-    type CreativeSelection,
-} from './creativeBriefModel';
+    type CreativeSelection, type AvatarSelection } from './creativeBriefModel';
 
 const CREATIVE_BRIEF_UI_PREFIX = '<!-- olmo-creative-brief:v1:';
 const CREATIVE_BRIEF_UI_SUFFIX = ' -->';
@@ -71,7 +70,7 @@ export function buildCreativeBriefMessage(direction: string, brief: CreativeBrie
         trimmedDirection ? `User direction:\n${trimmedDirection}` : null,
         'Creative brief:',
         brief.template ? `- Template: ${brief.template.title} (${brief.template.category})\n  Template slug: ${brief.template.id}` : null,
-        brief.avatar ? `- Avatar: ${brief.avatar.name} · ${brief.avatar.role} · ${brief.avatar.tone}\n  Use the attached still image as the presenter reference.` : null,
+        brief.avatar ? `- Avatar: ${brief.avatar.name} · ${brief.avatar.role} · ${brief.avatar.tone}\n  Use the attached still image as the presenter reference.${avatarCategoryLine(brief.avatar.category)}` : null,
         productSelection?.kind === 'product'
             ? productRecordLines(productSelection)
             : product ? `- Product: ${product}${hasSelectedImage ? '\n  Use the attached product image as the visual reference.' : '\n  Treat the URL as a source to inspect; verify product details before making claims.'}` : null,
@@ -159,6 +158,13 @@ function isAttachment(value: unknown): value is Attachment {
 function isTemplateSelection(value: unknown): value is NonNullable<CreativeBrief['template']> {
     return isRecord(value) && value.kind === 'template' && hasString(value, 'id') && hasString(value, 'title')
         && hasString(value, 'category') && isTrustedCreativeImage(value.image);
+}
+
+// Only Animation and TVC avatars get a line: a UGC presenter's brief stays exactly as before.
+function avatarCategoryLine(category: AvatarSelection['category']): string {
+    if (category === 'Animation') return '\n  Avatar category: Animation — an animated character. Keep its exact look and art style in every frame; never turn it into a real person.';
+    if (category === 'TVC') return '\n  Avatar category: TVC — a polished TV-commercial lead actor. Keep the premium commercial look; never a phone-selfie UGC look.';
+    return '';
 }
 
 function isAvatarSelection(value: unknown): value is NonNullable<CreativeBrief['avatar']> {

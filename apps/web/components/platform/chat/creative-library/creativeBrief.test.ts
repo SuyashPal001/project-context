@@ -47,6 +47,17 @@ describe('creative brief', () => {
         expect(message).toContain('Do not invent product claims');
     });
 
+    it('marks an Animation or TVC avatar so Olmo keeps its look, and leaves a UGC avatar line unchanged', () => {
+        const base = { kind: 'avatar' as const, id: 'x', name: 'Lumo', role: 'Cozy 3D mascot · felt lantern', tone: 'Shy & hopeful', attachment: avatarAttachment };
+        const animated = buildCreativeBriefMessage('', updateCreativeBrief(createEmptyCreativeBrief(), { ...base, category: 'Animation' }));
+        expect(animated).toContain('- Avatar: Lumo · Cozy 3D mascot · felt lantern · Shy & hopeful');
+        expect(animated).toContain('Avatar category: Animation — an animated character.');
+        const tvc = buildCreativeBriefMessage('', updateCreativeBrief(createEmptyCreativeBrief(), { ...base, name: 'Aroha', category: 'TVC' }));
+        expect(tvc).toContain('Avatar category: TVC');
+        const ugc = buildCreativeBriefMessage('', updateCreativeBrief(createEmptyCreativeBrief(), { ...base, name: 'Arjun' }));
+        expect(ugc).not.toContain('Avatar category');
+    });
+
     it('builds a request from any subset of creative selections', () => {
         const brief = updateCreativeBrief(createEmptyCreativeBrief(), {
             kind: 'voice', id: 'lauren-id', name: 'Lauren', language: 'en', languageLabel: 'English',

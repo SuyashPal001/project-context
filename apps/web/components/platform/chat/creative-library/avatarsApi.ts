@@ -35,7 +35,7 @@ export async function describeTenantAvatar(id: string): Promise<TenantAvatar> {
 export function tenantAvatarSelection(avatar: TenantAvatar): AvatarSelection {
     return {
         kind: 'avatar', id: `custom:${avatar.fileId}`, name: avatar.name,
-        role: avatar.role ?? 'Your avatar', tone: avatar.tone ?? 'Custom',
+        role: avatar.role ?? 'Your avatar', tone: avatar.tone ?? 'Custom', ...(avatar.category ? { category: avatar.category } : {}),
         attachment: { fileId: avatar.fileId, name: avatar.name, type: avatar.type, size: avatar.size },
     };
 }
