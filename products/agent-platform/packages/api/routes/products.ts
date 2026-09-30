@@ -53,13 +53,18 @@ productsRoutes.get('/image-file-ids', async (c) => {
 });
 
 const createProductSchema = z.object({
+  // fileIds: the photo-drop path (createProductFromFiles). imageFileIds: the
+  // setup modal's field name (matches PATCH). Accept both rather than force
+  // one caller to rename — a zod object silently strips whichever is unknown,
+  // which is exactly how this dropped the modal's photos before.
   fileIds: z.array(uuid).max(MAX_IMAGES).optional(),
+  imageFileIds: z.array(uuid).max(MAX_IMAGES).optional(),
   name: z.string().trim().min(1).max(120).optional(),
   category: z.enum(PRODUCT_CATEGORIES).nullable().optional(),
   description: z.string().trim().max(5000).nullable().optional().transform(v => v === '' ? null : v),
   usps: z.array(z.string().trim().min(1).max(200)).max(3).optional(),
 }).refine(
-  (data) => (data.fileIds?.length ?? 0) > 0 || (data.name?.trim().length ?? 0) > 0,
+  (data) => (data.fileIds?.length ?? 0) > 0 || (data.imageFileIds?.length ?? 0) > 0 || (data.name?.trim().length ?? 0) > 0,
   { message: 'Give the product a name or add at least one photo' },
 );
 
@@ -70,7 +75,7 @@ productsRoutes.post(
     const g = guard(c, 'create');
     if (g instanceof Response) return g;
     const body = c.req.valid('json');
-    const fileIds = [...new Set(body.fileIds ?? [])];
+    const fileIds = [...new Set([...(body.fileIds ?? []), ...(body.imageFileIds ?? [])])];
     if (fileIds.length > 0) {
       const images = await loadProductImages(g.tenantId, fileIds);
       const valid = fileIds.every((id) => ALLOWED_PRODUCT_IMAGE_TYPES.has(images.get(id)?.type ?? ''));
@@ -107,6 +112,7 @@ const updateProductSchema = z.object({
   category: z.enum(PRODUCT_CATEGORIES).nullable().optional(),
   description: z.string().trim().max(5000).nullable().optional().transform(v => v === '' ? null : v),
   usps: z.array(z.string().trim().min(1).max(200)).max(3).optional(),
+  imageFileIds: z.array(uuid).max(MAX_IMAGES).optional(),
 }).refine(
   (data) => Object.keys(data).length > 0,
   { message: 'Provide at least one field to update' },
@@ -120,7 +126,15 @@ productsRoutes.patch(
     if (g instanceof Response) return g;
     const id = c.req.param('id');
     if (!uuid.safeParse(id).success) return notFound(c);
-    const product = await updateProduct(g.tenantId, id, c.req.valid('json'));
+    const body = c.req.valid('json');
+    if (body.imageFileIds) {
+      const uniqueIds = [...new Set(body.imageFileIds)];
+      const images = await loadProductImages(g.tenantId, uniqueIds);
+      const valid = uniqueIds.every((imgId) => ALLOWED_PRODUCT_IMAGE_TYPES.has(images.get(imgId)?.type ?? ''));
+      if (!valid) return c.json({ error: 'Invalid images', message: 'Every file must be your own JPG, PNG or WebP image' }, 400);
+      body.imageFileIds = uniqueIds;
+    }
+    const product = await updateProduct(g.tenantId, id, body);
     return product ? c.json({ data: product }) : notFound(c);
   },
 );

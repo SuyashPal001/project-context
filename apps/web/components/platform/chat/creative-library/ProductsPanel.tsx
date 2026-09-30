@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ClipboardEvent } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ClipboardEvent } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ImagePlus, Loader2, MoreHorizontal, Plus, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,7 +26,14 @@ const LINK_FAILED = "Couldn't read this page. Drop a product photo instead.";
 const SEARCH_DEBOUNCE_MS = 250;
 const STALE_PENDING_MS = 30_000;
 
-export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hideHeading, emptyHint }: {
+export interface ProductsPanelHandle {
+    /** Opens the setup modal in create mode — for a parent-owned "New product"
+     *  trigger (Drive's page header, matching NewAvatarButton's position)
+     *  rather than this panel's own header row, which hideHeading suppresses. */
+    openCreate: () => void;
+}
+
+export const ProductsPanel = forwardRef<ProductsPanelHandle, {
     selected: ProductSelection | null;
     onSelect: (selection: ProductSelection) => void;
     /**
@@ -40,18 +47,30 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
     onProductNamed?: (product: ProductRecordSelection) => void;
     /** When set, clicking a card calls this instead of selecting the product. */
     onOpen?: (product: ProductRecord) => void;
-    /** Hides the "Products" heading; the search box still renders. */
+    /** Hides the "Products" heading AND this panel's own search box / New
+     *  product button — Drive owns those itself at the page-header level
+     *  (matching Avatars) and drives search via the props below. */
     hideHeading?: boolean;
     /** Replaces the default first-visit hint line. */
     emptyHint?: string;
-}) {
+    /** Controlled search value. Omit to let the panel manage its own (the
+     *  composer's usage, which renders its own search box). */
+    search?: string;
+    onSearchChange?: (value: string) => void;
+    /** Widens the card grid up to 5 columns for a full-page context (Drive).
+     *  Omit for the composer's narrower panel, which stays capped at 3 — at
+     *  full page width, 5 columns of ~120px felt cramped there. */
+    wide?: boolean;
+}>(function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hideHeading, emptyHint, search: controlledSearch, onSearchChange, wide }, ref) {
     const queryClient = useQueryClient();
     const inputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
     const selectedIdRef = useRef<string | null>(null);
     const pendingDeletes = useRef(new Map<string, ReturnType<typeof setTimeout>>());
     const staleNamingAttempted = useRef(new Set<string>());
-    const [search, setSearch] = useState('');
+    const [internalSearch, setInternalSearch] = useState('');
+    const search = controlledSearch ?? internalSearch;
+    const setSearch = onSearchChange ?? setInternalSearch;
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [link, setLink] = useState('');
     const [busy, setBusy] = useState<'link' | 'photos' | null>(null);
@@ -69,6 +88,9 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
     // flash blank before its next open re-seeds it.
     const [setupProduct, setSetupProduct] = useState<ProductRecord | null>(null);
     selectedIdRef.current = selected?.kind === 'product' ? selected.id : null;
+    useImperativeHandle(ref, () => ({
+        openCreate: () => { setSetupProduct(null); setSetupOpen(true); },
+    }));
 
     useEffect(() => {
         const timer = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
@@ -277,8 +299,8 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
     }
 
     return <div className="space-y-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {!hideHeading && <h2 className="text-xl font-semibold tracking-tight text-foreground">Products</h2>}
+        {!hideHeading && <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">Products</h2>
             <div className="flex w-full items-center gap-2 sm:w-auto">
                 {!isEmpty && <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -288,7 +310,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
                     <Plus className="mr-1 h-4 w-4" />New product
                 </Button>
             </div>
-        </div>
+        </div>}
         <div
             data-testid="product-drop-zone"
             onDragOver={event => { event.preventDefault(); setDragging(true); }}
@@ -315,7 +337,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
         {isPending ? <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> :
             isError ? <div className="py-10 text-center text-sm text-muted-foreground">Could not load products. <Button variant="link" onClick={() => void refetch()}>Retry</Button></div> :
                 products.length === 0 && !busy ? (search.trim() ? <p className="py-10 text-center text-sm text-muted-foreground">No products match your search.</p> : null) :
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
+                    <div className={cn('grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3', wide && 'md:grid-cols-4 lg:grid-cols-5')}>
                         {busy && <div className="min-w-0" aria-live="polite">
                             <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border border-border bg-muted">
                                 {busy === 'photos' && photoPreviewUrl
@@ -348,7 +370,7 @@ export function ProductsPanel({ selected, onSelect, onProductNamed, onOpen, hide
         {hasNextPage && <div className="flex justify-center"><Button variant="outline" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>{isFetchingNextPage ? 'Loading…' : 'Load more products'}</Button></div>}
         <ProductSetupModal open={setupOpen} onOpenChange={setSetupOpen} product={setupProduct} onSave={handleSetupSave} />
     </div>;
-}
+});
 
 function ProductCard({ product, selected, renaming, renameValue, useLabel, onRenameChange, onRenameCommit, onRenameCancel, onStartRename, onEdit, onDelete, onUse }: {
     product: ProductRecord; selected: boolean; renaming: boolean; renameValue: string; useLabel: string;

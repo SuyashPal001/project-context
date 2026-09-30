@@ -99,6 +99,16 @@ describe('/products routes', () => {
     expect(nameProductMock).not.toHaveBeenCalled();
   });
 
+  it('accepts photos sent as imageFileIds on create (the setup modal\'s field name), not just fileIds', async () => {
+    lib.loadProductImages.mockResolvedValue(new Map([[F1, { fileId: F1, name: 'a.png', type: 'image/png', size: 3 }]]));
+    lib.createProduct.mockResolvedValue(product({ name: 'Mug', images: [{ fileId: F1, name: 'a.png', type: 'image/png', size: 3 }] }));
+
+    const res = await (await app()).request('/products', json({ name: 'Mug', imageFileIds: [F1] }));
+
+    expect(res.status).toBe(201);
+    expect(lib.createProduct).toHaveBeenCalledWith(expect.objectContaining({ imageFileIds: [F1] }));
+  });
+
   it('normalizes an empty-string description to null on create', async () => {
     lib.createProduct.mockResolvedValue(product({ name: 'Mug' }));
     await (await app()).request('/products', json({ name: 'Mug', description: '' }));
@@ -232,6 +242,31 @@ describe('/products routes', () => {
     const res = await (await app()).request(`/products/${P1}`, { ...json({ category: null, description: null }), method: 'PATCH' });
     expect(res.status).toBe(200);
     expect(lib.updateProduct).toHaveBeenCalledWith('tenant-1', P1, { category: null, description: null });
+  });
+
+  it('updates the image set on PATCH after validating ownership and type', async () => {
+    lib.loadProductImages.mockResolvedValue(new Map([
+      [F1, { fileId: F1, name: 'a.png', type: 'image/png', size: 3 }],
+      [F2, { fileId: F2, name: 'b.webp', type: 'image/webp', size: 3 }],
+    ]));
+    lib.updateProduct.mockResolvedValue(product({ images: [{ fileId: F1, name: 'a.png', type: 'image/png', size: 3 }] }));
+    const res = await (await app()).request(`/products/${P1}`, { ...json({ imageFileIds: [F1, F2] }), method: 'PATCH' });
+    expect(res.status).toBe(200);
+    expect(lib.updateProduct).toHaveBeenCalledWith('tenant-1', P1, { imageFileIds: [F1, F2] });
+  });
+
+  it('rejects a PATCH image set containing a file that is missing, another tenant\'s, or not an image', async () => {
+    lib.loadProductImages.mockResolvedValue(new Map([[F1, { fileId: F1, name: 'a.pdf', type: 'application/pdf', size: 3 }]]));
+    const res = await (await app()).request(`/products/${P1}`, { ...json({ imageFileIds: [F1, F2] }), method: 'PATCH' });
+    expect(res.status).toBe(400);
+    expect(lib.updateProduct).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than 6 images on PATCH', async () => {
+    const ids = Array.from({ length: 7 }, (_, i) => `1111111${i}-1111-4111-8111-111111111111`);
+    const res = await (await app()).request(`/products/${P1}`, { ...json({ imageFileIds: ids }), method: 'PATCH' });
+    expect(res.status).toBe(400);
+    expect(lib.updateProduct).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown category on update', async () => {

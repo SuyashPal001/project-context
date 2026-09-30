@@ -4,7 +4,7 @@ import { EmptyState, ConfirmDialog } from "@/components/platform/shared";
 import {
     Loader2, FolderOpen, ChevronRight, ChevronLeft, MessageSquare, LayoutGrid, List as ListIcon, Play, Trash2, Search
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/components/platform/chat/useFileU
 import { getFileCategory, isIngestibleCategory, isParseable } from "./fileCategory";
 import { SYSTEM_FOLDER_LABELS, PILL_FOLDERS, isSystemFolder, uploadsWithOrphanProductFiles, withProductsPill } from "./systemFolders";
 import { DriveProducts } from "./DriveProducts";
+import type { ProductsPanelHandle } from "@/components/platform/chat/creative-library/ProductsPanel";
 import { listProductImageFileIds } from "@/components/platform/chat/creative-library/productsApi";
 import type { Attachment } from "@/types/agent-events";
 import { FileGridView } from "./components/FileGridView";
@@ -44,7 +45,20 @@ interface FilesListProps {
     showPipelineDetails?: boolean;
 }
 
-export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, canDelete, showPipelineDetails = false }: FilesListProps) {
+export interface FilesListHandle {
+    /** Opens the product setup modal in create mode — for the page-level
+     *  "New product" button (matching NewAvatarButton's position). */
+    openNewProduct: () => void;
+}
+
+export const FilesList = forwardRef<FilesListHandle, FilesListProps>(function FilesList(
+    { prefix, onPrefixChange, onUploadClick, canUpload, canDelete, showPipelineDetails = false }, ref,
+) {
+    const productsPanelRef = useRef<ProductsPanelHandle>(null);
+    const [productsSearch, setProductsSearch] = useState('');
+    useImperativeHandle(ref, () => ({
+        openNewProduct: () => productsPanelRef.current?.openCreate(),
+    }));
     const params = useParams();
     const router = useRouter();
     const tenant = params.tenant as string;
@@ -346,49 +360,52 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                             </Button>
                         </div>
                     )}
-                    {activeSystemFolder !== 'creative-products' && (
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <div className="relative flex-1 max-w-md">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                                <input
-                                    type="text"
-                                    value={filters.search}
-                                    onChange={e => filters.onSearchChange(e.target.value)}
-                                    placeholder="Search files..."
-                                    className="w-full h-9 pl-9 pr-3 text-sm rounded-lg bg-secondary border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                                />
+                    {(() => {
+                        const isProducts = activeSystemFolder === 'creative-products';
+                        return <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <div className="relative flex-1 max-w-md">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                    <input
+                                        type="text"
+                                        value={isProducts ? productsSearch : filters.search}
+                                        onChange={e => isProducts ? setProductsSearch(e.target.value) : filters.onSearchChange(e.target.value)}
+                                        placeholder={isProducts ? "Search products..." : "Search files..."}
+                                        className="w-full h-9 pl-9 pr-3 text-sm rounded-lg bg-secondary border border-border placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                                    />
+                                </div>
+                                {!isProducts && shownFiles.length > 0 && <FilesFilter
+                                    workspaceNames={workspaceNames} filterWorkspace={filters.filterWorkspace} onWorkspaceChange={filters.onWorkspaceChange}
+                                    filterClassification={filters.filterClassification} onClassificationChange={filters.onClassificationChange}
+                                    filterCategory={filters.filterCategory} onCategoryChange={filters.onCategoryChange}
+                                    filterTimeRange={filters.filterTimeRange} onTimeRangeChange={filters.onTimeRangeChange}
+                                    showPipelineDetails={showPipelineDetails}
+                                />}
                             </div>
-                            {shownFiles.length > 0 && <FilesFilter
-                                workspaceNames={workspaceNames} filterWorkspace={filters.filterWorkspace} onWorkspaceChange={filters.onWorkspaceChange}
-                                filterClassification={filters.filterClassification} onClassificationChange={filters.onClassificationChange}
-                                filterCategory={filters.filterCategory} onCategoryChange={filters.onCategoryChange}
-                                filterTimeRange={filters.filterTimeRange} onTimeRangeChange={filters.onTimeRangeChange}
-                                showPipelineDetails={showPipelineDetails}
-                            />}
-                        </div>
-                        <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-secondary border border-border">
-                            <Button
-                                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => setViewMode('list')}
-                                title="List view"
-                            >
-                                <ListIcon className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => setViewMode('grid')}
-                                title="Grid view"
-                            >
-                                <LayoutGrid className="w-3.5 h-3.5" />
-                            </Button>
-                        </div>
-                    </div>
-                    )}
+                            {/* Products render as ProductsPanel's own grid, with no list view — the
+                                view-mode toggle has nothing to switch between there. */}
+                            {!isProducts && <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-secondary border border-border">
+                                <Button
+                                    variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setViewMode('list')}
+                                    title="List view"
+                                >
+                                    <ListIcon className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button
+                                    variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setViewMode('grid')}
+                                    title="Grid view"
+                                >
+                                    <LayoutGrid className="w-3.5 h-3.5" />
+                                </Button>
+                            </div>}
+                        </div>;
+                    })()}
                     {breadcrumbNav}
                     {activeSystemFolder !== 'creative-products' && showPipelineDetails && hasParseableFiles && (
                         <div className="flex justify-end">
@@ -432,10 +449,13 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
                     <div className="flex gap-4 items-start">
                     {activeSystemFolder === 'creative-products' ? (
                         <DriveProducts
+                            ref={productsPanelRef}
                             conversations={conversations}
                             canAddToChat={!!defaultAgentId}
                             onAddToChat={addAttachmentsToChat}
                             onDownload={mutations.downloadFile}
+                            search={productsSearch}
+                            onSearchChange={setProductsSearch}
                         />
                     ) : viewMode === 'grid' ? (
                         <FileGridView
@@ -564,4 +584,4 @@ export function FilesList({ prefix, onPrefixChange, onUploadClick, canUpload, ca
             />
         </div>
     );
-}
+});
