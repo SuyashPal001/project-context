@@ -192,6 +192,112 @@ export function castingLine(v: AvatarVariationSpec): string {
   return `${v.age} · ${v.look} ${v.gender} · ${short(v.place)} · ${short(v.wardrobe)}`
 }
 
+// Animated characters: lifelike 3D creatures and plush mascots rather than
+// people. Half the set are animals and half are objects, so four characters
+// are never four near-identical furry animals.
+const CHARACTER_ANIMALS = [
+  'long-eared bunny', 'round hedgehog', 'big-eared fennec fox', 'red panda', 'fluffy baby owl',
+  'sleepy sloth', 'penguin chick', 'chubby kitten', 'sea otter', 'little frog',
+]
+
+const CHARACTER_OBJECTS = [
+  'plush cactus with tiny arms', 'fluffy cloud', 'steamed dumpling', 'mushroom sprite with a spotted cap',
+  'round avocado', 'little teacup', 'dewdrop-shaped water sprite', 'soft peach',
+]
+
+const CHARACTER_MATERIALS = [
+  'soft realistic fur with fine individual strands',
+  'felted wool plush with visible fibres',
+  'chunky knitted-yarn texture',
+  'velvety plush fabric with small stitched seams',
+  'smooth soft-touch vinyl with a satin sheen',
+  'fuzzy cotton-candy fluff',
+]
+
+const CHARACTER_ACCESSORIES = [
+  'a leafy green knitted hood',
+  'a chunky blue knit scarf',
+  'pastel over-ear headphones',
+  'round wire-rim glasses',
+  'a small cross-body satchel',
+  'a tiny yellow raincoat',
+  'a striped knit beanie',
+  'a little canvas apron',
+]
+
+const CHARACTER_PLACES = [
+  'cozy bedroom with rumpled knit blankets and warm lamp glow',
+  'sunlit windowsill with potted plants',
+  'mossy forest floor in dappled light',
+  'kitchen counter in soft morning light',
+  'plain soft-grey studio backdrop',
+  'bookshelf corner with warm fairy lights',
+]
+
+const CHARACTER_POSES = [
+  'standing with small paws or hands clasped in front',
+  'waving one small hand at the viewer',
+  'sitting with legs stretched out',
+  'leaning forward with curiosity',
+  'hugging a tiny cushion',
+  'standing proudly with hands on hips',
+]
+
+const CHARACTER_EXPRESSIONS = [
+  'curious wide-eyed look',
+  'shy happy smile',
+  'sleepy contented look',
+  'cheeky grin',
+  'bright excited look',
+  'warm gentle smile',
+]
+
+export interface CharacterVariationSpec {
+  character: string
+  material: string
+  accessory: string
+  place: string
+  pose: string
+  expression: string
+}
+
+export function rollCharacterVariations(count: number, random: () => number = Math.random): CharacterVariationSpec[] {
+  const animals = shuffled(CHARACTER_ANIMALS, random)
+  const objects = shuffled(CHARACTER_OBJECTS, random)
+  const materials = shuffled(CHARACTER_MATERIALS, random)
+  const accessories = shuffled(CHARACTER_ACCESSORIES, random)
+  const places = shuffled(CHARACTER_PLACES, random)
+  const poses = shuffled(CHARACTER_POSES, random)
+  const expressions = shuffled(CHARACTER_EXPRESSIONS, random)
+  return Array.from({ length: count }, (_, i) => ({
+    character: i % 2 === 0 ? animals[(i / 2) % animals.length] : objects[((i - 1) / 2) % objects.length],
+    material: materials[i % materials.length],
+    accessory: accessories[i % accessories.length],
+    place: places[i % places.length],
+    pose: poses[i % poses.length],
+    expression: expressions[i % expressions.length],
+  }))
+}
+
+/** "red panda · a chunky blue knit scarf · cozy bedroom" */
+export function characterLine(v: CharacterVariationSpec): string {
+  const short = (s: string) => s.split(/,| with | in /)[0].trim()
+  return `${v.character} · ${v.accessory} · ${short(v.place)}`
+}
+
+export const rollCharacterVariationsTool = createTool({
+  id: 'roll-character-variations',
+  description: 'Picks distinct details for animated-character avatar variations — per variation a character (animals and objects alternate), material, accessory, place, pose and expression, all different across the set. Call once before writing animated-character variation prompts. Free.',
+  inputSchema: z.object({
+    count: z.number().int().min(1).max(6).default(4),
+  }),
+  execute: async (inputData, execContext) => {
+    const variations = rollCharacterVariations(inputData.count)
+    emitToolStatus(execContext, `Casting ${variations.length} characters`, variations.map(characterLine))
+    return { variations }
+  },
+})
+
 export const rollAvatarVariationsTool = createTool({
   id: 'roll-avatar-variations',
   description: 'Picks distinct details for avatar variations so no two look alike: per variation an age, face shape, hair, outfit, place and gesture, all different across the set, within the look, gender and age range from the brief. Call once before writing the variation prompts. Free.',

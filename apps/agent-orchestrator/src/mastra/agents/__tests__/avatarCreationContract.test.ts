@@ -132,6 +132,23 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
   })
 })
 
+describe('animated-character avatars', () => {
+  it('offers an animated character in the look question and passes the style to Director', () => {
+    expect(AVATAR_SKILL_TEXT).toContain('then "Animated character" (a lovable 3D mascot, not a person)')
+    expect(AVATAR_SKILL_TEXT).toMatch(/Pass "style: animated character" to agent-director/)
+    expect(AVATAR_SKILL_TEXT).toMatch(/no gender, age or ethnicity, and the framing is always the whole character/)
+  })
+
+  it('rolls characters, writes a 3D mascot prompt and a full-body turnaround sheet', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/when Olmo's brief says "style: animated character"/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/Call roll_character_variations once instead/)
+    expect(AVATAR_CREATION_SECTION).toContain('Use case: stylized-3d-character')
+    expect(AVATAR_CREATION_SECTION).toMatch(/a small mouth, relaxed and slightly open, so it can later talk in a video/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/five full-body panels left to right/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/\(5\) back view/)
+  })
+})
+
 describe('image-to-avatar contract (Avatar creator Official skill)', () => {
   it('offers the two intents as a single-select question with the exact option labels', () => {
     expect(AVATAR_SKILL_TEXT).toContain('Same person, restyled')

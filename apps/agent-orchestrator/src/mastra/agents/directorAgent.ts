@@ -26,7 +26,7 @@ import { mixMusicBed } from '../tools/mixMusicBed.js'
 import { generateSong } from '../tools/generateSong.js'
 import { trimClip } from '../tools/trimClip.js'
 import { saveAsAvatar } from '../tools/saveAsAvatar.js'
-import { rollAvatarVariationsTool } from '../tools/rollAvatarVariations.js'
+import { rollAvatarVariationsTool, rollCharacterVariationsTool } from '../tools/rollAvatarVariations.js'
 import { showFilesTool } from '../tools/showFiles.js'
 import { IMAGE_PROMPT_CRAFT } from './imagePromptCraft.js'
 
@@ -57,7 +57,21 @@ When Olmo delegates creating a reusable avatar:
 - Reference sheet, after the user picks: one generate_image call, aspectRatio "16:9", referenceFileIds set to the picked portrait's fileId only, no identityAnchor. The prompt: a character reference sheet of this exact person on a plain light-grey background, same outfit, five panels left to right — (1) front head-and-shoulders facing the camera; (2) three-quarter view with the face turned toward the viewer's LEFT; (3) three-quarter view with the face turned toward the viewer's RIGHT, the mirror of panel 2, so the two show opposite sides of the face; (4) side profile with the nose pointing to the viewer's left; (5) full body standing facing the camera — each head panel a plain rectangular photo crop from mid-chest up (never a cut-out or circle-cropped floating bust), the full-body panel wearing the same top with everyday bottoms and shoes that fit it, neutral expression, even soft studio light, no text or labels.
 - Then write a terseTag (10–40 characters: first-impression look, hair, outfit, e.g. "woman, wavy black hair, blue top" — never a name: save_as_avatar picks the avatar's name, and a different name in the tag would contradict it in every later prompt) and a styleLock (under 80 characters, photographic look, e.g. "photoreal phone-video still, soft daylight"). Both are matched byte-for-byte in later prompts, so keep them short. Never describe ethnicity in either unless Olmo's brief stated it.
 - Call save_as_avatar with portraitFileId (the pick), referenceSheetFileId (the sheet), terseTag and styleLock. Report back the avatar's name, role, tone and referenceSheet exactly as returned; if referenceSheet is false, say so plainly — never claim the sheet saved.
-- Apply the batch rules from the UGC character section unchanged: check every result item for its own fileId, never retry a refused item without a new approval.`
+- Apply the batch rules from the UGC character section unchanged: check every result item for its own fileId, never retry a refused item without a new approval.
+- Animated character: when Olmo's brief says "style: animated character", the avatar is a lovable 3D mascot, not a person, and these rules replace the person-only ones above (roll_avatar_variations, look, age, skin, the phone-video frame). Call roll_character_variations once instead; where the brief names a character (a bunny, a mascot shaped like the product), the brief wins over the roll. Variations are still one generate_images call with 4 items, aspectRatio "3:4", no referenceFileIds, each prompt in labeled lines:
+  Use case: stylized-3d-character
+  Asset type: reusable animated mascot avatar for <what Olmo says it is for>
+  Primary request: a lovable 3D animated <character> mascot with real personality, as a still from a modern feature-animation film
+  Scene/backdrop: <place>, softly blurred with shallow depth of field
+  Subject: <character> with big expressive glossy eyes with catchlights, soft rounded appealing proportions (a large head on a small body), <material> rendered with tactile micro-detail, <expression>, <pose>, looking straight at the viewer; a small mouth, relaxed and slightly open, so it can later talk in a video
+  Wardrobe: <accessory>; no visible brands
+  Style/medium: high-end 3D character render, lifelike textures, subsurface scattering, soft cinematic lighting, cute and warm, not a toy photo
+  Composition/framing: vertical 3:4; the whole character from head to feet, centred at eye level, filling most of the frame
+  Lighting/mood: soft warm key light with a gentle rim light that fits the place
+  Constraints: one character only; no humans; no text, captions, logos or watermark
+  Avoid: flat 2D cartoon, anime, uncanny human face, creepy or scary features, cheap plastic toy, extra limbs, harsh lighting, a cluttered background
+  Give each item a title naming its character the way a user would, e.g. "Hedgehog in a knit scarf". The four are four clearly different characters.
+  Reference sheet for an animated character: the same generate_image call as above, but the prompt is a character turnaround sheet of this exact character on a plain light-grey background, same materials, colours and accessory, five full-body panels left to right — (1) front; (2) three-quarter view turned toward the viewer's LEFT; (3) three-quarter view turned toward the viewer's RIGHT, the mirror of panel 2; (4) side profile facing the viewer's left; (5) back view — the same size and lighting in every panel, neutral friendly expression, even soft studio light, no text or labels. terseTag names the character, material and accessory (e.g. "grey fur bunny, green knit hood"); styleLock is e.g. "3D animated character render, soft warm light".`
 
 export const AVATAR_FROM_IMAGE_SECTION = `\n\n## Image-to-avatar — variations from a reference photo
 When Olmo delegates creating an avatar from a reference photo, with an intent and the reference image's fileId:
@@ -239,7 +253,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, show_files: showFilesTool },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, roll_character_variations: rollCharacterVariationsTool, show_files: showFilesTool },
   errorProcessors: [streamErrorRetry()],
 })
 
@@ -258,6 +272,6 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, show_files: showFilesTool },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, roll_character_variations: rollCharacterVariationsTool, show_files: showFilesTool },
   errorProcessors: [streamErrorRetry()],
 })

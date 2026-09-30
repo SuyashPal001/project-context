@@ -55,6 +55,28 @@ describe('rollAvatarVariations', () => {
   })
 })
 
+describe('rollCharacterVariations', () => {
+  it('gives four characters that differ in every attribute, alternating animals and objects', async () => {
+    const { rollCharacterVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 20; seed++) {
+      const set = rollCharacterVariations(4, seeded(seed))
+      expect(set).toHaveLength(4)
+      for (const key of ['character', 'material', 'accessory', 'place', 'pose', 'expression'] as const) {
+        expect(distinct(set.map((v) => v[key]))).toBe(true)
+      }
+      expect(/cactus|cloud|dumpling|mushroom|avocado|teacup|dewdrop|peach/.test(set[1].character)).toBe(true)
+    }
+  })
+
+  it('reads as one short line', async () => {
+    const { characterLine } = await import('../rollAvatarVariations.js')
+    expect(characterLine({
+      character: 'red panda', material: 'fur', accessory: 'a chunky blue knit scarf',
+      place: 'cozy bedroom with rumpled knit blankets and warm lamp glow', pose: 'waving', expression: 'shy',
+    })).toBe('red panda · a chunky blue knit scarf · cozy bedroom')
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')
