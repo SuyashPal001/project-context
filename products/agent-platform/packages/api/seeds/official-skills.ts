@@ -66,7 +66,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     description: 'Use when the user wants a new reusable polished lead actor for TV-commercial style ads, with a full character reference sheet — not a candid UGC creator or an animated character.',
     file: officialSkillFile('tvc-character-creator.md'),
     showcase: {
-      imageUrl: '/creative/avatars/fragrance-beauty-presenter.jpg',
+      imageUrl: '/creative/avatars/tvc-character.jpg',
       bestFor: ['TV commercials', 'Brand films', 'Premium ads'],
       starterPrompt: 'Create a TVC actor for my brand',
     },

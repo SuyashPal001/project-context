@@ -230,6 +230,17 @@ describe('TVC character creator (Official skill)', () => {
     expect(TVC_CHARACTER_SECTION).toMatch(/no personal name anywhere on the page/)
     expect(TVC_CHARACTER_SECTION).toMatch(/lips relaxed and slightly parted/)
   })
+
+  it('follows the approved Aroha prompts: real-camera face, one-person stills, a face refinement before the sheet', () => {
+    expect(TVC_CHARACTER_SECTION).toMatch(/distinctive, non-celebrity face/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/no reference sheet, grid, extra angles or labels/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/a polished AI beauty face, a glassy stare, a face-sculpting filter/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/Face refinement, after the user picks and before the continuity bible: one edit_image call/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/relaxed front three-quarter standing pose, hands resting naturally together at waist level/)
+    const text = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../tvc-character-creator.md'), 'utf8')
+    expect(text).toMatch(/1 face refinement and 1 character reference sheet/)
+    expect(text).toMatch(/pass it to agent-director as "framing: full body" or "framing: mid-thigh up"/)
+  })
 })
 
 describe('image-to-avatar contract (Avatar creator Official skill)', () => {
