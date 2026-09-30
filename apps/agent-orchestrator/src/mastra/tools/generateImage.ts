@@ -39,6 +39,8 @@ export const imageItemSchema = z.object({
   prompt: z.string().describe('Full description of the image to generate'),
   aspectRatio: z.enum(['1:1', '3:4', '4:3', '9:16', '16:9']).optional()
     .describe('Output shape. Set it whenever the user stated or chose a size (e.g. 9:16 for stories/reels, 16:9 for banners/ads, 1:1 for posts). Omit only if truly unspecified.'),
+  imageSize: z.enum(['1K', '2K']).optional()
+    .describe('Output resolution; omit for the default 1K. Use 2K only for dense images with many small panels or text, such as a character reference sheet — it costs the same.'),
   referenceFileIds: z.array(z.string().uuid()).min(1).max(3).optional()
     .describe('Existing files rows used as identity/style anchors — the model composes a new image informed by all of them.'),
   identityAnchor: z.object({
@@ -57,7 +59,7 @@ export async function generateImageItem(
   execContext: MediaExecContext | undefined,
   itemIndex: number,
 ) {
-    const { prompt, aspectRatio, referenceFileIds, identityAnchor, skipAvatarExpansion, title } = inputData
+    const { prompt, aspectRatio, imageSize, referenceFileIds, identityAnchor, skipAvatarExpansion, title } = inputData
 
     // Identity-anchor gate — enforced in tool code, not prose, mirroring
     // generateVideo.ts's extractQuotedSpans/approvedDialogue check. Refuses
@@ -196,7 +198,7 @@ export async function generateImageItem(
       const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: IMAGE_MODEL, prompt: gatewayPrompt, ...(aspectRatio ? { aspectRatio } : {}), ...(sourceImages.length ? { sourceImages } : {}) }),
+        body: JSON.stringify({ model: IMAGE_MODEL, prompt: gatewayPrompt, ...(aspectRatio ? { aspectRatio } : {}), ...(imageSize ? { imageSize } : {}), ...(sourceImages.length ? { sourceImages } : {}) }),
         signal: AbortSignal.timeout(90_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)

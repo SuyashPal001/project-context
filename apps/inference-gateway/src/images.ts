@@ -34,9 +34,13 @@ export interface ImageGenerationRequest {
   sourceImages?: Array<{ base64: string; mimeType: string }>
   // Optional output shape. Anything outside IMAGE_ASPECT_RATIOS is ignored (model default).
   aspectRatio?: string
+  // Optional output resolution. Anything outside IMAGE_SIZES is ignored (model default, 1K).
+  // 4K is left out on purpose: it costs more per image than 1K/2K, which bill the same.
+  imageSize?: string
 }
 
 export const IMAGE_ASPECT_RATIOS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9'])
+export const IMAGE_SIZES = new Set(['1K', '2K'])
 
 export type ImageGenerationResult =
   | { imageBase64: string; mimeType: string }
@@ -63,11 +67,15 @@ export function buildGeminiImageRequest(req: ImageGenerationRequest) {
   for (const img of req.sourceImages ?? []) {
     parts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } })
   }
+  const imageConfig = {
+    ...(req.aspectRatio && IMAGE_ASPECT_RATIOS.has(req.aspectRatio) ? { aspectRatio: req.aspectRatio } : {}),
+    ...(req.imageSize && IMAGE_SIZES.has(req.imageSize) ? { imageSize: req.imageSize } : {}),
+  }
   return {
     contents: [{ role: 'user', parts }],
     generationConfig: {
       responseModalities: ['IMAGE'],
-      ...(req.aspectRatio && IMAGE_ASPECT_RATIOS.has(req.aspectRatio) ? { imageConfig: { aspectRatio: req.aspectRatio } } : {}),
+      ...(Object.keys(imageConfig).length ? { imageConfig } : {}),
     },
     safetySettings: SAFETY_SETTINGS,
   }

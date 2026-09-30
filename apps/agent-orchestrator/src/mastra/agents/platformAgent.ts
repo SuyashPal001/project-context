@@ -333,6 +333,7 @@ When the user wants a UGC-style ad built from scratch (no template to clone), wi
 export const OFFICIAL_SKILL_POINTERS = `\n\n## Official skills
 - For a new reusable avatar/presenter (from a description or a reference photo), load the Avatar creator skill with the skill tool and follow it.
 - For a new reusable animated character — a 3D mascot, a game-style hero, a cinematic, fantasy or storybook anime character, or a 3D chibi family character, not a photoreal person — load the Animated character creator skill with the skill tool and follow it.
+- For a new reusable polished lead actor for TV-commercial style ads, with a full character reference sheet, load the TVC character creator skill with the skill tool and follow it.
 - For a talking-head ad (one presenter speaking one continuous script to camera), load the Talking head skill with the skill tool and follow it.
 - If the user turned a skill on with "/" or Start, it is already loaded — follow it.
 Where another section refers to the Avatar creation or Talking-head ad contract, that now means the matching Official skill.`

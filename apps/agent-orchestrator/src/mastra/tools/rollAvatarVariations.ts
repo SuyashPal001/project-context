@@ -698,6 +698,134 @@ export function storybookLine(v: StorybookVariationSpec): string {
   return `${v.look} ${v.gender} · ${short(v.outfit)} · ${short(v.moment)}`
 }
 
+// TVC actors: polished lead actors for TV-commercial avatars, cast like a
+// premium brand shoot — styled wardrobe, a commercial set, cinema lighting.
+// An Indian look gets Indian festive and formal wardrobe and Indian sets.
+const TVC_WARDROBE_INDIAN: Record<Gender, string[]> = {
+  woman: [
+    'an ivory silk saree with a gold zari border and a sleeveless blouse',
+    'a deep emerald velvet lehenga with antique-gold embroidery',
+    'a mustard chanderi anarkali with a sheer dupatta',
+    'a wine-red organza saree with a sequinned border',
+    'a powder-blue sharara set with mirror work',
+    'a tailored ivory pantsuit with a silk camisole',
+  ],
+  man: [
+    'a midnight-blue bandhgala with antique buttons',
+    'an ivory raw-silk sherwani with a maroon stole',
+    'a charcoal three-piece suit',
+    'a pastel linen kurta with a nehru jacket',
+    'a black tuxedo with an open collar',
+    'a sand-coloured linen suit over a white shirt',
+  ],
+}
+
+const TVC_WARDROBE_GENERAL: Record<Gender, string[]> = {
+  woman: [
+    'a powder-blue satin slip gown',
+    'a black tailored tuxedo dress',
+    'a camel wrap coat over a cream knit',
+    'an emerald silk midi dress',
+    'a white structured shirt dress with a slim belt',
+    'a rust linen co-ord set',
+  ],
+  man: [
+    'a navy double-breasted suit',
+    'a camel overcoat over a black turtleneck',
+    'a white linen shirt with tailored grey trousers',
+    'a black tuxedo with a bow tie',
+    'a deep green velvet blazer over a cream shirt',
+    'a light-blue oxford shirt with chinos',
+  ],
+}
+
+const TVC_SETS = [
+  'a clean light-grey studio seamless',
+  'a luxury living-room set with warm practical lamps',
+  'a sunlit marble terrace set',
+  'a premium modern kitchen set in morning light',
+  'a boutique hotel lobby set',
+  'a rooftop set at golden hour',
+]
+
+const TVC_SETS_INDIAN = [
+  'a clean light-grey studio seamless',
+  'a haveli courtyard set with carved sandstone arches',
+  'a festive home set with diyas and marigold garlands',
+  'a luxury living-room set with brass lamps and silk cushions',
+  'a sunlit terrace set with bougainvillea',
+  'a premium modern kitchen set in morning light',
+]
+
+export interface TvcVariationSpec {
+  gender: Gender
+  age: number
+  look: string
+  skinTone?: string
+  faceShape: string
+  hair: string
+  wardrobe: string
+  set: string
+}
+
+export function rollTvcVariations(input: AvatarRollInput, random: () => number = Math.random): TvcVariationSpec[] {
+  const { count, gender, ageMin, ageMax } = input
+  const look = input.look.trim()
+  const isMix = /^(a )?mix\b/i.test(look) || look === ''
+  const isIndian = /\bindian\b/i.test(look)
+  const genders: Gender[] = Array.from({ length: count }, (_, i) =>
+    gender === 'any' ? (i % 2 === 0 ? 'woman' : 'man') : gender)
+  const ages = shuffled(spreadAges(ageMin, ageMax, count, random), random)
+  const looks = isMix ? shuffled(MIX_LOOKS, random) : []
+  const skinTones = shuffled(INDIAN_SKIN_TONES, random)
+  const faces = shuffled(FACE_SHAPES, random)
+  const sets = { indian: shuffled(TVC_SETS_INDIAN, random), general: shuffled(TVC_SETS, random) }
+  const hair = { woman: shuffled(HAIR.woman, random), man: shuffled(HAIR.man, random) }
+  const wardrobe = {
+    indian: { woman: shuffled(TVC_WARDROBE_INDIAN.woman, random), man: shuffled(TVC_WARDROBE_INDIAN.man, random) },
+    general: { woman: shuffled(TVC_WARDROBE_GENERAL.woman, random), man: shuffled(TVC_WARDROBE_GENERAL.man, random) },
+  }
+  const used = { hair: { woman: 0, man: 0 }, indian: { woman: 0, man: 0 }, general: { woman: 0, man: 0 }, set: { indian: 0, general: 0 } }
+  return genders.map((g, i) => {
+    const personLook = isMix ? looks[i % looks.length] : look
+    const pool = isIndian || personLook === 'Indian' ? 'indian' : 'general'
+    return {
+      gender: g,
+      age: ages[i],
+      look: personLook,
+      ...(pool === 'indian' ? { skinTone: skinTones[i % skinTones.length] } : {}),
+      faceShape: faces[i % faces.length],
+      hair: hair[g][used.hair[g]++ % hair[g].length],
+      wardrobe: wardrobe[pool][g][used[pool][g]++ % wardrobe[pool][g].length],
+      set: sets[pool][used.set[pool]++ % sets[pool].length],
+    }
+  })
+}
+
+/** "31 · Indian woman · an ivory silk saree · a haveli courtyard set" */
+export function tvcLine(v: TvcVariationSpec): string {
+  const short = (s: string) => s.split(/,| with /)[0].trim()
+  return `${v.age} · ${v.look} ${v.gender} · ${short(v.wardrobe)} · ${short(v.set)}`
+}
+
+export const rollTvcVariationsTool = createTool({
+  id: 'roll-tvc-variations',
+  description: 'Picks distinct details for TVC actor avatar variations so no two look alike: per variation an age, look, face shape, hair, styled wardrobe and commercial set, all different across the set, within the look, gender and age range from the brief. Call once before writing TVC variation prompts. Free.',
+  inputSchema: z.object({
+    count: z.number().int().min(1).max(6).default(4),
+    look: z.string().describe('The look from the brief exactly as given: "a mix of 4 different looks", "Indian", or the user\'s own words'),
+    gender: z.enum(['woman', 'man', 'any']).describe('From the brief; "any" alternates woman and man'),
+    ageMin: z.number().int().min(18).max(90).describe('Youngest age the brief allows (18 or older)'),
+    ageMax: z.number().int().min(18).max(90).describe('Oldest age the brief allows'),
+  }),
+  execute: async (inputData, execContext) => {
+    const { count, look, gender, ageMin, ageMax } = inputData
+    const variations = rollTvcVariations({ count, look, gender, ageMin: Math.min(ageMin, ageMax), ageMax: Math.max(ageMin, ageMax) })
+    emitToolStatus(execContext, `Casting ${variations.length} actors`, variations.map(tvcLine))
+    return { variations }
+  },
+})
+
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
   description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Style "3d chibi": per variation a family-cast member (child, young adult or grandparent), look, hair, outfit, scene and pose. Style "storybook anime": per variation age, look, skin, hair, outfit, an everyday moment in a lived-in place, and expression. Call once before writing animated-character variation prompts. Free.',

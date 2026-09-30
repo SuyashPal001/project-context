@@ -7,7 +7,7 @@ import { OFFICIAL_SKILLS, buildSkillManifest, readSkillBody } from '../seeds/off
 describe('OFFICIAL_SKILLS', () => {
   it('has every slug', () => {
     const slugs = OFFICIAL_SKILLS.map((s) => s.slug).sort();
-    expect(slugs).toEqual(['animated-character-creator', 'avatar-creator', 'talking-head']);
+    expect(slugs).toEqual(['animated-character-creator', 'avatar-creator', 'talking-head', 'tvc-character-creator']);
   });
 
   it('each entry file exists and is non-empty', () => {

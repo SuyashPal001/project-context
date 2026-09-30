@@ -197,6 +197,13 @@ describe('buildGeminiImageRequest', () => {
 })
 
 describe('buildGeminiImageRequest aspectRatio', () => {
+  it('sets imageConfig.imageSize for 2K alongside the ratio, and ignores 4K', () => {
+    const two = buildGeminiImageRequest({ model: 'gemini-3-pro-image-preview', prompt: 'p', aspectRatio: '3:4', imageSize: '2K' })
+    expect(two.generationConfig).toEqual({ responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:4', imageSize: '2K' } })
+    const four = buildGeminiImageRequest({ model: 'gemini-3-pro-image-preview', prompt: 'p', imageSize: '4K' })
+    expect(four.generationConfig).toEqual({ responseModalities: ['IMAGE'] })
+  })
+
   it('sets imageConfig.aspectRatio for a supported ratio', () => {
     const body = buildGeminiImageRequest({ model: 'm', prompt: 'p', aspectRatio: '9:16' })
     expect(body.generationConfig).toEqual({ responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '9:16' } })

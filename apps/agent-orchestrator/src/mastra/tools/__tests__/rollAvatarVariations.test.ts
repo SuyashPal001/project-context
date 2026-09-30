@@ -186,6 +186,27 @@ describe('rollStorybookVariations', () => {
   })
 })
 
+describe('rollTvcVariations', () => {
+  it('casts four actors who differ in age, face, hair, wardrobe and set, within the range', async () => {
+    const { rollTvcVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 20; seed++) {
+      const set = rollTvcVariations({ count: 4, look: 'a mix of 4 different looks', gender: 'any', ageMin: 22, ageMax: 45 }, seeded(seed))
+      expect(set.map((v) => v.gender)).toEqual(['woman', 'man', 'woman', 'man'])
+      expect(set.every((v) => v.age >= 22 && v.age <= 45)).toBe(true)
+      for (const key of ['age', 'look', 'faceShape', 'wardrobe', 'set'] as const) {
+        expect(distinct(set.map((v) => v[key]))).toBe(true)
+      }
+    }
+  })
+
+  it('dresses an Indian look in Indian wardrobe on Indian or neutral sets', async () => {
+    const { rollTvcVariations } = await import('../rollAvatarVariations.js')
+    const set = rollTvcVariations({ count: 4, look: 'Indian', gender: 'woman', ageMin: 22, ageMax: 40 }, seeded(8))
+    expect(set.every((v) => v.skinTone && /saree|lehenga|anarkali|sharara|pantsuit/.test(v.wardrobe))).toBe(true)
+    expect(distinct(set.map((v) => v.set))).toBe(true)
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')

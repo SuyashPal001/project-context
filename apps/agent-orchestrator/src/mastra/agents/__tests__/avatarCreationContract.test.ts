@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { AVATAR_CREATION_SECTION, AVATAR_FROM_IMAGE_SECTION, DIRECTOR_WORKING_MEMORY_SECTION } from '../directorAgent.js'
+import { AVATAR_CREATION_SECTION, AVATAR_FROM_IMAGE_SECTION, DIRECTOR_WORKING_MEMORY_SECTION, TVC_CHARACTER_SECTION } from '../directorAgent.js'
 
 // The Avatar creation and Image-to-avatar contracts moved out of Olmo's
 // always-on instructions into the Avatar creator Official skill (see
@@ -203,6 +203,32 @@ describe('animated-character avatars (Animated character creator Official skill)
     expect(AVATAR_CREATION_SECTION).toMatch(/soft painterly backgrounds with a watercolour texture/)
     expect(AVATAR_CREATION_SECTION).not.toMatch(/ghibli/i)
     expect(AVATAR_CREATION_SECTION).toMatch(/never reproducing any existing studio, film, character or artwork/)
+  })
+})
+
+describe('TVC character creator (Official skill)', () => {
+  const TVC_SKILL_TEXT = () => readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../tvc-character-creator.md'), 'utf8')
+
+  it('asks one card, never recreates a celebrity, and delegates the style to Director', () => {
+    const text = TVC_SKILL_TEXT()
+    expect(text).toContain('at most ONE ask_clarifying_questions card')
+    expect(text).toMatch(/Never recreate a real celebrity, actor or public figure/)
+    expect(text).toMatch(/write "style: tvc"/)
+    expect(text).toMatch(/ONE generate_images batch/)
+    expect(text).toMatch(/Only say the actor is saved when Director reports a save_as_avatar result with saved true/)
+    expect(text).toMatch(/under Key Decisions only/)
+    expect(text).toMatch(/Delegate by calling the agent-director tool — never by writing a message to it in your reply/)
+  })
+
+  it('casts original commercial actors and builds an eight-section continuity bible at 2K', () => {
+    expect(TVC_CHARACTER_SECTION).toMatch(/call roll_tvc_variations once/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/an original face that never resembles any celebrity, actor or public figure/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/aspectRatio "3:4", imageSize "2K"/)
+    for (const section of ['CHARACTER PROFILE', 'FULL-BODY TURNAROUND', 'FACE & IDENTITY DETAILS', 'EXPRESSION SHEET', 'POSE & BODY LANGUAGE', 'COSTUME DETAILS', 'COLOR & MATERIAL PALETTE', 'DO NOT CHANGE']) {
+      expect(TVC_CHARACTER_SECTION).toContain(section)
+    }
+    expect(TVC_CHARACTER_SECTION).toMatch(/no personal name anywhere on the page/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/lips relaxed and slightly parted/)
   })
 })
 
