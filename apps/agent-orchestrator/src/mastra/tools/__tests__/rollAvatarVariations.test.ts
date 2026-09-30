@@ -153,6 +153,7 @@ describe('rollChibiVariations', () => {
         expect(distinct(set.map((v) => v[key]))).toBe(true)
       }
       expect(JSON.stringify(set)).not.toMatch(/bikini|swim|crop top|lingerie|revealing/i)
+      expect(set.every((v) => v.scene.length > 0)).toBe(true)
     }
   })
 

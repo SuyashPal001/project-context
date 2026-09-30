@@ -194,6 +194,7 @@ describe('animated-character avatars (Animated character creator Official skill)
     expect(AVATAR_CREATION_SECTION).toMatch(/fully clothed, age-appropriate and modest/)
     expect(AVATAR_CREATION_SECTION).toMatch(/never mature styling/)
     expect(AVATAR_CREATION_SECTION).toMatch(/rounded chibi proportions with a large head on a small body/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/cute and warm, never angry or intimidating/)
   })
 })
 

@@ -510,10 +510,13 @@ export function rollFantasyAnimeVariations(count: number, random: () => number =
   })
 }
 
-// 3D chibi: polished family-film 3D characters with rounded chibi
-// proportions, modelled on the concept the user approved (Anika, a little
-// girl in a lehenga in a spring garden). A family cast — children, young
-// adults and grandparents — always fully clothed and age-appropriate.
+// 3D chibi: polished, expressive family-film 3D characters with rounded chibi
+// proportions, modelled on the three concepts the user approved (Anika in a
+// spring garden, Ayaan with a comically stubborn frown, Zuri bouncing into
+// frame). Two of the three stand on a plain pastel studio backdrop, so half
+// the places are studio backdrops; expressions are big and a little comic.
+// A family cast — children, young adults and grandparents — always fully
+// clothed and age-appropriate.
 const CHIBI_CAST: { who: string; gender: Gender; age: number; hair: string[] }[] = [
   { who: 'little girl', gender: 'woman', age: 7, hair: ['two puffy pigtails tied with ribbons', 'a short bob with a star-shaped clip', 'a long braid with a small flower'] },
   { who: 'little boy', gender: 'man', age: 8, hair: ['messy short hair with a cowlick', 'soft curly hair', 'neatly side-parted hair'] },
@@ -534,23 +537,23 @@ const CHIBI_OUTFITS_GENERAL: Record<Gender, string[]> = {
 }
 
 const CHIBI_SCENES = [
+  'a plain warm-neutral studio backdrop with a soft floor shadow',
+  'a clean pale sky-blue studio backdrop with a soft floor shadow',
+  'a soft mint studio backdrop with a soft floor shadow',
+  'a pale peach studio backdrop with a soft floor shadow',
   'a sunny courtyard hung with marigold garlands',
-  'a cozy kitchen in soft morning light',
   'a monsoon street with puddles and bright umbrellas',
-  'a school playground under a big banyan tree',
   'a rooftop at kite-flying time under a pastel sky',
-  'a lakeside picnic lawn with wildflowers',
-  'a snowy village lane with warm lit windows',
   'a little bookshop corner with lanterns',
 ]
 
 const CHIBI_POSES = [
-  'arms gently folded with a playful, mildly stubborn pout',
-  'a big happy grin while waving',
-  'hands on hips, proud and cheerful',
-  'giggling with both hands to the cheeks',
-  'head tilted with a curious look',
-  'twirling mid-step with a delighted smile',
+  'arms folded and one foot planted forward, with a comically determined frown',
+  'one hand waving and one knee bent as if just bounced into frame, with an exuberant sideways grin',
+  'hands on hips, chin up, with a proud cheeky smile',
+  'giggling with both hands pressed to the cheeks',
+  'head tilted and one finger on the chin, with a comically puzzled look',
+  'mid-twirl with arms out and a delighted open smile',
 ]
 
 export interface ChibiVariationSpec {

@@ -112,9 +112,9 @@ When Olmo delegates creating a reusable avatar:
   Use case: stylized-concept
   Asset type: original reusable 3D chibi character avatar for <what Olmo says it is for>
   Primary request: ONE full-body portrait of an original charming <look> <who> character, about <age> years old, with <skin tone>, large expressive dark eyes and <hair>, wearing <outfit>
-  Subject: <pose>, looking directly at the viewer, lips slightly parted so the character can later talk in a video; fully clothed, age-appropriate and modest
-  Scene/backdrop: <scene>, soft, dreamy and gently out of focus
-  Style/medium: premium polished 3D animated family-film character design, rounded chibi proportions with a large head on a small body, soft tactile fabric, a detailed expressive face, gentle global illumination, a soft pastel palette
+  Subject: <pose> — a big, readable, slightly comic expression that is cute and warm, never angry or intimidating — looking directly at the viewer, lips slightly parted so the character can later talk in a video; fully clothed, age-appropriate and modest
+  Scene/backdrop: <scene>; a scene stays soft and gently out of focus, a studio backdrop stays plain so the silhouette reads clearly
+  Style/medium: premium polished 3D animated family-film character design, rounded chibi proportions with a large head on a small body, soft tactile cloth and beautifully textured hair, an appealing detailed expressive face, gentle studio lighting, a clean pastel palette
   Composition/framing: vertical 3:4, the whole character from head to feet, graceful and uncluttered
   Constraints: one character only; an original character; no text, name, logo, UI, watermark or additional people; never mature styling
   Avoid: resemblance to any existing animated film character, realistic adult proportions, an uncanny face, flat 2D cartoon, anime, extra fingers
