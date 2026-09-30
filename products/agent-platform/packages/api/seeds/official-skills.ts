@@ -52,11 +52,11 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
   {
     slug: 'animated-character-creator',
     name: 'Animated character creator',
-    description: 'Use when the user wants a new reusable animated 3D character or mascot for their ads — not a real person.',
+    description: 'Use when the user wants a new reusable animated character for their ads — a cozy 3D mascot or a console-game-style hero, not a photoreal person.',
     file: officialSkillFile('animated-character-creator.md'),
     showcase: {
       imageUrl: '/creative/avatars/animated-character.jpg',
-      bestFor: ['Mascots', 'Kids & family', 'Animated ads'],
+      bestFor: ['Mascots', 'Game heroes', 'Animated ads'],
       starterPrompt: 'Create an animated character for my ads',
     },
   },

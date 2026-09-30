@@ -291,14 +291,85 @@ export function characterLine(v: CharacterVariationSpec): string {
   return `${short(v.character)} · ${short(v.material)} · ${short(v.personality)}`
 }
 
+// Game heroes: original console-game character art, modelled on the ten
+// game concepts the user approved (a forest pathfinder, a city courier, a
+// frost guardian). Each is a role in its own world with one signature item,
+// its own light and palette. The approved ten stay the user's own; these are
+// new roles in the same spirit.
+const GAME_ROLES = [
+  { role: 'airship mechanic', world: 'a sky-harbour dock among clouds at sunrise', item: 'a brass multi-tool gauntlet', light: 'warm sunrise light, copper and teal palette' },
+  { role: 'jungle temple cartographer', world: 'overgrown stone temple steps in drifting mist', item: 'a leather map case with a carved clasp', light: 'filtered green daylight, jade and ochre palette' },
+  { role: 'monsoon fort archer', world: 'a carved sandstone fort rampart in heavy monsoon rain', item: 'an ornate recurve bow with brass fittings', light: 'stormy grey light with warm lamp accents, saffron and slate palette' },
+  { role: 'mountain-pass courier', world: 'a high snowy mountain pass strung with faded cloth flags', item: 'a weatherproof satchel with a round bronze latch', light: 'cold blue-hour light, crimson and snow-white palette' },
+  { role: 'deep-sea salvage diver', world: 'a flooded ancient harbour pierced by shafts of light', item: 'a heavy brass diving helmet carried under one arm', light: 'cool sea-teal light with amber lamps' },
+  { role: 'orbital station medic', world: 'a space station corridor with a window onto a blue planet', item: 'a compact medical scanner strapped to one forearm', light: 'crisp white light with a soft orange rim' },
+  { role: 'desert caravan guardian', world: 'wind-sculpted red dunes at golden hour', item: 'a long curved glaive with an indigo tassel', light: 'golden-hour light, indigo and sand palette' },
+  { role: 'night-market hacker', world: 'a rain-soaked night market under glowing signs with no readable text', item: 'a folding holographic deck', light: 'magenta and cyan neon light' },
+  { role: 'ice-forest ranger', world: 'a frozen birch forest at dawn', item: 'a white-fletched longbow and a fur-trimmed hood', light: 'pale dawn light, silver and moss palette' },
+  { role: 'volcanic forge smith', world: 'a glowing forge carved into black basalt', item: 'a heavy plain war hammer', light: 'fiery orange light against deep shadow' },
+]
+
+const GAME_SKIN = ['deep brown skin', 'warm medium-brown skin', 'light olive skin', 'golden-tan skin', 'dark umber skin', 'wheatish brown skin', 'fair skin with rosy cheeks', 'warm copper-brown skin']
+
+const GAME_HAIR: Record<Gender, string[]> = {
+  woman: ['close-cropped silver hair', 'long dark braids tied back', 'a copper undercut', 'tightly coiled hair under a headwrap', 'a long black braid over one shoulder', 'short wavy auburn hair'],
+  man: ['short curly black hair', 'long hair tied in a warrior knot', 'a shaved head with a short beard', 'swept-back grey hair', 'braided hair with a trimmed beard', 'messy dark hair with stubble'],
+}
+
+const GAME_EXPRESSIONS = ['gentle but formidable', 'alert and resourceful', 'calm and protective', 'focused and hopeful', 'wry and confident', 'thoughtful and a little haunted']
+
+export interface GameHeroVariationSpec {
+  gender: Gender
+  age: number
+  role: string
+  world: string
+  item: string
+  light: string
+  skin: string
+  hair: string
+  expression: string
+}
+
+export function rollGameHeroVariations(count: number, random: () => number = Math.random, gender: Gender | 'any' = 'any'): GameHeroVariationSpec[] {
+  const roles = shuffled(GAME_ROLES, random)
+  const skins = shuffled(GAME_SKIN, random)
+  const expressions = shuffled(GAME_EXPRESSIONS, random)
+  const ages = shuffled(spreadAges(22, 60, count, random), random)
+  const hair = { woman: shuffled(GAME_HAIR.woman, random), man: shuffled(GAME_HAIR.man, random) }
+  const hairUsed = { woman: 0, man: 0 }
+  return Array.from({ length: count }, (_, i) => {
+    const g: Gender = gender === 'any' ? (i % 2 === 0 ? 'woman' : 'man') : gender
+    return {
+      gender: g,
+      age: ages[i],
+      ...roles[i % roles.length],
+      skin: skins[i % skins.length],
+      hair: hair[g][hairUsed[g]++ % hair[g].length],
+      expression: expressions[i % expressions.length],
+    }
+  })
+}
+
+/** "41 · woman · monsoon fort archer" */
+export function gameHeroLine(v: GameHeroVariationSpec): string {
+  return `${v.age} · ${v.gender} · ${v.role}`
+}
+
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
-  description: 'Picks distinct details for animated-character avatar variations — per variation an original character, one material, a palette with its studio backdrop, and a personality caught in an action, all different across the set. Call once before writing animated-character variation prompts. Free.',
+  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('From the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
+    style: z.enum(['mascot', 'game hero']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot) or "game hero" (console-game character art)'),
+    kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('Mascots only, from the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
+    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Game heroes only, from the brief; "any" alternates woman and man'),
   }),
   execute: async (inputData, execContext) => {
+    if (inputData.style === 'game hero') {
+      const heroes = rollGameHeroVariations(inputData.count, Math.random, inputData.gender)
+      emitToolStatus(execContext, `Casting ${heroes.length} characters`, heroes.map(gameHeroLine))
+      return { variations: heroes }
+    }
     const variations = rollCharacterVariations(inputData.count, Math.random, inputData.kind)
     emitToolStatus(execContext, `Casting ${variations.length} characters`, variations.map(characterLine))
     return { variations }

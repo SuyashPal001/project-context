@@ -94,6 +94,26 @@ describe('rollCharacterVariations', () => {
   })
 })
 
+describe('rollGameHeroVariations', () => {
+  it('gives four adults in different roles, worlds, skin, hair and expressions, alternating women and men', async () => {
+    const { rollGameHeroVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 20; seed++) {
+      const set = rollGameHeroVariations(4, seeded(seed))
+      expect(set.map((v) => v.gender)).toEqual(['woman', 'man', 'woman', 'man'])
+      expect(set.every((v) => v.age >= 22 && v.age <= 60)).toBe(true)
+      for (const key of ['role', 'world', 'item', 'light', 'skin', 'hair', 'expression', 'age'] as const) {
+        expect(distinct(set.map((v) => v[key]))).toBe(true)
+      }
+    }
+  })
+
+  it('keeps one gender when the brief gives it', async () => {
+    const { rollGameHeroVariations } = await import('../rollAvatarVariations.js')
+    const set = rollGameHeroVariations(4, seeded(2), 'woman')
+    expect(set.every((v) => v.gender === 'woman') && distinct(set.map((v) => v.hair))).toBe(true)
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')
