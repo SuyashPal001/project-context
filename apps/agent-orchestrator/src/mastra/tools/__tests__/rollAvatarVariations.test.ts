@@ -129,6 +129,20 @@ describe('rollAnimeVariations', () => {
   })
 })
 
+describe('rollFantasyAnimeVariations', () => {
+  it('gives four adults in different roles, worlds, items and looks, alternating women and men', async () => {
+    const { rollFantasyAnimeVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 20; seed++) {
+      const set = rollFantasyAnimeVariations(4, seeded(seed))
+      expect(set.map((v) => v.gender)).toEqual(['woman', 'man', 'woman', 'man'])
+      expect(set.every((v) => v.age >= 22 && v.age <= 45)).toBe(true)
+      for (const key of ['role', 'world', 'item', 'palette', 'skin', 'hair', 'eyes', 'expression'] as const) {
+        expect(distinct(set.map((v) => v[key]))).toBe(true)
+      }
+    }
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')

@@ -351,13 +351,13 @@ export function rollGameHeroVariations(count: number, random: () => number = Mat
 }
 
 /** "41 · woman · monsoon fort archer" */
-export function gameHeroLine(v: GameHeroVariationSpec): string {
+export function gameHeroLine(v: Pick<GameHeroVariationSpec, 'age' | 'gender' | 'role'>): string {
   return `${v.age} · ${v.gender} · ${v.role}`
 }
 
 // Cinematic anime: mature, elegant hand-drawn 2D anime portraits, modelled on
-// the two concepts the user approved (Leora in a rooftop lounge, Ren in an
-// art gallery after dark) — contemporary evening fashion, a night-city
+// the three concepts the user approved (Leora in a rooftop lounge, Ren in an
+// art gallery after dark, Mira seated on a coastal terrace at blue hour) — contemporary evening fashion, a night-city
 // setting, face and personality first. No fantasy armour or weapons.
 const ANIME_SCENES = [
   'a quiet jazz bar with warm amber lamps',
@@ -368,6 +368,7 @@ const ANIME_SCENES = [
   'a rooftop garden with string lights above the city',
   'a train platform at dusk under soft lights',
   'a theatre foyer with velvet curtains and gold sconces',
+  'a terrace above a coastal city at blue hour, flowers in soft silhouette',
 ]
 
 const ANIME_OUTFITS: Record<Gender, string[]> = {
@@ -401,6 +402,7 @@ const ANIME_POSES = [
   'adjusting a cuff',
   'standing with arms loosely crossed',
   'one hand touching the edge of a doorframe',
+  'seated naturally with one arm resting beside them',
 ]
 
 const ANIME_EXPRESSIONS = ['a poised playful smile', 'a thoughtful gaze', 'a quiet confident half-smile', 'a warm amused look', 'a composed, charismatic look', 'a soft curious look']
@@ -452,16 +454,77 @@ export function animeLine(v: AnimeVariationSpec): string {
   return `${v.gender} · ${short(v.outfit)} · ${short(v.scene)}`
 }
 
+// Fantasy anime: hand-painted 2D anime game key art, modelled on the two
+// concepts the user approved (Airi, a sky-map cartographer above a cloud
+// city; Renna, a glass-garden knight). Each is an adult role in its own
+// painterly world with an elaborate but coherent costume and one signature
+// item. No creatures or mounts: one character only.
+const FANTASY_ROLES = [
+  { role: 'lantern-festival mage', world: 'a river city strung with paper lanterns at night', item: 'a staff hung with tiny glass lanterns', palette: 'warm gold and deep indigo' },
+  { role: 'sky-ship navigator', world: 'the deck of a wooden airship above sunset clouds', item: 'a brass spyglass', palette: 'amber and sky blue' },
+  { role: 'desert star-reader', world: 'a moonlit desert observatory of carved sandstone arches', item: 'a folding bronze star chart', palette: 'midnight blue and sand gold' },
+  { role: 'forest spirit archer', world: 'an ancient giant forest with glowing moss at dusk', item: 'an ornate wooden bow wrapped in vines', palette: 'emerald and soft gold' },
+  { role: 'tide-temple keeper', world: 'a sea temple with waves breaking on marble steps', item: 'a pearl-tipped staff', palette: 'aqua and pearl white' },
+  { role: 'snow-peak wanderer', world: 'a snowy mountain monastery hung with bronze bells', item: 'a carved walking staff and a fur-lined cloak', palette: 'ice blue and crimson' },
+  { role: 'clockwork-city inventor', world: 'a city of brass towers and turning gears at golden hour', item: 'a clockwork gauntlet', palette: 'copper and teal' },
+  { role: 'blossom-courtyard duelist', world: 'a courtyard of falling blossoms in morning light', item: 'a slim sheathed blade with a silk tassel', palette: 'blush pink and ink black' },
+]
+
+const FANTASY_HAIR: Record<Gender, string[]> = {
+  woman: ['short copper curls', 'a long auburn braid', 'long silver hair with a jewelled clip', 'a black bob with a single blue streak', 'long wavy honey-blonde hair', 'high-tied dark hair with loose strands'],
+  man: ['tousled silver-white hair', 'shoulder-length black hair tied back', 'short spiky auburn hair', 'long dark hair in a single braid', 'windswept sandy hair', 'a neat dark undercut'],
+}
+
+export interface FantasyAnimeVariationSpec {
+  gender: Gender
+  age: number
+  role: string
+  world: string
+  item: string
+  palette: string
+  skin: string
+  hair: string
+  eyes: string
+  expression: string
+}
+
+export function rollFantasyAnimeVariations(count: number, random: () => number = Math.random, gender: Gender | 'any' = 'any'): FantasyAnimeVariationSpec[] {
+  const roles = shuffled(FANTASY_ROLES, random)
+  const skins = shuffled(GAME_SKIN, random)
+  const eyes = shuffled(ANIME_EYES, random)
+  const expressions = shuffled(ANIME_EXPRESSIONS, random)
+  const ages = shuffled(spreadAges(22, 45, count, random), random)
+  const hair = { woman: shuffled(FANTASY_HAIR.woman, random), man: shuffled(FANTASY_HAIR.man, random) }
+  const used = { woman: 0, man: 0 }
+  return Array.from({ length: count }, (_, i) => {
+    const g: Gender = gender === 'any' ? (i % 2 === 0 ? 'woman' : 'man') : gender
+    return {
+      gender: g,
+      age: ages[i],
+      ...roles[i % roles.length],
+      skin: skins[i % skins.length],
+      hair: hair[g][used[g]++ % hair[g].length],
+      eyes: eyes[i % eyes.length],
+      expression: expressions[i % expressions.length],
+    }
+  })
+}
+
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
-  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Call once before writing animated-character variation prompts. Free.',
+  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    style: z.enum(['mascot', 'game hero', 'cinematic anime']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art) or "cinematic anime" (elegant 2D anime)'),
+    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime) or "fantasy anime" (2D anime game key art)'),
     kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('Mascots only, from the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
-    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Game heroes and cinematic anime only, from the brief; "any" alternates woman and man'),
+    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Everything except mascots, from the brief; "any" alternates woman and man'),
   }),
   execute: async (inputData, execContext) => {
+    if (inputData.style === 'fantasy anime') {
+      const heroes = rollFantasyAnimeVariations(inputData.count, Math.random, inputData.gender)
+      emitToolStatus(execContext, `Casting ${heroes.length} characters`, heroes.map(gameHeroLine))
+      return { variations: heroes }
+    }
     if (inputData.style === 'cinematic anime') {
       const people = rollAnimeVariations(inputData.count, Math.random, inputData.gender)
       emitToolStatus(execContext, `Casting ${people.length} characters`, people.map(animeLine))

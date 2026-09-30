@@ -95,7 +95,19 @@ When Olmo delegates creating a reusable avatar:
   Constraints: one character only; an original face, hairstyle, outfit, pose, jewellery and setting; no text, name, logo, UI, watermark or other characters
   Avoid: resemblance to any known anime, game or film character, actor or celebrity; childlike features; revealing or suggestive framing; 3D render; photorealism; extra fingers
   Give each item a title naming its person the way a user would, e.g. "Woman in emerald, jazz bar".
-  Reference sheet for cinematic anime: the person reference sheet above, drawn in the same hand-drawn 2D anime style with the same outfit in every panel and the full outfit in the full-body panel (never everyday bottoms and shoes), on a plain light-grey background. terseTag names the hair and outfit (e.g. "black-haired woman, emerald slip dress"); styleLock is e.g. "hand-drawn 2D anime, cel shading, film grain".`
+  Reference sheet for cinematic anime: the person reference sheet above, drawn in the same hand-drawn 2D anime style with the same outfit in every panel and the full outfit in the full-body panel (never everyday bottoms and shoes), on a plain light-grey background. terseTag names the hair and outfit (e.g. "black-haired woman, emerald slip dress"); styleLock is e.g. "hand-drawn 2D anime, cel shading, film grain".
+- Fantasy anime: when Olmo's brief says "style: fantasy anime", the avatar is an original adult fantasy character in hand-painted 2D anime game key art, and these rules replace the other character ones. Call roll_character_variations once with style "fantasy anime" and the brief's gender (or "any"); where the brief names a role, world or look, the brief wins over the roll. Variations are one generate_images call with 4 items, aspectRatio "3:4", each prompt in labeled lines:
+  Use case: stylized-concept
+  Asset type: original reusable fantasy-anime character avatar for <what Olmo says it is for>
+  Primary request: ONE complete full-body portrait of an original adult <role>, clearly adult in face and proportions, with <skin>, <hair> and <eyes>, in an elaborate but coherent original fantasy costume in <palette>, carrying <item>
+  Subject: <expression>, a vivid expressive face, lips relaxed and slightly parted so the face can later talk in a video; a confident stance with a strong readable silhouette
+  Scene/backdrop: <world>, atmospheric and painterly
+  Style/medium: premium hand-painted 2D anime game key art — crisp expressive ink linework, controlled cel shading, painterly atmospheric light, richly designed clothing; unmistakably illustrated, never photorealistic or 3D
+  Composition/framing: vertical 3:4, the entire character visible from head to feet with no cropped feet, comfortable margins
+  Constraints: one character only, with no creatures or mounts; an original costume, symbols and setting; no text, name, logo, emblem, UI, watermark or other characters
+  Avoid: resemblance to any recognizable game or anime character or franchise emblem; childlike features; a revealing costume; 3D render; photorealism; extra fingers
+  Give each item a title naming its character the way a user would, e.g. "Lantern-festival mage".
+  Reference sheet for fantasy anime: the person reference sheet above, drawn in the same hand-painted anime style with the same full costume and signature item in every panel (never everyday bottoms and shoes), on a plain light-grey background. terseTag names the role, hair and costume (e.g. "copper-curled cartographer, teal robes"); styleLock is e.g. "hand-painted 2D anime key art, cel shading".`
 
 export const AVATAR_FROM_IMAGE_SECTION = `\n\n## Image-to-avatar — variations from a reference photo
 When Olmo delegates creating an avatar from a reference photo, with an intent and the reference image's fileId:
