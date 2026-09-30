@@ -164,6 +164,28 @@ describe('rollChibiVariations', () => {
   })
 })
 
+describe('rollStorybookVariations', () => {
+  it('gives four adults in different everyday moments, outfits and looks', async () => {
+    const { rollStorybookVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 20; seed++) {
+      const set = rollStorybookVariations(4, seeded(seed))
+      expect(set.map((v) => v.gender)).toEqual(['woman', 'man', 'woman', 'man'])
+      expect(set.every((v) => v.age >= 22 && v.age <= 45)).toBe(true)
+      for (const key of ['look', 'outfit', 'moment', 'expression'] as const) {
+        expect(distinct(set.map((v) => v[key]))).toBe(true)
+      }
+    }
+  })
+
+  it('puts an Indian look in Indian places and clothes', async () => {
+    const { rollStorybookVariations } = await import('../rollAvatarVariations.js')
+    const set = rollStorybookVariations(4, seeded(3), 'Indian', 'woman')
+    expect(set.every((v) => /saree|kurta|salwar|kurti/.test(v.outfit))).toBe(true)
+    expect(set.every((v) => /chai|tulsi|rangoli|railway|jasmine|ghat|library|rooftop|bicycle/.test(v.moment))).toBe(true)
+    expect(distinct(set.map((v) => v.moment))).toBe(true)
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')

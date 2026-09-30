@@ -52,7 +52,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
   {
     slug: 'animated-character-creator',
     name: 'Animated character creator',
-    description: 'Use when the user wants a new reusable animated character for their ads — a cozy 3D mascot, a console-game-style hero, a cinematic or fantasy anime character, or a 3D chibi family character, not a photoreal person.',
+    description: 'Use when the user wants a new reusable animated character for their ads — a cozy 3D mascot, a console-game-style hero, a cinematic, fantasy or storybook anime character, or a 3D chibi family character, not a photoreal person.',
     file: officialSkillFile('animated-character-creator.md'),
     showcase: {
       imageUrl: '/creative/avatars/animated-character.jpg',

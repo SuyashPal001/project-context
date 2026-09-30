@@ -609,17 +609,111 @@ export function chibiLine(v: ChibiVariationSpec): string {
   return `${v.look} ${v.who} · ${short(v.outfit)} · ${short(v.scene)}`
 }
 
+// Storybook anime: warm hand-painted 2D anime of quiet everyday life,
+// modelled on the concepts the user picked (Kavya carrying a basket of
+// vegetables through a kitchen of brass and steel pots; Meera at a bus
+// window above paddy fields). Each person is caught in one small everyday
+// moment in a lived-in place. An Indian look gets Indian places and clothes.
+const STORYBOOK_MOMENTS_INDIAN = [
+  'on a rooftop terrace pegging washing in an afternoon breeze',
+  'at a small tea stall on a rainy evening, holding a glass of chai',
+  'in a courtyard beside a tulsi planter, finishing a rangoli',
+  'walking a bicycle down a tree-lined lane',
+  'on a railway platform beside a steel trunk, waiting for a train',
+  'at a flower market stall, stringing jasmine garlands',
+  'in a library reading room under slow ceiling fans, reading a book',
+  'on riverside ghat steps at dusk with a small brass lamp',
+]
+
+const STORYBOOK_MOMENTS_GENERAL = [
+  'in a seaside-town bakery at dawn, carrying a tray of bread',
+  'at the window of a hillside tram, gazing out at the view',
+  'on a sunlit rooftop pegging washing in a breeze',
+  'in a cozy bookshop, reaching for a book on a high shelf',
+  'at a rainy bus stop, sheltering under a big umbrella',
+  'tending tomato plants in a small balcony garden',
+  'walking a bicycle down a country lane lined with wildflowers',
+  'at a market stall, choosing fruit from a crate',
+]
+
+const STORYBOOK_OUTFITS_INDIAN: Record<Gender, string[]> = {
+  woman: ['a maroon handloom saree with a mango-motif border', 'an indigo block-print kurta with a white dupatta', 'a green cotton salwar kameez', 'a peach chikankari kurti', 'a sky-blue cotton saree with a thin silver border'],
+  man: ['a white cotton kurta with rolled sleeves', 'a checked half-sleeve shirt with trousers and a cloth jhola bag', 'a mustard kurta', 'a faded blue shirt with a folded veshti', 'a grey sweater vest over a white shirt'],
+}
+
+const STORYBOOK_OUTFITS_GENERAL: Record<Gender, string[]> = {
+  woman: ['a cream blouse with a long olive skirt', 'a striped linen shirt-dress', 'a knitted cardigan over a floral dress', 'dungarees over a white tee with a headscarf', 'a navy pinafore dress with a yellow blouse'],
+  man: ['a rolled-sleeve white shirt with braces', 'a cable-knit sweater with corduroy trousers', 'a denim work shirt', 'a flat cap with a tweed waistcoat', 'a checked flannel shirt'],
+}
+
+const STORYBOOK_EXPRESSIONS = ['a soft content smile', 'a quiet thoughtful gaze', 'a warm amused look', 'a gentle faraway look', 'a small shy smile', 'a bright, open smile']
+
+export interface StorybookVariationSpec {
+  gender: Gender
+  age: number
+  look: string
+  skin: string
+  hair: string
+  outfit: string
+  moment: string
+  expression: string
+}
+
+export function rollStorybookVariations(count: number, random: () => number = Math.random, look = 'a mix', gender: Gender | 'any' = 'any'): StorybookVariationSpec[] {
+  const trimmed = look.trim()
+  const isMix = /^(a )?mix\b/i.test(trimmed) || trimmed === ''
+  const isIndian = /\bindian\b/i.test(trimmed)
+  const looks = shuffled(MIX_LOOKS, random)
+  const indianSkins = shuffled(INDIAN_SKIN_TONES, random)
+  const skins = shuffled(GAME_SKIN, random)
+  const ages = shuffled(spreadAges(22, 45, count, random), random)
+  const expressions = shuffled(STORYBOOK_EXPRESSIONS, random)
+  const hair = { woman: shuffled(HAIR.woman, random), man: shuffled(HAIR.man, random) }
+  const moments = { indian: shuffled(STORYBOOK_MOMENTS_INDIAN, random), general: shuffled(STORYBOOK_MOMENTS_GENERAL, random) }
+  const outfits = {
+    indian: { woman: shuffled(STORYBOOK_OUTFITS_INDIAN.woman, random), man: shuffled(STORYBOOK_OUTFITS_INDIAN.man, random) },
+    general: { woman: shuffled(STORYBOOK_OUTFITS_GENERAL.woman, random), man: shuffled(STORYBOOK_OUTFITS_GENERAL.man, random) },
+  }
+  const used = { hair: { woman: 0, man: 0 }, indian: { woman: 0, man: 0 }, general: { woman: 0, man: 0 }, moment: { indian: 0, general: 0 } }
+  return Array.from({ length: count }, (_, i) => {
+    const g: Gender = gender === 'any' ? (i % 2 === 0 ? 'woman' : 'man') : gender
+    const personLook = isMix ? looks[i % looks.length] : trimmed
+    const pool = isIndian || personLook === 'Indian' ? 'indian' : 'general'
+    return {
+      gender: g,
+      age: ages[i],
+      look: personLook,
+      skin: pool === 'indian' ? indianSkins[i % indianSkins.length] : skins[i % skins.length],
+      hair: hair[g][used.hair[g]++ % hair[g].length],
+      outfit: outfits[pool][g][used[pool][g]++ % outfits[pool][g].length],
+      moment: moments[pool][used.moment[pool]++ % moments[pool].length],
+      expression: expressions[i % expressions.length],
+    }
+  })
+}
+
+/** "Indian woman · a maroon handloom saree · at a small tea stall" */
+export function storybookLine(v: StorybookVariationSpec): string {
+  const short = (s: string) => s.split(/,| with /)[0].trim()
+  return `${v.look} ${v.gender} · ${short(v.outfit)} · ${short(v.moment)}`
+}
+
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
-  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Style "3d chibi": per variation a family-cast member (child, young adult or grandparent), look, hair, outfit, scene and pose. Call once before writing animated-character variation prompts. Free.',
+  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Style "3d chibi": per variation a family-cast member (child, young adult or grandparent), look, hair, outfit, scene and pose. Style "storybook anime": per variation age, look, skin, hair, outfit, an everyday moment in a lived-in place, and expression. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime', '3d chibi']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime), "fantasy anime" (2D anime game key art) or "3d chibi" (family-film 3D chibi)'),
-    look: z.string().default('a mix').describe('3D chibi only: the look from the brief exactly as given — "a mix", "Indian", or the user\'s own words'),
+    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime', '3d chibi', 'storybook anime']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime), "fantasy anime" (2D anime game key art) "3d chibi" (family-film 3D chibi) or "storybook anime" (warm hand-painted everyday life)'),
+    look: z.string().default('a mix').describe('3D chibi and storybook anime only: the look from the brief exactly as given — "a mix", "Indian", or the user\'s own words'),
     kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('Mascots only, from the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
-    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Game heroes, cinematic anime and fantasy anime, from the brief; "any" alternates woman and man'),
+    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Game heroes, cinematic, fantasy and storybook anime, from the brief; "any" alternates woman and man'),
   }),
   execute: async (inputData, execContext) => {
+    if (inputData.style === 'storybook anime') {
+      const people = rollStorybookVariations(inputData.count, Math.random, inputData.look, inputData.gender)
+      emitToolStatus(execContext, `Casting ${people.length} characters`, people.map(storybookLine))
+      return { variations: people }
+    }
     if (inputData.style === '3d chibi') {
       const cast = rollChibiVariations(inputData.count, Math.random, inputData.look)
       emitToolStatus(execContext, `Casting ${cast.length} characters`, cast.map(chibiLine))
