@@ -1,0 +1,15 @@
+# Approved hand-painted storybook anime characters
+
+The user approved both concepts on 2026-10-01. The prompts below are the exact built-in `image_gen` prompts used for the concept portraits (`transparent_background: false`). Images are in `docs/design-references/storybook-anime/`.
+
+## 01 Kavya — kitchen
+
+`kavya-kitchen-concept.png`
+
+> Use case: stylized-concept. Asset type: first original character concept for a commercial cozy storybook-anime avatar library. Create one original adult South Asian woman, around 30, with warm brown skin, soft expressive dark eyes, and black hair tied back in a simple low bun with a few loose strands. She wears a modest rose-pink sari with a fine golden border and a muted cream blouse, small gold earrings, and a tiny red bindi. Show her from knees up in a warmly lit home kitchen, gently carrying a woven basket of fresh vegetables, with clay pots and steel vessels on wooden shelves, a sunlit open window, and a leafy courtyard softly visible outside. Her expression is kind and quietly amused, like she is sharing a calm everyday moment. Whimsical hand-painted 2D animation background and character illustration, delicate ink contours, soft watercolor and gouache-like textures, natural imperfect shapes, warm late-afternoon light, gentle earthy pink, sage, cream and terracotta palette, intimate lived-in atmosphere, simple readable composition. Original character and setting; use only the broad mood of a tender hand-painted animated film, do not reproduce any existing studio, movie, character, or specific artwork. Fully clothed, age-appropriate presentation. No text, watermark, logo, UI, additional people, or photorealism.
+
+## 02 Meera — bus window
+
+`meera-bus-concept.png`
+
+> Use case: stylized-concept. Asset type: revised original character concept for a commercial everyday-life anime avatar library. Use the provided image only as a visual reference for the seated-by-a-bus-window composition, warm countryside light, and soft polished anime illustration quality. Create a new original adult South Asian woman, about 28, seated quietly in a public bus beside a large window, looking out toward sunlit green fields. She has warm medium-brown skin, long loose black hair, gentle dark eyes, and a calm thoughtful smile. She wears a mustard-yellow sari with a small original white leaf motif over a cream blouse, understated gold earrings and bangles, and carries a simple woven shoulder bag resting on her lap. Show her seated from the waist up with hands relaxed over the bag; blue bus seats and dark window frames provide a believable understated setting, countryside softly passing outside. Premium hand-drawn 2D anime illustration with delicate clean contours, soft painterly cel shading, subtle natural facial details, warm late-afternoon sunlight, mellow cinematic color, authentic everyday moment. Match the reference's mood and framing, but make the face, sari pattern, jewelry, seat, bag, and background original. No kitchen, no basket of vegetables, no text, watermark, logo, UI, or additional characters.
