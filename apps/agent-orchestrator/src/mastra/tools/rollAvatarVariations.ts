@@ -355,16 +355,118 @@ export function gameHeroLine(v: GameHeroVariationSpec): string {
   return `${v.age} · ${v.gender} · ${v.role}`
 }
 
+// Cinematic anime: mature, elegant hand-drawn 2D anime portraits, modelled on
+// the two concepts the user approved (Leora in a rooftop lounge, Ren in an
+// art gallery after dark) — contemporary evening fashion, a night-city
+// setting, face and personality first. No fantasy armour or weapons.
+const ANIME_SCENES = [
+  'a quiet jazz bar with warm amber lamps',
+  'a rain-streaked café window at night with soft neon reflections',
+  'a hotel lobby staircase with brass rails',
+  'a riverside promenade at blue hour with distant city lights',
+  'a bookshop aisle after closing, lit by warm lamps',
+  'a rooftop garden with string lights above the city',
+  'a train platform at dusk under soft lights',
+  'a theatre foyer with velvet curtains and gold sconces',
+]
+
+const ANIME_OUTFITS: Record<Gender, string[]> = {
+  woman: [
+    'an emerald satin slip dress with a thin gold chain belt',
+    'a tailored ivory pantsuit over a black camisole',
+    'a midnight-blue velvet wrap dress',
+    'a saffron silk saree with a modern sleeveless blouse',
+    'a charcoal trench coat over a black turtleneck',
+    'a plum one-shoulder evening dress',
+  ],
+  man: [
+    'a charcoal double-breasted suit with an open collar',
+    'a camel overcoat over a black knit sweater',
+    'a black bandhgala jacket with brass buttons',
+    'a white linen shirt with rolled sleeves and dark tailored trousers',
+    'a deep green velvet blazer over a cream shirt',
+    'a navy suit with a loosened silk tie',
+  ],
+}
+
+const ANIME_HAIR: Record<Gender, string[]> = {
+  woman: ['long straight black hair with a centre part', 'a sleek chin-length bob', 'long loose auburn waves', 'a low twisted bun with face-framing strands', 'shoulder-length softly curled dark hair', 'a long side-swept braid'],
+  man: ['neatly styled dark wavy hair', 'short tousled black hair', 'swept-back hair with a few loose strands', 'a clean short crop', 'longer hair tied at the nape', 'soft curls falling over the forehead'],
+}
+
+const ANIME_POSES = [
+  'leaning against a wall with one hand in a pocket',
+  'one hand resting lightly on a railing',
+  'glancing back over one shoulder',
+  'adjusting a cuff',
+  'standing with arms loosely crossed',
+  'one hand touching the edge of a doorframe',
+]
+
+const ANIME_EXPRESSIONS = ['a poised playful smile', 'a thoughtful gaze', 'a quiet confident half-smile', 'a warm amused look', 'a composed, charismatic look', 'a soft curious look']
+
+const ANIME_EYES = ['warm amber eyes', 'soft grey-violet eyes', 'deep brown eyes', 'grey-green eyes', 'dark hazel eyes', 'clear honey-brown eyes']
+
+export interface AnimeVariationSpec {
+  gender: Gender
+  age: number
+  skin: string
+  hair: string
+  eyes: string
+  outfit: string
+  scene: string
+  pose: string
+  expression: string
+}
+
+export function rollAnimeVariations(count: number, random: () => number = Math.random, gender: Gender | 'any' = 'any'): AnimeVariationSpec[] {
+  const scenes = shuffled(ANIME_SCENES, random)
+  const skins = shuffled(GAME_SKIN, random)
+  const eyes = shuffled(ANIME_EYES, random)
+  const poses = shuffled(ANIME_POSES, random)
+  const expressions = shuffled(ANIME_EXPRESSIONS, random)
+  const ages = shuffled(spreadAges(24, 45, count, random), random)
+  const hair = { woman: shuffled(ANIME_HAIR.woman, random), man: shuffled(ANIME_HAIR.man, random) }
+  const outfits = { woman: shuffled(ANIME_OUTFITS.woman, random), man: shuffled(ANIME_OUTFITS.man, random) }
+  const used = { woman: 0, man: 0 }
+  return Array.from({ length: count }, (_, i) => {
+    const g: Gender = gender === 'any' ? (i % 2 === 0 ? 'woman' : 'man') : gender
+    const n = used[g]++
+    return {
+      gender: g,
+      age: ages[i],
+      skin: skins[i % skins.length],
+      hair: hair[g][n % hair[g].length],
+      eyes: eyes[i % eyes.length],
+      outfit: outfits[g][n % outfits[g].length],
+      scene: scenes[i % scenes.length],
+      pose: poses[i % poses.length],
+      expression: expressions[i % expressions.length],
+    }
+  })
+}
+
+/** "woman · an emerald satin slip dress · a quiet jazz bar" */
+export function animeLine(v: AnimeVariationSpec): string {
+  const short = (s: string) => s.split(/,| with | at /)[0].trim()
+  return `${v.gender} · ${short(v.outfit)} · ${short(v.scene)}`
+}
+
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
-  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Call once before writing animated-character variation prompts. Free.',
+  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    style: z.enum(['mascot', 'game hero']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot) or "game hero" (console-game character art)'),
+    style: z.enum(['mascot', 'game hero', 'cinematic anime']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art) or "cinematic anime" (elegant 2D anime)'),
     kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('Mascots only, from the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
-    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Game heroes only, from the brief; "any" alternates woman and man'),
+    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Game heroes and cinematic anime only, from the brief; "any" alternates woman and man'),
   }),
   execute: async (inputData, execContext) => {
+    if (inputData.style === 'cinematic anime') {
+      const people = rollAnimeVariations(inputData.count, Math.random, inputData.gender)
+      emitToolStatus(execContext, `Casting ${people.length} characters`, people.map(animeLine))
+      return { variations: people }
+    }
     if (inputData.style === 'game hero') {
       const heroes = rollGameHeroVariations(inputData.count, Math.random, inputData.gender)
       emitToolStatus(execContext, `Casting ${heroes.length} characters`, heroes.map(gameHeroLine))

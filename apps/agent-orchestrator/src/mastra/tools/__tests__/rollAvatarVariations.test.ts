@@ -114,6 +114,21 @@ describe('rollGameHeroVariations', () => {
   })
 })
 
+describe('rollAnimeVariations', () => {
+  it('gives four adults with different outfits, scenes and looks, alternating women and men, never armour or weapons', async () => {
+    const { rollAnimeVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 20; seed++) {
+      const set = rollAnimeVariations(4, seeded(seed))
+      expect(set.map((v) => v.gender)).toEqual(['woman', 'man', 'woman', 'man'])
+      expect(set.every((v) => v.age >= 24 && v.age <= 45)).toBe(true)
+      for (const key of ['skin', 'eyes', 'outfit', 'scene', 'pose', 'expression'] as const) {
+        expect(distinct(set.map((v) => v[key]))).toBe(true)
+      }
+      expect(JSON.stringify(set)).not.toMatch(/armou?r|sword|weapon|bow\b|spear/i)
+    }
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')
