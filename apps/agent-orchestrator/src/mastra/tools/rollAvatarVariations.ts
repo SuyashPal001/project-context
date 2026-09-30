@@ -192,110 +192,111 @@ export function castingLine(v: AvatarVariationSpec): string {
   return `${v.age} · ${v.look} ${v.gender} · ${short(v.place)} · ${short(v.wardrobe)}`
 }
 
-// Animated characters: lifelike 3D creatures and plush mascots rather than
-// people. Unless the brief asks for only animals or only objects, half the
-// set are animals and half objects, so four characters are never four
-// near-identical furry animals.
-const CHARACTER_ANIMALS = [
-  'long-eared bunny', 'round hedgehog', 'big-eared fennec fox', 'red panda', 'fluffy baby owl',
-  'sleepy sloth', 'penguin chick', 'chubby kitten', 'sea otter', 'little frog',
+// Animated characters: original cozy 3D mascots, modelled on the ChatGPT
+// concepts the user approved (a felt lantern, a stone pebble, a glazed
+// teacup, a paper bird). What made those work: an invented subject with one
+// signature feature, ONE tactile material, a palette with a matching plain
+// studio backdrop, and a personality caught in an action. Generic cute
+// animals (bunny, hedgehog, fox, cactus, cloud, dumpling) are left out on
+// purpose — they are exactly what other mascot libraries already show.
+const CHARACTER_CREATURES = [
+  'little bumblebee with one crooked antenna',
+  'tiny axolotl with frilly gill fronds',
+  'round baby turtle with a patchwork shell',
+  'small pangolin with petal-like overlapping scales',
+  'little seahorse standing on its curled tail',
+  'chubby firefly with a softly glowing tail',
+  'tiny ladybird with a domed spotted back',
+  'small chameleon with a spiral tail',
+  'little koi fish walking on two broad fins',
+  'baby owl with oversized tufted ears',
 ]
 
 const CHARACTER_OBJECTS = [
-  'plush cactus with tiny arms', 'fluffy cloud', 'steamed dumpling', 'mushroom sprite with a spotted cap',
-  'round avocado', 'little teacup', 'dewdrop-shaped water sprite', 'soft peach',
+  'little clay diya with a flame-shaped tuft of hair',
+  'small kulhad cup with a wisp of steam like a curl',
+  'round ripe mango with a single leaf',
+  'tiny ball of yarn with one loose curl of thread',
+  'little paper kite with a ribbon tail',
+  'small pencil stub with an eraser cap like a hat',
+  'round bread bun with a scored top',
+  'little honey jar with a wooden dipper crest',
+  'small pinecone with layered scales',
+  'tiny light bulb with a glowing filament heart',
 ]
 
 const CHARACTER_MATERIALS = [
-  'soft realistic fur with fine individual strands',
-  'felted wool plush with visible fibres',
-  'chunky knitted-yarn texture',
-  'velvety plush fabric with small stitched seams',
-  'smooth soft-touch vinyl with a satin sheen',
-  'fuzzy cotton-candy fluff',
+  'handmade felt with soft visible fibres',
+  'soft velvet with a gentle sheen',
+  'glazed ceramic with small handmade irregularities',
+  'hand-shaped clay with faint fingerprint texture',
+  'translucent gummy with tiny trapped bubbles',
+  'folded matte paper with crisp creases and fibres',
+  'stitched corduroy plush with neat seams',
+  'chunky knitted wool',
 ]
 
-const CHARACTER_ACCESSORIES = [
-  'a leafy green knitted hood',
-  'a chunky blue knit scarf',
-  'pastel over-ear headphones',
-  'round wire-rim glasses',
-  'a small cross-body satchel',
-  'a tiny yellow raincoat',
-  'a striped knit beanie',
-  'a little canvas apron',
+// Body palette with a plain studio backdrop that sets it off.
+const CHARACTER_PALETTES = [
+  { palette: 'warm ivory and amber', backdrop: 'warm taupe' },
+  { palette: 'apricot and cream', backdrop: 'pale blue-grey' },
+  { palette: 'powder blue and muted indigo', backdrop: 'cool lavender-grey' },
+  { palette: 'blue-grey with a coral accent', backdrop: 'pale sage' },
+  { palette: 'peach and rose', backdrop: 'pale lilac' },
+  { palette: 'cinnamon and sage green', backdrop: 'muted cream' },
+  { palette: 'terracotta and mint green', backdrop: 'muted sand' },
+  { palette: 'midnight blue with a gold line', backdrop: 'parchment' },
 ]
 
-const CHARACTER_PLACES = [
-  'cozy bedroom with rumpled knit blankets and warm lamp glow',
-  'sunlit windowsill with potted plants',
-  'mossy forest floor in dappled light',
-  'kitchen counter in soft morning light',
-  'plain soft-grey studio backdrop',
-  'bookshelf corner with warm fairy lights',
-]
-
-const CHARACTER_POSES = [
-  'standing with small paws or hands clasped in front',
-  'waving one small hand at the viewer',
-  'sitting with legs stretched out',
-  'leaning forward with curiosity',
-  'hugging a tiny cushion',
-  'standing proudly with hands on hips',
-]
-
-const CHARACTER_EXPRESSIONS = [
-  'curious wide-eyed look',
-  'shy happy smile',
-  'sleepy contented look',
-  'cheeky grin',
-  'bright excited look',
-  'warm gentle smile',
+const CHARACTER_PERSONALITIES = [
+  'shy but hopeful, small hands clasped near the chest',
+  'quietly determined, taking a brave little step forward',
+  'an energetic optimist, caught in a cheerful hop',
+  'caring and gently confident, giving a welcoming wave',
+  'curious and clever, head tilted toward the viewer',
+  'relaxed and resourceful, strolling with purpose',
+  'imaginative and mischievous, striking an inviting little pose',
+  'thoughtful and quietly playful, one hand raised in a gentle hello',
 ]
 
 export interface CharacterVariationSpec {
   character: string
   material: string
-  accessory: string
-  place: string
-  pose: string
-  expression: string
+  palette: string
+  backdrop: string
+  personality: string
 }
 
-export type CharacterKind = 'mix' | 'animals' | 'objects'
+export type CharacterKind = 'mix' | 'creatures' | 'objects'
 
 export function rollCharacterVariations(count: number, random: () => number = Math.random, kind: CharacterKind = 'mix'): CharacterVariationSpec[] {
-  const animals = shuffled(CHARACTER_ANIMALS, random)
+  const creatures = shuffled(CHARACTER_CREATURES, random)
   const objects = shuffled(CHARACTER_OBJECTS, random)
   const materials = shuffled(CHARACTER_MATERIALS, random)
-  const accessories = shuffled(CHARACTER_ACCESSORIES, random)
-  const places = shuffled(CHARACTER_PLACES, random)
-  const poses = shuffled(CHARACTER_POSES, random)
-  const expressions = shuffled(CHARACTER_EXPRESSIONS, random)
+  const palettes = shuffled(CHARACTER_PALETTES, random)
+  const personalities = shuffled(CHARACTER_PERSONALITIES, random)
   return Array.from({ length: count }, (_, i) => ({
-    character: kind === 'animals' ? animals[i % animals.length]
+    character: kind === 'creatures' ? creatures[i % creatures.length]
       : kind === 'objects' ? objects[i % objects.length]
-      : i % 2 === 0 ? animals[(i / 2) % animals.length] : objects[((i - 1) / 2) % objects.length],
+      : i % 2 === 0 ? creatures[(i / 2) % creatures.length] : objects[((i - 1) / 2) % objects.length],
     material: materials[i % materials.length],
-    accessory: accessories[i % accessories.length],
-    place: places[i % places.length],
-    pose: poses[i % poses.length],
-    expression: expressions[i % expressions.length],
+    ...palettes[i % palettes.length],
+    personality: personalities[i % personalities.length],
   }))
 }
 
-/** "red panda · a chunky blue knit scarf · cozy bedroom" */
+/** "tiny axolotl · glazed ceramic · caring and gently confident" */
 export function characterLine(v: CharacterVariationSpec): string {
-  const short = (s: string) => s.split(/,| with | in /)[0].trim()
-  return `${v.character} · ${v.accessory} · ${short(v.place)}`
+  const short = (s: string) => s.split(/,| with /)[0].trim()
+  return `${short(v.character)} · ${short(v.material)} · ${short(v.personality)}`
 }
 
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
-  description: 'Picks distinct details for animated-character avatar variations — per variation a character (animals and objects alternate), material, accessory, place, pose and expression, all different across the set. Call once before writing animated-character variation prompts. Free.',
+  description: 'Picks distinct details for animated-character avatar variations — per variation an original character, one material, a palette with its studio backdrop, and a personality caught in an action, all different across the set. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    kind: z.enum(['mix', 'animals', 'objects']).default('mix').describe('From the brief: "animals", "objects" (objects or food), or "mix" (animals and objects alternate) when it leaves this open'),
+    kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('From the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
   }),
   execute: async (inputData, execContext) => {
     const variations = rollCharacterVariations(inputData.count, Math.random, inputData.kind)

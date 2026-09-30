@@ -56,33 +56,41 @@ describe('rollAvatarVariations', () => {
 })
 
 describe('rollCharacterVariations', () => {
-  it('gives four characters that differ in every attribute, alternating animals and objects', async () => {
+  const OBJECTS = /diya|kulhad|mango|yarn|kite|pencil|bun|honey|pinecone|bulb/
+
+  it('gives four characters that differ in every attribute, alternating creatures and objects', async () => {
     const { rollCharacterVariations } = await import('../rollAvatarVariations.js')
     for (let seed = 1; seed <= 20; seed++) {
       const set = rollCharacterVariations(4, seeded(seed))
       expect(set).toHaveLength(4)
-      for (const key of ['character', 'material', 'accessory', 'place', 'pose', 'expression'] as const) {
+      for (const key of ['character', 'material', 'palette', 'backdrop', 'personality'] as const) {
         expect(distinct(set.map((v) => v[key]))).toBe(true)
       }
-      expect(/cactus|cloud|dumpling|mushroom|avocado|teacup|dewdrop|peach/.test(set[1].character)).toBe(true)
+      expect(OBJECTS.test(set[0].character)).toBe(false)
+      expect(OBJECTS.test(set[1].character)).toBe(true)
     }
   })
 
-  it('keeps to animals or objects when the brief asks for one kind', async () => {
+  it('keeps to creatures or objects when the brief asks for one kind', async () => {
     const { rollCharacterVariations } = await import('../rollAvatarVariations.js')
-    const objects = /cactus|cloud|dumpling|mushroom|avocado|teacup|dewdrop|peach/
-    const animals = rollCharacterVariations(4, seeded(4), 'animals')
+    const creatures = rollCharacterVariations(4, seeded(4), 'creatures')
     const things = rollCharacterVariations(4, seeded(4), 'objects')
-    expect(animals.every((v) => !objects.test(v.character)) && distinct(animals.map((v) => v.character))).toBe(true)
-    expect(things.every((v) => objects.test(v.character)) && distinct(things.map((v) => v.character))).toBe(true)
+    expect(creatures.every((v) => !OBJECTS.test(v.character)) && distinct(creatures.map((v) => v.character))).toBe(true)
+    expect(things.every((v) => OBJECTS.test(v.character)) && distinct(things.map((v) => v.character))).toBe(true)
+  })
+
+  it('never rolls the generic mascots other libraries already show', async () => {
+    const { rollCharacterVariations } = await import('../rollAvatarVariations.js')
+    const all = JSON.stringify([1, 2, 3, 4, 5, 6, 7, 8].flatMap((seed) => rollCharacterVariations(6, seeded(seed))))
+    expect(all).not.toMatch(/bunny|rabbit|hedgehog|fox|cactus|cloud|dumpling|skeleton/i)
   })
 
   it('reads as one short line', async () => {
     const { characterLine } = await import('../rollAvatarVariations.js')
     expect(characterLine({
-      character: 'red panda', material: 'fur', accessory: 'a chunky blue knit scarf',
-      place: 'cozy bedroom with rumpled knit blankets and warm lamp glow', pose: 'waving', expression: 'shy',
-    })).toBe('red panda · a chunky blue knit scarf · cozy bedroom')
+      character: 'tiny axolotl with frilly gill fronds', material: 'glazed ceramic with small handmade irregularities',
+      palette: 'peach and rose', backdrop: 'pale lilac', personality: 'caring and gently confident, giving a welcoming wave',
+    })).toBe('tiny axolotl · glazed ceramic · caring and gently confident')
   })
 })
 
