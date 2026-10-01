@@ -85,7 +85,7 @@ describe('buildSkillManifest', () => {
 describe('Director references', () => {
   it('TVC carries its Director rules as director.md, marked by "style: tvc"', () => {
     const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-character-creator')!;
-    expect(tvc.director?.marker).toBe('style: tvc');
+    expect(tvc.director?.markers).toEqual(['style: tvc']);
     const text = readSkillBody(tvc.director!.file);
     expect(text.startsWith('## TVC character — a polished commercial lead actor, with a continuity bible')).toBe(true);
     // Olmo's brief must carry the marker, or Director never loads the rules.
@@ -93,21 +93,34 @@ describe('Director references', () => {
   });
 
   it('puts director.md and the marker into the manifest', () => {
-    expect(buildSkillManifest('TVC', 'Use when...', 'body', { text: 'rules', marker: 'style: tvc' })).toEqual({
+    expect(buildSkillManifest('TVC', 'Use when...', 'body', { text: 'rules', markers: ['style: tvc'] })).toEqual({
       name: 'TVC',
       description: 'Use when...',
       body: 'body',
       references: { 'director.md': 'rules' },
-      directorMarker: 'style: tvc',
+      directorMarkers: ['style: tvc'],
     });
   });
 
   it('writes a new version when only director.md changes', () => {
-    const before = buildSkillManifest('TVC', 'd', 'body', { text: 'rules v1', marker: 'style: tvc' });
-    const after = buildSkillManifest('TVC', 'd', 'body', { text: 'rules v2', marker: 'style: tvc' });
+    const before = buildSkillManifest('TVC', 'd', 'body', { text: 'rules v1', markers: ['style: tvc'] });
+    const after = buildSkillManifest('TVC', 'd', 'body', { text: 'rules v2', markers: ['style: tvc'] });
     expect(manifestUnchanged(before, after)).toBe(false);
     expect(manifestUnchanged(before, before)).toBe(true);
     expect(manifestUnchanged({ name: 'TVC', description: 'd', body: 'body' }, after)).toBe(false);
     expect(manifestUnchanged({ name: 'A', description: 'd', body: 'body' }, buildSkillManifest('A', 'd', 'body'))).toBe(true);
+  });
+
+  it('gives Avatar creator and Animated their Director halves, with a marker for every animated style Olmo can send', () => {
+    const avatar = OFFICIAL_SKILLS.find((s) => s.slug === 'avatar-creator')!;
+    const animated = OFFICIAL_SKILLS.find((s) => s.slug === 'animated-character-creator')!;
+    expect(avatar.director?.markers).toEqual(['style: realistic avatar']);
+    expect(readSkillBody(avatar.director!.file)).toContain('roll_avatar_variations once');
+    const animatedSkill = readSkillBody(animated.file);
+    const sent = [...animatedSkill.matchAll(/"(style: [a-z0-9 ]+)"/g)].map((m) => m[1]);
+    expect(sent.length).toBeGreaterThan(0);
+    for (const marker of sent) expect(animated.director!.markers).toContain(marker);
+    const rules = readSkillBody(animated.director!.file);
+    for (const marker of animated.director!.markers) expect(rules).toContain(marker);
   });
 });

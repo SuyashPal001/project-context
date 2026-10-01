@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { AVATAR_CREATION_SECTION, AVATAR_FROM_IMAGE_SECTION, DIRECTOR_WORKING_MEMORY_SECTION } from '../directorAgent.js'
+import { AVATAR_CREATION_SECTION as AVATAR_CREATION_BASE, DIRECTOR_WORKING_MEMORY_SECTION } from '../directorAgent.js'
 
 // The Avatar creation and Image-to-avatar contracts moved out of Olmo's
 // always-on instructions into the Avatar creator Official skill (see
@@ -18,11 +18,50 @@ let AVATAR_SKILL_TEXT: string
 // Director's TVC rules moved, word for word, out of directorAgent.ts into the
 // TVC skill's own folder; Director loads them as a native Mastra skill.
 let TVC_CHARACTER_SECTION: string
+// Avatar creation is split the same way: shared mechanics, sheet and save stay
+// in Director (AVATAR_CREATION_BASE); the realistic presenter prompt and
+// image-to-avatar moved to avatar-creator/director.md, and every animated
+// style to animated-character-creator/director.md. These assertions read all
+// three together, as Director sees them once a skill loads.
+let AVATAR_CREATION_SECTION: string
+let AVATAR_FROM_IMAGE_SECTION: string
+let REALISTIC_DIRECTOR: string
+let ANIMATED_DIRECTOR: string
 
 beforeAll(() => {
   expect(existsSync(AVATAR_CREATOR_SKILL_PATH)).toBe(true)
   AVATAR_SKILL_TEXT = readFileSync(AVATAR_CREATOR_SKILL_PATH, 'utf8')
   TVC_CHARACTER_SECTION = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../tvc-character-creator/director.md'), 'utf8')
+  REALISTIC_DIRECTOR = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../avatar-creator/director.md'), 'utf8')
+  ANIMATED_DIRECTOR = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../animated-character-creator/director.md'), 'utf8')
+  AVATAR_CREATION_SECTION = AVATAR_CREATION_BASE + REALISTIC_DIRECTOR + ANIMATED_DIRECTOR
+  AVATAR_FROM_IMAGE_SECTION = REALISTIC_DIRECTOR
+})
+
+describe('style rules split into their skills', () => {
+  it('keeps only shared mechanics, sheet and save in Director', () => {
+    expect(AVATAR_CREATION_BASE).toContain('Step edit only')
+    expect(AVATAR_CREATION_BASE).toContain('Reference sheet, after the user picks')
+    expect(AVATAR_CREATION_BASE).toContain('Call save_as_avatar')
+    expect(AVATAR_CREATION_BASE).not.toContain('roll_avatar_variations once')
+    expect(AVATAR_CREATION_BASE).not.toContain('style: cinematic anime')
+    expect(AVATAR_CREATION_BASE).not.toContain('handmade stop-motion claymation')
+  })
+
+  it('keeps realistic rules out of the animated skill and animated rules out of the realistic one', () => {
+    expect(REALISTIC_DIRECTOR).toContain('roll_avatar_variations once')
+    expect(REALISTIC_DIRECTOR).toContain('## Image-to-avatar')
+    expect(REALISTIC_DIRECTOR).not.toContain('style: claymation')
+    expect(ANIMATED_DIRECTOR).toContain('style: cinematic anime')
+    expect(ANIMATED_DIRECTOR).not.toContain('Use case: photorealistic-natural')
+    expect(ANIMATED_DIRECTOR).not.toContain('## Image-to-avatar')
+  })
+
+  it('has Olmo send the style line on every Director call, so the right rules load', () => {
+    expect(AVATAR_SKILL_TEXT).toContain('includes the line "style: realistic avatar"')
+    expect(readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../animated-character-creator.md'), 'utf8')).toContain('includes the style line above')
+    expect(readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../tvc-character-creator.md'), 'utf8')).toContain('includes "style: tvc"')
+  })
 })
 
 describe('avatar creation contract (Avatar creator Official skill)', () => {

@@ -8,7 +8,7 @@
  * same NULL-owner row updates it instead of duplicating it.
  *
  * Idempotent: safe to re-run. A new skill_versions row is only inserted when
- * the computed body, references or director marker differ from the latest
+ * the computed body, references or director markers differ from the latest
  * stored version's manifest.
  *
  * Official installs always run the latest version: when a new version is
@@ -19,7 +19,7 @@
  * A skill folder next to its .md (official-skills/<slug>/) holds Director's
  * half of the skill: director.md becomes the manifest's references, and
  * Director loads it as a native Mastra skill (usage.ts's
- * fetchOfficialDirectorSkills) only for a brief that carries the marker.
+ * fetchOfficialDirectorSkills) only for a brief that carries one of its markers.
  *
  * Runs on the VM as a deploy step (deploy.sh), never from a laptop, so skill
  * text goes live together with the code that reads it.
@@ -40,11 +40,11 @@ export interface SkillShowcase {
   starterPrompt: string;
 }
 
-/** Director's half of a skill: the file it loads, and the line in Olmo's
- *  brief that tells Director to load it (e.g. "style: tvc"). */
+/** Director's half of a skill: the file it loads, and the lines in Olmo's
+ *  brief that tell Director to load it (e.g. "style: tvc"). */
 export interface DirectorReferenceSeed {
   file: string;
-  marker: string;
+  markers: string[];
 }
 
 export interface OfficialSkillSeed {
@@ -65,6 +65,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     name: 'Avatar creator',
     description: 'Use when the user wants a new reusable AI presenter/avatar for their ads, from a description or from a reference photo.',
     file: officialSkillFile('avatar-creator.md'),
+    director: { file: officialSkillFile('avatar-creator/director.md'), markers: ['style: realistic avatar'] },
     showcase: {
       imageUrl: '/creative/avatars/beginner-fitness-instructor.jpg',
       bestFor: ['UGC ads', 'Presenters', 'Brand faces'],
@@ -76,6 +77,25 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     name: 'Animated character creator',
     description: 'Use when the user wants a new reusable animated character for their ads — a cozy 3D mascot, a console-game-style hero, a cinematic, fantasy or storybook anime character, or a 3D chibi family character, not a photoreal person.',
     file: officialSkillFile('animated-character-creator.md'),
+    director: {
+      file: officialSkillFile('animated-character-creator/director.md'),
+      // Every style line Olmo's brief can carry. "style: 2d flat" is no longer
+      // offered, but Director still has its rules, so a brief with it loads them.
+      markers: [
+      'style: animated character',
+      'style: game hero',
+      'style: cinematic anime',
+      'style: fantasy anime',
+      'style: 3d chibi',
+      'style: storybook anime',
+      'style: pixar 3d',
+      'style: 2d flat',
+      'style: claymation',
+      'style: cute claymation',
+      'style: 3d family film',
+      'style: 3d movie drama',
+    ],
+    },
     showcase: {
       imageUrl: '/creative/avatars/animated-character.jpg',
       bestFor: ['Mascots', 'Game heroes', 'Anime'],
@@ -87,7 +107,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     name: 'TVC character creator',
     description: 'Use when the user wants a new reusable polished lead actor for TV-commercial style ads, with a full character reference sheet — not a candid UGC creator or an animated character.',
     file: officialSkillFile('tvc-character-creator.md'),
-    director: { file: officialSkillFile('tvc-character-creator/director.md'), marker: 'style: tvc' },
+    director: { file: officialSkillFile('tvc-character-creator/director.md'), markers: ['style: tvc'] },
     showcase: {
       imageUrl: '/creative/avatars/tvc-character.jpg',
       bestFor: ['TV commercials', 'Brand films', 'Premium ads'],
@@ -121,15 +141,15 @@ export interface OfficialSkillManifest {
   description: string;
   body: string;
   references?: Record<string, string>;
-  directorMarker?: string;
+  directorMarkers?: string[];
 }
 
 /** Mirrors the shape the import worker writes to skill_versions.manifest — see
  *  worker-handlers/handlers/skillImport.ts's manifestWithBody — plus, for a
  *  skill with a Director half, its director.md and marker. */
-export function buildSkillManifest(name: string, description: string, body: string, director?: { text: string; marker: string }): OfficialSkillManifest {
+export function buildSkillManifest(name: string, description: string, body: string, director?: { text: string; markers: string[] }): OfficialSkillManifest {
   if (!director) return { name, description, body };
-  return { name, description, body, references: { 'director.md': director.text }, directorMarker: director.marker };
+  return { name, description, body, references: { 'director.md': director.text }, directorMarkers: director.markers };
 }
 
 /** True when the stored manifest already holds exactly this content. */
@@ -138,13 +158,13 @@ export function manifestUnchanged(stored: unknown, next: OfficialSkillManifest):
   const s = stored as Record<string, unknown>;
   return s.body === next.body
     && JSON.stringify(s.references ?? null) === JSON.stringify(next.references ?? null)
-    && (s.directorMarker ?? null) === (next.directorMarker ?? null);
+    && JSON.stringify(s.directorMarkers ?? null) === JSON.stringify(next.directorMarkers ?? null);
 }
 
 async function run(): Promise<void> {
   for (const entry of OFFICIAL_SKILLS) {
     const body = readSkillBody(entry.file);
-    const director = entry.director ? { text: readSkillBody(entry.director.file), marker: entry.director.marker } : undefined;
+    const director = entry.director ? { text: readSkillBody(entry.director.file), markers: entry.director.markers } : undefined;
     const manifest = buildSkillManifest(entry.name, entry.description, body, director);
 
     await db.transaction(async (tx) => {

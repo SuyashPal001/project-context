@@ -3,7 +3,7 @@
 // fetchOfficialDirectorSkills. Mastra lists skills by name and description
 // and leaves loading to the model, which can skip it. These rules decide the
 // whole look of the output, so a skipped load is never acceptable: when
-// Olmo's brief carries a skill's marker ("style: tvc"), this processor forces
+// Olmo's brief carries one of a skill's markers ("style: tvc"), this processor forces
 // the first step of the run to call Mastra's own `skill` tool, the same way
 // chatStream.ts's prepareStep forces Olmo to load a "/" skill.
 
@@ -33,10 +33,10 @@ export function latestUserText(messages: MessageLike[]): string {
   return ''
 }
 
-/** The Director skills whose marker appears in the brief, case-insensitive. */
+/** The Director skills with a marker that appears in the brief, case-insensitive. */
 export function matchDirectorSkills(brief: string, skills: OfficialDirectorSkill[]): OfficialDirectorSkill[] {
   const text = brief.toLowerCase()
-  return skills.filter((s) => text.includes(s.marker.toLowerCase()))
+  return skills.filter((s) => s.markers.some((m) => text.includes(m.toLowerCase())))
 }
 
 export function directorSkillInstruction(matched: OfficialDirectorSkill[]): string {

@@ -6,7 +6,7 @@ vi.mock('../../../usage.js', () => ({ fetchOfficialDirectorSkills: vi.fn(async (
 import { DirectorSkillLoader, latestUserText, matchDirectorSkills } from '../directorSkillLoader.js'
 
 const tvc = {
-  marker: 'style: tvc',
+  markers: ['style: tvc'],
   skill: createSkill({ name: 'tvc-character-creator', description: 'TVC rules', instructions: 'TVC Director rules.' }),
 }
 
@@ -57,5 +57,10 @@ describe('latestUserText / matchDirectorSkills', () => {
   it('matches the marker case-insensitively', () => {
     expect(matchDirectorSkills('Style: TVC, beauty', [tvc])).toHaveLength(1)
     expect(matchDirectorSkills('style: cinematic anime', [tvc])).toHaveLength(0)
+  })
+
+  it('matches any one of a skill\'s markers, and only that skill', () => {
+    const animated = { markers: ['style: claymation', 'style: cinematic anime'], skill: createSkill({ name: 'animated-character-creator', description: 'Animated rules', instructions: 'x' }) }
+    expect(matchDirectorSkills('style: cinematic anime, rooftop bar', [tvc, animated]).map((s) => s.skill.name)).toEqual(['animated-character-creator'])
   })
 })

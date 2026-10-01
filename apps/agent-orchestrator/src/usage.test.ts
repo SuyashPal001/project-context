@@ -330,15 +330,15 @@ describe('fetchOfficialSkills', () => {
   it("builds Director's skill from director.md and its marker, from the same query", async () => {
     vi.advanceTimersByTime(61_000)
     mockPoolQuery.mockResolvedValueOnce({ rows: [
-      { name: 'TVC character creator', description: 'Use when TVC.', body: 'Olmo card text.', director: 'TVC Director rules.', director_marker: 'style: tvc' },
-      { name: 'Talking head', description: 'Use when talking.', body: 'Talking body.', director: null, director_marker: null },
+      { name: 'TVC character creator', description: 'Use when TVC.', body: 'Olmo card text.', director: 'TVC Director rules.', director_markers: ['style: tvc'] },
+      { name: 'Talking head', description: 'Use when talking.', body: 'Talking body.', director: null, director_markers: null },
     ] })
     const olmoSkills = await fetchOfficialSkills()
     const directorSkills = await fetchOfficialDirectorSkills()
     expect(mockPoolQuery).toHaveBeenCalledTimes(1)
     expect(olmoSkills.map((s) => s.instructions)).toEqual(['Olmo card text.', 'Talking body.'])
     expect(directorSkills).toHaveLength(1)
-    expect(directorSkills[0].marker).toBe('style: tvc')
+    expect(directorSkills[0].markers).toEqual(['style: tvc'])
     expect(directorSkills[0].skill.name).toBe('tvc-character-creator')
     expect(directorSkills[0].skill.instructions).toBe('TVC Director rules.')
     expect(directorSkills[0].skill.description).toContain('"style: tvc"')

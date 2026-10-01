@@ -111,13 +111,13 @@ const OFFICIAL_SKILLS_CACHE_TTL_MS = 60_000
 
 /**
  * Director's half of an Official skill: its director.md as a native Mastra
- * skill, plus the line in Olmo's brief ("style: tvc") that marks a delegation
- * as this skill's job. See directorSkillLoader.ts for how the marker makes
- * Director load it.
+ * skill, plus the lines in Olmo's brief ("style: tvc", "style: claymation")
+ * that mark a delegation as this skill's job. See directorSkillLoader.ts for
+ * how a marker makes Director load it.
  */
 export interface OfficialDirectorSkill {
   skill: InlineSkill
-  marker: string
+  markers: string[]
 }
 
 let officialSkillsCache: { skills: InlineSkill[]; directorSkills: OfficialDirectorSkill[]; expiresAt: number } | null = null
@@ -126,9 +126,9 @@ async function loadOfficialSkills(): Promise<{ skills: InlineSkill[]; directorSk
   if (officialSkillsCache && officialSkillsCache.expiresAt > Date.now()) return officialSkillsCache
   const p = getPool()
   try {
-    const res = await p.query<{ name: string; description: string | null; body: string | null; director: string | null; director_marker: string | null }>(
+    const res = await p.query<{ name: string; description: string | null; body: string | null; director: string | null; director_markers: unknown }>(
       `SELECT s.name, sv.manifest->>'description' AS description, sv.manifest->>'body' AS body,
-              sv.manifest->'references'->>'director.md' AS director, sv.manifest->>'directorMarker' AS director_marker
+              sv.manifest->'references'->>'director.md' AS director, sv.manifest->'directorMarkers' AS director_markers
        FROM skills s
        JOIN skill_versions sv ON sv.skill_id = s.id AND sv.version = s.latest_version
        WHERE s.is_official = true AND s.owner_tenant_id IS NULL AND sv.status = 'ready'`,
@@ -145,14 +145,16 @@ async function loadOfficialSkills(): Promise<{ skills: InlineSkill[]; directorSk
         console.error('[usage] fetchOfficialSkills createSkill validation failed for', row.name, ':', (err as Error).message)
       }
       const director = row.director?.trim()
-      const marker = row.director_marker?.trim()
-      if (!director || !marker) continue
+      const markers = Array.isArray(row.director_markers)
+        ? row.director_markers.filter((m): m is string => typeof m === 'string' && m.trim() !== '').map((m) => m.trim())
+        : []
+      if (!director || markers.length === 0) continue
       try {
         directorSkills.push({
-          marker,
+          markers,
           skill: createSkill({
             name: toMastraSkillName(row.name),
-            description: `Director's rules for the ${row.name}. Activate it before writing any prompt when Olmo's brief says "${marker}".`,
+            description: `Director's rules for the ${row.name}. Activate it before writing any prompt when Olmo's brief says ${markers.map((m) => `"${m}"`).join(' or ')}.`.slice(0, 1024),
             instructions: director,
           }),
         })
@@ -193,7 +195,7 @@ export async function fetchOfficialSkills(): Promise<InlineSkill[]> {
 
 /**
  * Director's half of every Official skill that has one (manifest
- * references['director.md'] plus its directorMarker), from the same latest
+ * references['director.md'] plus its directorMarkers), from the same latest
  * version and the same cached query as fetchOfficialSkills, so Olmo's card
  * text and Director's rules always come from one version.
  */
