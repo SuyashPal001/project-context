@@ -25,6 +25,21 @@ if [ "$FREE_MB" -lt 3072 ]; then
   exit 1
 fi
 
+# Official skills (official-skills/*.md and each skill's director.md) are
+# seeded here, from the code being deployed, never from a laptop — so skill
+# text goes live with the code that reads it. Idempotent: writes a new
+# version only when content changed, and moves every tenant's install of an
+# Official skill to it. Uses the orchestrator's DATABASE_URL, in a subshell
+# so its env never leaks into the web build. Restart the orchestrator after
+# this deploy (pm2 restart agent-orchestrator) so Director picks up its code.
+echo "→ Seeding Official skills..."
+(
+  set -a
+  source apps/agent-orchestrator/.env
+  set +a
+  pnpm --filter @serverless-saas/agent-api db:seed:official-skills
+)
+
 # Build in two steps to avoid the pnpm-filter footgun. `--filter "@web..."`
 # combined with `exec next build` runs `next build` in every upstream
 # workspace package (which don't have next), silently misbehaving and
