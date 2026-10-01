@@ -276,6 +276,10 @@ describe('TVC character creator (Official skill)', () => {
     expect(TVC_CHARACTER_SECTION).toMatch(/exactly 1 when Olmo's brief says "count: 1"/)
     expect(TVC_CHARACTER_SECTION).toMatch(/Composition\/framing: always full body/)
     expect(TVC_CHARACTER_SECTION).not.toMatch(/from mid-thigh up/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/a full-length, head-to-toe casting still/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/35mm lens at waist height/)
+    expect(TVC_CHARACTER_SECTION).not.toMatch(/85mm lens, shallow depth of field/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/Avoid: cropping at the knees, thighs or waist, missing feet/)
   })
 })
 
