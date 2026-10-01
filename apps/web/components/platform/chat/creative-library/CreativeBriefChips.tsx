@@ -96,10 +96,10 @@ function SelectionThumbnail({ selection }: { selection: CreativeSelection }) {
 
     const image = selection.kind === 'voice' ? creativeVoiceArtwork(selection.name) : selection.image;
     if (!image && selection.kind === 'avatar') {
-        return <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted"><FileThumbnail fileId={selection.attachment.fileId} alt="" /></span>;
+        return <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted"><FileThumbnail fileId={selection.attachment.fileId} alt="" anchorTop /></span>;
     }
     return image
-        ? <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted"><Image src={image} alt="" fill sizes="32px" className="object-cover" /></span>
+        ? <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted"><Image src={image} alt="" fill sizes="32px" className={selection.kind === 'avatar' ? "object-cover object-top" : "object-cover"} /></span>
         : <span className="h-8 w-8 shrink-0 rounded-full bg-muted" aria-hidden />;
 }
 

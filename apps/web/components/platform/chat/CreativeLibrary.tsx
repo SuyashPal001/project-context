@@ -201,7 +201,7 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled
                     const naming = avatar.namingStatus === 'pending';
                     return <AvatarCard key={avatar.id} label={`Use ${avatar.name} avatar`} name={naming ? 'Naming…' : avatar.name} detail={`${selection.role} · ${selection.tone}`}
                         selected={selected?.id === selection.id} busy={false} disabled={uploading !== null} onClick={() => onSelect(selection)}>
-                        <FileThumbnail fileId={avatar.fileId} alt="" />
+                        <FileThumbnail fileId={avatar.fileId} alt="" anchorTop />
                     </AvatarCard>;
                 })}
             </div>
@@ -212,7 +212,7 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled
                 <div className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3">
                     {matches.map(avatar => <AvatarCard key={avatar.id} label={`Use ${avatar.name} avatar`} name={avatar.name} detail={`${avatar.role} · ${avatar.tone}`}
                         selected={selected?.id === avatar.id} busy={uploading === avatar.id} disabled={uploading !== null} onClick={() => selectPreset(avatar)}>
-                        <Image src={avatar.image} alt="" fill sizes="(max-width: 640px) 45vw, 220px" className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                        <Image src={avatar.image} alt="" fill sizes="(max-width: 640px) 45vw, 220px" className="object-cover object-top transition-transform duration-300 group-hover:scale-[1.03]" />
                     </AvatarCard>)}
                 </div>
             </section>}

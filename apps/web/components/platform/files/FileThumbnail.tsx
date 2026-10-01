@@ -10,7 +10,7 @@ import { ImageIcon } from "lucide-react";
 // instead of re-fetching it — it's valid for a full hour (see
 // storageService.getDownloadUrl's default expiresIn), plenty of headroom
 // for a single grid session.
-export function FileThumbnail({ fileId, alt, fallbackToLibraryAsset }: {
+export function FileThumbnail({ fileId, alt, fallbackToLibraryAsset, anchorTop }: {
     fileId: string;
     alt: string;
     // When true, a 404 on the tenant files lookup retries against
@@ -20,6 +20,8 @@ export function FileThumbnail({ fileId, alt, fallbackToLibraryAsset }: {
     // Off by default so existing Drive/grid callers (always real file ids)
     // don't pay for a second request on every genuine miss.
     fallbackToLibraryAsset?: boolean;
+    // People (avatars) crop from the top, so a tall portrait loses its feet, never its face.
+    anchorTop?: boolean;
 }) {
     const { data, isError } = useQuery({
         queryKey: ['file-download-url', fileId, fallbackToLibraryAsset ?? false],
@@ -49,5 +51,5 @@ export function FileThumbnail({ fileId, alt, fallbackToLibraryAsset }: {
     }
 
     // eslint-disable-next-line @next/next/no-img-element -- presigned S3 URL, not a local asset next/image can optimize
-    return <img src={data} alt={alt} className="w-full h-full object-cover" />;
+    return <img src={data} alt={alt} className={anchorTop ? "w-full h-full object-cover object-top" : "w-full h-full object-cover"} />;
 }

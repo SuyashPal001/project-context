@@ -290,7 +290,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                                     ? "opacity-40 cursor-not-allowed"
                                                     : "group-hover:ring-2 group-hover:ring-border",
                                         )}>
-                                            <FileThumbnail fileId={opt.imageFileId} alt={opt.label} fallbackToLibraryAsset />
+                                            <FileThumbnail fileId={opt.imageFileId} alt={opt.label} fallbackToLibraryAsset anchorTop />
                                         </div>
                                         <div className="text-sm font-medium px-0.5">{i + 1}. {opt.label}</div>
                                         {opt.rationale && (
