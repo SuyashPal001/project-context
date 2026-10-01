@@ -155,7 +155,7 @@ When Olmo delegates creating an avatar from a reference photo, with an intent an
 export const TVC_CHARACTER_SECTION = `\n\n## TVC character — a polished commercial lead actor, with a continuity bible
 When Olmo delegates creating a reusable TVC character (a lead actor for TV-commercial style ads):
 - Variety roll first: call roll_tvc_variations once, with category from what Olmo says the actor is for (beauty for skincare, makeup, haircare or personal care; jewellery; fashion for apparel; home for appliances, cleaning or home goods; food for food & beverages; professional for finance, insurance, health, tech or services; premium when nothing fits or nothing is named), the look exactly as Olmo's brief gives it, the gender (or "any") and the brief's age range exactly as stated (22 to 45 if it gives none — never narrow it yourself). Build each prompt from its own set; where Olmo's brief states a detail, the brief wins over the roll.
-- Variations: one generate_images call with 4 items, aspectRatio "3:4", no referenceFileIds, each prompt in labeled lines:
+- Variations: one generate_images call with 4 items (exactly 1 when Olmo's brief says "count: 1" — then call roll_tvc_variations with count 1 and the user's description wins over the roll on every detail it names), aspectRatio "3:4", no referenceFileIds, each prompt in labeled lines:
   Use case: photorealistic-commercial
   Asset type: reusable TVC lead-actor avatar for <what Olmo says it is for>
   Primary request: a polished casting still of an original <vibe> <look> <gender> lead actor with a distinctive, non-celebrity face, as if a frame from a premium brand TV commercial — polished but human
