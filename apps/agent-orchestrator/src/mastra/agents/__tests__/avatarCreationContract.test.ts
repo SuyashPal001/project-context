@@ -247,7 +247,7 @@ describe('TVC character creator (Official skill)', () => {
     expect(TVC_CHARACTER_SECTION).toMatch(/relaxed front three-quarter standing pose, hands resting naturally together at waist level/)
     const text = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../tvc-character-creator.md'), 'utf8')
     expect(text).toMatch(/1 face refinement and 1 character reference sheet/)
-    expect(text).toMatch(/pass it to agent-director as "framing: full body", "framing: chest up" or "framing: mid-thigh up"/)
+    expect(text).toMatch(/Framing: always full body, head to toe/)
     expect(text).toMatch(/Casting fits the product/)
     expect(TVC_CHARACTER_SECTION).toMatch(/with category from what Olmo says the actor is for/)
     expect(TVC_CHARACTER_SECTION).toMatch(/Signature anchor: <anchor>/)
@@ -274,7 +274,8 @@ describe('TVC character creator (Official skill)', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/when Olmo's brief says "count: 1", every variation step/)
     expect(AVATAR_CREATION_SECTION).toMatch(/"step: edit only", call edit_image once on the given fileId/)
     expect(TVC_CHARACTER_SECTION).toMatch(/exactly 1 when Olmo's brief says "count: 1"/)
-    expect(TVC_CHARACTER_SECTION).toMatch(/When Olmo's brief says "framing: chest up"/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/Composition\/framing: always full body/)
+    expect(TVC_CHARACTER_SECTION).not.toMatch(/from mid-thigh up/)
   })
 })
 
