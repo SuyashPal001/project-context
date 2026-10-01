@@ -6,6 +6,7 @@ import { storageService } from '@serverless-saas/storage';
 import { conversations, messages } from '@serverless-saas/agent-schema/conversations';
 import { agents } from '@serverless-saas/agent-schema/agents';
 import { personas } from '@serverless-saas/agent-schema/personas';
+import { knowledgeGaps, toolCallLogs } from '@serverless-saas/agent-schema/intelligence';
 import { hasPermission } from '@serverless-saas/permissions';
 import type { AppEnv } from '@serverless-saas/types';
 
@@ -414,7 +415,17 @@ conversationsRoutes.delete('/:id/permanent', async (c) => {
         const [existing] = await db.select({ id: conversations.id }).from(conversations).where(scope).limit(1);
         if (!existing) return c.json({ error: 'Conversation not found', code: 'NOT_FOUND' }, 404);
 
-        await db.delete(conversations).where(scope);
+        // tool_call_logs and knowledge_gaps reference the conversation with no
+        // ON DELETE action, so a chat that ever called a tool could not be
+        // deleted (Postgres 23503). Unlink them first — the rows stay for
+        // usage analytics, just no longer tied to a deleted chat.
+        await db.transaction(async (tx) => {
+            await tx.update(toolCallLogs).set({ conversationId: null })
+                .where(and(eq(toolCallLogs.conversationId, id), eq(toolCallLogs.tenantId, tenantId)));
+            await tx.update(knowledgeGaps).set({ conversationId: null })
+                .where(and(eq(knowledgeGaps.conversationId, id), eq(knowledgeGaps.tenantId, tenantId)));
+            await tx.delete(conversations).where(scope);
+        });
         return c.json({ success: true });
     } catch (error) {
         console.error('Hard delete conversation failed:', error);
