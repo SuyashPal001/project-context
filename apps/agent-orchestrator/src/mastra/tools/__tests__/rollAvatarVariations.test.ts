@@ -205,6 +205,33 @@ describe('rollTvcVariations', () => {
     expect(set.every((v) => v.skinTone && /saree|lehenga|anarkali|sharara|pantsuit/.test(v.wardrobe))).toBe(true)
     expect(distinct(set.map((v) => v.set))).toBe(true)
   })
+
+  it('casts a skincare actor skin-first, in soft wardrobe on bright beauty sets', async () => {
+    const { rollTvcVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 20; seed++) {
+      const set = rollTvcVariations({ count: 4, category: 'beauty', look: 'a mix of 4 different looks', gender: 'any', ageMin: 22, ageMax: 45 }, seeded(seed))
+      expect(set.every((v) => !/suit|tuxedo|gown|overcoat|blazer/.test(v.wardrobe))).toBe(true)
+      expect(set.every((v) => /vanity|studio|bedroom|window|spa/.test(v.set))).toBe(true)
+      expect(set.every((v) => /minimal makeup/.test(v.grooming))).toBe(true)
+      expect(distinct(set.map((v) => v.wardrobe))).toBe(true)
+      expect(distinct(set.map((v) => v.anchor))).toBe(true)
+    }
+  })
+
+  it('gives a jewellery actor a facial anchor so it never competes with the product', async () => {
+    const { rollTvcVariations } = await import('../rollAvatarVariations.js')
+    const set = rollTvcVariations({ count: 4, category: 'jewellery', look: 'Indian', gender: 'woman', ageMin: 22, ageMax: 40 }, seeded(3))
+    expect(set.every((v) => /beauty mark|dimple|gap|scar/.test(v.anchor))).toBe(true)
+    expect(set.every((v) => /neck and ears/.test(v.grooming))).toBe(true)
+    expect(distinct(set.map((v) => v.anchor))).toBe(true)
+  })
+
+  it('keeps the premium pools when no category is given', async () => {
+    const { rollTvcVariations } = await import('../rollAvatarVariations.js')
+    const set = rollTvcVariations({ count: 4, look: 'Indian', gender: 'man', ageMin: 22, ageMax: 45 }, seeded(4))
+    expect(set.every((v) => /bandhgala|sherwani|suit|kurta|tuxedo/.test(v.wardrobe))).toBe(true)
+    expect(set.every((v) => v.anchor.length > 0 && /polished makeup/.test(v.grooming))).toBe(true)
+  })
 })
 
 describe('rollToonVariations', () => {

@@ -757,6 +757,124 @@ const TVC_SETS_INDIAN = [
   'a premium modern kitchen set in morning light',
 ]
 
+// Casting fits the product, the way a real TVC brief does: a skincare actor
+// is cast skin-first in soft minimal wardrobe on a bright vanity set, not in
+// a suit on a terrace. Each category brings its own wardrobe, sets and
+// grooming; "premium" (jewellery, fashion, or nothing named) keeps the dressy
+// pools above.
+export type TvcCategory = 'beauty' | 'jewellery' | 'fashion' | 'home' | 'food' | 'professional' | 'premium'
+
+interface TvcCategoryPools {
+  wardrobe: { indian: Record<Gender, string[]>; general: Record<Gender, string[]> }
+  sets: { indian: string[]; general: string[] }
+  grooming: string
+}
+
+const TVC_PREMIUM: TvcCategoryPools = {
+  wardrobe: { indian: TVC_WARDROBE_INDIAN, general: TVC_WARDROBE_GENERAL },
+  sets: { indian: TVC_SETS_INDIAN, general: TVC_SETS },
+  grooming: 'professional grooming and polished makeup',
+}
+
+const TVC_CATEGORIES: Record<Exclude<TvcCategory, 'premium' | 'fashion'>, TvcCategoryPools> = {
+  beauty: {
+    wardrobe: {
+      indian: {
+        woman: ['a soft white chikankari kurta', 'an ivory mulmul kurta with a sheer dupatta', 'a blush-pink silk blouse', 'a pastel cotton saree with a thin border', 'a peach cotton kurta with tiny buttons', 'a sage mulmul kurti'],
+        man: ['a white cotton kurta', 'a pastel linen shirt', 'a sage cotton kurta', 'an ivory linen kurta', 'a beige mulmul kurta', 'a soft blue cotton kurta'],
+      },
+      general: {
+        woman: ['a soft white ribbed knit top', 'an ivory silk camisole', 'a blush-pink cashmere wrap', 'an oatmeal off-shoulder knit', 'a white cotton bathrobe', 'a sage satin slip top'],
+        man: ['a crisp white t-shirt', 'a heather-grey crew-neck knit', 'an open-collar white linen shirt', 'a navy henley', 'a grey waffle bathrobe', 'a soft beige knit polo'],
+      },
+    },
+    sets: {
+      indian: ['a bright white bathroom vanity set with soft daylight', 'a clean pastel studio seamless', 'a sunlit bedroom set with sheer curtains', 'a soft daylight window set with a marble ledge and a brass bowl', 'a minimalist spa set with stone and greenery', 'a clean light-grey studio seamless'],
+      general: ['a bright white bathroom vanity set with soft daylight', 'a clean pastel studio seamless', 'a sunlit bedroom set with sheer curtains', 'a soft daylight window set with a marble ledge', 'a minimalist spa set with stone and greenery', 'a clean light-grey studio seamless'],
+    },
+    grooming: 'fresh, dewy, glowing skin with minimal makeup so the skin carries the shot, healthy natural hair',
+  },
+  jewellery: {
+    wardrobe: TVC_PREMIUM.wardrobe,
+    sets: TVC_PREMIUM.sets,
+    grooming: 'polished makeup, hair styled away from the neck and ears so jewellery shows, clean bare neckline and wrists ready for the product',
+  },
+  home: {
+    wardrobe: {
+      indian: {
+        woman: ['a soft-printed cotton salwar kameez', 'a pastel cotton kurta with palazzos', 'a light cotton saree', 'a cream cardigan over a cotton kurta', 'a chambray shirt with linen trousers', 'a mint cotton kurta'],
+        man: ['a casual pastel kurta', 'a chambray shirt', 'a striped linen shirt', 'a heather-grey polo', 'a cream cotton kurta with a light jacket', 'a soft navy henley'],
+      },
+      general: {
+        woman: ['a cream cardigan over a white tee', 'a chambray shirt', 'a striped linen shirt', 'a pastel cotton shirt dress', 'a soft grey knit sweater', 'a sage linen blouse'],
+        man: ['a chambray shirt', 'a striped linen shirt', 'a heather-grey polo', 'a soft navy henley', 'a cream knit sweater', 'a light denim shirt'],
+      },
+    },
+    sets: {
+      indian: ['a bright modern Indian kitchen set', 'a warm family living-room set with soft daylight', 'a sunlit dining set', 'a tidy laundry-room set', 'a calm bedroom set with daylight', 'a clean light-grey studio seamless'],
+      general: ['a bright modern kitchen set', 'a warm family living-room set with soft daylight', 'a sunlit dining set', 'a tidy laundry-room set', 'a calm bedroom set with daylight', 'a clean light-grey studio seamless'],
+    },
+    grooming: 'natural, approachable grooming with light everyday makeup',
+  },
+  food: {
+    wardrobe: {
+      indian: {
+        woman: ['a bright cotton kurta', 'a mustard cotton top with jeans', 'a coral cotton saree', 'a white linen shirt', 'a printed cotton co-ord set', 'a soft denim shirt'],
+        man: ['a bright cotton kurta', 'a crisp white t-shirt', 'a striped linen shirt', 'a soft denim shirt', 'a pastel polo', 'a mustard henley'],
+      },
+      general: {
+        woman: ['a white linen shirt', 'a mustard knit top', 'a striped breton top', 'a soft denim shirt', 'a coral cotton dress', 'a cream cardigan'],
+        man: ['a crisp white t-shirt', 'a striped linen shirt', 'a soft denim shirt', 'a pastel polo', 'a navy henley', 'a mustard knit sweater'],
+      },
+    },
+    sets: {
+      indian: ['a bright modern Indian kitchen set', 'a family dining-table set in warm light', 'a festive dining set with brass thalis', 'a cosy café set', 'a sunny balcony breakfast set', 'a clean light-grey studio seamless'],
+      general: ['a bright modern kitchen set', 'a family dining-table set in warm light', 'a cosy café set', 'a sunny breakfast-nook set', 'a picnic set on a lawn', 'a clean light-grey studio seamless'],
+    },
+    grooming: 'natural, warm grooming with light everyday makeup',
+  },
+  professional: {
+    wardrobe: {
+      indian: {
+        woman: ['a navy tailored blazer over a silk blouse', 'a crisp white shirt with a grey blazer', 'a handloom cotton saree with a structured blouse', 'a charcoal pantsuit', 'a straight-cut kurta with a tailored jacket', 'a camel blazer over a cream top'],
+        man: ['a navy suit with an open-collar shirt', 'a crisp white shirt with a grey blazer', 'a charcoal bandhgala', 'a light-blue shirt with a navy blazer', 'a camel blazer over a white tee', 'a grey suit with a knit tie'],
+      },
+      general: {
+        woman: ['a navy tailored blazer over a silk blouse', 'a crisp white shirt with a grey blazer', 'a charcoal pantsuit', 'a camel blazer over a cream top', 'a black sheath dress with a blazer', 'a soft blue shirt with tailored trousers'],
+        man: ['a navy suit with an open-collar shirt', 'a crisp white shirt with a grey blazer', 'a light-blue shirt with a navy blazer', 'a camel blazer over a white tee', 'a grey suit with a knit tie', 'a charcoal turtleneck under a blazer'],
+      },
+    },
+    sets: {
+      indian: ['a bright modern office set with glass walls', 'a calm home-office set', 'a clean clinic set', 'a modern meeting-room set', 'a city-view lounge set', 'a clean light-grey studio seamless'],
+      general: ['a bright modern office set with glass walls', 'a calm home-office set', 'a clean clinic set', 'a modern meeting-room set', 'a city-view lounge set', 'a clean light-grey studio seamless'],
+    },
+    grooming: 'neat, trustworthy grooming with natural makeup',
+  },
+}
+
+function tvcPools(category: TvcCategory | undefined): TvcCategoryPools {
+  if (!category || category === 'premium' || category === 'fashion') return TVC_PREMIUM
+  return TVC_CATEGORIES[category]
+}
+
+// One signature anchor per actor — the small detail that makes them
+// recognisable across every ad and is locked on the continuity bible. A
+// jewellery actor gets a facial anchor instead, so it never competes with the
+// product they wear.
+const TVC_ANCHORS: Record<Gender, string[]> = {
+  woman: ['small gold hoop earrings', 'a thin gold chain with a tiny pendant', 'a slim leather-strap watch', 'a single pearl stud in each ear', 'tortoiseshell glasses', 'a delicate stacked ring on the right hand'],
+  man: ['a steel-bracelet watch', 'a thin silver ring on the right hand', 'round wire-frame glasses', 'a neat short beard', 'a braided leather bracelet', 'a classic leather-strap watch'],
+}
+
+const TVC_FACIAL_ANCHORS = [
+  'a small beauty mark near the left eyebrow',
+  'a soft dimple in the left cheek',
+  'a small beauty mark above the upper lip',
+  'a slight gap between the front teeth',
+  'a faint scar through the right eyebrow',
+  'a small beauty mark on the right cheekbone',
+]
+
 export interface TvcVariationSpec {
   gender: Gender
   age: number
@@ -766,26 +884,35 @@ export interface TvcVariationSpec {
   hair: string
   wardrobe: string
   set: string
+  grooming: string
+  anchor: string
 }
 
-export function rollTvcVariations(input: AvatarRollInput, random: () => number = Math.random): TvcVariationSpec[] {
+export interface TvcRollInput extends AvatarRollInput {
+  category?: TvcCategory
+}
+
+export function rollTvcVariations(input: TvcRollInput, random: () => number = Math.random): TvcVariationSpec[] {
   const { count, gender, ageMin, ageMax } = input
   const look = input.look.trim()
   const isMix = /^(a )?mix\b/i.test(look) || look === ''
   const isIndian = /\bindian\b/i.test(look)
+  const pools = tvcPools(input.category)
   const genders: Gender[] = Array.from({ length: count }, (_, i) =>
     gender === 'any' ? (i % 2 === 0 ? 'woman' : 'man') : gender)
   const ages = shuffled(spreadAges(ageMin, ageMax, count, random), random)
   const looks = isMix ? shuffled(MIX_LOOKS, random) : []
   const skinTones = shuffled(INDIAN_SKIN_TONES, random)
   const faces = shuffled(FACE_SHAPES, random)
-  const sets = { indian: shuffled(TVC_SETS_INDIAN, random), general: shuffled(TVC_SETS, random) }
+  const sets = { indian: shuffled(pools.sets.indian, random), general: shuffled(pools.sets.general, random) }
   const hair = { woman: shuffled(HAIR.woman, random), man: shuffled(HAIR.man, random) }
   const wardrobe = {
-    indian: { woman: shuffled(TVC_WARDROBE_INDIAN.woman, random), man: shuffled(TVC_WARDROBE_INDIAN.man, random) },
-    general: { woman: shuffled(TVC_WARDROBE_GENERAL.woman, random), man: shuffled(TVC_WARDROBE_GENERAL.man, random) },
+    indian: { woman: shuffled(pools.wardrobe.indian.woman, random), man: shuffled(pools.wardrobe.indian.man, random) },
+    general: { woman: shuffled(pools.wardrobe.general.woman, random), man: shuffled(pools.wardrobe.general.man, random) },
   }
-  const used = { hair: { woman: 0, man: 0 }, indian: { woman: 0, man: 0 }, general: { woman: 0, man: 0 }, set: { indian: 0, general: 0 } }
+  const facialAnchors = input.category === 'jewellery' ? shuffled(TVC_FACIAL_ANCHORS, random) : []
+  const anchors = { woman: shuffled(TVC_ANCHORS.woman, random), man: shuffled(TVC_ANCHORS.man, random) }
+  const used = { hair: { woman: 0, man: 0 }, indian: { woman: 0, man: 0 }, general: { woman: 0, man: 0 }, set: { indian: 0, general: 0 }, anchor: { woman: 0, man: 0 } }
   return genders.map((g, i) => {
     const personLook = isMix ? looks[i % looks.length] : look
     const pool = isIndian || personLook === 'Indian' ? 'indian' : 'general'
@@ -798,6 +925,8 @@ export function rollTvcVariations(input: AvatarRollInput, random: () => number =
       hair: hair[g][used.hair[g]++ % hair[g].length],
       wardrobe: wardrobe[pool][g][used[pool][g]++ % wardrobe[pool][g].length],
       set: sets[pool][used.set[pool]++ % sets[pool].length],
+      grooming: pools.grooming,
+      anchor: facialAnchors.length > 0 ? facialAnchors[i % facialAnchors.length] : anchors[g][used.anchor[g]++ % anchors[g].length],
     }
   })
 }
@@ -810,17 +939,19 @@ export function tvcLine(v: TvcVariationSpec): string {
 
 export const rollTvcVariationsTool = createTool({
   id: 'roll-tvc-variations',
-  description: 'Picks distinct details for TVC actor avatar variations so no two look alike: per variation an age, look, face shape, hair, styled wardrobe and commercial set, all different across the set, within the look, gender and age range from the brief. Call once before writing TVC variation prompts. Free.',
+  description: 'Picks distinct details for TVC actor avatar variations so no two look alike: per variation an age, look, face shape, hair, styled wardrobe, commercial set, grooming and one signature anchor, all different across the set, within the look, gender and age range from the brief. Wardrobe, sets and grooming fit the product category. Call once before writing TVC variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
+    category: z.enum(['beauty', 'jewellery', 'fashion', 'home', 'food', 'professional', 'premium']).optional()
+      .describe('What the actor is for: beauty (skincare, makeup, haircare, personal care), jewellery, fashion (apparel), home (appliances, cleaning, home goods), food (food & beverages), professional (finance, insurance, health, tech, services); premium when nothing fits or nothing is named'),
     look: z.string().describe('The look from the brief exactly as given: "a mix of 4 different looks", "Indian", or the user\'s own words'),
     gender: z.enum(['woman', 'man', 'any']).describe('From the brief; "any" alternates woman and man'),
     ageMin: z.number().int().min(18).max(90).describe('Youngest age the brief allows (18 or older)'),
     ageMax: z.number().int().min(18).max(90).describe('Oldest age the brief allows'),
   }),
   execute: async (inputData, execContext) => {
-    const { count, look, gender, ageMin, ageMax } = inputData
-    const variations = rollTvcVariations({ count, look, gender, ageMin: Math.min(ageMin, ageMax), ageMax: Math.max(ageMin, ageMax) })
+    const { count, category, look, gender, ageMin, ageMax } = inputData
+    const variations = rollTvcVariations({ count, category, look, gender, ageMin: Math.min(ageMin, ageMax), ageMax: Math.max(ageMin, ageMax) })
     emitToolStatus(execContext, `Casting ${variations.length} actors`, variations.map(tvcLine))
     return { variations }
   },
