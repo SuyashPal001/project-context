@@ -565,8 +565,8 @@ export function ChatInput({
                     const isGenerating = isLoading || isStreaming;
                     const isActive = isGenerating || content.trim().length > 0 || mentionedAgents.length > 0 || hasSupplementalContent;
                     return (
-                {/* The shadow sits on this wrapper, not the inner surface: overflow-hidden here (for the
-                    gradient ring) clipped any shadow drawn by the child, so the composer had none. */}
+                /* The shadow sits on this wrapper, not the inner surface: overflow-hidden here (for the
+                   gradient ring) clipped any shadow drawn by the child, so the composer had none. */
                 <div className={cn("relative rounded-[29px] overflow-hidden transition-shadow duration-300 shadow-composer focus-within:shadow-composer-focus", isActive ? "p-px" : "p-0")}>
                     {isActive && (
                         <div
