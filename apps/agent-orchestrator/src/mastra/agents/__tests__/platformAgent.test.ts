@@ -282,5 +282,15 @@ describe('picked library avatars keep their category\'s look', () => {
     expect(text).toMatch(/skip the style question and the cast-sheet generation/)
     expect(text).toMatch(/"Avatar category: TVC"[^]*never the phone-selfie UGC look/)
   })
+
+  it('asks which kind of avatar first when several avatar skills are on', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('agentSystemPrompt', 'Base override text.')
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toMatch(/If more than one avatar skill .* is turned on and the user has not said which kind of avatar they want/)
+    expect(text).toMatch(/What kind of avatar do you want\?/)
+    expect(text).toMatch(/follow only the chosen skill/)
+  })
 })
 

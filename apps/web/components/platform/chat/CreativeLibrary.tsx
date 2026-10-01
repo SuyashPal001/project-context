@@ -111,7 +111,7 @@ function AvatarCard({ label, name, detail, selected, busy, disabled, onClick, ch
     </button>;
 }
 
-function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled }: { selected: AvatarSelection | null; onSelect: (selection: AvatarSelection) => void; onCreateAvatar?: () => void; createAvatarDisabled?: boolean }) {
+function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled }: { selected: AvatarSelection | null; onSelect: (selection: AvatarSelection) => void; onCreateAvatar?: (category: AvatarCategory | null) => void; createAvatarDisabled?: boolean }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const mountedRef = useRef(true);
     const namingAttempted = useRef(new Set<string>());
@@ -176,7 +176,7 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled
         <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">Original still-image presets. Select one to attach it to your brief; talking video is not available yet.</p>
             <div className="flex items-center gap-2">
-                {onCreateAvatar && <Button type="button" variant="outline" size="sm" disabled={uploading !== null || createAvatarDisabled} onClick={onCreateAvatar}>
+                {onCreateAvatar && <Button type="button" variant="outline" size="sm" disabled={uploading !== null || createAvatarDisabled} onClick={() => onCreateAvatar(category)}>
                     <Sparkles className="mr-2 h-4 w-4" />
                     Create with AI
                 </Button>}
@@ -354,7 +354,7 @@ export function CreativeLibrary({ tab, brief, onSelect, onProductNamed, onCreate
     onSelect: (selection: CreativeSelection) => void;
     onProductNamed?: (product: ProductRecordSelection) => void;
     /** Present only where the chat page can send a message through the composer; shows "Create with AI" next to "Upload your own". */
-    onCreateAvatar?: () => void;
+    onCreateAvatar?: (category: AvatarCategory | null) => void;
     /** Disables "Create with AI" while a send is already in flight or the conversation is inactive — avoids double-creating conversations. */
     createAvatarDisabled?: boolean;
 }) {

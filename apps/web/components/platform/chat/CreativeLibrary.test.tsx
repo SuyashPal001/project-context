@@ -76,6 +76,17 @@ describe('creative library', () => {
         expect(onCreateAvatar).toHaveBeenCalledTimes(1);
     });
 
+    it('passes the selected filter chip to "Create with AI", or null on All', () => {
+        const onCreateAvatar = vi.fn();
+        renderLibrary('avatars', vi.fn(), createEmptyCreativeBrief(), onCreateAvatar);
+        fireEvent.click(screen.getByRole('button', { name: 'Create with AI' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Animation' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Create with AI' }));
+        fireEvent.click(screen.getByRole('button', { name: 'TVC' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Create with AI' }));
+        expect(onCreateAvatar.mock.calls.map(c => c[0])).toEqual([null, 'Animation', 'TVC']);
+    });
+
     it('has no "Create with AI" button when onCreateAvatar is absent', () => {
         renderLibrary('avatars');
         expect(screen.queryByRole('button', { name: 'Create with AI' })).toBeNull();

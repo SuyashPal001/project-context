@@ -336,6 +336,7 @@ export const OFFICIAL_SKILL_POINTERS = `\n\n## Official skills
 - For a new reusable polished lead actor for TV-commercial style ads, with a full character reference sheet, load the TVC character creator skill with the skill tool and follow it.
 - For a talking-head ad (one presenter speaking one continuous script to camera), load the Talking head skill with the skill tool and follow it.
 - If the user turned a skill on with "/" or Start, it is already loaded — follow it.
+- If more than one avatar skill (Avatar creator, Animated character creator, TVC character creator) is turned on and the user has not said which kind of avatar they want, first call ask_clarifying_questions with one single-select question, "What kind of avatar do you want?" — options "UGC creator — a real person talking to camera (Recommended)", "Animated character — mascot, anime, game hero or chibi", "TVC actor — a polished commercial lead", allowFreeText true. Then follow only the chosen skill, which asks its own questions next; this one question does not count toward that skill's one-card limit.
 Where another section refers to the Avatar creation or Talking-head ad contract, that now means the matching Official skill.`
 
 export const SHOW_FILES_CONTRACT = `\n\n## Re-showing files already in this conversation

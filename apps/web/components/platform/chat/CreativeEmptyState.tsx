@@ -46,7 +46,7 @@ interface CreativeEmptyStateProps {
     /** Called when a product's AI naming finishes, even after the Products tab closed. */
     onProductNamed?: (product: ProductRecordSelection) => void;
     /** Present only where the chat page can send a message through the composer; shows "Create with AI" in the avatar picker. */
-    onCreateAvatar?: () => void;
+    onCreateAvatar?: (category: 'UGC' | 'Animation' | 'TVC' | null) => void;
     /** Disables "Create with AI" while a send is already in flight or the conversation is inactive — avoids double-creating conversations. */
     createAvatarDisabled?: boolean;
     /** The composer — differs between the no-conversation screen and an empty existing chat. */

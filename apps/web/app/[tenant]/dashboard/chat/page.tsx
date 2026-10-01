@@ -40,9 +40,9 @@ import { findPendingClarification, findPendingGenerationConfirm, findPendingUplo
 import { FEATURE_FLAGS } from "@/lib/feature-flags";
 import { parseFolderId } from "@/lib/folderScope";
 import { CreativeEmptyState } from '@/components/platform/chat/CreativeEmptyState';
-import { CREATE_AVATAR_PROMPT, AVATAR_CREATOR_SKILL_SLUG } from '@/components/platform/files/NewAvatarButton';
+import { AVATAR_CREATOR_SKILL_SLUG } from '@/components/platform/files/NewAvatarButton';
 import { useOfficialSkill } from '@/components/platform/skills/useOfficialSkill';
-import { resolveCreateAvatarSkillsUsed } from '@/components/platform/skills/createAvatarSkillsUsed';
+import { AVATAR_SKILL_SLUGS, createAvatarTarget, resolveSkillsUsed, type AvatarKind } from '@/components/platform/skills/createAvatarTarget';
 import { runCreateAvatarOnce } from '@/components/platform/skills/createAvatarGuard';
 import { CreativeBriefChips } from '@/components/platform/chat/creative-library/CreativeBriefChips';
 import {
@@ -97,6 +97,19 @@ function ChatPage() {
     // creator skill when it's seeded, same as NewAvatarButton (Drive) —
     // falls back to today's plain-prompt send/stage when it isn't.
     const avatarCreatorSkill = useOfficialSkill(AVATAR_CREATOR_SKILL_SLUG);
+    const animatedCharacterSkill = useOfficialSkill(AVATAR_SKILL_SLUGS.Animation);
+    const tvcCharacterSkill = useOfficialSkill(AVATAR_SKILL_SLUGS.TVC);
+    // The picker's filter chip decides which avatar skill "Create with AI"
+    // starts; "All" turns on all three and Olmo asks which kind first.
+    const avatarSkillsFor = (kind: AvatarKind | null) => {
+        const bySlug: Record<string, typeof avatarCreatorSkill> = {
+            [AVATAR_CREATOR_SKILL_SLUG]: avatarCreatorSkill,
+            [AVATAR_SKILL_SLUGS.Animation]: animatedCharacterSkill,
+            [AVATAR_SKILL_SLUGS.TVC]: tvcCharacterSkill,
+        };
+        const target = createAvatarTarget(kind);
+        return { prompt: target.prompt, skills: target.slugs.map(slug => bySlug[slug]) };
+    };
     // Guards "Create with AI" against a double click across its async
     // install (resolveCreateAvatarSkillsUsed) — without this a second click
     // installs+sends twice, or fires two handleNewChat calls at the
@@ -726,15 +739,16 @@ function ChatPage() {
                                                 // never sendComposerMessage, which would merge in the brief's
                                                 // attachments (e.g. a selected avatar) and silently turn this into an
                                                 // image-to-avatar call — and never touches/clears the brief.
-                                                onCreateAvatar={() => {
+                                                onCreateAvatar={(kind) => {
                                                     if (isStreaming || isPreparingMessage || selectedConversation.status !== 'active' || createAvatarInFlightRef.current) return;
                                                     void runCreateAvatarOnce(
                                                         () => createAvatarInFlightRef.current,
                                                         setCreateAvatarInFlight,
                                                         async () => {
-                                                            const skillsUsed = await resolveCreateAvatarSkillsUsed(avatarCreatorSkill);
+                                                            const { prompt, skills } = avatarSkillsFor(kind);
+                                                            const skillsUsed = await resolveSkillsUsed(skills);
                                                             if (skillsUsed === null) return; // install failed — already toasted
-                                                            sendMessage(CREATE_AVATAR_PROMPT, undefined, skillsUsed);
+                                                            sendMessage(prompt, undefined, skillsUsed);
                                                         },
                                                     );
                                                 }}
@@ -840,15 +854,16 @@ function ChatPage() {
                                     // Finding #3: stages ONLY the prompt text (no merged brief attachments,
                                     // brief left untouched) — same reasoning as the existing-chat site above,
                                     // just via the pre-conversation staging path instead of sendMessage directly.
-                                    onCreateAvatar={() => {
+                                    onCreateAvatar={(kind) => {
                                         if (createConversation.isPending || createAvatarInFlightRef.current) return;
                                         void runCreateAvatarOnce(
                                             () => createAvatarInFlightRef.current,
                                             setCreateAvatarInFlight,
                                             async () => {
-                                                const skillsUsed = await resolveCreateAvatarSkillsUsed(avatarCreatorSkill);
+                                                const { prompt, skills } = avatarSkillsFor(kind);
+                                                const skillsUsed = await resolveSkillsUsed(skills);
                                                 if (skillsUsed === null) return; // install failed — already toasted
-                                                setPendingFirstMessage(CREATE_AVATAR_PROMPT);
+                                                setPendingFirstMessage(prompt);
                                                 setPendingFirstAttachments(undefined);
                                                 setPendingSkillsUsed(skillsUsed);
                                                 handleNewChat(draftAgent?.id);
