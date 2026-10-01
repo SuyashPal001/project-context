@@ -136,8 +136,9 @@
   --shadow-card-value: 0 20px 50px -12px rgb(0 0 0 / 0.45), 0 4px 12px -4px rgb(0 0 0 / 0.3), inset 0 1px 0 0 rgb(255 255 255 / 0.04);
   /* Same inset-highlight-for-elevation trick as --shadow-elevated above: a black shadow alone
      is nearly invisible against this theme's near-black background. */
-  --shadow-composer-value: 0 6px 16px -6px rgb(0 0 0 / 0.5), 0 24px 56px -12px rgb(0 0 0 / 0.4), inset 0 1px 0 0 rgb(255 255 255 / 0.06);
-  --shadow-composer-focus-value: 0 10px 24px -8px rgb(0 0 0 / 0.6), 0 36px 80px -14px rgb(0 0 0 / 0.55), inset 0 1px 0 0 rgb(255 255 255 / 0.09);
+  /* Same as light mode: --shadow-elevated's tight layers (the clarification card) plus the wide lift. */
+  --shadow-composer-value: 0 2px 10px -3px rgb(0 0 0 / 0.35), 0 10px 40px -12px rgb(0 0 0 / 0.5), 0 24px 56px -12px rgb(0 0 0 / 0.4), inset 0 1px 0 0 rgb(255 255 255 / 0.06);
+  --shadow-composer-focus-value: 0 2px 10px -3px rgb(0 0 0 / 0.4), 0 10px 40px -12px rgb(0 0 0 / 0.55), 0 36px 80px -14px rgb(0 0 0 / 0.55), inset 0 1px 0 0 rgb(255 255 255 / 0.09);
   /* Ops-portal palette, promoted to the global dark theme: zinc neutrals + a violet brand accent. */
   /* Progressive lightening per feedback: 6% -> 9% -> 13% -> 16% -> 19%.
      Still visibly darker than --card (21%, chrome) so the two layers
