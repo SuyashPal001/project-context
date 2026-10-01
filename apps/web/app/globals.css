@@ -83,8 +83,10 @@
   /* Soft/premium reference shadow: large blur, tiny offset, very low opacity so it diffuses
      into the background instead of outlining the card. */
   --shadow-card-value: 0 1px 2px -1px rgb(0 0 0 / 0.03), 0 20px 40px -12px rgb(0 0 0 / 0.09);
-  --shadow-composer-value: 0 2px 6px -2px rgb(0 0 0 / 0.06), 0 20px 44px -12px rgb(0 0 0 / 0.16);
-  --shadow-composer-focus-value: 0 4px 10px -2px rgb(0 0 0 / 0.1), 0 32px 64px -14px rgb(0 0 0 / 0.28);
+  /* The tight near-edge layers match --shadow-elevated (the clarification card) so the composer's
+     edge reads as clearly at rest; the wide layer keeps its floating lift. */
+  --shadow-composer-value: 0 4px 16px -4px rgb(0 0 0 / 0.1), 0 1px 4px -1px rgb(0 0 0 / 0.06), 0 20px 44px -12px rgb(0 0 0 / 0.12);
+  --shadow-composer-focus-value: 0 4px 16px -4px rgb(0 0 0 / 0.12), 0 1px 4px -1px rgb(0 0 0 / 0.08), 0 32px 64px -14px rgb(0 0 0 / 0.28);
   --messages-panel: var(--card); /* sidebar itself renders bg-card, not bg-background — match that, not background */
   --background: oklch(0.985 0 0);
   --foreground: oklch(0.145 0 0);
