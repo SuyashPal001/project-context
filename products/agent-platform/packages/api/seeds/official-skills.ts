@@ -8,7 +8,21 @@
  * same NULL-owner row updates it instead of duplicating it.
  *
  * Idempotent: safe to re-run. A new skill_versions row is only inserted when
- * the computed body differs from the latest stored version's manifest->>'body'.
+ * the computed body, references or director marker differ from the latest
+ * stored version's manifest.
+ *
+ * Official installs always run the latest version: when a new version is
+ * written, every tenant's install of that skill moves to it in the same
+ * transaction. Olmo and Director then read the same version, so the skill's
+ * card text and its Director rules can never drift apart.
+ *
+ * A skill folder next to its .md (official-skills/<slug>/) holds Director's
+ * half of the skill: director.md becomes the manifest's references, and
+ * Director loads it as a native Mastra skill (usage.ts's
+ * fetchOfficialDirectorSkills) only for a brief that carries the marker.
+ *
+ * Runs on the VM as a deploy step (deploy.sh), never from a laptop, so skill
+ * text goes live together with the code that reads it.
  *
  * Run with: pnpm --filter @serverless-saas/agent-api db:seed:official-skills
  */
@@ -18,12 +32,19 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { desc, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { skills, skillVersions } from '@serverless-saas/agent-schema/skills';
+import { skillInstalls, skills, skillVersions } from '@serverless-saas/agent-schema/skills';
 
 export interface SkillShowcase {
   imageUrl: string;
   bestFor: string[];
   starterPrompt: string;
+}
+
+/** Director's half of a skill: the file it loads, and the line in Olmo's
+ *  brief that tells Director to load it (e.g. "style: tvc"). */
+export interface DirectorReferenceSeed {
+  file: string;
+  marker: string;
 }
 
 export interface OfficialSkillSeed {
@@ -32,6 +53,7 @@ export interface OfficialSkillSeed {
   description: string;
   file: string;
   showcase: SkillShowcase;
+  director?: DirectorReferenceSeed;
 }
 
 const SEEDS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +87,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     name: 'TVC character creator',
     description: 'Use when the user wants a new reusable polished lead actor for TV-commercial style ads, with a full character reference sheet — not a candid UGC creator or an animated character.',
     file: officialSkillFile('tvc-character-creator.md'),
+    director: { file: officialSkillFile('tvc-character-creator/director.md'), marker: 'style: tvc' },
     showcase: {
       imageUrl: '/creative/avatars/tvc-character.jpg',
       bestFor: ['TV commercials', 'Brand films', 'Premium ads'],
@@ -93,16 +116,36 @@ export function readSkillBody(file: string): string {
   return contents;
 }
 
+export interface OfficialSkillManifest {
+  name: string;
+  description: string;
+  body: string;
+  references?: Record<string, string>;
+  directorMarker?: string;
+}
+
 /** Mirrors the shape the import worker writes to skill_versions.manifest — see
- *  worker-handlers/handlers/skillImport.ts's manifestWithBody. */
-export function buildSkillManifest(name: string, description: string, body: string): { name: string; description: string; body: string } {
-  return { name, description, body };
+ *  worker-handlers/handlers/skillImport.ts's manifestWithBody — plus, for a
+ *  skill with a Director half, its director.md and marker. */
+export function buildSkillManifest(name: string, description: string, body: string, director?: { text: string; marker: string }): OfficialSkillManifest {
+  if (!director) return { name, description, body };
+  return { name, description, body, references: { 'director.md': director.text }, directorMarker: director.marker };
+}
+
+/** True when the stored manifest already holds exactly this content. */
+export function manifestUnchanged(stored: unknown, next: OfficialSkillManifest): boolean {
+  if (!stored || typeof stored !== 'object') return false;
+  const s = stored as Record<string, unknown>;
+  return s.body === next.body
+    && JSON.stringify(s.references ?? null) === JSON.stringify(next.references ?? null)
+    && (s.directorMarker ?? null) === (next.directorMarker ?? null);
 }
 
 async function run(): Promise<void> {
   for (const entry of OFFICIAL_SKILLS) {
     const body = readSkillBody(entry.file);
-    const manifest = buildSkillManifest(entry.name, entry.description, body);
+    const director = entry.director ? { text: readSkillBody(entry.director.file), marker: entry.director.marker } : undefined;
+    const manifest = buildSkillManifest(entry.name, entry.description, body, director);
 
     await db.transaction(async (tx) => {
       const [skill] = await tx
@@ -137,11 +180,7 @@ async function run(): Promise<void> {
         .orderBy(desc(skillVersions.version))
         .limit(1);
 
-      const latestBody = latest?.manifest && typeof latest.manifest === 'object'
-        ? (latest.manifest as Record<string, unknown>).body
-        : undefined;
-
-      if (!latest || latestBody !== body) {
+      if (!latest || !manifestUnchanged(latest.manifest, manifest)) {
         const nextVersion = (latest?.version ?? 0) + 1;
         await tx.insert(skillVersions).values({
           skillId: skill.id,
@@ -153,6 +192,7 @@ async function run(): Promise<void> {
           status: 'ready',
         });
         await tx.update(skills).set({ latestVersion: nextVersion }).where(eq(skills.id, skill.id));
+        await tx.update(skillInstalls).set({ installedVersion: nextVersion }).where(eq(skillInstalls.skillId, skill.id));
         console.log(`[seed:official-skills] ${latest ? 'updated' : 'created'} ${entry.slug} to v${nextVersion}`);
       } else {
         console.log(`[seed:official-skills] ${entry.slug} unchanged`);

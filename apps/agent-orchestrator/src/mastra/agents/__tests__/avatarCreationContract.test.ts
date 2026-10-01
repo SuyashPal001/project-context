@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { AVATAR_CREATION_SECTION, AVATAR_FROM_IMAGE_SECTION, DIRECTOR_WORKING_MEMORY_SECTION, TVC_CHARACTER_SECTION } from '../directorAgent.js'
+import { AVATAR_CREATION_SECTION, AVATAR_FROM_IMAGE_SECTION, DIRECTOR_WORKING_MEMORY_SECTION } from '../directorAgent.js'
 
 // The Avatar creation and Image-to-avatar contracts moved out of Olmo's
 // always-on instructions into the Avatar creator Official skill (see
@@ -15,10 +15,14 @@ const AVATAR_CREATOR_SKILL_PATH = path.resolve(
 )
 
 let AVATAR_SKILL_TEXT: string
+// Director's TVC rules moved, word for word, out of directorAgent.ts into the
+// TVC skill's own folder; Director loads them as a native Mastra skill.
+let TVC_CHARACTER_SECTION: string
 
 beforeAll(() => {
   expect(existsSync(AVATAR_CREATOR_SKILL_PATH)).toBe(true)
   AVATAR_SKILL_TEXT = readFileSync(AVATAR_CREATOR_SKILL_PATH, 'utf8')
+  TVC_CHARACTER_SECTION = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../tvc-character-creator/director.md'), 'utf8')
 })
 
 describe('avatar creation contract (Avatar creator Official skill)', () => {

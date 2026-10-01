@@ -17,7 +17,7 @@ vi.mock('../../fairness/index.js', () => ({}))
 vi.mock('../../mastra/tools.js', () => ({}))
 vi.mock('../../mastra/thinking.js', () => ({}))
 vi.mock('../../mastra/cost.js', () => ({}))
-vi.mock('../../usage.js', () => ({}))
+vi.mock('../../usage.js', () => ({ fetchOfficialDirectorSkills: async () => [] }))
 // mastra/model.js and mastra/memory.js were not previously reachable from
 // this test — chatStream.ts now imports mastra/subagents/streamOptions.js,
 // which transitively pulls in the full delegate registry (pmAgent,

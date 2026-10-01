@@ -60,6 +60,10 @@ infra/terraform/**/terraform.tfvars
 # silently untracked every one of them, which is how skill folders drifted
 # between environments with zero git history (found 2026-09-13).
 !apps/agent-orchestrator/skills/**/SKILL.md
+# Official skill content (each skill's .md and its folder's director.md) is
+# seeded on the VM from git — an untracked file here means the seed fails
+# or ships stale text.
+!products/agent-platform/packages/api/seeds/official-skills/**/*.md
 
 # Temp SAM build artifacts
 apps/**/package.original.json

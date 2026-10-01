@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { OFFICIAL_SKILLS, buildSkillManifest, readSkillBody } from '../seeds/official-skills';
+import { OFFICIAL_SKILLS, buildSkillManifest, manifestUnchanged, readSkillBody } from '../seeds/official-skills';
 
 describe('OFFICIAL_SKILLS', () => {
   it('has every slug', () => {
@@ -79,5 +79,35 @@ describe('buildSkillManifest', () => {
       description: 'Use when...',
       body: '## Body text',
     });
+  });
+});
+
+describe('Director references', () => {
+  it('TVC carries its Director rules as director.md, marked by "style: tvc"', () => {
+    const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-character-creator')!;
+    expect(tvc.director?.marker).toBe('style: tvc');
+    const text = readSkillBody(tvc.director!.file);
+    expect(text.startsWith('## TVC character — a polished commercial lead actor, with a continuity bible')).toBe(true);
+    // Olmo's brief must carry the marker, or Director never loads the rules.
+    expect(readSkillBody(tvc.file)).toContain('"style: tvc"');
+  });
+
+  it('puts director.md and the marker into the manifest', () => {
+    expect(buildSkillManifest('TVC', 'Use when...', 'body', { text: 'rules', marker: 'style: tvc' })).toEqual({
+      name: 'TVC',
+      description: 'Use when...',
+      body: 'body',
+      references: { 'director.md': 'rules' },
+      directorMarker: 'style: tvc',
+    });
+  });
+
+  it('writes a new version when only director.md changes', () => {
+    const before = buildSkillManifest('TVC', 'd', 'body', { text: 'rules v1', marker: 'style: tvc' });
+    const after = buildSkillManifest('TVC', 'd', 'body', { text: 'rules v2', marker: 'style: tvc' });
+    expect(manifestUnchanged(before, after)).toBe(false);
+    expect(manifestUnchanged(before, before)).toBe(true);
+    expect(manifestUnchanged({ name: 'TVC', description: 'd', body: 'body' }, after)).toBe(false);
+    expect(manifestUnchanged({ name: 'A', description: 'd', body: 'body' }, buildSkillManifest('A', 'd', 'body'))).toBe(true);
   });
 });

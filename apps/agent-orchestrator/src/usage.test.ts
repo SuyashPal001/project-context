@@ -6,7 +6,7 @@ vi.mock('@serverless-saas/ai', () => ({ getAgentTools: vi.fn() }))
 vi.mock('./db.js', () => ({ makeAppPool: vi.fn(() => ({ query: mockPoolQuery, on: vi.fn() })) }))
 
 import { getAgentTools } from '@serverless-saas/ai'
-import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, fetchOfficialSkills, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
+import { fetchToolGovernance, fetchAgentModelSelection, fetchAgentPersonality, fetchAgentMemory, fetchAgentPersonaPrompt, fetchAttachedSkills, fetchTestSkill, fetchInvokedSkills, fetchOfficialSkills, fetchOfficialDirectorSkills, toMastraSkillName, agentBelongsToTenant, recordSkillRuns, resolveInvokedSkills } from './usage.js'
 
 beforeEach(() => {
   mockPoolQuery.mockReset()
@@ -325,6 +325,23 @@ describe('fetchOfficialSkills', () => {
     const second = await fetchOfficialSkills()
     expect(second).toEqual(first)
     expect(mockPoolQuery).not.toHaveBeenCalled()
+  })
+
+  it("builds Director's skill from director.md and its marker, from the same query", async () => {
+    vi.advanceTimersByTime(61_000)
+    mockPoolQuery.mockResolvedValueOnce({ rows: [
+      { name: 'TVC character creator', description: 'Use when TVC.', body: 'Olmo card text.', director: 'TVC Director rules.', director_marker: 'style: tvc' },
+      { name: 'Talking head', description: 'Use when talking.', body: 'Talking body.', director: null, director_marker: null },
+    ] })
+    const olmoSkills = await fetchOfficialSkills()
+    const directorSkills = await fetchOfficialDirectorSkills()
+    expect(mockPoolQuery).toHaveBeenCalledTimes(1)
+    expect(olmoSkills.map((s) => s.instructions)).toEqual(['Olmo card text.', 'Talking body.'])
+    expect(directorSkills).toHaveLength(1)
+    expect(directorSkills[0].marker).toBe('style: tvc')
+    expect(directorSkills[0].skill.name).toBe('tvc-character-creator')
+    expect(directorSkills[0].skill.instructions).toBe('TVC Director rules.')
+    expect(directorSkills[0].skill.description).toContain('"style: tvc"')
   })
 })
 

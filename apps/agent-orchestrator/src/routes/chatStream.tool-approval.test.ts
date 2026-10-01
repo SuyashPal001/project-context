@@ -99,6 +99,7 @@ vi.mock('../mastra/cost.js', () => ({
 }))
 
 vi.mock('../usage.js', () => ({
+  fetchOfficialDirectorSkills: vi.fn().mockResolvedValue([]),
   fetchAgentPersonaPrompt: vi.fn().mockResolvedValue(null),
   fetchAgentName: vi.fn().mockResolvedValue('test-agent'),
   fetchAgentOrigin: vi.fn().mockResolvedValue('custom'),

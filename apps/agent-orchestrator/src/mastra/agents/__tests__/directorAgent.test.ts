@@ -39,6 +39,16 @@ describe('directorAgent tool registration', () => {
 })
 
 describe('directorAgent instructions', () => {
+  it('no longer carries the TVC character rules in its always-on instructions — they load as the TVC skill', async () => {
+    for (const agent of [directorAgent, directorAgentDelegate]) {
+      const instructions = await agent.getInstructions({ requestContext: new RequestContext() })
+      const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+      expect(text).not.toContain('## TVC character')
+      expect(text).not.toContain('roll_tvc_variations once')
+      expect(text).not.toContain('CHARACTER REFERENCE SHEET and a small subtitle')
+    }
+  })
+
   it('appends template-cloning, UGC-character, and motion-craft sections even under a tenant agentSystemPrompt override', async () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Custom persona override text.')
