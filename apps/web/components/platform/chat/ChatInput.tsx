@@ -565,7 +565,9 @@ export function ChatInput({
                     const isGenerating = isLoading || isStreaming;
                     const isActive = isGenerating || content.trim().length > 0 || mentionedAgents.length > 0 || hasSupplementalContent;
                     return (
-                <div className={cn("relative rounded-[29px] overflow-hidden", isActive ? "p-px" : "p-0")}>
+                {/* The shadow sits on this wrapper, not the inner surface: overflow-hidden here (for the
+                    gradient ring) clipped any shadow drawn by the child, so the composer had none. */}
+                <div className={cn("relative rounded-[29px] overflow-hidden transition-shadow duration-300 shadow-composer focus-within:shadow-composer-focus", isActive ? "p-px" : "p-0")}>
                     {isActive && (
                         <div
                             aria-hidden
@@ -582,14 +584,9 @@ export function ChatInput({
                     )}
                     <div
                         className={cn(
-                            // A mild lift at rest, growing into a wider, softer shadow once
-                            // you click in — the same "floating" cue chat composers like
-                            // this one use, and duration-300 so the growth reads as a
-                            // deliberate lift rather than a snap. shadow-composer is its own
-                            // token (globals.css), not the shared shadow-elevated used by
-                            // dropdowns/cards elsewhere, so nothing else on the page changes.
+                            // The shadow (card-matched at rest, a wider lift on focus) lives on
+                            // the wrapper above — this surface's own would be clipped.
                             "relative z-10 flex flex-col rounded-[28px] bg-card transition-all duration-300 overflow-hidden",
-                            "shadow-composer focus-within:shadow-composer-focus",
                             !isActive && "border border-border/60",
                             isDraggingFile && "ring-2 ring-primary/60",
                         )}
