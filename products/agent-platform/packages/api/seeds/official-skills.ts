@@ -134,7 +134,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     description: 'Use when the user wants a photoreal UGC-style ad built from scratch, with several distinct beats or shots in a storyboard — not one presenter reading one script, not an animated look, not a template clone.',
     file: officialSkillFile('ugc-character-ad.md'),
     showcase: {
-      imageUrl: '/creative/templates/ugc-review.png',
+      imageUrl: '/creative/skills/ugc-character-ad.jpg',
       bestFor: ['UGC ads', 'Storyboards', 'Product reviews'],
       starterPrompt: 'Make a UGC ad for my product',
     },
@@ -145,7 +145,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     description: 'Use when the user wants to clone or recreate a reference ad\'s structure onto their own product — "clone this ad", "make a video like this template".',
     file: officialSkillFile('template-video.md'),
     showcase: {
-      imageUrl: '/creative/templates/product-demo.png',
+      imageUrl: '/creative/skills/template-video.jpg',
       bestFor: ['Proven ad formats', 'Fast variations', 'Product demos'],
       starterPrompt: 'Make a video like this template for my product',
     },
@@ -157,7 +157,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     file: officialSkillFile('ugc-first-frame.md'),
     director: { file: officialSkillFile('ugc-first-frame/director.md'), markers: ['flow: first frame'] },
     showcase: {
-      imageUrl: '/creative/avatars/lifestyle-creator-home.jpg',
+      imageUrl: '/creative/skills/ugc-first-frame.jpg',
       bestFor: ['Photo to video', 'Quick clips', 'Brand assets'],
       starterPrompt: 'Animate this photo into a short ad',
     },
@@ -169,7 +169,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     file: officialSkillFile('animation-character-ad.md'),
     director: { file: officialSkillFile('animation-character-ad/director.md'), markers: ['flow: animation character ad'] },
     showcase: {
-      imageUrl: '/creative/avatars/mascot-piko.jpg',
+      imageUrl: '/creative/skills/animation-character-ad.jpg',
       bestFor: ['Animated ads', 'Mascot stories', 'Kids & family'],
       starterPrompt: 'Make an animated story ad for my brand',
     },
@@ -181,7 +181,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     file: officialSkillFile('short-drama-stitch.md'),
     director: { file: officialSkillFile('short-drama-stitch/director.md'), markers: ['flow: short drama stitch'] },
     showcase: {
-      imageUrl: '/creative/templates/before-after.png',
+      imageUrl: '/creative/skills/short-drama-stitch.jpg',
       bestFor: ['Existing footage', 'Short dramas', 'Recuts'],
       starterPrompt: 'Cut my footage into a short ad',
     },
