@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { chatMarkdownComponents } from './markdownComponents';
-import { ToolCallCard, groupImageToolCalls } from "./ToolCallCard";
+import { ToolCallCard, groupImageToolCalls, extractResultFiles } from "./ToolCallCard";
 import { TraceSummary } from "./TraceSummary";
 import { LiveTrace } from "./ThinkingIndicator";
 import { ApprovalCard } from "./ApprovalCard";
@@ -104,7 +104,11 @@ export function MessageItem({
     const creativePresentation = isUser ? parseCreativeBriefPresentation(message.content) : null;
     const userContent = creativePresentation?.direction ?? message.content;
     const hiddenCreativeAttachmentIds = creativePresentation ? creativeBriefAttachmentIds(creativePresentation.brief) : new Set<string>();
-    const visibleAttachments = message.attachments?.filter(file => !file.fileId || !hiddenCreativeAttachmentIds.has(file.fileId));
+    // A file the trace above already shows (a show_files of a generated still
+    // and its close-up, in that order) is not repeated as an attachment below
+    // it, so the full still reads first and the close-up second.
+    const traceFileIds = new Set((message.completedTrace?.toolCalls ?? []).flatMap(tc => extractResultFiles(tc.toolName, tc.result)).map(f => f.fileId));
+    const visibleAttachments = message.attachments?.filter(file => !file.fileId || (!hiddenCreativeAttachmentIds.has(file.fileId) && !traceFileIds.has(file.fileId)));
 
     const [userExpanded, setUserExpanded] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
