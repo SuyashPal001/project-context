@@ -61,8 +61,10 @@ export function ChatHeader({ selectedConversation, isChatSidebarCollapsed, toggl
                         onClick={toggleCanvas}
                         className={cn(
                             "relative h-8 px-3 flex items-center gap-1.5 rounded-full border text-xs font-medium transition-colors",
+                            // text-shimmer-accent: dark maroon in light theme (pale --primary text was
+                            // too faint there), --primary itself in dark theme — see globals.css.
                             isCanvasOpen
-                                ? "border-primary/30 bg-primary/10 text-primary"
+                                ? "border-primary/30 bg-primary/10 text-shimmer-accent"
                                 : "border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/50"
                         )}
                     >
