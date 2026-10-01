@@ -256,6 +256,10 @@ describe('TVC character creator (Official skill)', () => {
     expect(text).toMatch(/"No preference — you choose"/)
     expect(text).toMatch(/Always give a recommendation: on every question of every card in this skill/)
     expect(text).toMatch(/call check_credit_plan for the four-option plan/)
+    expect(text).toMatch(/Work in two steps, never back to back/)
+    expect(text).toMatch(/"Happy with this face\?"/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/"step: refine face only"/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/"step: sheet and save", skip the refinement/)
     for (const skill of [AVATAR_SKILL_TEXT, readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../animated-character-creator.md'), 'utf8')]) {
       expect(skill).toMatch(/How many options — ask everywhere/)
       expect(skill).toMatch(/"Just one — I'll describe it"/)
