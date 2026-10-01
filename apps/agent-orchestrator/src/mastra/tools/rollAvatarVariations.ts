@@ -1080,6 +1080,56 @@ export function rollClayVariations(count: number, random: () => number = Math.ra
   })
 }
 
+// Cute claymation: the chunkier, toy-like clay look of the user's own pick
+// (Milo) — simple rounded shapes, bright primary clay, playful casual
+// outfits, no job or prop. Kept beside the detailed film look above because
+// it reads younger and suits kids' and family brands.
+const CUTE_CLAY_OUTFITS: Record<Gender, string[]> = {
+  woman: ['a colour-block varsity jacket, a T-shirt and rolled jeans', 'chunky dungarees over a striped top', 'a bright raincoat with big buttons and wellies', 'a puffy hoodie, a short skirt over leggings and sneakers', 'a knitted jumper with a big heart patch and wide trousers'],
+  man: ['a colour-block varsity jacket, a T-shirt and patched jeans', 'baggy dungarees over a polka-dot top', 'a bright raincoat with toggles and wellies', 'a puffy hoodie, cargo shorts and high-top sneakers', 'a knitted jumper with a big star patch and rolled trousers'],
+}
+
+const CUTE_CLAY_PALETTES = [
+  'cobalt blue, tomato red and sunny yellow',
+  'grass green, orange and sky blue',
+  'bubblegum pink, teal and lemon yellow',
+  'purple, lime and white',
+  'red, navy and cream',
+  'turquoise, coral and mustard',
+]
+
+export interface CuteClayVariationSpec {
+  gender: Gender
+  age: number
+  look: string
+  skinTone?: string
+  hair: string
+  outfit: string
+  palette: string
+  expression: string
+  backdrop: string
+}
+
+export function rollCuteClayVariations(count: number, random: () => number = Math.random, look = 'a mix', gender: Gender | 'any' = 'any'): CuteClayVariationSpec[] {
+  const people = rollAvatarVariations({ count, look, gender, ageMin: 20, ageMax: 40 }, random)
+  const outfits = { woman: shuffled(CUTE_CLAY_OUTFITS.woman, random), man: shuffled(CUTE_CLAY_OUTFITS.man, random) }
+  const used = { woman: 0, man: 0 }
+  const palettes = shuffled(CUTE_CLAY_PALETTES, random)
+  const backdrops = shuffled(CLAY_BACKDROPS, random)
+  const expressions = shuffled(CLAY_EXPRESSIONS, random)
+  return people.map((p, i) => ({
+    gender: p.gender, age: p.age, look: p.look,
+    ...(p.skinTone ? { skinTone: p.skinTone } : {}),
+    hair: p.hair, outfit: outfits[p.gender][used[p.gender]++ % outfits[p.gender].length],
+    palette: palettes[i % palettes.length], expression: expressions[i % expressions.length], backdrop: backdrops[i % backdrops.length],
+  }))
+}
+
+/** "Indian woman · chunky dungarees · grass green, orange and sky blue" */
+export function cuteClayLine(v: CuteClayVariationSpec): string {
+  return `${v.look} ${v.gender} · ${v.outfit.split(/,| over /)[0].trim()} · ${v.palette}`
+}
+
 /** "58 · Indian man · gardener · big round clay nose" */
 export function clayLine(v: ClayVariationSpec): string {
   return `${v.age} · ${v.look} ${v.gender} · ${v.role} · ${v.feature.replace(/^an? /, '')}`
@@ -1087,15 +1137,20 @@ export function clayLine(v: ClayVariationSpec): string {
 
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
-  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Style "3d chibi": per variation a family-cast member (child, young adult or grandparent), look, hair, outfit, scene and pose. Style "storybook anime": per variation age, look, skin, hair, outfit, an everyday moment in a lived-in place, and expression. Styles "pixar 3d" and "2d flat": per variation age, look, skin tone, hair, everyday outfit, place and gesture. Style "claymation": per variation age, look, skin tone, hair, an everyday job with one small prop and its outfit, a 3-4 colour clay palette, one sculpted signature feature, a quirky expression and a plain cloth backdrop. Call once before writing animated-character variation prompts. Free.',
+  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Style "3d chibi": per variation a family-cast member (child, young adult or grandparent), look, hair, outfit, scene and pose. Style "storybook anime": per variation age, look, skin, hair, outfit, an everyday moment in a lived-in place, and expression. Styles "pixar 3d" and "2d flat": per variation age, look, skin tone, hair, everyday outfit, place and gesture. Style "claymation": per variation age, look, skin tone, hair, an everyday job with one small prop and its outfit, a 3-4 colour clay palette, one sculpted signature feature, a quirky expression and a plain cloth backdrop. Style "cute claymation": per variation age, look, skin tone, hair, a playful casual outfit, a bright clay palette, a quirky expression and a plain cloth backdrop. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime', '3d chibi', 'storybook anime', 'pixar 3d', '2d flat', 'claymation']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime), "fantasy anime" (2D anime game key art) "3d chibi" (family-film 3D chibi) "storybook anime" (warm hand-painted everyday life), "pixar 3d", "2d flat" or "claymation"'),
-    look: z.string().default('a mix').describe('3D chibi, storybook anime, pixar 3d, 2d flat and claymation only: the look from the brief exactly as given — "a mix", "Indian", or the user\'s own words'),
+    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime', '3d chibi', 'storybook anime', 'pixar 3d', '2d flat', 'claymation', 'cute claymation']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime), "fantasy anime" (2D anime game key art) "3d chibi" (family-film 3D chibi) "storybook anime" (warm hand-painted everyday life), "pixar 3d", "2d flat" or "claymation" (detailed stop-motion film characters), or "cute claymation" (chunky toy-like clay for kids and family)'),
+    look: z.string().default('a mix').describe('3D chibi, storybook anime, pixar 3d, 2d flat, claymation and cute claymation only: the look from the brief exactly as given — "a mix", "Indian", or the user\'s own words'),
     kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('Mascots only, from the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
     gender: z.enum(['woman', 'man', 'any']).default('any').describe('Every people style (not mascots or 3D chibi), from the brief; "any" alternates woman and man'),
   }),
   execute: async (inputData, execContext) => {
+    if (inputData.style === 'cute claymation') {
+      const people = rollCuteClayVariations(inputData.count, Math.random, inputData.look, inputData.gender)
+      emitToolStatus(execContext, `Casting ${people.length} characters`, people.map(cuteClayLine))
+      return { variations: people }
+    }
     if (inputData.style === 'claymation') {
       const people = rollClayVariations(inputData.count, Math.random, inputData.look, inputData.gender)
       emitToolStatus(execContext, `Casting ${people.length} characters`, people.map(clayLine))

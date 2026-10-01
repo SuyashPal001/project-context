@@ -145,7 +145,7 @@ describe('animated-character avatars (Animated character creator Official skill)
   it('asks what kind of character in one card and passes the style and kind to Director', () => {
     const text = CHARACTER_SKILL_TEXT()
     expect(text).toContain('at most ONE ask_clarifying_questions card')
-    expect(text).toContain('"Cozy 3D mascot — a little creature or object (Recommended)", "Game hero — fantasy or sci-fi console-game art", "Cinematic anime — elegant hand-drawn 2D anime", "Fantasy anime — anime game-art heroes", "3D chibi — cute family-film characters", "Storybook anime — warm hand-painted everyday life", "Pixar-style 3D — warm animated-film people", "2D flat — bold vector illustration" and "Claymation — handmade stop-motion clay"')
+    expect(text).toContain('"Cozy 3D mascot — a little creature or object (Recommended)", "Game hero — fantasy or sci-fi console-game art", "Cinematic anime — elegant hand-drawn 2D anime", "Fantasy anime — anime game-art heroes", "3D chibi — cute family-film characters", "Storybook anime — warm hand-painted everyday life", "Pixar-style 3D — warm animated-film people", "2D flat — bold vector illustration", "Claymation — handmade stop-motion clay" and "Cute claymation — chunky toy-like clay for kids"')
     expect(text).toMatch(/write "style: animated character" for a mascot, "style: game hero" for a game hero "style: cinematic anime" for cinematic anime "style: fantasy anime" for fantasy anime "style: 3d chibi" for 3D chibi, "style: storybook anime" for storybook anime, or "style: pixar 3d", "style: 2d flat" or "style: claymation" for those/)
     expect(text).toMatch(/Never ask about gender, age or ethnicity/)
     expect(text).toMatch(/Never recreate an existing cartoon character or another brand's mascot/)
@@ -219,6 +219,14 @@ describe('animated-character avatars (Animated character creator Official skill)
     expect(AVATAR_CREATION_SECTION).toMatch(/no set or props behind the character/)
     expect(AVATAR_CREATION_SECTION).toMatch(/Avoid: glossy plastic sheen, smooth CGI render.*a winking or closed eye, a hand on the face, kneeling or sitting/)
     expect(AVATAR_CREATION_SECTION).toMatch(/never smoothed into a CGI render/)
+  })
+
+  it('keeps a chunkier toy-like cute claymation for kids beside the detailed claymation', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/- Cute claymation: when Olmo's brief says "style: cute claymation"/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/chunky toy-like stop-motion clay figure/)
+    const skill = readFileSync(AVATAR_CREATOR_SKILL_PATH.replace('avatar-creator.md', 'animated-character-creator.md'), 'utf8')
+    expect(skill).toContain('"Cute claymation — chunky toy-like clay for kids"')
+    expect(skill).toContain('("style: cute claymation" for cute claymation)')
   })
 
   it('opens both eyes and relaxes the pose in every animated turnaround panel, even when the still winks', () => {

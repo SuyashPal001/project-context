@@ -258,6 +258,17 @@ describe('rollClayVariations', () => {
   })
 })
 
+describe('rollCuteClayVariations', () => {
+  it('casts four young cute-clay characters with different outfits, palettes, expressions and backdrops', async () => {
+    const { rollCuteClayVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 10; seed++) {
+      const set = rollCuteClayVariations(4, seeded(seed), 'a mix')
+      expect(set.every((v) => v.age >= 20 && v.age <= 40)).toBe(true)
+      for (const key of ['outfit', 'palette', 'expression', 'backdrop'] as const) expect(distinct(set.map((v) => v[key]))).toBe(true)
+    }
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')

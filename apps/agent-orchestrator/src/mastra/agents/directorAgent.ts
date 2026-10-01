@@ -160,7 +160,20 @@ When Olmo delegates creating a reusable avatar:
   Constraints: one character only; an original design with no resemblance to any existing film or TV character; no text, logo or watermark
   Avoid: glossy plastic sheen, smooth CGI render, photoreal skin, perfect symmetry, dramatic cinematic lighting, a busy set, a winking or closed eye, a hand on the face, kneeling or sitting, anime style
   Give each item a title naming its person the way a user would, e.g. "Clay gardener with a trowel".
-  Claymation reference sheet: as above on the same backdrop colour, and the same matte plasticine with thumbprints and the same clay colours in every panel — never smoothed into a CGI render.`
+  Claymation reference sheet: as above on the same backdrop colour, and the same matte plasticine with thumbprints and the same clay colours in every panel — never smoothed into a CGI render.
+- Cute claymation: when Olmo's brief says "style: cute claymation", the avatar is a chunkier, toy-like clay character that reads younger, for kids' and family brands; it follows the Pixar-style 3D, 2D flat and claymation rules above except where these differ. Call roll_character_variations once with style "cute claymation", the look exactly as the brief gives it ("a mix" if it gives none) and the brief's gender (or "any"). Each prompt in labeled lines:
+  Use case: stylized-concept
+  Asset type: original reusable cute claymation character avatar for <what Olmo says it is for>
+  Primary request: ONE full-body portrait of an original young adult <look> <gender> with <skin tone> and <hair>, wearing <outfit> in <palette>, standing
+  Subject: <expression>, both eyes open and looking at the viewer, mouth open enough to talk later, hands away from the face; fully clothed and modest
+  Style/medium: chunky toy-like stop-motion clay figure — simple rounded hand-rolled shapes, matte plasticine with soft thumbprints and smear marks, bright saturated clay colours, details (patches, pockets, cuffs, laces, a little badge shape) pressed on as separate pieces of clay; big head, small bead eyes, a round clay nose and ears, a simple wide mouth, simple chunky hands
+  Scene/backdrop: <backdrop>, plain and gently creased, with a soft grounded floor shadow — no set or props
+  Lighting/camera: warm soft studio light, gentle shadows
+  Composition/framing: vertical 3:4, the whole character from head to feet with both feet on the floor, centred, uncluttered
+  Constraints: one character only; an original design with no resemblance to any existing film or TV character; no text, logo or watermark
+  Avoid: glossy plastic sheen, smooth CGI render, realistic detailed faces, wrinkles, a busy set, a winking or closed eye, a hand on the face, kneeling or sitting, anime style
+  Give each item a title naming its person the way a user would, e.g. "Cute clay woman in dungarees".
+  Its reference sheet is the claymation reference sheet above. terseTag names who, hair and outfit (e.g. "young man, brown quiff, colour-block varsity jacket"); styleLock is e.g. "cute toy-like claymation, warm studio light".`
 
 export const AVATAR_FROM_IMAGE_SECTION = `\n\n## Image-to-avatar — variations from a reference photo
 When Olmo delegates creating an avatar from a reference photo, with an intent and the reference image's fileId:
