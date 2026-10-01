@@ -45,6 +45,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-surface-raised: var(--surface-raised);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -92,6 +93,8 @@
   --background: oklch(0.97 0 0); /* a touch greyer so white cards and the composer stand off it */
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
+  /* Floating surfaces (composer, clarification card): white on the grey page in light mode. */
+  --surface-raised: var(--card);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
@@ -150,6 +153,9 @@
   --messages-panel: var(--card);
   --foreground: oklch(96.7% 0.001 286.375); /* zinc-100 */
   --card: oklch(21% 0.006 285.885); /* zinc-900 */
+  /* Floating surfaces sit a clear step above the 19% page, as white sits above grey in light
+     mode; --card at 21% is only 2% off the page and black shadows barely show on it. */
+  --surface-raised: oklch(25% 0.006 286);
   --card-foreground: oklch(98.5% 0 0); /* zinc-50 */
   --popover: oklch(21% 0.006 285.885); /* zinc-900 */
   --popover-foreground: oklch(98.5% 0 0); /* zinc-50 */

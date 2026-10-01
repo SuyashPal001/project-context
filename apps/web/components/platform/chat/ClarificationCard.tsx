@@ -124,7 +124,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
         const answers = request.answers ?? {};
         return (
             <div className="flex w-full justify-center my-5">
-                <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-card shadow-elevated p-[14px]">
+                <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-surface-raised shadow-elevated p-[14px]">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0">
                             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
@@ -230,7 +230,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
 
     return (
         <div className="flex w-full justify-center my-5">
-            <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-card shadow-elevated p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="w-full max-w-3xl flex flex-col gap-4 rounded-4xl border border-border/60 bg-surface-raised shadow-elevated p-[14px] animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center justify-between">
                     <h4 className="text-sm font-medium">{question.prompt}</h4>
                     {total > 1 && (

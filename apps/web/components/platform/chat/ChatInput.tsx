@@ -586,7 +586,7 @@ export function ChatInput({
                         className={cn(
                             // The shadow (card-matched at rest, a wider lift on focus) lives on
                             // the wrapper above — this surface's own would be clipped.
-                            "relative z-10 flex flex-col rounded-[28px] bg-card transition-all duration-300 overflow-hidden",
+                            "relative z-10 flex flex-col rounded-[28px] bg-surface-raised transition-all duration-300 overflow-hidden",
                             !isActive && "border border-border/60",
                             isDraggingFile && "ring-2 ring-primary/60",
                         )}
