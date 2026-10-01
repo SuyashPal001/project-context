@@ -88,6 +88,10 @@ describe('directorAgent animation-character instructions', () => {
     expect(text).toContain('STYLE "3d_pixar"')
     expect(text).toContain('STYLE "2d_flat"')
     expect(text).toContain('STYLE "claymation"')
+    for (const style of ['avatar_cozy_3d_mascot', 'avatar_game_hero', 'avatar_cinematic_anime', 'avatar_fantasy_anime', 'avatar_3d_chibi', 'avatar_storybook_anime']) {
+      expect(text).toContain(`STYLE "${style}"`)
+    }
+    expect(text).toMatch(/the attached character is the identity reference, and its own look always wins/)
   })
 
   it('never calls lipsync more than once and confines it to the hook beat', async () => {

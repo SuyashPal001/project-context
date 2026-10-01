@@ -280,6 +280,9 @@ describe('picked library avatars keep their category\'s look', () => {
     const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
     expect(text).toMatch(/"Avatar category: Animation"[^]*route to the Animation-character contract with that character as the identity reference/)
     expect(text).toMatch(/skip the style question and the cast-sheet generation/)
+    expect(text).toMatch(/"avatar_cozy_3d_mascot", "avatar_game_hero", "avatar_cinematic_anime", "avatar_fantasy_anime", "avatar_3d_chibi" or "avatar_storybook_anime"/)
+    expect(text).toMatch(/Never force it into the 3D, 2D flat or claymation styles/)
+    expect(text).toMatch(/Exception: when the lead is a picked Animation avatar/)
     expect(text).toMatch(/"Avatar category: TVC"[^]*never the phone-selfie UGC look/)
   })
 
