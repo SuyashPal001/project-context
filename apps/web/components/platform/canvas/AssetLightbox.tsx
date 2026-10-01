@@ -2,7 +2,7 @@
 
 import { type ReactNode } from 'react';
 import { X, ChevronLeft, ChevronRight, Download, Info } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useAssetUrl, useMarkdownContent, AssetPreviewBody } from './AssetPreview';
 import type { Asset } from '@/types/assets';
 
@@ -29,6 +29,7 @@ export function AssetLightbox({ asset, allAssets, onClose, onNavigate, headerAct
         <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
             <DialogTitle className="text-sm font-semibold">{asset.filename}</DialogTitle>
+            <DialogDescription className="sr-only">Full-screen preview of {asset.filename}</DialogDescription>
             <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{asset.type}</p>
           </div>
           <div className="flex items-center gap-2">

@@ -122,10 +122,21 @@ function toGeminiContents(messages: OpenAIMessage[]): {
         }
       }
       const resultText = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-      contents.push({
-        role: 'user',
-        parts: [{ functionResponse: { name: functionName, response: { result: resultText } } }],
-      })
+      // Gemini requires every functionResponse answering one parallel-call turn
+      // to be grouped into a single content block ("Please ensure that the
+      // number of function response parts is equal to the number of function
+      // call parts of the function call turn."). Append to the previous block
+      // when it, too, is a run of functionResponse parts, instead of starting
+      // a new 'user' turn per tool message.
+      const last = contents[contents.length - 1]
+      const lastIsFunctionResponseGroup =
+        last?.role === 'user' && last.parts.every((p) => (p as { functionResponse?: unknown }).functionResponse)
+      const responsePart: GeminiPart = { functionResponse: { name: functionName, response: { result: resultText } } }
+      if (lastIsFunctionResponseGroup) {
+        last.parts.push(responsePart)
+      } else {
+        contents.push({ role: 'user', parts: [responsePart] })
+      }
       continue
     }
 

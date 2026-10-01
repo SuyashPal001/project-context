@@ -51,14 +51,44 @@ const PROJECT = process.env.VERTEX_PROJECT ?? '';
 const LOCATION = process.env.VERTEX_TEXT_LOCATION ?? process.env.VERTEX_LOCATION ?? 'us-central1';
 const DEFAULT_MODEL = process.env.VERTEX_MODEL ?? 'gemini-2.5-flash';
 
-const vertexAI = new VertexAI({ project: PROJECT, location: LOCATION });
-
 // Vertex's regional REST host is `{region}-aiplatform.googleapis.com`, but the
 // `global` location has no region prefix — it's just `aiplatform.googleapis.com`.
 // Models that only deploy to global (e.g. gemini-3.6-flash, gemini-3.1-pro) 404
 // against a regional host; building `global-aiplatform.googleapis.com` instead
 // hits a nonexistent host and returns an HTML error page, not JSON.
 const API_HOST = LOCATION === 'global' ? 'aiplatform.googleapis.com' : `${LOCATION}-aiplatform.googleapis.com`;
+
+// The @google-cloud/vertexai SDK (used by handleNonStream below) builds its own
+// request host internally as `{location}-aiplatform.googleapis.com` with no
+// 'global' special case, so without this override it 404s/HTML-fails on
+// gemini-3.6-flash the same way the manual-fetch paths used to before API_HOST
+// was introduced. Passing apiEndpoint keeps the SDK call and the manual-fetch
+// streaming/cache calls below pointed at the same, correct host.
+const vertexAI = new VertexAI({ project: PROJECT, location: LOCATION, apiEndpoint: API_HOST });
+
+// Gemini 3.x attaches `thoughtSignature` to functionCall parts and rejects a
+// replayed functionCall that doesn't echo it back verbatim ("Function call is
+// missing a thought_signature in functionCall parts", HTTP 400). Mirrors
+// gemini.ts's encodeToolCallId/decodeToolCallSignature (kept local there to
+// avoid coupling) — this adapter never had the fix, so any tool call Vertex
+// generated could never be correctly replayed by itself or by the Gemini
+// fallback, since the fallback only ever sees the id Vertex minted.
+function encodeToolCallId(index: number, streamId: string, signature: string | undefined): string {
+  if (!signature) return `call_${streamId}_${index}`;
+  const b64 = Buffer.from(signature, 'utf8').toString('base64url');
+  return `gs.${b64}.${index}`;
+}
+
+function decodeToolCallSignature(toolCallId: string): string | undefined {
+  if (!toolCallId.startsWith('gs.')) return undefined;
+  const [, b64] = toolCallId.split('.');
+  if (!b64) return undefined;
+  try {
+    return Buffer.from(b64, 'base64url').toString('utf8');
+  } catch {
+    return undefined;
+  }
+}
 
 // Cache model instances by name to avoid repeated SDK allocations
 const modelCache = new Map<string, ReturnType<typeof vertexAI.getGenerativeModel>>();
@@ -135,28 +165,39 @@ function toGeminiContents(messages: OpenAIMessage[]): {
       const resultText =
         typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
 
-      contents.push({
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name: functionName,
-              response: { result: resultText },
-            },
-          },
-        ],
-      });
+      // Gemini requires every functionResponse answering one parallel-call turn
+      // to be grouped into a single content block ("Please ensure that the
+      // number of function response parts is equal to the number of function
+      // call parts of the function call turn."). Append to the previous block
+      // when it, too, is a run of functionResponse parts, instead of starting
+      // a new 'user' turn per tool message.
+      const last = contents[contents.length - 1];
+      const lastIsFunctionResponseGroup =
+        last?.role === 'user' && last.parts.every((p) => (p as { functionResponse?: unknown }).functionResponse);
+      const responsePart: Part = { functionResponse: { name: functionName, response: { result: resultText } } };
+      if (lastIsFunctionResponseGroup) {
+        last.parts.push(responsePart);
+      } else {
+        contents.push({ role: 'user', parts: [responsePart] });
+      }
       continue;
     }
 
     if (msg.role === 'assistant' && msg.tool_calls?.length) {
-      // Assistant turn that contains tool calls
-      const parts: Part[] = msg.tool_calls.map((tc) => ({
-        functionCall: {
-          name: tc.function.name,
-          args: safeParseJSON(tc.function.arguments),
-        },
-      }));
+      // Assistant turn that contains tool calls — echo each one's thoughtSignature
+      // back (see encodeToolCallId/decodeToolCallSignature above), or Gemini 3.x
+      // rejects the follow-up turn with HTTP 400.
+      const parts: Part[] = msg.tool_calls.map((tc) => {
+        const signature = decodeToolCallSignature(tc.id);
+        const part: Part & { thoughtSignature?: string } = {
+          functionCall: {
+            name: tc.function.name,
+            args: safeParseJSON(tc.function.arguments),
+          },
+        };
+        if (signature) part.thoughtSignature = signature;
+        return part;
+      });
       if (msg.content) {
         parts.unshift({ text: typeof msg.content === 'string' ? msg.content : '' });
       }
@@ -285,8 +326,9 @@ function extractToolCalls(parts: Part[], idPrefix: string): OpenAIToolCall[] {
     .filter((p) => (p as { functionCall?: unknown }).functionCall)
     .map((p, i) => {
       const fc = (p as { functionCall: { name: string; args: unknown } }).functionCall;
+      const signature = (p as { thoughtSignature?: string }).thoughtSignature;
       return {
-        id: `call_${idPrefix}_${i}`,
+        id: encodeToolCallId(i, idPrefix, signature),
         type: 'function' as const,
         function: {
           name: fc.name,
@@ -645,7 +687,7 @@ export class VertexAdapter implements ProviderAdapter {
         const candidate = chunk.candidates?.[0];
         if (candidate?.finishReason) lastFinishReason = candidate.finishReason;
 
-        const parts: Array<{ text?: string; thought?: boolean; functionCall?: { name: string; args: unknown } }> = candidate?.content?.parts ?? [];
+        const parts: Array<{ text?: string; thought?: boolean; functionCall?: { name: string; args: unknown }; thoughtSignature?: string }> = candidate?.content?.parts ?? [];
 
         for (const p of parts) {
           if (p.text && p.thought) {
@@ -659,7 +701,10 @@ export class VertexAdapter implements ProviderAdapter {
           } else if (p.functionCall) {
             if (!ttftFired) { latency.observe({ adapter: 'vertex', metric: 'ttft' }, Date.now() - t0); ttftFired = true; }
             hasToolCalls = true;
-            const callId = `call_${id}_${toolCallIndex}`;
+            // Encode thoughtSignature into the tool_call.id — round-tripped back
+            // in buildGeminiRequest() above, without which Gemini 3.x rejects the
+            // follow-up turn with HTTP 400.
+            const callId = encodeToolCallId(toolCallIndex, id, p.thoughtSignature);
             res.write(
               `data: ${JSON.stringify(makeStreamChunk(id, modelName, {
                 tool_calls: [{

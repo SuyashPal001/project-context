@@ -60,26 +60,36 @@ const openrouterCB = new CircuitBreakerAdapter(openrouterAdapter, openrouterBrea
  *
  * Fallback order:
  *   openrouter/* → OpenRouter only (user explicitly picked this model — no silent substitution)
- *   gemini-*     → Gemini API key → Vertex AI (ADC) → Ollama
+ *   gemini-*     → Vertex AI (ADC) → Gemini API key → Ollama
  *   claude-*     → Anthropic → Ollama
  *   ollama/*     → Ollama only (local — nowhere to fall back to)
  *
- * Gemini-first order mirrors images.ts/video.ts (commit 8eaa77f2): while the
- * Vertex project is 404ing on gemini-2.5-flash and hallucinating redirects to
- * non-existent gemini-3.5/3.6/3.7-flash, every chat call was eating undici's
- * headers-timeout before the Gemini API key fallback ran — killing whole turns
- * mid-conversation and destroying the model's working memory continuity. Vertex
- * stays as the second tier for when the project's Model Garden access is fixed.
+ * Vertex-first again as of 2026-10-02 (second attempt, same day). The first
+ * Vertex-first attempt broke every multi-turn tool-calling conversation:
+ * `vertex.ts`'s response parser never read Gemini's `thoughtSignature` off a
+ * functionCall part, and its request builder never re-attached one when
+ * replaying tool_calls — unlike gemini.ts, which has had that round-trip since
+ * commit 81f0c37a (2026-09-14). That's now fixed: vertex.ts carries its own
+ * encodeToolCallId/decodeToolCallSignature, verified against a real two-turn
+ * tool-call replay (turn 1 returns a signed `gs.<sig>.<idx>` id, turn 2 replays
+ * it without a 400). If tool-calling turns start 400ing with "missing a
+ * thought_signature" again, that fix regressed — check vertex.ts's parts
+ * destructuring still includes thoughtSignature before swapping order back.
  */
+// TEMP TEST FLAG — true isolates gemini-* traffic to Vertex only, no fallback,
+// so a Vertex failure surfaces directly instead of being masked by Gemini/Ollama.
+// Set back to false before leaving this running unattended.
+const VERTEX_ONLY_TEST = true;
+
 export function getAdapterChain(model: string | undefined): ProviderAdapter[] {
   const m = model ?? '';
   if (m.startsWith('openrouter/')) return [openrouterCB];
   if (m.startsWith('claude'))  return [anthropicCB, ollamaCB];
   if (m.startsWith('ollama/')) return [ollamaCB];
-  // Gemini models: direct Gemini API key first, then Vertex AI (ADC), then Ollama
-  const chain: ProviderAdapter[] = [];
+  if (VERTEX_ONLY_TEST) return [vertexCB];
+  // Gemini models: Vertex AI (ADC) first, then direct Gemini API key, then Ollama
+  const chain: ProviderAdapter[] = [vertexCB];
   if (geminiAdapter.isAvailable()) chain.push(geminiCB);
-  chain.push(vertexCB);
   chain.push(ollamaCB);
   return chain;
 }
