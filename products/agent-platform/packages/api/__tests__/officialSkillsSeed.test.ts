@@ -123,4 +123,15 @@ describe('Director references', () => {
     const rules = readSkillBody(animated.director!.file);
     for (const marker of animated.director!.markers) expect(rules).toContain(marker);
   });
+
+  it('gives Talking head its Director half, and has Olmo send "flow: talking head" on every call', () => {
+    const talkingHead = OFFICIAL_SKILLS.find((s) => s.slug === 'talking-head')!;
+    expect(talkingHead.director?.markers).toEqual(['flow: talking head']);
+    expect(readSkillBody(talkingHead.director!.file).startsWith('## Talking-head generation')).toBe(true);
+    expect(readSkillBody(talkingHead.file)).toContain('includes the line "flow: talking head"');
+  });
+
+  it('every Official skill has a Director half', () => {
+    for (const entry of OFFICIAL_SKILLS) expect(entry.director, entry.slug).toBeDefined();
+  });
 });

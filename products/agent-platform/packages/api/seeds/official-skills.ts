@@ -119,6 +119,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     name: 'Talking head',
     description: 'Use when the user wants a single presenter speaking one continuous script to camera — a talking-head ad.',
     file: officialSkillFile('talking-head.md'),
+    director: { file: officialSkillFile('talking-head/director.md'), markers: ['flow: talking head'] },
     showcase: {
       imageUrl: '/creative/avatars/beauty-skincare-presenter.jpg',
       bestFor: ['Product explainers', 'Testimonials', 'Announcements'],

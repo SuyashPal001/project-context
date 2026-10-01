@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
 import { directorAgent, directorAgentDelegate } from '../directorAgent.js'
+
+const TALKING_HEAD_DIRECTOR_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../../../products/agent-platform/packages/api/seeds/official-skills/talking-head/director.md',
+)
 
 describe('directorAgent tool registration', () => {
   it('has analyze_video and analyze_audio registered, needed for template-video-generation', async () => {
@@ -58,16 +66,15 @@ describe('directorAgent instructions', () => {
     expect(text).toContain('## Template cloning')
     expect(text).toContain('## UGC character generation')
     expect(text).toContain('## Motion craft')
-    expect(text).toContain('## Talking-head generation')
+    // Talking-head moved to the Talking head skill's director.md.
+    expect(text).not.toContain('## Talking-head generation')
   })
 
   it('talking-head section never tells Director to read narration data from its own working memory, and covers the sub-3s clip floor / aspectRatio findings', async () => {
-    const requestContext = new RequestContext()
-    const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
-    const talkingHeadStart = text.indexOf('## Talking-head generation')
-    expect(talkingHeadStart).toBeGreaterThanOrEqual(0)
-    const talkingHeadSection = text.slice(talkingHeadStart)
+    // Moved word for word into the Talking head skill's director.md, which
+    // Director loads as a native skill on a "flow: talking head" brief.
+    const talkingHeadSection = readFileSync(TALKING_HEAD_DIRECTOR_PATH, 'utf8')
+    expect(talkingHeadSection.startsWith('## Talking-head generation')).toBe(true)
 
     // Regression guard for review finding 1: Director-as-delegate has no
     // memory of its own, so it cannot "read from working memory" — it must
