@@ -33,7 +33,7 @@ describe('save_as_avatar', () => {
     expect(keys[0]).toMatch(/^creative-avatars\/[0-9a-f-]{36}-avatar\.png$/)
     expect(keys[1]).toMatch(/^avatar-refs\/a1\/[0-9a-f-]{36}-sheet\.png$/)
     expect(p.setTenantAvatarReference).toHaveBeenCalledWith('tok', 'a1', { referenceSheetFileId: 'sheet-copy', terseTag: input.terseTag, styleLock: input.styleLock })
-    expect(p.registerTenantAvatar).toHaveBeenCalledWith('tok', 'portrait-copy', input.portraitFileId)
+    expect(p.registerTenantAvatar).toHaveBeenCalledWith('tok', 'portrait-copy', input.portraitFileId, undefined)
   })
 
   it('returns the existing avatar untouched when the picked portrait already has a sheet', async () => {
@@ -78,5 +78,7 @@ describe('save_as_avatar', () => {
   it('passes the category through so the picker can filter the saved avatar', async () => {
     await run({ ...input, category: 'Animation' })
     expect(p.setTenantAvatarReference).toHaveBeenCalledWith('tok', 'a1', { referenceSheetFileId: 'sheet-copy', terseTag: input.terseTag, styleLock: input.styleLock, category: 'Animation' })
+    // Sent at registration too, so naming already picks a role that fits the category.
+    expect(p.registerTenantAvatar).toHaveBeenCalledWith('tok', 'portrait-copy', input.portraitFileId, 'Animation')
   })
 })

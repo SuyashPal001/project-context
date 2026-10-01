@@ -64,7 +64,7 @@ export const saveAsAvatar = createTool({
       })
       if (!copy) return { saved: false, reason: 'STORAGE_FAILED' }
 
-      const registered = await registerTenantAvatar(idToken, copy.fileId, portraitFileId)
+      const registered = await registerTenantAvatar(idToken, copy.fileId, portraitFileId, category)
       if (!registered) return { saved: false, reason: 'REGISTER_FAILED' }
       avatar = registered
     }

@@ -94,17 +94,17 @@ creativeLibraryAssetsRoutes.get('/avatars/by-source/:fileId', async (c) => {
 // lookup for the same source file resolves to this avatar idempotently.
 creativeLibraryAssetsRoutes.post(
   '/avatars',
-  zValidator('json', z.object({ fileId: uuidSchema, sourceFileId: uuidSchema.optional() })),
+  zValidator('json', z.object({ fileId: uuidSchema, sourceFileId: uuidSchema.optional(), category: z.enum(['UGC', 'Animation', 'TVC']).optional() })),
   async (c) => {
     const tenantId = guard(c, 'create');
     if (tenantId instanceof Response) return tenantId;
-    const { fileId, sourceFileId } = c.req.valid('json');
+    const { fileId, sourceFileId, category } = c.req.valid('json');
     await syncTenantAvatars(tenantId);
     const avatar = await getTenantAvatar(tenantId, { fileId });
     // Not found covers another tenant's file, a non-image, and a file outside
     // the Avatars folder — sync only registers the tenant's own avatar images.
     if (!avatar) return c.json({ error: 'Invalid avatar', message: `The file must be your own JPG, PNG or WebP image under ${AVATAR_PREFIX}` }, 400);
-    if (sourceFileId) await setAvatarSource(tenantId, avatar.id, sourceFileId);
+    if (sourceFileId || category) await setAvatarSource(tenantId, avatar.id, sourceFileId, category);
     return c.json({ data: await nameTenantAvatarWithin(tenantId, avatar, INLINE_NAMING_BUDGET_MS) }, 201);
   },
 );

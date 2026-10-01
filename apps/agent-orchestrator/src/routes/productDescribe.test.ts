@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 const { persistCost } = vi.hoisted(() => ({ persistCost: vi.fn() }))
 vi.mock('../mastra/cost.js', () => ({ persistCost }))
 
-import { productDescribeRouter, parseProductDescription, parseAvatarDescription } from './productDescribe.js'
+import { productDescribeRouter, parseProductDescription, parseAvatarDescription, avatarPrompt } from './productDescribe.js'
 
 const app = new Hono().route('', productDescribeRouter)
 const fetchMock = vi.fn()
@@ -170,5 +170,14 @@ describe('POST /internal/avatars/describe', () => {
     fetchMock.mockResolvedValue(gateway('{"role":"Chef"}'))
     const res = await postAvatar({ tenantId: 't1', imageBase64: 'QUJD', mimeType: 'image/jpeg' })
     expect(res.status).toBe(502)
+  })
+})
+
+describe('avatarPrompt', () => {
+  it('steers the role by category so a TVC actor is not named a creator', () => {
+    expect(avatarPrompt('TVC')).toMatch(/TVC lead actress/)
+    expect(avatarPrompt('Animation')).toMatch(/Game hero/)
+    expect(avatarPrompt('UGC')).not.toMatch(/TVC lead/)
+    expect(avatarPrompt(undefined)).toBe(avatarPrompt('UGC'))
   })
 })

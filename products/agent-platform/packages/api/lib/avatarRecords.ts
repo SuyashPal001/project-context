@@ -195,9 +195,9 @@ export async function findTenantAvatarBySource(tenantId: string, sourceFileId: s
   return record;
 }
 
-/** Pins the source file this avatar was registered from. Merges into attributes, never replaces it. */
-export async function setAvatarSource(tenantId: string, id: string, sourceFileId: string): Promise<void> {
-  const patch: AvatarAttributes = { sourceFileId };
+/** Pins the source file (and picker category) this avatar was registered with. Merges into attributes, never replaces it. */
+export async function setAvatarSource(tenantId: string, id: string, sourceFileId?: string, category?: AvatarCategory): Promise<void> {
+  const patch: AvatarAttributes = { ...(sourceFileId ? { sourceFileId } : {}), ...(category ? { category } : {}) };
   await db.update(creativeLibraryAssets)
     .set({ attributes: sql`${creativeLibraryAssets.attributes} || ${JSON.stringify(patch)}::jsonb` })
     .where(and(eq(creativeLibraryAssets.tenantId, tenantId), eq(creativeLibraryAssets.id, id)));
@@ -222,7 +222,7 @@ export async function describeAvatarImage(
     const res = await fetch(`${baseUrl}/internal/avatars/describe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Service-Key': serviceKey },
-      body: JSON.stringify({ tenantId, imageUrl, mimeType: avatar.type }),
+      body: JSON.stringify({ tenantId, imageUrl, mimeType: avatar.type, ...(avatar.category ? { category: avatar.category } : {}) }),
       signal: AbortSignal.timeout(ORCHESTRATOR_TIMEOUT_MS),
     });
     if (!res.ok) {

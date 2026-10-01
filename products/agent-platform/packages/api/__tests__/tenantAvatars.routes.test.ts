@@ -86,7 +86,18 @@ describe('tenant avatar routes', () => {
       body: JSON.stringify({ fileId: FILE_ID, sourceFileId: SOURCE_FILE_ID }),
     });
     expect(res.status).toBe(201);
-    expect(records.setAvatarSource).toHaveBeenCalledWith('t1', avatar.id, SOURCE_FILE_ID);
+    expect(records.setAvatarSource).toHaveBeenCalledWith('t1', avatar.id, SOURCE_FILE_ID, undefined);
+  });
+
+  it('pins the category at registration so naming picks a fitting role', async () => {
+    records.getTenantAvatar.mockResolvedValue(avatar);
+    records.nameTenantAvatarWithin.mockResolvedValue(avatar);
+    const res = await (await appWith()).request('/creative-library-assets/avatars', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileId: FILE_ID, sourceFileId: SOURCE_FILE_ID, category: 'TVC' }),
+    });
+    expect(res.status).toBe(201);
+    expect(records.setAvatarSource).toHaveBeenCalledWith('t1', avatar.id, SOURCE_FILE_ID, 'TVC');
   });
 
   it('does not touch source attribution when sourceFileId is omitted', async () => {

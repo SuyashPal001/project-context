@@ -616,10 +616,13 @@ export interface TenantAvatarRecord {
   referenceSheetFileId: string | null
 }
 
-export async function registerTenantAvatar(idToken: string, fileId: string, sourceFileId?: string): Promise<TenantAvatarRecord | null> {
+export async function registerTenantAvatar(idToken: string, fileId: string, sourceFileId?: string, category?: 'UGC' | 'Animation' | 'TVC'): Promise<TenantAvatarRecord | null> {
   try {
     const body: Record<string, string> = { fileId }
     if (sourceFileId) body.sourceFileId = sourceFileId
+    // Sent at registration (not only with the sheet) so naming, which runs in
+    // this same request, already knows the category and picks a fitting role.
+    if (category) body.category = category
     const res = await fetch(`${API_BASE}/api/v1/creative-library-assets/avatars`, { method: 'POST', headers: authHeaders(idToken), body: JSON.stringify(body) })
     if (!res.ok) { console.error('[persistence] registerTenantAvatar failed:', res.status, await res.text().catch(() => '')); return null }
     return ((await res.json()) as { data?: TenantAvatarRecord }).data ?? null

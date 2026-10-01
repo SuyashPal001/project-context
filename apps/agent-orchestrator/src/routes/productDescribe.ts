@@ -28,6 +28,19 @@ Return ONLY a JSON object: {"name": string, "role": string, "tone": string}.
 - tone: one word for the delivery style the photo suggests, e.g. "Casual", "Warm", "Energetic", "Polished".
 - Do not describe ethnicity, age, body or appearance in any field.`
 
+// The avatar's picker category, when the caller knows it, steers the role so a
+// TVC actor isn't labelled a "Lifestyle creator" and an animated character
+// reads as its style. UGC (or unknown) keeps the creator wording above.
+const AVATAR_ROLE_BY_CATEGORY: Record<string, string> = {
+  TVC: 'This is a lead actor for TV-commercial style ads. The role is 2-4 words naming the commercial part they would play, e.g. "TVC lead actress", "TVC lead actor", "Brand ambassador", "Family TVC lead".',
+  Animation: 'This is an animated character, not a real person. The role is 2-4 words naming its style and archetype, e.g. "Game hero", "Storybook anime lead", "3D chibi kid", "Cozy mascot".',
+}
+
+export function avatarPrompt(category?: unknown): string {
+  const extra = typeof category === 'string' ? AVATAR_ROLE_BY_CATEGORY[category] : undefined
+  return extra ? `${AVATAR_PROMPT}\n- ${extra} This overrides the role example above.` : AVATAR_PROMPT
+}
+
 export function parseProductDescription(raw: string): { name: string; description: string | null } | null {
   const start = raw.indexOf('{')
   const end = raw.lastIndexOf('}')
@@ -77,13 +90,13 @@ async function downloadImageBase64(imageUrl: string): Promise<string | null> {
   return bytes.toString('base64')
 }
 
-type DescribeBody = { tenantId: string; imageBase64: string; mimeType: string }
+type DescribeBody = { tenantId: string; imageBase64: string; mimeType: string; category?: string }
 
 /** Validates the request and resolves the image. Returns a response to send, or the inputs. */
 async function readDescribeBody(c: Context, logTag: string): Promise<Response | DescribeBody> {
   if (!isInternalServiceKey(c.req.header('X-Service-Key'))) return c.json({ error: 'Unauthorized' }, 401)
 
-  let body: { tenantId?: unknown; imageUrl?: unknown; imageBase64?: unknown; mimeType?: unknown }
+  let body: { tenantId?: unknown; imageUrl?: unknown; imageBase64?: unknown; mimeType?: unknown; category?: unknown }
   try {
     body = await c.req.json()
   } catch {
@@ -104,7 +117,7 @@ async function readDescribeBody(c: Context, logTag: string): Promise<Response | 
     console.error(`[${logTag}] image download failed or over ${MAX_IMAGE_BYTES} bytes tenantId=${tenantId}`)
     return c.json({ error: 'Naming failed' }, 502)
   }
-  return { tenantId, imageBase64, mimeType }
+  return { tenantId, imageBase64, mimeType, ...(typeof body.category === 'string' ? { category: body.category } : {}) }
 }
 
 /** One vision call through the gateway. Returns the model's text, or null on a gateway error. */
@@ -172,7 +185,7 @@ productDescribeRouter.post('/internal/avatars/describe', async (c) => {
   const input = await readDescribeBody(c, 'avatarDescribe')
   if (input instanceof Response) return input
   try {
-    const raw = await describeImage({ ...input, prompt: AVATAR_PROMPT, agentId: 'avatar-describe', workflowId: 'creative-avatars', logTag: 'avatarDescribe' })
+    const raw = await describeImage({ ...input, prompt: avatarPrompt(input.category), agentId: 'avatar-describe', workflowId: 'creative-avatars', logTag: 'avatarDescribe' })
     if (raw === null) return c.json({ error: 'Naming failed' }, 502)
     const parsed = parseAvatarDescription(raw)
     if (!parsed) {
