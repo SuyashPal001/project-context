@@ -826,17 +826,53 @@ export const rollTvcVariationsTool = createTool({
   },
 })
 
+// Pixar-style 3D, 2D flat and claymation: the three looks the animated ad
+// flow already renders (directorAgent's STYLE "3d_pixar" / "2d_flat" /
+// "claymation"), offered as avatar styles so a character made in one of them
+// animates in the same look later. Everyday people in everyday places — the
+// style carries the character.
+export interface ToonVariationSpec {
+  gender: Gender
+  age: number
+  look: string
+  skinTone?: string
+  hair: string
+  outfit: string
+  place: string
+  gesture: string
+}
+
+export function rollToonVariations(count: number, random: () => number = Math.random, look = 'a mix', gender: Gender | 'any' = 'any'): ToonVariationSpec[] {
+  const people = rollAvatarVariations({ count, look, gender, ageMin: 22, ageMax: 60 }, random)
+  return people.map((p) => ({
+    gender: p.gender, age: p.age, look: p.look,
+    ...(p.skinTone ? { skinTone: p.skinTone } : {}),
+    hair: p.hair, outfit: p.wardrobe, place: p.place.replace(/, softly blurred$/, ''), gesture: p.gesture,
+  }))
+}
+
+/** "34 · Indian woman · terracotta linen shirt · shaded balcony" */
+export function toonLine(v: ToonVariationSpec): string {
+  const short = (s: string) => s.split(/,| with /)[0].trim()
+  return `${v.age} · ${v.look} ${v.gender} · ${short(v.outfit)} · ${short(v.place)}`
+}
+
 export const rollCharacterVariationsTool = createTool({
   id: 'roll-character-variations',
-  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Style "3d chibi": per variation a family-cast member (child, young adult or grandparent), look, hair, outfit, scene and pose. Style "storybook anime": per variation age, look, skin, hair, outfit, an everyday moment in a lived-in place, and expression. Call once before writing animated-character variation prompts. Free.',
+  description: 'Picks distinct details for animated-character avatar variations, all different across the set. Style "mascot": per variation an original character, one material, a palette with its studio backdrop and a personality caught in an action. Style "game hero": per variation a role in its own world, a signature item, light and palette, age, skin, hair and expression. Style "cinematic anime": per variation skin, hair, eyes, an elegant outfit, a night-city scene, pose and expression. Style "fantasy anime": per variation a role in its own painterly world, a signature item, palette, age, skin, hair, eyes and expression. Style "3d chibi": per variation a family-cast member (child, young adult or grandparent), look, hair, outfit, scene and pose. Style "storybook anime": per variation age, look, skin, hair, outfit, an everyday moment in a lived-in place, and expression. Styles "pixar 3d", "2d flat" and "claymation": per variation age, look, skin tone, hair, everyday outfit, place and gesture. Call once before writing animated-character variation prompts. Free.',
   inputSchema: z.object({
     count: z.number().int().min(1).max(6).default(4),
-    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime', '3d chibi', 'storybook anime']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime), "fantasy anime" (2D anime game key art) "3d chibi" (family-film 3D chibi) or "storybook anime" (warm hand-painted everyday life)'),
-    look: z.string().default('a mix').describe('3D chibi and storybook anime only: the look from the brief exactly as given — "a mix", "Indian", or the user\'s own words'),
+    style: z.enum(['mascot', 'game hero', 'cinematic anime', 'fantasy anime', '3d chibi', 'storybook anime', 'pixar 3d', '2d flat', 'claymation']).default('mascot').describe('From the brief: "mascot" (cozy 3D mascot), "game hero" (console-game character art), "cinematic anime" (elegant 2D anime), "fantasy anime" (2D anime game key art) "3d chibi" (family-film 3D chibi) "storybook anime" (warm hand-painted everyday life), "pixar 3d", "2d flat" or "claymation"'),
+    look: z.string().default('a mix').describe('3D chibi, storybook anime, pixar 3d, 2d flat and claymation only: the look from the brief exactly as given — "a mix", "Indian", or the user\'s own words'),
     kind: z.enum(['mix', 'creatures', 'objects']).default('mix').describe('Mascots only, from the brief: "creatures", "objects" (objects or food), or "mix" (creatures and objects alternate) when it leaves this open'),
-    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Game heroes, cinematic, fantasy and storybook anime, from the brief; "any" alternates woman and man'),
+    gender: z.enum(['woman', 'man', 'any']).default('any').describe('Every people style (not mascots or 3D chibi), from the brief; "any" alternates woman and man'),
   }),
   execute: async (inputData, execContext) => {
+    if (inputData.style === 'pixar 3d' || inputData.style === '2d flat' || inputData.style === 'claymation') {
+      const people = rollToonVariations(inputData.count, Math.random, inputData.look, inputData.gender)
+      emitToolStatus(execContext, `Casting ${people.length} characters`, people.map(toonLine))
+      return { variations: people }
+    }
     if (inputData.style === 'storybook anime') {
       const people = rollStorybookVariations(inputData.count, Math.random, inputData.look, inputData.gender)
       emitToolStatus(execContext, `Casting ${people.length} characters`, people.map(storybookLine))

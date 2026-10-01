@@ -143,8 +143,8 @@ describe('animated-character avatars (Animated character creator Official skill)
   it('asks what kind of character in one card and passes the style and kind to Director', () => {
     const text = CHARACTER_SKILL_TEXT()
     expect(text).toContain('at most ONE ask_clarifying_questions card')
-    expect(text).toContain('"Cozy 3D mascot — a little creature or object (Recommended)", "Game hero — fantasy or sci-fi console-game art", "Cinematic anime — elegant hand-drawn 2D anime", "Fantasy anime — anime game-art heroes", "3D chibi — cute family-film characters" and "Storybook anime — warm hand-painted everyday life"')
-    expect(text).toMatch(/write "style: animated character" for a mascot, "style: game hero" for a game hero "style: cinematic anime" for cinematic anime "style: fantasy anime" for fantasy anime "style: 3d chibi" for 3D chibi or "style: storybook anime" for storybook anime/)
+    expect(text).toContain('"Cozy 3D mascot — a little creature or object (Recommended)", "Game hero — fantasy or sci-fi console-game art", "Cinematic anime — elegant hand-drawn 2D anime", "Fantasy anime — anime game-art heroes", "3D chibi — cute family-film characters", "Storybook anime — warm hand-painted everyday life", "Pixar-style 3D — warm animated-film people", "2D flat — bold vector illustration" and "Claymation — handmade stop-motion clay"')
+    expect(text).toMatch(/write "style: animated character" for a mascot, "style: game hero" for a game hero "style: cinematic anime" for cinematic anime "style: fantasy anime" for fantasy anime "style: 3d chibi" for 3D chibi, "style: storybook anime" for storybook anime, or "style: pixar 3d", "style: 2d flat" or "style: claymation" for those/)
     expect(text).toMatch(/Never ask about gender, age or ethnicity/)
     expect(text).toMatch(/Never recreate an existing cartoon character or another brand's mascot/)
     expect(text).toMatch(/Delegate by calling the agent-director tool — never by writing a message to it in your reply/)
@@ -203,6 +203,12 @@ describe('animated-character avatars (Animated character creator Official skill)
     expect(AVATAR_CREATION_SECTION).toMatch(/soft painterly backgrounds with a watercolour texture/)
     expect(AVATAR_CREATION_SECTION).not.toMatch(/ghibli/i)
     expect(AVATAR_CREATION_SECTION).toMatch(/never reproducing any existing studio, film, character or artwork/)
+  })
+
+  it('offers Pixar-style 3D, 2D flat and claymation in the same looks the animated ad flow renders', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/"style: pixar 3d", "style: 2d flat" or "style: claymation"/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/STYLE "3d_pixar", "2d_flat" or "claymation" block/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/stop-motion claymation look, visible clay or plasticine texture/)
   })
 })
 

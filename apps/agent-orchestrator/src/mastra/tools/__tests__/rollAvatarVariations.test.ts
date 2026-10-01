@@ -207,6 +207,16 @@ describe('rollTvcVariations', () => {
   })
 })
 
+describe('rollToonVariations', () => {
+  it('casts four different everyday people for the pixar, 2D flat and claymation styles', async () => {
+    const { rollToonVariations } = await import('../rollAvatarVariations.js')
+    const set = rollToonVariations(4, seeded(5), 'Indian')
+    expect(set.map((v) => v.gender)).toEqual(['woman', 'man', 'woman', 'man'])
+    expect(set.every((v) => v.look === 'Indian' && v.skinTone && v.age >= 22 && v.age <= 60)).toBe(true)
+    for (const key of ['place', 'gesture', 'age'] as const) expect(distinct(set.map((v) => v[key]))).toBe(true)
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')
