@@ -100,10 +100,12 @@ describe('avatar creation contract (Avatar creator Official skill)', () => {
     expect(AVATAR_SKILL_TEXT).toMatch(/pass that fileId explicitly/i)
   })
 
-  it('sets each pick option\'s imageFileId to its own variation, so the user sees the actual faces instead of bare "Option N" text', () => {
-    expect(AVATAR_SKILL_TEXT).toMatch(/imageFileId/)
-    expect(AVATAR_SKILL_TEXT).toMatch(/Option 1 = the first variation's fileId/i)
-    expect(AVATAR_SKILL_TEXT).toMatch(/never set imageFileId on the "None of these" option/i)
+  // The pick used to be a blocking image card, which held the turn open ("Working for Ns")
+  // while the user decided. Now the four are shown in the chat and the turn ends; the
+  // user's next message picks by number or asks for a change.
+  it('shows the four in the chat and ends the turn, so the pick comes in the next message', () => {
+    expect(AVATAR_SKILL_TEXT).toMatch(/list them as "1\. <title>" to "4\. <title>"/)
+    expect(AVATAR_SKILL_TEXT).toMatch(/In the next turn, a number .* is the pick, mapped to that variation's fileId/)
   })
 
   it('limits demographic inference to what the user or the product\'s stated audience explicitly says, never a market or region', () => {
@@ -258,7 +260,7 @@ describe('TVC character creator (Official skill)', () => {
     expect(text).toMatch(/call check_credit_plan for the four-option plan/)
     expect(text).toMatch(/Work in two steps, never back to back/)
     expect(text).toMatch(/One step at a time: after every generation step/)
-    expect(text).toMatch(/"Happy with this face\?"/)
+    expect(text).toMatch(/happy with this face — reply "looks good"/)
     expect(TVC_CHARACTER_SECTION).toMatch(/"step: refine face only"/)
     expect(TVC_CHARACTER_SECTION).toMatch(/"step: sheet and save", skip the refinement/)
     for (const skill of [AVATAR_SKILL_TEXT, readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../animated-character-creator.md'), 'utf8')]) {
@@ -266,8 +268,11 @@ describe('TVC character creator (Official skill)', () => {
       expect(skill).toMatch(/"Just one — I'll describe it"/)
       expect(skill).toMatch(/Always give a recommendation/)
       expect(skill).toMatch(/One step at a time: after every generation step/)
+      expect(skill).toMatch(/Refine one change at a time, never rush to the sheet/)
+      expect(skill).toMatch(/Never call ask_clarifying_questions here/)
     }
     expect(AVATAR_CREATION_SECTION).toMatch(/when Olmo's brief says "count: 1", every variation step/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/"step: edit only", call edit_image once on the given fileId/)
     expect(TVC_CHARACTER_SECTION).toMatch(/exactly 1 when Olmo's brief says "count: 1"/)
     expect(TVC_CHARACTER_SECTION).toMatch(/When Olmo's brief says "framing: chest up"/)
   })
