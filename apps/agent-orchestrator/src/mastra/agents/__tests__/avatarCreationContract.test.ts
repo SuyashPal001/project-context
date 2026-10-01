@@ -257,6 +257,7 @@ describe('TVC character creator (Official skill)', () => {
     expect(text).toMatch(/Always give a recommendation: on every question of every card in this skill/)
     expect(text).toMatch(/call check_credit_plan for the four-option plan/)
     expect(text).toMatch(/Work in two steps, never back to back/)
+    expect(text).toMatch(/One step at a time: after every generation step/)
     expect(text).toMatch(/"Happy with this face\?"/)
     expect(TVC_CHARACTER_SECTION).toMatch(/"step: refine face only"/)
     expect(TVC_CHARACTER_SECTION).toMatch(/"step: sheet and save", skip the refinement/)
@@ -264,6 +265,7 @@ describe('TVC character creator (Official skill)', () => {
       expect(skill).toMatch(/How many options — ask everywhere/)
       expect(skill).toMatch(/"Just one — I'll describe it"/)
       expect(skill).toMatch(/Always give a recommendation/)
+      expect(skill).toMatch(/One step at a time: after every generation step/)
     }
     expect(AVATAR_CREATION_SECTION).toMatch(/when Olmo's brief says "count: 1", every variation step/)
     expect(TVC_CHARACTER_SECTION).toMatch(/exactly 1 when Olmo's brief says "count: 1"/)
