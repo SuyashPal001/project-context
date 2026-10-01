@@ -320,3 +320,16 @@ describe('image-to-avatar contract (Avatar creator Official skill)', () => {
     expect(AVATAR_SKILL_TEXT).toMatch(/ONE generate_images batch/)
   })
 })
+
+describe('consistency: changes to an existing image are edits, closer framings are free crops', () => {
+  it('Director never regenerates a kept still', async () => {
+    const { readFileSync } = await import('node:fs')
+    const director = readFileSync(path.resolve(__dirname, '../directorAgent.ts'), 'utf8')
+    expect(director).toMatch(/Consistency rule, for every image in every flow/)
+    expect(director).toMatch(/Never answer it with generate_image/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/never generate_image, which would invent a new person and outfit/)
+    const olmo = readFileSync(path.resolve(__dirname, '../platformAgent.ts'), 'utf8')
+    expect(olmo).toMatch(/is never a plain image request: it is an edit of that image/)
+    expect(olmo).toMatch(/crop_image: cropImage/)
+  })
+})
