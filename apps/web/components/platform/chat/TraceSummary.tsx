@@ -37,7 +37,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
     const stepCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length === 0);
 
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col w-full min-w-0">
             {mediaCalls.length > 0 && (
                 <div className="flex flex-col gap-1 normal-case">
                     {groupImageToolCalls(mediaCalls).map((group, gi) => (

@@ -236,7 +236,7 @@ export function LiveTrace({
     const loadingTools = activeToolCalls.filter(t => t.isLoading);
     if (loadingTools.length > 0 || completedToolCalls.length > 0) {
         return (
-            <div className="animate-in fade-in duration-300">
+            <div className="w-full min-w-0 animate-in fade-in duration-300">
                 {awaitingUser ? (
                     <div className="text-sm text-muted-foreground font-mono mb-1.5">
                         Waiting for your answer
@@ -314,7 +314,7 @@ export function LiveTrace({
     // Plain thinking, no tool calls yet
     if (isStreaming) {
         return (
-            <div className="animate-in fade-in duration-300">
+            <div className="w-full min-w-0 animate-in fade-in duration-300">
                 <div className="flex items-center gap-2">
                     <PulsingDots />
                     <span className="shimmer-text text-sm text-shimmer-accent-80 font-mono animate-in fade-in duration-500" key={messageIndex}>
@@ -405,7 +405,7 @@ export function ThinkingIndicator({
     return (
         <div className="flex items-start gap-4">
             <AgentOrb size={32} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity && !awaitingUser} avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
-            <div className={hasToolActivity ? "flex-1 pt-1" : "flex-1 pt-1.5"}>
+            <div className={hasToolActivity ? "flex-1 min-w-0 pt-1" : "flex-1 min-w-0 pt-1.5"}>
                 <LiveTrace
                     isStreaming={isStreaming}
                     activeToolCalls={activeToolCalls}
