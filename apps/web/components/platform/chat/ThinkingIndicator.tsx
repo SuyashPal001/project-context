@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AgentOrb } from "./AgentOrb";
 import { ToolCall, CompletedToolCall } from "./types";
-import { ToolCallCard, groupImageToolCalls } from "./ToolCallCard";
+import { ToolCallCard, groupImageToolCalls, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import type { PersonaSummary } from "../personas/types";
 
 // Live extended-thinking trace, streamed via the 'reasoning' SSE event (see
@@ -247,7 +247,7 @@ export function LiveTrace({
                     </div>
                 )}
                 <ReasoningRow text={reasoningText} />
-                {groupImageToolCalls(completedToolCalls).map((group, gi) => (
+                {groupImageToolCalls(withoutRepeatedTraceFiles(completedToolCalls)).map((group, gi) => (
                     group.length > 1 ? (
                         <div key={gi} className="flex flex-wrap gap-2">
                             {group.map(tc => (

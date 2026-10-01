@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CompletedToolCall } from "./types";
-import { ToolCallCard, groupImageToolCalls, extractResultFiles } from "./ToolCallCard";
+import { ToolCallCard, groupImageToolCalls, extractResultFiles, withoutRepeatedTraceFiles } from "./ToolCallCard";
 import { ReasoningRow } from "./ThinkingIndicator";
 
 export interface TraceSummaryProps {
@@ -33,7 +33,7 @@ export function TraceSummary({ elapsedSec, toolCalls, reasoningText, reasoningEl
     // collapsing "N steps" behind one line must not also hide the images the
     // user just watched generate. Everything else (search rows, delegate
     // wrappers with no result media, plan/PRD tools, ...) is what collapses.
-    const mediaCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length > 0);
+    const mediaCalls = withoutRepeatedTraceFiles(toolCalls).filter(tc => extractResultFiles(tc.toolName, tc.result).length > 0);
     const stepCalls = toolCalls.filter(tc => extractResultFiles(tc.toolName, tc.result).length === 0);
 
     return (

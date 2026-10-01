@@ -443,6 +443,7 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
         }
         skillsInvokedThisTurn = newlyInvoked.map((s) => toMastraSkillName(s.name))
         requestContext.set('invokedSkillInstallIds', merged.map((s) => s.installId))
+        requestContext.set('invokedSkillNames' as never, merged.map((s) => s.name) as never)
         requestContext.set('skillsInvokedThisTurn', skillsInvokedThisTurn)
       }
     }

@@ -344,6 +344,84 @@ Where another section refers to the Avatar creation or Talking-head ad contract,
 export const SHOW_FILES_CONTRACT = `\n\n## Re-showing files already in this conversation
 When the user asks to see images/files already generated or attached in this conversation (e.g. "show me the ones already generated", "show me what you made"), call show_files with those fileIds from earlier tool results — never call find_past_tasks, never call check_credit_plan, and never re-generate to answer this. "Already generated" / "the ones you made" in this conversation means the files from earlier tool results in THIS conversation — show them with show_files, do not switch to casting/library presets via list_casting_assets or ask_clarifying_questions.`
 
+
+// The character creators (Avatar, Animated, TVC) must make every image through
+// agent-director, which writes the style's labeled prompt from the variety
+// roll. Prose alone did not hold: when Director's generation failed (or its
+// file did not come back), Olmo made its own image from a bare prompt and
+// showed that instead — off-style, and charged twice. So while one of these
+// skills is on, Olmo simply has no image tools of its own.
+const CREATOR_SKILL_NAMES = /^(avatar creator|animated character creator|tvc character creator)$/i
+const DIRECT_IMAGE_TOOL_NAMES = ['generate_image', 'generate_images', 'edit_image']
+
+export function withoutDirectImageInCreatorSkills<T extends Record<string, unknown>>(tools: T, requestContext: RequestContext<TenantContext> | undefined): T {
+  const names = (requestContext?.get('invokedSkillNames' as never) as string[] | undefined) ?? []
+  if (!names.some((n) => CREATOR_SKILL_NAMES.test(n.trim()))) return tools
+  return Object.fromEntries(Object.entries(tools).filter(([key]) => !DIRECT_IMAGE_TOOL_NAMES.includes(key))) as T
+}
+
+async function resolveOlmoTools(requestContext: RequestContext<TenantContext>): Promise<Record<string, any>> {
+    const tenantId = requestContext.get('tenantId') as string | undefined
+
+    if (!tenantId) {
+      // No tenant context — return SERVER_TOOLS only (Studio / health checks)
+      return SERVER_TOOLS
+    }
+
+    // --- Composio path (primary when COMPOSIO_ENABLED=true) ---
+    if (isComposioEnabled()) {
+      try {
+        const composioTools = await getComposioTools(tenantId)
+
+        // Filter out any Composio tools that conflict with SERVER_TOOLS.
+        const filteredComposioTools = Object.fromEntries(
+          Object.entries(composioTools).filter(([key]) => {
+            const blocked = Array.from(SERVER_TOOL_NAMES).some(
+              (name) => key === name || key.endsWith(`_${name}`)
+            )
+            if (blocked) console.log(`[mastra] platformAgent filtering Composio tool: ${key}`)
+            return !blocked
+          })
+        )
+
+        console.log(`[mastra] using Composio tools (${Object.keys(filteredComposioTools).length}) for tenant ${tenantId}`)
+        return { ...filteredComposioTools, ...SERVER_TOOLS }
+      } catch (err) {
+        // Composio failed — fall through to MCP backup.
+        console.warn('[mastra] Composio tool fetch failed, falling back to MCP:', (err as Error).message)
+      }
+    }
+
+    // The mcp-server hop (per-session client + listTools) is OFF by default:
+    // nothing user-facing runs through it today, and the cold fetch sat in
+    // front of every first turn of a session. Set MCP_TOOLS_ENABLED=1 on the
+    // orchestrator to turn the Gmail/Google tools back on.
+    if (process.env.MCP_TOOLS_ENABLED !== '1') return SERVER_TOOLS
+
+    // --- MCP path (backup / default when Composio is disabled or errored) ---
+    const storedClient = requestContext.get('__mcpClient') as MCPClient | undefined
+    const mcpClient = storedClient ?? getMCPClientForTenant(
+      tenantId,
+      requestContext.get('agentId') as string | undefined,
+      requestContext.get('sessionId') as string | undefined,
+    )
+
+    const mcpTools = await getCachedMcpTools(mcpClient, tenantId)
+
+    // Exclude MCP tools that duplicate SERVER_TOOLS.
+    const filteredMcpTools = Object.fromEntries(
+      Object.entries(mcpTools).filter(([key]) => {
+        const blocked = Array.from(SERVER_TOOL_NAMES).some(
+          (name) => key === name || key.endsWith(`_${name}`)
+        )
+        if (blocked) console.log(`[mastra] platformAgent filtering MCP tool: ${key}`)
+        return !blocked
+      })
+    )
+
+    return { ...filteredMcpTools, ...SERVER_TOOLS }
+}
+
 export const platformAgent = new Agent({
   id: 'olmo',
   name: 'Olmo',
@@ -573,65 +651,7 @@ You only remember the current task. When the user refers to earlier work from an
   },
 
   tools: async ({ requestContext }: { requestContext: RequestContext<TenantContext> }) => {
-    const tenantId = requestContext.get('tenantId') as string | undefined
-
-    if (!tenantId) {
-      // No tenant context — return SERVER_TOOLS only (Studio / health checks)
-      return SERVER_TOOLS
-    }
-
-    // --- Composio path (primary when COMPOSIO_ENABLED=true) ---
-    if (isComposioEnabled()) {
-      try {
-        const composioTools = await getComposioTools(tenantId)
-
-        // Filter out any Composio tools that conflict with SERVER_TOOLS.
-        const filteredComposioTools = Object.fromEntries(
-          Object.entries(composioTools).filter(([key]) => {
-            const blocked = Array.from(SERVER_TOOL_NAMES).some(
-              (name) => key === name || key.endsWith(`_${name}`)
-            )
-            if (blocked) console.log(`[mastra] platformAgent filtering Composio tool: ${key}`)
-            return !blocked
-          })
-        )
-
-        console.log(`[mastra] using Composio tools (${Object.keys(filteredComposioTools).length}) for tenant ${tenantId}`)
-        return { ...filteredComposioTools, ...SERVER_TOOLS }
-      } catch (err) {
-        // Composio failed — fall through to MCP backup.
-        console.warn('[mastra] Composio tool fetch failed, falling back to MCP:', (err as Error).message)
-      }
-    }
-
-    // The mcp-server hop (per-session client + listTools) is OFF by default:
-    // nothing user-facing runs through it today, and the cold fetch sat in
-    // front of every first turn of a session. Set MCP_TOOLS_ENABLED=1 on the
-    // orchestrator to turn the Gmail/Google tools back on.
-    if (process.env.MCP_TOOLS_ENABLED !== '1') return SERVER_TOOLS
-
-    // --- MCP path (backup / default when Composio is disabled or errored) ---
-    const storedClient = requestContext.get('__mcpClient') as MCPClient | undefined
-    const mcpClient = storedClient ?? getMCPClientForTenant(
-      tenantId,
-      requestContext.get('agentId') as string | undefined,
-      requestContext.get('sessionId') as string | undefined,
-    )
-
-    const mcpTools = await getCachedMcpTools(mcpClient, tenantId)
-
-    // Exclude MCP tools that duplicate SERVER_TOOLS.
-    const filteredMcpTools = Object.fromEntries(
-      Object.entries(mcpTools).filter(([key]) => {
-        const blocked = Array.from(SERVER_TOOL_NAMES).some(
-          (name) => key === name || key.endsWith(`_${name}`)
-        )
-        if (blocked) console.log(`[mastra] platformAgent filtering MCP tool: ${key}`)
-        return !blocked
-      })
-    )
-
-    return { ...filteredMcpTools, ...SERVER_TOOLS }
+    return withoutDirectImageInCreatorSkills(await resolveOlmoTools(requestContext), requestContext)
   },
 
   memory: getOlmoMemory(),

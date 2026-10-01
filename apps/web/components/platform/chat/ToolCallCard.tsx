@@ -403,6 +403,28 @@ export function isImageTileTool(toolName: string): boolean {
 // per line. Non-image rows, and any image row that isn't adjacent to
 // another, come back as their own singleton group so callers can treat
 // every group uniformly.
+// A show_files call that re-shows a file an earlier call in the same trace
+// already rendered (a generation, then show_files of that still and its
+// close-up) would put the same image on screen twice. Keep only the files not
+// shown yet; drop the call if nothing new is left.
+export function withoutRepeatedTraceFiles<T extends { toolName: string; result?: Record<string, unknown> }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of items) {
+    const files = extractResultFiles(item.toolName, item.result);
+    if (item.toolName === 'show_files' && files.length > 0 && Array.isArray(item.result?.files)) {
+      const fresh = (item.result!.files as Array<Record<string, unknown>>).filter(f => typeof f.fileId !== 'string' || !seen.has(f.fileId));
+      files.forEach(f => seen.add(f.fileId));
+      if (fresh.length === 0) continue;
+      out.push({ ...item, result: { ...item.result, files: fresh } });
+      continue;
+    }
+    files.forEach(f => seen.add(f.fileId));
+    out.push(item);
+  }
+  return out;
+}
+
 export function groupImageToolCalls<T extends { toolName: string }>(items: T[]): T[][] {
   const groups: T[][] = [];
   for (const item of items) {
