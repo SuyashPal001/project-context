@@ -4,6 +4,7 @@ import { fileTitleSchema, fileTitle } from './fileTitle.js'
 import { costMicro, isUnlimited, resolveRate, spendCredits } from '@serverless-saas/credits'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
+import { resolveAvatarReferences } from './avatarReferences.js'
 import { refundVideoCharge } from './videoCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
@@ -129,6 +130,7 @@ export async function generateVideoItem(
     }
 
     let imageUri: string | undefined
+    let referenceImageUris: string[] | undefined
     if (mode === 'animate_frame' || mode === 'composite_references') {
       if (!idToken) {
         // No idToken means fetchPresignedUrl below can never succeed — without
@@ -138,7 +140,21 @@ export async function generateVideoItem(
         // same as every other failure in this resolution block.
         return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE', jobId }
       }
-      const referenceFileId = startImageFileId ?? referenceFileIds?.[0]
+      // composite_references sends every reference to Omni's reference_to_video
+      // (up to 3), with a saved avatar's character sheet added right after its
+      // portrait, the same way generate_image does. It used to send only the
+      // first reference as an image_to_video start frame, so the model pinned
+      // that still as frame one instead of building a new scene around it.
+      if (mode === 'composite_references' && referenceFileIds?.length) {
+        const ids = (await resolveAvatarReferences(tenantId, referenceFileIds)).fileIds.slice(0, 3)
+        try {
+          referenceImageUris = await Promise.all(ids.map((id) => fetchPresignedUrl(id, idToken)))
+        } catch (err) {
+          console.error(`[session:${sessionId}] generateVideo: failed to resolve reference images ${ids.join(',')}:`, (err as Error).message)
+          return { refused: true, refusalReason: 'SOURCE_IMAGE_UNAVAILABLE', jobId }
+        }
+      }
+      const referenceFileId = mode === 'animate_frame' ? startImageFileId : undefined
       if (referenceFileId) {
         try {
           imageUri = await fetchPresignedUrl(referenceFileId, idToken)
@@ -188,7 +204,7 @@ export async function generateVideoItem(
       }
     }
 
-    const task = mode === 'text_to_video' ? 'text_to_video' : 'image_to_video'
+    const task = mode === 'text_to_video' ? 'text_to_video' : mode === 'composite_references' ? 'reference_to_video' : 'image_to_video'
     let genResult: { videoBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
     try {
       const res = await fetch(`${GATEWAY_URL}/v1/video/generations`, {
@@ -206,7 +222,7 @@ export async function generateVideoItem(
         // to 'image/jpeg' when imageMimeType is absent. Fixing this for real
         // requires either the presigned-url route or storageService to
         // surface the stored file's content type.
-        body: JSON.stringify({ model: GATEWAY_MODEL_ID, prompt, task, aspectRatio, durationSeconds, imageUri }),
+        body: JSON.stringify({ model: GATEWAY_MODEL_ID, prompt, task, aspectRatio, durationSeconds, imageUri, referenceImageUris }),
         // Must stay strictly larger than the gateway's own upstream timeout
         // (240s in apps/inference-gateway/src/video.ts) — otherwise this
         // clock, which starts first since the gateway call is nested inside

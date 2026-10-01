@@ -229,6 +229,43 @@ describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
     expect(uploadBody).toContain('Content-Type: image/jpeg')
   })
 
+  it('sends every reference image, staged, before the prompt for reference_to_video', async () => {
+    process.env.GEMINI_API_KEY = 'key'
+    vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+    let n = 0
+    const fetchSpy = vi.fn(async (url: RequestInfo | URL) => {
+      const urlStr = String(url)
+      if (urlStr.includes('/upload/v1beta/files')) {
+        return new Response(JSON.stringify({ file: { uri: `https://generativelanguage.googleapis.com/v1beta/files/f${n++}` } }), { status: 200 })
+      }
+      if (urlStr.startsWith('https://example.com/')) return new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+      return new Response(JSON.stringify(okBody), { status: 200 })
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await generateVideo({
+      ...req, task: 'reference_to_video',
+      referenceImageUris: ['https://example.com/portrait.jpg', 'https://example.com/sheet.png'],
+    })
+
+    const genCall = fetchSpy.mock.calls.find(([u]) => String(u).includes('/interactions')) as unknown as [string, RequestInit]
+    const body = JSON.parse(genCall[1].body as string)
+    expect(body.input).toHaveLength(3)
+    expect(body.input.slice(0, 2).every((p: { type: string; uri: string }) => p.type === 'image' && p.uri.includes('/files/f'))).toBe(true)
+    expect(body.input[2]).toEqual({ type: 'text', text: req.prompt })
+    expect(body.generation_config.video_config.task).toBe('reference_to_video')
+  })
+
+  it('rejects more than 3 reference images, or references with a start frame, before any call', async () => {
+    process.env.GEMINI_API_KEY = 'key'
+    vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
+    const fetchSpy = vi.fn()
+    global.fetch = fetchSpy as unknown as typeof fetch
+    await expect(generateVideo({ ...req, task: 'reference_to_video', referenceImageUris: ['a', 'b', 'c', 'd'] })).rejects.toThrow(/at most 3/)
+    await expect(generateVideo({ ...req, task: 'reference_to_video', referenceImageUris: ['a'], imageUri: 'b' })).rejects.toThrow(/start frame/)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   it('still sends a bare string input for text_to_video (no regression)', async () => {
     process.env.GEMINI_API_KEY = 'key'
     vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)

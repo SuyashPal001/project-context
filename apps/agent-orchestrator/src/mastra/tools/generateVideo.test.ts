@@ -20,6 +20,9 @@ const { shouldRequireApproval } = vi.hoisted(() => ({
 }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
+const { resolveAvatarReferences } = vi.hoisted(() => ({ resolveAvatarReferences: vi.fn() }))
+vi.mock('./avatarReferences.js', () => ({ resolveAvatarReferences }))
+
 import { generateVideo, generateVideoItem } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { stableToolCallId } from '../../credits.js'
@@ -255,6 +258,29 @@ describe('generateVideo tool', () => {
     const body = JSON.parse(genCall[1].body as string)
     expect(body.imageUri).toBe('https://s3.example.com/product.jpg')
     expect(body.task).toBe('image_to_video')
+  })
+
+  it('sends composite_references to Omni as reference_to_video with every reference, the avatar sheet included', async () => {
+    resolveAvatarReferences.mockResolvedValue({ fileIds: ['portrait1', 'sheet1', 'product1'], anchor: null })
+    const fetchSpy = vi.fn(async (url: string) => {
+      const m = String(url).match(/files\/([^/]+)\/presigned-url/)
+      if (m) return new Response(JSON.stringify({ presignedUrl: `https://s3.example.com/${m[1]}.jpg` }), { status: 200 })
+      return new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.mp4', type: 'video/mp4', size: 3 })
+
+    await generateVideo.execute!(
+      { mode: 'composite_references', prompt: 'x', aspectRatio: '9:16', durationSeconds: 6, referenceFileIds: ['portrait1', 'product1'] } as never,
+      baseCtx(),
+    )
+
+    expect(resolveAvatarReferences).toHaveBeenCalledWith('t1', ['portrait1', 'product1'])
+    const genCall = fetchSpy.mock.calls.find(([url]) => String(url).includes('/v1/video/generations')) as unknown as [string, RequestInit]
+    const body = JSON.parse(genCall[1].body as string)
+    expect(body.task).toBe('reference_to_video')
+    expect(body.imageUri).toBeUndefined()
+    expect(body.referenceImageUris).toEqual(['https://s3.example.com/portrait1.jpg', 'https://s3.example.com/sheet1.jpg', 'https://s3.example.com/product1.jpg'])
   })
 
   it('charges credits before calling the gateway, refunding on a post-charge failure', async () => {

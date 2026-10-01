@@ -59,12 +59,16 @@ function validateVeoDuration(durationSeconds: number): void {
 export interface VideoGenerationRequest {
   model: string
   prompt: string
-  task: 'text_to_video' | 'edit' | 'extend' | 'image_to_video'
+  task: 'text_to_video' | 'edit' | 'extend' | 'image_to_video' | 'reference_to_video'
   aspectRatio: '16:9' | '9:16'
   durationSeconds: number
   imageUri?: string
   imageMimeType?: string
+  /** reference_to_video only: up to 3 images of one person, character or product (e.g. a portrait and its character sheet). */
+  referenceImageUris?: string[]
 }
+
+const OMNI_MAX_REFERENCE_IMAGES = 3
 
 export type VideoGenerationResult =
   | { videoBase64: string; mimeType: string }
@@ -149,7 +153,14 @@ async function stageImageForOmni(sourceUrl: string, mimeType: string): Promise<s
 async function callGeminiApiKeyVideoModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
   const key = process.env.GEMINI_API_KEY ?? ''
   const url = `https://generativelanguage.googleapis.com/v1beta/interactions?key=${key}`
-  const input = req.imageUri
+  const input = req.referenceImageUris?.length
+    ? [
+        ...(await Promise.all(req.referenceImageUris.map(async (uri) => (
+          { type: 'image', uri: await stageImageForOmni(uri, 'image/jpeg'), mime_type: 'image/jpeg' }
+        )))),
+        { type: 'text', text: req.prompt },
+      ]
+    : req.imageUri
     ? [
         { type: 'text', text: req.prompt },
         { type: 'image', uri: await stageImageForOmni(req.imageUri, req.imageMimeType ?? 'image/jpeg'), mime_type: req.imageMimeType ?? 'image/jpeg' },
@@ -288,6 +299,12 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
     throw new UnsupportedVideoModelError(`Unsupported video model: ${req.model}`)
   }
   validateOmniDuration(req.durationSeconds)
+  if ((req.referenceImageUris?.length ?? 0) > OMNI_MAX_REFERENCE_IMAGES) {
+    throw new UnsupportedVideoModelError(`at most ${OMNI_MAX_REFERENCE_IMAGES} reference images, got ${req.referenceImageUris!.length}`)
+  }
+  if (req.referenceImageUris?.length && req.imageUri) {
+    throw new UnsupportedVideoModelError('reference images cannot be combined with a start frame')
+  }
 
   const backend = selectBackend(req.model)
 
