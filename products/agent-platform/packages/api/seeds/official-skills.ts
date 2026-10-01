@@ -1,5 +1,7 @@
 /**
- * Seeds the platform-owned Official skills: Avatar creator and Talking head.
+ * Seeds the platform-owned Official skills: the character creators, Talking
+ * head, and the ad flows (UGC character, template video, first frame,
+ * animated story, short-drama stitch).
  *
  * These rows have no owner — ownerTenantId and createdBy are both NULL, the
  * same "platform-owned" convention creative_library_assets.tenant_id uses.
@@ -124,6 +126,64 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
       imageUrl: '/creative/avatars/beauty-skincare-presenter.jpg',
       bestFor: ['Product explainers', 'Testimonials', 'Announcements'],
       starterPrompt: 'Make a talking-head ad for my product',
+    },
+  },
+  {
+    slug: 'ugc-character-ad',
+    name: 'UGC character ad',
+    description: 'Use when the user wants a photoreal UGC-style ad built from scratch, with several distinct beats or shots in a storyboard — not one presenter reading one script, not an animated look, not a template clone.',
+    file: officialSkillFile('ugc-character-ad.md'),
+    showcase: {
+      imageUrl: '/creative/templates/ugc-review.png',
+      bestFor: ['UGC ads', 'Storyboards', 'Product reviews'],
+      starterPrompt: 'Make a UGC ad for my product',
+    },
+  },
+  {
+    slug: 'template-video',
+    name: 'Template video',
+    description: 'Use when the user wants to clone or recreate a reference ad\'s structure onto their own product — "clone this ad", "make a video like this template".',
+    file: officialSkillFile('template-video.md'),
+    showcase: {
+      imageUrl: '/creative/templates/problem-solution.png',
+      bestFor: ['Proven ad formats', 'Fast variations', 'Product demos'],
+      starterPrompt: 'Make a video like this template for my product',
+    },
+  },
+  {
+    slug: 'ugc-first-frame',
+    name: 'UGC first frame',
+    description: 'Use when the user already has a finished still image — their own photo, a brand asset or an approved still — and wants that one frame animated into a short clip, with no storyboard, narration or lip-sync.',
+    file: officialSkillFile('ugc-first-frame.md'),
+    director: { file: officialSkillFile('ugc-first-frame/director.md'), markers: ['flow: first frame'] },
+    showcase: {
+      imageUrl: '/creative/avatars/lifestyle-creator-home.jpg',
+      bestFor: ['Photo to video', 'Quick clips', 'Brand assets'],
+      starterPrompt: 'Animate this photo into a short ad',
+    },
+  },
+  {
+    slug: 'animation-character-ad',
+    name: 'Animated story ad',
+    description: 'Use when the user wants a stylized, animated or cartoon-look story ad built from scratch, with a short story arc — not a photoreal UGC ad and not a template clone.',
+    file: officialSkillFile('animation-character-ad.md'),
+    director: { file: officialSkillFile('animation-character-ad/director.md'), markers: ['flow: animation character ad'] },
+    showcase: {
+      imageUrl: '/creative/avatars/mascot-piko.jpg',
+      bestFor: ['Animated ads', 'Mascot stories', 'Kids & family'],
+      starterPrompt: 'Make an animated story ad for my brand',
+    },
+  },
+  {
+    slug: 'short-drama-stitch',
+    name: 'Short-drama stitch',
+    description: 'Use when the user already has video footage — episode clips, several takes, raw b-roll — and wants it cut down into an ad, never generating new video.',
+    file: officialSkillFile('short-drama-stitch.md'),
+    director: { file: officialSkillFile('short-drama-stitch/director.md'), markers: ['flow: short drama stitch'] },
+    showcase: {
+      imageUrl: '/creative/templates/testimonial.png',
+      bestFor: ['Existing footage', 'Short dramas', 'Recuts'],
+      starterPrompt: 'Cut my footage into a short ad',
     },
   },
 ];

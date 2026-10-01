@@ -16,10 +16,30 @@ const TALKING_HEAD_SKILL_PATH = path.resolve(
 )
 
 let TALKING_HEAD_SKILL_TEXT: string
+// The UGC character, template video, UGC first-frame, animation-character and
+// short-drama-stitch contracts moved word for word into Official skills too.
+// Tests that read them from Olmo's prompt read the skill files alongside it.
+let FLOW_SKILLS_TEXT: string
 
 beforeAll(() => {
   expect(existsSync(TALKING_HEAD_SKILL_PATH)).toBe(true)
   TALKING_HEAD_SKILL_TEXT = readFileSync(TALKING_HEAD_SKILL_PATH, 'utf8')
+  FLOW_SKILLS_TEXT = ['ugc-character-ad', 'template-video', 'ugc-first-frame', 'animation-character-ad', 'short-drama-stitch']
+    .map((slug) => readFileSync(path.resolve(TALKING_HEAD_SKILL_PATH, '..', `${slug}.md`), 'utf8'))
+    .join('\n\n')
+})
+
+describe('ad flows load as Official skills', () => {
+  it('keeps the five flow contracts out of Olmo\'s always-on prompt and points to each skill', async () => {
+    const instructions = await platformAgent.getInstructions({ requestContext: new RequestContext() })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    for (const header of ['## UGC character ad —', '## Template video cloning —', '## UGC first-frame ad —', '## Animation-character ad —', '## Short-drama-stitch ad —']) {
+      expect(text).not.toContain(header)
+    }
+    for (const skill of ['UGC character ad skill', 'Template video skill', 'UGC first frame skill', 'Animated story ad skill', 'Short-drama stitch skill']) {
+      expect(text).toContain(`load the ${skill}`)
+    }
+  })
 })
 
 describe('Talking head Official skill contract text', () => {
@@ -46,7 +66,7 @@ describe('platformAgent instructions — talking-head contract', () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Base override text.')
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
 
     const ugcIdx = text.indexOf('## UGC character ad')
     expect(ugcIdx).toBeGreaterThanOrEqual(0)
@@ -133,7 +153,7 @@ describe('platformAgent instructions — short-drama-stitch contract', () => {
   it('includes the short-drama-stitch contract with its no-generation mutual-exclusion clause', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     expect(text).toContain('Short-drama-stitch ad')
     expect(text).toContain('NOT when the user wants new footage created from scratch')
   })
@@ -141,7 +161,7 @@ describe('platformAgent instructions — short-drama-stitch contract', () => {
   it('disambiguates short-drama-stitch from the three generation contracts BOTH ways', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     // Bidirectional: short-drama-stitch's own opening line names the other
     // three, AND each of the other three's opening line now names
     // short-drama-stitch back — a one-directional version would pass a
@@ -168,7 +188,7 @@ describe('platformAgent instructions — short-drama-stitch contract', () => {
   it('widens ROUTING_CONTRACT to cover editing verbs, not just generation verbs', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     expect(text).toContain('stitch, cut, edit, or assemble existing footage into')
   })
 })
@@ -177,7 +197,7 @@ describe('platformAgent instructions — UGC first-frame contract', () => {
   it('includes the UGC first-frame contract with its no-board-build clause', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     expect(text).toContain('## UGC first-frame ad')
     expect(text).toContain('no new character or storyboard being built from scratch')
   })
@@ -185,7 +205,7 @@ describe('platformAgent instructions — UGC first-frame contract', () => {
   it('disambiguates UGC first-frame from the UGC character contract both ways', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     const ugcIdx = text.indexOf('## UGC character ad')
     const firstFrameIdx = text.indexOf('## UGC first-frame ad')
     expect(ugcIdx).toBeGreaterThan(-1)
@@ -201,7 +221,7 @@ describe('platformAgent instructions — UGC first-frame contract', () => {
   it('states the one-confirmation-per-clip cost note and the separate dialogue-approval rule', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     const firstFrameIdx = text.indexOf('## UGC first-frame ad')
     const nextSectionIdx = text.indexOf('\n\n## ', firstFrameIdx + 1)
     const section = text.slice(firstFrameIdx, nextSectionIdx > 0 ? nextSectionIdx : undefined)
@@ -212,7 +232,7 @@ describe('platformAgent instructions — UGC first-frame contract', () => {
   it('disambiguates UGC first-frame from the Talking-head contract both ways (a photo of a presenter reading a script matches only one)', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     const firstFrameIdx = text.indexOf('## UGC first-frame ad')
     expect(firstFrameIdx).toBeGreaterThan(-1)
     // The Talking-head side of this reciprocal check now lives in the
@@ -230,7 +250,7 @@ describe('platformAgent instructions — UGC first-frame contract', () => {
   it('intake asks for aspect ratio and per-clip duration before any cost estimate', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     const firstFrameIdx = text.indexOf('## UGC first-frame ad')
     const nextSectionIdx = text.indexOf('\n\n## ', firstFrameIdx + 1)
     const section = text.slice(firstFrameIdx, nextSectionIdx > 0 ? nextSectionIdx : undefined)
@@ -243,7 +263,7 @@ describe('platformAgent instructions — UGC first-frame contract', () => {
   it('corrects the still-reuse path to the board-approval turn result, not the cast-sheet-only memory field', async () => {
     const requestContext = new RequestContext()
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     const firstFrameIdx = text.indexOf('## UGC first-frame ad')
     const nextSectionIdx = text.indexOf('\n\n## ', firstFrameIdx + 1)
     const section = text.slice(firstFrameIdx, nextSectionIdx > 0 ? nextSectionIdx : undefined)
@@ -277,7 +297,7 @@ describe('picked library avatars keep their category\'s look', () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Base override text.')
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     expect(text).toMatch(/"Avatar category: Animation"[^]*route to the Animation-character contract with that character as the identity reference/)
     expect(text).toMatch(/skip the style question and the cast-sheet generation/)
     expect(text).toMatch(/"avatar_cozy_3d_mascot", "avatar_game_hero", "avatar_cinematic_anime", "avatar_fantasy_anime", "avatar_3d_chibi" or "avatar_storybook_anime"/)
@@ -290,7 +310,7 @@ describe('picked library avatars keep their category\'s look', () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Base override text.')
     const instructions = await platformAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_SKILLS_TEXT
     expect(text).toMatch(/If more than one avatar skill .* is turned on and the user has not said which kind of avatar they want/)
     expect(text).toMatch(/What kind of avatar do you want\?/)
     expect(text).toMatch(/follow only the chosen skill/)

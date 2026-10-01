@@ -7,7 +7,7 @@ import { OFFICIAL_SKILLS, buildSkillManifest, manifestUnchanged, readSkillBody }
 describe('OFFICIAL_SKILLS', () => {
   it('has every slug', () => {
     const slugs = OFFICIAL_SKILLS.map((s) => s.slug).sort();
-    expect(slugs).toEqual(['animated-character-creator', 'avatar-creator', 'talking-head', 'tvc-character-creator']);
+    expect(slugs).toEqual(['animated-character-creator', 'animation-character-ad', 'avatar-creator', 'short-drama-stitch', 'talking-head', 'template-video', 'tvc-character-creator', 'ugc-character-ad', 'ugc-first-frame']);
   });
 
   it('each entry file exists and is non-empty', () => {
@@ -131,7 +131,20 @@ describe('Director references', () => {
     expect(readSkillBody(talkingHead.file)).toContain('includes the line "flow: talking head"');
   });
 
-  it('every Official skill has a Director half', () => {
-    for (const entry of OFFICIAL_SKILLS) expect(entry.director, entry.slug).toBeDefined();
+  it('every Official skill has a Director half, except the two whose Director rules other flows share', () => {
+    // UGC character generation and Template cloning stay in Director's base
+    // instructions: the avatar creators, TVC and Talking head lean on them
+    // (batch rules, the cast sheet, the transcript QA).
+    for (const entry of OFFICIAL_SKILLS) {
+      if (entry.slug === 'ugc-character-ad' || entry.slug === 'template-video') expect(entry.director, entry.slug).toBeUndefined();
+      else expect(entry.director, entry.slug).toBeDefined();
+    }
+  });
+
+  it('has each flow with a Director half tell Olmo to send its marker on every call', () => {
+    for (const entry of OFFICIAL_SKILLS) {
+      if (!entry.director || !entry.director.markers[0].startsWith('flow:')) continue;
+      expect(readSkillBody(entry.file), entry.slug).toContain(`includes the line "${entry.director.markers[0]}"`);
+    }
   });
 });

@@ -5,6 +5,19 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { directorAgent, directorAgentDelegate } from '../directorAgent.js'
 
+// The animation-character, short-drama-stitch and UGC first-frame sections
+// moved word for word into their Official skills' director.md files; Director
+// loads each as a native skill when Olmo's brief carries its "flow:" line.
+// The tests below read them alongside the base instructions, as Director sees
+// them once the skill loads.
+const OFFICIAL_SKILLS_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../../../../products/agent-platform/packages/api/seeds/official-skills',
+)
+const FLOW_DIRECTOR_TEXT = ['animation-character-ad', 'short-drama-stitch', 'ugc-first-frame']
+  .map((slug) => readFileSync(path.join(OFFICIAL_SKILLS_DIR, slug, 'director.md'), 'utf8'))
+  .join('\n\n')
+
 const TALKING_HEAD_DIRECTOR_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../../../../products/agent-platform/packages/api/seeds/official-skills/talking-head/director.md',
@@ -57,6 +70,17 @@ describe('directorAgent instructions', () => {
     }
   })
 
+  it('no longer carries the animation-character, short-drama-stitch or first-frame sections — they load as skills', async () => {
+    const instructions = await directorAgent.getInstructions({ requestContext: new RequestContext() })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).not.toContain('## Animation-character generation')
+    expect(text).not.toContain('## Short-drama-stitch')
+    expect(text).not.toContain('## UGC first-frame generation')
+    // Shared by other flows, so these stay in Director.
+    expect(text).toContain('## UGC character generation')
+    expect(text).toContain('## Template cloning')
+  })
+
   it('appends template-cloning, UGC-character, and motion-craft sections even under a tenant agentSystemPrompt override', async () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Custom persona override text.')
@@ -100,7 +124,7 @@ describe('directorAgent animation-character instructions', () => {
   it('appends the animation-character section with all three style-lock templates', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     expect(text).toContain('## Animation-character generation')
     expect(text).toContain('STYLE "3d_pixar"')
     expect(text).toContain('STYLE "2d_flat"')
@@ -114,7 +138,7 @@ describe('directorAgent animation-character instructions', () => {
   it('never calls lipsync more than once and confines it to the hook beat', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     const sectionStart = text.indexOf('## Animation-character generation')
     const section = text.slice(sectionStart)
     expect(section).toContain('This is the ONE beat in this ad that gets lip-sync')
@@ -123,7 +147,7 @@ describe('directorAgent animation-character instructions', () => {
   it('places mix_music_bed after burn_captions in the section text (music bed is last, never before captions)', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     const sectionStart = text.indexOf('## Animation-character generation')
     const section = text.slice(sectionStart)
     const captionsIdx = section.indexOf('Captions: call burn_captions')
@@ -144,7 +168,7 @@ describe('directorAgent short-drama-stitch instructions', () => {
   it('includes the short-drama-stitch section with its no-generation rule', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     expect(text).toContain('short-drama-stitch')
     expect(text).toContain('never calls generate_image or generate_video')
   })
@@ -152,14 +176,14 @@ describe('directorAgent short-drama-stitch instructions', () => {
   it('includes the exact brand-name-check substring for short-drama-stitch (no script to compare against)', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     expect(text).toContain('this skill never generates speech, so there is no approved script to compare against')
   })
 
   it('orders captions before music in the short-drama-stitch section (pipeline-order regression guard)', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     const shortDramaIdx = text.indexOf('Short-drama-stitch')
     const section = text.slice(shortDramaIdx)
     const captionsIdx = section.indexOf('Captions: call burn_captions')
@@ -173,7 +197,7 @@ describe('directorAgent UGC first-frame instructions', () => {
   it('includes the UGC first-frame section with its no-cast-sheet rule', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     expect(text).toContain('## UGC first-frame generation')
     expect(text).toContain('this skill never calls generate_image to create a presenter')
   })
@@ -181,7 +205,7 @@ describe('directorAgent UGC first-frame instructions', () => {
   it('enforces the animate_frame / composite_references mutual exclusion in the section text', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     const sectionStart = text.indexOf('## UGC first-frame generation')
     const section = text.slice(sectionStart)
     expect(section).toContain('mode "animate_frame"')
@@ -191,7 +215,7 @@ describe('directorAgent UGC first-frame instructions', () => {
   it('issues one generate_video call at a time across multiple supplied stills', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     const sectionStart = text.indexOf('## UGC first-frame generation')
     const section = text.slice(sectionStart)
     expect(section).toContain('one generate_video call at a time')
@@ -201,7 +225,7 @@ describe('directorAgent UGC first-frame instructions', () => {
     const requestContext = new RequestContext()
     requestContext.set('agentSystemPrompt', 'Custom persona override text.')
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     expect(text).toContain('Custom persona override text.')
     expect(text).toContain('## UGC first-frame generation')
   })
@@ -209,7 +233,7 @@ describe('directorAgent UGC first-frame instructions', () => {
   it('places Motion craft before UGC first-frame generation, since the section references its rules by name', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     const motionIdx = text.indexOf('## Motion craft')
     const firstFrameIdx = text.indexOf('## UGC first-frame generation')
     expect(motionIdx).toBeGreaterThanOrEqual(0)
@@ -219,7 +243,7 @@ describe('directorAgent UGC first-frame instructions', () => {
   it('requires aspectRatio and durationSeconds to be passed explicitly on every generate_video call', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     const sectionStart = text.indexOf('## UGC first-frame generation')
     // Bounded to just this section — an unbounded slice would also match
     // ANIMATION_CHARACTER_SECTION further down the concatenated string
@@ -234,7 +258,7 @@ describe('directorAgent UGC first-frame instructions', () => {
   it('instructs setting approvedDialogue whenever a clip has spoken dialogue, never a quoted line left unset', async () => {
     const requestContext = new RequestContext()
     const instructions = await directorAgent.getInstructions({ requestContext })
-    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    const text = (typeof instructions === 'string' ? instructions : JSON.stringify(instructions)) + FLOW_DIRECTOR_TEXT
     const sectionStart = text.indexOf('## UGC first-frame generation')
     const section = text.slice(sectionStart)
     expect(section).toContain('approvedDialogue')
