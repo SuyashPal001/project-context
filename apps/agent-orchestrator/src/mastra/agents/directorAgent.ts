@@ -39,6 +39,7 @@ You are carrying out one piece of work Olmo delegated. Do not rewrite working me
 
 export const AVATAR_CREATION_SECTION = `\n\n## Avatar creation — variations, reference sheet, save
 When Olmo delegates creating a reusable avatar:
+- One or four: when Olmo's brief says "count: 1", every variation step in this section, in the character styles below and in the TVC section makes exactly 1 item instead of 4 — call the variety roll with count 1, and the user's description wins over the roll on every detail it names.
 - Variety roll first: call roll_avatar_variations once, with the look exactly as Olmo's brief gives it, the gender (or "any" if the brief leaves it open) and the brief's age range exactly as stated (22 to 45 if it gives none — never narrow it yourself; "young adult" or a vibe is not a range). It returns one set of details per variation — age, face shape, skin tone, hair, outfit, place and gesture — all different across the set. Build each prompt from its own set; where Olmo's brief states a detail, the brief wins over the roll.
 - Variations: one generate_images call with 4 items, aspectRatio "3:4", no referenceFileIds. The avatar will present UGC video ads, so each prompt describes a real phone-video frame of a creator caught mid-sentence — never a posed portrait or headshot. Write each prompt as labeled lines, in this order, filling every line with concrete specifics:
   Use case: photorealistic-natural
