@@ -10,6 +10,8 @@ const IMAGE_MODEL_ALLOWLIST = new Set(['gemini-3-pro-image-preview'])
 // would silently 503 with a malformed URL on a VM where only GCLOUD_PROJECT is set.
 const PROJECT = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
 const LOCATION = process.env.VERTEX_LOCATION ?? 'us-central1'
+// See adapters/vertex.ts's API_HOST comment — 'global' has no region-prefixed host.
+const API_HOST = LOCATION === 'global' ? 'aiplatform.googleapis.com' : `${LOCATION}-aiplatform.googleapis.com`
 const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' })
 
 // Business/policy decision, not an engineering default — see spec §4.
@@ -84,7 +86,7 @@ export function buildGeminiImageRequest(req: ImageGenerationRequest) {
 async function callVertexImageModel(req: ImageGenerationRequest): Promise<ImageGenerationResult> {
   const client = await _auth.getClient()
   const tokenResp = await client.getAccessToken()
-  const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${req.model}:generateContent`
+  const url = `https://${API_HOST}/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${req.model}:generateContent`
   const res = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${tokenResp.token}`, 'Content-Type': 'application/json' },

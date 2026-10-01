@@ -29,7 +29,7 @@ Evaluate the extraction quality.`
       tenantId: inputData.tenantId,
       agentId: 'doc-validator',
       workflowId: 'document-ingestion',
-      model: 'gemini-2.5-flash',
+      model: process.env.MASTRA_MODEL ?? 'gemini-3.6-flash',
       inputTokens: usage.promptTokens ?? 0,
       outputTokens: usage.completionTokens ?? 0,
     })

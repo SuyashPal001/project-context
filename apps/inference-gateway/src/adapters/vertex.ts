@@ -44,10 +44,21 @@ import type {
 } from '../types';
 
 const PROJECT = process.env.VERTEX_PROJECT ?? '';
-const LOCATION = process.env.VERTEX_LOCATION ?? 'us-central1';
+// Chat/text models (gemini-3.6-flash, gemini-3.1-pro) only deploy to the global
+// and us/eu multi-region endpoints, unlike image/video/music models which stay
+// on VERTEX_LOCATION (regional) — see images.ts/video.ts/music.ts. Kept separate
+// so fixing the chat model's location can't silently break those.
+const LOCATION = process.env.VERTEX_TEXT_LOCATION ?? process.env.VERTEX_LOCATION ?? 'us-central1';
 const DEFAULT_MODEL = process.env.VERTEX_MODEL ?? 'gemini-2.5-flash';
 
 const vertexAI = new VertexAI({ project: PROJECT, location: LOCATION });
+
+// Vertex's regional REST host is `{region}-aiplatform.googleapis.com`, but the
+// `global` location has no region prefix — it's just `aiplatform.googleapis.com`.
+// Models that only deploy to global (e.g. gemini-3.6-flash, gemini-3.1-pro) 404
+// against a regional host; building `global-aiplatform.googleapis.com` instead
+// hits a nonexistent host and returns an HTML error page, not JSON.
+const API_HOST = LOCATION === 'global' ? 'aiplatform.googleapis.com' : `${LOCATION}-aiplatform.googleapis.com`;
 
 // Cache model instances by name to avoid repeated SDK allocations
 const modelCache = new Map<string, ReturnType<typeof vertexAI.getGenerativeModel>>();
@@ -413,7 +424,7 @@ async function createCachedContentV(
   const tokenResp = await client.getAccessToken();
   const token = tokenResp.token;
 
-  const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/cachedContents`;
+  const url = `https://${API_HOST}/v1/projects/${PROJECT}/locations/${LOCATION}/cachedContents`;
   const body: Record<string, unknown> = {
     // Vertex expects the fully-qualified model resource path here.
     model: `projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${modelName}`,
@@ -532,7 +543,7 @@ export class VertexAdapter implements ProviderAdapter {
     const tokenResp = await client.getAccessToken();
     const token = tokenResp.token;
 
-    const url = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${modelName}:streamGenerateContent?alt=sse`;
+    const url = `https://${API_HOST}/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${modelName}:streamGenerateContent?alt=sse`;
 
     // Cache lookup + stale-retry + fire-and-forget-prime. Same pattern as
     // gemini.ts. Retry happens before any writeHead, so we can safely

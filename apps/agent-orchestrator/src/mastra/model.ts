@@ -27,10 +27,10 @@ const gatewayPrivate = createOpenAICompatible({
   headers: { 'x-data-classification': 'restricted' },
 })
 
-export const platformModel = gateway(process.env.MASTRA_MODEL ?? 'gemini-2.5-flash')
+export const platformModel = gateway(process.env.MASTRA_MODEL ?? 'gemini-3.6-flash')
 
 // Lightweight model for conversational turns (thinkingBudget === 0).
-export const liteModel = gateway(process.env.MASTRA_LITE_MODEL ?? 'gemini-2.5-flash-lite')
+export const liteModel = gateway(process.env.MASTRA_LITE_MODEL ?? 'gemini-3.6-flash')
 
 // Private-only model for restricted data (CASA/KYC).
 // x-data-classification header forces OllamaAdapter — never hits cloud providers.

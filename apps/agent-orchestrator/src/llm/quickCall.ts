@@ -23,7 +23,7 @@ function getAI(): GoogleGenAI {
 
 export async function quickGeminiCall(prompt: string): Promise<string> {
   const response = await getAI().models.generateContent({
-    model: 'gemini-2.5-flash',
+    model: process.env.MASTRA_MODEL ?? 'gemini-3.6-flash',
     contents: prompt,
   });
   return response.text ?? '';
