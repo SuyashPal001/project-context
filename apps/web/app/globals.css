@@ -86,7 +86,8 @@
   /* The tight near-edge layers match --shadow-elevated (the clarification card) so the composer's
      edge reads as clearly at rest; the wide layer keeps its floating lift. */
   --shadow-composer-value: var(--shadow-elevated-value); /* at rest: exactly the clarification card's shadow */
-  --shadow-composer-focus-value: 0 4px 16px -4px rgb(0 0 0 / 0.12), 0 1px 4px -1px rgb(0 0 0 / 0.08), 0 32px 64px -14px rgb(0 0 0 / 0.28);
+  /* On focus, only a slightly deeper version of the card shadow — the old wide 64px layer read as a grey smudge. */
+  --shadow-composer-focus-value: 0 6px 20px -6px rgb(0 0 0 / 0.13), 0 1px 4px -1px rgb(0 0 0 / 0.08);
   --messages-panel: var(--card); /* sidebar itself renders bg-card, not bg-background — match that, not background */
   --background: oklch(0.97 0 0); /* a touch greyer so white cards and the composer stand off it */
   --foreground: oklch(0.145 0 0);
@@ -138,7 +139,7 @@
      is nearly invisible against this theme's near-black background. */
   /* Same as light mode: --shadow-elevated's tight layers (the clarification card) plus the wide lift. */
   --shadow-composer-value: var(--shadow-elevated-value);
-  --shadow-composer-focus-value: 0 2px 10px -3px rgb(0 0 0 / 0.4), 0 10px 40px -12px rgb(0 0 0 / 0.55), 0 36px 80px -14px rgb(0 0 0 / 0.55), inset 0 1px 0 0 rgb(255 255 255 / 0.09);
+  --shadow-composer-focus-value: 0 12px 40px -12px rgb(0 0 0 / 0.6), 0 2px 10px -3px rgb(0 0 0 / 0.4), inset 0 1px 0 0 rgb(255 255 255 / 0.08);
   /* Ops-portal palette, promoted to the global dark theme: zinc neutrals + a violet brand accent. */
   /* Progressive lightening per feedback: 6% -> 9% -> 13% -> 16% -> 19%.
      Still visibly darker than --card (21%, chrome) so the two layers
