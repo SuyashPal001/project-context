@@ -249,6 +249,7 @@ describe('TVC character creator (Official skill)', () => {
     expect(text).toMatch(/Casting fits the product/)
     expect(TVC_CHARACTER_SECTION).toMatch(/with category from what Olmo says the actor is for/)
     expect(TVC_CHARACTER_SECTION).toMatch(/Signature anchor: <anchor>/)
+    expect(TVC_CHARACTER_SECTION).toMatch(/never exaggerated, theatrical, gurning or cartoonish/)
     expect(TVC_CHARACTER_SECTION).toMatch(/When Olmo's brief says "framing: chest up"/)
   })
 })
