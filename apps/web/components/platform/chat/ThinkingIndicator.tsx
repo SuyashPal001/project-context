@@ -84,6 +84,16 @@ const WARMUP_STEPS = [
 
 const WARMUP_STEP_INTERVAL_MS = 8_000;
 
+// Tools that pause the turn on the user, not on the agent: while only these
+// are loading, the agent is waiting for an answer, so the live line stops
+// reading "Working for Ns" and its timer stops counting.
+const AWAITING_USER_TOOLS = new Set(['ask_clarifying_questions']);
+
+export function isAwaitingUser(activeToolCalls: ToolCall[]): boolean {
+    const loading = activeToolCalls.filter(t => t.isLoading);
+    return loading.length > 0 && loading.every(t => AWAITING_USER_TOOLS.has(t.toolName));
+}
+
 function PulsingDots() {
     return (
         <span className="flex gap-[3px] items-center">
@@ -124,6 +134,9 @@ export function LiveTrace({
     // streaming finishes) — purely a local display value for the in-progress
     // Phase 2a line, so it doesn't need to survive this component unmounting.
     const [liveElapsed, setLiveElapsed] = useState(0);
+    // Seconds spent waiting on the user, excluded from "Working for Ns".
+    const [pausedMs, setPausedMs] = useState(0);
+    const awaitingUser = isAwaitingUser(activeToolCalls);
 
     const isRAG = activeToolCalls.some(tc => tc.toolName === 'retrieve_documents');
     const isPRD = activeToolCalls.some(tc =>
@@ -209,18 +222,26 @@ export function LiveTrace({
 
     useEffect(() => {
         if (!isStreaming || startedAt === null) return;
-        const tick = () => setLiveElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+        if (awaitingUser) {
+            const pauseStart = Date.now();
+            return () => setPausedMs(prev => prev + (Date.now() - pauseStart));
+        }
+        const tick = () => setLiveElapsed(Math.max(0, Math.floor((Date.now() - startedAt - pausedMs) / 1000)));
         tick();
         const id = setInterval(tick, 1000);
         return () => clearInterval(id);
-    }, [isStreaming, startedAt]);
+    }, [isStreaming, startedAt, awaitingUser, pausedMs]);
 
     // Tool calls (active + completed)
     const loadingTools = activeToolCalls.filter(t => t.isLoading);
     if (loadingTools.length > 0 || completedToolCalls.length > 0) {
         return (
             <div className="animate-in fade-in duration-300">
-                {liveElapsed >= 2 && (
+                {awaitingUser ? (
+                    <div className="text-sm text-muted-foreground font-mono mb-1.5">
+                        Waiting for your answer
+                    </div>
+                ) : liveElapsed >= 2 && (
                     <div className="shimmer-text text-sm text-shimmer-accent-80 font-mono mb-1.5" key={loadingTools.length > 0 ? messageIndex : 'done'}>
                         Working for {liveElapsed}s{loadingTools.length > 0 ? ` · ${thinkingMessages[messageIndex % thinkingMessages.length]}` : ''}
                     </div>
@@ -379,10 +400,11 @@ export function ThinkingIndicator({
     if (!isStreaming) return null;
 
     const hasToolActivity = activeToolCalls.some(t => t.isLoading) || completedToolCalls.length > 0;
+    const awaitingUser = isAwaitingUser(activeToolCalls);
 
     return (
         <div className="flex items-start gap-4">
-            <AgentOrb size={32} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity} avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
+            <AgentOrb size={32} liveState={hasToolActivity ? "running" : "thinking"} isLoading={hasToolActivity && !awaitingUser} avatarUrl={agentAvatarUrl} persona={agentPersona} isDefault={agentIsDefault} />
             <div className={hasToolActivity ? "flex-1 pt-1" : "flex-1 pt-1.5"}>
                 <LiveTrace
                     isStreaming={isStreaming}
