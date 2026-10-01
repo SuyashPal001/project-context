@@ -244,6 +244,20 @@ describe('rollToonVariations', () => {
   })
 })
 
+describe('rollClayVariations', () => {
+  it('casts four different clay characters, each with its own job, feature, palette, expression and backdrop', async () => {
+    const { rollClayVariations, clayLine } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 10; seed++) {
+      const set = rollClayVariations(4, seeded(seed), 'Indian')
+      expect(set.every((v) => v.look === 'Indian' && v.skinTone && v.age >= 22 && v.age <= 65)).toBe(true)
+      for (const key of ['role', 'feature', 'palette', 'expression', 'backdrop'] as const) expect(distinct(set.map((v) => v[key]))).toBe(true)
+      expect(set.every((v) => /backdrop$/.test(v.backdrop))).toBe(true)
+      expect(set.every((v) => !/wink|closed eye/.test(v.expression))).toBe(true)
+      expect(clayLine(set[0])).toMatch(/^\d+ · Indian (woman|man) · /)
+    }
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')

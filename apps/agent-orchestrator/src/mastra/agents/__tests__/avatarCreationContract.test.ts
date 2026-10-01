@@ -212,6 +212,18 @@ describe('animated-character avatars (Animated character creator Official skill)
     expect(AVATAR_CREATION_SECTION).toMatch(/STYLE "3d_pixar", "2d_flat" or "claymation" block/)
     expect(AVATAR_CREATION_SECTION).toMatch(/stop-motion claymation look, visible clay or plasticine texture/)
   })
+
+  it('makes claymation a matte plasticine puppet on a plain cloth backdrop, quirky but with both eyes open, and keeps the clay in the sheet', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/- Claymation, on top of the rules above/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/visible thumbprints and sculpting-tool marks/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/no set or props behind the character/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/Avoid: glossy plastic sheen, smooth CGI render.*a winking or closed eye, a hand on the face, kneeling or sitting/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/never smoothed into a CGI render/)
+  })
+
+  it('opens both eyes and relaxes the pose in every animated turnaround panel, even when the still winks', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/In every panel both eyes are fully open.*even when the picked still winks, squints, grins or poses/)
+  })
 })
 
 describe('TVC character creator (Official skill)', () => {
