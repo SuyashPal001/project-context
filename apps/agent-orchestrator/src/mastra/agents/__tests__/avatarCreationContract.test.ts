@@ -252,6 +252,8 @@ describe('TVC character creator (Official skill)', () => {
     expect(TVC_CHARACTER_SECTION).toMatch(/never exaggerated, theatrical, gurning or cartoonish/)
     expect(text).toMatch(/"Just one — I'll describe them"/)
     expect(text).toMatch(/Delegate with "count: 1"/)
+    expect(text).toMatch(/"Any preferences for them\?" card/)
+    expect(text).toMatch(/"No preference — you choose"/)
     expect(TVC_CHARACTER_SECTION).toMatch(/exactly 1 when Olmo's brief says "count: 1"/)
     expect(TVC_CHARACTER_SECTION).toMatch(/When Olmo's brief says "framing: chest up"/)
   })
