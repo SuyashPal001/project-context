@@ -145,7 +145,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     description: 'Use when the user wants to clone or recreate a reference ad\'s structure onto their own product — "clone this ad", "make a video like this template".',
     file: officialSkillFile('template-video.md'),
     showcase: {
-      imageUrl: '/creative/templates/problem-solution.png',
+      imageUrl: '/creative/templates/product-demo.png',
       bestFor: ['Proven ad formats', 'Fast variations', 'Product demos'],
       starterPrompt: 'Make a video like this template for my product',
     },
@@ -181,7 +181,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     file: officialSkillFile('short-drama-stitch.md'),
     director: { file: officialSkillFile('short-drama-stitch/director.md'), markers: ['flow: short drama stitch'] },
     showcase: {
-      imageUrl: '/creative/templates/testimonial.png',
+      imageUrl: '/creative/templates/before-after.png',
       bestFor: ['Existing footage', 'Short dramas', 'Recuts'],
       starterPrompt: 'Cut my footage into a short ad',
     },
