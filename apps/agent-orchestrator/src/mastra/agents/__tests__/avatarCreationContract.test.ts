@@ -246,6 +246,14 @@ describe('animated-character avatars (Animated character creator Official skill)
     expect(skill).not.toContain('"3D movie drama — glamorous adults"')
   })
 
+  it('keeps one described character inside its style, and the preferences card too', () => {
+    expect(AVATAR_CREATION_SECTION).toMatch(/the description fills the slots \(who, hair, outfit, place, mood\) and never replaces the look/)
+    expect(AVATAR_CREATION_SECTION).toMatch(/move it into the style's world while keeping its intent/)
+    const skill = readFileSync(AVATAR_CREATOR_SKILL_PATH.replace('avatar-creator.md', 'animated-character-creator.md'), 'utf8')
+    expect(skill).toMatch(/Preferences stay inside the chosen style/)
+    expect(skill).toMatch(/settings are night-city places/)
+  })
+
   it('opens both eyes and relaxes the pose in every animated turnaround panel, even when the still winks', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/In every panel both eyes are fully open.*even when the picked still winks, squints, grins or poses/)
   })
