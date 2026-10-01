@@ -118,14 +118,14 @@ export const AVATAR_ASSETS: AvatarAssetSeed[] = [
   { id: '53f7035f-96dc-4c69-833c-57d2ffa4eb62', slug: 'game-vexa', name: 'Vexa', role: 'Game hero · deep-space salvage pilot', tone: 'Wry & confident', localImagePath: 'creative/avatars/game-vexa.jpg', category: 'Animation' },
   { id: 'da16c8cb-be8d-4798-90ef-6dc01df42c46', slug: 'anime-leora', name: 'Leora', role: 'Cinematic anime · rooftop lounge', tone: 'Poised & playful', localImagePath: 'creative/avatars/anime-leora.jpg', category: 'Animation' },
   { id: '0771b2b8-c254-4777-9efd-be98cbb06035', slug: 'anime-ren', name: 'Ren', role: 'Cinematic anime · gallery after dark', tone: 'Quietly charismatic', localImagePath: 'creative/avatars/anime-ren.jpg', category: 'Animation' },
-  { id: '5dfa8cc8-1a66-4541-8331-911052953066', slug: 'anime-mira', name: 'Mira', role: 'Cinematic anime · coastal terrace', tone: 'Composed & confident', localImagePath: 'creative/avatars/anime-mira.jpg', category: 'Animation' },
+  { id: '5dfa8cc8-1a66-4541-8331-911052953066', slug: 'anime-mira', name: 'Celeste', role: 'Cinematic anime · coastal terrace', tone: 'Composed & confident', localImagePath: 'creative/avatars/anime-mira.jpg', category: 'Animation' },
   { id: '8c59c3f1-fa91-4db9-8643-a619a0eaf31d', slug: 'anime-airi', name: 'Airi', role: 'Fantasy anime · sky-map cartographer', tone: 'Confident & curious', localImagePath: 'creative/avatars/anime-airi.jpg', category: 'Animation' },
   { id: '2962dd59-0742-4634-af3e-95b4ce54dffe', slug: 'anime-renna', name: 'Renna', role: 'Fantasy anime · glass-garden knight', tone: 'Calm & determined', localImagePath: 'creative/avatars/anime-renna.jpg', category: 'Animation' },
   { id: '85e30c27-54ca-473e-9cfc-72c7a7d3aab9', slug: 'chibi-anika', name: 'Anika', role: '3D chibi · festive little girl', tone: 'Playful & stubborn', localImagePath: 'creative/avatars/chibi-anika.jpg', category: 'Animation' },
   { id: '316cad61-bc30-4563-8d19-d78be910fc4b', slug: 'chibi-ayaan', name: 'Ayaan', role: '3D chibi · determined little boy', tone: 'Funny & stubborn', localImagePath: 'creative/avatars/chibi-ayaan.jpg', category: 'Animation' },
-  { id: '4fc13bf5-30b2-4e45-95b3-dc7033da0627', slug: 'chibi-zuri', name: 'Zuri', role: '3D chibi · cheerful little girl', tone: 'Exuberant', localImagePath: 'creative/avatars/chibi-zuri.jpg', category: 'Animation' },
+  { id: '4fc13bf5-30b2-4e45-95b3-dc7033da0627', slug: 'chibi-zuri', name: 'Nia', role: '3D chibi · cheerful little girl', tone: 'Exuberant', localImagePath: 'creative/avatars/chibi-zuri.jpg', category: 'Animation' },
   { id: 'e79121a5-9ea5-4159-a141-0f0c1f339810', slug: 'storybook-kavya', name: 'Kavya', role: 'Storybook anime · home kitchen', tone: 'Kind & quietly amused', localImagePath: 'creative/avatars/storybook-kavya.jpg', category: 'Animation' },
-  { id: 'a0db4ee1-af4a-4a99-a5a8-1c2161682ee2', slug: 'storybook-meera', name: 'Meera', role: 'Storybook anime · village bus window', tone: 'Calm & thoughtful', localImagePath: 'creative/avatars/storybook-meera.jpg', category: 'Animation' },
+  { id: 'a0db4ee1-af4a-4a99-a5a8-1c2161682ee2', slug: 'storybook-meera', name: 'Gauri', role: 'Storybook anime · village bus window', tone: 'Calm & thoughtful', localImagePath: 'creative/avatars/storybook-meera.jpg', category: 'Animation' },
   { id: 'ec0d606e-07f6-461c-be1e-8b4048dccf5a', slug: 'tvc-aroha', name: 'Aroha', role: 'TVC lead actress · evening gown', tone: 'Graceful & confident', localImagePath: 'creative/avatars/tvc-aroha.jpg', category: 'TVC' },
 ];
 
