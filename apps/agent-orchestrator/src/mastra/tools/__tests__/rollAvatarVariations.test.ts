@@ -269,6 +269,28 @@ describe('rollCuteClayVariations', () => {
   })
 })
 
+describe('rollFamily3dVariations and rollDrama3dVariations', () => {
+  it('casts four different 3D family-film characters on plain studio backdrops', async () => {
+    const { rollFamily3dVariations } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 10; seed++) {
+      const set = rollFamily3dVariations(4, seeded(seed), 'Indian')
+      expect(set.every((v) => v.age >= 22 && v.age <= 70 && /studio backdrop$/.test(v.backdrop))).toBe(true)
+      for (const key of ['prop', 'feature', 'expression', 'backdrop'] as const) expect(distinct(set.map((v) => v[key]))).toBe(true)
+    }
+  })
+
+  it('casts four different adult movie-drama characters, each with its own emotion and place', async () => {
+    const { rollDrama3dVariations, drama3dLine } = await import('../rollAvatarVariations.js')
+    for (let seed = 1; seed <= 10; seed++) {
+      const set = rollDrama3dVariations(4, seeded(seed), 'a mix')
+      expect(set.every((v) => v.age >= 22 && v.age <= 50)).toBe(true)
+      for (const key of ['expression', 'place'] as const) expect(distinct(set.map((v) => v[key]))).toBe(true)
+      expect(set.every((v) => !/wink|closed eye/.test(v.expression))).toBe(true)
+      expect(drama3dLine(set[0])).not.toContain(',')
+    }
+  })
+})
+
 describe('castingLine', () => {
   it('reads as one short line: age, look and gender, place and outfit without their extra clauses', async () => {
     const { castingLine } = await import('../rollAvatarVariations.js')
