@@ -3,6 +3,21 @@ set -e
 
 cd /home/suyashresearchwork/project-context
 
+# ./deploy.sh with no argument: the web+api deploy below (unchanged, original
+# behavior). A short argument dispatches to that service's own deploy.sh
+# (build + pm2 restart + health check — see apps/*/deploy.sh,
+# mcp-server/deploy.sh) instead of requiring the full path from root.
+case "${1:-}" in
+  orchestrator) exec ./apps/agent-orchestrator/deploy.sh ;;
+  gateway)      exec ./apps/inference-gateway/deploy.sh ;;
+  mcp)          exec ./mcp-server/deploy.sh ;;
+  "") ;; # fall through to the web+api deploy below
+  *)
+    echo "✗ Unknown target '$1'. Use: orchestrator | gateway | mcp | (no arg = web+api)"
+    exit 1
+    ;;
+esac
+
 # Zero-downtime deploy pattern.
 # Standalone's server.js bakes distDir into its require() paths — cannot
 # rename after build. Each deploy builds into a fresh, timestamped dist
