@@ -106,10 +106,15 @@ const RULES: Rule[] = [
     pattern: /\b[1-9]\d{5}\b/g,
   },
   {
-    // Address patterns: flat/plot/house/door/no followed by a number
+    // Address patterns: flat/plot/house/door/no followed by a number, plus at most a
+    // few words after it. The keyword must be a whole word and the number must be
+    // there — creative prompts are full of "block-print", "doorframe", "flat 2D" and
+    // "household", and the old greedy tail swallowed the rest of the message.
     type: 'ADDRESS',
     label: 'ADDRESS',
-    pattern: /\b(?:flat|plot|house|door|h\.?no|d\.?no|apartment|apt|block)[\s.\-#]*\w+[\w\s,.\-]*/gi,
+    // No /i flag, so the trailing words must be capitalised (a street or building
+    // name); the keyword takes either case of its first letter.
+    pattern: /\b(?:[Ff]lat|[Pp]lot|[Hh]ouse|[Dd]oor|[Hh]\.?[Nn]o|[Dd]\.?[Nn]o|[Aa]partment|[Aa]pt|[Bb]lock)\b\.?(?:\s*[Nn]o\.?)?[\s#:\-]*\d+(?![dDkK]\b)[A-Za-z]?(?:\s*[\/\-]\s*\d+[A-Za-z]?)*(?:,?\s+[A-Z0-9][\w.\-]*){0,4}/g,
   },
 ]
 
