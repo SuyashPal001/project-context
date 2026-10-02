@@ -4,17 +4,22 @@ import { db } from '@serverless-saas/database'
 import { calculateCostUsd, loadRates } from '../cost.js'
 
 describe('calculateCostUsd', () => {
-  it('matches the pre-migration prices for flash', () => {
-    // 1M input + 1M output at $0.15 / $0.60
-    expect(calculateCostUsd('gemini-2.5-flash', 1_000_000, 1_000_000)).toBeCloseTo(0.75, 6)
+  it('uses Gemini API standard prices for flash', () => {
+    // 1M input + 1M output at $0.30 / $2.50
+    expect(calculateCostUsd('gemini-2.5-flash', 1_000_000, 1_000_000)).toBeCloseTo(2.8, 6)
+  })
+
+  it('prices the live chat model at its own rate', () => {
+    // 1M input + 1M output at $0.75 / $3.75
+    expect(calculateCostUsd('gemini-3.6-flash', 1_000_000, 1_000_000)).toBeCloseTo(4.5, 6)
   })
 
   it('is free for self-hosted models', () => {
     expect(calculateCostUsd('ollama/llama3', 1_000_000, 1_000_000)).toBe(0)
   })
 
-  it('falls back to flash pricing for an unknown model', () => {
-    expect(calculateCostUsd('some-new-model', 1_000_000, 0)).toBeCloseTo(0.15, 6)
+  it('falls back to the live flash model\'s pricing for an unknown model', () => {
+    expect(calculateCostUsd('some-new-model', 1_000_000, 0)).toBeCloseTo(0.75, 6)
   })
 })
 

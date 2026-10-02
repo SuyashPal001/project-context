@@ -1,7 +1,7 @@
 import { db, tokenCosts } from '@serverless-saas/database'
 import { resolveRate, costMicro, type PricingSchema } from '@serverless-saas/credits'
 
-// Gemini pricing per 1M tokens (as of mid-2025).
+// Gemini API Standard pricing per 1M tokens (checked 2026-10-02).
 // FALLBACK ONLY — used when `credit_rates` has not been seeded in this
 // environment (e.g. a fresh local DB before migrations/seeds run), or when
 // loadRates() failed to reach the DB at startup. The values mirror the rows
@@ -9,9 +9,10 @@ import { resolveRate, costMicro, type PricingSchema } from '@serverless-saas/cre
 // change one without the other.
 // Self-hosted models (ollama/*) cost $0.
 const FALLBACK_PRICING: Record<string, { input: number; output: number }> = {
-  'gemini-2.5-flash':      { input: 0.15,  output: 0.60 },
-  'gemini-2.5-flash-lite': { input: 0.075, output: 0.30 },
-  'gemini-2.5-pro':        { input: 1.25,  output: 5.00 },
+  'gemini-3.6-flash':      { input: 0.75,  output: 3.75 },
+  'gemini-2.5-flash':      { input: 0.30,  output: 2.50 },
+  'gemini-2.5-flash-lite': { input: 0.10,  output: 0.40 },
+  'gemini-2.5-pro':        { input: 1.25,  output: 10.00 },
 }
 
 // 1 credit = 1 US cent. Everything inside @serverless-saas/credits stays
@@ -50,7 +51,7 @@ export function calculateCostUsd(model: string, inputTokens: number, outputToken
   const key = keyFor(model)
   const rate = rateCache.get(key) ?? rateCache.get('*')
   if (rate) return microToUsd(costMicro(rate, { inputTokens, outputTokens }))
-  const p = FALLBACK_PRICING[key] ?? FALLBACK_PRICING['gemini-2.5-flash']
+  const p = FALLBACK_PRICING[key] ?? FALLBACK_PRICING['gemini-3.6-flash']
   return (inputTokens * p.input + outputTokens * p.output) / 1_000_000
 }
 

@@ -2,39 +2,50 @@ import { and, eq } from 'drizzle-orm';
 import { creditRates } from '../schema/index';
 import type { db as DB } from './index';
 
-// 1 credit = 1 US cent. Values derived from apps/agent-orchestrator/src/mastra/cost.ts.
-// gemini-2.5-flash $0.15/1M input -> 15 credits -> 15_000_000 micro.
+// 1 credit = 1 US cent of cost. Google rows are priced at the Gemini API's Standard
+// paid tier (ai.google.dev/gemini-api/docs/pricing, checked 2026-10-02), not Vertex.
+// $X per 1M tokens -> X*100 credits -> X*100_000_000 micro.
+// e.g. gemini-3.6-flash $0.75/1M input -> 75 credits -> 75_000_000 micro.
 const RATES = [
+  // The live chat model (MASTRA_MODEL). $0.75 in / $3.75 out per 1M tokens.
+  { resourceType: 'llm_tokens', subject: 'gemini-3.6-flash',
+    pricingSchema: { per_million_tokens_micro: { input: 75_000_000, output: 375_000_000 } } },
+  // $0.30 in / $2.50 out.
   { resourceType: 'llm_tokens', subject: 'gemini-2.5-flash',
-    pricingSchema: { per_million_tokens_micro: { input: 15_000_000, output: 60_000_000 } } },
+    pricingSchema: { per_million_tokens_micro: { input: 30_000_000, output: 250_000_000 } } },
+  // $0.10 in / $0.40 out.
   { resourceType: 'llm_tokens', subject: 'gemini-2.5-flash-lite',
-    pricingSchema: { per_million_tokens_micro: { input: 7_500_000, output: 30_000_000 } } },
+    pricingSchema: { per_million_tokens_micro: { input: 10_000_000, output: 40_000_000 } } },
+  // $1.25 in / $10 out (prompts up to 200k tokens).
   { resourceType: 'llm_tokens', subject: 'gemini-2.5-pro',
-    pricingSchema: { per_million_tokens_micro: { input: 125_000_000, output: 500_000_000 } } },
+    pricingSchema: { per_million_tokens_micro: { input: 125_000_000, output: 1_000_000_000 } } },
   { resourceType: 'llm_tokens', subject: 'ollama',            // self-hosted, free
     pricingSchema: { per_million_tokens_micro: { input: 0, output: 0 } } },
-  { resourceType: 'llm_tokens', subject: '*',                 // matches today's flash fallback
-    pricingSchema: { per_million_tokens_micro: { input: 15_000_000, output: 60_000_000 } } },
-  // Nano Banana Pro costs $0.134/image at Vertex AI list price; priced at cost + ~27% margin:
-  // 17 credits = $0.17. (Was 170_000 — 0.17 credits, $0.0017 — the dollar figure written as
-  // if 1 credit were $1, which billed every image at about 1/80 of what it costs.)
+  // Any model without its own row is billed like the live Flash model, so a new
+  // model never runs cheaper than the one it replaced.
+  { resourceType: 'llm_tokens', subject: '*',
+    pricingSchema: { per_million_tokens_micro: { input: 75_000_000, output: 375_000_000 } } },
+  // Nano Banana Pro: $0.134 per 1K/2K image on the Gemini API: 13.4 credits, at cost like
+  // every other row (the margin is in credit_packs). (Was 170_000 — 0.17 credits, $0.0017 —
+  // the dollar figure written as if 1 credit were $1, about 1/80 of what an image costs.)
   { resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview',
-    pricingSchema: { per_call_micro: 17_000_000 } },
-  // Lyria-002 costs $0.04-0.08/track at Vertex AI list price: 6 credits = $0.06.
-  // (Was 60_000 — the same dollars-for-cents slip as the image row, 1/100 of cost.)
+    pricingSchema: { per_call_micro: 13_400_000 } },
+  // Lyria on the Gemini API is $0.08 per song (Lyria 3.5 / 3 Pro; lyria-002 itself is not
+  // listed there): 8 credits. (Was 60_000 — the same dollars-for-cents slip, 1/100 of cost.)
   { resourceType: 'music_generation', subject: 'lyria-002',
-    pricingSchema: { per_call_micro: 6_000_000 } },
+    pricingSchema: { per_call_micro: 8_000_000 } },
   // Veo-family models bill per SECOND ($0.03-$0.75/sec depending on tier/audio) but this tool
   // charges a flat per-call rate because generateVideo.ts never receives clip duration back
   // from the inference gateway to meter against. 400_000 assumes a worst-case ~8s clip at the
   // cheapest (lite, no-audio) tier plus margin — it is NOT true per-second metering, and a
   // longer or audio-bearing clip can still cost more than this charges. Fixing that requires
   // the gateway to report duration; flag before enabling longer or audio-bearing video output.
-  // 40 credits = $0.40 per clip. (Was 400_000 — 0.4 credits — the dollars-for-cents slip.)
-  // Still a flat guess, not checked against Omni's real per-second price: see the warning
-  // on the bare-subject row below before trusting it for 10s clips with audio.
+  // Gemini Omni Flash is $17.50 per 1M video tokens, about $0.10 per second of 720p with
+  // audio. Flat per call at the longest clip we make (10s): 100 credits = $1.00, so a
+  // shorter clip is overcharged rather than any clip undercharged. (Was 400_000 — 0.4
+  // credits — the dollars-for-cents slip.)
   { resourceType: 'video_generation', subject: 'google/gemini-omni-1.1-flash',
-    pricingSchema: { per_call_micro: 40_000_000 } },
+    pricingSchema: { per_call_micro: 100_000_000 } },
   // Superseded by the 'google/gemini-omni-1.1-flash' row above, per
   // docs/media-generation/README.md's namespaced-model-id convention.
   // generateVideo.ts now looks up rates under the namespaced subject.
@@ -50,7 +61,7 @@ const RATES = [
   // skipped; do not treat this row's number as validated for the new
   // capability range.
   { resourceType: 'video_generation', subject: 'gemini-omni-1.1-flash',
-    pricingSchema: { per_call_micro: 40_000_000 } },
+    pricingSchema: { per_call_micro: 100_000_000 } },
   // Cartesia sonic-3.5: ~$0.02 per 30s ad script (per spec's cost research,
   // $40-42/1M characters, ~500 chars max script = ~$0.021). Priced with
   // margin at a flat per-call rate rather than per-character, matching this
