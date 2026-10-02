@@ -24,14 +24,15 @@ npm run build
 echo "→ Restarting PM2 process..."
 pm2 restart inference-gateway
 
-# Give start.sh a moment to exec node and bind the port before probing.
-sleep 2
-
 echo "→ Smoke-testing live endpoint..."
-KEY=$(grep -oP '(?<=^INTERNAL_SERVICE_KEY=).*' .env)
-HEALTH=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4001/health)
+HEALTH="000"
+for _ in $(seq 1 15); do
+  HEALTH=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4001/health || true)
+  [ "$HEALTH" = "200" ] && break
+  sleep 2
+done
 if [ "$HEALTH" != "200" ]; then
-  echo "✗ /health returned $HEALTH — check pm2 logs inference-gateway"
+  echo "✗ /health never returned 200 (last: $HEALTH) — check pm2 logs inference-gateway"
   exit 1
 fi
 
