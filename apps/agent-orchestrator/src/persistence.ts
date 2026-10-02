@@ -178,7 +178,7 @@ export interface CompletedTracePayload {
 
 export interface ClarificationQuestion {
   prompt: string
-  options: Array<{ label: string; rationale?: string; imageFileId?: string }>
+  options: Array<{ label: string; rationale?: string; imageFileId?: string; voiceId?: string; voiceLanguage?: string }>
   allowFreeText?: boolean
   allowSkip?: boolean
   /** When set, the question expects `min`-`max` options selected together

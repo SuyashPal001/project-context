@@ -60,6 +60,11 @@ export interface ClarificationOption {
      *  for, e.g. a generated avatar variation or a casting match — the card
      *  renders it as a thumbnail tile instead of a plain text row. */
     imageFileId?: string;
+    /** voice_catalogue providerId this option stands for — the card shows a
+     *  play button that fetches /api/creative/voices/preview. */
+    voiceId?: string;
+    /** Language code for that preview; English when unset. */
+    voiceLanguage?: string;
 }
 
 export interface ClarificationQuestion {

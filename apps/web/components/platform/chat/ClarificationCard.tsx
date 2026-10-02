@@ -11,7 +11,7 @@
 // of bottom-anchored overlay.
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, ChevronLeft, ChevronRight, Paperclip } from 'lucide-react';
+import { ArrowUp, ChevronLeft, ChevronRight, Loader2, Paperclip, Pause, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { ClarificationRequest, UploadedFileRef } from './types';
@@ -19,6 +19,67 @@ import { AttachmentStrip } from './AttachmentStrip';
 import { FileThumbnail } from '@/components/platform/files/FileThumbnail';
 import { uploadToS3, MAX_FILES_PER_SELECTION, MAX_ATTACHMENTS_PER_MESSAGE, PendingUpload } from './useFileUpload';
 import { toast } from 'sonner';
+import { fetchCreativeVoice } from './creativeVoiceFetch';
+
+// Play/stop control for a voice option — fetches the same preview the voice
+// library plays, so the user can hear each voice before picking one.
+function useVoicePreview() {
+    const [playingKey, setPlayingKey] = useState<string | null>(null);
+    const [loadingKey, setLoadingKey] = useState<string | null>(null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const abortRef = useRef<AbortController | null>(null);
+    const urlCacheRef = useRef(new Map<string, string>());
+
+    const stop = () => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        audioRef.current?.pause();
+        audioRef.current = null;
+        setPlayingKey(null);
+        setLoadingKey(null);
+    };
+
+    useEffect(() => () => {
+        abortRef.current?.abort();
+        audioRef.current?.pause();
+        urlCacheRef.current.forEach(url => URL.revokeObjectURL(url));
+    }, []);
+
+    const toggle = async (voiceId: string, language = 'en') => {
+        const key = `${voiceId}:${language}`;
+        if (playingKey === key || loadingKey === key) { stop(); return; }
+        stop();
+        const play = (url: string) => {
+            const audio = new Audio(url);
+            audioRef.current = audio;
+            setLoadingKey(null);
+            setPlayingKey(key);
+            audio.onended = stop;
+            audio.onerror = () => { stop(); toast.error('Voice preview is unavailable.'); };
+            void audio.play();
+        };
+        const cached = urlCacheRef.current.get(key);
+        if (cached) { play(cached); return; }
+        setLoadingKey(key);
+        const controller = new AbortController();
+        abortRef.current = controller;
+        try {
+            const params = new URLSearchParams({ id: voiceId, language });
+            const response = await fetchCreativeVoice(`/api/creative/voices/preview?${params}`, { signal: controller.signal });
+            if (!response.ok) throw new Error(response.status === 429 ? 'Too many previews at once — try again in a moment.' : 'Voice preview is unavailable.');
+            const url = URL.createObjectURL(await response.blob());
+            urlCacheRef.current.set(key, url);
+            if (controller.signal.aborted) return;
+            play(url);
+        } catch (err) {
+            if (controller.signal.aborted) return;
+            stop();
+            toast.error(err instanceof Error ? err.message : 'Voice preview could not play.');
+        }
+    };
+
+    return { playingKey, loadingKey, toggle, stop };
+}
 
 interface ClarificationCardProps {
     request: ClarificationRequest;
@@ -49,6 +110,10 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
         () => Object.fromEntries(Object.entries(request.answers ?? {}).map(([index, answer]) => [index, answer.files ?? []])),
     );
     const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
+    const voicePreview = useVoicePreview();
+    const stopVoicePreview = voicePreview.stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => { stopVoicePreview(); }, [pageIndex]);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const busyRef = useRef(false);
     const files = filesByQuestion[pageIndex] ?? [];
@@ -305,7 +370,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                         if (opt.imageFileId) return null;
                         const isChecked = multiSelect ? selectedIndices.has(i) : selectedIndex === i;
                         const atCapUnselected = !!multiSelect && !isChecked && selectedIndices.size >= multiSelect.max;
-                        return (
+                        const row = (
                         <button
                             key={opt.label}
                             type="button"
@@ -313,6 +378,7 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                             onClick={() => multiSelect ? toggleOption(i) : setSelectedByQuestion(prev => ({ ...prev, [pageIndex]: i }))}
                             className={cn(
                                 "w-full text-left rounded-xl px-3 py-2.5 border transition-colors flex items-start gap-2.5",
+                            opt.voiceId && "pr-12",
                                 // bg-muted and bg-card are the same literal color in dark mode
                                 // (see globals.css) — bg-muted/* over bg-card is invisible at any
                                 // opacity. bg-accent is this codebase's actual "neutral hover/active"
@@ -341,6 +407,23 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                 )}
                             </div>
                         </button>
+                        );
+                        if (!opt.voiceId) return row;
+                        const voiceKey = `${opt.voiceId}:${opt.voiceLanguage ?? 'en'}`;
+                        const playing = voicePreview.playingKey === voiceKey;
+                        const loading = voicePreview.loadingKey === voiceKey;
+                        return (
+                            <div key={opt.label} className="relative">
+                                {row}
+                                <button
+                                    type="button"
+                                    onClick={() => void voicePreview.toggle(opt.voiceId!, opt.voiceLanguage)}
+                                    aria-label={playing || loading ? `Stop ${opt.label}` : `Play ${opt.label}`}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                                >
+                                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                                </button>
+                            </div>
                         );
                     })}
                     {question.allowSkip && (
