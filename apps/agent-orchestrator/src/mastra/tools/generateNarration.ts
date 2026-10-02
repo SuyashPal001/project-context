@@ -5,6 +5,11 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { refundNarrationCharge } from './narrationCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
+import { emitToolStatus } from './generationStarted.js'
+
+function languageName(code: string): string {
+  try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code } catch { return code }
+}
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const SPEECH_MODEL = 'sonic-3.5'
@@ -82,6 +87,14 @@ export const generateNarration = createTool({
         }
       }
     }
+
+    // Same live line the casting tools show — the read itself is the wait here,
+    // so the card says what is being recorded instead of a generic "Preparing…".
+    const opening = script.trim().replace(/\s+/g, ' ')
+    emitToolStatus(execContext, 'Recording narration', [
+      `"${opening.length > 60 ? `${opening.slice(0, 60).trimEnd()}…` : opening}"`,
+      ...(language && language !== 'en' ? [`Read in ${languageName(language)}`] : []),
+    ])
 
     let genResult: { audioBase64?: string; mimeType?: string; durationSeconds?: number; refused?: boolean; reason?: string }
     try {
