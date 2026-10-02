@@ -12,6 +12,16 @@ const PROJECT = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
 const LOCATION = process.env.VERTEX_LOCATION ?? 'us-central1'
 // See adapters/vertex.ts's API_HOST comment — 'global' has no region-prefixed host.
 const API_HOST = LOCATION === 'global' ? 'aiplatform.googleapis.com' : `${LOCATION}-aiplatform.googleapis.com`
+
+// gemini-3-pro-image's Vertex publisher model only resolves on the global
+// endpoint, under its GA id with no "-preview" suffix — confirmed live against
+// this project: us-central1 404s for both ids, global 404s for the -preview id,
+// and only global + "gemini-3-pro-image" returns 200. This is independent of
+// VERTEX_LOCATION (shared with video.ts/music.ts, which stay regional), the
+// same reasoning vertex.ts's VERTEX_TEXT_LOCATION split used for chat models.
+const VERTEX_IMAGE_HOST = 'aiplatform.googleapis.com'
+const VERTEX_IMAGE_LOCATION = 'global'
+const vertexImageModelId = (model: string) => model.replace(/-preview$/, '')
 const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' })
 
 // Business/policy decision, not an engineering default — see spec §4.
@@ -86,7 +96,7 @@ export function buildGeminiImageRequest(req: ImageGenerationRequest) {
 async function callVertexImageModel(req: ImageGenerationRequest): Promise<ImageGenerationResult> {
   const client = await _auth.getClient()
   const tokenResp = await client.getAccessToken()
-  const url = `https://${API_HOST}/v1/projects/${PROJECT}/locations/${LOCATION}/publishers/google/models/${req.model}:generateContent`
+  const url = `https://${VERTEX_IMAGE_HOST}/v1/projects/${PROJECT}/locations/${VERTEX_IMAGE_LOCATION}/publishers/google/models/${vertexImageModelId(req.model)}:generateContent`
   const res = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${tokenResp.token}`, 'Content-Type': 'application/json' },
@@ -121,40 +131,41 @@ export async function generateImage(req: ImageGenerationRequest): Promise<ImageG
     throw new UnsupportedImageModelError(`Unsupported image model: ${req.model}`)
   }
 
-  // Order deliberately Gemini-API-key first, Vertex second — the current
-  // Vertex project 404s on gemini-3-pro-image-preview with a hallucinated
-  // redirect to non-existent version numbers (gemini-3.5/3.6/3.7-flash),
-  // eating a ~90s timeout per attempt before falling through. The
-  // API-key path is fast when available. Vertex stays as the fallback
-  // for the day the project's Model Garden access is sorted out.
-  let geminiFailureReason: string | null = null
+  // Vertex first, Gemini-API-key second — flipped 2026-10-02. The API-key
+  // project's prepaid credits are depleted (402 RESOURCE_EXHAUSTED) with no
+  // top-up scheduled, so Vertex (fixed the same day — see vertexImageModelId
+  // above for the GA id + global location it needs) is the entry point now.
+  // Swap back once the API key has credits again, if API-key-first ever
+  // matters for latency.
+  let vertexFailureReason: string | null = null
 
-  if (process.env.GEMINI_API_KEY && geminiImageBreaker.isAvailable()) {
+  if (vertexImageBreaker.isAvailable()) {
     try {
-      const result = await callGeminiApiKeyImageModel(req)
-      geminiImageBreaker.onSuccess()
+      const result = await callVertexImageModel(req)
+      vertexImageBreaker.onSuccess()
       return result
-    } catch (geminiErr) {
-      geminiImageBreaker.onFailure()
-      geminiFailureReason = (geminiErr as Error).message
-      console.warn('[images] gemini API key failed, trying Vertex fallback:', geminiFailureReason)
+    } catch (vertexErr) {
+      vertexImageBreaker.onFailure()
+      vertexFailureReason = (vertexErr as Error).message
+      console.warn('[images] Vertex failed, trying Gemini API key fallback:', vertexFailureReason)
     }
   } else {
-    geminiFailureReason = !process.env.GEMINI_API_KEY ? 'no GEMINI_API_KEY configured' : 'circuit open'
-    console.warn('[images] gemini API key skipped, trying Vertex fallback:', geminiFailureReason)
+    vertexFailureReason = 'circuit open'
+    console.warn('[images] Vertex skipped, trying Gemini API key fallback:', vertexFailureReason)
   }
 
-  if (!vertexImageBreaker.isAvailable()) {
-    throw new Error(`Gemini API key image generation unavailable (${geminiFailureReason}) and Vertex circuit is open`)
+  if (!process.env.GEMINI_API_KEY || !geminiImageBreaker.isAvailable()) {
+    const reason = !process.env.GEMINI_API_KEY ? 'no GEMINI_API_KEY configured' : 'circuit open'
+    throw new Error(`Vertex image generation unavailable (${vertexFailureReason}) and Gemini API key is unavailable (${reason})`)
   }
 
   try {
-    const result = await callVertexImageModel(req)
-    vertexImageBreaker.onSuccess()
+    const result = await callGeminiApiKeyImageModel(req)
+    geminiImageBreaker.onSuccess()
     return result
-  } catch (vertexErr) {
-    vertexImageBreaker.onFailure()
-    throw new Error(`Gemini API key image generation failed (${geminiFailureReason}); Vertex fallback also failed (${(vertexErr as Error).message})`)
+  } catch (geminiErr) {
+    geminiImageBreaker.onFailure()
+    throw new Error(`Vertex image generation failed (${vertexFailureReason}); Gemini API key fallback also failed (${(geminiErr as Error).message})`)
   }
 }
 

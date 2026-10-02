@@ -73,7 +73,7 @@ describe('generateImage — no-Ollama-fallback invariant', () => {
     else process.env.GEMINI_API_KEY = origGeminiKey
   })
 
-  it('gemini success → no vertex call', async () => {
+  it('vertex success → no gemini call', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => okBody })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -81,15 +81,15 @@ describe('generateImage — no-Ollama-fallback invariant', () => {
 
     expect(result).toEqual({ imageBase64: 'QUJD', mimeType: 'image/png' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0][0]).toContain('generativelanguage.googleapis.com')
-    expect(geminiImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
-    expect(vertexImageBreaker.onSuccess).not.toHaveBeenCalled()
-    expect(vertexImageBreaker.onFailure).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls[0][0]).toContain('aiplatform.googleapis.com')
+    expect(vertexImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
+    expect(geminiImageBreaker.onSuccess).not.toHaveBeenCalled()
+    expect(geminiImageBreaker.onFailure).not.toHaveBeenCalled()
   })
 
-  it('gemini failure + vertex success → falls back correctly', async () => {
+  it('vertex failure + gemini success → falls back correctly', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'gemini boom' })
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'vertex boom' })
       .mockResolvedValueOnce({ ok: true, json: async () => okBody })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -97,10 +97,10 @@ describe('generateImage — no-Ollama-fallback invariant', () => {
 
     expect(result).toEqual({ imageBase64: 'QUJD', mimeType: 'image/png' })
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(fetchMock.mock.calls[0][0]).toContain('generativelanguage.googleapis.com')
-    expect(fetchMock.mock.calls[1][0]).toContain('aiplatform.googleapis.com')
-    expect(geminiImageBreaker.onFailure).toHaveBeenCalledTimes(1)
-    expect(vertexImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toContain('aiplatform.googleapis.com')
+    expect(fetchMock.mock.calls[1][0]).toContain('generativelanguage.googleapis.com')
+    expect(vertexImageBreaker.onFailure).toHaveBeenCalledTimes(1)
+    expect(geminiImageBreaker.onSuccess).toHaveBeenCalledTimes(1)
   })
 
   it('gemini circuit open → skips straight to vertex', async () => {

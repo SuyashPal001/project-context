@@ -197,6 +197,91 @@ async function getToken(): Promise<string> {
   return resp.token ?? ''
 }
 
+// Gemini Omni on Vertex AI's own Interactions API — alternate credentials for
+// the same model the API-key path calls (README.md:217-223 permits this; it
+// is not cross-vendor substitution). Confirmed live 2026-10-02: the publisher
+// model only resolves on the `global` location under the project's custom
+// IAM role once `aiplatform.interactions.create` was added.
+const VERTEX_OMNI_MODEL = 'gemini-omni-1.1-flash-preview'
+
+// Vertex's interactions endpoint does NOT accept inline base64 image data —
+// confirmed live 2026-10-02 by probing field names on an image input part:
+// every made-up field (bytes_base64, base64, content, ...) got a clean
+// "Unknown parameter" schema-validation error, while `uri` passed validation
+// and failed downstream on an actual GCS permission check instead. So the
+// only working shape is { type: 'image', uri: 'gs://...', mime_type }, which
+// means the source image must already be sitting in a GCS bucket — Gemini's
+// own Files API uri (what stageImageForOmni returns for the API-key path)
+// does not work here.
+//
+// VERTEX_OMNI_BUCKET gates this: unset until a bucket exists with (a) this
+// service account able to write objects to it and (b) the Vertex aiplatform
+// service agent (service-<project-number>@gcp-sa-aiplatform.iam.gserviceaccount.com)
+// granted storage.objects.get on it. Until both are true, image-conditioned
+// requests correctly skip this path in generateVideo below rather than fail
+// confusingly on a permission error.
+function vertexOmniBucket(): string | null {
+  return process.env.VERTEX_OMNI_BUCKET || null
+}
+
+async function stageImageForVertexGcs(sourceUrl: string, mimeType: string): Promise<string> {
+  const bucket = vertexOmniBucket()
+  if (!bucket) throw new Error('VERTEX_OMNI_BUCKET not configured')
+  const imageRes = await fetch(sourceUrl, { signal: AbortSignal.timeout(30_000) })
+  if (!imageRes.ok) throw new Error(`Failed to fetch source image for GCS staging: ${imageRes.status}`)
+  const imageBytes = Buffer.from(await imageRes.arrayBuffer())
+  const canonicalMime = canonicalizeImageMime(mimeType)
+  const objectName = `omni-staging/${Date.now()}-${Math.random().toString(36).slice(2)}-${canonicalFilename(canonicalMime)}`
+  const token = await getToken()
+  const uploadUrl = `https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(objectName)}`
+  const res = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': canonicalMime },
+    body: imageBytes,
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!res.ok) throw new Error(`GCS upload failed: ${res.status} ${await res.text()}`)
+  return `gs://${bucket}/${objectName}`
+}
+
+async function callVertexOmniModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
+  const input = req.referenceImageUris?.length
+    ? [
+        ...(await Promise.all(req.referenceImageUris.map(async (uri) => (
+          { type: 'image', uri: await stageImageForVertexGcs(uri, 'image/jpeg'), mime_type: 'image/jpeg' }
+        )))),
+        { type: 'text', text: req.prompt },
+      ]
+    : req.imageUri
+    ? [
+        { type: 'text', text: req.prompt },
+        { type: 'image', uri: await stageImageForVertexGcs(req.imageUri, req.imageMimeType ?? 'image/jpeg'), mime_type: req.imageMimeType ?? 'image/jpeg' },
+      ]
+    : req.prompt
+
+  const token = await getToken()
+  const url = `https://aiplatform.googleapis.com/v1beta1/projects/${getProject()}/locations/global/interactions`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: VERTEX_OMNI_MODEL,
+      input,
+      response_format: {
+        type: 'video',
+        resolution: '720p',
+        delivery: 'inline',
+        aspect_ratio: req.aspectRatio,
+        duration: `${req.durationSeconds}s`,
+      },
+      generation_config: { video_config: { task: req.task } },
+    }),
+    signal: AbortSignal.timeout(VERTEX_TIMEOUT_MS),
+  })
+  if (!res.ok) throw new Error(`Vertex Omni interactions failed: ${res.status} ${await res.text()}`)
+  return classifyInteractionsVideoResponse(await res.json())
+}
+
 async function downloadGcsVideo(uri: string): Promise<Buffer> {
   const match = uri.match(/^gs:\/\/([^/]+)\/(.+)$/)
   if (!match) throw new Error(`unrecognised GCS URI: ${uri}`)
@@ -309,11 +394,37 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
   const backend = selectBackend(req.model)
 
   if (backend === 'gemini-omni') {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new VideoBackendUnavailableError('Gemini Omni unavailable: no GEMINI_API_KEY configured')
+    const isImageConditioned = Boolean(req.referenceImageUris?.length || req.imageUri)
+    // Vertex needs the source image already staged in VERTEX_OMNI_BUCKET (see
+    // callVertexOmniModel's comment) — until that bucket + its two IAM grants
+    // exist, skip Vertex outright for image-conditioned requests rather than
+    // fail confusingly on a GCS permission error.
+    const vertexUsable = !isImageConditioned || Boolean(vertexOmniBucket())
+
+    // Vertex first, Gemini-API-key second — flipped 2026-10-02 alongside
+    // images.ts: the API-key project's prepaid credits are depleted with no
+    // top-up scheduled, so Vertex is the entry point wherever it can serve
+    // the request.
+    let vertexFailureReason: string | null = null
+
+    if (vertexUsable && vertexVideoBreaker.isAvailable()) {
+      try {
+        const result = await callVertexOmniModel(req)
+        vertexVideoBreaker.onSuccess()
+        return result
+      } catch (err) {
+        vertexVideoBreaker.onFailure()
+        vertexFailureReason = (err as Error).message
+        console.warn('[video] Vertex Omni failed, trying Gemini API key fallback:', vertexFailureReason)
+      }
+    } else {
+      vertexFailureReason = !vertexUsable ? 'VERTEX_OMNI_BUCKET not configured for image input' : 'circuit open'
+      console.warn('[video] Vertex Omni skipped, trying Gemini API key fallback:', vertexFailureReason)
     }
-    if (!geminiVideoBreaker.isAvailable()) {
-      throw new VideoBackendUnavailableError('Gemini Omni unavailable: circuit open')
+
+    if (!process.env.GEMINI_API_KEY || !geminiVideoBreaker.isAvailable()) {
+      const reason = !process.env.GEMINI_API_KEY ? 'no GEMINI_API_KEY configured' : 'circuit open'
+      throw new VideoBackendUnavailableError(`Vertex Omni unavailable (${vertexFailureReason}) and Gemini API key is unavailable (${reason})`)
     }
     try {
       const result = await callGeminiApiKeyVideoModel(req)
@@ -321,7 +432,7 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
       return result
     } catch (err) {
       geminiVideoBreaker.onFailure()
-      throw err
+      throw new VideoBackendUnavailableError(`Vertex Omni unavailable (${vertexFailureReason}); Gemini API key fallback also failed: ${(err as Error).message}`)
     }
   }
 

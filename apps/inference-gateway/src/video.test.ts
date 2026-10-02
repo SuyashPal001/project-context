@@ -67,7 +67,7 @@ describe('classifyInteractionsVideoResponse', () => {
   })
 })
 
-describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
+describe('generateVideo — Gemini Omni with Vertex Omni fallback, no cross-vendor fallback', () => {
   const req = {
     model: 'gemini-omni-1.1-flash',
     prompt: 'a calm sunrise over mountains',
@@ -91,13 +91,14 @@ describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    delete process.env.VERTEX_OMNI_BUCKET
     if (originalKey === undefined) delete process.env.GEMINI_API_KEY
     else process.env.GEMINI_API_KEY = originalKey
     if (originalProject === undefined) delete process.env.VERTEX_PROJECT
     else process.env.VERTEX_PROJECT = originalProject
   })
 
-  it('gemini API key success → no Vertex call', async () => {
+  it('Vertex Omni success → no Gemini call', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => okBody })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -105,10 +106,10 @@ describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
 
     expect(result).toEqual({ videoBase64: 'QUJD', mimeType: 'video/mp4' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0][0]).toContain('generativelanguage.googleapis.com/v1beta/interactions')
-    expect(fetchMock.mock.calls[0][0]).not.toContain('aiplatform.googleapis.com')
-    expect(geminiVideoBreaker.onSuccess).toHaveBeenCalledTimes(1)
-    expect(vertexVideoBreaker.onSuccess).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls[0][0]).toContain('aiplatform.googleapis.com')
+    expect(fetchMock.mock.calls[0][0]).not.toContain('generativelanguage.googleapis.com')
+    expect(vertexVideoBreaker.onSuccess).toHaveBeenCalledTimes(1)
+    expect(geminiVideoBreaker.onSuccess).not.toHaveBeenCalled()
   })
 
   it('rejects a model not on the allowlist before making any call', async () => {
@@ -123,30 +124,77 @@ describe('generateVideo — Gemini Omni only, no cross-vendor fallback', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('does not fall back to Veo on a Gemini failure — surfaces the error instead', async () => {
+  it('falls back to the Gemini API key (same model, alternate credentials) on a Vertex failure, never to Veo', async () => {
     process.env.GEMINI_API_KEY = 'key'
     vi.mocked(geminiVideoBreaker.isAvailable).mockReturnValue(true)
     process.env.VERTEX_PROJECT = 'proj'
     vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
     const fetchSpy = vi.fn(async (url: string) => {
-      if (String(url).includes('generativelanguage')) return new Response('boom', { status: 500 })
-      throw new Error('Veo should never be called on a Gemini failure')
+      if (String(url).includes('aiplatform.googleapis.com') && String(url).includes('/interactions')) {
+        return new Response('boom', { status: 500 })
+      }
+      if (String(url).includes('generativelanguage')) return new Response(JSON.stringify(okBody), { status: 200 })
+      throw new Error('Veo should never be called — only the Vertex Omni interactions endpoint or the Gemini API key')
     })
     global.fetch = fetchSpy as unknown as typeof fetch
 
-    await expect(generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 8 }))
-      .rejects.toThrow(/Gemini API video generation failed/)
+    const result = await generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 8 })
+
+    expect(result).toEqual({ videoBase64: 'QUJD', mimeType: 'video/mp4' })
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    expect(fetchSpy.mock.calls[1][0]).toContain('generativelanguage.googleapis.com')
+    expect(vertexVideoBreaker.onFailure).toHaveBeenCalledTimes(1)
+    expect(geminiVideoBreaker.onSuccess).toHaveBeenCalledTimes(1)
+  })
+
+  it('Vertex Omni is primary even when the Gemini API key is unconfigured', async () => {
+    delete process.env.GEMINI_API_KEY
+    process.env.VERTEX_PROJECT = 'proj'
+    vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url).includes('aiplatform.googleapis.com') && String(url).includes('/interactions')) {
+        return new Response(JSON.stringify(okBody), { status: 200 })
+      }
+      throw new Error('only the Vertex Omni interactions endpoint should be called')
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    const result = await generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 8 })
+
+    expect(result).toEqual({ videoBase64: 'QUJD', mimeType: 'video/mp4' })
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('errors, rather than substituting a vendor, when Gemini is unconfigured', async () => {
+  it('image-conditioned request with Gemini unavailable and no VERTEX_OMNI_BUCKET errors without calling fetch', async () => {
     delete process.env.GEMINI_API_KEY
+    delete process.env.VERTEX_OMNI_BUCKET
+    vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
     const fetchSpy = vi.fn(() => { throw new Error('no backend should be called') })
     global.fetch = fetchSpy as unknown as typeof fetch
 
-    await expect(generateVideo({ ...req, aspectRatio: '16:9', durationSeconds: 8 }))
-      .rejects.toThrow(/no GEMINI_API_KEY configured/)
+    await expect(generateVideo({ ...req, task: 'image_to_video', imageUri: 's3://bucket/key.jpg', imageMimeType: 'image/jpeg' }))
+      .rejects.toThrow(/VERTEX_OMNI_BUCKET not configured/)
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('image-conditioned request uses Vertex once VERTEX_OMNI_BUCKET is configured', async () => {
+    delete process.env.GEMINI_API_KEY
+    process.env.VERTEX_OMNI_BUCKET = 'test-omni-bucket'
+    process.env.VERTEX_PROJECT = 'proj'
+    vi.mocked(vertexVideoBreaker.isAvailable).mockReturnValue(true)
+    const fetchSpy = vi.fn(async (url: string) => {
+      if (String(url) === 'https://example.com/src.jpg') return new Response('src image bytes')
+      if (String(url).includes('storage.googleapis.com/upload')) return new Response('{}', { status: 200 })
+      if (String(url).includes('aiplatform.googleapis.com') && String(url).includes('/interactions')) {
+        return new Response(JSON.stringify(okBody), { status: 200 })
+      }
+      throw new Error(`unexpected call: ${url}`)
+    })
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    const result = await generateVideo({ ...req, task: 'image_to_video', imageUri: 'https://example.com/src.jpg', imageMimeType: 'image/jpeg' })
+
+    expect(result).toEqual({ videoBase64: 'QUJD', mimeType: 'video/mp4' })
   })
 
   it('gemini circuit open → throws without calling fetch', async () => {
