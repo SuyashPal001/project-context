@@ -7,13 +7,13 @@ import { installOfficialSkill } from "./startOfficialSkill";
 
 describe("createAvatarTarget", () => {
     it("starts the skill that matches the chip, with its own prompt", () => {
-        expect(createAvatarTarget("UGC")).toEqual({ slugs: ["avatar-creator"], prompt: "Create a new avatar for my ads" });
+        expect(createAvatarTarget("UGC")).toEqual({ slugs: ["ugc-avatar-creator"], prompt: "Create a new avatar for my ads" });
         expect(createAvatarTarget("Animation")).toEqual({ slugs: ["animated-character-creator"], prompt: "Create an animated character for my ads" });
         expect(createAvatarTarget("TVC")).toEqual({ slugs: ["tvc-character-creator"], prompt: "Create a TVC actor for my brand" });
     });
 
     it("turns on all three avatar skills on All, so the agent asks which kind", () => {
-        expect(createAvatarTarget(null).slugs).toEqual(["avatar-creator", "animated-character-creator", "tvc-character-creator"]);
+        expect(createAvatarTarget(null).slugs).toEqual(["ugc-avatar-creator", "animated-character-creator", "tvc-character-creator"]);
     });
 });
 

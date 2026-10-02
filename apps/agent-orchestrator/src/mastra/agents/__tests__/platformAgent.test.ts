@@ -97,7 +97,7 @@ describe('platformAgent instructions — Official skill pointers', () => {
     const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
 
     expect(text).toContain('## Official skills')
-    expect(text).toMatch(/load the Avatar creator skill/i)
+    expect(text).toMatch(/load the UGC avatar creator skill/i)
     expect(text).toMatch(/load the Talking head skill/i)
   })
 })

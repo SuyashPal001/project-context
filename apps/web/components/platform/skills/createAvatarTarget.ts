@@ -4,7 +4,7 @@ import { installOfficialSkill } from "./startOfficialSkill";
 export type AvatarKind = "UGC" | "Animation" | "TVC";
 
 export const AVATAR_SKILL_SLUGS: Record<AvatarKind, string> = {
-    UGC: "avatar-creator",
+    UGC: "ugc-avatar-creator",
     Animation: "animated-character-creator",
     TVC: "tvc-character-creator",
 };

@@ -12,7 +12,7 @@ function ctx(names?: string[]) {
 
 describe('withoutDirectImageInCreatorSkills', () => {
   it('takes Olmo\'s own image tools away while a character creator skill is on', () => {
-    for (const name of ['Animated character creator', 'Avatar creator', 'TVC character creator']) {
+    for (const name of ['Animated character creator', 'Avatar creator', 'UGC avatar creator', 'TVC character creator']) {
       expect(Object.keys(withoutDirectImageInCreatorSkills(tools, ctx([name])))).toEqual(['crop_image', 'show_files'])
     }
   })

@@ -63,7 +63,7 @@ export const OFFICIAL_SKILL_PATTERNS: Record<string, SkillIconPattern> = {
     //   · · · · ·
     //   ■ ■ ■ ■ ■
     //   ■ ■ ■ ■ ■
-    "avatar-creator": [
+    "ugc-avatar-creator": [
         [false, true, true, true, false],
         [false, true, true, true, false],
         [false, false, false, false, false],

@@ -322,7 +322,7 @@ When the user asks to create or save a skill:
 ${SKILL_CONTENT_QUALITY_BAR}`
 
 export const OFFICIAL_SKILL_POINTERS = `\n\n## Official skills
-- For a new reusable avatar/presenter (from a description or a reference photo), load the Avatar creator skill with the skill tool and follow it.
+- For a new reusable avatar/presenter (from a description or a reference photo), load the UGC avatar creator skill with the skill tool and follow it.
 - For a new reusable animated character — a 3D mascot, a game-style hero, a cinematic, fantasy or storybook anime character, or a 3D chibi family character, not a photoreal person — load the Animated character creator skill with the skill tool and follow it.
 - For a new reusable polished lead actor for TV-commercial style ads, with a full character reference sheet, load the TVC character creator skill with the skill tool and follow it.
 - For a talking-head ad (one presenter speaking one continuous script to camera), load the Talking head skill with the skill tool and follow it.
@@ -332,7 +332,7 @@ export const OFFICIAL_SKILL_POINTERS = `\n\n## Official skills
 - For a stylized, animated or cartoon-look story ad built from scratch, load the Animated story ad skill with the skill tool and follow it.
 - To cut footage the user already has into an ad, load the Short-drama stitch skill with the skill tool and follow it.
 - If the user turned a skill on with "/" or Start, it is already loaded — follow it.
-- If more than one avatar skill (Avatar creator, Animated character creator, TVC character creator) is turned on and the user has not said which kind of avatar they want, first call ask_clarifying_questions with one single-select question, "What kind of avatar do you want?" — options "UGC creator — a real person talking to camera (Recommended)", "Animated character — mascot, anime, game hero or chibi", "TVC actor — a polished commercial lead", allowFreeText true. Then follow only the chosen skill, which asks its own questions next; this one question does not count toward that skill's one-card limit.
+- If more than one avatar skill (UGC avatar creator, Animated character creator, TVC character creator) is turned on and the user has not said which kind of avatar they want, first call ask_clarifying_questions with one single-select question, "What kind of avatar do you want?" — options "UGC creator — a real person talking to camera (Recommended)", "Animated character — mascot, anime, game hero or chibi", "TVC actor — a polished commercial lead", allowFreeText true. Then follow only the chosen skill, which asks its own questions next; this one question does not count toward that skill's one-card limit.
 Where another section refers to the Avatar creation, Talking-head, UGC character, Template video cloning, UGC first-frame, Animation-character or Short-drama-stitch ad contract, that now means the matching Official skill.`
 
 export const SHOW_FILES_CONTRACT = `\n\n## Re-showing files already in this conversation
@@ -345,7 +345,7 @@ When the user asks to see images/files already generated or attached in this con
 // file did not come back), Olmo made its own image from a bare prompt and
 // showed that instead — off-style, and charged twice. So while one of these
 // skills is on, Olmo simply has no image tools of its own.
-const CREATOR_SKILL_NAMES = /^(avatar creator|animated character creator|tvc character creator)$/i
+const CREATOR_SKILL_NAMES = /^((ugc )?avatar creator|animated character creator|tvc character creator)$/i
 const DIRECT_IMAGE_TOOL_NAMES = ['generate_image', 'generate_images', 'edit_image']
 
 export function withoutDirectImageInCreatorSkills<T extends Record<string, unknown>>(tools: T, requestContext: RequestContext<TenantContext> | undefined): T {

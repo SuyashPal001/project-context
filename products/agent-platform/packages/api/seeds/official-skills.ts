@@ -32,7 +32,7 @@
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db';
 import { skillInstalls, skills, skillVersions } from '@serverless-saas/agent-schema/skills';
 
@@ -56,6 +56,10 @@ export interface OfficialSkillSeed {
   file: string;
   showcase: SkillShowcase;
   director?: DirectorReferenceSeed;
+  /** Slugs this skill was seeded under before. The seed renames that row in
+   *  place, so tenant installs and version history carry over instead of a
+   *  second copy of the skill appearing. */
+  previousSlugs?: string[];
 }
 
 const SEEDS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -63,11 +67,12 @@ const officialSkillFile = (name: string) => join(SEEDS_DIR, 'official-skills', n
 
 export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
   {
-    slug: 'avatar-creator',
-    name: 'Avatar creator',
+    slug: 'ugc-avatar-creator',
+    name: 'UGC avatar creator',
+    previousSlugs: ['avatar-creator'],
     description: 'Use when the user wants a new reusable AI presenter/avatar for their ads, from a description or from a reference photo.',
-    file: officialSkillFile('avatar-creator.md'),
-    director: { file: officialSkillFile('avatar-creator/director.md'), markers: ['style: realistic avatar'] },
+    file: officialSkillFile('ugc-avatar-creator.md'),
+    director: { file: officialSkillFile('ugc-avatar-creator/director.md'), markers: ['style: realistic avatar'] },
     showcase: {
       imageUrl: '/creative/avatars/beginner-fitness-instructor.jpg',
       bestFor: ['UGC ads', 'Presenters', 'Brand faces'],
@@ -229,6 +234,22 @@ async function run(): Promise<void> {
     const manifest = buildSkillManifest(entry.name, entry.description, body, director);
 
     await db.transaction(async (tx) => {
+      if (entry.previousSlugs?.length) {
+        const [current] = await tx
+          .select({ id: skills.id })
+          .from(skills)
+          .where(and(isNull(skills.ownerTenantId), eq(skills.slug, entry.slug)))
+          .limit(1);
+        if (!current) {
+          const renamed = await tx
+            .update(skills)
+            .set({ slug: entry.slug, updatedAt: new Date() })
+            .where(and(isNull(skills.ownerTenantId), inArray(skills.slug, entry.previousSlugs)))
+            .returning({ id: skills.id });
+          if (renamed.length) console.log(`[seed:official-skills] renamed ${entry.previousSlugs.join(', ')} to ${entry.slug}`);
+        }
+      }
+
       const [skill] = await tx
         .insert(skills)
         .values({

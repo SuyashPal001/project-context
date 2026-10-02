@@ -8,7 +8,7 @@ import { useOfficialSkill } from "@/components/platform/skills/useOfficialSkill"
 import { startOfficialSkill } from "@/components/platform/skills/startOfficialSkill";
 
 export const CREATE_AVATAR_PROMPT = 'Create a new avatar for my ads';
-export const AVATAR_CREATOR_SKILL_SLUG = 'avatar-creator';
+export const AVATAR_CREATOR_SKILL_SLUG = 'ugc-avatar-creator';
 
 /** Bring your own photo, or let the agent create one in chat — both land in Drive › Avatars. */
 export function NewAvatarButton({ onUpload }: { onUpload: () => void }) {

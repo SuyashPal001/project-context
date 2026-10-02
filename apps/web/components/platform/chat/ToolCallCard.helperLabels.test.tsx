@@ -7,10 +7,10 @@ afterEach(() => cleanup());
 
 describe('ToolCallCard — helper tool labels', () => {
     it('names the loaded skill in plain words', () => {
-        render(<ToolCallCard toolName="skill" query="avatar-creator" status="done" />);
+        render(<ToolCallCard toolName="skill" query="ugc-avatar-creator" status="done" />);
         expect(screen.getByText('Loaded skill')).toBeTruthy();
-        expect(screen.getByText('— Avatar creator', { exact: false })).toBeTruthy();
-        expect(screen.queryByText(/avatar-creator/)).toBeNull();
+        expect(screen.getByText('— UGC avatar creator', { exact: false })).toBeTruthy();
+        expect(screen.queryByText(/ugc-avatar-creator/)).toBeNull();
     });
 
     it('gives each helper its own wording instead of "Used <tool name>"', () => {

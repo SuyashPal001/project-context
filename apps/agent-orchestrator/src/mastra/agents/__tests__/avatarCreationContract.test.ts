@@ -11,7 +11,7 @@ import { AVATAR_CREATION_SECTION as AVATAR_CREATION_BASE, DIRECTOR_WORKING_MEMOR
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const AVATAR_CREATOR_SKILL_PATH = path.resolve(
   __dirname,
-  '../../../../../../products/agent-platform/packages/api/seeds/official-skills/avatar-creator.md',
+  '../../../../../../products/agent-platform/packages/api/seeds/official-skills/ugc-avatar-creator.md',
 )
 
 let AVATAR_SKILL_TEXT: string
@@ -20,7 +20,7 @@ let AVATAR_SKILL_TEXT: string
 let TVC_CHARACTER_SECTION: string
 // Avatar creation is split the same way: shared mechanics, sheet and save stay
 // in Director (AVATAR_CREATION_BASE); the realistic presenter prompt and
-// image-to-avatar moved to avatar-creator/director.md, and every animated
+// image-to-avatar moved to ugc-avatar-creator/director.md, and every animated
 // style to animated-character-creator/director.md. These assertions read all
 // three together, as Director sees them once a skill loads.
 let AVATAR_CREATION_SECTION: string
@@ -32,7 +32,7 @@ beforeAll(() => {
   expect(existsSync(AVATAR_CREATOR_SKILL_PATH)).toBe(true)
   AVATAR_SKILL_TEXT = readFileSync(AVATAR_CREATOR_SKILL_PATH, 'utf8')
   TVC_CHARACTER_SECTION = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../tvc-character-creator/director.md'), 'utf8')
-  REALISTIC_DIRECTOR = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../avatar-creator/director.md'), 'utf8')
+  REALISTIC_DIRECTOR = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../ugc-avatar-creator/director.md'), 'utf8')
   ANIMATED_DIRECTOR = readFileSync(path.resolve(AVATAR_CREATOR_SKILL_PATH, '../animated-character-creator/director.md'), 'utf8')
   AVATAR_CREATION_SECTION = AVATAR_CREATION_BASE + REALISTIC_DIRECTOR + ANIMATED_DIRECTOR
   AVATAR_FROM_IMAGE_SECTION = REALISTIC_DIRECTOR
@@ -182,7 +182,7 @@ describe('animated-character avatars (Animated character creator Official skill)
 
   it('is its own skill, leaving the tested Avatar creator skill unchanged', () => {
     expect(AVATAR_SKILL_TEXT).not.toMatch(/Animated character/)
-    expect(CHARACTER_SKILL_TEXT()).toMatch(/Use the Avatar creator skill/i)
+    expect(CHARACTER_SKILL_TEXT()).toMatch(/Use the UGC avatar creator skill/i)
   })
 
   it('asks what kind of character in one card and passes the style and kind to Director', () => {
@@ -269,7 +269,7 @@ describe('animated-character avatars (Animated character creator Official skill)
   it('keeps a chunkier toy-like cute claymation for kids beside the detailed claymation', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/- Cute claymation: when Olmo's brief says "style: cute claymation"/)
     expect(AVATAR_CREATION_SECTION).toMatch(/chunky toy-like stop-motion clay figure/)
-    const skill = readFileSync(AVATAR_CREATOR_SKILL_PATH.replace('avatar-creator.md', 'animated-character-creator.md'), 'utf8')
+    const skill = readFileSync(AVATAR_CREATOR_SKILL_PATH.replace('ugc-avatar-creator.md', 'animated-character-creator.md'), 'utf8')
     expect(skill).toMatch(/Claymation is ONE option on the card too, with two looks you choose from the answers/)
     expect(skill).not.toContain('"Cute claymation — chunky toy-like clay for kids"')
     expect(AVATAR_CREATION_SECTION).toMatch(/- Everything is clay, for claymation and cute claymation alike/)
@@ -282,7 +282,7 @@ describe('animated-character avatars (Animated character creator Official skill)
     expect(AVATAR_CREATION_SECTION).toMatch(/never cropped at the knees, thighs or waist/)
     expect(AVATAR_CREATION_SECTION).toMatch(/a childlike or teenage face/)
     expect(AVATAR_CREATION_SECTION).toMatch(/never rounder, younger or cuter/)
-    const skill = readFileSync(AVATAR_CREATOR_SKILL_PATH.replace('avatar-creator.md', 'animated-character-creator.md'), 'utf8')
+    const skill = readFileSync(AVATAR_CREATOR_SKILL_PATH.replace('ugc-avatar-creator.md', 'animated-character-creator.md'), 'utf8')
     expect(skill).toContain('"style: 3d family film" or "style: 3d movie drama" for those')
     expect(skill).toMatch(/Pixar-style 3D is ONE option on the card, but it has three looks, and you choose the look from the answers/)
     expect(skill).toMatch(/Name the look you chose in the plan's "Who:" line with one short reason/)
@@ -292,7 +292,7 @@ describe('animated-character avatars (Animated character creator Official skill)
   it('keeps one described character inside its style, and the preferences card too', () => {
     expect(AVATAR_CREATION_SECTION).toMatch(/the description fills the slots \(who, hair, outfit, place, mood\) and never replaces the look/)
     expect(AVATAR_CREATION_SECTION).toMatch(/move it into the style's world while keeping its intent/)
-    const skill = readFileSync(AVATAR_CREATOR_SKILL_PATH.replace('avatar-creator.md', 'animated-character-creator.md'), 'utf8')
+    const skill = readFileSync(AVATAR_CREATOR_SKILL_PATH.replace('ugc-avatar-creator.md', 'animated-character-creator.md'), 'utf8')
     expect(skill).toMatch(/Preferences stay inside the chosen style/)
     expect(skill).toMatch(/settings are night-city places/)
   })

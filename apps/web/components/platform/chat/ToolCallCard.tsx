@@ -178,7 +178,7 @@ const HELPER_TOOLS: Record<string, { loading: string; done: string; icon: Helper
   web_fetch: { loading: 'Reading the page', done: 'Read the page', icon: 'link' },
 };
 
-/** "avatar-creator" -> "Avatar creator", for the skill row's highlight. */
+/** "ugc-avatar-creator" -> "UGC avatar creator", for the skill row's highlight. */
 export function skillDisplayName(slug: string): string {
   const words = slug.trim().replace(/[-_]+/g, ' ').replace(/\b(tvc|ugc)\b/gi, (w) => w.toUpperCase());
   return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
@@ -377,7 +377,7 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
     if (toolName === 'internet_search') return { prefix: done ? 'Searched the web for ' : 'Searching the web for ', highlight: q };
     const helper = HELPER_TOOLS[toolName];
     if (helper) {
-      // The skill row names the skill ("Loaded skill — Avatar creator"); the
+      // The skill row names the skill ("Loaded skill — UGC avatar creator"); the
       // other helpers' arguments are internal, so they show the label alone.
       const skill = toolName === 'skill' ? skillDisplayName(query) : '';
       return { prefix: done ? helper.done : helper.loading, highlight: skill ? ` — ${skill}` : '' };

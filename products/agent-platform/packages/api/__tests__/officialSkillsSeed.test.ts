@@ -7,7 +7,7 @@ import { OFFICIAL_SKILLS, buildSkillManifest, manifestUnchanged, readSkillBody }
 describe('OFFICIAL_SKILLS', () => {
   it('has every slug', () => {
     const slugs = OFFICIAL_SKILLS.map((s) => s.slug).sort();
-    expect(slugs).toEqual(['animated-character-creator', 'animation-character-ad', 'avatar-creator', 'short-drama-stitch', 'talking-head', 'template-video', 'tvc-character-creator', 'ugc-character-ad', 'ugc-first-frame']);
+    expect(slugs).toEqual(['animated-character-creator', 'animation-character-ad', 'short-drama-stitch', 'talking-head', 'template-video', 'tvc-character-creator', 'ugc-avatar-creator', 'ugc-character-ad', 'ugc-first-frame']);
   });
 
   it('each entry file exists and is non-empty', () => {
@@ -18,8 +18,8 @@ describe('OFFICIAL_SKILLS', () => {
     }
   });
 
-  it('avatar-creator.md contains the moved contract text', () => {
-    const avatar = OFFICIAL_SKILLS.find((s) => s.slug === 'avatar-creator')!;
+  it('ugc-avatar-creator.md contains the moved contract text', () => {
+    const avatar = OFFICIAL_SKILLS.find((s) => s.slug === 'ugc-avatar-creator')!;
     const body = readFileSync(avatar.file, 'utf8');
     expect(body).toContain('Avatar creation');
     expect(body).toContain('ONE generate_images batch');
@@ -32,8 +32,8 @@ describe('OFFICIAL_SKILLS', () => {
   });
 
   it('carries the required showcase and description fields verbatim', () => {
-    const avatar = OFFICIAL_SKILLS.find((s) => s.slug === 'avatar-creator')!;
-    expect(avatar.name).toBe('Avatar creator');
+    const avatar = OFFICIAL_SKILLS.find((s) => s.slug === 'ugc-avatar-creator')!;
+    expect(avatar.name).toBe('UGC avatar creator');
     expect(avatar.description).toBe('Use when the user wants a new reusable AI presenter/avatar for their ads, from a description or from a reference photo.');
     expect(avatar.showcase).toEqual({
       imageUrl: '/creative/avatars/beginner-fitness-instructor.jpg',
@@ -112,7 +112,7 @@ describe('Director references', () => {
   });
 
   it('gives Avatar creator and Animated their Director halves, with a marker for every animated style Olmo can send', () => {
-    const avatar = OFFICIAL_SKILLS.find((s) => s.slug === 'avatar-creator')!;
+    const avatar = OFFICIAL_SKILLS.find((s) => s.slug === 'ugc-avatar-creator')!;
     const animated = OFFICIAL_SKILLS.find((s) => s.slug === 'animated-character-creator')!;
     expect(avatar.director?.markers).toEqual(['style: realistic avatar']);
     expect(readSkillBody(avatar.director!.file)).toContain('roll_avatar_variations once');
