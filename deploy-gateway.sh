@@ -16,7 +16,7 @@ set -e
 # Run this instead of `npm run build && pm2 restart inference-gateway` by
 # hand from now on.
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/apps/inference-gateway"
 
 echo "→ Building inference-gateway..."
 npm run build

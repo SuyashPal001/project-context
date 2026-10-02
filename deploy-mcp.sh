@@ -3,7 +3,7 @@ set -e
 
 # Rebuilds, restarts, and smoke-tests mcp-server-pc in one step.
 #
-# Same reason as apps/inference-gateway/deploy.sh: this service is
+# Same reason as deploy-gateway.sh: this service is
 # restarted by hand (the root ./deploy.sh does not touch it — see CLAUDE.md), and
 # `pm2 restart` alone serves whatever is already in dist/ with no error if a
 # rebuild was skipped after the last source edit. mcp-server is a standalone
@@ -12,7 +12,7 @@ set -e
 # Run this instead of `npm run build && pm2 restart mcp-server-pc` by hand
 # from now on.
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/mcp-server"
 
 echo "→ Building mcp-server..."
 npm run build
