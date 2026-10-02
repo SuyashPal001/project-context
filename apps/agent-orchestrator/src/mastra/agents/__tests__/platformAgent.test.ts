@@ -100,6 +100,19 @@ describe('platformAgent instructions — Official skill pointers', () => {
     expect(text).toMatch(/load the UGC avatar creator skill/i)
     expect(text).toMatch(/load the Talking head skill/i)
   })
+
+  it('asks which kind of avatar on a plain request even with no avatar skill turned on', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('agentSystemPrompt', 'Base override text.')
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+
+    expect(text).toMatch(/with no avatar skill turned on: when the user asks for a new avatar, presenter or character/)
+    expect(text).toMatch(/ask that same one question before loading any avatar skill/)
+    expect(text).toMatch(/Skip the question when their words already say the kind/)
+    // The existing rule for several skills turned on stays as it was.
+    expect(text).toMatch(/If more than one avatar skill \(UGC avatar creator, Animated character creator, TVC character creator\) is turned on/)
+  })
 })
 
 describe('platformAgent instructions — credit-confirmation contract, no backend ids or LaTeX', () => {
