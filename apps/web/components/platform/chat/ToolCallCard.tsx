@@ -149,8 +149,88 @@ export function mediaGenFailureReason(toolName: string, result: Record<string, u
   return isSongGenTool(toolName) ? 'Song generation failed' : 'Image generation failed';
 }
 
+// Olmo's own helper tools, each with its own wording and icon, so a trace
+// reads as what happened ("Checked your credits") instead of a column of
+// identical "Used <tool name>" rows behind the same key icon.
+type HelperIcon = 'skill' | 'credits' | 'question' | 'people' | 'folder' | 'crop' | 'eye' | 'clock' | 'upload' | 'layers' | 'memory' | 'link';
+const HELPER_TOOLS: Record<string, { loading: string; done: string; icon: HelperIcon }> = {
+  skill: { loading: 'Loading skill', done: 'Loaded skill', icon: 'skill' },
+  check_credit_plan: { loading: 'Checking your credits', done: 'Checked your credits', icon: 'credits' },
+  ask_clarifying_questions: { loading: 'Preparing a few questions', done: 'Asked a few questions', icon: 'question' },
+  list_casting_assets: { loading: 'Browsing avatars', done: 'Browsed avatars', icon: 'people' },
+  show_files: { loading: 'Bringing up your files', done: 'Showed your files', icon: 'folder' },
+  list_folder: { loading: 'Looking in your Drive', done: 'Looked in your Drive', icon: 'folder' },
+  find_in_folder: { loading: 'Searching your Drive', done: 'Searched your Drive', icon: 'folder' },
+  read_file: { loading: 'Reading file', done: 'Read file', icon: 'folder' },
+  crop_image: { loading: 'Cropping image', done: 'Cropped image', icon: 'crop' },
+  analyze_image: { loading: 'Looking at the image', done: 'Looked at the image', icon: 'eye' },
+  analyze_audio: { loading: 'Listening to the audio', done: 'Listened to the audio', icon: 'eye' },
+  analyze_video: { loading: 'Watching the video', done: 'Watched the video', icon: 'eye' },
+  find_past_tasks: { loading: 'Looking through past work', done: 'Looked through past work', icon: 'clock' },
+  get_task_thread: { loading: 'Checking the task', done: 'Checked the task', icon: 'clock' },
+  start_task: { loading: 'Starting a task', done: 'Started a task', icon: 'clock' },
+  retrieve_template: { loading: 'Opening the template', done: 'Opened the template', icon: 'layers' },
+  render_canvas: { loading: 'Laying out the canvas', done: 'Laid out the canvas', icon: 'layers' },
+  request_upload: { loading: 'Asking for an upload', done: 'Asked for an upload', icon: 'upload' },
+  draft_skill: { loading: 'Drafting a skill', done: 'Drafted a skill', icon: 'skill' },
+  save_skill: { loading: 'Saving the skill', done: 'Saved the skill', icon: 'skill' },
+  updateWorkingMemory: { loading: 'Updating memory', done: 'Updated memory', icon: 'memory' },
+  web_fetch: { loading: 'Reading the page', done: 'Read the page', icon: 'link' },
+};
+
+/** "avatar-creator" -> "Avatar creator", for the skill row's highlight. */
+export function skillDisplayName(slug: string): string {
+  const words = slug.trim().replace(/[-_]+/g, ' ').replace(/\b(tvc|ugc)\b/gi, (w) => w.toUpperCase());
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
+}
+
+const iconProps = { width: 14, height: 14, viewBox: '0 0 14 14', fill: 'none', className: 'opacity-60 shrink-0 text-current' } as const;
+
+function HelperToolIcon({ icon }: { icon: HelperIcon }) {
+  switch (icon) {
+    case 'skill': return (
+      <svg {...iconProps}><path d="M7 1.5l1.3 3.2 3.2 1.3-3.2 1.3L7 10.5 5.7 7.3 2.5 6l3.2-1.3z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/><path d="M11 9.5l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z" fill="currentColor"/></svg>
+    );
+    case 'credits': return (
+      <svg {...iconProps}><ellipse cx="7" cy="4" rx="4.5" ry="2" stroke="currentColor" strokeWidth="1"/><path d="M2.5 4v3c0 1.1 2 2 4.5 2s4.5-.9 4.5-2V4" stroke="currentColor" strokeWidth="1"/><path d="M2.5 7v3c0 1.1 2 2 4.5 2s4.5-.9 4.5-2V7" stroke="currentColor" strokeWidth="1"/></svg>
+    );
+    case 'question': return (
+      <svg {...iconProps}><path d="M2 3a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6l-3 2.5V10H3a1 1 0 0 1-1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/><path d="M5.8 4.6a1.2 1.2 0 1 1 1.7 1.1c-.4.2-.5.5-.5.8" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round"/><circle cx="7" cy="8" r="0.5" fill="currentColor"/></svg>
+    );
+    case 'people': return (
+      <svg {...iconProps}><circle cx="5" cy="5" r="2" stroke="currentColor" strokeWidth="1"/><path d="M1.5 12c0-2 1.6-3.5 3.5-3.5S8.5 10 8.5 12" stroke="currentColor" strokeWidth="1"/><circle cx="10" cy="5.5" r="1.5" stroke="currentColor" strokeWidth="1"/><path d="M9.5 8.6c1.7 0 3 1.3 3 3.4" stroke="currentColor" strokeWidth="1"/></svg>
+    );
+    case 'folder': return (
+      <svg {...iconProps}><path d="M1.5 3.5a1 1 0 0 1 1-1h3l1.2 1.3h4.8a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/></svg>
+    );
+    case 'crop': return (
+      <svg {...iconProps}><path d="M3.5 1v8.5a1 1 0 0 0 1 1H13" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/><path d="M1 3.5h8.5a1 1 0 0 1 1 1V13" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></svg>
+    );
+    case 'eye': return (
+      <svg {...iconProps}><path d="M1 7s2.2-4 6-4 6 4 6 4-2.2 4-6 4-6-4-6-4z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/><circle cx="7" cy="7" r="1.8" stroke="currentColor" strokeWidth="1"/></svg>
+    );
+    case 'clock': return (
+      <svg {...iconProps}><circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1"/><path d="M7 4v3.2l2.2 1.3" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></svg>
+    );
+    case 'upload': return (
+      <svg {...iconProps}><path d="M7 9V2.5M4.5 5L7 2.5 9.5 5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/><path d="M2 9.5v1.5a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V9.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></svg>
+    );
+    case 'layers': return (
+      <svg {...iconProps}><path d="M7 1.5l5.5 3L7 7.5 1.5 4.5z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/><path d="M1.5 7.2L7 10.2l5.5-3M1.5 9.8L7 12.8l5.5-3" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/></svg>
+    );
+    case 'memory': return (
+      <svg {...iconProps}><path d="M3 2.5h6l2 2v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/><path d="M4.5 7h5M4.5 9h3.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></svg>
+    );
+    case 'link': return (
+      <svg {...iconProps}><path d="M6 8a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.7.7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/><path d="M8 6a2.5 2.5 0 0 0-3.5 0l-2 2A2.5 2.5 0 0 0 6 11.5l.7-.7" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></svg>
+    );
+  }
+}
+
 function ToolIcon({ toolName }: { toolName: string }) {
-  const isSearch = toolName === 'web_search' || toolName === 'browser';
+  const helper = HELPER_TOOLS[toolName];
+  if (helper) return <HelperToolIcon icon={helper.icon} />;
+  const isSearch = toolName === 'web_search' || toolName === 'browser' || toolName === 'internet_search';
   const isDocs = toolName === 'retrieve_documents';
   const isEmail = toolName === 'gmail' || toolName === 'send_email' || toolName?.startsWith('GMAIL');
   const isDrive = toolName === 'google_drive';
@@ -293,6 +373,15 @@ function toolLabel(toolName: string, query: string, status: 'loading' | 'done'):
     if (isProducerDelegateTool(toolName)) return { prefix: 'Audio created', highlight: query ? ` — ${q}` : '' };
     if (isPmDelegateTool(toolName)) return { prefix: 'Plan built', highlight: query ? ` — ${q}` : '' };
     if (isArchitectDelegateTool(toolName)) return { prefix: 'Architecture designed', highlight: query ? ` — ${q}` : '' };
+
+    if (toolName === 'internet_search') return { prefix: done ? 'Searched the web for ' : 'Searching the web for ', highlight: q };
+    const helper = HELPER_TOOLS[toolName];
+    if (helper) {
+      // The skill row names the skill ("Loaded skill — Avatar creator"); the
+      // other helpers' arguments are internal, so they show the label alone.
+      const skill = toolName === 'skill' ? skillDisplayName(query) : '';
+      return { prefix: done ? helper.done : helper.loading, highlight: skill ? ` — ${skill}` : '' };
+    }
 
     const friendly = toolName.replace(/_/g, ' ').toLowerCase();
     return { prefix: done ? `Used ${friendly}` : `Using ${friendly}`, highlight: query ? ` — ${q}` : '' };

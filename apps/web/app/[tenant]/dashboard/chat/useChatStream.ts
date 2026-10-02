@@ -458,7 +458,8 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
         onToolCall: useCallback((toolName: string, toolCallId: string, args: Record<string, unknown>) => {
             emitStreamEvent('tool_call');
             markTraceStart();
-            const query = String(args?.query ?? args?.filename ?? args?.subject ?? args?.prompt ?? '');
+            // The skill row shows which skill loaded ("Loaded skill — Avatar creator").
+            const query = String((toolName === 'skill' ? args?.name : undefined) ?? args?.query ?? args?.filename ?? args?.subject ?? args?.prompt ?? '');
             setActiveToolCalls(prev => { const next = new Map(prev); next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query }); return next; });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
             // Only open canvas when an actual save tool fires — this is the definitive signal

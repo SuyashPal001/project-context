@@ -448,7 +448,7 @@ export function MessageItem({
                                         <ToolCallCard
                                             key={tool.id}
                                             toolName={tool.toolName}
-                                            query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? tool.arguments?.task ?? '')}
+                                            query={String((tool.toolName === 'skill' ? tool.arguments?.name : undefined) ?? tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? tool.arguments?.task ?? '')}
                                             status={tool.isLoading ? 'loading' : 'done'}
                                         />
                                     ))}
@@ -457,7 +457,7 @@ export function MessageItem({
                                 <ToolCallCard
                                     key={group[0].id}
                                     toolName={group[0].toolName}
-                                    query={String(group[0].arguments?.query ?? group[0].arguments?.filename ?? group[0].arguments?.subject ?? group[0].arguments?.task ?? '')}
+                                    query={String((group[0].toolName === 'skill' ? group[0].arguments?.name : undefined) ?? group[0].arguments?.query ?? group[0].arguments?.filename ?? group[0].arguments?.subject ?? group[0].arguments?.task ?? '')}
                                     status={group[0].isLoading ? 'loading' : 'done'}
                                 />
                             )
