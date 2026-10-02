@@ -542,6 +542,14 @@ export function stripIds(text: string): string {
     .trim();
 }
 
+// agent-director also makes narration and video, so before its generation tool
+// starts, read Olmo's instruction to it to pick the right word and tile.
+function directorMediaKind(query: string): 'image' | 'audio' | 'video' {
+  if (/\b(narration|voice-?over|voice over|audio|song|music)\b/i.test(query)) return 'audio';
+  if (/\b(video|clip|clips|animate|lip-?sync)\b/i.test(query)) return 'video';
+  return 'image';
+}
+
 export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls, statusText, statusDetails }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
@@ -557,7 +565,9 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
   const preparing = status === 'loading' && isDelegate && !generationStarted && !cardAwaitingApproval;
   const awaitingApproval = cardAwaitingApproval && status === 'loading' && isMediaGenDelegateOrTool(toolName);
   const { prefix: labelPrefix, highlight } = toolLabel(toolName, query, status);
-  const preparingLabel = isProducerDelegateTool(toolName) ? 'Preparing your audio…' : 'Preparing your image…';
+  const directorKind = isDirectorDelegateTool(toolName) ? directorMediaKind(query) : null;
+  const preparingLabel = isProducerDelegateTool(toolName) || directorKind === 'audio' ? 'Preparing your audio…'
+    : directorKind === 'video' ? 'Preparing your video…' : 'Preparing your image…';
   const prefix = cancelled ? 'Cancelled' : (failureReason ?? (awaitingApproval ? 'Waiting for your approval' : preparing ? (statusText ? `${statusText}…` : preparingLabel) : labelPrefix));
   // Who/what the delegate is working on, kept visible through approval and
   // generation so each loading tile has a person behind it.
@@ -567,7 +577,8 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
   // it lands. 'image' / 'audio' / 'video' picks the tile styling
   // (TYPE_STYLES/TYPE_BADGES already define all three) — song results render
   // as an audio attachment, video results as a video attachment.
-  const mediaSkeletonType = (isImageGenTool(toolName) || isDirectorDelegateTool(toolName)) ? 'image'
+  const mediaSkeletonType = directorKind ? directorKind
+    : isImageGenTool(toolName) ? 'image'
     : (isSongGenTool(toolName) || isProducerDelegateTool(toolName)) ? 'audio'
     : isVideoGenTool(toolName) ? 'video' : null;
   const showMediaSkeleton = status === 'loading' && mediaSkeletonType !== null && !awaitingApproval && !preparing;
