@@ -462,6 +462,11 @@ function ChatPage() {
         // searchParams.get already URL-decodes — decoding again here would
         // throw on a prompt containing a literal '%' character.
         const seededSkillsUsed = seededSkillsUsedFromParams(searchParams);
+        // A seeded start is its own fresh request — drop any avatar, template,
+        // product or voice left picked in the empty-state library earlier, or
+        // it would sit in the composer and ride along on the next message.
+        clearCreativeBrief();
+        setActiveEmptyStateTab(null);
         if (conversationId) {
             if (isLoadingMessages) return;
             seededPromptFiredRef.current = true;
