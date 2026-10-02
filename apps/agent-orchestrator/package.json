@@ -8,7 +8,8 @@
     "type-check": "tsc --noEmit",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "benchmark:ugc-avatar": "tsx scripts/ugc-avatar-benchmark.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.121",
