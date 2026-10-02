@@ -28,11 +28,23 @@ export const conversationsRoutes = new Hono<AppEnv>();
 // The seeded default agent (Olmo, isDefault: true) never gets an avatarFileId — see
 // the matching comment on agents.crud.ts's resolveAvatarUrl. `isDefault` still flows
 // through the `agent` object below so the frontend can render the brand mark itself.
-async function resolveConversationAgentAvatar<T extends { tenantId: string; agent: { avatarFileId: string | null; isDefault?: boolean } }>(row: T) {
+// `urlCache` lets the list resolve each distinct avatar once: a tenant's chats
+// are almost all with one or two agents, and resolving per row cost two DB
+// queries each — ~300 for 149 chats, 14-17s, past the web proxy's 15s timeout.
+async function resolveConversationAgentAvatar<T extends { tenantId: string; agent: { avatarFileId: string | null; isDefault?: boolean } }>(
+    row: T,
+    urlCache?: Map<string, Promise<string | null>>,
+) {
     const { avatarFileId, ...agentRest } = row.agent;
     let avatarUrl: string | null = null;
     if (avatarFileId) {
-        try { avatarUrl = await storageService.getDownloadUrl(row.tenantId, avatarFileId); } catch { /* file missing/deleted */ }
+        const key = `${row.tenantId}:${avatarFileId}`;
+        let pending = urlCache?.get(key);
+        if (!pending) {
+            pending = storageService.getDownloadUrl(row.tenantId, avatarFileId).catch(() => null /* file missing/deleted */);
+            urlCache?.set(key, pending);
+        }
+        avatarUrl = await pending;
     }
     // Cast: TS can't narrow the generic `agent` shape after the Omit/spread — same
     // type-only escape hatch as the `as any` on conversationSelect.agent.persona above.
@@ -169,7 +181,8 @@ conversationsRoutes.get('/', async (c) => {
             .where(and(...filters))
             .orderBy(desc(conversations.createdAt));
 
-        const normalized = await Promise.all(data.map(normalizeAgentPersona).map(resolveConversationAgentAvatar));
+        const avatarUrls = new Map<string, Promise<string | null>>();
+        const normalized = await Promise.all(data.map(normalizeAgentPersona).map((row) => resolveConversationAgentAvatar(row, avatarUrls)));
         return c.json({ data: normalized });
     } catch (error) {
         console.error('Fetch conversations failed:', error);
