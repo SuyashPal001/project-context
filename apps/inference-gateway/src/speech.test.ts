@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.stubEnv('CARTESIA_API_KEY', 'test-key')
 
-import { generateSpeech, UnsupportedSpeechModelError, readWavDurationSeconds } from './speech.js'
+import { generateSpeech, UnsupportedSpeechModelError, readWavDurationSeconds, generationConfig } from './speech.js'
 
 describe('readWavDurationSeconds', () => {
   it('rejects a buffer shorter than 44 bytes', () => {
@@ -297,5 +297,19 @@ describe('generateSpeech', () => {
 
     expect(caught).toBeDefined()
     expect(caught!.message).toMatch(/Cartesia speech generation failed/)
+  })
+})
+
+describe('generationConfig', () => {
+  const base = { model: 'sonic-3.5', transcript: 'hi', voiceId: 'v' }
+  it('passes valid emotion, speed and volume', () => {
+    expect(generationConfig({ ...base, emotion: 'Enthusiastic', speed: 1.05, volume: 1.2 }, 'en'))
+      .toEqual({ emotion: 'enthusiastic', speed: 1.05, volume: 1.2 })
+  })
+  it('drops out-of-range or unknown values instead of failing', () => {
+    expect(generationConfig({ ...base, emotion: 'hyped', speed: 2, volume: 0.1 }, 'en')).toBeUndefined()
+  })
+  it('drops emotion for non-English reads (Cartesia supports it in English only)', () => {
+    expect(generationConfig({ ...base, emotion: 'excited', speed: 1.1 }, 'hi')).toEqual({ speed: 1.1 })
   })
 })

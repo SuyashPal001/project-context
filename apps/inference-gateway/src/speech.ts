@@ -16,6 +16,31 @@ export interface SpeechGenerationRequest {
   transcript: string
   voiceId: string
   language?: string
+  // Sonic-3 delivery controls (generation_config). Out-of-range or unknown
+  // values are dropped rather than refused, so a bad hint never fails a read.
+  emotion?: string
+  speed?: number
+  volume?: number
+}
+
+// Cartesia's documented emotion values (English only).
+export const CARTESIA_EMOTIONS = new Set([
+  'neutral', 'happy', 'excited', 'enthusiastic', 'elated', 'euphoric', 'triumphant', 'amazed', 'surprised',
+  'flirtatious', 'curious', 'content', 'peaceful', 'serene', 'calm', 'grateful', 'affectionate', 'trust',
+  'sympathetic', 'anticipation', 'mysterious', 'angry', 'mad', 'outraged', 'frustrated', 'agitated',
+  'threatened', 'disgusted', 'contempt', 'envious', 'sarcastic', 'ironic', 'sad', 'dejected', 'melancholic',
+  'disappointed', 'hurt', 'guilty', 'bored', 'tired', 'rejected', 'nostalgic', 'wistful', 'apologetic',
+  'hesitant', 'insecure', 'confused', 'resigned', 'anxious', 'panicked', 'alarmed', 'scared', 'proud',
+  'confident', 'distant', 'skeptical', 'contemplative', 'determined',
+])
+
+export function generationConfig(req: SpeechGenerationRequest, language: string): Record<string, string | number> | undefined {
+  const config: Record<string, string | number> = {}
+  if (typeof req.speed === 'number' && req.speed >= 0.6 && req.speed <= 1.5) config.speed = req.speed
+  if (typeof req.volume === 'number' && req.volume >= 0.5 && req.volume <= 2) config.volume = req.volume
+  const emotion = req.emotion?.toLowerCase()
+  if (emotion && language === 'en' && CARTESIA_EMOTIONS.has(emotion)) config.emotion = emotion
+  return Object.keys(config).length ? config : undefined
 }
 
 export type SpeechGenerationResult =
@@ -73,6 +98,7 @@ export function readWavDurationSeconds(buf: Buffer): number {
 async function callCartesia(req: SpeechGenerationRequest): Promise<SpeechGenerationResult> {
   const key = process.env.CARTESIA_API_KEY ?? ''
   const language = req.language ?? 'en'
+  const config = generationConfig(req, language)
   const res = await fetch('https://api.cartesia.ai/tts/bytes', {
     method: 'POST',
     headers: {
@@ -86,6 +112,7 @@ async function callCartesia(req: SpeechGenerationRequest): Promise<SpeechGenerat
       voice: { mode: 'id', id: req.voiceId },
       output_format: { container: 'wav', encoding: 'pcm_s16le', sample_rate: 44100 },
       language,
+      ...(config ? { generation_config: config } : {}),
     }),
     signal: AbortSignal.timeout(30_000),
   })

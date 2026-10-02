@@ -34,17 +34,21 @@ export const inputSchema = z.object({
   ),
   voiceId: z.string().describe('A voice id, from the existing curated voice list.'),
   language: z.string().optional().describe('BCP-47 or ISO language code for the narration read (e.g. "hi", "ja", "es"). Omit for English.'),
+  emotion: z.enum(['enthusiastic', 'excited', 'happy', 'content', 'calm', 'confident', 'curious', 'grateful', 'affectionate', 'surprised', 'sympathetic', 'contemplative', 'determined', 'proud', 'neutral', 'sad', 'nostalgic', 'wistful']).optional().describe(
+    'Delivery emotion for the whole read (English only; ignored for other languages). Pick it from the ad\'s tone and make sure the words actually carry it — e.g. enthusiastic for UGC/testimonial energy, content or calm for wellness, confident for a pitch. Omit for a neutral read.'
+  ),
+  speed: z.number().min(0.6).max(1.5).optional().describe('Speech speed, 1.0 is normal. ~1.05 for lively UGC, 0.95 for calm/premium. Omit for 1.0.'),
 })
 
 export const generateNarration = createTool({
   id: 'generate-narration',
-  description: 'Generates a narration/voiceover audio clip from a script — an audio track produced separately from the video, not native in-render speech. Use for talking-head\'s single continuous narration track (one call, full script), and for animation-character\'s per-beat VO lines (one call per beat, each beat\'s single line, muxed or lip-synced onto that beat\'s silent clip afterward) — not for dialogue spoken natively by generate_video\'s own render.',
+  description: 'Generates a narration/voiceover audio clip from a script — an audio track produced separately from the video, not native in-render speech. Use for talking-head\'s single continuous narration track (one call, full script), and for animation-character\'s per-beat VO lines (one call per beat, each beat\'s single line, muxed or lip-synced onto that beat\'s silent clip afterward) — not for dialogue spoken natively by generate_video\'s own render. Write the script for the ear, not the page: numbers and symbols as spoken words ("a hundred percent", never "100%"), commas and full stops where a person would breathe, no <break> tags (they make the read sound stitched). Set emotion and speed to match the ad\'s tone.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'narration_generation', subject: SPEECH_MODEL }, ctx),
   execute: async (inputData, execContext) => {
-    const { script, voiceId, language } = inputData as z.infer<typeof inputSchema>
+    const { script, voiceId, language, emotion, speed } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, never '' — see generateVideo.ts's identical comment:
@@ -101,7 +105,7 @@ export const generateNarration = createTool({
       const res = await fetch(`${GATEWAY_URL}/v1/audio/speech`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: SPEECH_MODEL, transcript: script, voiceId, ...(language ? { language } : {}) }),
+        body: JSON.stringify({ model: SPEECH_MODEL, transcript: script, voiceId, ...(language ? { language } : {}), ...(emotion ? { emotion } : {}), ...(speed ? { speed } : {}) }),
         signal: AbortSignal.timeout(60_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
