@@ -461,7 +461,7 @@ export class GeminiAdapter implements ProviderAdapter {
 
     // Cache-miss and large-enough prefix → prime for next turn. Deduplicated
     // by hash inside primeCache, so this is safe under concurrent misses.
-    if (!cacheUsed && shouldTryCache(estimateCacheableChars(body.systemInstruction, body.tools))) {
+    if (!cacheUsed && shouldTryCache('gemini', estimateCacheableChars(body.systemInstruction, body.tools))) {
       primeCache('gemini', hash, () => createCachedContent(this.apiKey, modelName, body.systemInstruction, body.tools))
     }
 
@@ -531,7 +531,7 @@ export class GeminiAdapter implements ProviderAdapter {
       }
     }
 
-    if (!cacheUsed && shouldTryCache(estimateCacheableChars(body.systemInstruction, body.tools))) {
+    if (!cacheUsed && shouldTryCache('gemini', estimateCacheableChars(body.systemInstruction, body.tools))) {
       primeCache('gemini', hash, () => createCachedContent(this.apiKey, modelName, body.systemInstruction, body.tools))
     }
 

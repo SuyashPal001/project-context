@@ -49,12 +49,26 @@ const inFlight: Record<ProviderId, Map<string, Promise<void>>> = {
 const LOCAL_CACHE_TTL_MS = 30 * 60 * 1000     // 30 min in-memory
 export const SERVER_CACHE_TTL_SECONDS = 1800  // 30 min asked of Google
 
-// Rough char-to-token proxy. Gemini's min cacheable size is 1024 tokens
-// (confirmed by API error: "min_total_token_count=1024"). At ~4 chars/token
-// English average, 4096 chars is on the edge — bump the floor to 6000 so we
-// don't waste create() calls on prefixes that will just get rejected. A
-// prefix that's *just barely* above 1024 tokens saves almost nothing anyway.
-const MIN_CACHEABLE_CHARS = 6000
+// Rough char-to-token proxy, per provider — the two APIs have different
+// minimums and sharing one threshold meant Vertex silently sent requests
+// that were always going to be rejected as too small.
+//
+// Gemini direct API: min cacheable size is 1024 tokens (confirmed by API
+// error: "min_total_token_count=1024"). At ~4 chars/token English average,
+// 4096 chars is on the edge — bump the floor to 6000 so we don't waste
+// create() calls on prefixes that will just get rejected. A prefix that's
+// *just barely* above 1024 tokens saves almost nothing anyway.
+const MIN_CACHEABLE_CHARS_GEMINI = 6000
+// Vertex: min cacheable size is 4096 tokens — confirmed live 2026-10-02
+// against this project ("The minimum token count to start explicit caching
+// is 4096"), nearly 4x Gemini's minimum. Using Gemini's lower threshold
+// here meant Vertex requests between ~1500 and ~4096 tokens always hit a
+// 400 "too small" error — a wasted round trip on every such turn, same
+// symptom as a stale cache entry but a different cause. Same 4
+// chars/token proxy and a comparable ~1.46x safety margin over the true
+// minimum (6000/4096-tokens-in-chars for Gemini) applied here: 16384 chars
+// (4096 tokens) bumped to 24000.
+const MIN_CACHEABLE_CHARS_VERTEX = 24000
 
 /**
  * Deterministic hash of the cacheable prefix. Changes iff any of the three
@@ -90,10 +104,12 @@ export function computePrefixHash(
 /**
  * Below this many characters in the outgoing prompt, don't even try — the
  * cache create() would just error with "too small" and we've wasted a round
- * trip. See MIN_CACHEABLE_CHARS constant for the token-vs-char reasoning.
+ * trip. Threshold is per-provider — see MIN_CACHEABLE_CHARS_GEMINI /
+ * MIN_CACHEABLE_CHARS_VERTEX for the token-vs-char reasoning on each.
  */
-export function shouldTryCache(estimatedChars: number): boolean {
-  return estimatedChars >= MIN_CACHEABLE_CHARS
+export function shouldTryCache(providerId: ProviderId, estimatedChars: number): boolean {
+  const min = providerId === 'vertex' ? MIN_CACHEABLE_CHARS_VERTEX : MIN_CACHEABLE_CHARS_GEMINI
+  return estimatedChars >= min
 }
 
 /**

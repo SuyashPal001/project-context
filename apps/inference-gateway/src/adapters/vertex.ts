@@ -561,7 +561,7 @@ export class VertexAdapter implements ProviderAdapter {
       }
     }
 
-    if (!cacheUsed && shouldTryCache(estimateCacheableCharsV(request.systemInstruction, request.tools))) {
+    if (!cacheUsed && shouldTryCache('vertex', estimateCacheableCharsV(request.systemInstruction, request.tools))) {
       primeCache('vertex', hash, () => createCachedContentV(modelName, request.systemInstruction, request.tools));
     }
 
@@ -634,7 +634,7 @@ export class VertexAdapter implements ProviderAdapter {
       throw new Error(`Vertex AI streaming failed: ${vertexRes.status} ${errText}`);
     }
 
-    if (!cacheUsed && shouldTryCache(estimateCacheableCharsV(request.systemInstruction, request.tools))) {
+    if (!cacheUsed && shouldTryCache('vertex', estimateCacheableCharsV(request.systemInstruction, request.tools))) {
       primeCache('vertex', hash, () => createCachedContentV(modelName, request.systemInstruction, request.tools));
     }
 

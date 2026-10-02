@@ -71,13 +71,22 @@ describe('computePrefixHash', () => {
 })
 
 describe('shouldTryCache', () => {
-  it('rejects prefixes under 6000 chars', () => {
-    expect(shouldTryCache(1000)).toBe(false)
-    expect(shouldTryCache(5999)).toBe(false)
+  it('gemini: rejects prefixes under 6000 chars', () => {
+    expect(shouldTryCache('gemini', 1000)).toBe(false)
+    expect(shouldTryCache('gemini', 5999)).toBe(false)
   })
-  it('accepts prefixes at/above 6000 chars', () => {
-    expect(shouldTryCache(6000)).toBe(true)
-    expect(shouldTryCache(50_000)).toBe(true)
+  it('gemini: accepts prefixes at/above 6000 chars', () => {
+    expect(shouldTryCache('gemini', 6000)).toBe(true)
+    expect(shouldTryCache('gemini', 50_000)).toBe(true)
+  })
+  it('vertex: rejects prefixes under 24000 chars, even ones gemini would accept', () => {
+    expect(shouldTryCache('vertex', 1000)).toBe(false)
+    expect(shouldTryCache('vertex', 6000)).toBe(false)
+    expect(shouldTryCache('vertex', 23_999)).toBe(false)
+  })
+  it('vertex: accepts prefixes at/above 24000 chars', () => {
+    expect(shouldTryCache('vertex', 24_000)).toBe(true)
+    expect(shouldTryCache('vertex', 50_000)).toBe(true)
   })
 })
 
