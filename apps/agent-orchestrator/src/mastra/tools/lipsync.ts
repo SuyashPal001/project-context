@@ -10,6 +10,10 @@ import { stableToolCallId } from '../../credits.js'
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const DEFAULT_LIPSYNC_MODEL = 'fal-ai/latentsync'
 
+export function isLipsyncAuthFailure(reason: string | undefined): boolean {
+  return !!reason && /authentication is required|unauthori[sz]ed|\b401\b|x-api-key|api key/i.test(reason)
+}
+
 const outputSchema = z.object({
   fileId: z.string().optional(),
   name: z.string().optional(),
@@ -136,6 +140,11 @@ export const lipsync = createTool({
 
     if (genResult.refused) {
       if (charged) await refundLipsyncCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
+      // A missing or rejected provider key is server setup, not a passing
+      // outage: say so, so the agent neither calls it "temporary" nor retries.
+      if (isLipsyncAuthFailure(genResult.reason)) {
+        return { refused: true, refusalReason: `LIPSYNC_NOT_CONFIGURED: the ${resolvedModel} lip-sync provider has no working API key on this server. Retrying will not help; deliver the video with the narration muxed on instead.`, jobId }
+      }
       return { refused: true, refusalReason: genResult.reason ?? 'unknown', jobId }
     }
 

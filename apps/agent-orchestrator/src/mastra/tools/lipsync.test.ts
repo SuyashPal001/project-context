@@ -16,7 +16,7 @@ vi.mock('./mediaCache.js', () => ({ fetchPresignedUrl }))
 const { shouldRequireApproval } = vi.hoisted(() => ({ shouldRequireApproval: vi.fn() }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
-import { lipsync, inputSchema } from './lipsync.js'
+import { lipsync, inputSchema, isLipsyncAuthFailure } from './lipsync.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {
@@ -120,5 +120,13 @@ describe('lipsync tool', () => {
   it('defaults model to fal-ai/latentsync at the Zod schema level', () => {
     const parsed = inputSchema.parse({ videoFileId: 'v1', audioFileId: 'a1' })
     expect(parsed.model).toBe('fal-ai/latentsync')
+  })
+})
+
+describe('isLipsyncAuthFailure', () => {
+  it('recognises missing provider keys from fal and Sync Labs', () => {
+    expect(isLipsyncAuthFailure('fal.ai rejected: {"detail":"Cannot access application \\"fal-ai/latentsync\\". Authentication is required to access this application."}')).toBe(true)
+    expect(isLipsyncAuthFailure('Sync Labs rejected: {"message":"Either Cookie or x-api-key header must be provided","error":"Unauthorized","statusCode":401}')).toBe(true)
+    expect(isLipsyncAuthFailure('face not detected in video')).toBe(false)
   })
 })
