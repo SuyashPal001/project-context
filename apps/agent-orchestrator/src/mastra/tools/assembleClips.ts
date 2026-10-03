@@ -91,7 +91,13 @@ export const inputSchema = z.object({
     'Per-boundary transitions, length must equal clipFileIds.length - 1. Only consumed when preserveAudio is true (short-drama-stitch use case) — every clip pair gets either an xfade crossfade (with a positive overlapSeconds) or a hard cut.'
   ),
   aspectRatio: z.enum(['16:9', '9:16']),
+  audioFileId: z.string().optional().describe(
+    'A narration/voiceover file to lay under the joined video, so the assembled result is already one finished video with sound. Set it whenever the clips have a separate narration (talking-head: the locked narration fileId, with targetDurationSeconds set to its length). Lip-sync, if it runs afterwards, only improves the mouth; if it fails, this assembled video is still the deliverable. Not compatible with preserveAudio.'
+  ),
 }).refine(
+  (v) => !(v.preserveAudio && v.audioFileId),
+  { message: 'preserveAudio and audioFileId cannot both be set — the clips either keep their own audio or get one narration track, not both' },
+).refine(
   (v) => !(v.preserveAudio && v.targetDurationSeconds !== undefined),
   { message: 'preserveAudio and targetDurationSeconds cannot both be set — the concat filter graph produces one video+audio output stream, and stop_duration padding is meaningless once every input is already individually trimmed upstream' },
 ).refine(
@@ -186,7 +192,7 @@ export const assembleClips = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio, transitions } = inputData as z.infer<typeof inputSchema>
+    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio, transitions, audioFileId } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -200,6 +206,7 @@ export const assembleClips = createTool({
 
     const scopeId = tenantId || sessionId
     const localPaths: string[] = []
+    let audioPath: string | null = null
     try {
       for (const fileId of clipFileIds) {
         const presignedUrl = await fetchPresignedUrl(fileId, idToken)
@@ -209,6 +216,15 @@ export const assembleClips = createTool({
     } catch (err) {
       console.error(`[session:${sessionId}] assembleClips: failed to download a clip:`, (err as Error).message)
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
+    }
+    if (audioFileId) {
+      try {
+        const presignedUrl = await fetchPresignedUrl(audioFileId, idToken)
+        audioPath = (await downloadToSessionCache(scopeId, audioFileId, presignedUrl, MAX_CLIP_BYTES)).filePath
+      } catch (err) {
+        console.error(`[session:${sessionId}] assembleClips: failed to download the narration:`, (err as Error).message)
+        return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
+      }
     }
 
     // Charge BEFORE running ffmpeg — same settled ordering as every other
@@ -327,9 +343,13 @@ export const assembleClips = createTool({
 
       const args: string[] = ['-y']
       for (const p of localPaths) args.push('-i', p)
+      if (audioPath) args.push('-i', audioPath)
       args.push('-filter_complex', filterComplex, '-map', '[outv]')
       if (preserveAudio) {
         args.push('-map', '[outa]')
+      } else if (audioPath) {
+        // The narration rides under the joined video as its only sound track.
+        args.push('-map', `${localPaths.length}:a:0`)
       } else {
         args.push('-an')
       }
@@ -337,7 +357,7 @@ export const assembleClips = createTool({
         args.push('-t', String(targetDurationSeconds))
       }
       args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p')
-      if (preserveAudio) args.push('-c:a', 'aac')
+      if (preserveAudio || audioPath) args.push('-c:a', 'aac')
       args.push(outputPath)
 
       await execFile('ffmpeg', args, { timeout: FFMPEG_TIMEOUT_MS })

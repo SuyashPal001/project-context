@@ -119,6 +119,20 @@ describe('assembleClips tool', () => {
     expect(result).toMatchObject({ refused: true, refusalReason: 'SOURCE_UNAVAILABLE' })
   })
 
+  it('lays the narration under the joined video when audioFileId is set, so the result already has sound', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'assembled1', name: 'assembled.mp4', type: 'video/mp4', size: 8 })
+
+    await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], targetDurationSeconds: 12, aspectRatio: '9:16', audioFileId: 'narration1' } as never, baseCtx())
+
+    const args = execFile.mock.calls[0][1] as string[]
+    expect(args.filter((a) => a === '-i')).toHaveLength(3)
+    expect(args).not.toContain('-an')
+    expect(args[args.indexOf('-map', args.indexOf('[outv]')) + 1]).toBe('2:a:0')
+    expect(args).toContain('-c:a')
+  })
+
   it('chains tpad inside filter_complex (not a separate -vf) when targetDurationSeconds is set', async () => {
     // Regression test for the Critical bug found in review: ffmpeg refuses to
     // mix simple (-vf) and complex (-filter_complex) filtering on the same
