@@ -42,7 +42,7 @@ export const inputSchema = z.object({
 
 export const muxBeatAudio = createTool({
   id: 'mux-beat-audio',
-  description: 'Muxes one narration audio line onto one silent beat clip, trimming the clip to the audio\'s length plus 0.5s. Used per-beat in animation-character for beats that carry VO rather than lip-synced dialogue — never for the hook beat, which uses lipsync instead.',
+  description: 'Muxes one narration audio line onto one silent beat clip, trimming the clip to the audio\'s length plus 0.5s. Used per-beat in animation-character for beats that carry VO rather than lip-synced dialogue — never for the hook beat, which uses lipsync instead. Also the way to combine any voiceover or narration with a silent video into one finished video — e.g. a talking-head ad when lip-sync is unavailable, or whenever the user wants the video and its audio as one file.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
