@@ -6,7 +6,7 @@ const { isUnlimited, resolveRate } = vi.hoisted(() => ({
 }))
 vi.mock('@serverless-saas/credits', () => ({ isUnlimited, resolveRate }))
 
-import { shouldRequireApproval, GENERATION_APPROVAL_METADATA, buildSkillPreview, detectSkillPii } from './generationApproval.js'
+import { shouldRequireApproval, GENERATION_APPROVAL_METADATA, buildSkillPreview, detectSkillPii, narrationPreview } from './generationApproval.js'
 
 const baseCtx = (extra: Record<string, unknown> = {}) => ({
   requestContext: { tenantId: 't1', sessionId: 's1', userId: 'u1', sendEvent: vi.fn(), ...extra },
@@ -203,5 +203,13 @@ describe('GENERATION_APPROVAL_METADATA — short-drama-stitch tools', () => {
 
   it('maps the underscored delegate key to the same metadata object as the hyphenated tool id', () => {
     expect(GENERATION_APPROVAL_METADATA['trim_clip']).toBe(GENERATION_APPROVAL_METADATA['trim-clip'])
+  })
+})
+
+describe('narration approval preview', () => {
+  it('shows the exact script and the language on the card', () => {
+    expect(narrationPreview({ script: '  Okay so... I swapped my coffee.  ', language: 'hi' })).toBe('"Okay so... I swapped my coffee."\nLanguage: Hindi')
+    expect(narrationPreview({ script: 'Hello there' })).toBe('"Hello there"\nLanguage: English')
+    expect(GENERATION_APPROVAL_METADATA['generate_narration'].buildPreview).toBe(narrationPreview)
   })
 })

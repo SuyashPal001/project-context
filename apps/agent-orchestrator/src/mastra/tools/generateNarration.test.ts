@@ -20,7 +20,7 @@ vi.mock('./narrationVoice.js', () => ({ checkNarrationVoice: (...a: unknown[]) =
 const { shouldRequireApproval } = vi.hoisted(() => ({ shouldRequireApproval: vi.fn() }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 
-import { generateNarration, inputSchema } from './generateNarration.js'
+import { generateNarration, inputSchema, scriptShortfall } from './generateNarration.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {
@@ -201,5 +201,16 @@ describe('generateNarration tool', () => {
     expect(result).toMatchObject({ refused: true, refusalReason: expect.stringContaining('VOICE_NOT_AVAILABLE') })
     expect(spendCredits).not.toHaveBeenCalled()
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('scriptShortfall', () => {
+  it('refuses a 33-word script for a 15s ad and says how many words are needed', () => {
+    const script = 'Honestly, Mumbai heat is no joke, so I swapped my morning chai for this fresh cold-pressed green juice. No added sugar, just raw greens and amla. My energy has been so good all day!'
+    expect(scriptShortfall(script, 15)).toMatch(/SCRIPT_TOO_SHORT: \d+ words .* about 41 words/)
+  })
+  it('accepts a script long enough, ignores tags, and skips the check without a target', () => {
+    expect(scriptShortfall(Array(38).fill('word').join(' ') + ' <laugh>', 15)).toBeNull()
+    expect(scriptShortfall('short', undefined)).toBeNull()
   })
 })

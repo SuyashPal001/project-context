@@ -108,7 +108,17 @@ const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label
 const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video', buildPreview: promptPreview }
 const songGen = { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' }
 const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image', buildPreview: promptPreview }
-const narrationGen = { resourceType: 'narration_generation', subject: NARRATION_MODEL, label: 'Generate narration' }
+// The narration card shows the exact words and language, so approving the
+// cost also approves the script — the user never gets a read they didn't see.
+export function narrationPreview(args: Record<string, unknown>): string | undefined {
+  const script = typeof args.script === 'string' ? args.script.trim() : ''
+  if (!script) return undefined
+  const code = typeof args.language === 'string' && args.language ? args.language : 'en'
+  let language = code
+  try { language = new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code } catch { /* keep the code */ }
+  return clipPrompt(`"${script}"\nLanguage: ${language}`)
+}
+const narrationGen = { resourceType: 'narration_generation', subject: NARRATION_MODEL, label: 'Generate narration', buildPreview: narrationPreview }
 const lipsyncGen = { resourceType: 'lipsync_generation', subject: LIPSYNC_MODEL, label: 'Lip-sync video' }
 const assemblyGen = { resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT, label: 'Assemble clips' }
 const muxBeatAudioGen = { resourceType: 'clip_assembly', subject: MUX_BEAT_AUDIO_SUBJECT, label: 'Mux beat audio' }

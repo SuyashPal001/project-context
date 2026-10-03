@@ -19,6 +19,19 @@ const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 export const GEMINI_SPEECH_MODEL = 'gemini-3.8-flash-tts'
 export const CARTESIA_SPEECH_MODEL = 'sonic-3.5'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Measured on Gemini 3.8 voice-note reads (2026-10-03: 33 words in 12.0s at
+// speed 1.05, about 2.75 words a second); vocal tags are not words.
+const WORDS_PER_SECOND = 2.7
+const LENGTH_TOLERANCE_SECONDS = 1.5
+export function scriptShortfall(script: string, targetSeconds: number | undefined): string | null {
+  if (!targetSeconds) return null
+  const words = script.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length
+  const estimated = words / WORDS_PER_SECOND
+  if (estimated >= targetSeconds - LENGTH_TOLERANCE_SECONDS) return null
+  const needed = Math.round(targetSeconds * WORDS_PER_SECOND)
+  return `SCRIPT_TOO_SHORT: ${words} words reads in about ${Math.round(estimated)}s, but the ad is ${targetSeconds}s. Rewrite the script to about ${needed} words (same voice and tone), show it to the user, then narrate.`
+}
+
 export function narrationModel(voiceId: string | undefined): string {
   return voiceId && UUID_RE.test(voiceId) ? CARTESIA_SPEECH_MODEL : GEMINI_SPEECH_MODEL
 }
@@ -47,6 +60,9 @@ export const inputSchema = z.object({
     'Delivery emotion for the whole read (English only; ignored for other languages). Pick it from the ad\'s tone and make sure the words actually carry it — e.g. enthusiastic for UGC/testimonial energy, content or calm for wellness, confident for a pitch. Omit for a neutral read.'
   ),
   speed: z.number().min(0.6).max(1.5).optional().describe('Speech speed, 1.0 is normal. ~1.05 for lively UGC, 0.95 for calm/premium. Omit for 1.0.'),
+  targetSeconds: z.number().positive().max(60).optional().describe(
+    'The ad length the user asked for, in seconds. When set, a script too short to fill it is refused before any charge, with the word count needed.'
+  ),
   direction: z.string().max(600).optional().describe(
     'How the line should be performed, in plain English — who is speaking, to whom, and how (e.g. "Not a voice actor: an ordinary woman in her mid-twenties recording a casual voice note to her best friend. Relaxed, a bit fast, a smile you can hear, sentence ends trailing off, uneven pauses, never polished."). Never put this in the script — it is sent separately and never spoken. Works in every language. Takes priority over emotion/speed.'
   ),
@@ -60,7 +76,7 @@ export const generateNarration = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'narration_generation', subject: narrationModel((_input as { voiceId?: string } | undefined)?.voiceId) }, ctx),
   execute: async (inputData, execContext) => {
-    const { script, voiceId, language, emotion, speed, direction } = inputData as z.infer<typeof inputSchema>
+    const { script, voiceId, language, emotion, speed, direction, targetSeconds } = inputData as z.infer<typeof inputSchema>
     const SPEECH_MODEL = narrationModel(voiceId)
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
@@ -73,6 +89,11 @@ export const generateNarration = createTool({
     const sessionId = conversationId ?? 'unknown'
     const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
     const jobId = `${conversationId ?? sessionId}:${stableToolCallId(toolCallId)}`
+
+    // Before any charge: a script that can't fill the requested length is
+    // rewritten, not recorded (a 15s ad came back 12s on 2026-10-03).
+    const shortfall = scriptShortfall(script, targetSeconds)
+    if (shortfall) return { refused: true, refusalReason: shortfall, jobId }
 
     // Before any charge: refuse a voice that is not currently offered.
     const voiceCheck = await checkNarrationVoice(voiceId)
