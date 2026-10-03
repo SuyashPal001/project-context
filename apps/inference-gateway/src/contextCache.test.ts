@@ -203,3 +203,9 @@ describe('constants', () => {
     expect(SERVER_CACHE_TTL_SECONDS).toBeLessThanOrEqual(3600)
   })
 })
+
+describe('isStaleCacheError — request/cache mismatch', () => {
+  it('treats Vertex "should not be set in the request when using cached content" as retry-uncached', () => {
+    expect(isStaleCacheError(400, 'Tool config, tools and system instruction should not be set in therequest when using cached content.')).toBe(true)
+  })
+})

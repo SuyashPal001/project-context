@@ -453,14 +453,27 @@ function withCachedContentRefV(request: GenerateContentRequest, cacheName: strin
   const out = { ...request } as GenerateContentRequest & { cachedContent?: string };
   delete (out as { systemInstruction?: unknown }).systemInstruction;
   delete (out as { tools?: unknown }).tools;
+  // Vertex also rejects toolConfig next to a cache reference ("Tool config,
+  // tools and system instruction should not be set in the request when using
+  // cached content") — it is cached with the tools instead (cacheablePrefix).
+  delete (out as { toolConfig?: unknown }).toolConfig;
   out.cachedContent = cacheName;
   return out;
+}
+
+// The cache key and the cache body both cover toolConfig, so a cache made for
+// one function-calling mode is never reused for another. Without a toolConfig
+// the key is unchanged from before.
+function cacheableTools(request: GenerateContentRequest): unknown {
+  const toolConfig = (request as { toolConfig?: unknown }).toolConfig;
+  return toolConfig ? { tools: request.tools ?? null, toolConfig } : request.tools;
 }
 
 async function createCachedContentV(
   modelName: string,
   systemInstruction: unknown,
   tools: unknown,
+  toolConfig?: unknown,
 ): Promise<{ name: string; ttlSeconds: number }> {
   const client = await _auth.getClient();
   const tokenResp = await client.getAccessToken();
@@ -474,6 +487,7 @@ async function createCachedContentV(
   };
   if (systemInstruction) body.systemInstruction = systemInstruction;
   if (tools) body.tools = tools;
+  if (toolConfig) body.toolConfig = toolConfig;
 
   const resp = await fetch(url, {
     method: 'POST',
@@ -535,7 +549,7 @@ export class VertexAdapter implements ProviderAdapter {
   private async handleNonStream(model: any, request: GenerateContentRequest, modelName: string, res: ServerResponse): Promise<void> {
     // Cache lookup + stale-retry + fire-and-forget-prime. Same pattern as
     // gemini.ts's handleNonStream — see contextCache.ts for the shared map.
-    const hash = computePrefixHash(modelName, request.systemInstruction, request.tools);
+    const hash = computePrefixHash(modelName, request.systemInstruction, cacheableTools(request));
     const cachedName = getCachedName('vertex', hash);
     let effectiveRequest: GenerateContentRequest = request;
     let cacheUsed = false;
@@ -562,7 +576,7 @@ export class VertexAdapter implements ProviderAdapter {
     }
 
     if (!cacheUsed && shouldTryCache('vertex', estimateCacheableCharsV(request.systemInstruction, request.tools))) {
-      primeCache('vertex', hash, () => createCachedContentV(modelName, request.systemInstruction, request.tools));
+      primeCache('vertex', hash, () => createCachedContentV(modelName, request.systemInstruction, request.tools, (request as { toolConfig?: unknown }).toolConfig));
     }
 
     const response = buildNonStreamingResponse(result, modelName);
@@ -590,7 +604,7 @@ export class VertexAdapter implements ProviderAdapter {
     // Cache lookup + stale-retry + fire-and-forget-prime. Same pattern as
     // gemini.ts. Retry happens before any writeHead, so we can safely
     // re-fetch with the original body on stale-cache errors.
-    const hash = computePrefixHash(modelName, request.systemInstruction, request.tools);
+    const hash = computePrefixHash(modelName, request.systemInstruction, cacheableTools(request));
     const cachedName = getCachedName('vertex', hash);
     let effectiveRequest: GenerateContentRequest = request;
     let cacheUsed = false;
@@ -635,7 +649,7 @@ export class VertexAdapter implements ProviderAdapter {
     }
 
     if (!cacheUsed && shouldTryCache('vertex', estimateCacheableCharsV(request.systemInstruction, request.tools))) {
-      primeCache('vertex', hash, () => createCachedContentV(modelName, request.systemInstruction, request.tools));
+      primeCache('vertex', hash, () => createCachedContentV(modelName, request.systemInstruction, request.tools, (request as { toolConfig?: unknown }).toolConfig));
     }
 
     res.writeHead(200, {

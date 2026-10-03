@@ -193,6 +193,10 @@ export function primeCache(
  * match on "CachedContent not found" covers both.
  */
 export function isStaleCacheError(status: number, message: string): boolean {
+  // A request the cache can't serve as sent (e.g. a field that must live in
+  // the cache was left in the request): drop the cache and retry uncached
+  // rather than failing the user's turn.
+  if (/when using cached content/i.test(message)) return true
   if (status !== 403 && status !== 404) return false
   return /CachedContent not found/i.test(message) || /cachedContent/i.test(message)
 }
