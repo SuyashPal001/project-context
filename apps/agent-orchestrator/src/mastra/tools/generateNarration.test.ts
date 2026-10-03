@@ -14,6 +14,8 @@ vi.mock('@serverless-saas/credits', () => ({
 }))
 vi.mock('../../usage.js', () => ({ getPool }))
 vi.mock('../../persistence.js', () => ({ uploadGeneratedFile: vi.fn() }))
+const checkNarrationVoice = vi.fn(async () => ({ ok: true }))
+vi.mock('./narrationVoice.js', () => ({ checkNarrationVoice: (...a: unknown[]) => checkNarrationVoice(...(a as [])) }))
 
 const { shouldRequireApproval } = vi.hoisted(() => ({ shouldRequireApproval: vi.fn() }))
 vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
@@ -186,5 +188,18 @@ describe('generateNarration tool', () => {
 
     await generateNarration.execute!({ script: 'Hi', voiceId: 'v1' } as never, ctx({ tenantId: 't1', conversationId: 'c1', idToken: 'tok' }))
     expect(spendCredits).toHaveBeenCalled()
+  })
+
+  it('refuses a voice that is not offered, before charging or calling the gateway', async () => {
+    checkNarrationVoice.mockResolvedValueOnce({ ok: false, reason: 'Cathy is no longer offered.' } as never)
+    const fetchSpy = vi.fn()
+    global.fetch = fetchSpy as unknown as typeof fetch
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockClear()
+
+    const result = await generateNarration.execute!({ script: 'Hello', voiceId: 'e8e5fffb-252c-436d-b842-8879b84445b6' } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: expect.stringContaining('VOICE_NOT_AVAILABLE') })
+    expect(spendCredits).not.toHaveBeenCalled()
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

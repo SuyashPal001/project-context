@@ -6,6 +6,7 @@ import { refundNarrationCharge } from './narrationCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { emitToolStatus } from './generationStarted.js'
+import { checkNarrationVoice } from './narrationVoice.js'
 
 function languageName(code: string): string {
   try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code } catch { return code }
@@ -72,6 +73,10 @@ export const generateNarration = createTool({
     const sessionId = conversationId ?? 'unknown'
     const toolCallId = execContext?.agent?.toolCallId ?? 'unknown'
     const jobId = `${conversationId ?? sessionId}:${stableToolCallId(toolCallId)}`
+
+    // Before any charge: refuse a voice that is not currently offered.
+    const voiceCheck = await checkNarrationVoice(voiceId)
+    if (!voiceCheck.ok) return { refused: true, refusalReason: `VOICE_NOT_AVAILABLE: ${voiceCheck.reason}`, jobId }
 
     // Charge BEFORE the vendor call — same settled rule generateVideo.ts
     // follows. generateSong.ts charges after and is a known-divergent tool,
