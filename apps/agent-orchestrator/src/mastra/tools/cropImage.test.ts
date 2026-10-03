@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeCropRect, parseHeadBox } from './cropImage.js'
+import { computeCropRect, computeZoomRect, parseHeadBox } from './cropImage.js'
 
 describe('computeCropRect', () => {
   it('frames a 3:4 head-and-shoulders crop around the head of a full-body still', () => {
@@ -52,5 +52,21 @@ describe('computeCropRect keepAspect', () => {
     expect(Math.abs(r.w / r.h - 9 / 16)).toBeLessThan(0.01)
     expect(r.x).toBeGreaterThanOrEqual(0)
     expect(r.y + r.h).toBeLessThanOrEqual(1920)
+  })
+})
+
+describe('head box parsing and video-frame zoom (2026-10-03 cap-crop bug)', () => {
+  it("reads gemini-3.6-flash's native box_2d answer", () => {
+    const box = parseHeadBox('```json\n[\n  {"box_2d": [222, 227, 563, 695], "label": "head"}\n]\n```')
+    expect(box).toEqual({ x: 0.227, y: 0.222, w: 0.468, h: 0.341 })
+  })
+  it('zooms around the face and keeps the whole head in frame', () => {
+    const r = computeZoomRect(768, 1376, 'close-up', { x: 0.35, y: 0.25, w: 0.3, h: 0.2 })!
+    expect(Math.abs(r.w / r.h - 768 / 1376)).toBeLessThan(0.01)
+    expect(r.y).toBeLessThanOrEqual(0.25 * 1376)
+    expect(r.y + r.h).toBeGreaterThanOrEqual(0.45 * 1376)
+  })
+  it('refuses (returns null) without a head box instead of guessing', () => {
+    expect(computeZoomRect(768, 1376, 'close-up', null)).toBeNull()
   })
 })

@@ -36,6 +36,27 @@ const FRAMING: Record<CropFraming, { heads: number; above: number }> = {
  * Exported for tests. Without a head box it falls back to the top-centre,
  * where a standing full-body subject's head almost always is.
  */
+/**
+ * keepAspect crop for a video start frame: a gentle zoom (not a tight crop)
+ * that keeps the source's shape, centred on the face, with the whole head and
+ * some shoulders inside. Returns null when there is no head box or the zoom
+ * would cut the face — the caller then uses the source image unchanged, so a
+ * clip never starts from a faceless frame.
+ */
+export function computeZoomRect(width: number, height: number, framing: CropFraming, head: HeadBox | null): { x: number; y: number; w: number; h: number } | null {
+  if (!head) return null
+  const zoom = framing === 'close-up' ? 1.5 : 1.25
+  const w = Math.round(width / zoom), h = Math.round(height / zoom)
+  const cx = (head.x + head.w / 2) * width
+  const cy = (head.y + head.h / 2) * height
+  // Face centre a little above the middle of the frame.
+  const x = Math.round(Math.min(Math.max(cx - w / 2, 0), width - w))
+  const y = Math.round(Math.min(Math.max(cy - h * 0.42, 0), height - h))
+  const hx = head.x * width, hy = head.y * height, hw = head.w * width, hh = head.h * height
+  if (hx < x || hy < y || hx + hw > x + w || hy + hh * 1.1 > y + h) return null
+  return { x, y, w: w - (w % 2), h: h - (h % 2) }
+}
+
 export function computeCropRect(width: number, height: number, framing: CropFraming, head: HeadBox | null, aspect = 3 / 4): { x: number; y: number; w: number; h: number } {
   const box = head ?? { x: 0.4, y: 0.06, w: 0.2, h: 0.12 }
   const { heads, above } = FRAMING[framing]
@@ -51,8 +72,22 @@ export function computeCropRect(width: number, height: number, framing: CropFram
   return { x, y, w: cropW - (cropW % 2), h: cropH - (cropH % 2) }
 }
 
-/** Parses {"x":..,"y":..,"w":..,"h":..} (fractions) out of the model's reply; null when unusable. */
+/** Gemini's native detection format: box_2d = [ymin, xmin, ymax, xmax] on a
+ *  0-1000 scale. gemini-3.6-flash answers this way even when asked for x/y/w/h
+ *  (2026-10-03: every crop silently fell back to the top-centre guess, which
+ *  cropped a seated presenter's cap instead of his face). */
+function parseBox2d(raw: string): HeadBox | null {
+  const m = /"box_2d"\s*:\s*\[\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]/.exec(raw)
+  if (!m) return null
+  const [ymin, xmin, ymax, xmax] = m.slice(1).map(Number)
+  if ([ymin, xmin, ymax, xmax].some((n) => !Number.isFinite(n) || n < 0 || n > 1000) || ymax <= ymin || xmax <= xmin) return null
+  return { x: xmin / 1000, y: ymin / 1000, w: (xmax - xmin) / 1000, h: (ymax - ymin) / 1000 }
+}
+
+/** Parses {"x":..,"y":..,"w":..,"h":..} (fractions) — or Gemini's box_2d — out of the model's reply; null when unusable. */
 export function parseHeadBox(raw: string): HeadBox | null {
+  const native = parseBox2d(raw)
+  if (native) return native
   const start = raw.indexOf('{'), end = raw.lastIndexOf('}')
   if (start < 0 || end <= start) return null
   try {
@@ -134,7 +169,11 @@ export const cropImage = createTool({
       if (!width || !height) return { refused: true, refusalReason: 'CROP_FAILED' }
 
       const head = await findHead(bytes.toString('base64'), mimeType, tenantId, controller.signal)
-      const rect = computeCropRect(width, height, framing, head, keepAspect ? width / height : 3 / 4)
+      // keepAspect (a video start frame): a face-centred zoom, or the source
+      // itself when the face can't be placed safely — never a blind guess.
+      const rect = keepAspect
+        ? (computeZoomRect(width, height, framing, head) ?? { x: 0, y: 0, w: width - (width % 2), h: height - (height % 2) })
+        : computeCropRect(width, height, framing, head)
       const outputPath = join(workDir, 'out.jpg')
       // keepAspect: scale the crop back up to the source size, so a 9:16 still
       // stays a full-size 9:16 start frame for generate_video.
