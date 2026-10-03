@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { VisuallyHidden } from "radix-ui";
-import { ArrowUpRight, X } from "lucide-react";
+import { ArrowUpRight, Volume2, VolumeX, X } from "lucide-react";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,6 +74,9 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
     const bestFor = skill?.showcase?.bestFor ?? [];
     const imageUrl = skill?.showcase?.imageUrl;
     const videoUrl = skill?.showcase?.videoUrl;
+    // Autoplay must start muted (browser rule); a talking-head example is about
+    // the voice, so the viewer can turn sound on.
+    const [muted, setMuted] = useState(true);
     const showBackdrop = fit === "contain";
 
     return (
@@ -121,7 +124,7 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                                             src={videoUrl}
                                             poster={imageUrl}
                                             autoPlay
-                                            muted
+                                            muted={muted}
                                             loop
                                             playsInline
                                             onLoadedMetadata={handleVideoLoadedMetadata}
@@ -130,6 +133,14 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                                                 fit === "cover" ? "object-cover" : "object-contain",
                                             )}
                                         />
+                                        <button
+                                            type="button"
+                                            onClick={() => setMuted(m => !m)}
+                                            aria-label={muted ? "Turn sound on" : "Turn sound off"}
+                                            className="absolute bottom-3 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75"
+                                        >
+                                            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                                        </button>
                                     </>
                                 ) : imageUrl ? (
                                     <>

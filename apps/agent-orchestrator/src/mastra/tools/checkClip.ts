@@ -33,7 +33,7 @@ export function lineMatchScore(expected: string, heard: string): number {
   return Math.max(i, present) / want.length
 }
 
-export interface ClipVerdict { samePerson: boolean; confidence: number; heard: string; reason: string }
+export interface ClipVerdict { samePerson: boolean; productSame: boolean; confidence: number; heard: string; reason: string }
 
 // Asked point by point, against the master still (it carries this ad's exact
 // outfit). A plain "same person?" question let gemini-3.6-flash pass a clip
@@ -52,7 +52,7 @@ export function parseVerdict(raw: string): ClipVerdict | null {
       ? v.face_same && v.clothing_same !== false
       : v.samePerson
     if (typeof same !== 'boolean') return null
-    return { samePerson: same, confidence: Number(v.confidence ?? 0), heard: String(v.heard ?? ''), reason: String(v.differences ?? v.reason ?? '') }
+    return { samePerson: same, productSame: v.product_same !== false, confidence: Number(v.confidence ?? 0), heard: String(v.heard ?? ''), reason: String(v.differences ?? v.reason ?? '') }
   } catch {
     return null
   }
@@ -74,18 +74,20 @@ export const checkClip = createTool({
     masterStillFileId: z.string().describe("This ad's locked master still — the outfit and look every clip must keep"),
     referenceFileIds: z.array(z.string()).max(1).optional().describe('Optional: the avatar, whose reference sheet is then added automatically'),
     expectedLine: z.string().optional().describe('The exact approved line this clip should speak; omit for a silent clip'),
+    productFileId: z.string().optional().describe('The product photo, when the product appears in the clip: its shape, colour and printed/embroidered text must stay the same'),
   }),
   outputSchema: z.object({
     passed: z.boolean().optional(),
     samePerson: z.boolean().optional(),
     lineMatches: z.boolean().optional(),
+    productMatches: z.boolean().optional(),
     heard: z.string().optional(),
     reason: z.string().optional(),
     refused: z.boolean().optional(),
     refusalReason: z.string().optional(),
   }),
   execute: async (inputData, execContext) => {
-    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string }
+    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine, productFileId } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string }
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
@@ -119,13 +121,18 @@ export const checkClip = createTool({
       const content: unknown[] = [{ type: 'text', text: 'Image A (master still):' }, { type: 'image_url', image_url: { url: `data:${master.mime};base64,${master.data}` } }]
       if (refs.length) content.push({ type: 'text', text: 'Reference images:' })
       for (const r of refs) content.push({ type: 'image_url', image_url: { url: `data:${r.mime};base64,${r.data}` } })
+      if (productFileId) {
+        const product = await fetchBase64(productFileId, idToken, controller.signal)
+        content.push({ type: 'text', text: 'Image P (the product):' }, { type: 'image_url', image_url: { url: `data:${product.mime};base64,${product.data}` } })
+      }
       content.push({ type: 'text', text: 'Frames from the later clip:' })
       for (const f of frames) content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${f}` } })
       if (audio) {
         content.push({ type: 'text', text: 'The clip\'s audio:' })
         content.push({ type: 'input_audio', input_audio: { data: audio, format: 'wav' } })
       }
-      content.push({ type: 'text', text: STRICT_QUESTION + ' ' + (audio ? 'Also transcribe exactly what is spoken in the audio. ' : '') + 'Reply with ONLY JSON: {"clothing_same": true|false, "face_same": true|false, "confidence": 1-10, "differences": "<short list or none>", "heard": "<exact transcript or empty>"}' })
+      const productAsk = productFileId ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and printed or embroidered text as Image P (product_same false if its text is misspelled, changed or garbled; true if it is not visible). ' : ''
+      content.push({ type: 'text', text: STRICT_QUESTION + ' ' + productAsk + (audio ? 'Also transcribe exactly what is spoken in the audio. ' : '') + 'Reply with ONLY JSON: {"clothing_same": true|false, "face_same": true|false, ' + (productFileId ? '"product_same": true|false, ' : '') + '"confidence": 1-10, "differences": "<short list or none>", "heard": "<exact transcript or empty>"}' })
 
       const res = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
         method: 'POST', signal: controller.signal,
@@ -141,12 +148,14 @@ export const checkClip = createTool({
       if (!verdict) return { refused: true, refusalReason: 'CHECK_FAILED: unreadable verdict' }
       const lineMatches = expectedLine ? lineMatchScore(expectedLine, verdict.heard) >= LINE_MATCH_THRESHOLD : true
       const samePerson = verdict.samePerson && verdict.confidence >= 6
+      const productMatches = verdict.productSame
       return {
-        passed: samePerson && lineMatches,
+        passed: samePerson && lineMatches && productMatches,
         samePerson,
         lineMatches,
+        productMatches,
         heard: verdict.heard,
-        reason: !samePerson ? `Different person: ${verdict.reason}` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : 'Same person, said the line.',
+        reason: !samePerson ? `Different person: ${verdict.reason}` : !productMatches ? `Product changed: ${verdict.reason}` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : 'Same person, product and line.',
       }
     } catch (err) {
       console.error('[checkClip] failed:', (err as Error).message)

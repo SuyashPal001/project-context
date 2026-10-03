@@ -38,6 +38,8 @@ import { skillInstalls, skills, skillVersions } from '@serverless-saas/agent-sch
 
 export interface SkillShowcase {
   imageUrl: string;
+  /** Optional example video; the detail modal plays it with imageUrl as poster. */
+  videoUrl?: string;
   bestFor: string[];
   starterPrompt: string;
 }
@@ -128,7 +130,10 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     file: officialSkillFile('talking-head.md'),
     director: { file: officialSkillFile('talking-head/director.md'), markers: ['flow: talking head'] },
     showcase: {
-      imageUrl: '/creative/avatars/beauty-skincare-presenter.jpg',
+      // A real talking-head made by this skill (Minjun, natural speech, clips
+      // chained from the last frame) — the old glamour still wasn't one.
+      imageUrl: '/creative/skills/talking-head-example.jpg',
+      videoUrl: '/creative/skills/talking-head-example.mp4',
       bestFor: ['Product explainers', 'Testimonials', 'Announcements'],
       starterPrompt: 'Make a talking-head ad for my product',
     },
