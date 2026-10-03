@@ -8,6 +8,7 @@ import { features } from '@serverless-saas/database/schema/entitlements';
 import { decideUpload, resolveStorageLimit, storagePercent } from './files.quota';
 import { sumTenantStorageBytes } from '../usage-counters';
 import { reclaimAbandonedUploads } from './files.reclaim';
+import { parseListPage } from './files.listPage';
 import { hasPermission } from '@serverless-saas/permissions';
 import { eq, and, ne, isNull } from 'drizzle-orm';
 import { publishToQueue } from '@serverless-saas/queue';
@@ -320,8 +321,7 @@ filesRoutes.get('/:id/download', async (c) => {
 filesRoutes.get('/', async (c) => {
   const requestContext = c.get('requestContext') as any;
   const tenantId = requestContext?.tenant?.id;
-  const limit = parseInt(c.req.query('limit') || '50');
-  const offset = parseInt(c.req.query('offset') || '0');
+  const { limit, offset } = parseListPage(c.req.query('limit'), c.req.query('offset'));
   const prefix = c.req.query('prefix') || undefined;
 
   const permissions = requestContext?.permissions || [];
@@ -360,7 +360,9 @@ filesRoutes.get('/', async (c) => {
     personFolderId: f.personFolderId ?? null,
   }));
 
-  return c.json({ data });
+  // Judged on the DB page, not `data`: the avatar filter above can shorten a
+  // page that still has more rows behind it.
+  return c.json({ data, hasMore: filesList.length === limit });
 });
 
 // Delete file

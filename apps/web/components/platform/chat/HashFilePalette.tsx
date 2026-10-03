@@ -4,6 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { useQuery } from "@tanstack/react-query";
 import { Search, Check, Plus, Play } from "lucide-react";
 import { api } from "@/lib/api";
+import { fetchAllFiles } from "@/components/platform/files/lib/fetchAllFiles";
 import { formatFileSize } from "@/components/platform/files/lib/fileIcons";
 import { assetTypeForFile } from "@/lib/assetType";
 import { TYPE_ICONS, TYPE_STYLES } from "@/components/platform/canvas/assetTypeStyles";
@@ -135,7 +136,7 @@ export const HashFilePalette = forwardRef<PaletteHandle, HashFilePaletteProps>(f
     // of double-fetching.
     const { data, isLoading } = useQuery({
         queryKey: ['files', ''],
-        queryFn: () => api.get<{ data: FileRecord[] }>('/api/v1/files'),
+        queryFn: () => fetchAllFiles(path => api.get<{ data: FileRecord[]; hasMore?: boolean }>(path)),
     });
 
     const allFiles = useMemo(() => data?.data ?? [], [data]);

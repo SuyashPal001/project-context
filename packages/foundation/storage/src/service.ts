@@ -1,6 +1,6 @@
 import { db } from '@serverless-saas/database';
 import { files, storageProviders } from '@serverless-saas/database/schema';
-import { eq, and, isNull, like } from 'drizzle-orm';
+import { eq, and, isNull, like, desc } from 'drizzle-orm';
 import type { InferSelectModel } from 'drizzle-orm';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import { S3StorageProvider } from './providers/s3';
@@ -281,9 +281,10 @@ export class StorageService {
         isNull(files.deletedAt),
         prefix ? like(files.key, `${prefix}%`) : undefined,
       ))
+      // Newest first, with id as a tiebreak so pages never overlap or skip a row.
+      .orderBy(desc(files.createdAt), desc(files.id))
       .limit(limit)
-      .offset(offset)
-      .orderBy(files.createdAt);
+      .offset(offset);
   }
 }
 

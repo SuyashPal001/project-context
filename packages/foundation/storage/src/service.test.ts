@@ -135,3 +135,34 @@ describe('StorageService.putFileForTenant', () => {
     expect(insertMock).not.toHaveBeenCalled();
   });
 });
+
+describe('StorageService.listFiles', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    selectMock.mockReset();
+  });
+
+  // Oldest-first meant a tenant past one page saw only its oldest files: Drive
+  // stopped showing anything the agent generated once the tenant passed 50 files.
+  it('returns the newest files first', async () => {
+    const orderByMock = vi.fn().mockReturnValue({
+      limit: () => ({ offset: () => Promise.resolve([]) }),
+    });
+    selectMock.mockReturnValue({ from: () => ({ where: () => ({ orderBy: orderByMock }) }) });
+    vi.doMock('@serverless-saas/database', () => ({ db: { select: selectMock } }));
+    vi.doMock('@serverless-saas/database/schema', () => ({
+      files: { createdAt: 'files.created_at', id: 'files.id' },
+      storageProviders: {},
+    }));
+    vi.doMock('drizzle-orm', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('drizzle-orm')>()),
+      eq: () => 'eq', and: () => 'and', isNull: () => 'isNull', like: () => 'like',
+      desc: (col: unknown) => ({ desc: col }),
+    }));
+    const { StorageService } = await import('./service');
+
+    await new StorageService().listFiles('tenant-1', 50, 0);
+
+    expect(orderByMock.mock.calls[0][0]).toEqual({ desc: 'files.created_at' });
+  });
+});

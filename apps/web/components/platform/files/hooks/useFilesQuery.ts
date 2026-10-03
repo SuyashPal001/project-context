@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useMemo } from "react";
 import type { FileRecord } from "../types";
+import { fetchAllFiles } from "../lib/fetchAllFiles";
 import type { Agent } from "@/components/platform/agents/types";
 
 export interface Breadcrumb {
@@ -19,10 +20,7 @@ export function useFilesQuery(prefix: string) {
 
     const { data: response, isLoading } = useQuery({
         queryKey: ['files', prefix],
-        queryFn: async () => {
-            const params = prefix ? `?prefix=${encodeURIComponent(prefix)}` : '';
-            return api.get<{ data: FileRecord[] }>(`/api/v1/files${params}`);
-        },
+        queryFn: () => fetchAllFiles(path => api.get<{ data: FileRecord[]; hasMore?: boolean }>(path), prefix),
         refetchInterval: 5000,
     });
 

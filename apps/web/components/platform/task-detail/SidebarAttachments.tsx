@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Paperclip, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { fetchAllFiles } from '@/components/platform/files/lib/fetchAllFiles'
 
 interface SidebarAttachmentsProps {
     attachmentFileIds: string[]
@@ -18,7 +19,7 @@ export function SidebarAttachments({ attachmentFileIds, isUploading, attachFileI
 
     const { data: filesData } = useQuery({
         queryKey: ['files'],
-        queryFn: () => api.get<{ data: Array<{ id: string; filename: string }> }>('/api/v1/files'),
+        queryFn: () => fetchAllFiles(path => api.get<{ data: Array<{ id: string; filename: string }>; hasMore?: boolean }>(path)),
         enabled: hasAttachments,
         staleTime: 60_000,
     })
