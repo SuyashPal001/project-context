@@ -36,13 +36,13 @@ const FRAMING: Record<CropFraming, { heads: number; above: number }> = {
  * Exported for tests. Without a head box it falls back to the top-centre,
  * where a standing full-body subject's head almost always is.
  */
-export function computeCropRect(width: number, height: number, framing: CropFraming, head: HeadBox | null): { x: number; y: number; w: number; h: number } {
+export function computeCropRect(width: number, height: number, framing: CropFraming, head: HeadBox | null, aspect = 3 / 4): { x: number; y: number; w: number; h: number } {
   const box = head ?? { x: 0.4, y: 0.06, w: 0.2, h: 0.12 }
   const { heads, above } = FRAMING[framing]
   let cropH = Math.round(box.h * height * heads)
-  let cropW = Math.round(cropH * 3 / 4)
-  if (cropW > width) { cropW = width; cropH = Math.round(cropW * 4 / 3) }
-  if (cropH > height) { cropH = height; cropW = Math.min(width, Math.round(cropH * 3 / 4)) }
+  let cropW = Math.round(cropH * aspect)
+  if (cropW > width) { cropW = width; cropH = Math.round(cropW / aspect) }
+  if (cropH > height) { cropH = height; cropW = Math.min(width, Math.round(cropH * aspect)) }
   const centreX = (box.x + box.w / 2) * width
   const top = box.y * height - box.h * height * above
   const x = Math.round(Math.min(Math.max(centreX - cropW / 2, 0), width - cropW))
@@ -93,11 +93,12 @@ async function findHead(base64: string, mimeType: string, tenantId: string | und
 
 export const cropImage = createTool({
   id: 'crop-image',
-  description: 'Free: makes a closer framing of an existing image by cropping it — "close-up" (head and shoulders) or "half-body" (waist up), 3:4, around the person\'s head. The face stays pixel-identical and no credits are spent. Use it whenever a closer view of an image you already have is wanted — never generate or edit_image just to get a closer shot.',
+  description: 'Free: makes a closer framing of an existing image by cropping it — "close-up" (head and shoulders) or "half-body" (waist up), 3:4 (or the source\'s own shape with keepAspect), around the person\'s head. The face stays pixel-identical and no credits are spent. Use it whenever a closer view of an image you already have is wanted — never generate or edit_image just to get a closer shot.',
   inputSchema: z.object({
     fileId: z.string().describe('The image to crop, e.g. a full-body still'),
     framing: z.enum(['close-up', 'half-body']).default('close-up'),
     title: z.string().max(120).optional().describe('File title, e.g. "Aroha — close-up"'),
+    keepAspect: z.boolean().optional().describe('Keep the source image\'s shape and size (e.g. a 9:16 video still stays 9:16) instead of a 3:4 crop. Use it when the crop becomes a video clip\'s start frame.'),
   }),
   outputSchema: z.object({
     fileId: z.string().optional(),
@@ -108,7 +109,7 @@ export const cropImage = createTool({
     refusalReason: z.string().optional(),
   }),
   execute: async (inputData, execContext) => {
-    const { fileId, framing, title } = inputData as { fileId: string; framing: CropFraming; title?: string }
+    const { fileId, framing, title, keepAspect } = inputData as { fileId: string; framing: CropFraming; title?: string; keepAspect?: boolean }
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined
@@ -133,9 +134,12 @@ export const cropImage = createTool({
       if (!width || !height) return { refused: true, refusalReason: 'CROP_FAILED' }
 
       const head = await findHead(bytes.toString('base64'), mimeType, tenantId, controller.signal)
-      const rect = computeCropRect(width, height, framing, head)
+      const rect = computeCropRect(width, height, framing, head, keepAspect ? width / height : 3 / 4)
       const outputPath = join(workDir, 'out.jpg')
-      await execFile('ffmpeg', ['-y', '-i', inputPath, '-vf', `crop=${rect.w}:${rect.h}:${rect.x}:${rect.y}`, '-q:v', '2', outputPath], { timeout: FFMPEG_TIMEOUT_MS })
+      // keepAspect: scale the crop back up to the source size, so a 9:16 still
+      // stays a full-size 9:16 start frame for generate_video.
+      const scale = keepAspect ? `,scale=${width - (width % 2)}:${height - (height % 2)}:flags=lanczos` : ''
+      await execFile('ffmpeg', ['-y', '-i', inputPath, '-vf', `crop=${rect.w}:${rect.h}:${rect.x}:${rect.y}${scale}`, '-q:v', '2', outputPath], { timeout: FFMPEG_TIMEOUT_MS })
 
       const attachment = await uploadGeneratedFile(idToken, {
         conversationId, title: title ?? (framing === 'close-up' ? 'Close-up' : 'Half-body'),

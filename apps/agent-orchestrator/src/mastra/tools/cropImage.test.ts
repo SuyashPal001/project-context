@@ -45,3 +45,12 @@ describe('parseHeadBox', () => {
     expect(parseHeadBox('no face found')).toBeNull()
   })
 })
+
+describe('computeCropRect keepAspect', () => {
+  it('keeps a 9:16 source 9:16 when given its aspect', () => {
+    const r = computeCropRect(1080, 1920, 'close-up', { x: 0.4, y: 0.2, w: 0.2, h: 0.12 }, 1080 / 1920)
+    expect(Math.abs(r.w / r.h - 9 / 16)).toBeLessThan(0.01)
+    expect(r.x).toBeGreaterThanOrEqual(0)
+    expect(r.y + r.h).toBeLessThanOrEqual(1920)
+  })
+})
