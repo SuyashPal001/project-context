@@ -234,8 +234,12 @@ function VoiceCard({ voice, languageLabel, loading, playing, progress, selected,
     const bars = voiceWaveform(voice.id);
     return <div className={cn("relative overflow-hidden rounded-xl border bg-muted/30 transition-colors", selected ? 'border-foreground ring-2 ring-foreground/20' : 'border-border hover:border-foreground/30')}>
         <div className="flex items-center gap-3 px-3 pb-1 pt-3">
-            <button type="button" onClick={onPreview} disabled={!voice.hasPreview || loading} aria-label={`${playing ? 'Stop' : `Preview ${languageLabel} sample of`} ${voice.name}`} className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-foreground transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-                {artwork && <Image src={artwork} alt="" fill sizes="48px" className="object-cover" />}
+            <button type="button" onClick={onPreview} disabled={!voice.hasPreview || loading} aria-label={`${playing ? 'Stop' : `Preview ${languageLabel} sample of`} ${voice.name}`} className={cn("relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-foreground transition-[transform,box-shadow] duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50", playing && "scale-105 shadow-[0_0_18px_2px] shadow-foreground/15")}>
+                {/* Soft gradient orb (ElevenLabs-style): the cover is blurred into a
+                    smooth disc, and slowly turns and breathes while its sample plays. */}
+                {artwork && <span className={cn("absolute inset-0", playing && "motion-safe:animate-[spin_6s_linear_infinite]")}>
+                    <Image src={artwork} alt="" fill sizes="48px" className={cn("scale-125 object-cover blur-[2px] saturate-125", playing && "motion-safe:animate-pulse")} />
+                </span>}
                 <span className={cn("relative flex h-7 w-7 items-center justify-center rounded-full", artwork ? 'bg-background/80 backdrop-blur-sm' : '')}>
                     {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : playing ? <Square className="h-3 w-3 fill-current" /> : voice.hasPreview ? <Play className="ml-0.5 h-3.5 w-3.5 fill-current" /> : <Music2 className="h-3.5 w-3.5" />}
                 </span>
