@@ -143,7 +143,7 @@ export const lipsync = createTool({
       // A missing or rejected provider key is server setup, not a passing
       // outage: say so, so the agent neither calls it "temporary" nor retries.
       if (isLipsyncAuthFailure(genResult.reason)) {
-        return { refused: true, refusalReason: `LIPSYNC_NOT_CONFIGURED: the ${resolvedModel} lip-sync provider has no working API key on this server. Retrying will not help; deliver the video with the narration muxed on instead.`, jobId }
+        return { refused: true, refusalReason: `LIPSYNC_NOT_CONFIGURED: the ${resolvedModel} lip-sync provider has no working API key on this server. Retrying will not help. If this video already carries the narration (assembled with audioFileId), deliver it as it is; only lay the narration on a video that has no sound.`, jobId }
       }
       return { refused: true, refusalReason: genResult.reason ?? 'unknown', jobId }
     }
