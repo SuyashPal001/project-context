@@ -45,7 +45,8 @@ describe('OFFICIAL_SKILLS', () => {
     expect(talkingHead.name).toBe('Talking head');
     expect(talkingHead.description).toBe('Use when the user wants a single presenter speaking one continuous script to camera — a talking-head ad.');
     expect(talkingHead.showcase).toEqual({
-      imageUrl: '/creative/avatars/beauty-skincare-presenter.jpg',
+      imageUrl: '/creative/skills/talking-head-example.jpg',
+      videoUrl: '/creative/skills/talking-head-example.mp4',
       bestFor: ['Product explainers', 'Testimonials', 'Announcements'],
       starterPrompt: 'Make a talking-head ad for my product',
     });
@@ -131,12 +132,26 @@ describe('Director references', () => {
     expect(readSkillBody(talkingHead.file)).toContain('includes the line "flow: talking head"');
   });
 
+  it('gives UGC character ad its Director half: checked clips joined into one video', () => {
+    const ugc = OFFICIAL_SKILLS.find((s) => s.slug === 'ugc-character-ad')!;
+    expect(ugc.director?.markers).toEqual(['flow: ugc ad']);
+    const rules = readSkillBody(ugc.director!.file);
+    expect(rules).toContain('check_clip');
+    expect(rules).toContain('preserveAudio true');
+    expect(rules).toContain('approvedDialogue');
+    const body = readSkillBody(ugc.file);
+    expect(body).toContain('includes the line "flow: ugc ad"');
+    expect(body).toContain('ONE finished video');
+    expect(body).not.toContain('not assembled into one final ad');
+    expect(body).not.toContain('exists only in this conversation');
+  });
+
   it('every Official skill has a Director half, except the two whose Director rules other flows share', () => {
     // UGC character generation and Template cloning stay in Director's base
     // instructions: the avatar creators, TVC and Talking head lean on them
     // (batch rules, the cast sheet, the transcript QA).
     for (const entry of OFFICIAL_SKILLS) {
-      if (entry.slug === 'ugc-character-ad' || entry.slug === 'template-video') expect(entry.director, entry.slug).toBeUndefined();
+      if (entry.slug === 'template-video') expect(entry.director, entry.slug).toBeUndefined();
       else expect(entry.director, entry.slug).toBeDefined();
     }
   });

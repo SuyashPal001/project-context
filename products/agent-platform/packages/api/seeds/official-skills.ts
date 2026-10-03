@@ -143,6 +143,7 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
     name: 'UGC character ad',
     description: 'Use when the user wants a photoreal UGC-style ad built from scratch, with several distinct beats or shots in a storyboard — not one presenter reading one script, not an animated look, not a template clone.',
     file: officialSkillFile('ugc-character-ad.md'),
+    director: { file: officialSkillFile('ugc-character-ad/director.md'), markers: ['flow: ugc ad'] },
     showcase: {
       imageUrl: '/creative/skills/ugc-character-ad.jpg',
       bestFor: ['UGC ads', 'Storyboards', 'Product reviews'],
