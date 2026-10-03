@@ -52,26 +52,28 @@ const CURATED_VOICES: readonly CuratedVoice[] = [
 // Gemini voice speaks every language (accent rated native in Hindi and Spanish
 // for all of them), so each row lists all preview languages. The Indian set is
 // Google's "Commercial Voiceover" library (20-30-year-old Hinglish influencers);
-// their names here are ours, since the library only numbers them.
+// their names here are ours, since the library only numbers them. Taglines are
+// the one short line the voice card shows; descriptions carry the detail the
+// agent matches briefs against.
 const PREVIEW_LOCALES = ['en', 'ar', 'zh', 'fr', 'de', 'he', 'hi', 'it', 'ja', 'pt', 'es', 'ta', 'te', 'th'];
 interface GeminiVoice { id: string; name: string; tagline: string; gender: 'feminine' | 'masculine'; country: string; description: string }
 const GEMINI_VOICES: readonly GeminiVoice[] = [
-  { id: 'en-in-commercial-2', name: 'Ananya', tagline: 'Breezy Creator', gender: 'feminine', country: 'IN', description: 'Bright, breezy and youthful. 24, speaks Hinglish.' },
-  { id: 'en-in-commercial-3', name: 'Isha', tagline: 'Confident Creator', gender: 'feminine', country: 'IN', description: 'Confident and clear. 22, speaks Hinglish.' },
-  { id: 'en-in-commercial-5', name: 'Pooja', tagline: 'Warm Talker', gender: 'feminine', country: 'IN', description: 'Warm and engaging. 30, speaks Hinglish.' },
-  { id: 'en-in-commercial-10', name: 'Riya', tagline: 'Polished Presenter', gender: 'feminine', country: 'IN', description: 'Professional yet approachable. 26, speaks Hinglish.' },
-  { id: 'en-in-commercial-1', name: 'Aditya', tagline: 'Fun Creator', gender: 'masculine', country: 'IN', description: 'Enthusiastic, engaging and fun. 23, speaks Hinglish.' },
-  { id: 'en-in-commercial-4', name: 'Karan', tagline: 'Calm Creator', gender: 'masculine', country: 'IN', description: 'Calm, professional yet relaxed. 25, speaks Hinglish.' },
-  { id: 'en-in-commercial-6', name: 'Rohan', tagline: 'Warm Talker', gender: 'masculine', country: 'IN', description: 'Warm and engaging. 26, speaks Hinglish.' },
-  { id: 'en-in-commercial-12', name: 'Vihaan', tagline: 'Light & Airy', gender: 'masculine', country: 'IN', description: 'Light, airy and precise. 20, speaks Hinglish.' },
-  { id: 'Leda', name: 'Leda', tagline: 'Youthful', gender: 'feminine', country: 'US', description: 'Youthful, natural young woman. Great for casual UGC voice notes.' },
-  { id: 'Aoede', name: 'Aoede', tagline: 'Breezy', gender: 'feminine', country: 'US', description: 'Breezy, light and relaxed. Recommended for lifestyle content.' },
-  { id: 'Callirrhoe', name: 'Callirrhoe', tagline: 'Easy-going', gender: 'feminine', country: 'US', description: 'Easy-going, relaxed and casual, like talking to a friend.' },
-  { id: 'Sulafat', name: 'Sulafat', tagline: 'Warm', gender: 'feminine', country: 'US', description: 'Warm and reassuring. Good for wellness and heartfelt stories.' },
-  { id: 'Puck', name: 'Puck', tagline: 'Upbeat', gender: 'masculine', country: 'US', description: 'Upbeat and energetic. Good for lively product hooks.' },
-  { id: 'Achird', name: 'Achird', tagline: 'Friendly', gender: 'masculine', country: 'US', description: 'Friendly, approachable and warm, with a lower-middle pitch.' },
-  { id: 'Zubenelgenubi', name: 'Zubenelgenubi', tagline: 'Casual', gender: 'masculine', country: 'US', description: 'Casual and laid-back, like a real guy chatting.' },
-  { id: 'Sadachbia', name: 'Sadachbia', tagline: 'Lively', gender: 'masculine', country: 'US', description: 'Lively and expressive. Good for excited testimonials.' },
+  { id: 'en-in-commercial-2', name: 'Ananya', tagline: 'Bright, breezy, youthful', gender: 'feminine', country: 'IN', description: 'Bright, breezy and youthful. 24, speaks Hinglish.' },
+  { id: 'en-in-commercial-3', name: 'Isha', tagline: 'Confident and clear', gender: 'feminine', country: 'IN', description: 'Confident and clear. 22, speaks Hinglish.' },
+  { id: 'en-in-commercial-5', name: 'Pooja', tagline: 'Warm and engaging', gender: 'feminine', country: 'IN', description: 'Warm and engaging. 30, speaks Hinglish.' },
+  { id: 'en-in-commercial-10', name: 'Riya', tagline: 'Polished, approachable', gender: 'feminine', country: 'IN', description: 'Professional yet approachable. 26, speaks Hinglish.' },
+  { id: 'en-in-commercial-1', name: 'Aditya', tagline: 'Energetic and fun', gender: 'masculine', country: 'IN', description: 'Enthusiastic, engaging and fun. 23, speaks Hinglish.' },
+  { id: 'en-in-commercial-4', name: 'Karan', tagline: 'Calm and relaxed', gender: 'masculine', country: 'IN', description: 'Calm, professional yet relaxed. 25, speaks Hinglish.' },
+  { id: 'en-in-commercial-6', name: 'Rohan', tagline: 'Warm, friendly talker', gender: 'masculine', country: 'IN', description: 'Warm and engaging. 26, speaks Hinglish.' },
+  { id: 'en-in-commercial-12', name: 'Vihaan', tagline: 'Light and airy', gender: 'masculine', country: 'IN', description: 'Light, airy and precise. 20, speaks Hinglish.' },
+  { id: 'Leda', name: 'Leda', tagline: 'Youthful and natural', gender: 'feminine', country: 'US', description: 'Youthful, natural young woman. Great for casual UGC voice notes.' },
+  { id: 'Aoede', name: 'Aoede', tagline: 'Breezy and light', gender: 'feminine', country: 'US', description: 'Breezy, light and relaxed. Recommended for lifestyle content.' },
+  { id: 'Callirrhoe', name: 'Callirrhoe', tagline: 'Easy-going, casual', gender: 'feminine', country: 'US', description: 'Easy-going, relaxed and casual, like talking to a friend.' },
+  { id: 'Sulafat', name: 'Sulafat', tagline: 'Warm and reassuring', gender: 'feminine', country: 'US', description: 'Warm and reassuring. Good for wellness and heartfelt stories.' },
+  { id: 'Puck', name: 'Puck', tagline: 'Upbeat and energetic', gender: 'masculine', country: 'US', description: 'Upbeat and energetic. Good for lively product hooks.' },
+  { id: 'Achird', name: 'Achird', tagline: 'Friendly and warm', gender: 'masculine', country: 'US', description: 'Friendly, approachable and warm, with a lower-middle pitch.' },
+  { id: 'Zubenelgenubi', name: 'Zubenelgenubi', tagline: 'Casual, laid-back', gender: 'masculine', country: 'US', description: 'Casual and laid-back, like a real guy chatting.' },
+  { id: 'Sadachbia', name: 'Sadachbia', tagline: 'Lively and expressive', gender: 'masculine', country: 'US', description: 'Lively and expressive. Good for excited testimonials.' },
 ];
 
 async function refreshGemini(seen: string[]): Promise<number> {

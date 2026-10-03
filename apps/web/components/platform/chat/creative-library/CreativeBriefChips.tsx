@@ -94,7 +94,7 @@ function SelectionThumbnail({ selection }: { selection: CreativeSelection }) {
         return <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><Link2 className="h-4 w-4" /></span>;
     }
 
-    const image = selection.kind === 'voice' ? creativeVoiceArtwork(selection.name) : selection.image;
+    const image = selection.kind === 'voice' ? creativeVoiceArtwork(selection.name, selection.id) : selection.image;
     if (!image && selection.kind === 'avatar') {
         return <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted"><FileThumbnail fileId={selection.attachment.fileId} alt="" anchorTop /></span>;
     }

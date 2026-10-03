@@ -25,6 +25,7 @@ import type {
     VoiceSelection,
 } from './creative-library/creativeBriefModel';
 import { creativeVoiceArtwork } from './creative-library/creativeVoiceArtwork';
+import { voiceWaveform } from './creative-library/voiceWaveforms';
 
 export type { CreativeLibraryTab } from './creative-library/creativeBriefModel';
 
@@ -219,31 +220,38 @@ function AvatarsPanel({ selected, onSelect, onCreateAvatar, createAvatarDisabled
     </div>;
 }
 
-const VOICE_COUNTRY_LABEL: Record<string, string> = { IN: 'India', US: 'US', GB: 'UK', AU: 'Australia', CA: 'Canada' };
-const VOICE_GENDER_LABEL: Record<string, string> = { feminine: 'Female', female: 'Female', masculine: 'Male', male: 'Male' };
+type VoiceRegion = 'India' | 'Global';
+type VoiceGender = 'Female' | 'Male';
+const voiceRegion = (voice: Voice): VoiceRegion => voice.country === 'IN' ? 'India' : 'Global';
+const voiceGender = (voice: Voice): VoiceGender | undefined => voice.gender === 'feminine' || voice.gender === 'female' ? 'Female' : voice.gender === 'masculine' || voice.gender === 'male' ? 'Male' : undefined;
 
-// Compact row: play button, name, one line of character. The description often
-// repeats the tagline ("Friendly — Friendly, approachable…"), so show one line
-// only and keep the full text in the tooltip.
-function VoiceCard({ voice, languageLabel, loading, playing, selected, onPreview, onSelect }: { voice: Voice; languageLabel: string; loading: boolean; playing: boolean; selected: boolean; onPreview: () => void; onSelect: () => void }) {
-    const artwork = creativeVoiceArtwork(voice.name);
-    const meta = [voice.country ? VOICE_COUNTRY_LABEL[voice.country] ?? voice.country : undefined, voice.gender ? VOICE_GENDER_LABEL[voice.gender] ?? voice.gender : undefined].filter(Boolean).join(' · ');
-    const summary = voice.description ?? voice.tagline ?? 'Natural voice';
-    return <div className={cn("flex items-center gap-3 rounded-lg px-2 py-2 transition-colors", selected ? 'bg-accent ring-1 ring-foreground/20' : 'hover:bg-accent/60')}>
-        <button type="button" onClick={onPreview} disabled={!voice.hasPreview || loading} aria-label={`${playing ? 'Stop' : `Preview ${languageLabel} sample of`} ${voice.name}`} className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-foreground transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
-            {artwork && <Image src={artwork} alt="" fill sizes="40px" className="object-cover opacity-70" />}
-            <span className="relative flex h-full w-full items-center justify-center">
-                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : playing ? <Square className="h-3.5 w-3.5 fill-current" /> : voice.hasPreview ? <Play className="ml-0.5 h-3.5 w-3.5 fill-current" /> : <Music2 className="h-3.5 w-3.5" />}
-            </span>
-        </button>
-        <button type="button" aria-pressed={selected} onClick={onSelect} aria-label={`Use ${voice.name} voice`} title={[voice.tagline, voice.description].filter(Boolean).join(' — ')} className="flex min-w-0 flex-1 flex-col text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md">
-            <span className="flex items-baseline gap-2">
-                <span className="truncate text-sm font-semibold text-foreground">{voice.name}</span>
-                {meta && <span className="shrink-0 text-[11px] text-muted-foreground">{meta}</span>}
-            </span>
-            <span className="truncate text-xs text-muted-foreground">{summary}</span>
-        </button>
-        {selected && <Check className="h-4 w-4 shrink-0 text-foreground" aria-hidden />}
+// Card modelled on a music library tile: round cover with the play button on
+// it, name, one short line of character, and the clip's real waveform along the
+// bottom, which fills while the sample plays. The longer description stays in
+// the tooltip (and in what the agent sees).
+function VoiceCard({ voice, languageLabel, loading, playing, progress, selected, onPreview, onSelect }: { voice: Voice; languageLabel: string; loading: boolean; playing: boolean; progress: number; selected: boolean; onPreview: () => void; onSelect: () => void }) {
+    const artwork = creativeVoiceArtwork(voice.name, voice.id);
+    const bars = voiceWaveform(voice.id);
+    return <div className={cn("relative overflow-hidden rounded-xl border bg-muted/30 transition-colors", selected ? 'border-foreground ring-2 ring-foreground/20' : 'border-border hover:border-foreground/30')}>
+        <div className="flex items-center gap-3 px-3 pb-1 pt-3">
+            <button type="button" onClick={onPreview} disabled={!voice.hasPreview || loading} aria-label={`${playing ? 'Stop' : `Preview ${languageLabel} sample of`} ${voice.name}`} className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-foreground transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50">
+                {artwork && <Image src={artwork} alt="" fill sizes="48px" className="object-cover" />}
+                <span className={cn("relative flex h-7 w-7 items-center justify-center rounded-full", artwork ? 'bg-background/80 backdrop-blur-sm' : '')}>
+                    {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : playing ? <Square className="h-3 w-3 fill-current" /> : voice.hasPreview ? <Play className="ml-0.5 h-3.5 w-3.5 fill-current" /> : <Music2 className="h-3.5 w-3.5" />}
+                </span>
+            </button>
+            <button type="button" aria-pressed={selected} onClick={onSelect} aria-label={`Use ${voice.name} voice`} title={[voice.tagline, voice.description].filter(Boolean).join(' — ')} className="flex min-w-0 flex-1 flex-col rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <span className="flex min-w-0 items-baseline gap-2 pr-6">
+                    <span className="truncate text-sm font-semibold text-foreground">{voice.name}</span>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">{[voiceRegion(voice), voiceGender(voice)].filter(Boolean).join(' · ')}</span>
+                </span>
+                <span className="truncate text-xs text-muted-foreground">{voice.tagline ?? voice.description ?? 'Natural voice'}</span>
+            </button>
+        </div>
+        {bars && <div className="flex h-6 items-end gap-px px-3 pb-1.5" aria-hidden>
+            {bars.map((bar, index) => <span key={index} className={cn("flex-1 rounded-full", playing && index / bars.length < progress ? 'bg-foreground/60' : 'bg-muted-foreground/25')} style={{ height: `${Math.max(12, bar * 11)}%` }} />)}
+        </div>}
+        {selected && <span className="absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full bg-foreground text-background"><Check className="h-3 w-3" /></span>}
     </div>;
 }
 
@@ -252,7 +260,11 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
     const [search, setSearch] = useState('');
     const [playingId, setPlayingId] = useState<string | null>(null);
     const [loadingId, setLoadingId] = useState<string | null>(null);
+    const [progress, setProgress] = useState(0);
+    const [region, setRegion] = useState<VoiceRegion | null>(null);
+    const [gender, setGender] = useState<VoiceGender | null>(null);
     const playerRef = useRef<HTMLAudioElement | null>(null);
+    const progressFrameRef = useRef<number | null>(null);
     const previewRequestRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
     // Blob URLs for samples already fetched this session — the audio for a
@@ -271,11 +283,16 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
         },
         staleTime: 5 * 60 * 1000,
     });
-    const voices = (data?.voices ?? []).filter(voice => `${voice.name} ${voice.tagline ?? ''} ${voice.description ?? ''}`.toLowerCase().includes(search.toLowerCase()));
+    const allVoices = data?.voices ?? [];
+    const voices = allVoices.filter(voice => `${voice.name} ${voice.tagline ?? ''} ${voice.description ?? ''}`.toLowerCase().includes(search.toLowerCase())
+        && (region === null || voiceRegion(voice) === region)
+        && (gender === null || voiceGender(voice) === gender));
+    const regions = [...new Set(allVoices.map(voiceRegion))];
 
     useEffect(() => () => {
         previewRequestRef.current++;
         abortRef.current?.abort();
+        if (progressFrameRef.current !== null) cancelAnimationFrame(progressFrameRef.current);
         playerRef.current?.pause();
         for (const url of audioCacheRef.current.values()) URL.revokeObjectURL(url);
         audioCacheRef.current.clear();
@@ -285,6 +302,9 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
         abortRef.current?.abort();
         playerRef.current?.pause();
         playerRef.current = null;
+        if (progressFrameRef.current !== null) cancelAnimationFrame(progressFrameRef.current);
+        progressFrameRef.current = null;
+        setProgress(0);
         setPlayingId(null);
         setLoadingId(null);
     }
@@ -302,6 +322,14 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
             setPlayingId(voice.id);
             audio.onended = stopPreview;
             audio.onerror = () => { stopPreview(); toast.error('Voice preview is unavailable.'); };
+            // Drive the waveform fill smoothly; timeupdate only fires ~4x a second,
+            // which is choppy on a 2-3 second sample.
+            const tick = () => {
+                if (playerRef.current !== audio) return;
+                if (audio.duration > 0) setProgress(audio.currentTime / audio.duration);
+                progressFrameRef.current = requestAnimationFrame(tick);
+            };
+            progressFrameRef.current = requestAnimationFrame(tick);
             void audio.play();
         }
 
@@ -339,20 +367,31 @@ function AudioPanel({ selected, onSelect }: { selected: VoiceSelection | null; o
                 {LANGUAGES.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
         </div>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter voices">
+            {regions.length > 1 && ([null, 'India', 'Global'] as const).map(value => <Button key={value ?? 'all'} type="button" size="sm" className="rounded-full"
+                variant={region === value ? 'outline' : 'ghost'} aria-pressed={region === value} onClick={() => setRegion(value)}>
+                {value ?? 'All'}
+            </Button>)}
+            {regions.length > 1 && <span className="h-4 w-px bg-border" aria-hidden />}
+            {(['Female', 'Male'] as const).map(value => <Button key={value} type="button" size="sm" className="rounded-full"
+                variant={gender === value ? 'outline' : 'ghost'} aria-pressed={gender === value} onClick={() => setGender(current => current === value ? null : value)}>
+                {value}
+            </Button>)}
+        </div>
         {isPending ? <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div> :
             isError ? <div className="rounded-xl border border-border bg-muted/30 px-4 py-10 text-center text-sm text-muted-foreground">{error instanceof Error ? error.message : 'Voice library is unavailable.'} <Button variant="link" onClick={() => void refetch()}>Retry</Button></div> :
                 voices.length === 0 ? <p className="py-12 text-center text-sm text-muted-foreground">{search ? 'No voices match this search.' : 'No handpicked voices are available in this language yet.'}</p> :
                     <div className="space-y-4">
                         {/* India first: Hinglish creator voices are the main market's default. */}
                         {[
-                            { label: 'India', items: voices.filter(voice => voice.country === 'IN') },
-                            { label: 'Global', items: voices.filter(voice => voice.country !== 'IN') },
+                            { label: 'India', items: voices.filter(voice => voiceRegion(voice) === 'India') },
+                            { label: 'Global', items: voices.filter(voice => voiceRegion(voice) === 'Global') },
                         ].filter(group => group.items.length > 0).map((group, _, groups) => <section key={group.label}>
-                            {groups.length > 1 && <h3 className="mb-1 px-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{group.label}</h3>}
-                            <div className="grid gap-0.5 sm:grid-cols-2 lg:grid-cols-3">
+                            {groups.length > 1 && <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{group.label}</h3>}
+                            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                                 {group.items.map(voice => {
                                     const languageLabel = LANGUAGES.find(item => item.value === language)?.label ?? language;
-                                    return <VoiceCard key={voice.id} voice={voice} languageLabel={languageLabel} loading={loadingId === voice.id} playing={playingId === voice.id} selected={selected?.id === voice.id && selected.language === language} onPreview={() => void togglePreview(voice)} onSelect={() => onSelect({ kind: 'voice', id: voice.id, name: voice.name, tagline: voice.tagline, language, languageLabel })} />;
+                                    return <VoiceCard key={voice.id} voice={voice} languageLabel={languageLabel} loading={loadingId === voice.id} playing={playingId === voice.id} progress={playingId === voice.id ? progress : 0} selected={selected?.id === voice.id && selected.language === language} onPreview={() => void togglePreview(voice)} onSelect={() => onSelect({ kind: 'voice', id: voice.id, name: voice.name, tagline: voice.tagline, language, languageLabel })} />;
                                 })}
                             </div>
                         </section>)}
