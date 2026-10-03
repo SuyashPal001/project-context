@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { VisuallyHidden } from "radix-ui";
-import { ArrowUpRight, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowUpRight, X } from "lucide-react";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,21 +74,6 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
     const bestFor = skill?.showcase?.bestFor ?? [];
     const imageUrl = skill?.showcase?.imageUrl;
     const videoUrl = skill?.showcase?.videoUrl;
-    // Autoplay must start muted (browser rule); a talking-head example is about
-    // the voice, so the viewer can turn sound on.
-    const [muted, setMuted] = useState(true);
-    const videoRef = useRef<HTMLVideoElement>(null);
-    // Muted: a silent looping preview. Sound on: restart and play the ad once,
-    // the way it would be watched — never loop a voice mid-sentence.
-    const toggleSound = () => {
-        const video = videoRef.current;
-        const nextMuted = !muted;
-        setMuted(nextMuted);
-        if (video && !nextMuted) {
-            video.currentTime = 0;
-            void video.play();
-        }
-    };
     const showBackdrop = fit === "contain";
 
     return (
@@ -132,28 +117,28 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                                                 <div className="absolute inset-0 bg-black/30" />
                                             </>
                                         )}
+                                        {/* Same player as the file preview (VideoPreview): the browser's own
+                                            play/pause, timeline, sound and fullscreen, with download hidden.
+                                            Autoplay must start muted; it loops as a silent preview and plays
+                                            once, not on repeat, after the viewer turns the sound on. */}
                                         <video
-                                            ref={videoRef}
                                             src={videoUrl}
                                             poster={imageUrl}
                                             autoPlay
-                                            muted={muted}
-                                            loop={muted}
+                                            muted
+                                            loop
                                             playsInline
+                                            controls
+                                            controlsList="nodownload noplaybackrate noremoteplayback"
+                                            disablePictureInPicture
+                                            onContextMenu={(e) => e.preventDefault()}
+                                            onVolumeChange={(e) => { e.currentTarget.loop = e.currentTarget.muted; }}
                                             onLoadedMetadata={handleVideoLoadedMetadata}
                                             className={cn(
                                                 "relative h-full w-full",
                                                 fit === "cover" ? "object-cover" : "object-contain",
                                             )}
                                         />
-                                        <button
-                                            type="button"
-                                            onClick={toggleSound}
-                                            aria-label={muted ? "Turn sound on" : "Turn sound off"}
-                                            className="absolute bottom-3 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75"
-                                        >
-                                            {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                                        </button>
                                     </>
                                 ) : imageUrl ? (
                                     <>
