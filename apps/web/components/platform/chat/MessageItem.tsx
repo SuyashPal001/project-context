@@ -449,6 +449,7 @@ export function MessageItem({
                                             key={tool.id}
                                             toolName={tool.toolName}
                                             query={String((tool.toolName === 'skill' ? tool.arguments?.name : undefined) ?? tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? tool.arguments?.task ?? '')}
+                                            prompt={String(tool.arguments?.prompt ?? '')}
                                             status={tool.isLoading ? 'loading' : 'done'}
                                         />
                                     ))}
@@ -458,6 +459,7 @@ export function MessageItem({
                                     key={group[0].id}
                                     toolName={group[0].toolName}
                                     query={String((group[0].toolName === 'skill' ? group[0].arguments?.name : undefined) ?? group[0].arguments?.query ?? group[0].arguments?.filename ?? group[0].arguments?.subject ?? group[0].arguments?.task ?? '')}
+                                    prompt={String(group[0].arguments?.prompt ?? '')}
                                     status={group[0].isLoading ? 'loading' : 'done'}
                                 />
                             )

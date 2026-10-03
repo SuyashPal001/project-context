@@ -15,7 +15,9 @@ import type { AppEnv } from '../types';
 
 export const creditsRoutes = new Hono<AppEnv>();
 
-const RESOURCE_TYPES = ['llm_tokens', 'message', 'tool_call', 'skill_run', 'image_generation', 'music_generation', 'video_generation'] as const;
+// Every priced job type in credit_rates (schema/credits.ts enum) must be here,
+// or the approval card for it cannot show a price.
+const RESOURCE_TYPES = ['llm_tokens', 'message', 'tool_call', 'skill_run', 'image_generation', 'music_generation', 'video_generation', 'narration_generation', 'lipsync_generation', 'clip_assembly', 'audio_transcription'] as const;
 const LEDGER_KINDS = ['grant', 'debit', 'refund', 'settle', 'expiry', 'adjust'] as const;
 
 function forbidden(c: Context<AppEnv>) {

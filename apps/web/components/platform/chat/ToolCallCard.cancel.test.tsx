@@ -35,4 +35,12 @@ describe('ToolCallCard — cancelled / awaiting approval', () => {
         expect(screen.getByText(/Generating visual/)).toBeTruthy();
         expect(container.querySelector('.aspect-video')).not.toBeNull();
     });
+
+    it('says audio, not image, when the director is handed a narration (query is empty for delegates)', () => {
+        render(<ToolCallCard toolName="agent-director" query="" prompt={'flow: talking head\n\nGenerate narration for a 15-second UGC ad.'} status="loading" />);
+        expect(screen.getByText('Preparing your audio…')).toBeTruthy();
+        cleanup();
+        render(<ToolCallCard toolName="agent-director" query="" prompt="Generate narration for the ad." status="done" result={{}} />);
+        expect(screen.getByText(/Audio created/)).toBeTruthy();
+    });
 });

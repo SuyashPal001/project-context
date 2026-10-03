@@ -61,6 +61,9 @@ interface MessageThreadProps {
 const PRICED_RESOURCE_TYPES: readonly CreditResourceType[] = [
     'llm_tokens', 'message', 'tool_call', 'skill_run',
     'image_generation', 'music_generation', 'video_generation',
+    // Talking-head and edit steps charge too; without these the card said
+    // "This doesn't use credits" for a narration that costs 1 credit.
+    'narration_generation', 'lipsync_generation', 'clip_assembly', 'audio_transcription',
 ];
 
 function toCreditResourceType(resourceType: string): CreditResourceType | null {

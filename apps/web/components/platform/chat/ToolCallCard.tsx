@@ -13,6 +13,9 @@ export const AwaitingApprovalContext = createContext(false);
 interface ToolCallCardProps {
   toolName: string;
   query: string;
+  /** Delegate calls only: Olmo's full instruction to the specialist. Used to
+   *  tell a narration or video hand-off from an image one; never displayed. */
+  prompt?: string;
   status: 'loading' | 'done';
   results?: ToolCallSearchResult[];
   result?: Record<string, unknown>;
@@ -550,7 +553,7 @@ function directorMediaKind(query: string): 'image' | 'audio' | 'video' {
   return 'image';
 }
 
-export function ToolCallCard({ toolName, query, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls, statusText, statusDetails }: ToolCallCardProps) {
+export function ToolCallCard({ toolName, query, prompt, status, results, result, generationStarted, aspectRatio, batchProgress, mediaCount, freshUrls, statusText, statusDetails }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(true);
   const hasResults = status === 'done' && !!results?.length;
   // The orchestrator closes a cancelled generation out with { cancelled: true } so the
@@ -564,8 +567,13 @@ export function ToolCallCard({ toolName, query, status, results, result, generat
   // "the image has already started" (it may still be waiting on the approval card).
   const preparing = status === 'loading' && isDelegate && !generationStarted && !cardAwaitingApproval;
   const awaitingApproval = cardAwaitingApproval && status === 'loading' && isMediaGenDelegateOrTool(toolName);
-  const { prefix: labelPrefix, highlight } = toolLabel(toolName, query, status);
-  const directorKind = isDirectorDelegateTool(toolName) ? directorMediaKind(query) : null;
+  const directorKind = isDirectorDelegateTool(toolName) ? directorMediaKind(prompt || query) : null;
+  const label = toolLabel(toolName, query, status);
+  // The director also records narration and renders video: name what it made.
+  const labelPrefix = status === 'done' && directorKind === 'audio' && label.prefix === 'Visual created' ? 'Audio created'
+    : status === 'done' && directorKind === 'video' && label.prefix === 'Visual created' ? 'Video created'
+    : label.prefix;
+  const { highlight } = label;
   const preparingLabel = isProducerDelegateTool(toolName) || directorKind === 'audio' ? 'Preparing your audio…'
     : directorKind === 'video' ? 'Preparing your video…' : 'Preparing your image…';
   const prefix = cancelled ? 'Cancelled' : (failureReason ?? (awaitingApproval ? 'Waiting for your approval' : preparing ? (statusText ? `${statusText}…` : preparingLabel) : labelPrefix));

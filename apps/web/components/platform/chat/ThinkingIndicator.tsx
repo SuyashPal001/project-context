@@ -282,6 +282,7 @@ export function LiveTrace({
                                     key={tool.id}
                                     toolName={tool.toolName}
                                     query={String(tool.arguments?.query ?? tool.arguments?.filename ?? tool.arguments?.subject ?? '')}
+                                    prompt={String(tool.arguments?.prompt ?? '')}
                                     status="loading"
                                     generationStarted={tool.generationStarted}
                                     aspectRatio={tool.generationAspectRatio ?? (typeof tool.arguments?.aspectRatio === 'string' ? tool.arguments.aspectRatio : undefined)}
@@ -297,6 +298,7 @@ export function LiveTrace({
                             key={group[0].id}
                             toolName={group[0].toolName}
                             query={String(group[0].arguments?.query ?? group[0].arguments?.filename ?? group[0].arguments?.subject ?? '')}
+                            prompt={String(group[0].arguments?.prompt ?? '')}
                             status="loading"
                             generationStarted={group[0].generationStarted}
                             aspectRatio={group[0].generationAspectRatio ?? (typeof group[0].arguments?.aspectRatio === 'string' ? group[0].arguments.aspectRatio : undefined)}
