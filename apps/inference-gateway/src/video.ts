@@ -66,12 +66,17 @@ export interface VideoGenerationRequest {
   imageMimeType?: string
   /** reference_to_video only: up to 3 images of one person, character or product (e.g. a portrait and its character sheet). */
   referenceImageUris?: string[]
+  /** Continue a video Omni itself generated (its interaction id): the model
+   *  carries the same person, voice, room and light on and may speak new
+   *  dialogue — the uploaded-video "extend" task refuses new speech. Vertex
+   *  only (the id belongs to the project that made it); no task, no images. */
+  previousInteractionId?: string
 }
 
 const OMNI_MAX_REFERENCE_IMAGES = 3
 
 export type VideoGenerationResult =
-  | { videoBase64: string; mimeType: string }
+  | { videoBase64: string; mimeType: string; interactionId?: string }
   | { refused: true; reason: string }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +92,7 @@ export function classifyInteractionsVideoResponse(interactionResponse: any): Vid
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const videoBlock = steps.flatMap((s: any) => s?.content ?? []).find((c: any) => c.type === 'video')
   if (!videoBlock?.data) return { refused: true, reason: 'NO_VIDEO_CONTENT' }
-  return { videoBase64: videoBlock.data, mimeType: videoBlock.mime_type ?? 'video/mp4' }
+  return { videoBase64: videoBlock.data, mimeType: videoBlock.mime_type ?? 'video/mp4', ...(interactionResponse?.id ? { interactionId: String(interactionResponse.id) } : {}) }
 }
 
 // Gemini's API-key path (generativelanguage.googleapis.com) does not fetch
@@ -244,7 +249,31 @@ async function stageImageForVertexGcs(sourceUrl: string, mimeType: string): Prom
   return `gs://${bucket}/${objectName}`
 }
 
+/** Request body for continuing an Omni-generated video: no task (Omni rejects
+ *  previous_interaction_id together with a video task) and no aspect ratio
+ *  (the continuation keeps the source's). Verified live 2026-10-04: a 7s clip
+ *  continued by 5s came back as one 12s video, same voice 10/10. */
+export function continuationBody(model: string, req: VideoGenerationRequest): Record<string, unknown> {
+  return {
+    model,
+    previous_interaction_id: req.previousInteractionId,
+    input: req.prompt,
+    response_format: { type: 'video', resolution: '720p', delivery: 'inline', duration: `${req.durationSeconds}s` },
+  }
+}
+
 async function callVertexOmniModel(req: VideoGenerationRequest): Promise<VideoGenerationResult> {
+  if (req.previousInteractionId) {
+    const token = await getToken()
+    const res = await fetch(`https://aiplatform.googleapis.com/v1beta1/projects/${getProject()}/locations/global/interactions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(continuationBody(VERTEX_OMNI_MODEL, req)),
+      signal: AbortSignal.timeout(VERTEX_TIMEOUT_MS),
+    })
+    if (!res.ok) throw new Error(`Vertex Omni continuation failed: ${res.status} ${await res.text()}`)
+    return classifyInteractionsVideoResponse(await res.json())
+  }
   const input = req.referenceImageUris?.length
     ? [
         ...(await Promise.all(req.referenceImageUris.map(async (uri) => (
@@ -392,6 +421,22 @@ export async function generateVideo(req: VideoGenerationRequest): Promise<VideoG
   }
 
   const backend = selectBackend(req.model)
+
+  if (backend === 'gemini-omni' && req.previousInteractionId) {
+    if (req.imageUri || req.referenceImageUris?.length) {
+      throw new UnsupportedVideoModelError('a continuation takes no images: it continues the previous video')
+    }
+    // Vertex only: the interaction belongs to the Vertex project that made it,
+    // so the Gemini-API-key fallback cannot continue it.
+    try {
+      const result = await callVertexOmniModel(req)
+      vertexVideoBreaker.onSuccess()
+      return result
+    } catch (err) {
+      vertexVideoBreaker.onFailure()
+      throw new VideoBackendUnavailableError(`Vertex Omni continuation failed: ${(err as Error).message}`)
+    }
+  }
 
   if (backend === 'gemini-omni') {
     const isImageConditioned = Boolean(req.referenceImageUris?.length || req.imageUri)

@@ -30,15 +30,17 @@ export const videoOutputSchema = z.object({
   creditsUsedMicro: z.string().optional(),
   model: z.string().optional(),
   jobId: z.string().optional(),
+  interactionId: z.string().optional().describe('Pass as continueFrom (mode "continue") to continue this video with the same person and voice'),
 })
 
 export const videoItemSchema = z.object({
-  mode: z.enum(['text_to_video', 'animate_frame', 'composite_references']),
+  mode: z.enum(['text_to_video', 'animate_frame', 'composite_references', 'continue']),
   prompt: z.string().describe('Description of the video to generate'),
   aspectRatio: z.enum(['16:9', '9:16']),
   durationSeconds: z.number().int().min(3).max(10),
   startImageFileId: z.string().optional().describe('Required for animate_frame — an existing files row to use as the literal first frame'),
   referenceFileIds: z.array(z.string()).min(1).max(3).optional().describe('Required for composite_references — identity-anchor images the model builds a new scene around'),
+  continueFrom: z.string().optional().describe('Required for continue — the interactionId a previous generate_video returned. The model continues THAT video (same person, voice, room and light) for durationSeconds more and may speak a new approved line; the result is the whole video so far, not just the new part.'),
   approvedDialogue: z.string().optional().describe('The exact spoken line the user approved, if the prompt includes quoted dialogue — required to match a quoted line in prompt byte-for-byte'),
   identityAnchor: z.object({
     terseTag: z.string(),
@@ -51,6 +53,9 @@ export const videoItemSchema = z.object({
 ).refine(
   (v) => (v.mode === 'composite_references') === (v.referenceFileIds !== undefined),
   { message: 'referenceFileIds is required for composite_references and only for composite_references' },
+).refine(
+  (v) => (v.mode === 'continue') === (v.continueFrom !== undefined),
+  { message: 'continueFrom is required for continue and only for continue' },
 )
 
 export type VideoItemInput = z.infer<typeof videoItemSchema>
@@ -72,7 +77,7 @@ export async function generateVideoItem(
   execContext: MediaExecContext | undefined,
   itemIndex: number,
 ) {
-    const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor } =
+    const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor, continueFrom } =
       inputData
 
     // jobId is derived purely from execContext (no charge or gateway call
@@ -205,7 +210,7 @@ export async function generateVideoItem(
     }
 
     const task = mode === 'text_to_video' ? 'text_to_video' : mode === 'composite_references' ? 'reference_to_video' : 'image_to_video'
-    let genResult: { videoBase64?: string; mimeType?: string; refused?: boolean; reason?: string }
+    let genResult: { videoBase64?: string; mimeType?: string; interactionId?: string; refused?: boolean; reason?: string }
     try {
       const res = await fetch(`${GATEWAY_URL}/v1/video/generations`, {
         method: 'POST',
@@ -222,7 +227,7 @@ export async function generateVideoItem(
         // to 'image/jpeg' when imageMimeType is absent. Fixing this for real
         // requires either the presigned-url route or storageService to
         // surface the stored file's content type.
-        body: JSON.stringify({ model: GATEWAY_MODEL_ID, prompt, task, aspectRatio, durationSeconds, imageUri, referenceImageUris }),
+        body: JSON.stringify({ model: GATEWAY_MODEL_ID, prompt, task, aspectRatio, durationSeconds, imageUri, referenceImageUris, ...(mode === 'continue' ? { previousInteractionId: continueFrom } : {}) }),
         // Must stay strictly larger than the gateway's own upstream timeout
         // (240s in apps/inference-gateway/src/video.ts) — otherwise this
         // clock, which starts first since the gateway call is nested inside
@@ -278,6 +283,7 @@ export async function generateVideoItem(
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
       model: VIDEO_MODEL,
       jobId,
+      ...(genResult.interactionId ? { interactionId: genResult.interactionId } : {}),
     }
 }
 

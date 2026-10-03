@@ -15,7 +15,7 @@ vi.mock('google-auth-library', () => ({
   }),
 }))
 
-import { classifyInteractionsVideoResponse, generateVideo } from './video'
+import { classifyInteractionsVideoResponse, continuationBody, generateVideo } from './video'
 import { geminiVideoBreaker, vertexVideoBreaker } from './router.js'
 
 describe('classifyInteractionsVideoResponse', () => {
@@ -337,4 +337,12 @@ describe('generateVideo — Gemini Omni with Vertex Omni fallback, no cross-vend
       .resolves.not.toBeUndefined()
   })
 
+})
+
+describe('continuationBody', () => {
+  it('continues an Omni interaction with no task and no aspect ratio', () => {
+    const body = continuationBody('gemini-omni-1.1-flash-preview', { model: 'gemini-omni-1.1-flash', prompt: 'says "go get one"', task: 'image_to_video', aspectRatio: '9:16', durationSeconds: 5, previousInteractionId: 'abc' })
+    expect(body).toEqual({ model: 'gemini-omni-1.1-flash-preview', previous_interaction_id: 'abc', input: 'says "go get one"', response_format: { type: 'video', resolution: '720p', delivery: 'inline', duration: '5s' } })
+    expect(body).not.toHaveProperty('generation_config')
+  })
 })

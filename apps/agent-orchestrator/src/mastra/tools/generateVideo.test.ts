@@ -69,6 +69,23 @@ describe('generateVideo tool', () => {
     expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ key: `video:c1:${stableToolCallId('tc-9')}:0` }))
   })
 
+  it('continues a previous generation: sends previousInteractionId and returns the new interactionId', async () => {
+    let body: Record<string, unknown> = {}
+    global.fetch = vi.fn(async (_url, init) => {
+      body = JSON.parse((init as RequestInit).body as string)
+      return new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4', interactionId: 'int-2' }), { status: 200 })
+    }) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f2', name: 'ad.mp4', type: 'video/mp4', size: 3 })
+
+    const result = await generateVideo.execute!(
+      { mode: 'continue', continueFrom: 'int-1', prompt: 'He says: "Go get one."', approvedDialogue: 'Go get one.', aspectRatio: '9:16', durationSeconds: 4 } as never,
+      baseCtx(),
+    )
+
+    expect(body).toMatchObject({ previousInteractionId: 'int-1', durationSeconds: 4 })
+    expect(result).toMatchObject({ fileId: 'f2', interactionId: 'int-2' })
+  })
+
   it('calls the gateway, charges credits only after success, uploads the result, and returns metadata only', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'clip.mp4', type: 'video/mp4', size: 3 })
