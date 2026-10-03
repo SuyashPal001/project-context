@@ -56,14 +56,14 @@ const CURATED_VOICES: readonly CuratedVoice[] = [
 const PREVIEW_LOCALES = ['en', 'ar', 'zh', 'fr', 'de', 'he', 'hi', 'it', 'ja', 'pt', 'es', 'ta', 'te', 'th'];
 interface GeminiVoice { id: string; name: string; tagline: string; gender: 'feminine' | 'masculine'; country: string; description: string }
 const GEMINI_VOICES: readonly GeminiVoice[] = [
-  { id: 'en-in-commercial-2', name: 'Ananya', tagline: 'Breezy Creator', gender: 'feminine', country: 'IN', description: '24, Indian influencer voice, speaks Hinglish. Bright, breezy and youthful.' },
-  { id: 'en-in-commercial-3', name: 'Isha', tagline: 'Confident Creator', gender: 'feminine', country: 'IN', description: '22, Indian influencer voice, speaks Hinglish. Confident and clear.' },
-  { id: 'en-in-commercial-5', name: 'Pooja', tagline: 'Warm Talker', gender: 'feminine', country: 'IN', description: '30, Indian influencer voice, speaks Hinglish. Warm and engaging.' },
-  { id: 'en-in-commercial-10', name: 'Riya', tagline: 'Polished Presenter', gender: 'feminine', country: 'IN', description: '26, Indian influencer voice, speaks Hinglish. Professional yet approachable.' },
-  { id: 'en-in-commercial-1', name: 'Aditya', tagline: 'Fun Creator', gender: 'masculine', country: 'IN', description: '23, Indian influencer voice, speaks Hinglish. Enthusiastic, engaging and fun.' },
-  { id: 'en-in-commercial-4', name: 'Karan', tagline: 'Calm Creator', gender: 'masculine', country: 'IN', description: '25, Indian influencer voice, speaks Hinglish. Calm, professional yet relaxed.' },
-  { id: 'en-in-commercial-6', name: 'Rohan', tagline: 'Warm Talker', gender: 'masculine', country: 'IN', description: '26, Indian influencer voice, speaks Hinglish. Warm and engaging.' },
-  { id: 'en-in-commercial-12', name: 'Vihaan', tagline: 'Light & Airy', gender: 'masculine', country: 'IN', description: '20, Indian influencer voice, speaks Hinglish. Light, airy and precise.' },
+  { id: 'en-in-commercial-2', name: 'Ananya', tagline: 'Breezy Creator', gender: 'feminine', country: 'IN', description: 'Bright, breezy and youthful. 24, speaks Hinglish.' },
+  { id: 'en-in-commercial-3', name: 'Isha', tagline: 'Confident Creator', gender: 'feminine', country: 'IN', description: 'Confident and clear. 22, speaks Hinglish.' },
+  { id: 'en-in-commercial-5', name: 'Pooja', tagline: 'Warm Talker', gender: 'feminine', country: 'IN', description: 'Warm and engaging. 30, speaks Hinglish.' },
+  { id: 'en-in-commercial-10', name: 'Riya', tagline: 'Polished Presenter', gender: 'feminine', country: 'IN', description: 'Professional yet approachable. 26, speaks Hinglish.' },
+  { id: 'en-in-commercial-1', name: 'Aditya', tagline: 'Fun Creator', gender: 'masculine', country: 'IN', description: 'Enthusiastic, engaging and fun. 23, speaks Hinglish.' },
+  { id: 'en-in-commercial-4', name: 'Karan', tagline: 'Calm Creator', gender: 'masculine', country: 'IN', description: 'Calm, professional yet relaxed. 25, speaks Hinglish.' },
+  { id: 'en-in-commercial-6', name: 'Rohan', tagline: 'Warm Talker', gender: 'masculine', country: 'IN', description: 'Warm and engaging. 26, speaks Hinglish.' },
+  { id: 'en-in-commercial-12', name: 'Vihaan', tagline: 'Light & Airy', gender: 'masculine', country: 'IN', description: 'Light, airy and precise. 20, speaks Hinglish.' },
   { id: 'Leda', name: 'Leda', tagline: 'Youthful', gender: 'feminine', country: 'US', description: 'Youthful, natural young woman. Great for casual UGC voice notes.' },
   { id: 'Aoede', name: 'Aoede', tagline: 'Breezy', gender: 'feminine', country: 'US', description: 'Breezy, light and relaxed. Recommended for lifestyle content.' },
   { id: 'Callirrhoe', name: 'Callirrhoe', tagline: 'Easy-going', gender: 'feminine', country: 'US', description: 'Easy-going, relaxed and casual, like talking to a friend.' },
