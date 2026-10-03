@@ -1,6 +1,6 @@
 import { Hono, type Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { hasPermission } from '@serverless-saas/permissions';
 import { db } from '../db';
@@ -38,7 +38,9 @@ creativeLibraryAssetsRoutes.get('/:id/presigned-url', async (c) => {
     .from(creativeLibraryAssets)
     .where(and(
       eq(creativeLibraryAssets.id, id),
-      eq(creativeLibraryAssets.status, 'active'),
+      // 'reference' rows are an avatar's reference sheet: fetchable as an
+      // image reference, never listed as a pickable preset.
+      inArray(creativeLibraryAssets.status, ['active', 'reference']),
       isNull(creativeLibraryAssets.tenantId),
     ))
     .limit(1);

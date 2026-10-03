@@ -171,7 +171,9 @@ async function run(): Promise<void> {
         )
         ON CONFLICT (id) DO UPDATE SET
           name = EXCLUDED.name,
-          attributes = EXCLUDED.attributes,
+          -- Merge, never replace: seed-avatar-sheets.ts adds referenceSheetAssetId
+          -- to these rows, and re-running this seed must not wipe it.
+          attributes = creative_library_assets.attributes || EXCLUDED.attributes,
           storage_key = EXCLUDED.storage_key,
           updated_at = now()
       `;

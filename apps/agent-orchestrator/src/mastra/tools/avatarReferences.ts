@@ -37,12 +37,23 @@ export async function resolveAvatarReferences(
   if (!tenantId || fileIds.length === 0 || fileIds.length >= MAX_REFERENCES) return { fileIds, anchor: null }
   try {
     const { rows } = await query(
-      `SELECT a.file_id, a.attributes->>'referenceSheetFileId' AS sheet,
+      // Two sources of sheets: a tenant avatar (keyed by its portrait file id,
+      // sheet in the tenant's files) and a platform library avatar like Mira
+      // (keyed by its own asset id, sheet in a platform 'reference' row seeded
+      // by seed-avatar-sheets.ts — never shown in pickers or casting lists).
+      `SELECT a.file_id::text AS file_id, a.attributes->>'referenceSheetFileId' AS sheet,
               a.attributes->>'terseTag' AS terse_tag, a.attributes->>'styleLock' AS style_lock
        FROM creative_library_assets a
        JOIN files s ON s.id = (a.attributes->>'referenceSheetFileId')::uuid
        WHERE a.tenant_id = $1::uuid AND a.status = 'active' AND a.kind = 'avatar' AND a.file_id = ANY($2::uuid[])
-         AND s.tenant_id = $1::uuid AND s.deleted_at IS NULL`,
+         AND s.tenant_id = $1::uuid AND s.deleted_at IS NULL
+       UNION ALL
+       SELECT a.id::text AS file_id, a.attributes->>'referenceSheetAssetId' AS sheet,
+              a.attributes->>'terseTag' AS terse_tag, a.attributes->>'styleLock' AS style_lock
+       FROM creative_library_assets a
+       JOIN creative_library_assets s ON s.id = (a.attributes->>'referenceSheetAssetId')::uuid
+       WHERE a.tenant_id IS NULL AND a.status = 'active' AND a.kind = 'avatar' AND a.id = ANY($2::uuid[])
+         AND s.tenant_id IS NULL AND s.status = 'reference'`,
       [tenantId, fileIds],
     )
     const rowByPortrait = new Map(rows.map((r) => [r.file_id, r]))
