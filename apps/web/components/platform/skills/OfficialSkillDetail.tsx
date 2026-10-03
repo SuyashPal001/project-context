@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { VisuallyHidden } from "radix-ui";
@@ -77,6 +77,18 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
     // Autoplay must start muted (browser rule); a talking-head example is about
     // the voice, so the viewer can turn sound on.
     const [muted, setMuted] = useState(true);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    // Muted: a silent looping preview. Sound on: restart and play the ad once,
+    // the way it would be watched — never loop a voice mid-sentence.
+    const toggleSound = () => {
+        const video = videoRef.current;
+        const nextMuted = !muted;
+        setMuted(nextMuted);
+        if (video && !nextMuted) {
+            video.currentTime = 0;
+            void video.play();
+        }
+    };
     const showBackdrop = fit === "contain";
 
     return (
@@ -121,11 +133,12 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                                             </>
                                         )}
                                         <video
+                                            ref={videoRef}
                                             src={videoUrl}
                                             poster={imageUrl}
                                             autoPlay
                                             muted={muted}
-                                            loop
+                                            loop={muted}
                                             playsInline
                                             onLoadedMetadata={handleVideoLoadedMetadata}
                                             className={cn(
@@ -135,7 +148,7 @@ export function OfficialSkillDetail({ skill, onOpenChange }: OfficialSkillDetail
                                         />
                                         <button
                                             type="button"
-                                            onClick={() => setMuted(m => !m)}
+                                            onClick={toggleSound}
                                             aria-label={muted ? "Turn sound on" : "Turn sound off"}
                                             className="absolute bottom-3 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur transition-colors hover:bg-black/75"
                                         >
