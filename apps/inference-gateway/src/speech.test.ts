@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.stubEnv('CARTESIA_API_KEY', 'test-key')
 
-import { generateSpeech, UnsupportedSpeechModelError, readWavDurationSeconds, generationConfig } from './speech.js'
+import { generateSpeech, UnsupportedSpeechModelError, readWavDurationSeconds, generationConfig, geminiStyle, pcmToWav } from './speech.js'
 
 describe('readWavDurationSeconds', () => {
   it('rejects a buffer shorter than 44 bytes', () => {
@@ -311,5 +311,24 @@ describe('generationConfig', () => {
   })
   it('drops emotion for non-English reads (Cartesia supports it in English only)', () => {
     expect(generationConfig({ ...base, emotion: 'excited', speed: 1.1 }, 'hi')).toEqual({ speed: 1.1 })
+  })
+})
+
+describe('geminiStyle', () => {
+  const base = { model: 'gemini-3.8-flash-tts', transcript: 'hi', voiceId: 'Leda' }
+  it('uses the plain-English direction as given', () => {
+    expect(geminiStyle({ ...base, direction: '  a casual voice note to a friend ' })).toBe('a casual voice note to a friend')
+  })
+  it('builds a direction from Cartesia-style hints when none is given', () => {
+    expect(geminiStyle({ ...base, emotion: 'Enthusiastic', speed: 1.05 })).toBe('Natural, human read: enthusiastic delivery, a little faster than normal.')
+  })
+  it('returns nothing when there is no guidance', () => {
+    expect(geminiStyle(base)).toBeUndefined()
+  })
+})
+
+describe('pcmToWav', () => {
+  it('wraps raw PCM so its duration reads back correctly', () => {
+    expect(readWavDurationSeconds(pcmToWav(Buffer.alloc(48_000), 24_000))).toBe(1)
   })
 })

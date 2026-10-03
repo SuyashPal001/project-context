@@ -16,7 +16,7 @@ export type StepKind = 'image' | 'video' | 'narration' | 'music' | 'lipsync' | '
 const PRICING: Record<StepKind, { jobType: string; subject: string }> = {
   image: { jobType: 'image_generation', subject: 'gemini-3-pro-image-preview' },
   video: { jobType: 'video_generation', subject: 'google/gemini-omni-1.1-flash' },
-  narration: { jobType: 'narration_generation', subject: 'sonic-3.5' },
+  narration: { jobType: 'narration_generation', subject: 'gemini-3.8-flash-tts' },
   music: { jobType: 'music_generation', subject: 'lyria-002' },
   lipsync: { jobType: 'lipsync_generation', subject: 'fal-ai/latentsync' },
   lipsync_hq: { jobType: 'lipsync_generation', subject: 'sync-2.0' },

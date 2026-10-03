@@ -56,7 +56,7 @@ export function detectSkillPii(body: string): string {
 const IMAGE_MODEL = 'gemini-3-pro-image-preview'
 const VIDEO_MODEL = 'google/gemini-omni-1.1-flash'
 const MUSIC_MODEL = 'lyria-002'
-const NARRATION_MODEL = 'sonic-3.5'
+const NARRATION_MODEL = 'gemini-3.8-flash-tts'
 const LIPSYNC_MODEL = 'fal-ai/latentsync'
 const ASSEMBLY_SUBJECT = 'ffmpeg-local'
 const MUX_BEAT_AUDIO_SUBJECT = 'ffmpeg-mux-audio'

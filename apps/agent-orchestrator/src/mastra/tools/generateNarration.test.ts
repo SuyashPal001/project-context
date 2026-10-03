@@ -112,7 +112,7 @@ describe('generateNarration tool', () => {
 
     await generateNarration.execute!({ script: 'Namaste', voiceId: 'v1', language: 'hi' } as never, baseCtx())
 
-    expect(capturedBody).toMatchObject({ model: 'sonic-3.5', transcript: 'Namaste', voiceId: 'v1', language: 'hi' })
+    expect(capturedBody).toMatchObject({ model: 'gemini-3.8-flash-tts', transcript: 'Namaste', voiceId: 'v1', language: 'hi' })
   })
 
   it('omits language from the gateway request body when not given', async () => {
@@ -129,12 +129,27 @@ describe('generateNarration tool', () => {
     expect(capturedBody).not.toHaveProperty('language')
   })
 
-  it('returns model: sonic-3.5 in the success result', async () => {
+  it('narrates Gemini voices on gemini-3.8-flash-tts and passes the direction through', async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+    global.fetch = vi.fn(async (_url, init) => {
+      capturedBody = JSON.parse((init as RequestInit).body as string)
+      return new Response(JSON.stringify({ audioBase64: 'QUJD', mimeType: 'audio/wav', durationSeconds: 12.5 }), { status: 200 })
+    }) as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'narration.wav', type: 'audio/wav', size: 3 })
+
+    const result = await generateNarration.execute!({ script: 'Hello world', voiceId: 'Leda', direction: 'a casual voice note' } as never, baseCtx())
+
+    expect(capturedBody).toMatchObject({ model: 'gemini-3.8-flash-tts', voiceId: 'Leda', direction: 'a casual voice note' })
+    expect(result).toMatchObject({ model: 'gemini-3.8-flash-tts' })
+  })
+
+  it('keeps Cartesia (UUID) voices picked before the switch on sonic-3.5', async () => {
     ;(spendCredits as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ audioBase64: 'QUJD', mimeType: 'audio/wav', durationSeconds: 12.5 }), { status: 200 })) as unknown as typeof fetch
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'narration.wav', type: 'audio/wav', size: 3 })
 
-    const result = await generateNarration.execute!({ script: 'Hello world', voiceId: 'v1' } as never, baseCtx())
+    const result = await generateNarration.execute!({ script: 'Hello world', voiceId: 'e8e5fffb-252c-436d-b842-8879b84445b6' } as never, baseCtx())
 
     expect(result).toMatchObject({ model: 'sonic-3.5' })
   })

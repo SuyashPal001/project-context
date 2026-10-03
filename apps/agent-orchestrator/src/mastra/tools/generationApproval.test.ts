@@ -154,7 +154,7 @@ describe('GENERATION_APPROVAL_METADATA — talking-head tools', () => {
     expect(GENERATION_APPROVAL_METADATA['generate-narration']).toBeDefined()
     expect(GENERATION_APPROVAL_METADATA['generate_narration']).toBeDefined()
     expect(GENERATION_APPROVAL_METADATA['generate-narration'].resourceType).toBe('narration_generation')
-    expect(GENERATION_APPROVAL_METADATA['generate-narration'].subject).toBe('sonic-3.5')
+    expect(GENERATION_APPROVAL_METADATA['generate-narration'].subject).toBe('gemini-3.8-flash-tts')
   })
 
   it('registers lipsync', () => {

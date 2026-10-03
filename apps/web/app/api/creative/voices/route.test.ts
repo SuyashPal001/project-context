@@ -6,7 +6,12 @@ const findManyMock = vi.fn();
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('@serverless-saas/database', () => ({
   db: { query: { voiceCatalogue: { findMany: (...a: unknown[]) => findManyMock(...a) } } },
+  // These rows use readable fake ids; treat them as Cartesia voices unless a test
+  // says otherwise, and offer whichever engine providerMock names.
+  voiceProviderOf: (id: string) => (id.startsWith('gemini:') ? 'gemini' : 'cartesia'),
+  offeredVoiceProvider: () => providerMock(),
 }));
+const providerMock = vi.fn(() => 'cartesia');
 
 beforeEach(() => {
   process.env.API_URL = 'https://api.example.com';
@@ -96,4 +101,17 @@ it('returns 502 when the catalogue query fails', async () => {
   const response = await GET(new NextRequest('http://localhost/api/creative/voices'));
   expect(response.status).toBe(502);
   expect(await response.json()).toEqual({ error: 'Could not load voices right now.' });
+});
+
+it('offers only the voices of the engine VOICE_PROVIDER selects', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+  providerMock.mockReturnValue('gemini');
+  findManyMock.mockResolvedValue([
+    { providerId: 'voice-cathy', name: 'Cathy', tagline: 'Coworker', description: null, language: 'en', gender: null, country: null, accents: null, previewFileUrl: null, localPreviewAsset: null },
+    { providerId: 'gemini:Leda', name: 'Leda', tagline: 'Youthful', description: null, language: null, gender: 'feminine', country: 'US', accents: [{ accent: 'General', locale: 'hi', is_native: true }], previewFileUrl: null, localPreviewAsset: null },
+  ]);
+  const { GET } = await import('./route');
+  const body = await (await GET(new NextRequest('http://localhost/api/creative/voices?language=en'))).json();
+  expect(body.voices.map((v: { name: string }) => v.name)).toEqual(['Leda']);
+  providerMock.mockReturnValue('cartesia');
 });

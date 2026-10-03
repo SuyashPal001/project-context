@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { db } from '@serverless-saas/database';
+import { db, offeredVoiceProvider, voiceProviderOf } from '@serverless-saas/database';
 import { verifyVoiceLibrarySession } from './session';
 
 export const runtime = 'nodejs';
@@ -18,7 +18,10 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const rows = await db.query.voiceCatalogue.findMany({ orderBy: (v, { asc }) => [asc(v.name)] });
+        // VOICE_PROVIDER picks which engine's voices are offered (default gemini).
+        const provider = offeredVoiceProvider();
+        const rows = (await db.query.voiceCatalogue.findMany({ orderBy: (v, { asc }) => [asc(v.name)] }))
+            .filter(row => voiceProviderOf(row.providerId) === provider);
         if (rows.length === 0) {
             return NextResponse.json({ error: 'Voice library is not configured yet.' }, { status: 503 });
         }

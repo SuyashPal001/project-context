@@ -1,7 +1,19 @@
 import type { IncomingMessage, ServerResponse } from 'http'
+import { GoogleAuth } from 'google-auth-library'
 import { requestsTotal, latency } from './metrics.js'
 
-const SPEECH_MODEL_ALLOWLIST = new Set(['sonic-3.5'])
+const SPEECH_MODEL_ALLOWLIST = new Set(['sonic-3.5', 'gemini-3.8-flash-tts'])
+
+// Gemini 3.8 Flash TTS: Vertex publisher model on the global endpoint only
+// (verified live 2026-10-03 against this project). It takes a natural-language
+// delivery direction in speechMetadata.style, kept apart from the transcript so
+// it is never spoken, and inline vocal tags in the transcript (<breath>,
+// <laugh>, <sigh>, <short pause>). It detects the language itself, and its
+// voices (core names like "Leda" and library ids like "en-in-commercial-2")
+// speak every language.
+const GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts'
+const VERTEX_PROJECT = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
+const _auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' })
 
 // Cartesia-Version for /tts/bytes endpoint — matches the proven-working value
 // in apps/web/app/api/creative/voices/preview/route.ts (2026-03-01).
@@ -21,6 +33,8 @@ export interface SpeechGenerationRequest {
   emotion?: string
   speed?: number
   volume?: number
+  // Gemini only: how the line should be performed, in plain English.
+  direction?: string
 }
 
 // Cartesia's documented emotion values (English only).
@@ -150,11 +164,68 @@ async function callCartesia(req: SpeechGenerationRequest): Promise<SpeechGenerat
   return { audioBase64: buf.toString('base64'), mimeType: 'audio/wav', durationSeconds }
 }
 
+// Gemini has no emotion/speed fields; a request that only carries Cartesia-style
+// hints still gets a direction built from them.
+export function geminiStyle(req: SpeechGenerationRequest): string | undefined {
+  const direction = req.direction?.trim()
+  if (direction) return direction.slice(0, 1000)
+  const bits: string[] = []
+  if (req.emotion) bits.push(`${req.emotion.toLowerCase()} delivery`)
+  if (typeof req.speed === 'number' && req.speed >= 1.05) bits.push('a little faster than normal')
+  if (typeof req.speed === 'number' && req.speed <= 0.95) bits.push('a little slower than normal')
+  return bits.length ? `Natural, human read: ${bits.join(', ')}.` : undefined
+}
+
+// Gemini returns audio/wav, or raw 16-bit PCM ("audio/L16;rate=24000") on some
+// paths; wrap the latter so every caller gets a playable WAV.
+export function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0); header.writeUInt32LE(36 + pcm.length, 4); header.write('WAVE', 8)
+  header.write('fmt ', 12); header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22)
+  header.writeUInt32LE(sampleRate, 24); header.writeUInt32LE(sampleRate * 2, 28); header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34)
+  header.write('data', 36); header.writeUInt32LE(pcm.length, 40)
+  return Buffer.concat([header, pcm])
+}
+
+async function callGeminiTts(req: SpeechGenerationRequest): Promise<SpeechGenerationResult> {
+  const style = geminiStyle(req)
+  const client = await _auth.getClient()
+  const tokenResp = await client.getAccessToken()
+  const url = `https://aiplatform.googleapis.com/v1/projects/${VERTEX_PROJECT}/locations/global/publishers/google/models/${GEMINI_TTS_MODEL}:generateContent`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${tokenResp.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: req.transcript, ...(style ? { speechMetadata: { style } } : {}) }] }],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: req.voiceId } } },
+      },
+    }),
+    signal: AbortSignal.timeout(90_000),
+  })
+  if (!res.ok && res.status >= 400 && res.status < 500 && res.status !== 429) {
+    const reason = await res.text().catch(() => `HTTP ${res.status}`)
+    return { refused: true, reason: `Gemini TTS rejected: ${reason.slice(0, 500)}` }
+  }
+  if (!res.ok) throw new Error(`Gemini TTS failed: ${res.status} ${(await res.text()).slice(0, 500)}`)
+  const data = await res.json() as { candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> } }> }
+  const audio = data.candidates?.[0]?.content?.parts?.find(part => part.inlineData?.data)?.inlineData
+  if (!audio?.data) return { refused: true, reason: `Gemini TTS returned no audio (finishReason: ${data.candidates?.[0]?.finishReason ?? 'none'})` }
+  let buf: Buffer = Buffer.from(audio.data, 'base64')
+  const mime = audio.mimeType ?? ''
+  if (!mime.includes('wav') && buf.toString('ascii', 0, 4) !== 'RIFF') {
+    buf = pcmToWav(buf, Number(/rate=(\d+)/.exec(mime)?.[1] ?? 24000))
+  }
+  if (buf.byteLength > MAX_AUDIO_SIZE_BYTES) return { refused: true, reason: 'Audio size exceeds limit' }
+  return { audioBase64: buf.toString('base64'), mimeType: 'audio/wav', durationSeconds: readWavDurationSeconds(buf) }
+}
+
 export async function generateSpeech(req: SpeechGenerationRequest): Promise<SpeechGenerationResult> {
   if (!SPEECH_MODEL_ALLOWLIST.has(req.model)) {
     throw new UnsupportedSpeechModelError(`Unsupported speech model: ${req.model}`)
   }
-  return callCartesia(req)
+  return req.model === GEMINI_TTS_MODEL ? callGeminiTts(req) : callCartesia(req)
 }
 
 export async function handleSpeechGenerations(req: IncomingMessage, res: ServerResponse, readBody: (r: IncomingMessage) => Promise<string>): Promise<void> {

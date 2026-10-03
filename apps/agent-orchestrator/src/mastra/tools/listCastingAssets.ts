@@ -1,3 +1,4 @@
+import { offeredVoiceProvider, voiceProviderOf } from '@serverless-saas/database'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import pg from 'pg'
@@ -54,8 +55,11 @@ export const listCastingAssets = createTool({
         const { rows } = await client.query<{ provider_id: string; name: string; tagline: string; description: string | null; language: string | null; accents: Array<{ locale: string }> | null }>(
           `SELECT provider_id, name, tagline, description, language, accents FROM voice_catalogue ORDER BY name`,
         )
+        // VOICE_PROVIDER picks which engine's voices are offered (default gemini),
+        // the same rule as the web voice picker.
+        const provider = offeredVoiceProvider()
         return {
-          items: rows.map((row) => {
+          items: rows.filter((row) => voiceProviderOf(row.provider_id) === provider).map((row) => {
             // Same rule as the web voice picker (apps/web/app/api/creative/voices/route.ts):
             // accents' locales when present, else the single language column.
             const locales = row.accents?.map((a) => a.locale) ?? (row.language ? [row.language] : [])

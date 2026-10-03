@@ -69,6 +69,14 @@ const RATES = [
   // 3 credits = $0.03. (Was 30_000 — the dollars-for-cents slip.)
   { resourceType: 'narration_generation', subject: 'sonic-3.5',
     pricingSchema: { per_call_micro: 3_000_000 } },
+  // Gemini 3.8 Flash TTS (default narration engine since 2026-10-03): $9 per 1M
+  // audio output tokens at 25 tokens/second, text input negligible. The longest
+  // narration (500-char script, ~35s) is ~875 tokens = ~$0.008, so a flat 1
+  // credit ($0.01) per call covers true cost. Google's promotional rate ends
+  // 2026-12-31 (audio output doubles to $18/1M, ~$0.016 for 35s): re-price
+  // this row to 2 credits then.
+  { resourceType: 'narration_generation', subject: 'gemini-3.8-flash-tts',
+    pricingSchema: { per_call_micro: 1_000_000 } },
   // fal.ai LatentSync: flat $0.20 per generation for outputs <=40s (spec's
   // Gemini research). Priced with margin: 25 credits = $0.25. (Was 250_000 — the
   // dollars-for-cents slip.)

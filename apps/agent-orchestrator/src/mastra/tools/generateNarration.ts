@@ -12,7 +12,15 @@ function languageName(code: string): string {
 }
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
-const SPEECH_MODEL = 'sonic-3.5'
+// Narration runs on Gemini 3.8 Flash TTS (won every listening test against
+// Cartesia, 2026-10-03). Cartesia voice ids are UUIDs and still route to
+// Cartesia, so chats that picked a Cartesia voice before the switch keep working.
+export const GEMINI_SPEECH_MODEL = 'gemini-3.8-flash-tts'
+export const CARTESIA_SPEECH_MODEL = 'sonic-3.5'
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export function narrationModel(voiceId: string | undefined): string {
+  return voiceId && UUID_RE.test(voiceId) ? CARTESIA_SPEECH_MODEL : GEMINI_SPEECH_MODEL
+}
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
@@ -38,17 +46,21 @@ export const inputSchema = z.object({
     'Delivery emotion for the whole read (English only; ignored for other languages). Pick it from the ad\'s tone and make sure the words actually carry it — e.g. enthusiastic for UGC/testimonial energy, content or calm for wellness, confident for a pitch. Omit for a neutral read.'
   ),
   speed: z.number().min(0.6).max(1.5).optional().describe('Speech speed, 1.0 is normal. ~1.05 for lively UGC, 0.95 for calm/premium. Omit for 1.0.'),
+  direction: z.string().max(600).optional().describe(
+    'How the line should be performed, in plain English — who is speaking, to whom, and how (e.g. "Not a voice actor: an ordinary woman in her mid-twenties recording a casual voice note to her best friend. Relaxed, a bit fast, a smile you can hear, sentence ends trailing off, uneven pauses, never polished."). Never put this in the script — it is sent separately and never spoken. Works in every language. Takes priority over emotion/speed.'
+  ),
 })
 
 export const generateNarration = createTool({
   id: 'generate-narration',
-  description: 'Generates a narration/voiceover audio clip from a script — an audio track produced separately from the video, not native in-render speech. Use for talking-head\'s single continuous narration track (one call, full script), and for animation-character\'s per-beat VO lines (one call per beat, each beat\'s single line, muxed or lip-synced onto that beat\'s silent clip afterward) — not for dialogue spoken natively by generate_video\'s own render. Write the script for the ear, not the page: numbers and symbols as spoken words ("a hundred percent", never "100%"), commas and full stops where a person would breathe, no <break> tags (they make the read sound stitched). Set emotion and speed to match the ad\'s tone.',
+  description: 'Generates a narration/voiceover audio clip from a script — an audio track produced separately from the video, not native in-render speech. Use for talking-head\'s single continuous narration track (one call, full script), and for animation-character\'s per-beat VO lines (one call per beat, each beat\'s single line, muxed or lip-synced onto that beat\'s silent clip afterward) — not for dialogue spoken natively by generate_video\'s own render. Write the script for the ear, not the page: numbers and symbols as spoken words ("a hundred percent", never "100%"), commas and full stops where a person would breathe, no <break> tags (they make the read sound stitched). Set emotion and speed to match the ad\'s tone. Voices are Gemini voices: always pass a plain-English direction for the performance, and you may put at most one or two vocal tags right in the script where a real person would make the sound — <breath>, <laugh>, <sigh>, <short pause>.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'narration_generation', subject: SPEECH_MODEL }, ctx),
+    shouldRequireApproval({ resourceType: 'narration_generation', subject: narrationModel((_input as { voiceId?: string } | undefined)?.voiceId) }, ctx),
   execute: async (inputData, execContext) => {
-    const { script, voiceId, language, emotion, speed } = inputData as z.infer<typeof inputSchema>
+    const { script, voiceId, language, emotion, speed, direction } = inputData as z.infer<typeof inputSchema>
+    const SPEECH_MODEL = narrationModel(voiceId)
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, never '' — see generateVideo.ts's identical comment:
@@ -105,7 +117,7 @@ export const generateNarration = createTool({
       const res = await fetch(`${GATEWAY_URL}/v1/audio/speech`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: SPEECH_MODEL, transcript: script, voiceId, ...(language ? { language } : {}), ...(emotion ? { emotion } : {}), ...(speed ? { speed } : {}) }),
+        body: JSON.stringify({ model: SPEECH_MODEL, transcript: script, voiceId, ...(language ? { language } : {}), ...(emotion ? { emotion } : {}), ...(speed ? { speed } : {}), ...(direction ? { direction } : {}) }),
         signal: AbortSignal.timeout(60_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)

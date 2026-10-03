@@ -10,6 +10,7 @@ vi.mock('../session', () => ({ verifyVoiceLibrarySession: vi.fn() }));
 vi.mock('@serverless-saas/database', () => ({
   db: { query: { voiceCatalogue: { findFirst: (...a: unknown[]) => findFirstMock(...a) } } },
   voiceCatalogue: { providerId: 'providerId' },
+  voiceProviderOf: (id: string) => (id.startsWith('gemini-') ? 'gemini' : 'cartesia'),
 }));
 // Real `eq` doesn't understand our fake column object, but the route only ever needs the
 // looked-up id back out of `where` — capture it verbatim so tests can assert the lookup is
@@ -149,4 +150,16 @@ it('returns 502 when the catalogue query fails', async () => {
     const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=voice-1'));
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ error: 'Voice preview is unavailable.' });
+});
+
+it('serves a Gemini voice its bundled sample for the language, without any vendor call', async () => {
+  const fetchSpy = vi.fn();
+  vi.stubGlobal('fetch', fetchSpy);
+  vi.mocked(readFileMock).mockResolvedValue(Buffer.from([1, 2, 3]));
+  const { GET } = await import('./route');
+  const response = await GET(new NextRequest('http://localhost/api/creative/voices/preview?id=gemini-leda&language=hi'));
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toBe('audio/mpeg');
+  expect(readFileMock).toHaveBeenCalledWith(expect.stringContaining(path.join('public', 'creative', 'voices', 'gemini', 'gemini-leda', 'hi.mp3')));
+  expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('cartesia'), expect.anything());
 });

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse, type NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { db, voiceCatalogue } from '@serverless-saas/database';
+import { db, voiceCatalogue, voiceProviderOf } from '@serverless-saas/database';
 import { storageService } from '@serverless-saas/storage';
 import { verifyVoiceLibrarySession } from '../session';
 
@@ -71,14 +71,29 @@ export async function GET(request: NextRequest) {
     if (session === 'unauthorized') return NextResponse.json({ error: 'Sign in to preview voices.' }, { status: 401 });
     if (session === 'unavailable') return NextResponse.json({ error: 'Could not verify your session.' }, { status: 502 });
 
-    const key = process.env.CARTESIA_API_KEY;
-    if (!key) return NextResponse.json({ error: 'Voice library is not configured yet.' }, { status: 503 });
     const id = request.nextUrl.searchParams.get('id') ?? '';
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) return NextResponse.json({ error: 'Invalid voice.' }, { status: 400 });
     const language = request.nextUrl.searchParams.get('language') ?? 'en';
     if (language !== 'en' && !Object.hasOwn(SAMPLE_TRANSCRIPTS, language)) {
         return NextResponse.json({ error: 'Invalid sample language.' }, { status: 400 });
     }
+
+    // Gemini voices: every (voice, language) sample is pre-generated and bundled
+    // (refreshVoiceCatalogue.ts GEMINI_VOICES), so no vendor call is ever made here.
+    if (voiceProviderOf(id) === 'gemini') {
+        try {
+            const bytes = await readFile(path.join(process.cwd(), 'public', 'creative', 'voices', 'gemini', id, `${language}.mp3`));
+            return new NextResponse(new Uint8Array(bytes), { headers: {
+                'Content-Type': 'audio/mpeg',
+                'Cache-Control': 'private, max-age=86400',
+            } });
+        } catch {
+            return NextResponse.json({ error: 'Voice preview is unavailable.' }, { status: 404 });
+        }
+    }
+
+    const key = process.env.CARTESIA_API_KEY;
+    if (!key) return NextResponse.json({ error: 'Voice library is not configured yet.' }, { status: 503 });
 
     try {
         const voice = await db.query.voiceCatalogue.findFirst({ where: eq(voiceCatalogue.providerId, id) });
