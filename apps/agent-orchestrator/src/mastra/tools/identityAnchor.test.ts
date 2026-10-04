@@ -8,9 +8,9 @@ describe('withIdentityAnchor', () => {
     const p = 'the man in the green t-shirt bites the bar, natural window light, 35mm'
     expect(withIdentityAnchor(p, anchor)).toBe(p)
   })
-  it('adds the missing tag first and the missing look last (the wafer Beat 4 refusal)', () => {
-    expect(withIdentityAnchor('Samir holds up the bar and smiles.', anchor))
-      .toBe('the man in the green t-shirt. Samir holds up the bar and smiles. natural window light, 35mm.')
+  it('adds the missing tag first and the missing look last', () => {
+    expect(withIdentityAnchor('He holds up the bar and smiles.', anchor))
+      .toBe('the man in the green t-shirt. He holds up the bar and smiles. natural window light, 35mm.')
   })
   it('does nothing without an anchor', () => {
     expect(withIdentityAnchor('x', undefined)).toBe('x')
