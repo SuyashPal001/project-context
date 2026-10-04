@@ -210,9 +210,9 @@ export function ClarificationCard({ request, onAnswer }: ClarificationCardProps)
                                         ? q.options[a.selectedIndex]?.label ?? 'Skipped'
                                         : a.freeText || 'Skipped';
                             return (
-                                <div key={i} className="flex flex-col gap-1.5">
-                                    <div className="text-sm font-medium">{q.prompt}</div>
-                                    <div className="text-sm text-muted-foreground">{a?.files?.length && answerText === 'Skipped' && !a.skipped ? 'Files attached' : answerText}</div>
+                                <div key={i} className="flex min-w-0 flex-col gap-1.5">
+                                    <div className="text-sm font-medium [overflow-wrap:anywhere]">{q.prompt}</div>
+                                    <div className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{a?.files?.length && answerText === 'Skipped' && !a.skipped ? 'Files attached' : answerText}</div>
                                     {!!a?.files?.length && <AttachmentStrip attachments={a.files} pendingUpload={null} onRemove={() => {}} readOnly />}
                                 </div>
                             );
