@@ -31,8 +31,20 @@ export async function shouldRequireApproval(
 
   const rate = await resolveRate(opts.resourceType, opts.subject)
   if (!rate) return false
+  if (isNegligibleRate(rate.schema)) return false
 
   return true
+}
+
+/** Below one credit a call is effectively free (ffmpeg trims, joins, mixes at
+ * 0.001). A card for each one stalled a live ad on four approvals in a row,
+ * one per trim, for nothing the user would ever decline. Still charged. */
+const NEGLIGIBLE_MICRO = 1_000_000
+
+export function isNegligibleRate(schema: unknown): boolean {
+  const s = schema as Record<string, unknown> | null
+  const flat = s && (s.per_call_micro ?? s.per_run_micro)
+  return typeof flat === 'number' && flat < NEGLIGIBLE_MICRO
 }
 
 /** How much of a drafted SKILL.md the approval card shows. */

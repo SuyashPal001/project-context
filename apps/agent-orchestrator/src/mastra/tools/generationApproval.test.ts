@@ -15,7 +15,7 @@ const baseCtx = (extra: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   vi.resetAllMocks()
   isUnlimited.mockResolvedValue(false)
-  resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 50_000 } })
+  resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 13_400_000 } })
 })
 
 describe('shouldRequireApproval', () => {
@@ -38,6 +38,12 @@ describe('shouldRequireApproval', () => {
     expect(result).toBe(false)
   })
 
+  it('skips approval for a near-free step (an ffmpeg trim at 0.001 credits)', async () => {
+    resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 1_000 } })
+    const result = await shouldRequireApproval({ resourceType: 'clip_assembly', subject: 'ffmpeg-trim-clip' }, baseCtx())
+    expect(result).toBe(false)
+  })
+
   it('skips approval when no active rate resolves', async () => {
     resolveRate.mockResolvedValue(null)
     const result = await shouldRequireApproval({ resourceType: 'image_generation', subject: 'model-x' }, baseCtx())
@@ -55,7 +61,7 @@ describe('shouldRequireApproval', () => {
 
   it('requires approval for delegate-issued calls (suspend→approve→resume works end-to-end, verified against mastra_span_events 2026-09-19)', async () => {
     isUnlimited.mockResolvedValue(false)
-    resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 100_000 } })
+    resolveRate.mockResolvedValue({ id: 'rate1', version: 1, schema: { per_call_micro: 100_000_000 } })
     const result = await shouldRequireApproval(
       { resourceType: 'video_generation', subject: 'google/gemini-omni-1.1-flash' },
       { requestContext: { tenantId: 't1', sendEvent: vi.fn(), sessionId: 's1', userId: 'u1', delegationDepth: 1 } },
