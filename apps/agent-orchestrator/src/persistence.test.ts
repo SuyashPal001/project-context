@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { generatedFileKey, uploadGeneratedFile, saveGenerationConfirmRequest, updateGenerationConfirmRequest } from './persistence.js'
+import { generatedFileKey, uploadFileWithKey, uploadGeneratedFile, saveGenerationConfirmRequest, updateGenerationConfirmRequest } from './persistence.js'
 
 describe('generatedFileKey', () => {
   it('uses the given extension instead of always .md', () => {
@@ -97,5 +97,40 @@ describe('updateGenerationConfirmRequest', () => {
     expect((opts as RequestInit).method).toBe('PATCH')
     const body = JSON.parse((opts as RequestInit).body as string)
     expect(body.generationConfirmRequest).toEqual({ status: 'approved', decisionAt: '2026-09-03T00:00:00.000Z' })
+  })
+})
+
+describe('uploadFileWithKey — same-key re-upload', () => {
+  const originalFetch = global.fetch
+  afterEach(() => { global.fetch = originalFetch })
+
+  it('returns the file id /confirm reports, which is the original row on a re-upload', async () => {
+    global.fetch = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/files/upload')) {
+        return new Response(JSON.stringify({ data: { fileId: 'pending-2', uploadUrl: 'https://s3.example/put' } }), { status: 200 })
+      }
+      if (String(url) === 'https://s3.example/put') return new Response(null, { status: 200 })
+      if (String(url).endsWith('/files/pending-2/confirm')) {
+        return new Response(JSON.stringify({ success: true, fileId: 'original-1' }), { status: 200 })
+      }
+      throw new Error('unexpected fetch: ' + url)
+    }) as unknown as typeof fetch
+
+    const result = await uploadFileWithKey('tok', { key: 'generated/c/tvc-plan-x.json', name: 'TVC plan.json', content: '{}', contentType: 'application/json' })
+    expect(result?.fileId).toBe('original-1')
+  })
+
+  it('falls back to the upload id when /confirm returns no file id', async () => {
+    global.fetch = vi.fn(async (url: string) => {
+      if (String(url).endsWith('/files/upload')) {
+        return new Response(JSON.stringify({ data: { fileId: 'f9', uploadUrl: 'https://s3.example/put' } }), { status: 200 })
+      }
+      if (String(url) === 'https://s3.example/put') return new Response(null, { status: 200 })
+      if (String(url).endsWith('/confirm')) return new Response('not json', { status: 200 })
+      throw new Error('unexpected fetch: ' + url)
+    }) as unknown as typeof fetch
+
+    const result = await uploadFileWithKey('tok', { key: 'k', name: 'n.json', content: '{}', contentType: 'application/json' })
+    expect(result?.fileId).toBe('f9')
   })
 })

@@ -523,7 +523,11 @@ export async function uploadFileWithKey(
       return null
     }
 
-    return { fileId, name, type: contentType, size }
+    // On a same-key re-upload, /confirm keeps the ORIGINAL row and soft-deletes
+    // the pending one, returning the original's id (apps/api files.ts dedup
+    // branch). Returning the pending id here would hand back a deleted file.
+    const confirmed = await confirm.json().catch(() => null) as { fileId?: string } | null
+    return { fileId: confirmed?.fileId ?? fileId, name, type: contentType, size }
   } catch (err) {
     console.error('[persistence] uploadFileWithKey error:', (err as Error).message)
     return null
