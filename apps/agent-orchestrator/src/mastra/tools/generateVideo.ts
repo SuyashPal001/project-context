@@ -72,13 +72,25 @@ function extractQuotedSpans(prompt: string): string[] {
   return [...prompt.matchAll(/"([^"]+)"|“([^”]+)”/g)].map((m) => m[1] ?? m[2])
 }
 
+// A spoken line needs room to finish. 2026-10-05: a 23-word Hinglish line
+// with a laugh got 8s (planned to hit a 15s total) and the video ended
+// mid-sentence. Natural Omni speech ran 2.1-2.9 words a second, so a line is
+// given at least words / 2.5 seconds (numbers count as two words, "%" as
+// one more), within generate_video's 3-10s range.
+export function spokenSecondsFloor(line: string): number {
+  const words = line.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w))
+  const count = words.reduce((n, w) => n + (/\d/.test(w) ? 2 : 1) + (w.includes('%') ? 1 : 0), 0)
+  return Math.min(10, Math.max(3, Math.ceil(count / 2.5)))
+}
+
 export async function generateVideoItem(
   inputData: VideoItemInput,
   execContext: MediaExecContext | undefined,
   itemIndex: number,
 ) {
-    const { mode, prompt, aspectRatio, durationSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor, continueFrom } =
+    const { mode, prompt, aspectRatio, durationSeconds: requestedSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor, continueFrom } =
       inputData
+    const durationSeconds = approvedDialogue ? Math.max(requestedSeconds, spokenSecondsFloor(approvedDialogue)) : requestedSeconds
 
     // jobId is derived purely from execContext (no charge or gateway call
     // involved), so it's safe to compute it before the dialogue gate below —

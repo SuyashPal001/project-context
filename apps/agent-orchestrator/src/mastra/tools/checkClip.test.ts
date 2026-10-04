@@ -14,7 +14,7 @@ describe('lineMatchScore', () => {
 
 describe('parseVerdict', () => {
   it('reads the JSON verdict, also inside a code fence', () => {
-    expect(parseVerdict('```json\n{"samePerson": false, "confidence": 8, "heard": "hi", "reason": "different jaw"}\n```')).toEqual({ samePerson: false, productSame: true, confidence: 8, heard: 'hi', reason: 'different jaw' })
+    expect(parseVerdict('```json\n{"samePerson": false, "confidence": 8, "heard": "hi", "reason": "different jaw"}\n```')).toEqual({ samePerson: false, productSame: true, glitch: false, confidence: 8, heard: 'hi', reason: 'different jaw' })
     expect(parseVerdict('no json here')).toBeNull()
   })
 })
@@ -23,12 +23,19 @@ describe('parseVerdict strict form', () => {
   it('fails on a different face or different clothes', () => {
     expect(parseVerdict('{"clothing_same": false, "face_same": false, "confidence": 10, "differences": "green tee, rounder face", "heard": "x"}')?.samePerson).toBe(false)
     expect(parseVerdict('{"clothing_same": false, "face_same": true, "confidence": 9, "differences": "different shirt", "heard": ""}')?.samePerson).toBe(false)
-    expect(parseVerdict('{"clothing_same": true, "face_same": true, "confidence": 10, "differences": "none", "heard": "hi"}')).toEqual({ samePerson: true, productSame: true, confidence: 10, heard: 'hi', reason: 'none' })
+    expect(parseVerdict('{"clothing_same": true, "face_same": true, "confidence": 10, "differences": "none", "heard": "hi"}')).toEqual({ samePerson: true, productSame: true, glitch: false, confidence: 10, heard: 'hi', reason: 'none' })
   })
 })
 
 describe('parseVerdict product', () => {
   it('flags a changed or garbled product label', () => {
     expect(parseVerdict('{"clothing_same": true, "face_same": true, "product_same": false, "confidence": 9, "differences": "cap text reads Thinkng Cap", "heard": ""}')?.productSame).toBe(false)
+  })
+})
+
+describe('parseVerdict glitch', () => {
+  it('reads a visible glitch (a second bottle, a hand swap) as its own failure', () => {
+    expect(parseVerdict('{"clothing_same": true, "face_same": true, "glitch": true, "confidence": 9, "differences": "second bottle appears", "heard": ""}')?.glitch).toBe(true)
+    expect(parseVerdict('{"clothing_same": true, "face_same": true, "confidence": 9, "differences": "none", "heard": ""}')?.glitch).toBe(false)
   })
 })

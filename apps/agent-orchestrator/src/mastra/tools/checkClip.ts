@@ -17,6 +17,10 @@ const execFile = promisify(execFileCb)
 const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const MODEL = 'gemini-3.6-flash'
 const TIMEOUT_MS = 90_000
+// gemini-3.6-flash thinks before answering and the thinking counts against
+// max_tokens: at 400 it stopped mid-JSON (MAX_TOKENS, 2026-10-05) and every
+// check came back "unreadable verdict". 4000 leaves room for both.
+const MAX_TOKENS = 4000
 const LINE_MATCH_THRESHOLD = 0.85
 
 const normalise = (s: string) => s.toLowerCase().replace(/<[^>]+>/g, ' ').replace(/[^\p{L}\p{N}\s']/gu, ' ').split(/\s+/).filter(Boolean)
@@ -33,13 +37,13 @@ export function lineMatchScore(expected: string, heard: string): number {
   return Math.max(i, present) / want.length
 }
 
-export interface ClipVerdict { samePerson: boolean; productSame: boolean; confidence: number; heard: string; reason: string }
+export interface ClipVerdict { samePerson: boolean; productSame: boolean; glitch: boolean; confidence: number; heard: string; reason: string }
 
 // Asked point by point, against the master still (it carries this ad's exact
 // outfit). A plain "same person?" question let gemini-3.6-flash pass a clip
 // with a different man in a different shirt at 10/10 (tested 2026-10-03); the
 // strict comparison caught it and still passed the good clip.
-export const STRICT_QUESTION = 'You are a strict continuity checker for a video ad. Image A is the master still of the presenter at the start of this ad; any further reference images show the same presenter. Then come frames from a later clip. Compare carefully, point by point: (1) clothing (garment type, colour, collar), (2) hair, (3) face shape and jaw, (4) eyes and brows, (5) nose, (6) age. A different-looking person, or the same-looking person in different clothes, is a FAIL.'
+export const STRICT_QUESTION = 'You are a strict continuity checker for a video ad. Image A is the master still of the presenter at the start of this ad; any further reference images show the same presenter. Then come frames from a later clip. Compare carefully, point by point: (1) clothing (garment type, colour, collar), (2) hair, (3) face shape and jaw, (4) eyes and brows, (5) nose, (6) age. (7) glitches: a duplicated or extra product, extra hands or fingers, or an object that jumps between hands or appears from nowhere. A different-looking person, the same-looking person in different clothes, or a visible glitch is a FAIL.'
 
 /** Pulls the JSON verdict out of the model's reply; null when unusable. */
 export function parseVerdict(raw: string): ClipVerdict | null {
@@ -52,7 +56,7 @@ export function parseVerdict(raw: string): ClipVerdict | null {
       ? v.face_same && v.clothing_same !== false
       : v.samePerson
     if (typeof same !== 'boolean') return null
-    return { samePerson: same, productSame: v.product_same !== false, confidence: Number(v.confidence ?? 0), heard: String(v.heard ?? ''), reason: String(v.differences ?? v.reason ?? '') }
+    return { samePerson: same, productSame: v.product_same !== false, glitch: v.glitch === true, confidence: Number(v.confidence ?? 0), heard: String(v.heard ?? ''), reason: String(v.differences ?? v.reason ?? '') }
   } catch {
     return null
   }
@@ -81,6 +85,7 @@ export const checkClip = createTool({
     samePerson: z.boolean().optional(),
     lineMatches: z.boolean().optional(),
     productMatches: z.boolean().optional(),
+    glitch: z.boolean().optional(),
     heard: z.string().optional(),
     reason: z.string().optional(),
     refused: z.boolean().optional(),
@@ -101,9 +106,11 @@ export const checkClip = createTool({
       writeFileSync(clipPath, Buffer.from(clip.data, 'base64'))
       const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', clipPath], { timeout: 30_000 })
       const duration = Number(stdout.trim()) || 4
-      // Two frames: the middle and near the end — drift shows up late.
+      // Three frames: just after the start (Omni's glitches — a second bottle,
+      // a hand swap — show in the first second), the middle, and near the end,
+      // where drift shows up.
       const frames: string[] = []
-      for (const [i, t] of [duration * 0.5, Math.max(0, duration - 0.3)].entries()) {
+      for (const [i, t] of [Math.min(0.7, duration * 0.1), duration * 0.5, Math.max(0, duration - 0.3)].entries()) {
         const out = join(workDir, `f${i}.jpg`)
         await execFile('ffmpeg', ['-y', '-ss', String(t), '-i', clipPath, '-frames:v', '1', '-q:v', '3', out], { timeout: 30_000 })
         frames.push(readFileSync(out).toString('base64'))
@@ -131,13 +138,13 @@ export const checkClip = createTool({
         content.push({ type: 'text', text: 'The clip\'s audio:' })
         content.push({ type: 'input_audio', input_audio: { data: audio, format: 'wav' } })
       }
-      const productAsk = productFileId ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and printed or embroidered text as Image P (product_same false if its text is misspelled, changed or garbled; true if it is not visible). ' : ''
-      content.push({ type: 'text', text: STRICT_QUESTION + ' ' + productAsk + (audio ? 'Also transcribe exactly what is spoken in the audio. ' : '') + 'Reply with ONLY JSON: {"clothing_same": true|false, "face_same": true|false, ' + (productFileId ? '"product_same": true|false, ' : '') + '"confidence": 1-10, "differences": "<short list or none>", "heard": "<exact transcript or empty>"}' })
+      const productAsk = productFileId ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and brand name as Image P (product_same false if it is a different product, a different shape or colour, or the brand name is clearly misspelled or garbled; ignore small print, which video always blurs; true if it is not visible). ' : ''
+      content.push({ type: 'text', text: STRICT_QUESTION + ' ' + productAsk + (audio ? 'Also transcribe exactly what is spoken in the audio. ' : '') + 'Reply with ONLY JSON: {"clothing_same": true|false, "face_same": true|false, ' + (productFileId ? '"product_same": true|false, ' : '') + '"glitch": true|false, "confidence": 1-10, "differences": "<short list or none>", "heard": "<exact transcript or empty>"}' })
 
       const res = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
         method: 'POST', signal: controller.signal,
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: MODEL, temperature: 0, max_tokens: 400, messages: [{ role: 'user', content }] }),
+        body: JSON.stringify({ model: MODEL, temperature: 0, max_tokens: MAX_TOKENS, messages: [{ role: 'user', content }] }),
       })
       if (!res.ok) return { refused: true, refusalReason: `CHECK_FAILED: gateway ${res.status}` }
       const result = await res.json() as { choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number } }
@@ -149,13 +156,15 @@ export const checkClip = createTool({
       const lineMatches = expectedLine ? lineMatchScore(expectedLine, verdict.heard) >= LINE_MATCH_THRESHOLD : true
       const samePerson = verdict.samePerson && verdict.confidence >= 6
       const productMatches = verdict.productSame
+      const noGlitch = !verdict.glitch
       return {
-        passed: samePerson && lineMatches && productMatches,
+        passed: samePerson && lineMatches && productMatches && noGlitch,
         samePerson,
         lineMatches,
         productMatches,
+        glitch: verdict.glitch,
         heard: verdict.heard,
-        reason: !samePerson ? `Different person: ${verdict.reason}` : !productMatches ? `Product changed: ${verdict.reason}` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : 'Same person, product and line.',
+        reason: !samePerson ? `Different person: ${verdict.reason}` : !productMatches ? `Product changed: ${verdict.reason}` : !noGlitch ? `Visible glitch: ${verdict.reason}` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : 'Same person, product and line.',
       }
     } catch (err) {
       console.error('[checkClip] failed:', (err as Error).message)

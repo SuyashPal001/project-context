@@ -23,7 +23,7 @@ vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 const { resolveAvatarReferences } = vi.hoisted(() => ({ resolveAvatarReferences: vi.fn() }))
 vi.mock('./avatarReferences.js', () => ({ resolveAvatarReferences }))
 
-import { generateVideo, generateVideoItem } from './generateVideo.js'
+import { generateVideo, generateVideoItem, spokenSecondsFloor } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { stableToolCallId } from '../../credits.js'
 
@@ -461,5 +461,16 @@ describe('generateVideo tool', () => {
     // property access on it is a type error under this repo's type-check.
     expect((result as { refused?: boolean }).refused).toBe(true)
     expect((result as { refusalReason?: string }).refusalReason).toBe('IDENTITY_ANCHOR_MISSING')
+  })
+})
+
+describe('spokenSecondsFloor', () => {
+  it('gives the line that was cut off on 2026-10-05 the full 10 seconds, not 8', () => {
+    expect(spokenSecondsFloor('It has pure Ethyl Ascorbic Acid jo glow instantly boost karta hai. Honestly, at just 285 rupees, my skin has never looked this bright!')).toBe(10)
+  })
+  it('counts numbers and percent as extra words, ignores tags, and stays within 3-10', () => {
+    expect(spokenSecondsFloor('Okay wait... Agar aapki skin dull lag rahi hai, toh you HAVE to try this Minimalist 10% Vitamin C serum!')).toBe(9)
+    expect(spokenSecondsFloor('Hi <laugh> there')).toBe(3)
+    expect(spokenSecondsFloor(Array(60).fill('word').join(' '))).toBe(10)
   })
 })
