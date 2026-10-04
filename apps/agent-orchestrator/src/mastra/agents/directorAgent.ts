@@ -24,6 +24,7 @@ import { burnCaptions } from '../tools/burnCaptions.js'
 import { overlayText } from '../tools/overlayText.js'
 import { stretchClip } from '../tools/stretchClip.js'
 import { mixMusicBed } from '../tools/mixMusicBed.js'
+import { mixVoiceover } from '../tools/mixVoiceover.js'
 import { generateSong } from '../tools/generateSong.js'
 import { trimClip } from '../tools/trimClip.js'
 import { saveAsAvatar } from '../tools/saveAsAvatar.js'
@@ -162,7 +163,7 @@ export const directorAgent = new Agent({
   memory: getMastraMemory(),
   // Keys here (not createTool's `id`) are what the model calls and what
   // chatStream.ts's normalizedToolName sees — must stay generate_image/edit_image.
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, roll_character_variations: rollCharacterVariationsTool, roll_tvc_variations: rollTvcVariationsTool, show_files: showFilesTool, crop_image: cropImage, extract_frame: extractFrame, check_clip: checkClip, tighten_pauses: tightenPauses },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, roll_character_variations: rollCharacterVariationsTool, roll_tvc_variations: rollTvcVariationsTool, show_files: showFilesTool, crop_image: cropImage, extract_frame: extractFrame, check_clip: checkClip, tighten_pauses: tightenPauses, mix_voiceover: mixVoiceover },
   skills: directorSkills,
   inputProcessors: [new DirectorSkillLoader()],
   errorProcessors: [streamErrorRetry()],
@@ -183,7 +184,7 @@ export const directorAgentDelegate = new Agent({
   instructions: directorInstructions,
   requestContextSchema: tenantContextSchema,
   model: selectModel,
-  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, roll_character_variations: rollCharacterVariationsTool, roll_tvc_variations: rollTvcVariationsTool, show_files: showFilesTool, crop_image: cropImage, extract_frame: extractFrame, check_clip: checkClip, tighten_pauses: tightenPauses },
+  tools: { generate_image: generateImage, edit_image: editImage, generate_video: generateVideo, generate_videos: generateVideos, generate_images: generateImages, retrieve_template: retrieveTemplate, analyze_video: analyzeVideoTool, analyze_audio: analyzeAudioTool, analyze_image: analyzeImageTool, generate_narration: generateNarration, lipsync: lipsync, assemble_clips: assembleClips, mux_beat_audio: muxBeatAudio, transcribe_audio: transcribeAudio, composite_end_card: compositeEndCard, burn_captions: burnCaptions, mix_music_bed: mixMusicBed, generate_song: generateSong, trim_clip: trimClip, overlay_text: overlayText, stretch_clip: stretchClip, save_as_avatar: saveAsAvatar, roll_avatar_variations: rollAvatarVariationsTool, roll_character_variations: rollCharacterVariationsTool, roll_tvc_variations: rollTvcVariationsTool, show_files: showFilesTool, crop_image: cropImage, extract_frame: extractFrame, check_clip: checkClip, tighten_pauses: tightenPauses, mix_voiceover: mixVoiceover },
   skills: directorSkills,
   inputProcessors: [new DirectorSkillLoader()],
   errorProcessors: [streamErrorRetry()],

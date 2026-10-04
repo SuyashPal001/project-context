@@ -88,6 +88,7 @@ describe('GENERATION_APPROVAL_METADATA', () => {
         'composite-end-card', 'composite_end_card',
         'burn-captions', 'burn_captions',
         'mix-music-bed', 'mix_music_bed',
+        'mix-voiceover', 'mix_voiceover',
         'trim-clip', 'trim_clip',
         'overlay-text', 'overlay_text',
         'stretch-clip', 'stretch_clip',
@@ -209,6 +210,11 @@ describe('GENERATION_APPROVAL_METADATA — short-drama-stitch tools', () => {
 
   it('maps the underscored delegate key to the same metadata object as the hyphenated tool id', () => {
     expect(GENERATION_APPROVAL_METADATA['trim_clip']).toBe(GENERATION_APPROVAL_METADATA['trim-clip'])
+  })
+
+  it('prices mix_voiceover under its own ffmpeg subject', () => {
+    expect(GENERATION_APPROVAL_METADATA['mix-voiceover'].subject).toBe('ffmpeg-mix-voiceover')
+    expect(GENERATION_APPROVAL_METADATA['mix_voiceover'].subject).toBe('ffmpeg-mix-voiceover')
   })
 })
 

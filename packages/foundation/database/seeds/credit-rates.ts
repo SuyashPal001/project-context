@@ -128,6 +128,11 @@ const RATES = [
     pricingSchema: { per_call_micro: 1_000 } },
   { resourceType: 'clip_assembly', subject: 'ffmpeg-mix-music-bed',
     pricingSchema: { per_call_micro: 1_000 } },
+  // TVC ad's voiceover mix (mix_voiceover). Same flat local-ffmpeg rate as the
+  // other clip_assembly rows; unseeded, the tool would run free AND with no
+  // approval card (shouldRequireApproval finds no rate).
+  { resourceType: 'clip_assembly', subject: 'ffmpeg-mix-voiceover',
+    pricingSchema: { per_call_micro: 1_000 } },
   // short-drama-stitch's clip-trim step. Same "pure local compute, small
   // flat non-zero rate" reasoning as every other clip_assembly row above —
   // keeps the tool on the normal charge/approval code path instead of a
