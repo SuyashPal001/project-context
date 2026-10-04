@@ -6,3 +6,4 @@ Every agent-director call in this flow includes the line "flow: first frame", so
 3. If any clip needs spoken dialogue, get the exact line approved first, same as the Template video cloning contract's dialogue-approval rule — this approval is separate from the cost approval.
 4. Delegate to agent-director with each still's fileId and, per clip, the aspect ratio, duration, motion brief, and approved dialogue (if any).
 5. Deliver each clip separately. Tell the user plainly these are not assembled into one video unless they separately ask for assembly.
+6. One look at a time: if Director stops after a clip and returns it, show that clip to the user and ask before the next one ("Here is the first clip — good, or change something?"). Never use internal words like beat, delegation or mode with the user.

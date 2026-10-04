@@ -26,4 +26,10 @@ describe('one video per turn in reviewed ad flows', () => {
     expect(isReviewedAdFlow([{ role: 'assistant', content: 'x' }, ...brief('FLOW: UGC AD\nscenes')])).toBe(true)
     expect(isReviewedAdFlow(undefined)).toBe(false)
   })
+
+  it('covers every ad flow that renders video, including the animated story ad', () => {
+    for (const m of ['flow: first frame', 'flow: animation character ad', 'flow: short drama stitch']) {
+      expect(isReviewedAdFlow(brief(m))).toBe(true)
+    }
+  })
 })

@@ -7,6 +7,7 @@ import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
 import { emitToolStatus } from './generationStarted.js'
 import { checkNarrationVoice } from './narrationVoice.js'
+import { videoBlockedThisTurn, SHOW_FIRST_FOLLOW_ON_REFUSAL } from './oneVideoPerTurn.js'
 
 function languageName(code: string): string {
   try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? code } catch { return code }
@@ -74,8 +75,9 @@ export const generateNarration = createTool({
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'narration_generation', subject: narrationModel((_input as { voiceId?: string } | undefined)?.voiceId) }, ctx),
+    !videoBlockedThisTurn(ctx?.requestContext) && shouldRequireApproval({ resourceType: 'narration_generation', subject: narrationModel((_input as { voiceId?: string } | undefined)?.voiceId) }, ctx),
   execute: async (inputData, execContext) => {
+    if (videoBlockedThisTurn(execContext?.requestContext)) return SHOW_FIRST_FOLLOW_ON_REFUSAL
     const { script, voiceId, language, emotion, speed, direction, targetSeconds } = inputData as z.infer<typeof inputSchema>
     const SPEECH_MODEL = narrationModel(voiceId)
 

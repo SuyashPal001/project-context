@@ -6,6 +6,7 @@ import { fetchPresignedUrl } from './mediaCache.js'
 import { refundLipsyncCharge } from './lipsyncCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { stableToolCallId } from '../../credits.js'
+import { videoBlockedThisTurn, SHOW_FIRST_FOLLOW_ON_REFUSAL } from './oneVideoPerTurn.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const DEFAULT_LIPSYNC_MODEL = 'fal-ai/latentsync'
@@ -46,9 +47,10 @@ export const lipsync = createTool({
   outputSchema,
   requireApproval: async (input, ctx) => {
     const { model } = input as z.infer<typeof inputSchema>
-    return shouldRequireApproval({ resourceType: 'lipsync_generation', subject: model ?? DEFAULT_LIPSYNC_MODEL }, ctx)
+    return !videoBlockedThisTurn(ctx?.requestContext) && shouldRequireApproval({ resourceType: 'lipsync_generation', subject: model ?? DEFAULT_LIPSYNC_MODEL }, ctx)
   },
   execute: async (inputData, execContext) => {
+    if (videoBlockedThisTurn(execContext?.requestContext)) return SHOW_FIRST_FOLLOW_ON_REFUSAL
     const { videoFileId, audioFileId, model } = inputData as z.infer<typeof inputSchema>
     const resolvedModel = model ?? DEFAULT_LIPSYNC_MODEL
 

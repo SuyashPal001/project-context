@@ -7,6 +7,7 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { refundMusicCharge } from './musicCredits.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { emitGenerationStarted } from './generationStarted.js'
+import { videoBlockedThisTurn, SHOW_FIRST_FOLLOW_ON_REFUSAL } from './oneVideoPerTurn.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 const MUSIC_MODEL = 'lyria-002'
@@ -30,8 +31,9 @@ export const generateSong = createTool({
   }),
   outputSchema,
   requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'music_generation', subject: MUSIC_MODEL }, ctx),
+    !videoBlockedThisTurn(ctx?.requestContext) && shouldRequireApproval({ resourceType: 'music_generation', subject: MUSIC_MODEL }, ctx),
   execute: async (inputData, execContext) => {
+    if (videoBlockedThisTurn(execContext?.requestContext)) return SHOW_FIRST_FOLLOW_ON_REFUSAL
     emitGenerationStarted(execContext)
     const { prompt, title } = inputData as { prompt: string; title?: string }
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
