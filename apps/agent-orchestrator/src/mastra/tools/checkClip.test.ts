@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { droppedCheckInputs, lineMatchScore, parseVerdict } from './checkClip.js'
+import { droppedCheckInputs, lineMatchScore, parseVerdict, buildCheckQuestion, judgeVerdict } from './checkClip.js'
 
 describe('lineMatchScore', () => {
   it('passes the exact line and small transcription differences', () => {
@@ -56,5 +56,39 @@ describe('droppedCheckInputs', () => {
     expect(droppedCheckInputs('conv:clipB', { expectedLine: false, product: false, reference: false })).toEqual([])
     expect(droppedCheckInputs('conv:clipB', all)).toEqual([])
     expect(droppedCheckInputs('conv:clipC', { expectedLine: false, product: false, reference: false })).toEqual([])
+  })
+})
+
+describe('no-person shots', () => {
+  it('asks about the scene, not a presenter, and reads scene_same', () => {
+    const q = buildCheckQuestion({ product: true, audio: false, noPerson: true })
+    expect(q).toMatch(/no person/i)
+    expect(q).toMatch(/"scene_same"/)
+    expect(q).not.toMatch(/"face_same"/)
+    expect(parseVerdict('{"scene_same": false, "product_same": true, "glitch": false, "confidence": 9, "differences": "different counter", "heard": ""}')?.samePerson).toBe(false)
+  })
+  it('passes a no-person shot without a face-confidence bar', () => {
+    const v = { samePerson: true, productSame: true, glitch: false, confidence: 3, heard: '', reason: 'none', soundSame: true }
+    expect(judgeVerdict(v, { audioChecked: false, expectNoSpeech: false, noPerson: true }).passed).toBe(true)
+    expect(judgeVerdict(v, { audioChecked: false, expectNoSpeech: false, noPerson: false }).passed).toBe(false)
+  })
+})
+
+describe('expectNoSpeech', () => {
+  const v = (heard: string) => ({ samePerson: true, productSame: true, glitch: false, confidence: 9, heard, reason: 'none', soundSame: true })
+  it('fails a silent shot where someone speaks', () => {
+    const out = judgeVerdict(v('so I tried this'), { audioChecked: true, expectNoSpeech: true, noPerson: false })
+    expect(out.passed).toBe(false)
+    expect(out.reason).toMatch(/should be silent/)
+  })
+  it('passes a silent shot with no words heard', () => {
+    expect(judgeVerdict(v(''), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(true)
+  })
+  it('asks for a transcript when audio is sent', () => {
+    expect(buildCheckQuestion({ product: false, audio: true, noPerson: false })).toMatch(/transcribe/)
+  })
+  it('a re-check cannot drop expectNoSpeech', () => {
+    expect(droppedCheckInputs('conv:silent-clip', { expectedLine: false, product: false, reference: false, noSpeech: true })).toEqual([])
+    expect(droppedCheckInputs('conv:silent-clip', { expectedLine: false, product: false, reference: false, noSpeech: false })).toEqual(['noSpeech'])
   })
 })

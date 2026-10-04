@@ -46,16 +46,22 @@ export interface ClipVerdict { samePerson: boolean; productSame: boolean; glitch
 // strict comparison caught it and still passed the good clip.
 export const STRICT_QUESTION = 'You are a strict continuity checker for a video ad. Image A is the master still of the presenter at the start of this ad; any further reference images show the same presenter. Then come frames from a later clip. Compare carefully, point by point: (1) clothing (garment type, colour, collar), (2) hair, (3) face shape and jaw, (4) eyes and brows, (5) nose, (6) age. (7) glitches: a duplicated or extra product, extra hands or fingers, or an object that jumps between hands or appears from nowhere. A different-looking person, the same-looking person in different clothes, or a visible glitch is a FAIL.'
 
+// A shot with nobody in it (a product macro, a "superpower" shot in a TVC ad):
+// there is no presenter to compare, so judge the scene and glitches instead.
+export const NO_PERSON_QUESTION = 'You are a strict continuity checker for a video ad. Image A is the approved start still of this shot, which has no person in it (at most a hand). Then come frames from the clip made from it. Compare point by point: (1) the set, surfaces and lighting match Image A, (2) no person\'s face appears, (3) glitches: a duplicated or extra product, extra hands or fingers, or an object that appears from nowhere. A different scene, a face appearing or a visible glitch is a FAIL.'
+
 /** Pulls the JSON verdict out of the model's reply; null when unusable. */
 export function parseVerdict(raw: string): ClipVerdict | null {
   const start = raw.indexOf('{'), end = raw.lastIndexOf('}')
   if (start < 0 || end <= start) return null
   try {
     const v = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>
-    // Strict form: clothing_same + face_same; plain form: samePerson.
-    const same = typeof v.face_same === 'boolean'
-      ? v.face_same && v.clothing_same !== false
-      : v.samePerson
+    // No-person form: scene_same; strict form: clothing_same + face_same; plain form: samePerson.
+    const same = typeof v.scene_same === 'boolean'
+      ? v.scene_same
+      : typeof v.face_same === 'boolean'
+        ? v.face_same && v.clothing_same !== false
+        : v.samePerson
     if (typeof same !== 'boolean') return null
     return { samePerson: same, productSame: v.product_same !== false, glitch: v.glitch === true, confidence: Number(v.confidence ?? 0), heard: String(v.heard ?? ''), reason: String(v.differences ?? v.reason ?? ''), soundSame: v.same_voice !== false && v.same_room !== false }
   } catch {
@@ -68,19 +74,19 @@ export function parseVerdict(raw: string): ClipVerdict | null {
 // product and the avatar until it "passed" — a clip compared only with its
 // own start image always passes, so a cut-off line and a different face both
 // got through. A re-check may add inputs, never drop them.
-type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean }
+type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean; noSpeech?: boolean }
+const CHECK_KEYS = ['expectedLine', 'product', 'reference', 'noSpeech'] as const
 const checkedWith = new Map<string, CheckInputs>()
 export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
   const before = checkedWith.get(key)
-  const dropped = before
-    ? (['expectedLine', 'product', 'reference'] as const).filter((k) => before[k] && !now[k])
-    : []
+  const dropped = before ? CHECK_KEYS.filter((k) => before[k] && !now[k]) : []
   if (dropped.length === 0) {
     if (checkedWith.size > 1000) checkedWith.delete(checkedWith.keys().next().value as string)
     checkedWith.set(key, {
       expectedLine: now.expectedLine || !!before?.expectedLine,
       product: now.product || !!before?.product,
       reference: now.reference || !!before?.reference,
+      noSpeech: !!now.noSpeech || !!before?.noSpeech,
     })
   }
   return dropped
@@ -94,6 +100,36 @@ async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal)
   return { data: Buffer.from(await res.arrayBuffer()).toString('base64'), mime: res.headers.get('content-type') ?? 'image/jpeg' }
 }
 
+export function buildCheckQuestion(opts: { product: boolean; audio: boolean; noPerson: boolean; sound?: boolean }): string {
+  const productAsk = opts.product ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and brand name as Image P (product_same false if it is a different product, a different shape or colour, or the brand name is clearly misspelled or garbled; ignore small print, which video always blurs; true if it is not visible). ' : ''
+  const audioAsk = opts.audio ? 'Also transcribe exactly what is spoken in the audio (empty if nobody speaks; ignore music and sound effects). ' : ''
+  const soundAsk = opts.sound ? "Also compare the clip's audio with Audio R, ignoring the words: same speaker's voice (same_voice), and same microphone and room — same echo and background sound (same_room)? A dry studio-sounding voice against a roomy one is a different room. " : ''
+  const first = opts.noPerson ? '{"scene_same": true|false, ' : '{"clothing_same": true|false, "face_same": true|false, '
+  return (opts.noPerson ? NO_PERSON_QUESTION : STRICT_QUESTION) + ' ' + productAsk + audioAsk + soundAsk +
+    'Reply with ONLY JSON: ' + first + (opts.product ? '"product_same": true|false, ' : '') + (opts.sound ? '"same_voice": true|false, "same_room": true|false, ' : '') +
+    '"glitch": true|false, "confidence": 1-10, "differences": "<short list or none>", "heard": "<exact transcript or empty>"}'
+}
+
+export function judgeVerdict(
+  v: ClipVerdict,
+  opts: { expectedLine?: string; audioChecked: boolean; expectNoSpeech: boolean; noPerson: boolean; soundChecked?: boolean },
+): { passed: boolean; samePerson: boolean; lineMatches: boolean; productMatches: boolean; speechOk: boolean; soundMatches: boolean; reason: string } {
+  const lineMatches = opts.expectedLine && opts.audioChecked ? lineMatchScore(opts.expectedLine, v.heard) >= LINE_MATCH_THRESHOLD : true
+  const samePerson = opts.noPerson ? v.samePerson : v.samePerson && v.confidence >= 6
+  const productMatches = v.productSame
+  const noGlitch = !v.glitch
+  const soundMatches = opts.soundChecked ? v.soundSame : true
+  const speechOk = !(opts.expectNoSpeech && opts.audioChecked && normalise(v.heard).length > 0)
+  const reason = !samePerson ? `${opts.noPerson ? 'Different scene' : 'Different person'}: ${v.reason}`
+    : !productMatches ? `Product changed: ${v.reason}`
+    : !noGlitch ? `Visible glitch: ${v.reason}`
+    : !lineMatches ? `Did not say the approved line (heard: "${v.heard}")`
+    : !soundMatches ? `Sounds different from the first clip (voice or room): ${v.reason}`
+    : !speechOk ? `Someone speaks in a shot that should be silent (heard: "${v.heard}")`
+    : opts.noPerson ? 'Same scene and product.' : 'Same person, product and line.'
+  return { passed: samePerson && lineMatches && productMatches && noGlitch && soundMatches && speechOk, samePerson, lineMatches, productMatches, speechOk, soundMatches, reason }
+}
+
 export const checkClip = createTool({
   id: 'check-clip',
   description: 'Free check of a finished clip (or a still image, before it is animated) before it is used: compares a frame with the presenter\'s reference images (same person?) and the clip\'s speech with the approved line (said it?). Call it after every clip; if passed is false, regenerate that clip once, and if it fails again, stop and tell Olmo why instead of using it.',
@@ -104,6 +140,8 @@ export const checkClip = createTool({
     expectedLine: z.string().optional().describe('The exact approved line this clip should speak; omit for a silent clip'),
     productFileId: z.string().optional().describe('The product photo, when the product appears in the clip: its shape, colour and printed/embroidered text must stay the same'),
     soundReferenceClipFileId: z.string().optional().describe("The ad's first spoken clip, when this is a later spoken clip: its voice and room sound (echo, background) must match, so the joined ad sounds like one recording"),
+    expectNoSpeech: z.boolean().optional().describe('true for a shot that must be silent (no one speaks); the clip fails if words are heard'),
+    noPerson: z.boolean().optional().describe('true when nobody is in the shot (product or scenery only); judges the scene instead of a presenter'),
   }),
   outputSchema: z.object({
     passed: z.boolean().optional(),
@@ -118,12 +156,12 @@ export const checkClip = createTool({
     refusalReason: z.string().optional(),
   }),
   execute: async (inputData, execContext) => {
-    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine, productFileId, soundReferenceClipFileId } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string; soundReferenceClipFileId?: string }
+    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine, productFileId, soundReferenceClipFileId, expectNoSpeech, noPerson } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string; soundReferenceClipFileId?: string; expectNoSpeech?: boolean; noPerson?: boolean }
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined ?? ''
-    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length })
+    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech })
     if (dropped.length) {
       return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }
     }
@@ -153,7 +191,7 @@ export const checkClip = createTool({
         await execFile('ffmpeg', ['-y', '-ss', String(t), '-i', clipPath, '-frames:v', '1', '-q:v', '3', out], { timeout: 30_000 })
         frames.push({ data: readFileSync(out).toString('base64'), mime: 'image/jpeg' })
       }
-      if (expectedLine || soundReferenceClipFileId) {
+      if (expectedLine || soundReferenceClipFileId || expectNoSpeech) {
         const out = join(workDir, 'a.wav')
         await execFile('ffmpeg', ['-y', '-i', clipPath, '-vn', '-ac', '1', '-ar', '16000', out], { timeout: 30_000 })
         audio = readFileSync(out).toString('base64')
@@ -191,8 +229,7 @@ export const checkClip = createTool({
         content.push({ type: 'text', text: 'The clip\'s audio:' })
         content.push({ type: 'input_audio', input_audio: { data: audio, format: 'wav' } })
       }
-      const productAsk = productFileId ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and brand name as Image P (product_same false if it is a different product, a different shape or colour, or the brand name is clearly misspelled or garbled; ignore small print, which video always blurs; true if it is not visible). ' : ''
-      content.push({ type: 'text', text: STRICT_QUESTION + ' ' + productAsk + (audio ? 'Also transcribe exactly what is spoken in the audio. ' : '') + (refAudio ? "Also compare the clip's audio with Audio R, ignoring the words: same speaker's voice (same_voice), and same microphone and room — same echo and background sound (same_room)? A dry studio-sounding voice against a roomy one is a different room. " : '') + 'Reply with ONLY JSON: {"clothing_same": true|false, "face_same": true|false, ' + (productFileId ? '"product_same": true|false, ' : '') + (refAudio ? '"same_voice": true|false, "same_room": true|false, ' : '') + '"glitch": true|false, "confidence": 1-10, "differences": "<short list or none>", "heard": "<exact transcript or empty>"}' })
+      content.push({ type: 'text', text: buildCheckQuestion({ product: !!productFileId, audio: !!audio, noPerson: !!noPerson, sound: !!refAudio }) })
 
       const res = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
         method: 'POST', signal: controller.signal,
@@ -206,23 +243,14 @@ export const checkClip = createTool({
       }
       const verdict = parseVerdict(result.choices?.[0]?.message?.content ?? '')
       if (!verdict) return { refused: true, refusalReason: 'CHECK_FAILED: unreadable verdict' }
-      const lineMatches = expectedLine && audio ? lineMatchScore(expectedLine, verdict.heard) >= LINE_MATCH_THRESHOLD : true
-      const samePerson = verdict.samePerson && verdict.confidence >= 6
-      const productMatches = verdict.productSame
-      const noGlitch = !verdict.glitch
-      const soundMatches = refAudio ? verdict.soundSame : true
-      if (!(samePerson && lineMatches && productMatches && noGlitch && soundMatches)) {
+      const judged = judgeVerdict(verdict, { expectedLine, audioChecked: !!audio, expectNoSpeech: !!expectNoSpeech, noPerson: !!noPerson, soundChecked: !!refAudio })
+      if (!judged.passed) {
         markCheckFailed(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
       }
       return {
-        passed: samePerson && lineMatches && productMatches && noGlitch && soundMatches,
-        samePerson,
-        lineMatches,
-        productMatches,
-        glitch: verdict.glitch,
-        soundMatches,
-        heard: verdict.heard,
-        reason: !samePerson ? `Different person: ${verdict.reason}` : !productMatches ? `Product changed: ${verdict.reason}` : !noGlitch ? `Visible glitch: ${verdict.reason}` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : !soundMatches ? `Sounds different from the first clip (voice or room): ${verdict.reason}` : 'Same person, product and line.',
+        passed: judged.passed, samePerson: judged.samePerson, lineMatches: judged.lineMatches,
+        productMatches: judged.productMatches, glitch: verdict.glitch, soundMatches: judged.soundMatches,
+        heard: verdict.heard, reason: judged.reason,
       }
     } catch (err) {
       console.error('[checkClip] failed:', (err as Error).message)
