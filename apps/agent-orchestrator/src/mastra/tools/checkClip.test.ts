@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lineMatchScore, parseVerdict } from './checkClip.js'
+import { droppedCheckInputs, lineMatchScore, parseVerdict } from './checkClip.js'
 
 describe('lineMatchScore', () => {
   it('passes the exact line and small transcription differences', () => {
@@ -37,5 +37,19 @@ describe('parseVerdict glitch', () => {
   it('reads a visible glitch (a second bottle, a hand swap) as its own failure', () => {
     expect(parseVerdict('{"clothing_same": true, "face_same": true, "glitch": true, "confidence": 9, "differences": "second bottle appears", "heard": ""}')?.glitch).toBe(true)
     expect(parseVerdict('{"clothing_same": true, "face_same": true, "confidence": 9, "differences": "none", "heard": ""}')?.glitch).toBe(false)
+  })
+})
+
+describe('droppedCheckInputs', () => {
+  const all = { expectedLine: true, product: true, reference: true }
+  it('refuses a re-check of the same clip without the line, product or avatar it was first checked with', () => {
+    expect(droppedCheckInputs('conv:clipA', all)).toEqual([])
+    expect(droppedCheckInputs('conv:clipA', { expectedLine: false, product: false, reference: true })).toEqual(['expectedLine', 'product'])
+    expect(droppedCheckInputs('conv:clipA', all)).toEqual([])
+  })
+  it('lets a re-check add inputs, and keys by clip', () => {
+    expect(droppedCheckInputs('conv:clipB', { expectedLine: false, product: false, reference: false })).toEqual([])
+    expect(droppedCheckInputs('conv:clipB', all)).toEqual([])
+    expect(droppedCheckInputs('conv:clipC', { expectedLine: false, product: false, reference: false })).toEqual([])
   })
 })

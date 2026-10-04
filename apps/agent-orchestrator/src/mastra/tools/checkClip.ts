@@ -62,6 +62,29 @@ export function parseVerdict(raw: string): ClipVerdict | null {
   }
 }
 
+// What each clip was first checked against, per conversation. 2026-10-05:
+// when check_clip errored, Director called it again without the line, the
+// product and the avatar until it "passed" — a clip compared only with its
+// own start image always passes, so a cut-off line and a different face both
+// got through. A re-check may add inputs, never drop them.
+type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean }
+const checkedWith = new Map<string, CheckInputs>()
+export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
+  const before = checkedWith.get(key)
+  const dropped = before
+    ? (['expectedLine', 'product', 'reference'] as const).filter((k) => before[k] && !now[k])
+    : []
+  if (dropped.length === 0) {
+    if (checkedWith.size > 1000) checkedWith.delete(checkedWith.keys().next().value as string)
+    checkedWith.set(key, {
+      expectedLine: now.expectedLine || !!before?.expectedLine,
+      product: now.product || !!before?.product,
+      reference: now.reference || !!before?.reference,
+    })
+  }
+  return dropped
+}
+
 async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal): Promise<{ data: string; mime: string }> {
   const url = new URL(await fetchPresignedUrl(fileId, idToken, signal))
   url.searchParams.delete('x-amz-checksum-mode')
@@ -72,9 +95,9 @@ async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal)
 
 export const checkClip = createTool({
   id: 'check-clip',
-  description: 'Free check of a finished talking-head clip before it is joined: compares a frame with the presenter\'s reference images (same person?) and the clip\'s speech with the approved line (said it?). Call it after every clip; if passed is false, regenerate that clip once, and if it fails again, stop and tell Olmo why instead of using it.',
+  description: 'Free check of a finished clip (or a still image, before it is animated) before it is used: compares a frame with the presenter\'s reference images (same person?) and the clip\'s speech with the approved line (said it?). Call it after every clip; if passed is false, regenerate that clip once, and if it fails again, stop and tell Olmo why instead of using it.',
   inputSchema: z.object({
-    clipFileId: z.string().describe('The generated clip to check'),
+    clipFileId: z.string().describe('The generated clip to check, or a still image (checked as one frame, no audio)'),
     masterStillFileId: z.string().describe("This ad's locked master still — the outfit and look every clip must keep"),
     referenceFileIds: z.array(z.string()).max(1).optional().describe('Optional: the avatar, whose reference sheet is then added automatically'),
     expectedLine: z.string().optional().describe('The exact approved line this clip should speak; omit for a silent clip'),
@@ -96,12 +119,24 @@ export const checkClip = createTool({
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
+    const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined ?? ''
+    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length })
+    if (dropped.length) {
+      return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }
+    }
 
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
     const workDir = mkdtempSync(join(tmpdir(), 'check-clip-'))
     try {
       const clip = await fetchBase64(clipFileId, idToken, controller.signal)
+      // A still (a beat's image before it is animated) is checked as one frame,
+      // with no audio.
+      const isStill = clip.mime.startsWith('image/')
+      const frames: Array<{ data: string; mime: string }> = []
+      let audio: string | null = null
+      if (isStill) frames.push({ data: clip.data, mime: clip.mime })
+      else {
       const clipPath = join(workDir, 'clip.mp4')
       writeFileSync(clipPath, Buffer.from(clip.data, 'base64'))
       const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', clipPath], { timeout: 30_000 })
@@ -109,17 +144,16 @@ export const checkClip = createTool({
       // Three frames: just after the start (Omni's glitches — a second bottle,
       // a hand swap — show in the first second), the middle, and near the end,
       // where drift shows up.
-      const frames: string[] = []
       for (const [i, t] of [Math.min(0.7, duration * 0.1), duration * 0.5, Math.max(0, duration - 0.3)].entries()) {
         const out = join(workDir, `f${i}.jpg`)
         await execFile('ffmpeg', ['-y', '-ss', String(t), '-i', clipPath, '-frames:v', '1', '-q:v', '3', out], { timeout: 30_000 })
-        frames.push(readFileSync(out).toString('base64'))
+        frames.push({ data: readFileSync(out).toString('base64'), mime: 'image/jpeg' })
       }
-      let audio: string | null = null
       if (expectedLine) {
         const out = join(workDir, 'a.wav')
         await execFile('ffmpeg', ['-y', '-i', clipPath, '-vn', '-ac', '1', '-ar', '16000', out], { timeout: 30_000 })
         audio = readFileSync(out).toString('base64')
+      }
       }
       const refIds = referenceFileIds?.length ? (await resolveAvatarReferences(tenantId, referenceFileIds)).fileIds.slice(0, 2) : []
       const master = await fetchBase64(masterStillFileId, idToken, controller.signal)
@@ -133,7 +167,7 @@ export const checkClip = createTool({
         content.push({ type: 'text', text: 'Image P (the product):' }, { type: 'image_url', image_url: { url: `data:${product.mime};base64,${product.data}` } })
       }
       content.push({ type: 'text', text: 'Frames from the later clip:' })
-      for (const f of frames) content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${f}` } })
+      for (const f of frames) content.push({ type: 'image_url', image_url: { url: `data:${f.mime};base64,${f.data}` } })
       if (audio) {
         content.push({ type: 'text', text: 'The clip\'s audio:' })
         content.push({ type: 'input_audio', input_audio: { data: audio, format: 'wav' } })
@@ -153,7 +187,7 @@ export const checkClip = createTool({
       }
       const verdict = parseVerdict(result.choices?.[0]?.message?.content ?? '')
       if (!verdict) return { refused: true, refusalReason: 'CHECK_FAILED: unreadable verdict' }
-      const lineMatches = expectedLine ? lineMatchScore(expectedLine, verdict.heard) >= LINE_MATCH_THRESHOLD : true
+      const lineMatches = expectedLine && audio ? lineMatchScore(expectedLine, verdict.heard) >= LINE_MATCH_THRESHOLD : true
       const samePerson = verdict.samePerson && verdict.confidence >= 6
       const productMatches = verdict.productSame
       const noGlitch = !verdict.glitch
