@@ -76,6 +76,7 @@ const TRANSCRIBE_SUBJECT = 'gemini-transcribe'
 const COMPOSITE_END_CARD_SUBJECT = 'ffmpeg-composite-end-card'
 const BURN_CAPTIONS_SUBJECT = 'ffmpeg-burn-captions'
 const MIX_MUSIC_BED_SUBJECT = 'ffmpeg-mix-music-bed'
+const MIX_VOICEOVER_SUBJECT = 'ffmpeg-mix-voiceover'
 const TRIM_CLIP_SUBJECT = 'ffmpeg-trim-clip'
 const OVERLAY_TEXT_SUBJECT = 'ffmpeg-overlay-text'
 const STRETCH_CLIP_SUBJECT = 'ffmpeg-stretch-clip'
@@ -138,6 +139,7 @@ const transcribeAudioGen = { resourceType: 'audio_transcription', subject: TRANS
 const compositeEndCardGen = { resourceType: 'clip_assembly', subject: COMPOSITE_END_CARD_SUBJECT, label: 'Composite end card' }
 const burnCaptionsGen = { resourceType: 'clip_assembly', subject: BURN_CAPTIONS_SUBJECT, label: 'Burn captions' }
 const mixMusicBedGen = { resourceType: 'clip_assembly', subject: MIX_MUSIC_BED_SUBJECT, label: 'Mix music bed' }
+const mixVoiceoverGen = { resourceType: 'clip_assembly', subject: MIX_VOICEOVER_SUBJECT, label: 'Mix voiceover' }
 const trimClipGen = { resourceType: 'clip_assembly', subject: TRIM_CLIP_SUBJECT, label: 'Trim clip' }
 const overlayTextGen = { resourceType: 'clip_assembly', subject: OVERLAY_TEXT_SUBJECT, label: 'Overlay text' }
 const stretchClipGen = { resourceType: 'clip_assembly', subject: STRETCH_CLIP_SUBJECT, label: 'Stretch clip' }
@@ -187,6 +189,8 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   'burn_captions': burnCaptionsGen,
   'mix-music-bed': mixMusicBedGen,
   'mix_music_bed': mixMusicBedGen,
+  'mix-voiceover': mixVoiceoverGen,
+  'mix_voiceover': mixVoiceoverGen,
   'save_skill': {
     resourceType: 'skill_creation',
     subject: 'create',
