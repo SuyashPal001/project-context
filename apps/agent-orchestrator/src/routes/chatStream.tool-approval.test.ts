@@ -59,6 +59,7 @@ vi.mock('../persistence.js', () => ({
   fetchConversationSkillSettings: vi.fn().mockResolvedValue({ ok: true, testSkillInstallId: null, invokedSkills: [] }),
   saveConversationInvokedSkills: vi.fn(),
   saveGenerationConfirmRequest: vi.fn(),
+  fetchConversationAllowMode: vi.fn().mockResolvedValue('ask'),
   updateGenerationConfirmRequest: vi.fn(),
 }))
 

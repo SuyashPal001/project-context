@@ -23,7 +23,7 @@ import { lastRagResult } from '../types.js'
 import { pendingToolApprovals, sessionActiveToolApprovals } from '../types.js'
 import { latestIdToken, clearFreshIdToken } from '../freshIdToken.js'
 import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/generationApproval.js'
-import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle } from '../persistence.js'
+import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle, fetchConversationAllowMode } from '../persistence.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
 
@@ -757,6 +757,12 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // The user just answered the card, so the browser handed over a fresh
           // token (sessions.ts) — everything after this, tools included, uses it.
           requestContext.set('idToken', liveIdToken())
+
+          // Auto mode is read when the message starts, so switching it on while
+          // cards were coming kept asking for every step of the run (17 cards
+          // in the animated story ad, 2026-10-05). Re-read it at each answer:
+          // after one more card, the rest of the run follows the new setting.
+          if (conversationId && confirmed) requestContext.set('allowMode', await fetchConversationAllowMode(liveIdToken(), conversationId))
 
           if (conversationId && idToken) {
             updateGenerationConfirmRequest(liveIdToken(), conversationId, approvalMessageId, {
