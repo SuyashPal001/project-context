@@ -1,8 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { requestsTotal, latency } from './metrics.js'
 
-const TRANSCRIBE_MODEL_ALLOWLIST = new Set(['gemini-2.5-flash'])
-const DEFAULT_TRANSCRIBE_MODEL = 'gemini-2.5-flash'
+// gemini-2.5-flash was retired for new users ("no longer available", 404),
+// which failed every transcription and left captions without timings
+// (2026-10-05). 3.6-flash is the model the rest of the platform already runs.
+const TRANSCRIBE_MODEL_ALLOWLIST = new Set(['gemini-3.6-flash', 'gemini-3.8-flash'])
+const DEFAULT_TRANSCRIBE_MODEL = 'gemini-3.6-flash'
 
 // The caller (transcribe_audio.ts, Task 5) always sends audio-only bytes —
 // never a full video — specifically so this stays far under Gemini's

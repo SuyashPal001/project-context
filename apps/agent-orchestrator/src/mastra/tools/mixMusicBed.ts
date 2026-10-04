@@ -137,7 +137,7 @@ export const mixMusicBed = createTool({
       // LUFS regardless of the bed's own level, so a post-mix check can
       // never observe a quiet bed.
       const { stderr: bedLoudnessStderr } = await execFile('ffmpeg', [
-        '-i', musicPath, '-af', `volume=${BED_VOLUME},ebur128=framelog=quiet`, '-f', 'null', '-',
+        '-i', musicPath, '-af', `volume=${BED_VOLUME},ebur128=framelog=verbose`, '-f', 'null', '-',
       ], { timeout: FFMPEG_TIMEOUT_MS })
       const bedLufs = parseIntegratedLoudness(bedLoudnessStderr)
       if (bedLufs === null || bedLufs < MIN_ACCEPTABLE_BED_LUFS) {
@@ -175,7 +175,7 @@ export const mixMusicBed = createTool({
       // Informational only (not a gate) — report the finished master's
       // own integrated loudness for the output field / any later QA read.
       const { stderr: masterLoudnessStderr } = await execFile('ffmpeg', [
-        '-i', outputPath, '-af', 'ebur128=framelog=quiet', '-f', 'null', '-',
+        '-i', outputPath, '-af', 'ebur128=framelog=verbose', '-f', 'null', '-',
       ], { timeout: FFMPEG_TIMEOUT_MS })
       integratedLufs = parseIntegratedLoudness(masterLoudnessStderr)
     } catch (err) {
