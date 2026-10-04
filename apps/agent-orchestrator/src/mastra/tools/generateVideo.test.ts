@@ -23,7 +23,7 @@ vi.mock('./generationApproval.js', () => ({ shouldRequireApproval }))
 const { resolveAvatarReferences } = vi.hoisted(() => ({ resolveAvatarReferences: vi.fn() }))
 vi.mock('./avatarReferences.js', () => ({ resolveAvatarReferences }))
 
-import { generateVideo, generateVideoItem, spokenSecondsFloor } from './generateVideo.js'
+import { generateVideo, generateVideoItem, spokenSeconds, spokenSecondsFloor } from './generateVideo.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 import { stableToolCallId } from '../../credits.js'
 
@@ -472,5 +472,15 @@ describe('spokenSecondsFloor', () => {
     expect(spokenSecondsFloor('Okay wait... Agar aapki skin dull lag rahi hai, toh you HAVE to try this Minimalist 10% Vitamin C serum!')).toBe(9)
     expect(spokenSecondsFloor('Hi <laugh> there')).toBe(3)
     expect(spokenSecondsFloor(Array(60).fill('word').join(' '))).toBe(10)
+  })
+})
+
+describe('spokenSeconds', () => {
+  it('trims a part asked for far more time than its line needs (8s for a 5s line left a mid-line pause)', () => {
+    expect(spokenSeconds('Super stable, non-sticky, aur skin instant bright lagti hai. Pure glow in a bottle!', 8)).toBe(7)
+  })
+  it('raises a part asked for too little, and keeps a request within one second of the line', () => {
+    expect(spokenSeconds('It has pure Ethyl Ascorbic Acid jo glow instantly boost karta hai. Honestly, at just 285 rupees, my skin has never looked this bright!', 8)).toBe(10)
+    expect(spokenSeconds('Okay so this is the one', 4)).toBe(4)
   })
 })

@@ -84,6 +84,12 @@ export function spokenSecondsFloor(line: string): number {
   return Math.min(10, Math.max(3, Math.ceil(count / 2.5)))
 }
 
+/** Seconds for a spoken part: at least the line's floor, at most one more. */
+export function spokenSeconds(line: string, requested: number): number {
+  const floor = spokenSecondsFloor(line)
+  return Math.min(10, Math.max(floor, Math.min(requested, floor + 1)))
+}
+
 export async function generateVideoItem(
   inputData: VideoItemInput,
   execContext: MediaExecContext | undefined,
@@ -91,7 +97,10 @@ export async function generateVideoItem(
 ) {
     const { mode, prompt, aspectRatio, durationSeconds: requestedSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor, continueFrom } =
       inputData
-    const durationSeconds = approvedDialogue ? Math.max(requestedSeconds, spokenSecondsFloor(approvedDialogue)) : requestedSeconds
+    // A spoken part gets the time its line needs, not the time left over in
+    // the ad: too little cut the sentence off, too much (8s for a 5s line,
+    // 2026-10-05) made Omni fill it with a mid-line pause and a silent smile.
+    const durationSeconds = approvedDialogue ? spokenSeconds(approvedDialogue, requestedSeconds) : requestedSeconds
 
     // jobId is derived purely from execContext (no charge or gateway call
     // involved), so it's safe to compute it before the dialogue gate below —
