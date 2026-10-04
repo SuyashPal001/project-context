@@ -231,27 +231,21 @@ describe('generateImage tool', () => {
     expect(result).toEqual({ refused: true, refusalReason: 'STORAGE_FAILED' })
   })
 
-  it('refuses before any charge when the prompt is missing the identityAnchor terseTag', async () => {
+  it('adds a missing identityAnchor terseTag and styleLock to the prompt instead of refusing', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ imageBase64: 'ZZZZ', mimeType: 'image/png' }), { status: 200 })) as unknown as ReturnType<typeof vi.fn>
+    global.fetch = fetchMock as unknown as typeof fetch
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'x.png', type: 'image/png', size: 10 })
+
     const result = await generateImage.execute!(
       {
-        prompt: 'A woman making coffee, wearing a cardigan.', // missing the exact terseTag string
+        prompt: 'A woman making coffee, wearing a cardigan.',
         identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light' },
       } as never,
       baseCtx(),
     )
-    expect(result).toEqual({ refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING' })
-    expect(spendCredits).not.toHaveBeenCalled()
-  })
-
-  it('refuses before any charge when the prompt is missing the identityAnchor styleLock', async () => {
-    const result = await generateImage.execute!(
-      {
-        prompt: 'the woman in the yellow cardigan making coffee', // missing styleLock text
-        identityAnchor: { terseTag: 'the woman in the yellow cardigan', styleLock: 'warm morning light, 35mm lens' },
-      } as never,
-      baseCtx(),
-    )
-    expect(result).toEqual({ refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING' })
+    const sentBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
+    expect(sentBody.prompt).toBe('the woman in the yellow cardigan. A woman making coffee, wearing a cardigan. warm morning light.')
+    expect((result as { fileId?: string }).fileId).toBe('f1')
   })
 
   it('resolves referenceFileIds and sends them as sourceImages when both identityAnchor strings are present', async () => {

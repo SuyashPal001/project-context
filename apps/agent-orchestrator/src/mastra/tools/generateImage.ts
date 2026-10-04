@@ -10,6 +10,7 @@ import type { MediaExecContext } from './batchRunner.js'
 import { emitGenerationStarted } from './generationStarted.js'
 import { stableToolCallId } from '../../credits.js'
 import { resolveAvatarReferences } from './avatarReferences.js'
+import { withIdentityAnchor } from './identityAnchor.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 export const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -46,7 +47,7 @@ export const imageItemSchema = z.object({
   identityAnchor: z.object({
     terseTag: z.string(),
     styleLock: z.string(),
-  }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code. Required whenever referenceFileIds includes a cast sheet.'),
+  }).optional().describe('When set, both strings are added to the prompt automatically when missing. Required whenever referenceFileIds includes a cast sheet.'),
   skipAvatarExpansion: z.boolean().optional()
     .describe("Set true when the reference image must NOT be treated as the same person (e.g. a new person inspired by a reference's look): skips adding the avatar's reference sheet and identity sentence."),
   title: fileTitleSchema,
@@ -59,14 +60,11 @@ export async function generateImageItem(
   execContext: MediaExecContext | undefined,
   itemIndex: number,
 ) {
-    const { prompt, aspectRatio, imageSize, referenceFileIds, identityAnchor, skipAvatarExpansion, title } = inputData
+    const { prompt: rawPrompt, aspectRatio, imageSize, referenceFileIds, identityAnchor, skipAvatarExpansion, title } = inputData
 
-    // Identity-anchor gate — enforced in tool code, not prose, mirroring
-    // generateVideo.ts's extractQuotedSpans/approvedDialogue check. Refuses
-    // before any charge or gateway call.
-    if (identityAnchor && (!prompt.includes(identityAnchor.terseTag) || !prompt.includes(identityAnchor.styleLock))) {
-      return { refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING' }
-    }
+    // Identity anchor — enforced in tool code, not prose: any missing
+    // terseTag/styleLock is added to the prompt rather than refused.
+    const prompt = withIdentityAnchor(rawPrompt, identityAnchor)
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, not defaulted to '' — matches generateVideo.ts's fix

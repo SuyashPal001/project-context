@@ -11,6 +11,7 @@ import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
 import { stableToolCallId } from '../../credits.js'
 import { emitGenerationStarted } from './generationStarted.js'
+import { withIdentityAnchor } from './identityAnchor.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 // Namespaced per docs/media-generation/README.md's convention. This is a new
@@ -46,7 +47,7 @@ export const videoItemSchema = z.object({
   identityAnchor: z.object({
     terseTag: z.string(),
     styleLock: z.string(),
-  }).optional().describe('When set, prompt MUST contain both strings verbatim — enforced in code.'),
+  }).optional().describe('When set, both strings are added to the prompt automatically when missing.'),
   title: fileTitleSchema,
 }).refine(
   (v) => (v.mode === 'animate_frame') === (v.startImageFileId !== undefined),
@@ -95,7 +96,7 @@ export async function generateVideoItem(
   execContext: MediaExecContext | undefined,
   itemIndex: number,
 ) {
-    const { mode, prompt, aspectRatio, durationSeconds: requestedSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor, continueFrom } =
+    const { mode, prompt: rawPrompt, aspectRatio, durationSeconds: requestedSeconds, startImageFileId, referenceFileIds, approvedDialogue, identityAnchor, continueFrom } =
       inputData
     // A spoken part gets the time its line needs, not the time left over in
     // the ad: too little cut the sentence off, too much (8s for a 5s line,
@@ -140,14 +141,14 @@ export async function generateVideoItem(
     // or a future edit, could reintroduce a stray quoted phrase. So every
     // quoted span in the prompt is checked, and any mismatch refuses before
     // any charge or gateway call happens.
-    const quotedSpans = extractQuotedSpans(prompt)
+    const quotedSpans = extractQuotedSpans(rawPrompt)
     if (quotedSpans.some((span) => span !== approvedDialogue)) {
       return { refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED', jobId }
     }
 
-    if (identityAnchor && (!prompt.includes(identityAnchor.terseTag) || !prompt.includes(identityAnchor.styleLock))) {
-      return { refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING', jobId }
-    }
+    // Identity anchor: a missing terseTag/styleLock is added, not refused —
+    // a refusal here comes after the user already approved the paid card.
+    const prompt = withIdentityAnchor(rawPrompt, identityAnchor)
 
     // Not a refusal — a reference image without identityAnchor is legitimate
     // (e.g. a b-roll beat), but it's also exactly what an accidentally-omitted

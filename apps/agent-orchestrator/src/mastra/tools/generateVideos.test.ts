@@ -56,11 +56,11 @@ describe('generateVideos tool', () => {
   it('refuses an invalid item without charging it while its sibling still generates', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ videoBase64: 'QUJD', mimeType: 'video/mp4' }), { status: 200 })) as unknown as typeof fetch
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'f1', name: 'b.mp4', type: 'video/mp4', size: 3 })
-    const bad = { ...item('missing the tag'), identityAnchor: { terseTag: 'TAG-X', styleLock: 'LOCK-Y' } }
+    const bad = item('she says "buy now"') // quoted line with no approvedDialogue
 
     const result = await generateVideos.execute!({ items: [bad, item('fine')] } as never, batchCtx()) as { results: Array<Record<string, unknown>>; succeeded: number; failed: number }
 
-    expect(result.results[0]).toMatchObject({ index: 0, refused: true, refusalReason: 'IDENTITY_ANCHOR_MISSING' })
+    expect(result.results[0]).toMatchObject({ index: 0, refused: true, refusalReason: 'DIALOGUE_NOT_APPROVED' })
     expect(result.results[1]).toMatchObject({ index: 1, fileId: 'f1' })
     expect(result).toMatchObject({ succeeded: 1, failed: 1 })
     expect(spendCredits).toHaveBeenCalledTimes(1)
