@@ -197,6 +197,19 @@ export const OFFICIAL_SKILLS: OfficialSkillSeed[] = [
       starterPrompt: 'Cut my footage into a short ad',
     },
   },
+  {
+    slug: 'tvc-ad',
+    name: 'TVC ad',
+    description: 'Use when the user wants a polished TV-commercial-style ad: several shots, a voiceover, on-screen text and a packshot of the real product.',
+    file: officialSkillFile('tvc-ad.md'),
+    director: { file: officialSkillFile('tvc-ad/director.md'), markers: ['flow: tvc ad'] },
+    showcase: {
+      // Interim: the TVC actor still, until a live test produces a real example video.
+      imageUrl: '/creative/avatars/tvc-character.jpg',
+      bestFor: ['TV-style ads', 'Product launches', 'Brand films'],
+      starterPrompt: 'Make a TV commercial for my product',
+    },
+  },
 ];
 
 /** Reads a skill body file, trimmed. Throws if the file is empty (or whitespace-only). */

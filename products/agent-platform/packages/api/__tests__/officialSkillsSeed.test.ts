@@ -7,7 +7,24 @@ import { OFFICIAL_SKILLS, buildSkillManifest, manifestUnchanged, readSkillBody }
 describe('OFFICIAL_SKILLS', () => {
   it('has every slug', () => {
     const slugs = OFFICIAL_SKILLS.map((s) => s.slug).sort();
-    expect(slugs).toEqual(['animated-character-creator', 'animation-character-ad', 'short-drama-stitch', 'talking-head', 'template-video', 'tvc-character-creator', 'ugc-avatar-creator', 'ugc-character-ad', 'ugc-first-frame']);
+    expect(slugs).toEqual(['animated-character-creator', 'animation-character-ad', 'short-drama-stitch', 'talking-head', 'template-video', 'tvc-ad', 'tvc-character-creator', 'ugc-avatar-creator', 'ugc-character-ad', 'ugc-first-frame']);
+  });
+
+  it('tvc-ad carries its card, Director marker and step rules', () => {
+    const tvc = OFFICIAL_SKILLS.find((s) => s.slug === 'tvc-ad')!;
+    expect(tvc.name).toBe('TVC ad');
+    expect(tvc.director?.markers).toEqual(['flow: tvc ad']);
+    expect(tvc.showcase.starterPrompt).toBe('Make a TV commercial for my product');
+    expect(tvc.showcase.bestFor).toEqual(['TV-style ads', 'Product launches', 'Brand films']);
+    const card = readFileSync(tvc.file, 'utf8');
+    expect(card).toContain('"flow: tvc ad"');
+    expect(card).toContain('TVC plan: <planFileId>');
+    expect(card).toMatch(/Never call the ad legally compliant/);
+    const director = readFileSync(tvc.director!.file, 'utf8');
+    expect(director).toContain('plan_tvc');
+    expect(director).toContain('mix_voiceover');
+    expect(director).toContain('expectNoSpeech');
+    expect(director).toMatch(/MISSING_AUDIO_STREAM/);
   });
 
   it('each entry file exists and is non-empty', () => {
