@@ -4,6 +4,7 @@ import {
   generateVideoItem, videoItemSchema, videoOutputSchema, VIDEO_MODEL, type VideoItemInput,
 } from './generateVideo.js'
 import { shouldRequireApproval } from './generationApproval.js'
+import { markVideoMade, videoBlockedThisTurn, SHOW_FIRST_REFUSAL } from './oneVideoPerTurn.js'
 import { MAX_BATCH_ITEMS, runBatch, batchProgressEmitter, type MediaExecContext } from './batchRunner.js'
 import { emitGenerationStarted } from './generationStarted.js'
 
@@ -17,16 +18,19 @@ export const generateVideos = createTool({
     failed: z.number(),
   }),
   requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
+    !videoBlockedThisTurn(ctx?.requestContext) && shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {
+    if (videoBlockedThisTurn(execContext?.requestContext)) return { ...SHOW_FIRST_REFUSAL, results: [], succeeded: 0, failed: 0 }
     const { items } = inputData as { items: VideoItemInput[] }
     emitGenerationStarted(execContext, { aspectRatio: (inputData as { items?: Array<{ aspectRatio?: unknown }> }).items?.[0]?.aspectRatio, count: items.length })
     const sendEvent = execContext?.requestContext?.get('sendEvent') as ((event: string, data: object) => void) | undefined
     const toolCallId = (execContext as unknown as MediaExecContext)?.agent?.toolCallId
-    return runBatch(
+    const batch = await runBatch(
       items,
       (item, index) => generateVideoItem(item, execContext as unknown as MediaExecContext, index),
       batchProgressEmitter(sendEvent, toolCallId),
     )
+    if (batch.succeeded > 0) markVideoMade(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
+    return batch
   },
 })

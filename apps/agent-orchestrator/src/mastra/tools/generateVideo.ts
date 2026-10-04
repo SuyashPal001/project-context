@@ -6,6 +6,7 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { resolveAvatarReferences } from './avatarReferences.js'
 import { refundVideoCharge } from './videoCredits.js'
+import { markVideoMade, videoBlockedThisTurn, SHOW_FIRST_REFUSAL } from './oneVideoPerTurn.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
 import { stableToolCallId } from '../../credits.js'
@@ -305,9 +306,12 @@ export const generateVideo = createTool({
   inputSchema: videoItemSchema,
   outputSchema: videoOutputSchema,
   requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
+    !videoBlockedThisTurn(ctx?.requestContext) && shouldRequireApproval({ resourceType: 'video_generation', subject: VIDEO_MODEL }, ctx),
   execute: async (inputData, execContext) => {
+    if (videoBlockedThisTurn(execContext?.requestContext)) return SHOW_FIRST_REFUSAL
     emitGenerationStarted(execContext, { aspectRatio: (inputData as { aspectRatio?: unknown }).aspectRatio })
-    return generateVideoItem(inputData as VideoItemInput, execContext as unknown as MediaExecContext, 0)
+    const result = await generateVideoItem(inputData as VideoItemInput, execContext as unknown as MediaExecContext, 0)
+    if ((result as { fileId?: string }).fileId) markVideoMade(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
+    return result
   },
 })

@@ -1,0 +1,44 @@
+// In a talking-head or UGC ad the user reviews every video before paying for
+// the next one. 2026-10-05: Director made the opening clip, its check failed,
+// and it went straight into a paid redo — the approval card appeared before
+// the user had seen the first clip, because a delegate's results only reach
+// the chat when its turn ends. A prompt rule against this was not enough, so
+// the video tools allow one video call per turn in these flows: after one,
+// the next gets no approval card and is refused until the user has replied.
+
+type ContextLike = { get?: (key: string) => unknown; set?: (key: string, value: unknown) => void } | Record<string, unknown> | undefined
+
+const VIDEO_MADE = 'videoMadeThisTurn'
+
+function read(ctx: ContextLike, key: string): unknown {
+  if (!ctx) return undefined
+  if (typeof (ctx as { get?: unknown }).get === 'function') return (ctx as { get: (k: string) => unknown }).get(key)
+  return (ctx as Record<string, unknown>)[key]
+}
+
+/** True when Director's own messages carry a reviewed ad flow's marker. Read
+ * from the messages, not set at the first step: after an approval the run
+ * resumes mid-turn and a first-step mark would be missing. */
+export function isReviewedAdFlow(messages: unknown): boolean {
+  if (!Array.isArray(messages)) return false
+  const text = JSON.stringify(messages).toLowerCase()
+  return REVIEWED_FLOW_MARKERS.some((m) => text.includes(m))
+}
+
+/** Called after a video call produced at least one video. */
+export function markVideoMade(ctx: ContextLike, messages: unknown): void {
+  if (isReviewedAdFlow(messages) && ctx && typeof (ctx as { set?: unknown }).set === 'function') (ctx as { set: (k: string, v: unknown) => void }).set(VIDEO_MADE, true)
+}
+
+/** True when this turn already made a video in a reviewed ad flow. */
+export function videoBlockedThisTurn(ctx: ContextLike): boolean {
+  return !!read(ctx, VIDEO_MADE)
+}
+
+export const SHOW_FIRST_REFUSAL = {
+  refused: true as const,
+  refusalReason: 'SHOW_FIRST: a video was already made in this turn of the ad. Stop and return it (fileId, interactionId, any check problem) to Olmo so the user sees it and decides before the next video.',
+}
+
+/** The ad flows where the user reviews each video. */
+export const REVIEWED_FLOW_MARKERS = ['flow: talking head', 'flow: ugc ad']
