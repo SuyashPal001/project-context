@@ -6,12 +6,13 @@ import { uploadGeneratedFile } from '../../persistence.js'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { resolveAvatarReferences } from './avatarReferences.js'
 import { refundVideoCharge } from './videoCredits.js'
-import { markVideoMade, videoBlockedThisTurn, SHOW_FIRST_REFUSAL } from './oneVideoPerTurn.js'
+import { isReviewedAdFlow, markVideoMade, videoBlockedThisTurn, SHOW_FIRST_REFUSAL } from './oneVideoPerTurn.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
 import { stableToolCallId } from '../../credits.js'
 import { emitGenerationStarted } from './generationStarted.js'
 import { withIdentityAnchor } from './identityAnchor.js'
+import { stripStudioLighting } from './adRealism.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 // Namespaced per docs/media-generation/README.md's convention. This is a new
@@ -148,7 +149,8 @@ export async function generateVideoItem(
 
     // Identity anchor: a missing terseTag/styleLock is added, not refused —
     // a refusal here comes after the user already approved the paid card.
-    const prompt = withIdentityAnchor(rawPrompt, identityAnchor)
+    const anchored = withIdentityAnchor(rawPrompt, identityAnchor)
+    const prompt = isReviewedAdFlow(execContext?.agent?.messages) ? stripStudioLighting(anchored) : anchored
 
     // Not a refusal — a reference image without identityAnchor is legitimate
     // (e.g. a b-roll beat), but it's also exactly what an accidentally-omitted

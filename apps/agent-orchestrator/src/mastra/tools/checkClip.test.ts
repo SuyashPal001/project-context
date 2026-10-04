@@ -13,8 +13,13 @@ describe('lineMatchScore', () => {
 })
 
 describe('parseVerdict', () => {
+  it('reads a voice or room change against the first spoken clip as a sound mismatch', () => {
+    expect(parseVerdict('{"clothing_same": true, "face_same": true, "same_voice": true, "same_room": false, "confidence": 9, "differences": "dry studio voice, no echo"}')?.soundSame).toBe(false)
+    expect(parseVerdict('{"clothing_same": true, "face_same": true, "confidence": 9}')?.soundSame).toBe(true)
+  })
+
   it('reads the JSON verdict, also inside a code fence', () => {
-    expect(parseVerdict('```json\n{"samePerson": false, "confidence": 8, "heard": "hi", "reason": "different jaw"}\n```')).toEqual({ samePerson: false, productSame: true, glitch: false, confidence: 8, heard: 'hi', reason: 'different jaw' })
+    expect(parseVerdict('```json\n{"samePerson": false, "confidence": 8, "heard": "hi", "reason": "different jaw"}\n```')).toEqual({ samePerson: false, productSame: true, glitch: false, confidence: 8, heard: 'hi', reason: 'different jaw', soundSame: true })
     expect(parseVerdict('no json here')).toBeNull()
   })
 })
@@ -23,7 +28,7 @@ describe('parseVerdict strict form', () => {
   it('fails on a different face or different clothes', () => {
     expect(parseVerdict('{"clothing_same": false, "face_same": false, "confidence": 10, "differences": "green tee, rounder face", "heard": "x"}')?.samePerson).toBe(false)
     expect(parseVerdict('{"clothing_same": false, "face_same": true, "confidence": 9, "differences": "different shirt", "heard": ""}')?.samePerson).toBe(false)
-    expect(parseVerdict('{"clothing_same": true, "face_same": true, "confidence": 10, "differences": "none", "heard": "hi"}')).toEqual({ samePerson: true, productSame: true, glitch: false, confidence: 10, heard: 'hi', reason: 'none' })
+    expect(parseVerdict('{"clothing_same": true, "face_same": true, "confidence": 10, "differences": "none", "heard": "hi"}')).toEqual({ samePerson: true, productSame: true, glitch: false, confidence: 10, heard: 'hi', reason: 'none', soundSame: true })
   })
 })
 

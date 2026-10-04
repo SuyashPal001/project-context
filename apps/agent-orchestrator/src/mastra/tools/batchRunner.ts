@@ -4,7 +4,7 @@ export const MAX_BATCH_ITEMS = 4
 // Structural on purpose so tests can pass a bare { requestContext } object.
 export type MediaExecContext = {
   requestContext?: { get: (key: string) => unknown }
-  agent?: { toolCallId?: string }
+  agent?: { toolCallId?: string; messages?: unknown }
 }
 
 export type BatchResult = {

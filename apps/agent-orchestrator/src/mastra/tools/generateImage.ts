@@ -11,6 +11,8 @@ import { emitGenerationStarted } from './generationStarted.js'
 import { stableToolCallId } from '../../credits.js'
 import { resolveAvatarReferences } from './avatarReferences.js'
 import { withIdentityAnchor } from './identityAnchor.js'
+import { stripStudioLighting } from './adRealism.js'
+import { isReviewedAdFlow } from './oneVideoPerTurn.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
 export const IMAGE_MODEL = 'gemini-3-pro-image-preview'
@@ -64,7 +66,8 @@ export async function generateImageItem(
 
     // Identity anchor — enforced in tool code, not prose: any missing
     // terseTag/styleLock is added to the prompt rather than refused.
-    const prompt = withIdentityAnchor(rawPrompt, identityAnchor)
+    const anchored = withIdentityAnchor(rawPrompt, identityAnchor)
+    const prompt = isReviewedAdFlow(execContext?.agent?.messages) ? stripStudioLighting(anchored) : anchored
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     // Left undefined, not defaulted to '' — matches generateVideo.ts's fix
