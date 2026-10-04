@@ -600,8 +600,11 @@ export function ToolCallCard({ toolName, query, prompt, status, results, result,
   // extractResultFiles above). Never shown for a cancelled/failed result.
   const resultFiles = status === 'done' && !cancelled && !failureReason ? extractResultFiles(toolName, result) : [];
 
+  // A batch's tiles need the full row: next to another card in a wrapping
+  // group they were squeezed into one tall column.
+  const fullWidth = (showMediaSkeleton && !!tileTotal && tileTotal > 1) || resultFiles.length > 1;
   return (
-    <div className="my-1.5 text-foreground">
+    <div className={`my-1.5 text-foreground${fullWidth ? " basis-full w-full" : ""}`}>
       <div
         className="flex items-center gap-2"
         style={{ cursor: hasResults ? 'pointer' : 'default' }}

@@ -460,7 +460,19 @@ export function useChatStream({ conversationId, conversationIdRef, agentId, fold
             markTraceStart();
             // The skill row shows which skill loaded ("Loaded skill — UGC avatar creator").
             const query = String((toolName === 'skill' ? args?.name : undefined) ?? args?.query ?? args?.filename ?? args?.subject ?? args?.prompt ?? '');
-            setActiveToolCalls(prev => { const next = new Map(prev); next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query }); return next; });
+            setActiveToolCalls(prev => {
+                const next = new Map(prev);
+                // After an approval the run resumes and re-emits the same call
+                // (same tool, same arguments) under a new id; the old row never
+                // gets a done event and sat stuck on "Preparing your image…"
+                // beside the real one.
+                const argsKey = JSON.stringify(args ?? {});
+                for (const [id, call] of next) {
+                    if (id !== toolCallId && call.isLoading && call.toolName === toolName && JSON.stringify(call.arguments ?? {}) === argsKey) next.delete(id);
+                }
+                next.set(toolCallId, { id: toolCallId, toolName, arguments: args, isLoading: true, query });
+                return next;
+            });
             const normTool = toolName.toLowerCase().replace(/_/g, '-');
             // Only open canvas when an actual save tool fires — this is the definitive signal
             // that a PRD/roadmap/tasks artifact is being persisted. Never open on agent delegation
