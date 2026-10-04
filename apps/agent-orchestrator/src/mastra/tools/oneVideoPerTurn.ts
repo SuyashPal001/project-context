@@ -9,6 +9,7 @@
 type ContextLike = { get?: (key: string) => unknown; set?: (key: string, value: unknown) => void } | Record<string, unknown> | undefined
 
 const VIDEO_MADE = 'videoMadeThisTurn'
+const CHECK_FAILED = 'checkFailedThisTurn'
 
 function read(ctx: ContextLike, key: string): unknown {
   if (!ctx) return undefined
@@ -25,19 +26,33 @@ export function isReviewedAdFlow(messages: unknown): boolean {
   return REVIEWED_FLOW_MARKERS.some((m) => text.includes(m))
 }
 
-/** Called after a video call produced at least one video. */
-export function markVideoMade(ctx: ContextLike, messages: unknown): void {
-  if (isReviewedAdFlow(messages) && ctx && typeof (ctx as { set?: unknown }).set === 'function') (ctx as { set: (k: string, v: unknown) => void }).set(VIDEO_MADE, true)
+function set(ctx: ContextLike, key: string): void {
+  if (ctx && typeof (ctx as { set?: unknown }).set === 'function') (ctx as { set: (k: string, v: unknown) => void }).set(key, true)
 }
 
-/** True when this turn already made a video in a reviewed ad flow. */
+/** Called after a video call produced at least one video. In Auto mode the
+ * user chose not to be stopped for money, so a good video does not stop the
+ * run — only a failed check does (markCheckFailed). */
+export function markVideoMade(ctx: ContextLike, messages: unknown): void {
+  if (read(ctx, 'allowMode') === 'auto') return
+  if (isReviewedAdFlow(messages)) set(ctx, VIDEO_MADE)
+}
+
+/** Called when check_clip fails a clip in an ad flow: in either mode, nothing
+ * more is paid for in this turn — the user sees the problem first. */
+export function markCheckFailed(ctx: ContextLike, messages: unknown): void {
+  if (isReviewedAdFlow(messages)) set(ctx, CHECK_FAILED)
+}
+
+/** True when this turn must stop paying for media: a video was made (Ask
+ * mode) or a clip failed its check (either mode). */
 export function videoBlockedThisTurn(ctx: ContextLike): boolean {
-  return !!read(ctx, VIDEO_MADE)
+  return !!read(ctx, VIDEO_MADE) || !!read(ctx, CHECK_FAILED)
 }
 
 export const SHOW_FIRST_REFUSAL = {
   refused: true as const,
-  refusalReason: 'SHOW_FIRST: a video was already made in this turn of the ad. Stop and return it (fileId, interactionId, any check problem) to Olmo so the user sees it and decides before the next video.',
+  refusalReason: 'SHOW_FIRST: a video was already made in this turn of the ad, or a clip failed its check. Stop and return what was made (fileId, interactionId, any check problem) to Olmo so the user sees it and decides before the next video.',
 }
 
 /** The same stop for paid follow-on steps (narration, lip-sync, music) once a

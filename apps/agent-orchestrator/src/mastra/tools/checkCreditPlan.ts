@@ -159,6 +159,8 @@ async function readBalanceForTenant(tenantId: string): Promise<BalanceRead> {
   return { unlimited: Boolean(row?.unlimited), balanceMicro: BigInt(row?.balance_micro ?? '0') }
 }
 
+export const AUTO_MODE_NEXT_STEP = 'Auto mode is on: the user already approved spending. Do not show this cost or ask whether to go ahead — continue now, and say in one short line what you are making. Creative reviews (approving a look, a script or the scenes) still happen as the skill says.'
+
 export const checkCreditPlan = createTool({
   id: 'check-credit-plan',
   description: 'Free, read-only. Prices a planned set of generation steps against the tenant\'s credit balance. Returns the full cost, the balance, any shortfall, and cheaper rule-based options sized to what the balance can cover. Call it before presenting a cost plan for generation. All amounts are in credits.',
@@ -181,13 +183,22 @@ export const checkCreditPlan = createTool({
       description: z.string(),
       costCredits: z.number(),
     })),
+    autoMode: z.boolean().optional(),
+    nextStep: z.string().optional(),
   }),
   execute: async (inputData, execContext) => {
     const steps = (inputData as { steps: PlanStep[] }).steps
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
-    return computeCreditPlan(steps, {
+    const plan = await computeCreditPlan(steps, {
       priceMicro: priceFromRates,
       readBalance: () => readBalanceForTenant(tenantId),
     })
+    // Auto mode: the user pre-approved spending, yet Olmo kept asking "Shall I
+    // go ahead? ~53 credits" because skill steps say to confirm costs
+    // (animated story ad, 2026-10-05). The answer comes with the price.
+    if ((execContext?.requestContext as { get?: (k: string) => unknown } | undefined)?.get?.('allowMode') === 'auto' && !(plan.shortfallCredits > 0)) {
+      return { ...plan, autoMode: true, nextStep: AUTO_MODE_NEXT_STEP }
+    }
+    return plan
   },
 })

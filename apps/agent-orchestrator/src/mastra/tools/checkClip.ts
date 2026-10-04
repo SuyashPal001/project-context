@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { fetchPresignedUrl } from './mediaCache.js'
 import { resolveAvatarReferences } from './avatarReferences.js'
 import { persistCost } from '../cost.js'
+import { markCheckFailed } from './oneVideoPerTurn.js'
 
 // Checks a finished talking-head clip before it is used: is it still the same
 // person, and did they say the approved line? 2026-10-03: a clip started from
@@ -210,6 +211,9 @@ export const checkClip = createTool({
       const productMatches = verdict.productSame
       const noGlitch = !verdict.glitch
       const soundMatches = refAudio ? verdict.soundSame : true
+      if (!(samePerson && lineMatches && productMatches && noGlitch && soundMatches)) {
+        markCheckFailed(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
+      }
       return {
         passed: samePerson && lineMatches && productMatches && noGlitch && soundMatches,
         samePerson,

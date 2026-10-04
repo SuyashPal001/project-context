@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { RequestContext } from '@mastra/core/request-context'
-import { isReviewedAdFlow, markVideoMade, videoBlockedThisTurn } from './oneVideoPerTurn.js'
+import { isReviewedAdFlow, markCheckFailed, markVideoMade, videoBlockedThisTurn } from './oneVideoPerTurn.js'
 
 const brief = (text: string) => [{ role: 'user', content: { parts: [{ type: 'text', text }] } }]
 
@@ -31,5 +31,20 @@ describe('one video per turn in reviewed ad flows', () => {
     for (const m of ['flow: first frame', 'flow: animation character ad', 'flow: short drama stitch']) {
       expect(isReviewedAdFlow(brief(m))).toBe(true)
     }
+  })
+
+  it('in Auto mode a good video does not stop the run, but a failed check does', () => {
+    const ctx = new RequestContext()
+    ctx.set('allowMode', 'auto')
+    markVideoMade(ctx, brief('flow: ugc ad'))
+    expect(videoBlockedThisTurn(ctx)).toBe(false)
+    markCheckFailed(ctx, brief('flow: ugc ad'))
+    expect(videoBlockedThisTurn(ctx)).toBe(true)
+  })
+
+  it('a failed check outside an ad flow changes nothing', () => {
+    const ctx = new RequestContext()
+    markCheckFailed(ctx, brief('make a video of a sunset'))
+    expect(videoBlockedThisTurn(ctx)).toBe(false)
   })
 })

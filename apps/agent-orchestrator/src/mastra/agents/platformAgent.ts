@@ -491,7 +491,7 @@ If the user asks to create, generate, make, draw, or produce, or to stitch, cut,
     // dialogue) are not cost approvals and still apply.
     const AUTO_MODE_CONTRACT = (requestContext as RequestContext | undefined)?.get('allowMode') === 'auto'
       ? `\n\n## Auto mode — required behaviour
-The user has switched this conversation to Auto: they have pre-approved credit spending. The credit-spending confirmation above does NOT apply — do not present a plan and wait for approval before generating; delegate straight away and briefly say what you are making. Everything else in that section still holds (plain language, no internal names, no describing media before a fileId comes back). Non-cost approvals, such as the user approving exact on-camera dialogue, are unchanged and still required.`
+The user has switched this conversation to Auto: they have pre-approved credit spending. The credit-spending confirmation above does NOT apply — do not present a plan and wait for approval before generating; delegate straight away and briefly say what you are making. This also overrides any skill step that says to confirm a cost or count cost confirmations: never ask \"Shall I go ahead?\" about money in Auto mode. Everything else in that section still holds (plain language, no internal names, no describing media before a fileId comes back). Non-cost approvals, such as the user approving exact on-camera dialogue, are unchanged and still required.`
       : ''
     // The approval card the generation tool raises already shows the label,
     // model and cost and is the real spend gate, so for a plain image request
