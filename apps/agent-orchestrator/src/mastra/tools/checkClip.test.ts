@@ -87,6 +87,19 @@ describe('expectNoSpeech', () => {
   it('asks for a transcript when audio is sent', () => {
     expect(buildCheckQuestion({ product: false, audio: true, noPerson: false })).toMatch(/transcribe/)
   })
+  it('keeps the shipped transcript sentence byte-identical for a presenter/line check, and only adds the silence wording when the shot is expected to be silent', () => {
+    const plain = buildCheckQuestion({ product: false, audio: true, noPerson: false })
+    expect(plain).toContain('Also transcribe exactly what is spoken in the audio. ')
+    expect(plain).not.toContain('ignore music')
+    const silent = buildCheckQuestion({ product: false, audio: true, noPerson: false, silent: true })
+    expect(silent).toContain('Also transcribe exactly what is spoken in the audio. ')
+    expect(silent).toContain('ignore music')
+  })
+  it('treats a non-speech placeholder heard value as silence', () => {
+    expect(judgeVerdict(v('[music]'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(true)
+    expect(judgeVerdict(v('(no speech)'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(true)
+    expect(judgeVerdict(v('so I tried this'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(false)
+  })
   it('a re-check cannot drop expectNoSpeech', () => {
     expect(droppedCheckInputs('conv:silent-clip', { expectedLine: false, product: false, reference: false, noSpeech: true })).toEqual([])
     expect(droppedCheckInputs('conv:silent-clip', { expectedLine: false, product: false, reference: false, noSpeech: false })).toEqual(['noSpeech'])

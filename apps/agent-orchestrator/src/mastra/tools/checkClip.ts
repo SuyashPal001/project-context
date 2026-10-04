@@ -26,6 +26,17 @@ const LINE_MATCH_THRESHOLD = 0.85
 
 const normalise = (s: string) => s.toLowerCase().replace(/<[^>]+>/g, ' ').replace(/[^\p{L}\p{N}\s']/gu, ' ').split(/\s+/).filter(Boolean)
 
+// Some models return a non-speech placeholder for "heard" on a silent shot
+// instead of an empty string — "[music]", "(no speech)", "none" — which must
+// count as silence, not as someone speaking.
+const SILENT_PLACEHOLDERS = new Set(['none', 'no speech', 'silence', 'n/a'])
+function isEffectivelySilent(heard: string): boolean {
+  const t = heard.trim()
+  if (t.length === 0) return true
+  if (/^\[.*\]$/.test(t) || /^\(.*\)$/.test(t)) return true
+  return SILENT_PLACEHOLDERS.has(t.toLowerCase())
+}
+
 /** Share of the approved line's words heard, in order (0..1). */
 export function lineMatchScore(expected: string, heard: string): number {
   const want = normalise(expected), got = normalise(heard)
@@ -100,12 +111,16 @@ async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal)
   return { data: Buffer.from(await res.arrayBuffer()).toString('base64'), mime: res.headers.get('content-type') ?? 'image/jpeg' }
 }
 
-export function buildCheckQuestion(opts: { product: boolean; audio: boolean; noPerson: boolean; sound?: boolean }): string {
+export function buildCheckQuestion(opts: { product: boolean; audio: boolean; noPerson: boolean; silent?: boolean; sound?: boolean }): string {
   const productAsk = opts.product ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and brand name as Image P (product_same false if it is a different product, a different shape or colour, or the brand name is clearly misspelled or garbled; ignore small print, which video always blurs; true if it is not visible). ' : ''
-  const audioAsk = opts.audio ? 'Also transcribe exactly what is spoken in the audio (empty if nobody speaks; ignore music and sound effects). ' : ''
+  // The shipped sentence stays byte-identical for every existing caller
+  // (presenter/line checks). The silence wording is an extra sentence, only
+  // added when the shot is expected to be silent.
+  const audioAsk = opts.audio ? 'Also transcribe exactly what is spoken in the audio. ' : ''
+  const silentAsk = opts.audio && opts.silent ? 'If nobody speaks, leave heard empty; ignore music and sound effects. ' : ''
   const soundAsk = opts.sound ? "Also compare the clip's audio with Audio R, ignoring the words: same speaker's voice (same_voice), and same microphone and room — same echo and background sound (same_room)? A dry studio-sounding voice against a roomy one is a different room. " : ''
   const first = opts.noPerson ? '{"scene_same": true|false, ' : '{"clothing_same": true|false, "face_same": true|false, '
-  return (opts.noPerson ? NO_PERSON_QUESTION : STRICT_QUESTION) + ' ' + productAsk + audioAsk + soundAsk +
+  return (opts.noPerson ? NO_PERSON_QUESTION : STRICT_QUESTION) + ' ' + productAsk + audioAsk + silentAsk + soundAsk +
     'Reply with ONLY JSON: ' + first + (opts.product ? '"product_same": true|false, ' : '') + (opts.sound ? '"same_voice": true|false, "same_room": true|false, ' : '') +
     '"glitch": true|false, "confidence": 1-10, "differences": "<short list or none>", "heard": "<exact transcript or empty>"}'
 }
@@ -119,7 +134,7 @@ export function judgeVerdict(
   const productMatches = v.productSame
   const noGlitch = !v.glitch
   const soundMatches = opts.soundChecked ? v.soundSame : true
-  const speechOk = !(opts.expectNoSpeech && opts.audioChecked && normalise(v.heard).length > 0)
+  const speechOk = !(opts.expectNoSpeech && opts.audioChecked && !isEffectivelySilent(v.heard))
   const reason = !samePerson ? `${opts.noPerson ? 'Different scene' : 'Different person'}: ${v.reason}`
     : !productMatches ? `Product changed: ${v.reason}`
     : !noGlitch ? `Visible glitch: ${v.reason}`
@@ -229,7 +244,7 @@ export const checkClip = createTool({
         content.push({ type: 'text', text: 'The clip\'s audio:' })
         content.push({ type: 'input_audio', input_audio: { data: audio, format: 'wav' } })
       }
-      content.push({ type: 'text', text: buildCheckQuestion({ product: !!productFileId, audio: !!audio, noPerson: !!noPerson, sound: !!refAudio }) })
+      content.push({ type: 'text', text: buildCheckQuestion({ product: !!productFileId, audio: !!audio, noPerson: !!noPerson, silent: !!expectNoSpeech, sound: !!refAudio }) })
 
       const res = await fetch(`${INFERENCE_GATEWAY_URL}/v1/chat/completions`, {
         method: 'POST', signal: controller.signal,
