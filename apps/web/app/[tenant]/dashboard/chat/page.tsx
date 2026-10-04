@@ -725,7 +725,7 @@ function ChatPage() {
                                 {showConversationWelcome ? (
                                     activePill !== null ? (
                                         <WizardView pill={activePill} onBack={() => setActivePill(null)} onSubmit={(prompt) => sendMessage(prompt)}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} queueKey={conversationId ?? undefined} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
                                         </WizardView>
                                     ) : selectedConversation.agent?.origin === 'built_in' ? (
                                         <div className="flex-1 flex flex-col items-center p-8 text-center bg-background h-full relative overflow-y-auto">
@@ -761,7 +761,7 @@ function ChatPage() {
                                             >
                                                 <ChatInput
                                                     onSend={(text, attachments) => sendComposerMessage(text, attachments)}
-                                                    onStop={cancel}
+                                                    onStop={cancel} queueKey={conversationId ?? undefined}
                                                     onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined}
                                                     onMediaClick={(t) => toast.info(`Adding ${t}...`)}
                                                     isLoading={isPreparingMessage}
@@ -786,7 +786,7 @@ function ChatPage() {
                                         </div>
                                     ) : (
                                         <WelcomeView agent={selectedConversation.agent ?? null} firstName={firstName} onSelectPill={(pill) => setActivePill(pill)} onSend={(text) => setInputPrefill(text)} avatarLiveState={displayState}>
-                                            <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
+                                            <ChatInput onSend={sendMessage} onStop={cancel} queueKey={conversationId ?? undefined} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} prefill={inputPrefill} {...folderScopeProps} {...modelChangeProps} {...allowModeProps} {...skillProps} />
                                         </WelcomeView>
                                     )
                                 ) : (
@@ -795,7 +795,7 @@ function ChatPage() {
                                         <ChatTimelineNavigator messages={displayedMessages} />
                                         {!awaitingClarificationReply && !awaitingGenerationConfirmReply && !awaitingUploadReply && (
                                             <div className="shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                                                <ChatInput onSend={sendMessage} onStop={cancel} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...allowModeProps} {...skillProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
+                                                <ChatInput onSend={sendMessage} onStop={cancel} queueKey={conversationId ?? undefined} onVoiceClick={FEATURE_FLAGS.chatVoice ? openVoice : undefined} onMediaClick={(t) => toast.info(`Adding ${t}...`)} isLoading={isPreparingMessage} isStreaming={isStreaming} disabled={selectedConversation.status !== 'active'} {...folderScopeProps} {...allowModeProps} {...skillProps} providers={providers} llmProviderId={selectedConversation.agent?.llmProviderId} onModelChange={(id) => { if (selectedConversation.agent?.id) updateAgentMutation.mutate({ llmProviderId: id }); }} />
                                             </div>
                                         )}
                                     </>

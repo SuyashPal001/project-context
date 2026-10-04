@@ -99,6 +99,8 @@ interface ChatInputProps {
     /** Return false when the caller has staged the send but needs this draft kept until an external handoff succeeds. */
     onSend: (content: string, attachments?: Attachment[], skillsUsed?: Array<{ id: string; name: string }>) => void | boolean | Promise<void>;
     onStop?: () => void;
+    /** The conversation this composer sends to. A message queued while the agent works is dropped when it changes, so it never lands in another chat. */
+    queueKey?: string;
     onVoiceClick?: () => void;
     onMediaClick?: (type: 'file' | 'video' | 'audio') => void;
     disabled?: boolean;
@@ -141,6 +143,7 @@ export function ChatInput({
     disabled,
     isLoading,
     isStreaming,
+    queueKey,
     llmProviderId,
     providers,
     onModelChange,
@@ -209,9 +212,42 @@ export function ChatInput({
     // the drop zone.
     const dragDepthRef = useRef(0);
 
+    const [queued, setQueued] = useState<{ text: string; attachments: Attachment[]; skills: Array<{ id: string; name: string }> } | null>(null);
+    useEffect(() => { setQueued(null); }, [queueKey]);
+    useEffect(() => {
+        if (!queued || isStreaming || isLoading || disabled) return;
+        const accepted = onSend(queued.text, queued.attachments.length ? queued.attachments : undefined, queued.skills.length ? queued.skills : undefined);
+        if (accepted !== false) setQueued(null);
+    }, [queued, isStreaming, isLoading, disabled]); // eslint-disable-line react-hooks/exhaustive-deps
+    const editQueued = () => {
+        if (!queued) return;
+        setContent(prev => [queued.text, prev].filter(Boolean).join('\n\n'));
+        setQueued(null);
+        textareaRef.current?.focus();
+    };
+
     const handleSend = async () => {
+        // A message typed while the agent is working is queued, not a Stop:
+        // stopping here used to cancel a paid generation mid-flight. It is sent
+        // as soon as the current turn ends; only the Stop button stops.
         if (isStreaming) {
-            onStop?.();
+            if (recorder.audioPreview || uploader.isUploading || disabled) return;
+            if (!content.trim() && mentionedAgents.length === 0 && uploader.attachments.length === 0) return;
+            const mentionPrefix = mentionedAgents.map(a => `@${a.name}`).join(' ');
+            const text = [mentionPrefix, content.trim()].filter(Boolean).join(' ');
+            const skills = pickedSkills.map(s => ({ id: s.id, name: s.name }));
+            setQueued(prev => ({
+                text: [prev?.text, text].filter(Boolean).join('\n\n'),
+                attachments: [...(prev?.attachments ?? []), ...uploader.attachments],
+                skills: [...(prev?.skills ?? []), ...skills.filter(s => !prev?.skills.some(p => p.id === s.id))],
+            }));
+            setContent("");
+            setMentionedAgents([]);
+            setPickedSkills([]);
+            uploader.clearAttachments();
+            setPaletteMode(null);
+            setPaletteQuery('');
+            setPaletteRange(null);
             return;
         }
 
@@ -561,6 +597,14 @@ export function ChatInput({
                 {isTestChat && (
                     <div className="px-4 pb-2 text-xs text-muted-foreground">{TEST_CHAT_SKILL_HINT}</div>
                 )}
+                {queued && (
+                    <div className="flex items-center gap-2 px-4 pb-2 text-xs text-muted-foreground" data-testid="queued-message">
+                        <span className="shrink-0">Queued, sends when this step finishes:</span>
+                        <span className="min-w-0 truncate text-foreground/80">{queued.text || `${queued.attachments.length} file${queued.attachments.length === 1 ? '' : 's'}`}</span>
+                        <button type="button" onClick={editQueued} className="shrink-0 hover:text-foreground" aria-label="Edit queued message">Edit</button>
+                        <button type="button" onClick={() => setQueued(null)} className="shrink-0 hover:text-foreground" aria-label="Remove queued message">✕</button>
+                    </div>
+                )}
                 {(() => {
                     const isGenerating = isLoading || isStreaming;
                     const isActive = isGenerating || content.trim().length > 0 || mentionedAgents.length > 0 || hasSupplementalContent;
@@ -736,7 +780,7 @@ export function ChatInput({
                                 // "@" is only advertised while the Employees
                                 // section is on — with it hidden there is
                                 // nobody to mention but the employee you're in.
-                                placeholder={`Ask anything${canUseSlash ? ', / for skills' : ''}${FEATURE_FLAGS.employees ? ', @ for AI employees' : ''}...`}
+                                placeholder={isStreaming ? 'Type to queue a message…' : `Ask anything${canUseSlash ? ', / for skills' : ''}${FEATURE_FLAGS.employees ? ', @ for AI employees' : ''}...`}
                                 className="w-full min-h-[64px] max-h-[200px] py-4 px-4 resize-none border-0 bg-transparent dark:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 text-sm shadow-none placeholder:text-muted-foreground/50 caret-primary"
                                 disabled={disabled}
                             />
@@ -941,6 +985,8 @@ export function ChatInput({
                                     {isStreaming ? (
                                         <button
                                             onClick={onStop}
+                                            aria-label="Stop"
+                                            title="Stop. Enter queues your message instead"
                                             className="h-8 w-8 flex items-center justify-center rounded-full bg-gradient-to-br from-[#E69DB8] to-[#F2A679] hover:opacity-90 transition-all shadow-sm"
                                         >
                                             {/* Fixed black fill, not a foreground/background token — the gradient
