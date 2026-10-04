@@ -147,13 +147,13 @@ export async function computeCreditPlan(steps: PlanStep[], deps: CreditPlanDeps)
   return result
 }
 
-async function priceFromRates(kind: StepKind): Promise<bigint | null> {
+export async function priceFromRates(kind: StepKind): Promise<bigint | null> {
   const { jobType, subject } = PRICING[kind]
   const rate = await resolveRate(jobType, subject)
   return rate ? costMicro(rate.schema, { count: 1 }) : null
 }
 
-async function readBalanceForTenant(tenantId: string): Promise<BalanceRead> {
+export async function readBalanceForTenant(tenantId: string): Promise<BalanceRead> {
   const res = await getPool().query<{ balance_micro: string; unlimited: boolean }>(BALANCE_QUERY, [tenantId])
   const row = res.rows[0]
   return { unlimited: Boolean(row?.unlimited), balanceMicro: BigInt(row?.balance_micro ?? '0') }
