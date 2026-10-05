@@ -53,6 +53,10 @@ export function buildVoiceoverFilter(blocks: Array<{ start: number; duration: nu
   return parts.join(';')
 }
 
+// framelog=verbose, not quiet: the VM's ffmpeg 5.1 rejects quiet, which made
+// every mix_music_bed call fail (3f5ec1c5). verbose works on 5.1 and 8.x.
+export const loudnessProbeArgs = (path: string): string[] => ['-i', path, '-af', 'ebur128=framelog=verbose', '-f', 'null', '-']
+
 export const voiceoverFitsVideo = (blocks: Array<{ start: number; duration: number }>, videoSeconds: number): boolean =>
   blocks.every((b) => b.start + b.duration <= videoSeconds + 0.05)
 
@@ -118,7 +122,7 @@ export const mixVoiceover = createTool({
       const { stdout: streams } = await execFile('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', videoPath], { timeout: FFMPEG_TIMEOUT_MS })
       baseHasAudio = streams.trim().length > 0
       for (const p of voPaths) {
-        const { stderr } = await execFile('ffmpeg', ['-i', p, '-af', 'ebur128=framelog=quiet', '-f', 'null', '-'], { timeout: FFMPEG_TIMEOUT_MS })
+        const { stderr } = await execFile('ffmpeg', loudnessProbeArgs(p), { timeout: FFMPEG_TIMEOUT_MS })
         const lufs = parseIntegratedLoudness(stderr)
         if (lufs === null || lufs < MIN_ACCEPTABLE_VO_LUFS) return { refused: true, refusalReason: 'VOICEOVER_INAUDIBLE', jobId }
       }
