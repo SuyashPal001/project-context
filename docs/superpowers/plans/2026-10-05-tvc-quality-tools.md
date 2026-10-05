@@ -2401,7 +2401,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 12: regression fixtures on the real check model, and final verification
 
 **Files:**
-- Create: `apps/agent-orchestrator/test-fixtures/tvc/` with `cap-stays-on.mp4`, `lookalike-extra.mp4`, `single-shot-pop.mp4`, `lead.jpg`, `product.jpg`
+- Create: `apps/agent-orchestrator/test-fixtures/tvc/` with `cap-stays-on.mp4`, `lookalike-extra.mp4`, `single-shot-pop.mp4`, `spin-reverses.mp4`, `lead.jpg`, `product.jpg`
 - Create: `apps/agent-orchestrator/src/mastra/tools/tvcChecks.regression.test.ts`
 
 **Interfaces:**
@@ -2416,12 +2416,13 @@ mkdir -p $F
 ffmpeg -loglevel error -y -i $S/k5.mp4 -vf scale=-2:720 -c:v libx264 -crf 28 -an $F/cap-stays-on.mp4
 ffmpeg -loglevel error -y -i $S/k10_flagged.mp4 -vf scale=-2:720 -c:v libx264 -crf 28 -an $F/lookalike-extra.mp4
 ffmpeg -loglevel error -y -i $S/k5s.mp4 -vf scale=-2:720 -c:v libx264 -crf 28 -an $F/single-shot-pop.mp4
+ffmpeg -loglevel error -y -i $S/k10d.mp4 -vf scale=-2:720 -c:v libx264 -crf 28 -an $F/spin-reverses.mp4
 ffmpeg -loglevel error -y -i $S/actor.png -vf scale=-2:720 -q:v 3 $F/lead.jpg
 ffmpeg -loglevel error -y -i $S/bottle.png -vf scale=-2:720 -q:v 3 $F/product.jpg
 ls -la $F
 ```
 
-Expected: five files, each under 2 MB. If a source file is missing, stop and report it. Do not substitute a different clip.
+Expected: six files, each under 2 MB. (`spin-reverses.mp4` is the v5 ending whose spin turned back mid-way, flagged by the user.) If a source file is missing, stop and report it. Do not substitute a different clip.
 
 - [ ] **Step 2: Write the tagged regression suite**
 
@@ -2475,13 +2476,19 @@ describe.skipIf(!process.env.RUN_TVC_REGRESSION)('TVC checks on real clips (gemi
     expect(r.actionTime).not.toBeNull()
     expect(r.trimStartSeconds).toBeGreaterThanOrEqual(0)
   }, 300_000)
+
+  it('C7(d): the v5 ending whose spin turns back mid-way fails as a motion reversal', async () => {
+    const r = await runNarrowClipChecks(vertexAsk, sampler('spin-reverses.mp4'), { duration: duration('spin-reverses.mp4'), action: 'she spins all the way around in one direction, 360 degrees', endState: 'she is facing the camera again, holding the bottle' })
+    expect(r.motionReversed).toBe(true)
+    expect(r.passed).toBe(false)
+  }, 300_000)
 })
 ```
 
 - [ ] **Step 3: Run the suite against the real model**
 
 Run: `RUN_TVC_REGRESSION=1 pnpm --filter agent-orchestrator exec vitest run src/mastra/tools/tvcChecks.regression.test.ts`
-Expected: 3 PASS.
+Expected: 4 PASS.
 - If the default suite is run without the env var, the suite is skipped.
 - If a case fails because the model misjudged, **do not loosen the assertion**. Report the verdict and the frames in your report, so the controller can decide whether the question wording needs to change.
 
