@@ -25,6 +25,21 @@ const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 const DISSOLVE_WINDOW_SECONDS = 1.5
 const DISSOLVE_DURATION_SECONDS = 0.4
 
+/** A full-frame card: the photo blurred and dimmed to fill the frame behind
+ * the photo itself, fitted to 86% of the width. Scaling the photo alone left
+ * a white-backed product shot pasted as a box over the scene (2026-10-05). */
+export function endCardGraph(width: number, height: number, dissolveStart: number, holdSeconds = 0): string {
+  const fit = Math.round(width * 0.86 / 2) * 2
+  // holdSeconds > 0: the clip's last frame holds that long and the card comes
+  // in over the hold, so it never covers a presenter's last words.
+  const base = holdSeconds > 0 ? `[0:v]tpad=stop_mode=clone:stop_duration=${holdSeconds}[base];` : ''
+  return base + `[1:v]split[bgsrc][fgsrc];` +
+    `[bgsrc]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=40:2,eq=brightness=-0.12[bg];` +
+    `[fgsrc]scale=${fit}:${height}:force_original_aspect_ratio=decrease[fg];` +
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
+    `${holdSeconds > 0 ? '[base]' : '[0:v]'}[card]overlay=0:0:enable='gte(t,${dissolveStart})'[outv]`
+}
+
 // Deviation from the spec, stated explicitly per the writing-plans
 // self-review rule: the spec asks for the end card to be "matched in
 // scale to the rendered product's bounding box" with "background color
@@ -59,17 +74,18 @@ export const inputSchema = z.object({
   videoFileId: z.string().describe('Beat 4\'s muxed (audio-bearing) clip.'),
   productPhotoFileId: z.string().describe('The real, unedited product photo — never an AI-rendered one, to avoid wordmark garbling.'),
   aspectRatio: z.enum(['16:9', '9:16']),
+  holdSeconds: z.number().min(0).max(3).optional().describe('For an ad that ends on speech (UGC, talking-head): seconds added after the video ends, its last frame held, with the card dissolving in as the video ends, so the card never covers the last words. Omit for the animated ad\'s beat 4.'),
 })
 
 export const compositeEndCard = createTool({
   id: 'composite-end-card',
-  description: 'Overlays the real product photo onto the last beat\'s clip, dissolving in over its final second and a half — the end card is always composited from the real photo, never AI-rendered, to avoid wordmark/brand-name garbling. Run BEFORE assemble_clips, on beat 4 only.',
+  description: 'Overlays the real product photo onto the last beat\'s clip, dissolving in over its final second and a half — the end card is always composited from the real photo, never AI-rendered, to avoid wordmark/brand-name garbling. Animated ad: run BEFORE assemble_clips, on beat 4 only. UGC or talking-head ad: run on the finished (tightened) ad with holdSeconds 1.5, so the card follows the last words.',
   inputSchema,
   outputSchema,
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: COMPOSITE_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { videoFileId, productPhotoFileId, aspectRatio } = inputData as z.infer<typeof inputSchema>
+    const { videoFileId, productPhotoFileId, aspectRatio, holdSeconds = 0 } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -160,7 +176,8 @@ export const compositeEndCard = createTool({
       }
       const clipDurationSeconds = parseFloat(probe.format?.duration ?? '')
       if (!(clipDurationSeconds > 0)) throw new Error(`ffprobe returned an invalid duration: ${probeOut}`)
-      const dissolveStart = Math.max(0, clipDurationSeconds - DISSOLVE_WINDOW_SECONDS)
+      const dissolveStart = holdSeconds > 0 ? Math.max(0, clipDurationSeconds - 0.1) : Math.max(0, clipDurationSeconds - DISSOLVE_WINDOW_SECONDS)
+      const totalSeconds = clipDurationSeconds + holdSeconds
 
       // Nominal aspectRatio dimensions are only a fallback for the
       // (expected-never) case where ffprobe doesn't report stream
@@ -174,10 +191,7 @@ export const compositeEndCard = createTool({
       const videoWidth = probedW || nominalW
       const videoHeight = probedH || nominalH
 
-      const filterComplex =
-        `[1:v]scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease,format=rgba,` +
-        `fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
-        `[0:v][card]overlay=(W-w)/2:(H-h)/2:enable='gte(t,${dissolveStart})'[outv]`
+      const filterComplex = endCardGraph(videoWidth, videoHeight, dissolveStart, holdSeconds)
 
       // A plain image input (-i photoPath with no -loop) is a single frame
       // at PTS 0 with no real duration — fade's st=/d= timestamps and
@@ -189,11 +203,11 @@ export const compositeEndCard = createTool({
       // before this -i, not after.
       await execFile('ffmpeg', [
         '-y', '-i', videoPath,
-        '-loop', '1', '-framerate', '30', '-t', String(clipDurationSeconds), '-i', photoPath,
+        '-loop', '1', '-framerate', '30', '-t', String(totalSeconds), '-i', photoPath,
         '-filter_complex', filterComplex,
         '-map', '[outv]', '-map', '0:a?',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-        '-c:a', 'copy',
+        ...(holdSeconds > 0 ? ['-af', `apad=pad_dur=${holdSeconds}`, '-c:a', 'aac', '-b:a', '192k', '-t', String(totalSeconds)] : ['-c:a', 'copy']),
         outputPath,
       ], { timeout: FFMPEG_TIMEOUT_MS })
     } catch (err) {

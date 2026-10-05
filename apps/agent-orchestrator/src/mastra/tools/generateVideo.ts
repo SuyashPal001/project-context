@@ -11,6 +11,7 @@ import { shouldRequireApproval } from './generationApproval.js'
 import type { MediaExecContext } from './batchRunner.js'
 import { stableToolCallId } from '../../credits.js'
 import { emitGenerationStarted } from './generationStarted.js'
+import { cleanSpokenStart, recordSpoken } from './spokenScript.js'
 import { withIdentityAnchor } from './identityAnchor.js'
 import { stripStudioLighting } from './adRealism.js'
 
@@ -34,6 +35,7 @@ export const videoOutputSchema = z.object({
   model: z.string().optional(),
   jobId: z.string().optional(),
   interactionId: z.string().optional().describe('Pass as continueFrom (mode "continue") to continue this video with the same person and voice'),
+  note: z.string().optional(),
 })
 
 export const videoItemSchema = z.object({
@@ -149,7 +151,9 @@ export async function generateVideoItem(
 
     // Identity anchor: a missing terseTag/styleLock is added, not refused —
     // a refusal here comes after the user already approved the paid card.
-    const anchored = withIdentityAnchor(rawPrompt, identityAnchor)
+    const spokenLine = approvedDialogue ? cleanSpokenStart(approvedDialogue) : undefined
+    const spokenPrompt = approvedDialogue && spokenLine !== approvedDialogue ? rawPrompt.split(`"${approvedDialogue}"`).join(`"${spokenLine}"`) : rawPrompt
+    const anchored = withIdentityAnchor(spokenPrompt, identityAnchor)
     const prompt = isReviewedAdFlow(execContext?.agent?.messages) ? stripStudioLighting(anchored) : anchored
 
     // Not a refusal — a reference image without identityAnchor is legitimate
@@ -303,12 +307,16 @@ export async function generateVideoItem(
       return { refused: true, refusalReason: 'STORAGE_FAILED', jobId }
     }
 
+    if (conversationId) recordSpoken(conversationId, { continueFrom, approvedDialogue: spokenLine, interactionId: genResult.interactionId, fileId: attachment.fileId })
+
     return {
       fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
       model: VIDEO_MODEL,
       jobId,
       ...(genResult.interactionId ? { interactionId: genResult.interactionId } : {}),
+      // The user saw "part 2" replay part 1 and thought it was a duplicate (2026-10-05).
+      ...(mode === 'continue' ? { note: 'This file is the whole ad so far (every part up to this one), not only the new part. Show it as "the ad so far", never as a separate part.' } : {}),
     }
 }
 

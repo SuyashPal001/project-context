@@ -18,8 +18,24 @@ const MUX_SUBJECT = 'ffmpeg-mux-audio'
 const FFMPEG_TIMEOUT_MS = 60_000
 const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 // Matches the source spec's trim rule: each beat's clip is trimmed to its
-// own narration length plus this much air, never the reverse.
-const TRIM_PAD_SECONDS = 0.5
+// own narration length plus this much air, never the reverse. 0.5s on top of
+// the narration file's own silent edges left 1.1-1.6s of dead air between
+// every line of a 20s animated ad (2026-10-05); the edges are now trimmed
+// (EDGE_TRIM_FILTER) and the air is one short breath.
+const TRIM_PAD_SECONDS = 0.3
+// The clip keeps the end of its movement when it runs a little past the line
+// (cutting at line + 0.3s chopped actions mid-gesture: "too many cuts, not
+// smooth", 2026-10-05), and that quiet tail is also the room a dissolve to
+// the next scene needs. Only a clip far longer than its line is trimmed.
+const MAX_TAIL_SECONDS = 1.2
+export function beatSeconds(audioSeconds: number, videoSeconds: number): number {
+  const shortest = audioSeconds + TRIM_PAD_SECONDS
+  if (!(videoSeconds > 0)) return shortest
+  return Math.max(shortest, Math.min(videoSeconds, audioSeconds + MAX_TAIL_SECONDS))
+}
+
+/** Cuts silence off both ends of a narration line, keeping 50ms so the first and last sounds are not clipped. */
+export const EDGE_TRIM_FILTER = 'silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse'
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
@@ -116,12 +132,18 @@ export const muxBeatAudio = createTool({
     }
     const outputPath = join(workDir, 'muxed.mp4')
     try {
+      const trimmedAudioPath = join(workDir, 'line.wav')
+      await execFile('ffmpeg', ['-y', '-i', audioPath, '-af', EDGE_TRIM_FILTER, trimmedAudioPath], { timeout: FFMPEG_TIMEOUT_MS })
+      audioPath = trimmedAudioPath
       const { stdout: durationOut } = await execFile('ffprobe', [
         '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', audioPath,
       ], { timeout: FFMPEG_TIMEOUT_MS })
       const audioDurationSeconds = parseFloat(durationOut.trim())
       if (!(audioDurationSeconds > 0)) throw new Error(`ffprobe returned an invalid duration: ${durationOut}`)
-      const targetSeconds = audioDurationSeconds + TRIM_PAD_SECONDS
+      const { stdout: videoDurationOut } = await execFile('ffprobe', [
+        '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', videoPath,
+      ], { timeout: FFMPEG_TIMEOUT_MS })
+      const targetSeconds = beatSeconds(audioDurationSeconds, parseFloat(videoDurationOut.trim()))
 
       // Same tpad-then-truncate trick assembleClips.ts already validated
       // live: tpad pads BY targetSeconds (not TO it), so the trailing -t

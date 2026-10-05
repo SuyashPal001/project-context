@@ -54,6 +54,16 @@ nice -n 10 ionice -c 3 pnpm --filter "@serverless-saas/web..." --filter "!@serve
 echo "→ Building web frontend into $DIST_NAME (old build keeps serving)..."
 WEB_DIST_NAME="$DIST_NAME" nice -n 10 ionice -c 3 pnpm --filter "@serverless-saas/web" exec next build
 
+# next build appends one include pair per timestamped distDir to
+# apps/web/tsconfig.json, and never removes them. The tracked
+# `.next*/types/**/*.ts` glob already covers every .next-<ts> dir, so those
+# lines are noise that would show up as a dirty tree after every deploy.
+# Strip them and restore the tracked "**/*.mts" line (no trailing comma).
+sed -i -E \
+  -e '/"\.next-[0-9]{8}-[0-9]{6}\/(dev\/)?types\/\*\*\/\*\.ts",?$/d' \
+  -e 's/^(\s*"\*\*\/\*\.mts"),$/\1/' \
+  apps/web/tsconfig.json
+
 # Standalone mirrors distDir name inside itself, so static goes under
 # $STANDALONE/$DIST_NAME/static — not under a hardcoded ".next/static".
 echo "→ Copying static + public into standalone tree..."

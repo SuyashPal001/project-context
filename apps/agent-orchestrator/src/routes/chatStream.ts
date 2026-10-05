@@ -25,6 +25,7 @@ import { latestIdToken, clearFreshIdToken } from '../freshIdToken.js'
 import { GENERATION_APPROVAL_METADATA, detectSkillPii } from '../mastra/tools/generationApproval.js'
 import { saveGenerationConfirmRequest, updateGenerationConfirmRequest, saveConversationTitle, fetchConversationAllowMode } from '../persistence.js'
 import { isClientHiddenTool } from '../toolVisibility.js'
+import { relayedDelegateMedia } from './nestedMedia.js'
 import { buildCancelNotice, backgroundDeclineReason, trackBackgroundDecline, waitForBackgroundDecline } from './cancelNotice.js'
 
 async function generateFollowUps(userMessage: string, assistantReply: string): Promise<string[]> {
@@ -607,6 +608,11 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
       if (part.type === 'tool-output') {
         const nested = part.payload?.output
         if (nested?.type === 'tool-result' && isGatedTool(nested.payload?.toolName)) generationActivity++
+        const relayed = relayedDelegateMedia(nested)
+        if (relayed) {
+          sendEvent('tool_call', { toolName: relayed.toolName, toolCallId: relayed.toolCallId, args: {}, conversationId })
+          sendEvent('tool_done', { ...relayed, conversationId })
+        }
       }
 
       switch (part.type) {

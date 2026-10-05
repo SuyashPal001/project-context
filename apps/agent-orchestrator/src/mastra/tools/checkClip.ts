@@ -1,3 +1,4 @@
+import { spokenSoFar } from './spokenScript.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
@@ -117,7 +118,7 @@ async function fetchBase64(fileId: string, idToken: string, signal: AbortSignal)
 }
 
 export function buildCheckQuestion(opts: { product: boolean; audio: boolean; noPerson: boolean; silent?: boolean; sound?: boolean }): string {
-  const productAsk = opts.product ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and brand name as Image P (product_same false if it is a different product, a different shape or colour, or the brand name is clearly misspelled or garbled; ignore small print, which video always blurs; true if it is not visible). ' : ''
+  const productAsk = opts.product ? 'Also check the product wherever it is visible in the clip frames: same shape, colour and brand name as Image P (product_same false if it is a different product, a different shape or colour, or the brand name is clearly misspelled, garbled or mirrored/written backwards; ignore small print, which video always blurs; true if it is not visible). ' : ''
   // The shipped sentence stays byte-identical for every existing caller
   // (presenter/line checks). The silence wording is an extra sentence, only
   // added when the shot is expected to be silent.
@@ -176,11 +177,14 @@ export const checkClip = createTool({
     refusalReason: z.string().optional(),
   }),
   execute: async (inputData, execContext) => {
-    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine, productFileId, soundReferenceClipFileId, expectNoSpeech, noPerson } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string; soundReferenceClipFileId?: string; expectNoSpeech?: boolean; noPerson?: boolean }
+    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine: givenLine, productFileId, soundReferenceClipFileId, expectNoSpeech, noPerson } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string; soundReferenceClipFileId?: string; expectNoSpeech?: boolean; noPerson?: boolean }
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined ?? ''
+    // A continued clip holds every line so far; check all of them, not just the new one.
+    const lines = givenLine ? spokenSoFar(conversationId, clipFileId) : undefined
+    const expectedLine = givenLine ? (lines?.join(' ') ?? givenLine) : undefined
     const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech, presenter: !noPerson })
     if (dropped.length) {
       return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }

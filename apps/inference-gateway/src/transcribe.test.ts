@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+vi.mock('google-auth-library', () => ({
+  GoogleAuth: class { async getClient() { return { getAccessToken: async () => ({ token: 'vertex-token' }) } } },
+}))
 import { transcribeAudio, UnsupportedTranscribeModelError, TranscribeBackendUnavailableError } from './transcribe.js'
 
 describe('transcribeAudio', () => {
   const origKey = process.env.GEMINI_API_KEY
-  beforeEach(() => { process.env.GEMINI_API_KEY = 'test-key' })
+  const origProject = process.env.VERTEX_PROJECT, origGcloud = process.env.GCLOUD_PROJECT
+  beforeEach(() => { process.env.GEMINI_API_KEY = 'test-key'; delete process.env.VERTEX_PROJECT; delete process.env.GCLOUD_PROJECT })
   afterEach(() => {
+    if (origProject === undefined) delete process.env.VERTEX_PROJECT
+    else process.env.VERTEX_PROJECT = origProject
+    if (origGcloud !== undefined) process.env.GCLOUD_PROJECT = origGcloud
     if (origKey === undefined) delete process.env.GEMINI_API_KEY
     else process.env.GEMINI_API_KEY = origKey
     vi.restoreAllMocks()
@@ -77,5 +84,19 @@ describe('transcribeAudio', () => {
     await expect(
       transcribeAudio({ audioBase64: Buffer.from('x').toString('base64'), mimeType: 'audio/aac', model: 'not-a-real-model' }),
     ).rejects.toThrow(UnsupportedTranscribeModelError)
+  })
+
+  it('calls Vertex with a service-account token when the gateway has a Vertex project', async () => {
+    process.env.VERTEX_PROJECT = 'proj-1'
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [{ content: { parts: [{ text: JSON.stringify({ text: 'hi', words: [{ word: 'hi', startSeconds: 0, endSeconds: 0.3 }] }) }] } }] }),
+    })
+    global.fetch = fetchMock as unknown as typeof fetch
+    const result = await transcribeAudio({ audioBase64: 'AAAA', mimeType: 'audio/aac' })
+    expect(result).toEqual({ text: 'hi', words: [{ word: 'hi', startSeconds: 0, endSeconds: 0.3 }] })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://aiplatform.googleapis.com/v1/projects/proj-1/locations/global/publishers/google/models/gemini-3.6-flash:generateContent')
+    expect((init as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer vertex-token')
   })
 })

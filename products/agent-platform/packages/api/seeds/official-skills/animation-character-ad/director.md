@@ -56,3 +56,31 @@ NEGATIVE: no 3D render, no photorealism, no glossy digital painting, no harsh co
 - Music: call generate_song for the bed, then mix_music_bed with videoFileId set to the CAPTIONED master (not the pre-caption one) and musicFileId set to the bed. This is the LAST call in the pipeline — never generate or mix the bed earlier.
 - If mix_music_bed returns refusalReason "MUSIC_BED_INAUDIBLE", tell Olmo the bed could not be mixed audibly and ask whether to retry generate_song for a different bed or deliver without one.
 - Auto mode (supersedes "One part per delegation" and "Clips before voice" when Olmo's brief says "auto: continue"): make every part or scene Olmo asked for in this delegation, checking each one, and finish the ad. Stop early only when a check fails or a tool refuses with SHOW_FIRST: then return what was made and the problem to Olmo.
+- The product only moves forward (applies to every beat still): once a beat opens or bites the product, later beats show it open or bitten, never sealed and new again, unless the board says a fresh one. Write its state into each beat's prompt. On 2026-10-05, beat 3 bit the bar and beat 4 showed it sealed again.
+- Same room in every beat: each beat's prompt names the room from beat 1 (wall colour, window, shelves, desk) as well as passing the previous still. On 2026-10-05 the walls went from pink in beat 1 to yellow in beat 2.
+- The character speaks in the video (supersedes "Beat 1 (hook) audio" above and the "lip-synced clip" in Assembly; the user chose this on 2026-10-05). The lipsync tool has no provider on the server, so never call it in this ad.
+  - Beat 1, and any other beat where Olmo gives the character a line, is rendered speaking: generate_video mode "animate_frame" with that line in double quotes, approvedDialogue set to the identical line, and a one-sentence character voice from Olmo (e.g. "a tired, warm young man's voice, late 20s").
+  - Add "Expressive animated lip-sync: his/her mouth clearly shapes every word, like an animated film character talking, with matching eyebrows and head movement." End with "then he/she stays quiet, still in the moment, for any remaining time."
+  - durationSeconds is the line's word count divided by 2.7, rounded up.
+  - That beat's still must show the face clear and turned to the camera, with no hand, product or object near the mouth or chin. Tested: a hand on the chin gave a 2/10 lip match, a clear face gave 7/10.
+  - check_clip that clip with expectedLine. Its audio is the character's own voice: do not narrate or mux that beat.
+  - Beats without a character line get the narrator's voice-over with mux_beat_audio as before, and their clip prompts say the mouth stays closed except for natural expressions.
+  - Assembly uses the speaking clip as it is for those beats.
+- Product in hand, the same hand in every beat (the same fix as the talking-head ad): pick the hand once (e.g. "his right hand") and name it in every beat still's prompt and every clip's prompt where the product is held. Say the character keeps holding the one product in that same hand the whole time, with no second product and no switching hands. On 2026-10-05 the bar moved from his right hand in beat 3 to his left in beat 4, and beat 4's label came out mirrored.
+- Check every beat clip (applies to all 4 beats, not only a speaking one): right after the clips are rendered, call check_clip on each, with:
+  - clipFileId set to that clip;
+  - masterStillFileId set to that beat's approved still;
+  - productFileId set to the product photo when the product is in the beat;
+  - expectedLine only for a speaking beat.
+  It catches a different-looking character, a product that changed, swapped hands or doubled, and mirrored label text. A failed check is shown to the user with its reason (no automatic redo), the same as in the other ad flows.
+- Two stills, four smooth scenes (supersedes "4 beat stills", the 4-still board and the Assembly order above; the user picked this cheaper, smoother build on 2026-10-05):
+  - Stills: make stills only for beat 1 (the hook) and beat 3 (the turn, where the product arrives), with the same rules as before (cast sheet plus the previous still as references, the same room, the product's hand named). The board shows the cast sheet, these two stills, and one plain line each for beats 2 and 4.
+  - Clips, one at a time, in order:
+    - beat 1 from its still;
+    - beat 2 from beat 1's clip's last frame (extract_frame at "last"), continuing the same moment;
+    - beat 3 from its still;
+    - beat 4 from beat 3's clip's last frame, continuing the same moment.
+  - The prompts for beats 2 and 4 start with "Continuing from this exact frame:" and keep the camera where it is.
+  - Each clip's durationSeconds is its line's word count divided by 2.7, plus 1, rounded up (3-10), so the movement finishes after the line.
+  - Check every clip with check_clip as before. For beats 2 and 4, masterStillFileId is the still they continue from.
+  - Assembly: assemble_clips ONCE with preserveAudio true and transitions [{"type":"cut"}, {"type":"xfade","name":"fade","overlapSeconds":0.5}, {"type":"cut"}]. The cuts are invisible because each of those clips starts on the previous clip's last frame. The one dissolve is where the product scene begins.

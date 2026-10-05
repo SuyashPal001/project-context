@@ -33,17 +33,27 @@ export interface CaptionPhrase {
   endSeconds: number
 }
 
+// A phrase ends at a sentence end and stays short enough for one line on a
+// vertical video. Fixed groups of 4 ran across sentences ("quit. Deadlines
+// pile up,") and "strawberry protein wafer. 10" ran off the screen (2026-10-05).
+const MAX_PHRASE_CHARS = 20
+
 export function groupWordsIntoPhrases(words: TranscribedWord[], groupSize: number): CaptionPhrase[] {
   if (groupSize <= 0) throw new Error(`groupWordsIntoPhrases: groupSize must be positive, got ${groupSize}`)
   const phrases: CaptionPhrase[] = []
-  for (let i = 0; i < words.length; i += groupSize) {
-    const chunk = words.slice(i, i + groupSize)
-    phrases.push({
-      text: chunk.map((w) => w.word).join(' '),
-      startSeconds: chunk[0].startSeconds,
-      endSeconds: chunk[chunk.length - 1].endSeconds,
-    })
+  let chunk: TranscribedWord[] = []
+  const flush = () => {
+    if (!chunk.length) return
+    phrases.push({ text: chunk.map((w) => w.word).join(' '), startSeconds: chunk[0].startSeconds, endSeconds: chunk[chunk.length - 1].endSeconds })
+    chunk = []
   }
+  for (const w of words) {
+    const length = chunk.map((c) => c.word).join(' ').length
+    if (chunk.length && (chunk.length >= groupSize || length + 1 + w.word.length > MAX_PHRASE_CHARS)) flush()
+    chunk.push(w)
+    if (/[.!?]["')\]]*$/.test(w.word)) flush()
+  }
+  flush()
   return phrases
 }
 

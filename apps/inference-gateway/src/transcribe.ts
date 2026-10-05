@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'http'
+import { GoogleAuth } from 'google-auth-library'
 import { requestsTotal, latency } from './metrics.js'
 
 // gemini-2.5-flash was retired for new users ("no longer available", 404),
@@ -65,6 +66,29 @@ function isValidTranscribePayload(value: unknown): value is { text: string; word
   })
 }
 
+// Vertex first: the 3.x Flash models are served there (the rest of the
+// gateway reaches them through Vertex), while the developer API key path
+// failed every transcription on the VM (2026-10-05, captions skipped twice;
+// the same request on Vertex returned word timings in 16s). The API key is
+// kept as the fallback for a gateway without a Vertex project.
+const _auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] })
+
+async function transcribeEndpoint(model: string): Promise<{ url: string; headers: Record<string, string> }> {
+  const project = process.env.VERTEX_PROJECT ?? process.env.GCLOUD_PROJECT ?? ''
+  if (project) {
+    const token = (await (await _auth.getClient()).getAccessToken()).token ?? ''
+    return {
+      url: `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/${model}:generateContent`,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    }
+  }
+  const key = process.env.GEMINI_API_KEY ?? ''
+  if (!key) {
+    throw new TranscribeBackendUnavailableError('Gemini transcription unavailable: no VERTEX_PROJECT or GEMINI_API_KEY configured')
+  }
+  return { url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, headers: { 'Content-Type': 'application/json' } }
+}
+
 export async function transcribeAudio(req: TranscribeRequest): Promise<TranscribeResult> {
   const model = req.model ?? DEFAULT_TRANSCRIBE_MODEL
   if (!TRANSCRIBE_MODEL_ALLOWLIST.has(model)) {
@@ -78,16 +102,13 @@ export async function transcribeAudio(req: TranscribeRequest): Promise<Transcrib
     return { refused: true, reason: 'Source audio exceeds transcription size limit' }
   }
 
-  const key = process.env.GEMINI_API_KEY ?? ''
-  if (!key) {
-    throw new TranscribeBackendUnavailableError('Gemini transcription unavailable: no GEMINI_API_KEY configured')
-  }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`
+  const { url, headers } = await transcribeEndpoint(model)
   const geminiRes = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       contents: [{
+        role: 'user',
         parts: [
           { inline_data: { mime_type: req.mimeType, data: req.audioBase64 } },
           { text: 'Transcribe the spoken audio in this file exactly as spoken, word for word. Return strict JSON matching the response schema: text is the full transcript, words is every spoken word in order with its start and end time in seconds as decimals. Do not include any commentary outside the JSON.' },
