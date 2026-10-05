@@ -62,9 +62,13 @@ export const tvcPlanSchema = z.object({
       cutTimes: z.array(z.number().positive()).optional(),
     }).optional().describe('When recreating a reference ad: its product type and its real cut times (detect_cuts)'),
     product: productTypeSchema.optional().describe('This product\'s type; must match the reference\'s when one is given'),
+    actorLook: z.string().optional().describe('The lead\'s look, e.g. "long dark wavy hair, magenta shirt"; extras never share it'),
   }),
   look: z.string().min(1),
-  locations: z.array(z.string().min(1)),
+  locations: z.array(z.union([z.string().min(1), z.object({
+    name: z.string().min(1),
+    extras: z.string().optional().describe('Who is in the background, e.g. "students walking past and chatting"; required for public places'),
+  })])),
   shots: z.array(shotSchema).min(2).describe(`At most ${MAX_SHOTS} shots`),
   voiceover: z.array(z.object({ text: z.string().min(1), startSeconds: z.number().min(0) })).describe('Announcer blocks; may be empty (a mood ad). Blocks never overlap, never play over a line shot, and end 2s before the end and by the packshot start'),
   packshot: z.object({
@@ -80,6 +84,44 @@ export const tvcPlanSchema = z.object({
 
 export type TvcPlan = z.infer<typeof tvcPlanSchema>
 export type TvcShot = TvcPlan['shots'][number]
+
+type Loc = TvcPlan['locations'][number]
+export const locationName = (loc: Loc): string => (typeof loc === 'string' ? loc : loc.name)
+export const locationExtras = (loc: Loc): string | undefined => (typeof loc === 'string' ? undefined : loc.extras)
+const PUBLIC_PLACE_RE = /\b(school|hallway|street|office|market|cafe|café|station|mall|park|restaurant|gym|campus|metro|bus)\b/i
+
+export function varietySentence(actorLook?: string): string {
+  return `The background people look clearly different from the lead: mixed hairstyles (short, curly, ponytails, buns), mixed clothing colours and builds${actorLook ? `, and none of them has the lead's look (${actorLook})` : ''}.`
+}
+
+// P4: camera grammar by shot type, composed in code rather than left to prose.
+export const CAMERA_GRAMMAR: Record<TvcShot['type'], string> = {
+  hook: 'An arresting first frame on a real lens, the brand visible.',
+  reaction: 'Close on the face, shallow depth of field, a real moment of feeling.',
+  hero: 'A composed shot on a real lens, the product held clearly, natural light.',
+  lifestyle: 'A real place on a real lens, natural movement, depth in the background.',
+  reach: 'A hand moving toward the product, cut before contact, shallow depth of field.',
+  product_macro: 'Real lens, shallow depth of field, a slow rack focus, real surfaces and reflections; never a flat graphic background.',
+  mechanism: 'A stylised but physical picture of how it works, with real materials.',
+  superpower: "The product's feeling as a physical, filmable effect in a real place, no people.",
+  packshot: 'The product as hero on a clean real set, with room for the end card, no text.',
+}
+
+export function shotPromptFor(plan: TvcPlan, n: number): string {
+  const shot = plan.shots.find((s) => s.n === n)
+  if (!shot) throw new Error('NO_SUCH_SHOT')
+  const loc = shot.location !== undefined ? plan.locations[shot.location] : undefined
+  const parts = [`${shot.action.replace(/\.+$/, '')}.`]
+  if (TURN_RE.test(shot.action)) parts.push('Every movement goes one way only and completes; nothing reverses, rewinds or plays backwards.')
+  if (loc) parts.push(`Place: ${locationName(loc)}.`)
+  const extras = loc ? locationExtras(loc) : undefined
+  if (extras) {
+    parts.push(`Background: ${extras}.`)
+    if (plan.brief.actorAvatarId) parts.push(varietySentence(plan.brief.actorLook))
+  }
+  parts.push(CAMERA_GRAMMAR[shot.type], `Look: ${plan.look}.`, 'No CG effects, no added text.')
+  return parts.join(' ')
+}
 
 export const countWords = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length
 const r1 = (x: number) => Math.round(x * 10) / 10
@@ -235,6 +277,9 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
     })
     if (brief.category === 'food' || brief.category === 'beverage') warnings.push('the veg mark is required for food and drink in India but cannot be added yet; tell the user')
   }
+  plan.locations.forEach((loc) => {
+    if (PUBLIC_PLACE_RE.test(locationName(loc)) && !locationExtras(loc)) warnings.push(`"${locationName(loc)}" is a public place; add extras (who is in the background) so it does not look empty`)
+  })
   plan.legal.forEach((l) => {
     const hold = legalHoldSeconds(l.text)
     if (l.startSeconds + hold > length + EPS) warnings.push(`the legal line "${l.text}" needs ${hold}s on screen but only has ${r1(length - l.startSeconds)}s`)
@@ -271,6 +316,7 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
         startFromPreviousLastFrame: s.continuesFrom !== undefined,
         trimStartSeconds: s.continuesFrom !== undefined ? 0 : 0.4,
         trimToEnd: plan.shots.some((o) => o.continuesFrom === s.n),
+        prompt: shotPromptFor(plan, s.n),
       })),
     }
   }

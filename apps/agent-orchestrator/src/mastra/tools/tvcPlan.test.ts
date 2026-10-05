@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { countWords, legalHoldSeconds, recordOnPlan, shotStarts, sliceTvcPlan, tvcCreditSteps, tvcPlanSchema, validateTvcPlan, type TvcPlan } from './tvcPlan.js'
 import { generateSecondsFor, minShotSeconds, HARD_ACTION_RE } from './tvcPlan.js'
+import { shotPromptFor, varietySentence, locationName, CAMERA_GRAMMAR } from './tvcPlan.js'
 
 // A valid 15s ambassador spot: 7 shots summing to 15s, packshot last.
 function goodPlan(): TvcPlan {
@@ -275,5 +276,46 @@ describe('quality rules (P1, P2, P7–P10)', () => {
   })
   it('a plan saved before these fields still validates (Review Focus 3)', () => {
     expect(validateTvcPlan(goodPlan()).errors).toEqual([])
+  })
+})
+
+describe('places, extras and the shot prompt (P3, P4)', () => {
+  function hallwayPlan(): TvcPlan {
+    const p = goodPlan()
+    p.locations = [{ name: 'busy school hallway', extras: 'students walking past and chatting' }, 'beach at golden hour']
+    p.brief.actorLook = 'long dark wavy hair, magenta patterned shirt'
+    return p
+  }
+  it('composes action, place, extras, variety excluding the lead\'s look, camera grammar and look', () => {
+    const prompt = shotPromptFor(hallwayPlan(), 1)
+    expect(prompt).toMatch(/^she turns to camera holding the lipstick\./)
+    expect(prompt).toMatch(/Place: busy school hallway\./)
+    expect(prompt).toMatch(/Background: students walking past and chatting\./)
+    expect(prompt).toMatch(/none of them has the lead's look \(long dark wavy hair, magenta patterned shirt\)/)
+    expect(prompt).toContain(CAMERA_GRAMMAR.hook)
+    expect(prompt).toMatch(/No CG effects, no added text\.$/)
+  })
+  it('a turn shot tells the model the movement never reverses', () => {
+    const p = hallwayPlan()
+    p.shots[5].action = 'she dances and spins all the way around in one direction, 360°'
+    expect(shotPromptFor(p, 6)).toMatch(/one way only and completes; nothing reverses/)
+    expect(shotPromptFor(p, 2)).not.toMatch(/nothing reverses/)
+  })
+  it('product macro shots never get a flat graphic background', () => {
+    expect(shotPromptFor(hallwayPlan(), 3)).toMatch(/never a flat graphic background/)
+  })
+  it('warns when a public place has no extras', () => {
+    const p = goodPlan()
+    p.locations = ['school hallway', 'beach at golden hour']
+    expect(validateTvcPlan(p).warnings.join(' | ')).toMatch(/"school hallway" is a public place; add extras/)
+  })
+  it('plain string locations still work (Review Focus 3)', () => {
+    expect(locationName('beach')).toBe('beach')
+    expect(shotPromptFor(goodPlan(), 2)).toMatch(/Place: beach at golden hour\./)
+    expect(varietySentence()).not.toMatch(/lead's look \(/)
+  })
+  it('the shots slice carries the prompt', () => {
+    const slice = sliceTvcPlan(hallwayPlan(), 'shots 1-1') as { shots: Array<{ prompt: string }> }
+    expect(slice.shots[0].prompt).toMatch(/Background: students/)
   })
 })
