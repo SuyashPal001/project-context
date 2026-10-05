@@ -35,9 +35,52 @@ describe('helpers', () => {
   })
 })
 
+// A 20s plan with n shots: n-1 alternating close-up/wide shots, packshot last, durations summing to 20.
+function plan20(n: number): TvcPlan {
+  const each = n <= 8 ? 2.5 : 2
+  const shots = Array.from({ length: n - 1 }, (_, i) => ({
+    n: i + 1, type: i === 0 ? 'hook' : 'lifestyle', size: i % 2 === 0 ? 'close_up' : 'wide', action: 'a moment',
+    durationSeconds: each, brandVisible: i === 0, productVisible: i === 0, audio: 'voiceover',
+  }))
+  const used = each * (n - 1)
+  return tvcPlanSchema.parse({
+    brief: { message: 'Cold in one sip', category: 'beverage', tier: 'mass', objective: 'brand', market: 'generic', lengthSeconds: 20, aspectRatio: '16:9', productPhotoFileId: 'prod' },
+    look: 'bright', locations: ['beach'],
+    shots: [...shots, { n, type: 'packshot', size: (n - 1) % 2 === 0 ? 'close_up' : 'medium', action: 'the can', durationSeconds: Math.max(2, 20 - used), brandVisible: true, productVisible: true, audio: 'silent' }],
+    voiceover: [{ text: 'Cold in one sip.', startSeconds: 3 }], packshot: { kind: 'product' },
+  })
+}
+
 describe('validateTvcPlan — a good plan', () => {
   it('passes with no errors', () => {
     expect(validateTvcPlan(goodPlan()).errors).toEqual([])
+  })
+  it('a mood ad with no voiceover blocks passes', () => {
+    const p = goodPlan()
+    p.voiceover = []
+    p.brief.actorAvatarId = undefined
+    p.shots[0] = { ...p.shots[0], audio: 'silent', line: undefined }
+    expect(validateTvcPlan(p).errors).toEqual([])
+  })
+  it('a 6s plan passes', () => {
+    const p = tvcPlanSchema.parse({
+      brief: { message: 'Ice cold refreshment', category: 'beverage', tier: 'mass', objective: 'brand', market: 'generic', lengthSeconds: 6, aspectRatio: '9:16', productPhotoFileId: 'prod' },
+      look: 'bright, deep focus', locations: ['school corridor'],
+      shots: [
+        { n: 1, type: 'product_macro', size: 'extreme_close_up', action: 'bottle drops into the slot', durationSeconds: 2, brandVisible: true, productVisible: true, audio: 'voiceover' },
+        { n: 2, type: 'superpower', size: 'wide', action: 'icy wind sweeps the corridor', durationSeconds: 2, brandVisible: false, productVisible: false, audio: 'silent' },
+        { n: 3, type: 'packshot', size: 'close_up', action: 'bottle on the counter', durationSeconds: 2, brandVisible: true, productVisible: true, audio: 'silent' },
+      ],
+      voiceover: [{ text: 'Ice cold, every time.', startSeconds: 0.3 }], packshot: { kind: 'product' },
+    })
+    expect(validateTvcPlan(p).errors).toEqual([])
+  })
+  it('lengths are 6, 15 or 20 seconds; 30 is rejected', () => {
+    const p = goodPlan() as unknown as { brief: { lengthSeconds: number } }
+    p.brief.lengthSeconds = 30
+    expect(tvcPlanSchema.safeParse(p).success).toBe(false)
+    p.brief.lengthSeconds = 20
+    expect(tvcPlanSchema.safeParse(p).success).toBe(true)
   })
 })
 
@@ -88,6 +131,18 @@ describe('validateTvcPlan — blocking checks', () => {
   it('12: on-screen text is at most 3 words, except the packshot', () => {
     expect(errorsFor((p) => { p.shots[2].text = 'with SPF thirty now' })).toMatch(/shot 3 .*3 words/)
   })
+  it('at most 8 shots (assemble_clips joins at most 8 clips)', () => {
+    expect(validateTvcPlan(plan20(8)).errors).toEqual([])
+    expect(validateTvcPlan(plan20(9)).errors.join(' | ')).toMatch(/9 shots; at most 8/)
+  })
+  it('voiceover blocks never overlap each other', () => {
+    expect(errorsFor((p) => { p.voiceover = [{ text: 'New Hya lip duo.', startSeconds: 2 }, { text: 'With SPF thirty.', startSeconds: 2.5 }] })).toMatch(/voiceover blocks 1 and 2 overlap/)
+    expect(errorsFor((p) => { p.voiceover = [{ text: 'New Hya lip duo.', startSeconds: 2 }, { text: 'With SPF thirty.', startSeconds: 4 }] })).not.toMatch(/overlap/)
+  })
+  it('the voiceover ends by the packshot start', () => {
+    // 15s: packshot starts at 12.0; ending at 12.4 is inside the 2s tail rule but over the packshot.
+    expect(errorsFor((p) => { p.voiceover[0].startSeconds = 8.7 })).toMatch(/end by the packshot's start \(12s\)/)
+  })
   it('shot numbers must run 1..N', () => {
     expect(errorsFor((p) => { p.shots[3].n = 7 })).toMatch(/numbered 1 to 7/)
   })
@@ -111,6 +166,10 @@ describe('sliceTvcPlan', () => {
   it('returns only the shots asked for, with their start times', () => {
     const slice = sliceTvcPlan(goodPlan(), 'shots 2-3') as { shots: Array<{ n: number; startSeconds: number }> }
     expect(slice.shots.map((s) => [s.n, s.startSeconds])).toEqual([[2, 2], [3, 4]])
+  })
+  it('returns the finish slice with the voice and any saved narration and song', () => {
+    const p = goodPlan(); p.brief.voiceId = 'voice-7'; p.narrationFileIds = ['n1']; p.songFileId = 'song-1'
+    expect(sliceTvcPlan(p, 'finish')).toMatchObject({ brief: { voiceId: 'voice-7' }, narrationFileIds: ['n1'], songFileId: 'song-1' })
   })
   it('returns the finish slice and the brief slice', () => {
     expect(sliceTvcPlan(goodPlan(), 'finish')).toHaveProperty('voiceover')

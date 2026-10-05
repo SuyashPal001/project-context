@@ -3,48 +3,55 @@ import { z } from 'zod'
 // The TVC ad's plan and its craft rules, checked in code so a long skill text
 // is not the only thing holding them (spec 2026-10-05-tvc-ad-design.md §4-5).
 export const WORDS_PER_SECOND = 2.7
-export const WORD_CAPS: Record<number, number> = { 6: 8, 15: 22, 20: 30, 30: 45 }
+export const WORD_CAPS: Record<number, number> = { 6: 8, 15: 22, 20: 30 }
+// assemble_clips joins at most 8 clips, and every shot is one clip.
+export const MAX_SHOTS = 8
 const SHOT_MIN = 1.2, SHOT_MAX = 2.5, PACK_MIN = 2, PACK_MAX = 4
 const BRAND_BY = 2.0, PRODUCT_BY = 3.0, VO_TAIL = 2.0, MAX_LINES = 2, MAX_LOCATIONS = 2
 const EPS = 0.05
 
 const shotSchema = z.object({
-  n: z.number().int().min(1),
-  type: z.enum(['hook', 'reaction', 'hero', 'lifestyle', 'reach', 'product_macro', 'mechanism', 'superpower', 'packshot']),
-  size: z.enum(['wide', 'medium', 'close_up', 'extreme_close_up']),
+  n: z.number().int().min(1).describe('Shot number, 1 to N in order'),
+  type: z.enum(['hook', 'reaction', 'hero', 'lifestyle', 'reach', 'product_macro', 'mechanism', 'superpower', 'packshot']).describe('packshot is always last and only once'),
+  size: z.enum(['wide', 'medium', 'close_up', 'extreme_close_up']).describe('Never the same size as the shot before'),
   action: z.string().min(1),
-  location: z.number().int().min(0).optional(),
-  durationSeconds: z.number().positive(),
-  brandVisible: z.boolean(),
-  productVisible: z.boolean(),
-  audio: z.enum(['silent', 'line', 'voiceover']),
-  line: z.string().optional(),
-  text: z.string().optional(),
+  location: z.number().int().min(0).optional().describe('Index into locations'),
+  durationSeconds: z.number().positive().describe('1.2–2.5s; the packshot 2–4s; all shots sum exactly to lengthSeconds'),
+  brandVisible: z.boolean().describe('A brandVisible shot must start before 2.0s'),
+  productVisible: z.boolean().describe('In ads of 15s or less, a productVisible shot must start by 3.0s'),
+  audio: z.enum(['silent', 'line', 'voiceover']).describe('line = an on-camera line (medium or close-up, never under voiceover)'),
+  line: z.string().optional().describe('Line shots only: at most durationSeconds × 2.7 words'),
+  text: z.string().optional().describe('On-screen text, 3 words or fewer'),
   stillFileId: z.string().optional(),
   clipFileId: z.string().optional(),
 })
 
 export const tvcPlanSchema = z.object({
   brief: z.object({
-    message: z.string().min(1),
+    message: z.string().min(1).describe('The one message: one sentence of 12 words or fewer'),
     category: z.enum(['beauty', 'personal_care', 'food', 'beverage', 'jewellery', 'fashion', 'home', 'tech', 'other']),
     tier: z.enum(['mass', 'premium', 'luxury']),
     objective: z.enum(['launch', 'brand', 'feature', 'seasonal']),
     market: z.enum(['india', 'generic']),
-    lengthSeconds: z.union([z.literal(6), z.literal(15), z.literal(20), z.literal(30)]),
+    lengthSeconds: z.union([z.literal(6), z.literal(15), z.literal(20)]).describe('6, 15 or 20 seconds; word cap across voiceover and lines: 6s 8, 15s 22, 20s 30'),
     aspectRatio: z.enum(['16:9', '9:16']),
     productPhotoFileId: z.string().min(1),
     actorAvatarId: z.string().optional(),
+    voiceId: z.string().optional().describe('The announcer voice for the voiceover, as Olmo passed it ("Voice ID: <id>")'),
   }),
   look: z.string().min(1),
   locations: z.array(z.string().min(1)),
-  shots: z.array(shotSchema).min(2),
-  voiceover: z.array(z.object({ text: z.string().min(1), startSeconds: z.number().min(0) })),
+  shots: z.array(shotSchema).min(2).describe(`At most ${MAX_SHOTS} shots`),
+  voiceover: z.array(z.object({ text: z.string().min(1), startSeconds: z.number().min(0) })).describe('Announcer blocks; may be empty (a mood ad). Blocks never overlap, never play over a line shot, and end 2s before the end and by the packshot start'),
   packshot: z.object({
     kind: z.enum(['product', 'product_range', 'actor_product_tagline', 'logo_over_scene']),
     tagline: z.string().optional(),
   }),
   legal: z.array(z.object({ text: z.string().min(1), startSeconds: z.number().min(0) })).default([]),
+  // Saved by plan_tvc record during the finish, so a second finish reuses
+  // them instead of paying for the narration and the song again.
+  narrationFileIds: z.array(z.string()).optional().describe('Set by plan_tvc record: one narration per voiceover block, in order'),
+  songFileId: z.string().optional().describe('Set by plan_tvc record: the music bed'),
 })
 
 export type TvcPlan = z.infer<typeof tvcPlanSchema>
@@ -80,6 +87,9 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   if (/[.!?](\s|$)/.test(inner)) errors.push('the message must be one sentence')
   if (countWords(brief.message) > 12) errors.push(`the message is ${countWords(brief.message)} words; keep it to 12 words or fewer`)
 
+  // assemble_clips joins at most 8 clips.
+  if (shots.length > MAX_SHOTS) errors.push(`there are ${shots.length} shots; at most ${MAX_SHOTS}`)
+
   // 2. Durations.
   const total = r1(shots.reduce((sum, s) => sum + s.durationSeconds, 0))
   if (Math.abs(total - length) > EPS) errors.push(`shot durations add up to ${total}s; they must add up to ${length}s`)
@@ -105,6 +115,14 @@ export function validateTvcPlan(input: TvcPlan): { errors: string[]; warnings: s
   const voEnds = plan.voiceover.map((v) => r1(v.startSeconds + countWords(v.text) / WORDS_PER_SECOND))
   const lastVo = Math.max(0, ...voEnds)
   if (lastVo > length - VO_TAIL + EPS) errors.push(`the voiceover ends at ${lastVo}s; it must end by ${length - VO_TAIL}s`)
+  // The packshot's moment belongs to the end card and its tagline (spec §1).
+  const packIdx = shots.findIndex((s) => s.type === 'packshot')
+  if (packIdx >= 0 && lastVo > starts[packIdx] + EPS) errors.push(`the voiceover ends at ${lastVo}s; it must end by the packshot's start (${starts[packIdx]}s)`)
+  // Blocks never talk over each other.
+  const byStart = plan.voiceover.map((v, i) => ({ i, start: v.startSeconds, end: voEnds[i] })).sort((a, b) => a.start - b.start)
+  for (let k = 1; k < byStart.length; k++) {
+    if (byStart[k].start < byStart[k - 1].end - EPS) errors.push(`voiceover blocks ${byStart[k - 1].i + 1} and ${byStart[k].i + 1} overlap; start block ${byStart[k].i + 1} at ${byStart[k - 1].end}s or later`)
+  }
 
   // 7. Lines.
   if (lineShots.length > MAX_LINES) errors.push(`there are ${lineShots.length} on-camera lines; at most ${MAX_LINES}`)
@@ -173,9 +191,10 @@ export function sliceTvcPlan(plan: TvcPlan, slice: string): unknown {
   if (slice === 'brief') return { brief: plan.brief, look: plan.look, locations: plan.locations, packshot: plan.packshot }
   if (slice === 'finish') {
     return {
-      brief: { lengthSeconds: plan.brief.lengthSeconds, aspectRatio: plan.brief.aspectRatio, productPhotoFileId: plan.brief.productPhotoFileId, market: plan.brief.market, tier: plan.brief.tier, category: plan.brief.category },
+      brief: { lengthSeconds: plan.brief.lengthSeconds, aspectRatio: plan.brief.aspectRatio, productPhotoFileId: plan.brief.productPhotoFileId, market: plan.brief.market, tier: plan.brief.tier, category: plan.brief.category, voiceId: plan.brief.voiceId },
       shots: plan.shots.map((s) => ({ n: s.n, type: s.type, startSeconds: starts[s.n - 1], durationSeconds: s.durationSeconds, text: s.text, clipFileId: s.clipFileId })),
       voiceover: plan.voiceover, packshot: plan.packshot, legal: plan.legal,
+      narrationFileIds: plan.narrationFileIds, songFileId: plan.songFileId,
     }
   }
   const m = /^shots (\d+)-(\d+)$/.exec(slice.trim())
