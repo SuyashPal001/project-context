@@ -1,3 +1,4 @@
+import { endCreatorFlow } from './imageEngine.js'
 import { randomUUID } from 'node:crypto'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
@@ -31,6 +32,8 @@ export const saveAsAvatar = createTool({
     referenceSheet: z.boolean().optional(),
   }),
   execute: async (inputData, execContext) => {
+    // The avatar is made: ad stills made from it next go back to Gemini.
+    endCreatorFlow(execContext?.requestContext?.get('conversationId') as string | undefined)
     const { portraitFileId, referenceSheetFileId, terseTag, styleLock, category } = inputData as {
       portraitFileId: string
       referenceSheetFileId: string

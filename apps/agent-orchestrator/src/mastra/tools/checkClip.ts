@@ -1,4 +1,5 @@
 import { spokenSoFar } from './spokenScript.js'
+import { mispronouncedWords } from './pronunciation.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
@@ -194,6 +195,7 @@ export const checkClip = createTool({
     productMatches: z.boolean().optional(),
     glitch: z.boolean().optional(),
     soundMatches: z.boolean().optional(),
+    mispronounced: z.array(z.string()).optional(),
     heard: z.string().optional(),
     reason: z.string().optional(),
     refused: z.boolean().optional(),
@@ -321,13 +323,20 @@ export const checkClip = createTool({
           return { refused: true, refusalReason: `CHECK_UNAVAILABLE: ${msg} — this clip is unchecked; do not use it as checked` }
         }
       }
-      const passed = judged.passed && (narrowResult ? narrowResult.passed : true)
-      const reason = !judged.passed ? judged.reason : narrowResult && !narrowResult.passed ? narrowResult.reasons.join(' ') : judged.reason
+      // Only a clip that said the right line is checked word by word for how it was said.
+      const misspoken = expectedLine && audio && judged.lineMatches ? await mispronouncedWords(audio, expectedLine, controller.signal) : null
+      const saidClearly = !misspoken?.length
+      const passed = judged.passed && saidClearly && (narrowResult ? narrowResult.passed : true)
+      const reason = !judged.passed ? judged.reason
+        : !saidClearly ? `A word is said wrongly: ${misspoken!.map(m => `"${m.meant}" sounds like "${m.heard}"`).join(', ')}`
+        : narrowResult && !narrowResult.passed ? narrowResult.reasons.join(' ') : judged.reason
       if (!passed) {
         markCheckFailed(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
       }
       return {
-        passed, samePerson: judged.samePerson, lineMatches: judged.lineMatches,
+        passed,
+        ...(misspoken?.length ? { mispronounced: misspoken.map(m => `"${m.meant}" sounds like "${m.heard}"`) } : {}),
+        samePerson: judged.samePerson, lineMatches: judged.lineMatches,
         productMatches: judged.productMatches, glitch: verdict.glitch, soundMatches: judged.soundMatches,
         heard: verdict.heard, reason,
         ...(narrowResult ? {

@@ -3,7 +3,7 @@ import { GoogleAuth } from 'google-auth-library'
 import { vertexImageBreaker, geminiImageBreaker } from './router.js'
 import { requestsTotal, latency } from './metrics.js'
 
-const IMAGE_MODEL_ALLOWLIST = new Set(['gemini-3-pro-image-preview'])
+const IMAGE_MODEL_ALLOWLIST = new Set(['gemini-3-pro-image-preview', 'gpt-image-2'])
 
 // Same fallback order index.ts:42 uses for embeddings — VERTEX_PROJECT first,
 // GCLOUD_PROJECT second. images.ts previously used VERTEX_PROJECT only, which
@@ -49,6 +49,8 @@ export interface ImageGenerationRequest {
   // Optional output resolution. Anything outside IMAGE_SIZES is ignored (model default, 1K).
   // 4K is left out on purpose: it costs more per image than 1K/2K, which bill the same.
   imageSize?: string
+  // GPT Image only: 'medium' or 'high' (default high). Ignored for Gemini.
+  quality?: string
 }
 
 export const IMAGE_ASPECT_RATIOS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9'])
@@ -120,6 +122,69 @@ async function callGeminiApiKeyImageModel(req: ImageGenerationRequest): Promise<
   return classifyGeminiImageResponse(await res.json())
 }
 
+// GPT Image 2, straight from OpenAI. Used for the avatar and character
+// creators, where it beat Gemini on the look (2026-10). Any size works when
+// both sides divide by 16 and the shape is between 1:3 and 3:1, so 9:16 is
+// made directly (no padding). 2K is the same shape at 4/3 the pixels.
+const GPT_IMAGE_SIZES: Record<string, [number, number]> = {
+  '1:1': [1024, 1024], '3:4': [1152, 1536], '4:3': [1536, 1152], '9:16': [864, 1536], '16:9': [1536, 864],
+}
+export function gptImageSize(aspectRatio?: string, imageSize?: string): string {
+  const [w, h] = GPT_IMAGE_SIZES[aspectRatio ?? ''] ?? GPT_IMAGE_SIZES['1:1']
+  const k = imageSize === '2K' ? 4 / 3 : 1
+  const r16 = (n: number) => Math.round(n * k / 16) * 16
+  return `${r16(w)}x${r16(h)}`
+}
+
+async function callOpenAIImageModel(req: ImageGenerationRequest): Promise<ImageGenerationResult> {
+  const key = process.env.OPENAI_API_KEY ?? ''
+  if (!key) throw new Error('GPT Image unavailable: no OPENAI_API_KEY configured')
+  const size = gptImageSize(req.aspectRatio, req.imageSize)
+  const quality = req.quality === 'medium' ? 'medium' : 'high'
+  const refs = [
+    ...(req.sourceImageBase64 && req.sourceMimeType ? [{ base64: req.sourceImageBase64, mimeType: req.sourceMimeType }] : []),
+    ...(req.sourceImages ?? []),
+  ]
+  let res: Response
+  if (refs.length) {
+    // References go to the edits endpoint as image[] files; it composes a new
+    // image from all of them and the prompt.
+    const form = new FormData()
+    form.append('model', req.model)
+    form.append('prompt', req.prompt)
+    form.append('size', size)
+    form.append('quality', quality)
+    refs.forEach((r, i) => {
+      const ext = (r.mimeType.split('/')[1] ?? 'png').replace(/[^a-z0-9]/gi, '') || 'png'
+      form.append('image[]', new Blob([Buffer.from(r.base64, 'base64')], { type: r.mimeType }), `ref${i}.${ext}`)
+    })
+    res = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(240_000),
+    })
+  } else {
+    res = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: req.model, prompt: req.prompt, size, quality, n: 1 }),
+      signal: AbortSignal.timeout(240_000),
+    })
+  }
+  return classifyOpenAIImageResponse(res.status, await res.json().catch(() => ({})))
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function classifyOpenAIImageResponse(status: number, body: any): ImageGenerationResult {
+  if (status === 400 && /moderation|safety|content_policy/i.test(String(body?.error?.code ?? '') + String(body?.error?.message ?? ''))) {
+    return { refused: true, reason: 'SAFETY' }
+  }
+  if (status < 200 || status >= 300) throw new Error(`OpenAI image generation failed: ${status} ${JSON.stringify(body?.error ?? body).slice(0, 300)}`)
+  const b64 = body?.data?.[0]?.b64_json
+  if (typeof b64 !== 'string') return { refused: true, reason: 'NO_IMAGE_PART' }
+  // Token usage is logged so the per-call credit rate can be checked against the real bill.
+  if (body.usage) console.log(`[images] gpt-image usage: ${JSON.stringify(body.usage)}`)
+  return { imageBase64: b64, mimeType: `image/${body.output_format ?? 'png'}` }
+}
+
 // No Ollama tail here, unlike getAdapterChain's chat-completions chain
 // (router.ts:49-58) — Ollama cannot generate images. If both breakers are
 // open (or both calls fail), the caller gets a clean throw, handled by
@@ -130,6 +195,7 @@ export async function generateImage(req: ImageGenerationRequest): Promise<ImageG
   if (!IMAGE_MODEL_ALLOWLIST.has(req.model)) {
     throw new UnsupportedImageModelError(`Unsupported image model: ${req.model}`)
   }
+  if (req.model.startsWith('gpt-image')) return callOpenAIImageModel(req)
 
   // Vertex first, Gemini-API-key second — flipped 2026-10-02. The API-key
   // project's prepaid credits are depleted (402 RESOURCE_EXHAUSTED) with no

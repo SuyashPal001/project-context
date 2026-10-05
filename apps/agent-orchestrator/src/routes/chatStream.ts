@@ -717,20 +717,21 @@ export async function runChatStream(opts: ChatStreamOpts): Promise<void> {
           // correlation key only, and the message gets its own uuid.
           const approvalMessageId = crypto.randomUUID()
 
+          const cardSubject = meta.subjectFor?.(args, requestContext as never) ?? meta.subject
           const preview = meta.buildPreview?.(args)
           const count = meta.buildCount?.(args)
           const piiNote = toolName === 'save_skill' && typeof args.body === 'string' ? detectSkillPii(args.body) : ''
           const label = piiNote ? `${meta.label}${piiNote}` : meta.label
 
           sendEvent('generation_confirm_request', {
-            confirmationId: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label,
+            confirmationId: toolCallId, resourceType: meta.resourceType, subject: cardSubject, label,
             ...(preview ? { preview } : {}),
             ...(count ? { count } : {}),
           })
 
           if (conversationId && idToken) {
             saveGenerationConfirmRequest(liveIdToken(), conversationId, approvalMessageId, {
-              id: toolCallId, resourceType: meta.resourceType, subject: meta.subject, label, status: 'pending',
+              id: toolCallId, resourceType: meta.resourceType, subject: cardSubject, label, status: 'pending',
               ...(preview ? { preview } : {}),
               ...(count ? { count } : {}),
             })

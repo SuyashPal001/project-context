@@ -21,6 +21,7 @@ import { handleVideoGenerations } from './video.js';
 import { handleSpeechGenerations } from './speech.js';
 import { handleLipsyncGenerations } from './lipsync.js';
 import { handleTranscribeGenerations } from './transcribe.js';
+import { handleLiteralTranscript } from './literalTranscript.js';
 
 // ---------------------------------------------------------------------------
 // Embedding via Vertex AI text-embedding-004 (ADC via google-auth-library)
@@ -508,6 +509,12 @@ const server = http.createServer(async (req: IncomingMessage, res: ServerRespons
   // Transcription with word timings (animation-character skill)
   if (req.method === 'POST' && req.url === '/v1/audio/transcribe') {
     await handleTranscribeGenerations(req, res, readBody);
+    return;
+  }
+
+  // Literal transcript (check_clip's mispronunciation check)
+  if (req.method === 'POST' && req.url === '/v1/audio/literal-transcript') {
+    await handleLiteralTranscript(req, res, readBody);
     return;
   }
 
