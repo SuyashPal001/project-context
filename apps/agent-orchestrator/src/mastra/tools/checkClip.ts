@@ -32,9 +32,10 @@ const normalise = (s: string) => s.toLowerCase().replace(/<[^>]+>/g, ' ').replac
 const SILENT_PLACEHOLDERS = new Set(['none', 'no speech', 'silence', 'n/a'])
 function isEffectivelySilent(heard: string): boolean {
   const t = heard.trim()
-  if (t.length === 0) return true
-  if (/^\[.*\]$/.test(t) || /^\(.*\)$/.test(t)) return true
-  return SILENT_PLACEHOLDERS.has(t.toLowerCase())
+  if (SILENT_PLACEHOLDERS.has(t.toLowerCase())) return true
+  // Strip every bracketed or parenthesised span: "[music] so I tried this
+  // [laughs]" still has words in it and is not silence.
+  return t.replace(/\[[^\]]*\]|\([^)]*\)/g, '').trim() === ''
 }
 
 /** Share of the approved line's words heard, in order (0..1). */
@@ -85,8 +86,11 @@ export function parseVerdict(raw: string): ClipVerdict | null {
 // product and the avatar until it "passed" — a clip compared only with its
 // own start image always passes, so a cut-off line and a different face both
 // got through. A re-check may add inputs, never drop them.
-type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean; noSpeech?: boolean }
-const CHECK_KEYS = ['expectedLine', 'product', 'reference', 'noSpeech'] as const
+// presenter = the clip was judged as a shot with a person in it. A re-check
+// that flips noPerson on drops the face and outfit comparison, so it counts as
+// a dropped input like the others; noPerson true -> false is stricter and allowed.
+type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean; noSpeech?: boolean; presenter?: boolean }
+const CHECK_KEYS = ['expectedLine', 'product', 'reference', 'noSpeech', 'presenter'] as const
 const checkedWith = new Map<string, CheckInputs>()
 export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
   const before = checkedWith.get(key)
@@ -98,6 +102,7 @@ export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
       product: now.product || !!before?.product,
       reference: now.reference || !!before?.reference,
       noSpeech: !!now.noSpeech || !!before?.noSpeech,
+      presenter: !!now.presenter || !!before?.presenter,
     })
   }
   return dropped
@@ -176,7 +181,7 @@ export const checkClip = createTool({
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined ?? ''
-    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech })
+    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech, presenter: !noPerson })
     if (dropped.length) {
       return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }
     }

@@ -100,8 +100,43 @@ describe('expectNoSpeech', () => {
     expect(judgeVerdict(v('(no speech)'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(true)
     expect(judgeVerdict(v('so I tried this'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(false)
   })
+  it('counts only bracketed or parenthesised spans as non-speech, never words between them', () => {
+    expect(judgeVerdict(v('[music] (laughs)'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(true)
+    expect(judgeVerdict(v('[music] so I tried this [laughs]'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(false)
+    expect(judgeVerdict(v('(sigh) wow (sigh)'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(false)
+    expect(judgeVerdict(v('Silence'), { audioChecked: true, expectNoSpeech: true, noPerson: false }).passed).toBe(true)
+  })
   it('a re-check cannot drop expectNoSpeech', () => {
     expect(droppedCheckInputs('conv:silent-clip', { expectedLine: false, product: false, reference: false, noSpeech: true })).toEqual([])
     expect(droppedCheckInputs('conv:silent-clip', { expectedLine: false, product: false, reference: false, noSpeech: false })).toEqual(['noSpeech'])
+  })
+})
+
+describe('noPerson re-check guard', () => {
+  it('refuses a re-check that turns a presenter check into a no-person check', () => {
+    expect(droppedCheckInputs('conv:person-clip', { expectedLine: false, product: true, reference: true, presenter: true })).toEqual([])
+    expect(droppedCheckInputs('conv:person-clip', { expectedLine: false, product: true, reference: true, presenter: false })).toEqual(['presenter'])
+  })
+  it('allows a no-person clip to be re-checked as a presenter clip (stricter)', () => {
+    expect(droppedCheckInputs('conv:scene-clip', { expectedLine: false, product: true, reference: false, presenter: false })).toEqual([])
+    expect(droppedCheckInputs('conv:scene-clip', { expectedLine: false, product: true, reference: false, presenter: true })).toEqual([])
+    expect(droppedCheckInputs('conv:scene-clip', { expectedLine: false, product: true, reference: false, presenter: false })).toEqual(['presenter'])
+  })
+})
+
+describe('sound check (from main) threaded through judgeVerdict', () => {
+  const base = { samePerson: true, productSame: true, glitch: false, confidence: 9, heard: 'hi there', reason: 'dry studio voice' }
+  it('fails a clip whose voice or room differs from the first spoken clip, with a reason', () => {
+    const out = judgeVerdict({ ...base, soundSame: false }, { audioChecked: true, expectNoSpeech: false, noPerson: false, soundChecked: true })
+    expect(out.passed).toBe(false)
+    expect(out.soundMatches).toBe(false)
+    expect(out.reason).toMatch(/Sounds different from the first clip/)
+  })
+  it('ignores soundSame when no sound reference was sent', () => {
+    expect(judgeVerdict({ ...base, soundSame: false }, { audioChecked: true, expectNoSpeech: false, noPerson: false }).passed).toBe(true)
+  })
+  it('asks for same_voice and same_room only with a sound reference', () => {
+    expect(buildCheckQuestion({ product: false, audio: true, noPerson: false, sound: true })).toMatch(/"same_voice": true\|false, "same_room"/)
+    expect(buildCheckQuestion({ product: false, audio: true, noPerson: false })).not.toMatch(/same_voice/)
   })
 })
