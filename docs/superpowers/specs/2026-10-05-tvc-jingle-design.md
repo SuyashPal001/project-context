@@ -117,6 +117,32 @@ New lines in `tvc-ad/director.md`, appended, never reworded:
 New lines in `tvc-ad.md`:
 - Olmo asks about a sung sign-off only when the user wants one or the reference has one. The default is no jingle.
 
+### K — consistency fixes carried from Part A (user request: Mastra-native state, one face finder)
+
+**K1 — check records live in Mastra thread metadata, not process memory.**
+- Two maps live in the orchestrator's process memory and are lost on a pm2 restart:
+  - `check_still`'s passed-stills registry (`checkStill.ts:10`)
+  - `check_clip`'s re-check guard (`checkClip.ts:98`)
+- **Fix:** both move to the conversation thread's metadata, using Mastra's native `memory.getThreadById` / `memory.updateThread`. The data persists in the existing PostgresStore and needs no new table.
+- **Key:** `metadata.tvcChecks = { passedStills: string[], checkedWith: Record<clipFileId, CheckInputs> }`. Each list is capped at 200 entries, dropping the oldest first.
+- **Which memory instance:** the one that owns the user's conversation thread, `getOlmoMemory()`. Do not use `getMastraMemory()`, and do not change any memory scope (see the cross-tenant warning in `memory.ts`).
+- **Write guard:** before any write, check that the thread exists and that its `resourceId` is this request's resource id. Otherwise do not write, and fall back to today's behaviour: a still that cannot be confirmed is "not checked", and a re-check is not trusted.
+- **Concurrent writes:** use read–merge–write, and keep every other metadata key (title, working memory) intact.
+- **Interfaces stay the same:**
+  - `stillPassedCheck` / `markStillPassed` become async
+  - `droppedCheckInputs` keeps its rules
+  - only the storage moves
+- **Tests:**
+  - an in-memory fake Memory: survives a "restart" (new module instance, same store)
+  - a foreign thread is never written
+  - other metadata keys are preserved
+
+**K2 — one face finder.**
+- `crop_image` already finds a head with Gemini's native `box_2d` detection (`cropImage.ts:75-105`, `parseBox2d`). Part A's `faceBoxes` (`tvcChecks.ts:315`) asks a second, different question for face boxes.
+- **Fix:** extract one shared helper, `findFaces(image) → Box[]`, that uses `box_2d` (all faces). `crop_image`'s head finder picks the largest box from it, and `faceBoxes` returns all of them.
+- **Behaviour:** `crop_image` behaves the same; its existing tests must pass unchanged.
+- **Placement:** `chooseTextPosition` / `chooseCardColumn` keep their inputs.
+
 ## 4. Error handling
 - New plain reasons:
   - `JINGLE_LINE_NOT_SUNG`
