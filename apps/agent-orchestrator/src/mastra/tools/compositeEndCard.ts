@@ -25,6 +25,18 @@ const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 const DISSOLVE_WINDOW_SECONDS = 1.5
 const DISSOLVE_DURATION_SECONDS = 0.4
 
+/** A full-frame card: the photo blurred and dimmed to fill the frame behind
+ * the photo itself, fitted to 86% of the width. Scaling the photo alone left
+ * a white-backed product shot pasted as a box over the scene (2026-10-05). */
+export function endCardGraph(width: number, height: number, dissolveStart: number): string {
+  const fit = Math.round(width * 0.86 / 2) * 2
+  return `[1:v]split[bgsrc][fgsrc];` +
+    `[bgsrc]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=40:2,eq=brightness=-0.12[bg];` +
+    `[fgsrc]scale=${fit}:${height}:force_original_aspect_ratio=decrease[fg];` +
+    `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=rgba,fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
+    `[0:v][card]overlay=0:0:enable='gte(t,${dissolveStart})'[outv]`
+}
+
 // Deviation from the spec, stated explicitly per the writing-plans
 // self-review rule: the spec asks for the end card to be "matched in
 // scale to the rendered product's bounding box" with "background color
@@ -174,10 +186,7 @@ export const compositeEndCard = createTool({
       const videoWidth = probedW || nominalW
       const videoHeight = probedH || nominalH
 
-      const filterComplex =
-        `[1:v]scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease,format=rgba,` +
-        `fade=t=in:st=${dissolveStart}:d=${DISSOLVE_DURATION_SECONDS}:alpha=1[card];` +
-        `[0:v][card]overlay=(W-w)/2:(H-h)/2:enable='gte(t,${dissolveStart})'[outv]`
+      const filterComplex = endCardGraph(videoWidth, videoHeight, dissolveStart)
 
       // A plain image input (-i photoPath with no -loop) is a single frame
       // at PTS 0 with no real duration — fade's st=/d= timestamps and

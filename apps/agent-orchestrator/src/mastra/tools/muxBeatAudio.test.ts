@@ -67,7 +67,11 @@ describe('muxBeatAudio execute — ffmpeg invocation', () => {
 
     expect(result).toMatchObject({ fileId: 'muxed1' })
 
-    const ffmpegCall = execFile.mock.calls.find(call => call[0] === 'ffmpeg')
+    const ffmpegCalls = execFile.mock.calls.filter(call => call[0] === 'ffmpeg')
+    // First call trims the narration's silent edges; the second muxes.
+    expect((ffmpegCalls[0][1] as string[])).toContain('-af')
+    expect((ffmpegCalls[0][1] as string[]).join(' ')).toContain('silenceremove')
+    const ffmpegCall = ffmpegCalls[1]
     expect(ffmpegCall).toBeDefined()
     const args = ffmpegCall![1] as string[]
     expect(args).not.toContain('-shortest')

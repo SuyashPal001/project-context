@@ -18,8 +18,13 @@ const MUX_SUBJECT = 'ffmpeg-mux-audio'
 const FFMPEG_TIMEOUT_MS = 60_000
 const MAX_SOURCE_BYTES = 200 * 1024 * 1024
 // Matches the source spec's trim rule: each beat's clip is trimmed to its
-// own narration length plus this much air, never the reverse.
-const TRIM_PAD_SECONDS = 0.5
+// own narration length plus this much air, never the reverse. 0.5s on top of
+// the narration file's own silent edges left 1.1-1.6s of dead air between
+// every line of a 20s animated ad (2026-10-05); the edges are now trimmed
+// (EDGE_TRIM_FILTER) and the air is one short breath.
+const TRIM_PAD_SECONDS = 0.3
+/** Cuts silence off both ends of a narration line, keeping 50ms so the first and last sounds are not clipped. */
+export const EDGE_TRIM_FILTER = 'silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse,silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,areverse'
 
 const outputSchema = z.object({
   fileId: z.string().optional(),
@@ -116,6 +121,9 @@ export const muxBeatAudio = createTool({
     }
     const outputPath = join(workDir, 'muxed.mp4')
     try {
+      const trimmedAudioPath = join(workDir, 'line.wav')
+      await execFile('ffmpeg', ['-y', '-i', audioPath, '-af', EDGE_TRIM_FILTER, trimmedAudioPath], { timeout: FFMPEG_TIMEOUT_MS })
+      audioPath = trimmedAudioPath
       const { stdout: durationOut } = await execFile('ffprobe', [
         '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', audioPath,
       ], { timeout: FFMPEG_TIMEOUT_MS })
