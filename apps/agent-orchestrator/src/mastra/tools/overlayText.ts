@@ -153,25 +153,6 @@ export const overlayText = createTool({
       return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
     }
 
-    let placed = overlays
-    if (avoidFaces) {
-      const faceDir = mkdtempSync(join(tmpdir(), 'overlay-faces-'))
-      try {
-        const ask = gatewayAsk(tenantId)
-        const faces = await Promise.all(overlays.map(async (o) => {
-          try {
-            const [frame] = await sampleFrames(videoPath, [Math.round(((o.startSeconds + o.endSeconds) / 2) * 100) / 100], faceDir)
-            return await faceBoxes(ask, frame)
-          } catch {
-            return null
-          }
-        }))
-        placed = applyFacePlacement(overlays, faces)
-      } finally {
-        rmSync(faceDir, { recursive: true, force: true })
-      }
-    }
-
     const attempt = 0
     const chargeKey = `overlay-text:${jobId}:${attempt}`
     let charged = false
@@ -197,6 +178,34 @@ export const overlayText = createTool({
           if ((err as Error).name === 'InsufficientCreditsError') return { insufficientCredits: true, jobId }
           throw err
         }
+      }
+    }
+
+    // O1: run face avoidance only after the charge succeeds — charge-first
+    // (per the global rule) means this must never land in a no-refund path.
+    // Any throw here (gateway, sampling, parse, temp-dir) is caught and
+    // falls back to the requested placement; it never fails the tool.
+    let placed = overlays
+    if (avoidFaces) {
+      try {
+        const faceDir = mkdtempSync(join(tmpdir(), 'overlay-faces-'))
+        try {
+          const ask = gatewayAsk(tenantId)
+          const faces = await Promise.all(overlays.map(async (o) => {
+            try {
+              const [frame] = await sampleFrames(videoPath, [Math.round(((o.startSeconds + o.endSeconds) / 2) * 100) / 100], faceDir)
+              return await faceBoxes(ask, frame)
+            } catch (err) {
+              console.warn(`[session:${sessionId}] overlayText: face check failed, keeping the requested placement:`, (err as Error).message)
+              return null
+            }
+          }))
+          placed = applyFacePlacement(overlays, faces)
+        } finally {
+          rmSync(faceDir, { recursive: true, force: true })
+        }
+      } catch (err) {
+        console.warn(`[session:${sessionId}] overlayText: face check failed, keeping the requested placement:`, (err as Error).message)
       }
     }
 

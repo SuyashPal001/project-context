@@ -24,6 +24,13 @@ vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) }
 })
+const { sampleFrames, faceBoxes, gatewayAsk } = vi.hoisted(() => ({
+  sampleFrames: vi.fn(), faceBoxes: vi.fn(), gatewayAsk: vi.fn(),
+}))
+vi.mock('./tvcChecks.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./tvcChecks.js')>()
+  return { ...actual, sampleFrames, faceBoxes, gatewayAsk }
+})
 import * as fs from 'node:fs'
 
 import { inputSchema, escapeAssText, formatAssTimestamp, buildAss, overlayText, applyFacePlacement } from './overlayText.js'
@@ -143,6 +150,32 @@ describe('overlayText execute', () => {
     expect(result).toMatchObject({ fileId: 'out1', fileType: 'video/mp4', creditsUsedMicro: '1000' })
     const args = execFile.mock.calls[0][1] as string[]
     expect(args[args.indexOf('-vf') + 1]).toMatch(/^subtitles=.*overlay\.ass$/)
+  })
+
+  it('moves text off a detected face when avoidFaces is set', async () => {
+    execFile.mockImplementation((_c: string, _a: string[], _o: unknown, cb: (err: Error | null) => void) => cb(null))
+    vi.mocked(fs.readFileSync).mockReturnValueOnce(Buffer.from('mp4'))
+    uploadGeneratedFile.mockResolvedValueOnce({ fileId: 'out1', name: 'o.mp4', type: 'video/mp4', size: 3 })
+    sampleFrames.mockResolvedValueOnce([{ data: 'xx', mime: 'image/jpeg' }])
+    faceBoxes.mockResolvedValueOnce([{ x0: 0, y0: 0, x1: 1, y1: 0.25 }])
+    gatewayAsk.mockReturnValueOnce(async () => ({}))
+
+    const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [okOverlay], avoidFaces: true } as never, baseCtx())
+
+    // okOverlay's requested position is 'top'; a face spanning the whole
+    // top band pushes it to the next free band, 'center'.
+    expect(result).toMatchObject({ fileId: 'out1', positions: ['center'] })
+  })
+
+  it('keeps the requested placement and still succeeds when face detection throws (Review Focus 5)', async () => {
+    execFile.mockImplementation((_c: string, _a: string[], _o: unknown, cb: (err: Error | null) => void) => cb(null))
+    vi.mocked(fs.readFileSync).mockReturnValueOnce(Buffer.from('mp4'))
+    uploadGeneratedFile.mockResolvedValueOnce({ fileId: 'out1', name: 'o.mp4', type: 'video/mp4', size: 3 })
+    sampleFrames.mockImplementationOnce(() => { throw new Error('ffmpeg sampling failed') })
+
+    const result = await overlayText.execute!({ videoFileId: 'v1', overlays: [okOverlay], avoidFaces: true } as never, baseCtx())
+
+    expect(result).toMatchObject({ fileId: 'out1', positions: [okOverlay.position] })
   })
 })
 
