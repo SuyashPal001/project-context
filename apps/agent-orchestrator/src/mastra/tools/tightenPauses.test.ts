@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { keepSegments, parseSilences } from './tightenPauses.js'
+import { joinFades, keepSegments, parseSilences } from './tightenPauses.js'
 
 describe('tighten_pauses segments', () => {
   // The Naina run (2026-10-05): 0.6s silent start, a 1.3s pause before the
@@ -22,5 +22,13 @@ describe('tighten_pauses segments', () => {
 
   it('keeps a video with no silence whole', () => {
     expect(keepSegments([], 10)).toEqual([[0, 10]])
+  })
+})
+
+describe('joinFades', () => {
+  it('fades only the inner edges of each cut', () => {
+    expect(joinFades(0, 1, 5)).toBe('')
+    expect(joinFades(0, 2, 5)).toBe(',afade=t=out:st=4.980:d=0.020')
+    expect(joinFades(1, 2, 3)).toBe(',afade=t=in:d=0.020')
   })
 })

@@ -1,3 +1,4 @@
+import { spokenSoFar } from './spokenScript.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
@@ -118,11 +119,13 @@ export const checkClip = createTool({
     refusalReason: z.string().optional(),
   }),
   execute: async (inputData, execContext) => {
-    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine, productFileId, soundReferenceClipFileId } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string; soundReferenceClipFileId?: string }
+    const { clipFileId, masterStillFileId, referenceFileIds, expectedLine: givenLine, productFileId, soundReferenceClipFileId } = inputData as { clipFileId: string; masterStillFileId: string; referenceFileIds?: string[]; expectedLine?: string; productFileId?: string; soundReferenceClipFileId?: string }
     const idToken = execContext?.requestContext?.get('idToken') as string | undefined
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     if (!idToken) return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE' }
     const conversationId = execContext?.requestContext?.get('conversationId') as string | undefined ?? ''
+    // A continued clip holds every line so far; check all of them, not just the new one.
+    const expectedLine = givenLine ? (spokenSoFar(conversationId, clipFileId) ?? givenLine) : undefined
     const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length })
     if (dropped.length) {
       return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }

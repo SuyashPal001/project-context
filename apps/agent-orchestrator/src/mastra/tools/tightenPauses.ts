@@ -28,6 +28,12 @@ export function parseSilences(stderr: string, duration: number): Array<[number, 
   return starts.map((s, i) => [s, ends[i] ?? duration])
 }
 
+/** A 20ms fade on each side of a cut, so a jump cut does not click or drop the room sound to dead silence. */
+export function joinFades(i: number, count: number, length: number): string {
+  const f = Math.min(0.02, length / 4)
+  return (i > 0 ? `,afade=t=in:d=${f.toFixed(3)}` : '') + (i < count - 1 ? `,afade=t=out:st=${(length - f).toFixed(3)}:d=${f.toFixed(3)}` : '')
+}
+
 /** The parts to keep: speech with a little air, silence at the edges trimmed. */
 export function keepSegments(silences: Array<[number, number]>, duration: number): Array<[number, number]> {
   const keep: Array<[number, number]> = []
@@ -75,7 +81,7 @@ export const tightenPauses = createTool({
       const after = keep.reduce((n, [a, b]) => n + (b - a), 0)
       if (duration - after < 0.3) return { fileId: videoFileId, unchanged: true, secondsBefore: duration, secondsAfter: duration }
 
-      const graph = keep.map(([a, b], i) => `[0:v]trim=${a.toFixed(3)}:${b.toFixed(3)},setpts=PTS-STARTPTS[v${i}];[0:a]atrim=${a.toFixed(3)}:${b.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`).join(';')
+      const graph = keep.map(([a, b], i) => `[0:v]trim=${a.toFixed(3)}:${b.toFixed(3)},setpts=PTS-STARTPTS[v${i}];[0:a]atrim=${a.toFixed(3)}:${b.toFixed(3)},asetpts=PTS-STARTPTS${joinFades(i, keep.length, b - a)}[a${i}]`).join(';')
         + ';' + keep.map((_, i) => `[v${i}][a${i}]`).join('') + `concat=n=${keep.length}:v=1:a=1[v][a]`
       const out = join(workDir, 'tightened.mp4')
       await execFile('ffmpeg', ['-y', '-i', source, '-filter_complex', graph, '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', out], { timeout: FFMPEG_TIMEOUT_MS })
