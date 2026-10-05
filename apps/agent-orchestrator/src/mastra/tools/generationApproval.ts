@@ -1,5 +1,6 @@
 import { isUnlimited, resolveRate } from '@serverless-saas/credits'
 import { filterPII } from '../../pii-filter.js'
+import { imageEngineFor, imageModelFor, type ImageEngine } from './imageEngine.js'
 
 /**
  * Shared predicate behind every generation tool's `requireApproval`. Runs
@@ -116,7 +117,14 @@ const batchPromptPreview = (args: Record<string, unknown>): string | undefined =
   return clipPrompt(prompts.map((p, i) => `${i + 1}. ${p.trim()}`).join('\n'))
 }
 
-const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Generate image', buildPreview: promptPreview }
+// The card prices the engine that will actually run (GPT Image during avatar
+// and character creation), not always Gemini.
+type ContextLike = { get: (key: never) => unknown } | undefined
+const imageSubject = (args: Record<string, unknown>, ctx: ContextLike): string =>
+  imageModelFor(imageEngineFor(ctx, args.engine as ImageEngine | undefined), args.imageSize as string | undefined).rateSubject
+const firstItem = (args: Record<string, unknown>): Record<string, unknown> =>
+  (Array.isArray(args.items) && args.items[0] && typeof args.items[0] === 'object' ? args.items[0] : {}) as Record<string, unknown>
+const imageGen = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Generate image', buildPreview: promptPreview, subjectFor: imageSubject }
 const videoGen = { resourceType: 'video_generation', subject: VIDEO_MODEL, label: 'Generate video', buildPreview: promptPreview }
 const songGen = { resourceType: 'music_generation', subject: MUSIC_MODEL, label: 'Generate song' }
 const imageEdit = { resourceType: 'image_generation', subject: IMAGE_MODEL, label: 'Edit image', buildPreview: promptPreview }
@@ -145,7 +153,7 @@ const stretchClipGen = { resourceType: 'clip_assembly', subject: STRETCH_CLIP_SU
 const itemCount = (args: Record<string, unknown>): number | undefined =>
   Array.isArray(args.items) ? args.items.length : undefined
 const videoBatchGen = { ...videoGen, label: 'Generate videos', buildPreview: batchPromptPreview, buildCount: itemCount }
-const imageBatchGen = { ...imageGen, label: 'Generate images', buildPreview: batchPromptPreview, buildCount: itemCount }
+const imageBatchGen = { ...imageGen, label: 'Generate images', buildPreview: batchPromptPreview, buildCount: itemCount, subjectFor: (args: Record<string, unknown>, ctx: ContextLike) => imageSubject(firstItem(args), ctx) }
 
 export const GENERATION_APPROVAL_METADATA: Record<string, {
   resourceType: string
@@ -153,6 +161,7 @@ export const GENERATION_APPROVAL_METADATA: Record<string, {
   label: string
   buildPreview?: (args: Record<string, unknown>) => string | undefined
   buildCount?: (args: Record<string, unknown>) => number | undefined
+  subjectFor?: (args: Record<string, unknown>, ctx: ContextLike) => string
 }> = {
   'generate-image': imageGen,
   'generate_image': imageGen,

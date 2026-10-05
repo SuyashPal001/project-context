@@ -30,6 +30,16 @@ const RATES = [
   // the dollar figure written as if 1 credit were $1, about 1/80 of what an image costs.)
   { resourceType: 'image_generation', subject: 'gemini-3-pro-image-preview',
     pricingSchema: { per_call_micro: 13_400_000 } },
+  // GPT Image 2 straight from OpenAI, high quality (avatar and character creators).
+  // OpenAI bills per token ($30/1M image output, $8/1M image input); its own
+  // examples put a 1024x1536 high image at $0.165. Our 1K sizes (e.g. 1152x1536)
+  // are a little larger and carry 1-3 reference images: about $0.21 -> 21 credits.
+  // 2K (1536x2048, the reference sheet) is about 2x the pixels: 36 credits.
+  // The gateway logs each call's real token usage; correct these from it.
+  { resourceType: 'image_generation', subject: 'gpt-image-2',
+    pricingSchema: { per_call_micro: 21_000_000 } },
+  { resourceType: 'image_generation', subject: 'gpt-image-2-2k',
+    pricingSchema: { per_call_micro: 36_000_000 } },
   // Lyria on the Gemini API is $0.08 per song (Lyria 3.5 / 3 Pro; lyria-002 itself is not
   // listed there): 8 credits. (Was 60_000 — the same dollars-for-cents slip, 1/100 of cost.)
   { resourceType: 'music_generation', subject: 'lyria-002',

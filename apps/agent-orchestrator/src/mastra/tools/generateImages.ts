@@ -1,11 +1,12 @@
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import {
-  generateImageItem, imageItemSchema, imageOutputSchema, IMAGE_MODEL, type ImageItemInput,
+  generateImageItem, imageItemSchema, imageOutputSchema, type ImageItemInput,
 } from './generateImage.js'
 import { shouldRequireApproval } from './generationApproval.js'
 import { MAX_BATCH_ITEMS, runBatch, batchProgressEmitter, type MediaExecContext } from './batchRunner.js'
 import { emitGenerationStarted } from './generationStarted.js'
+import { imageEngineFor, imageModelFor, type ImageEngine } from './imageEngine.js'
 
 export const generateImages = createTool({
   id: 'generate-images',
@@ -17,7 +18,7 @@ export const generateImages = createTool({
     failed: z.number(),
   }),
   requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
+    shouldRequireApproval({ resourceType: 'image_generation', subject: imageModelFor(imageEngineFor((ctx as { requestContext?: never })?.requestContext, (_input as { items?: Array<{ engine?: ImageEngine }> }).items?.[0]?.engine), (_input as { items?: Array<{ imageSize?: string }> }).items?.[0]?.imageSize).rateSubject }, ctx),
   execute: async (inputData, execContext) => {
     const { items } = inputData as { items: ImageItemInput[] }
     emitGenerationStarted(execContext, { aspectRatio: (inputData as { items?: Array<{ aspectRatio?: unknown }> }).items?.[0]?.aspectRatio, count: items.length })

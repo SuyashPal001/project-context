@@ -13,9 +13,10 @@ import { resolveAvatarReferences } from './avatarReferences.js'
 import { withIdentityAnchor } from './identityAnchor.js'
 import { stripStudioLighting } from './adRealism.js'
 import { isReviewedAdFlow } from './oneVideoPerTurn.js'
+import { imageEngineFor, imageModelFor, GEMINI_IMAGE_MODEL, type ImageEngine } from './imageEngine.js'
 
 const GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
-export const IMAGE_MODEL = 'gemini-3-pro-image-preview'
+export const IMAGE_MODEL = GEMINI_IMAGE_MODEL
 
 const MAX_REFERENCE_IMAGE_BYTES = 20 * 1024 * 1024 // matches editImage.ts's existing per-file cap
 // Aggregate cap across ALL resolved references in one call. The gateway's
@@ -52,6 +53,8 @@ export const imageItemSchema = z.object({
   }).optional().describe('When set, both strings are added to the prompt automatically when missing. Required whenever referenceFileIds includes a cast sheet.'),
   skipAvatarExpansion: z.boolean().optional()
     .describe("Set true when the reference image must NOT be treated as the same person (e.g. a new person inspired by a reference's look): skips adding the avatar's reference sheet and identity sentence."),
+  engine: z.enum(['gemini', 'gpt']).optional()
+    .describe('Leave unset: the engine is picked automatically (GPT Image for avatar and character creation, Gemini for everything else). Set it only when the user asks for one by name ("use GPT", "use Gemini").'),
   title: fileTitleSchema,
 })
 
@@ -63,6 +66,8 @@ export async function generateImageItem(
   itemIndex: number,
 ) {
     const { prompt: rawPrompt, aspectRatio, imageSize, referenceFileIds, identityAnchor, skipAvatarExpansion, title } = inputData
+    const engine = imageEngineFor(execContext?.requestContext as never, inputData.engine as ImageEngine | undefined)
+    const { model, rateSubject } = imageModelFor(engine, imageSize)
 
     // Identity anchor — enforced in tool code, not prose: any missing
     // terseTag/styleLock is added to the prompt rather than refused.
@@ -174,9 +179,9 @@ export async function generateImageItem(
     let amountMicro = 0n
 
     if (!(await isUnlimited(tenantId))) {
-      const rate = await resolveRate('image_generation', IMAGE_MODEL)
+      const rate = await resolveRate('image_generation', rateSubject)
       if (!rate) {
-        console.error(`[credits] UNBILLED IMAGE GENERATION: no active image_generation rate for model=${IMAGE_MODEL} tenantId=${tenantId} — generation was NOT charged`)
+        console.error(`[credits] UNBILLED IMAGE GENERATION: no active image_generation rate for model=${rateSubject} tenantId=${tenantId} — generation was NOT charged`)
       } else {
         rateId = rate.id
         rateVersion = rate.version
@@ -199,8 +204,9 @@ export async function generateImageItem(
       const res = await fetch(`${GATEWAY_URL}/v1/images/generations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-internal-service-key': process.env.INTERNAL_SERVICE_KEY ?? '' },
-        body: JSON.stringify({ model: IMAGE_MODEL, prompt: gatewayPrompt, ...(aspectRatio ? { aspectRatio } : {}), ...(imageSize ? { imageSize } : {}), ...(sourceImages.length ? { sourceImages } : {}) }),
-        signal: AbortSignal.timeout(90_000),
+        body: JSON.stringify({ model, prompt: gatewayPrompt, ...(aspectRatio ? { aspectRatio } : {}), ...(imageSize ? { imageSize } : {}), ...(sourceImages.length ? { sourceImages } : {}) }),
+        // GPT Image at high quality takes up to ~2 minutes.
+        signal: AbortSignal.timeout(engine === 'gpt' ? 250_000 : 90_000),
       })
       if (!res.ok) throw new Error(`gateway returned ${res.status}`)
       genResult = await res.json()
@@ -240,17 +246,17 @@ export async function generateImageItem(
     return {
       fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
-      model: IMAGE_MODEL,
+      model,
     }
 }
 
 export const generateImage = createTool({
   id: 'generate-image',
-  description: 'Generates a new image from a text prompt using Gemini 3 Pro Image, optionally anchored on 1-3 reference images for identity/style consistency. Use when the user asks Director to create, draw, or generate an image.',
+  description: 'Generates a new image from a text prompt (Gemini 3 Pro Image, or GPT Image 2 during avatar and character creation), optionally anchored on 1-3 reference images for identity/style consistency. Use when the user asks Director to create, draw, or generate an image.',
   inputSchema: imageItemSchema,
   outputSchema: imageOutputSchema,
   requireApproval: async (_input, ctx) =>
-    shouldRequireApproval({ resourceType: 'image_generation', subject: IMAGE_MODEL }, ctx),
+    shouldRequireApproval({ resourceType: 'image_generation', subject: imageModelFor(imageEngineFor((ctx as { requestContext?: never })?.requestContext, (_input as { engine?: ImageEngine }).engine), (_input as { imageSize?: string }).imageSize).rateSubject }, ctx),
   execute: async (inputData, execContext) => {
     emitGenerationStarted(execContext, { aspectRatio: (inputData as { aspectRatio?: unknown }).aspectRatio })
     return generateImageItem(inputData as ImageItemInput, execContext as unknown as MediaExecContext, 0)

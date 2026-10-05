@@ -1,3 +1,4 @@
+import { markCreatorFlow } from './imageEngine.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { emitToolStatus } from './generationStarted.js'
@@ -950,6 +951,7 @@ export const rollTvcVariationsTool = createTool({
     ageMax: z.number().int().min(18).max(90).describe('Oldest age the brief allows'),
   }),
   execute: async (inputData, execContext) => {
+    markCreatorFlow(execContext?.requestContext?.get('conversationId') as string | undefined)
     const { count, category, look, gender, ageMin, ageMax } = inputData
     const variations = rollTvcVariations({ count, category, look, gender, ageMin: Math.min(ageMin, ageMax), ageMax: Math.max(ageMin, ageMax) })
     emitToolStatus(execContext, `Casting ${variations.length} actors`, variations.map(tvcLine))
@@ -1251,6 +1253,7 @@ export const rollCharacterVariationsTool = createTool({
     gender: z.enum(['woman', 'man', 'any']).default('any').describe('Every people style (not mascots or 3D chibi), from the brief; "any" alternates woman and man'),
   }),
   execute: async (inputData, execContext) => {
+    markCreatorFlow(execContext?.requestContext?.get('conversationId') as string | undefined)
     if (inputData.style === '3d family film') {
       const people = rollFamily3dVariations(inputData.count, Math.random, inputData.look, inputData.gender)
       emitToolStatus(execContext, `Casting ${people.length} characters`, people.map(family3dLine))
@@ -1318,6 +1321,7 @@ export const rollAvatarVariationsTool = createTool({
     ageMax: z.number().int().min(18).max(90).describe('Oldest age the brief allows'),
   }),
   execute: async (inputData, execContext) => {
+    markCreatorFlow(execContext?.requestContext?.get('conversationId') as string | undefined)
     const { count, look, gender, ageMin, ageMax } = inputData
     const lo = Math.min(ageMin, ageMax)
     const hi = Math.max(ageMin, ageMax)
