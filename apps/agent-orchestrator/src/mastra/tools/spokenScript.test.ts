@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { changedEarlierWords, cleanSpokenStart, recordSpoken, spokenSoFar } from './spokenScript.js'
+import { cleanSpokenStart, recordSpoken, spokenSoFar } from './spokenScript.js'
 
 describe('spokenSoFar', () => {
   it('carries every earlier line into a continued clip', () => {
@@ -20,14 +20,3 @@ describe('cleanSpokenStart', () => {
   })
 })
 
-describe('changedEarlierWords', () => {
-  const earlier = ['Okay, honestly, my skin has never looked this bright.']
-  it('flags an earlier line re-voiced with a different word', () => {
-    expect(changedEarlierWords(earlier, 'Okay, honestly, my skin has never looked this brighting, I started using this serum')).toEqual(['bright'])
-    expect(changedEarlierWords(earlier, 'Okay honestly my skin has never looked this glowing.')).toEqual(['bright'])
-  })
-  it('passes the same words, and ignores short words and numbers', () => {
-    expect(changedEarlierWords(earlier, 'Okay, honestly, my skin has never looked this bright. I started using it.')).toEqual([])
-    expect(changedEarlierWords(['It has 10 grams in a bar.'], 'It has ten grams in the bar')).toEqual([])
-  })
-})

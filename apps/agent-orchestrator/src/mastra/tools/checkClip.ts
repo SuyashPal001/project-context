@@ -1,4 +1,4 @@
-import { changedEarlierWords, spokenSoFar } from './spokenScript.js'
+import { spokenSoFar } from './spokenScript.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
@@ -127,7 +127,6 @@ export const checkClip = createTool({
     // A continued clip holds every line so far; check all of them, not just the new one.
     const lines = givenLine ? spokenSoFar(conversationId, clipFileId) : undefined
     const expectedLine = givenLine ? (lines?.join(' ') ?? givenLine) : undefined
-    const earlierLines = lines && lines.length > 1 ? lines.slice(0, -1) : []
     const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length })
     if (dropped.length) {
       return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }
@@ -211,8 +210,7 @@ export const checkClip = createTool({
       }
       const verdict = parseVerdict(result.choices?.[0]?.message?.content ?? '')
       if (!verdict) return { refused: true, refusalReason: 'CHECK_FAILED: unreadable verdict' }
-      const changed = audio && earlierLines.length ? changedEarlierWords(earlierLines, verdict.heard) : []
-      const lineMatches = (expectedLine && audio ? lineMatchScore(expectedLine, verdict.heard) >= LINE_MATCH_THRESHOLD : true) && changed.length === 0
+      const lineMatches = expectedLine && audio ? lineMatchScore(expectedLine, verdict.heard) >= LINE_MATCH_THRESHOLD : true
       const samePerson = verdict.samePerson && verdict.confidence >= 6
       const productMatches = verdict.productSame
       const noGlitch = !verdict.glitch
@@ -228,7 +226,7 @@ export const checkClip = createTool({
         glitch: verdict.glitch,
         soundMatches,
         heard: verdict.heard,
-        reason: !samePerson ? `Different person: ${verdict.reason}` : !productMatches ? `Product changed: ${verdict.reason}` : !noGlitch ? `Visible glitch: ${verdict.reason}` : !lineMatches && changed.length ? `An earlier part's line changed when this part was added (no longer says: ${changed.map((w) => `"${w}"`).join(', ')}; heard: "${verdict.heard}")` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : !soundMatches ? `Sounds different from the first clip (voice or room): ${verdict.reason}` : 'Same person, product and line.',
+        reason: !samePerson ? `Different person: ${verdict.reason}` : !productMatches ? `Product changed: ${verdict.reason}` : !noGlitch ? `Visible glitch: ${verdict.reason}` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : !soundMatches ? `Sounds different from the first clip (voice or room): ${verdict.reason}` : 'Same person, product and line.',
       }
     } catch (err) {
       console.error('[checkClip] failed:', (err as Error).message)

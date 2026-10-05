@@ -17,7 +17,7 @@ describe('tighten_pauses segments', () => {
     expect(keep[0][0]).toBeCloseTo(0.4925, 3)
     expect(keep[0][1]).toBeCloseTo(14.1942, 3)
     expect(keep[1][0]).toBeCloseTo(15.2801, 3)
-    expect(keep[1][1]).toBeCloseTo(16.8789, 3)
+    expect(keep[1][1]).toBeCloseTo(16.6789, 3)
   })
 
   it('keeps a video with no silence whole', () => {

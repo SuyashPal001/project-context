@@ -23,7 +23,7 @@ const SILENCE_BELOW_MEAN_DB = 5
 const MIN_PAUSE = 0.4   // pauses at least this long are shortened
 const KEEP_EDGE = 0.12  // breath kept on each side of a shortened pause
 const KEEP_START = 0.15
-const KEEP_END = 0.5
+const KEEP_END = 0.3   // a short smile after the last word, not a hold
 
 /** Parses ffmpeg silencedetect output into [start, end] pairs (end = duration when open). */
 export function parseSilences(stderr: string, duration: number): Array<[number, number]> {
