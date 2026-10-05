@@ -65,5 +65,6 @@ export const SHOW_FIRST_FOLLOW_ON_REFUSAL = {
 
 /** The ad flows where the user reviews each video. Every ad flow that renders
  * video: 2026-10-05 the animated story ad rendered 4 clips and went straight on
- * to paid narration before the user had seen one of them. */
-export const REVIEWED_FLOW_MARKERS = ['flow: talking head', 'flow: ugc ad', 'flow: first frame', 'flow: animation character ad', 'flow: short drama stitch']
+ * to paid narration before the user had seen one of them. The TVC ad follows
+ * the same policy: one moment per turn in Ask mode, and a failed check stops. */
+export const REVIEWED_FLOW_MARKERS = ['flow: talking head', 'flow: ugc ad', 'flow: first frame', 'flow: animation character ad', 'flow: short drama stitch', 'flow: tvc ad']

@@ -28,7 +28,7 @@ describe('one video per turn in reviewed ad flows', () => {
   })
 
   it('covers every ad flow that renders video, including the animated story ad', () => {
-    for (const m of ['flow: first frame', 'flow: animation character ad', 'flow: short drama stitch']) {
+    for (const m of ['flow: first frame', 'flow: animation character ad', 'flow: short drama stitch', 'flow: tvc ad']) {
       expect(isReviewedAdFlow(brief(m))).toBe(true)
     }
   })
