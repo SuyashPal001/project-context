@@ -1,4 +1,5 @@
 import { spokenSoFar } from './spokenScript.js'
+import { mispronouncedWords } from './pronunciation.js'
 import { createTool } from '@mastra/core/tools'
 import { z } from 'zod'
 import { execFile as execFileCb } from 'node:child_process'
@@ -113,6 +114,7 @@ export const checkClip = createTool({
     productMatches: z.boolean().optional(),
     glitch: z.boolean().optional(),
     soundMatches: z.boolean().optional(),
+    mispronounced: z.array(z.string()).optional(),
     heard: z.string().optional(),
     reason: z.string().optional(),
     refused: z.boolean().optional(),
@@ -215,18 +217,22 @@ export const checkClip = createTool({
       const productMatches = verdict.productSame
       const noGlitch = !verdict.glitch
       const soundMatches = refAudio ? verdict.soundSame : true
-      if (!(samePerson && lineMatches && productMatches && noGlitch && soundMatches)) {
+      // Only a clip that said the right line is checked word by word for how it was said.
+      const misspoken = expectedLine && audio && lineMatches ? await mispronouncedWords(audio, expectedLine, controller.signal) : null
+      const saidClearly = !misspoken?.length
+      if (!(samePerson && lineMatches && productMatches && noGlitch && soundMatches && saidClearly)) {
         markCheckFailed(execContext?.requestContext, (execContext as unknown as { agent?: { messages?: unknown } })?.agent?.messages)
       }
       return {
-        passed: samePerson && lineMatches && productMatches && noGlitch && soundMatches,
+        passed: samePerson && lineMatches && productMatches && noGlitch && soundMatches && saidClearly,
+        ...(misspoken?.length ? { mispronounced: misspoken.map(m => `"${m.meant}" sounds like "${m.heard}"`) } : {}),
         samePerson,
         lineMatches,
         productMatches,
         glitch: verdict.glitch,
         soundMatches,
         heard: verdict.heard,
-        reason: !samePerson ? `Different person: ${verdict.reason}` : !productMatches ? `Product changed: ${verdict.reason}` : !noGlitch ? `Visible glitch: ${verdict.reason}` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : !soundMatches ? `Sounds different from the first clip (voice or room): ${verdict.reason}` : 'Same person, product and line.',
+        reason: !samePerson ? `Different person: ${verdict.reason}` : !productMatches ? `Product changed: ${verdict.reason}` : !noGlitch ? `Visible glitch: ${verdict.reason}` : !lineMatches ? `Did not say the approved line (heard: "${verdict.heard}")` : !soundMatches ? `Sounds different from the first clip (voice or room): ${verdict.reason}` : !saidClearly ? `A word is said wrongly: ${misspoken!.map(m => `"${m.meant}" sounds like "${m.heard}"`).join(', ')}` : 'Same person, product and line.',
       }
     } catch (err) {
       console.error('[checkClip] failed:', (err as Error).message)
