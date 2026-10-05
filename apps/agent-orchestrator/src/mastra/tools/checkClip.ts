@@ -92,8 +92,8 @@ export function parseVerdict(raw: string): ClipVerdict | null {
 // presenter = the clip was judged as a shot with a person in it. A re-check
 // that flips noPerson on drops the face and outfit comparison, so it counts as
 // a dropped input like the others; noPerson true -> false is stricter and allowed.
-type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean; noSpeech?: boolean; presenter?: boolean; productVisible?: boolean; extras?: boolean; lead?: boolean; action?: boolean }
-const CHECK_KEYS = ['expectedLine', 'product', 'reference', 'noSpeech', 'presenter', 'productVisible', 'extras', 'lead', 'action'] as const
+type CheckInputs = { expectedLine: boolean; product: boolean; reference: boolean; noSpeech?: boolean; presenter?: boolean; productVisible?: boolean; extras?: boolean; lead?: boolean; action?: boolean; endState?: boolean; productNarrow?: boolean; productExpectedState?: boolean }
+const CHECK_KEYS = ['expectedLine', 'product', 'reference', 'noSpeech', 'presenter', 'productVisible', 'extras', 'lead', 'action', 'endState', 'productNarrow', 'productExpectedState'] as const
 const checkedWith = new Map<string, CheckInputs>()
 export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
   const before = checkedWith.get(key)
@@ -110,6 +110,9 @@ export function droppedCheckInputs(key: string, now: CheckInputs): string[] {
       extras: !!now.extras || !!before?.extras,
       lead: !!now.lead || !!before?.lead,
       action: !!now.action || !!before?.action,
+      endState: !!now.endState || !!before?.endState,
+      productNarrow: !!now.productNarrow || !!before?.productNarrow,
+      productExpectedState: !!now.productExpectedState || !!before?.productExpectedState,
     })
   }
   return dropped
@@ -215,7 +218,7 @@ export const checkClip = createTool({
     const lines = givenLine ? spokenSoFar(conversationId, clipFileId) : undefined
     const expectedLine = givenLine ? (lines?.join(' ') ?? givenLine) : undefined
     const narrow = narrowWanted({ productMustBeVisible, productScale, expectExtras, leadFileId, action })
-    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech, presenter: !noPerson, productVisible: !!productMustBeVisible, extras: !!expectExtras, lead: !!leadFileId, action: !!action })
+    const dropped = droppedCheckInputs(`${conversationId}:${clipFileId}`, { expectedLine: !!expectedLine, product: !!productFileId, reference: !!referenceFileIds?.length, noSpeech: !!expectNoSpeech, presenter: !noPerson, productVisible: !!productMustBeVisible, extras: !!expectExtras, lead: !!leadFileId, action: !!action, endState: !!endState, productNarrow: !!(productFileId && (productScale || productMustBeVisible)), productExpectedState: !!productExpectedState })
     if (dropped.length) {
       return { refused: true, refusalReason: `CHECK_INPUTS_DROPPED: this clip was checked before with ${dropped.join(', ')}; check it again with the same inputs (never fewer) — a check without them proves nothing` }
     }

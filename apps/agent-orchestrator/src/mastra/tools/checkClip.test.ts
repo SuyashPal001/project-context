@@ -153,4 +153,14 @@ describe('narrow checks are opt-in (Review Focus 1)', () => {
     expect(dropped2('conv:clipN', { expectedLine: false, product: true, reference: false, productVisible: false, extras: true, lead: true, action: true })).toEqual(['productVisible'])
     expect(dropped2('conv:clipN', { expectedLine: false, product: true, reference: false, productVisible: true, extras: true, lead: false, action: false })).toEqual(['lead', 'action'])
   })
+  it('the re-check guard refuses dropping endState, so a failed ACTION_NOT_COMPLETED cannot be re-checked away', () => {
+    expect(dropped2('conv:clipEnd', { expectedLine: false, product: false, reference: false, action: true, endState: true })).toEqual([])
+    // Director keeps `action` but drops `endState` after an ACTION_NOT_COMPLETED fail.
+    expect(dropped2('conv:clipEnd', { expectedLine: false, product: false, reference: false, action: true, endState: false })).toEqual(['endState'])
+  })
+  it('the re-check guard refuses dropping productScale while keeping the product photo, which would silently drop the product check', () => {
+    expect(dropped2('conv:clipProd', { expectedLine: false, product: true, reference: false, productNarrow: true })).toEqual([])
+    // productFileId (product: true) is kept, but productScale is dropped: productNarrow goes false.
+    expect(dropped2('conv:clipProd', { expectedLine: false, product: true, reference: false, productNarrow: false })).toEqual(['productNarrow'])
+  })
 })
