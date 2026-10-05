@@ -3,7 +3,7 @@ vi.mock('../cost.js', () => ({ persistCost: vi.fn() }))
 import {
   type AskFn, type AskPart, type Img, CheckUnavailableError, gatewayAsk, parseJsonObject, evenTimes, lastTimes,
   productQuestion, checkProduct, checkGlitches, checkExtras, checkLeadClone, checkLeadFace, checkAction, trimStartFor,
-  runNarrowClipChecks, runStillChecks, chooseTextPosition, chooseCardColumn, faceBoxes, PRO_CHECK_MODEL,
+  runNarrowClipChecks, runStillChecks, chooseTextPosition, chooseCardColumn, faceBoxes, PRO_CHECK_MODEL, askChecked,
 } from './tvcChecks.js'
 
 const img = (n: string): Img => ({ data: n, mime: 'image/jpeg' })
@@ -37,6 +37,25 @@ describe('gatewayAsk', () => {
     expect(parseJsonObject('[1]')).toBeNull()
     expect(parseJsonObject('no json')).toBeNull()
     expect(parseJsonObject('x {"a":1} y')).toEqual({ a: 1 })
+  })
+})
+
+describe('F5: PRO_CHECK_MODEL is configurable', () => {
+  it('falls back to gemini-2.5-pro with no env override', () => {
+    expect(PRO_CHECK_MODEL).toBe('gemini-2.5-pro')
+  })
+  it('reads TVC_CHECK_MODEL when set', async () => {
+    vi.resetModules()
+    const prev = process.env.TVC_CHECK_MODEL
+    process.env.TVC_CHECK_MODEL = 'gemini-3-pro'
+    try {
+      const mod = await import('./tvcChecks.js')
+      expect(mod.PRO_CHECK_MODEL).toBe('gemini-3-pro')
+    } finally {
+      if (prev === undefined) delete process.env.TVC_CHECK_MODEL
+      else process.env.TVC_CHECK_MODEL = prev
+      vi.resetModules()
+    }
   })
 })
 
@@ -103,7 +122,7 @@ describe('glitches, extras, clone, lead face (C4–C6)', () => {
 describe('action, end state, physics, motion reversal (C7) and trim window (C8)', () => {
   const frames = [0.3, 0.7, 1.0].map((t, i) => ({ t, img: img(String(i)) }))
   it('fails ACTION_NOT_COMPLETED when the cap is still on at the end (the 2026-10-05 opener)', async () => {
-    const ask = fakeAsk((q) => q.includes('at which') ? { action_time: 1.34 } : q.includes('impossible') ? { impossible: true, what: 'cap flies but bottle stays capped' } : { holds: false, why: 'green cap still on' })
+    const ask = fakeAsk((q) => q.includes('at which') ? { action_time: 1.34 } : q.includes('impossible') ? { impossible: true, what: 'cap flies but bottle stays capped' } : q.includes('reverse') ? { reversal: false } : { holds: false, why: 'green cap still on' })
     const r = await checkAction(ask, frames, [img('a'), img('b'), img('c')], 'cap pops off on the opener', 'the bottle has no cap')
     expect(r.passed).toBe(false)
     expect(r.endStateTrue).toBe(false)
@@ -111,7 +130,7 @@ describe('action, end state, physics, motion reversal (C7) and trim window (C8)'
     expect(r.reason).toMatch(/impossible/)
   })
   it('fails when the action never happens', async () => {
-    const ask = fakeAsk((q) => q.includes('at which') ? { action_time: null } : q.includes('impossible') ? { impossible: false } : { holds: true })
+    const ask = fakeAsk((q) => q.includes('at which') ? { action_time: null } : q.includes('impossible') ? { impossible: false } : q.includes('reverse') ? { reversal: false } : { holds: true })
     const r = await checkAction(ask, frames, [], 'she spins all the way around once')
     expect(r).toMatchObject({ passed: false, actionTime: null })
   })
@@ -124,7 +143,7 @@ describe('action, end state, physics, motion reversal (C7) and trim window (C8)'
     expect(r.reason).toMatch(/Movement reverses mid-way: the spin turns back the other way halfway/)
   })
   it('passes a real pop with the bottle open at the end', async () => {
-    const ask = fakeAsk((q) => q.includes('at which') ? { action_time: 1.67 } : q.includes('impossible') ? { impossible: false } : { holds: true })
+    const ask = fakeAsk((q) => q.includes('at which') ? { action_time: 1.67 } : q.includes('impossible') ? { impossible: false } : q.includes('reverse') ? { reversal: false } : { holds: true })
     const r = await checkAction(ask, frames, [img('a'), img('b'), img('c')], 'cap pops off', 'the bottle has no cap')
     expect(r).toMatchObject({ passed: true, actionTime: 1.67, endStateTrue: true, reversed: false })
   })
@@ -140,7 +159,7 @@ describe('runNarrowClipChecks / runStillChecks', () => {
   const sample = vi.fn(async (times: number[]) => times.map((t) => img(`f${t}`)))
   it('runs only the checks whose inputs are given, and reports a trim window', async () => {
     const ask = fakeAsk((q) => q.includes('duplicate_object') ? { duplicate_object: false, stray_face: false, invented_text: false, cg_effect: false, flat_background: false }
-      : q.includes('at which') ? { action_time: 1.5 } : q.includes('impossible') ? { impossible: false } : { holds: true })
+      : q.includes('at which') ? { action_time: 1.5 } : q.includes('impossible') ? { impossible: false } : q.includes('reverse') ? { reversal: false } : { holds: true })
     const r = await runNarrowClipChecks(ask, sample, { duration: 3, action: 'cap pops off', endState: 'no cap', shotDurationSeconds: 0.88 })
     expect(r.passed).toBe(true)
     expect(r.trimStartSeconds).toBe(1.15)
@@ -152,6 +171,42 @@ describe('runNarrowClipChecks / runStillChecks', () => {
     const r = await runStillChecks(ask, img('S'), { lead: img('L'), expectExtras: true })
     expect(r.passed).toBe(false)
     expect(r.reasons.join(' ')).toMatch(/LEAD_CLONED/)
+  })
+})
+
+describe('F4: an unreachable verdict (missing/mistyped key) never passes', () => {
+  it('askChecked retries once and then throws CheckUnavailableError on a missing key', async () => {
+    const ask = fakeAsk(() => ({}))
+    await expect(askChecked(ask, [{ text: 'q' }], [{ key: 'impossible', type: 'boolean' }])).rejects.toBeInstanceOf(CheckUnavailableError)
+    expect(ask.calls).toHaveLength(2)
+  })
+  it('askChecked retries once and then throws on a wrong-typed key', async () => {
+    const ask = fakeAsk(() => ({ others: 'not an array' }))
+    await expect(askChecked(ask, [{ text: 'q' }], [{ key: 'others', type: 'array' }])).rejects.toBeInstanceOf(CheckUnavailableError)
+  })
+  it('askChecked recovers if the retry comes back valid', async () => {
+    let i = 0
+    const ask = fakeAsk(() => (i++ === 0 ? {} : { impossible: false }))
+    await expect(askChecked(ask, [{ text: 'q' }], [{ key: 'impossible', type: 'boolean' }])).resolves.toEqual({ impossible: false })
+  })
+  it('checkGlitches: a verdict missing a glitch key is CheckUnavailableError, never a pass', async () => {
+    const ask = fakeAsk(() => ({}))
+    await expect(checkGlitches(ask, [img('1')])).rejects.toBeInstanceOf(CheckUnavailableError)
+  })
+  it('checkLeadClone: a verdict with no "others" array is CheckUnavailableError, never a pass', async () => {
+    const ask = fakeAsk(() => ({}))
+    await expect(checkLeadClone(ask, img('L'), [img('1')])).rejects.toBeInstanceOf(CheckUnavailableError)
+  })
+  it('checkProduct: a verdict missing "same" is CheckUnavailableError, never a pass', async () => {
+    const ask = fakeAsk(() => ({ visible: true }))
+    await expect(checkProduct(ask, img('P'), [img('1')], { scale: 'close', mustBeVisible: true })).rejects.toBeInstanceOf(CheckUnavailableError)
+  })
+  it('checkAction: a verdict missing "impossible" or "reversal" is CheckUnavailableError, never a pass', async () => {
+    const frames = [0.3, 0.7, 1.0].map((t, i) => ({ t, img: img(String(i)) }))
+    const missingImpossible = fakeAsk((q) => q.includes('at which') ? { action_time: 1 } : q.includes('impossible') ? {} : { reversal: false })
+    await expect(checkAction(missingImpossible, frames, [], 'she claps')).rejects.toBeInstanceOf(CheckUnavailableError)
+    const missingReversal = fakeAsk((q) => q.includes('at which') ? { action_time: 1 } : q.includes('impossible') ? { impossible: false } : {})
+    await expect(checkAction(missingReversal, frames, [], 'she claps')).rejects.toBeInstanceOf(CheckUnavailableError)
   })
 })
 

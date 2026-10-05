@@ -11,7 +11,10 @@ import { persistCost } from '../cost.js'
 // questions caught both. Free to the user; tokens are logged with persistCost.
 const execFile = promisify(execFileCb)
 const INFERENCE_GATEWAY_URL = process.env.INFERENCE_GATEWAY_URL ?? 'http://localhost:4001'
-export const PRO_CHECK_MODEL = 'gemini-2.5-pro'
+// F5: configurable so a pinned check model can be swapped (e.g. a newer
+// Pro release) without a code change; falls back to the model this plan
+// verified the checks against.
+export const PRO_CHECK_MODEL = process.env.TVC_CHECK_MODEL ?? 'gemini-2.5-pro'
 const ASK_TIMEOUT_MS = 120_000
 const r2 = (x: number) => Math.round(x * 100) / 100
 
@@ -65,6 +68,27 @@ export function gatewayAsk(tenantId: string, fetchImpl: typeof fetch = fetch): A
   }
 }
 
+// F4: a check must never pass on a verdict that is missing or mistypes the
+// key it reads — gatewayAsk already retries a transport/parse failure once;
+// this is the same shape one layer up, for a verdict that parsed as JSON but
+// doesn't have the shape the check needs (e.g. {} for a glitch question).
+// Treated exactly like an unreadable verdict: retry once, then throw —
+// callers (checkClip.ts, checkStill.ts) already report CheckUnavailableError
+// as "unchecked", never a pass.
+export type ExpectKeys = Array<{ key: string; type: 'boolean' | 'array' }>
+
+function verdictHasExpectedKeys(v: Record<string, unknown>, expectKeys: ExpectKeys): boolean {
+  return expectKeys.every(({ key, type }) => (type === 'array' ? Array.isArray(v[key]) : typeof v[key] === 'boolean'))
+}
+
+export async function askChecked(ask: AskFn, parts: AskPart[], expectKeys: ExpectKeys): Promise<Record<string, unknown>> {
+  let v = await ask(parts)
+  if (verdictHasExpectedKeys(v, expectKeys)) return v
+  v = await ask(parts)
+  if (verdictHasExpectedKeys(v, expectKeys)) return v
+  throw new CheckUnavailableError(`check verdict missing expected key(s): ${expectKeys.map((e) => e.key).join(', ')}`)
+}
+
 export const evenTimes = (duration: number, count: number): number[] =>
   Array.from({ length: count }, (_, i) => r2((duration * (i + 1)) / (count + 1)))
 export const lastTimes = (duration: number): number[] =>
@@ -91,9 +115,11 @@ export function productQuestion(scale: ProductScale, expectedState?: string): st
   return `Image P is the exact product. Image F is one frame from an ad. Look only at the product.${state} A hand covering part of the label is normal. visible: is the product clearly visible in Image F? same: if visible, does it match Image P in ${attrs}? (same is true if the product does not appear). Reply ONLY JSON {"visible":true|false,"same":true|false,"why":"short"}`
 }
 
+const PRODUCT_EXPECT_KEYS: ExpectKeys = [{ key: 'visible', type: 'boolean' }, { key: 'same', type: 'boolean' }]
+
 export async function checkProduct(ask: AskFn, product: Img, frames: Img[], opts: { scale: ProductScale; expectedState?: string; mustBeVisible: boolean }): Promise<{ passed: boolean; reason: string; allVisible: boolean }> {
   const q = productQuestion(opts.scale, opts.expectedState)
-  const verdicts = await Promise.all(frames.map((f) => ask([{ text: 'Image P:' }, { image: product }, { text: 'Image F:' }, { image: f }, { text: q }])))
+  const verdicts = await Promise.all(frames.map((f) => askChecked(ask, [{ text: 'Image P:' }, { image: product }, { text: 'Image F:' }, { image: f }, { text: q }], PRODUCT_EXPECT_KEYS)))
   const fails: string[] = []
   let allVisible = true
   verdicts.forEach((v, i) => {
@@ -107,9 +133,10 @@ export async function checkProduct(ask: AskFn, product: Img, frames: Img[], opts
 
 export const GLITCH_QUESTION = 'Image F is one frame from an ad. Answer each strictly: duplicate_object (an object that should be single appears twice, e.g. two bottles in one hand, two identical machines), stray_face (a face where none belongs, e.g. on a machine, wall or object), invented_text (any text or logo on props other than the real product label), cg_effect (cartoon or CG effects such as smoke puffs, sparkles or glowing outlines), flat_background (a flat graphic background where a real place is expected). Reply ONLY JSON {"duplicate_object":true|false,"stray_face":true|false,"invented_text":true|false,"cg_effect":true|false,"flat_background":true|false,"what":"short"}'
 const GLITCH_KEYS = ['duplicate_object', 'stray_face', 'invented_text', 'cg_effect', 'flat_background'] as const
+const GLITCH_EXPECT_KEYS: ExpectKeys = GLITCH_KEYS.map((key) => ({ key, type: 'boolean' as const }))
 
 export async function checkGlitches(ask: AskFn, frames: Img[]): Promise<{ passed: boolean; reason: string }> {
-  const verdicts = await Promise.all(frames.map((f) => ask([{ image: f }, { text: GLITCH_QUESTION }])))
+  const verdicts = await Promise.all(frames.map((f) => askChecked(ask, [{ image: f }, { text: GLITCH_QUESTION }], GLITCH_EXPECT_KEYS)))
   const fails = verdicts.flatMap((v, i) => {
     const hit = GLITCH_KEYS.filter((k) => v[k] === true)
     return hit.length ? [`frame ${i + 1}: ${hit.join(', ').replace(/_/g, ' ')} (${String(v.what ?? '')})`] : []
@@ -128,8 +155,10 @@ export async function checkExtras(ask: AskFn, frames: Img[]): Promise<{ passed: 
 
 export const CLONE_QUESTION = 'Image L is the lead actor. Image F is one frame from the ad. Ignore the main person (the lead). List every OTHER person in Image F and, for each, say whether they look like the lead in Image L (similar face, hair, skin tone or outfit). Reply ONLY JSON {"others":[{"where":"short","looks_like_lead":true|false}]}'
 
+const CLONE_EXPECT_KEYS: ExpectKeys = [{ key: 'others', type: 'array' }]
+
 export async function checkLeadClone(ask: AskFn, lead: Img, frames: Img[]): Promise<{ passed: boolean; reason: string }> {
-  const verdicts = await Promise.all(frames.map((f) => ask([{ text: 'Image L:' }, { image: lead }, { text: 'Image F:' }, { image: f }, { text: CLONE_QUESTION }])))
+  const verdicts = await Promise.all(frames.map((f) => askChecked(ask, [{ text: 'Image L:' }, { image: lead }, { text: 'Image F:' }, { image: f }, { text: CLONE_QUESTION }], CLONE_EXPECT_KEYS)))
   const clones: string[] = []
   verdicts.forEach((v, i) => {
     const others = Array.isArray(v.others) ? v.others as Array<{ where?: unknown; looks_like_lead?: unknown }> : []
@@ -160,8 +189,8 @@ export async function checkAction(ask: AskFn, frames: { t: number; img: Img }[],
   for (const f of frames) timeline.push({ text: `t=${f.t}s` }, { image: f.img })
   const [loc, phys, rev] = await Promise.all([
     ask([...timeline, { text: actionLocateQuestion(action) }]),
-    ask([...timeline, { text: PHYSICS_QUESTION }]),
-    ask([...timeline, { text: REVERSAL_QUESTION }]),
+    askChecked(ask, [...timeline, { text: PHYSICS_QUESTION }], [{ key: 'impossible', type: 'boolean' }]),
+    askChecked(ask, [...timeline, { text: REVERSAL_QUESTION }], [{ key: 'reversal', type: 'boolean' }]),
   ])
   const actionTime = typeof loc.action_time === 'number' ? loc.action_time : null
   const endFails: string[] = []
