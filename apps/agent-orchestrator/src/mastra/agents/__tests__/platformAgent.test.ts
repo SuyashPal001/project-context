@@ -344,5 +344,14 @@ describe('TVC ad routing', () => {
     expect(text).toMatch(/"Talking-head — one person talks to camera/)
     expect(text).toMatch(/"Avatar category: TVC"[^]*never the phone-selfie UGC look/)
   })
+
+  it('a picked Voice ID is the TVC ad\'s announcer voice (additive line)', async () => {
+    const requestContext = new RequestContext()
+    requestContext.set('agentSystemPrompt', 'Base override text.')
+    const instructions = await platformAgent.getInstructions({ requestContext })
+    const text = typeof instructions === 'string' ? instructions : JSON.stringify(instructions)
+    expect(text).toMatch(/picked "Voice ID:" is used by the TVC ad as its announcer voice/)
+    expect(text).toMatch(/Route to a skill that calls generate_narration: Talking-head, Animation-character, or Template video cloning/)
+  })
 })
 
