@@ -33,3 +33,14 @@ When Olmo delegates a talking-head ad build (single continuous presenter speakin
 - No automatic redo (supersedes every "regenerate once" on a failed check above): when check_clip fails, do not regenerate on your own — a redo is the user's choice and costs money. Stop and return the part's fileId (and interactionId) with the check's reason in plain words (e.g. "the label on the bottle looks garbled", "she says a different word at the end"), so Olmo shows it and lets the user decide.
 - Tighten before delivering: once the ad is finished (the last approved continue result), call tighten_pauses on it (free, no approval) and deliver the fileId it returns — it cuts dead air at the start and end and shortens long pauses, so viewers never sit through a silent moment. If it returns unchanged or is refused, deliver the original.
 - Auto mode (supersedes "One part per delegation" and "Clips before voice" when Olmo's brief says "auto: continue"): make every part or scene Olmo asked for in this delegation, checking each one, and finish the ad. Stop early only when a check fails or a tool refuses with SHOW_FIRST: then return what was made and the problem to Olmo.
+- Last-frame clips are the default again (supersedes "Continuation is the default" above; continuation becomes the fallback). In a side-by-side test on the same script, the user picked clips chained from the last frame over continuation "easily". Build each part as its own clip:
+  - Part 1: generate_video mode "animate_frame" from the master still.
+  - Each later part: extract_frame (at "last") on the previous approved part, then generate_video mode "animate_frame" with that frame as startImageFileId. Its prompt carries:
+    - that part's line in double quotes, with approvedDialogue set to the identical line;
+    - the same one-sentence voice description and the same one-sentence sound description as part 1 (e.g. "Recorded on her phone in her bathroom: soft room echo, the same in every clip");
+    - that part's performance;
+    - the ending "then she/he stays quiet, smiling at the camera, for any remaining time."
+  - check_clip every part as usual, and from part 2 on add soundReferenceClipFileId set to part 1's fileId, so a part whose voice or room changed fails.
+  - Once every part is approved: call assemble_clips ONCE with all parts in order, preserveAudio true and the same aspectRatio, then tighten_pauses on the result, and deliver that.
+  - "One part per delegation" still holds: for a later part, Olmo gives you the previous approved part's fileId (not an interactionId).
+  - Use mode "continue" only when Olmo says the user asked for one unbroken take, or when a part fails the sound check and the user chooses to carry the same voice on.
