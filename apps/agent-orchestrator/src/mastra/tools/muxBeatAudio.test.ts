@@ -80,3 +80,13 @@ describe('muxBeatAudio execute — ffmpeg invocation', () => {
     expect(args[filterComplexIdx + 1]).toContain('apad')
   })
 })
+
+describe('beatSeconds', () => {
+  it('keeps the clip to the end of its movement, up to 1.2s past the line', async () => {
+    const { beatSeconds } = await import('./muxBeatAudio.js')
+    expect(beatSeconds(3.0, 4.0)).toBe(4.0)
+    expect(beatSeconds(3.0, 6.0)).toBeCloseTo(4.2)
+    expect(beatSeconds(3.0, 2.0)).toBeCloseTo(3.3)
+    expect(beatSeconds(3.0, NaN)).toBeCloseTo(3.3)
+  })
+})

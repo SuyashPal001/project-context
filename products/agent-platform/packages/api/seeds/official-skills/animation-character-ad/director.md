@@ -73,3 +73,14 @@ NEGATIVE: no 3D render, no photorealism, no glossy digital painting, no harsh co
   - productFileId set to the product photo when the product is in the beat;
   - expectedLine only for a speaking beat.
   It catches a different-looking character, a product that changed, swapped hands or doubled, and mirrored label text. A failed check is shown to the user with its reason (no automatic redo), the same as in the other ad flows.
+- Two stills, four smooth scenes (supersedes "4 beat stills", the 4-still board and the Assembly order above; the user picked this cheaper, smoother build on 2026-10-05):
+  - Stills: make stills only for beat 1 (the hook) and beat 3 (the turn, where the product arrives), with the same rules as before (cast sheet plus the previous still as references, the same room, the product's hand named). The board shows the cast sheet, these two stills, and one plain line each for beats 2 and 4.
+  - Clips, one at a time, in order:
+    - beat 1 from its still;
+    - beat 2 from beat 1's clip's last frame (extract_frame at "last"), continuing the same moment;
+    - beat 3 from its still;
+    - beat 4 from beat 3's clip's last frame, continuing the same moment.
+  - The prompts for beats 2 and 4 start with "Continuing from this exact frame:" and keep the camera where it is.
+  - Each clip's durationSeconds is its line's word count divided by 2.7, plus 1, rounded up (3-10), so the movement finishes after the line.
+  - Check every clip with check_clip as before. For beats 2 and 4, masterStillFileId is the still they continue from.
+  - Assembly: assemble_clips ONCE with preserveAudio true and transitions [{"type":"cut"}, {"type":"xfade","name":"fade","overlapSeconds":0.5}, {"type":"cut"}]. The cuts are invisible because each of those clips starts on the previous clip's last frame. The one dissolve is where the product scene begins.
