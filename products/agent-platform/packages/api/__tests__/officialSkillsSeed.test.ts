@@ -25,6 +25,8 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toContain('mix_voiceover');
     expect(director).toContain('expectNoSpeech');
     expect(director).toMatch(/MISSING_AUDIO_STREAM/);
+    expect(director).toMatch(/INVALID_TRIM_RANGE/);
+    expect(director).toMatch(/at most 12 overlays/);
   });
 
   it('each entry file exists and is non-empty', () => {

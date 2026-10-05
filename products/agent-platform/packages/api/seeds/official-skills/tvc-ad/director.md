@@ -16,9 +16,9 @@ step: stills / step: redo still <n>
 - plan_tvc record each still on its shot.
 
 step: clips <a>-<b> / step: redo shot <n>
-- For each shot: generate_video, mode "animate_frame", startImageFileId = its recorded still, aspectRatio from the plan, the look line in the prompt, durationSeconds 3, or for a line shot its words divided by 2.7 plus 1, rounded up (3 to 10). Silent and voiceover shots end the prompt with "No one speaks." Line shots put the line in double quotes in the prompt and pass approvedDialogue with exactly that line.
+- For each shot: generate_video, mode "animate_frame", startImageFileId = its recorded still, aspectRatio from the plan, the look line in the prompt, durationSeconds 3 for a silent or voiceover shot; for the packshot, its durationSeconds rounded up plus 1; for a line shot, its words divided by 2.7 plus 1, rounded up (3 to 10). Silent and voiceover shots end the prompt with "No one speaks." Line shots put the line in double quotes in the prompt and pass approvedDialogue with exactly that line.
 - check_clip every clip: masterStillFileId = the shot's still; referenceFileIds = [the actor avatar] when the actor is in the shot; productFileId when the product is visible; expectedLine for a line shot; expectNoSpeech true for a silent or voiceover shot; noPerson true when nobody is in the shot. If it fails, do not regenerate on your own — a redo is the user's choice and costs money: stop and return that shot's clip fileId with the check's reason in plain words (e.g. "the label on the bottle looks garbled"), and do not make further shots in this step.
-- trim_clip each passed clip: startSeconds 0.5, endSeconds 0.5 plus the shot's durationSeconds. If trim_clip refuses with MISSING_AUDIO_STREAM, treat it like a failed check: stop and report that shot in plain words ("this moment came out without sound"), never regenerate on your own.
+- trim_clip each passed clip: startSeconds 0.4, endSeconds 0.4 plus the shot's durationSeconds. If trim_clip refuses with INVALID_TRIM_RANGE, trim it once more with startSeconds 0 and endSeconds the shot's durationSeconds (trims are near-free; this is not a redo). If trim_clip refuses with MISSING_AUDIO_STREAM, treat it like a failed check: stop and report that shot in plain words ("this moment came out without sound"), never regenerate on your own.
 - plan_tvc record the trimmed clip on its shot.
 
 step: finish
@@ -26,6 +26,6 @@ step: finish
 - composite_end_card on the packshot's clip with the real product photo and the plan's aspect ratio.
 - assemble_clips once with every recorded clip in shot order (the carded packshot last), preserveAudio true, the plan's aspect ratio.
 - generate_narration once per voiceover block, in an announcer voice that fits the tier and category (premium: calm, warm, unhurried; mass: bright, friendly, upbeat). Then mix_voiceover with the joined video and each block's audio at its startSeconds.
-- overlay_text once: each shot's text at that shot's time, the packshot tagline over the packshot, and each legal line from its start, held for the longer of 4 seconds or its words divided by 5 plus 3 seconds, never past the end.
+- overlay_text once: each shot's text at that shot's time, the packshot tagline over the packshot, and each legal line from its start, held for the longer of 4 seconds or its words divided by 5 plus 3 seconds, never past the end. overlay_text takes at most 12 overlays; if there are more, drop per-shot texts from the middle of the ad first, never the packshot tagline or a legal line.
 - generate_song (instrumental, fitting the tier and category), then mix_music_bed last on the text-overlaid video.
 - Return only the finished video's fileId and its real length.
