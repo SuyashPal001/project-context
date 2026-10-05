@@ -13,13 +13,16 @@ const plan = () => tvcPlanSchema.parse({
   voiceover: [], packshot: { kind: 'product' },
 })
 
-function fakeDeps() {
+const tick = () => new Promise((r) => setTimeout(r, 5))
+
+function fakeDeps(opts: { slow?: boolean } = {}) {
   const store = new Map<string, SavedPlan>()
   const keyToId = new Map<string, string>()
   let n = 0
   const deps: PlanTvcDeps = {
-    load: async (id) => { const doc = store.get(id); if (!doc) throw new Error('missing'); return doc },
+    load: async (id) => { if (opts.slow) await tick(); const doc = store.get(id); if (!doc) throw new Error('missing'); return structuredClone(doc) },
     save: async (doc) => {
+      if (opts.slow) await tick()
       const id = keyToId.get(doc.storageKey) ?? `file-${++n}`
       keyToId.set(doc.storageKey, id); store.set(id, structuredClone(doc)); return id
     },
@@ -75,5 +78,97 @@ describe('runPlanTvc get and record', () => {
     const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
     expect((await runPlanTvc({ action: 'get', planFileId: planFileId!, slice: 'all' }, deps)).refusalReason).toBe('UNKNOWN_SLICE')
     expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, shot: 9, clipFileId: 'x' }, deps)).refusalReason).toBe('NO_SUCH_SHOT')
+  })
+})
+
+describe('runPlanTvc record — several shots, narration and song', () => {
+  const getFinish = async (deps: PlanTvcDeps, id: string) => JSON.parse((await runPlanTvc({ action: 'get', planFileId: id, slice: 'finish' }, deps)).slice!)
+  it('records a whole step in one call; the single-shot form still works', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    await runPlanTvc({ action: 'record', planFileId: planFileId!, records: [{ shot: 1, clipFileId: 'c1' }, { shot: 2, clipFileId: 'c2' }] }, deps)
+    await runPlanTvc({ action: 'record', planFileId: planFileId!, shot: 3, clipFileId: 'c3' }, deps)
+    expect((await getFinish(deps, planFileId!)).shots.map((s: { clipFileId?: string }) => s.clipFileId)).toEqual(['c1', 'c2', 'c3'])
+  })
+  it('records nothing when one of the shots does not exist', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    const out = await runPlanTvc({ action: 'record', planFileId: planFileId!, records: [{ shot: 1, clipFileId: 'c1' }, { shot: 9, clipFileId: 'c9' }] }, deps)
+    expect(out.refusalReason).toBe('NO_SUCH_SHOT')
+    expect((await getFinish(deps, planFileId!)).shots[0].clipFileId).toBeUndefined()
+  })
+  it('stores the narration and the song, and the finish slice returns them', async () => {
+    const { deps } = fakeDeps()
+    const withVo = plan(); withVo.voiceover = [{ text: 'Ice cold.', startSeconds: 0.5 }]
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: withVo }, deps)
+    expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, narrationFileIds: ['n1'], songFileId: 'song1' }, deps)).planFileId).toBe(planFileId)
+    expect(await getFinish(deps, planFileId!)).toMatchObject({ narrationFileIds: ['n1'], songFileId: 'song1' })
+  })
+  it('refuses narration that does not match the voiceover blocks one for one', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect((await runPlanTvc({ action: 'record', planFileId: planFileId!, narrationFileIds: ['n1'] }, deps)).refusalReason).toBe('NARRATION_COUNT_MISMATCH')
+  })
+  it('refuses a record with nothing to record', async () => {
+    const { deps } = fakeDeps()
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    expect((await runPlanTvc({ action: 'record', planFileId: planFileId! }, deps)).refusalReason).toBe('NOTHING_TO_RECORD')
+  })
+})
+
+describe('runPlanTvc re-check keeps or clears the saved narration and song', () => {
+  async function setup() {
+    const { deps } = fakeDeps()
+    const p = plan(); p.voiceover = [{ text: 'Ice cold.', startSeconds: 0.5 }]
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: p }, deps)
+    await runPlanTvc({ action: 'record', planFileId: planFileId!, narrationFileIds: ['n1'], songFileId: 'song1' }, deps)
+    const recheck = async (mutate: (q: ReturnType<typeof plan>) => void) => {
+      const q = plan(); q.voiceover = [{ text: 'Ice cold.', startSeconds: 0.5 }]; mutate(q)
+      await runPlanTvc({ action: 'check', plan: q, planFileId }, deps)
+      return JSON.parse((await runPlanTvc({ action: 'get', planFileId: planFileId!, slice: 'finish' }, deps)).slice!)
+    }
+    return recheck
+  }
+  it('keeps both when the voiceover, voice, tier and category are unchanged', async () => {
+    const recheck = await setup()
+    expect(await recheck((q) => { q.shots[1].action = 'snow sweeps the corridor' })).toMatchObject({ narrationFileIds: ['n1'], songFileId: 'song1' })
+  })
+  it('clears the narration when the voiceover or the voice changes, and keeps the song', async () => {
+    const text = await (await setup())((q) => { q.voiceover[0].text = 'So cold.' })
+    expect(text.narrationFileIds).toBeUndefined()
+    expect(text.songFileId).toBe('song1')
+    expect((await (await setup())((q) => { q.voiceover[0].startSeconds = 0.8 })).narrationFileIds).toBeUndefined()
+    expect((await (await setup())((q) => { q.brief.voiceId = 'other-voice' })).narrationFileIds).toBeUndefined()
+  })
+  it('clears the song when the tier or the category changes, and keeps the narration', async () => {
+    const tier = await (await setup())((q) => { q.brief.tier = 'premium' })
+    expect(tier.songFileId).toBeUndefined()
+    expect(tier.narrationFileIds).toEqual(['n1'])
+    expect((await (await setup())((q) => { q.brief.category = 'food' })).songFileId).toBeUndefined()
+  })
+})
+
+describe('runPlanTvc lock', () => {
+  it('two records on the same plan at once both survive', async () => {
+    const { deps } = fakeDeps({ slow: true })
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    await Promise.all([
+      runPlanTvc({ action: 'record', planFileId: planFileId!, shot: 1, stillFileId: 's1' }, deps),
+      runPlanTvc({ action: 'record', planFileId: planFileId!, shot: 2, stillFileId: 's2' }, deps),
+      runPlanTvc({ action: 'record', planFileId: planFileId!, songFileId: 'song1' }, deps),
+    ])
+    const slice = JSON.parse((await runPlanTvc({ action: 'get', planFileId: planFileId!, slice: 'shots 1-2' }, deps)).slice!)
+    expect(slice.shots.map((s: { stillFileId?: string }) => s.stillFileId)).toEqual(['s1', 's2'])
+    expect(JSON.parse((await runPlanTvc({ action: 'get', planFileId: planFileId!, slice: 'finish' }, deps)).slice!).songFileId).toBe('song1')
+  })
+  it('a failed record does not block the next one', async () => {
+    const { deps } = fakeDeps({ slow: true })
+    const { planFileId } = await runPlanTvc({ action: 'check', plan: plan() }, deps)
+    const [bad, good] = await Promise.all([
+      runPlanTvc({ action: 'record', planFileId: 'missing-plan', shot: 1, stillFileId: 'x' }, deps).catch((e: Error) => e.message),
+      runPlanTvc({ action: 'record', planFileId: planFileId!, shot: 1, stillFileId: 's1' }, deps),
+    ])
+    expect(bad).toBe('missing')
+    expect((good as { planFileId?: string }).planFileId).toBe(planFileId)
   })
 })

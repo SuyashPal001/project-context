@@ -20,13 +20,20 @@ export interface PlanTvcDeps {
 }
 
 export const planTvcInputSchema = z.object({
-  action: z.enum(['check', 'get', 'record']).describe('check: validate and save the plan; get: read one slice; record: attach a finished still or clip to a shot'),
+  action: z.enum(['check', 'get', 'record']).describe('check: validate and save the plan; get: read one slice; record: attach finished stills or clips to their shots, or the finish\'s narration and song to the plan'),
   plan: tvcPlanSchema.optional().describe('check only: the full plan'),
   planFileId: z.string().optional().describe('The TVC plan id. Required for get and record; pass it on a re-check so the plan keeps its id'),
   slice: z.string().optional().describe('get only: "brief", "finish" or "shots a-b", e.g. "shots 4-6"'),
   shot: z.number().int().min(1).optional().describe('record only: the shot number'),
   stillFileId: z.string().optional().describe('record only: the shot\'s approved still'),
   clipFileId: z.string().optional().describe('record only: the shot\'s checked, trimmed clip'),
+  records: z.array(z.object({
+    shot: z.number().int().min(1),
+    stillFileId: z.string().optional(),
+    clipFileId: z.string().optional(),
+  })).optional().describe('record only: every still or clip a step made, in one call'),
+  narrationFileIds: z.array(z.string()).optional().describe('record only: the finish\'s narration, one per voiceover block, in order'),
+  songFileId: z.string().optional().describe('record only: the finish\'s music bed'),
 })
 export type PlanTvcInput = z.infer<typeof planTvcInputSchema>
 
@@ -41,9 +48,15 @@ export interface PlanTvcOutput {
   refusalReason?: string
 }
 
-// Recorded stills and clips survive a re-check for shots whose content did not change.
+// Recorded stills and clips survive a re-check for shots whose content did not
+// change. The narration survives while the voiceover and the voice are the
+// same; the song while the tier and the category are (what it was chosen for).
 function carryOver(previous: TvcPlan, next: TvcPlan): TvcPlan {
   const out = structuredClone(next)
+  const sameVoiceover = JSON.stringify(previous.voiceover) === JSON.stringify(next.voiceover) && previous.brief.voiceId === next.brief.voiceId
+  out.narrationFileIds = sameVoiceover ? previous.narrationFileIds : undefined
+  const sameMusic = previous.brief.tier === next.brief.tier && previous.brief.category === next.brief.category
+  out.songFileId = sameMusic ? previous.songFileId : undefined
   const strip = (s: TvcPlan['shots'][number]) => JSON.stringify({ ...s, stillFileId: undefined, clipFileId: undefined })
   out.shots.forEach((s) => {
     const before = previous.shots.find((p) => p.n === s.n)
@@ -55,7 +68,30 @@ function carryOver(previous: TvcPlan, next: TvcPlan): TvcPlan {
   return out
 }
 
+// Director can record several shots at once (parallel tool calls), and each
+// record is load -> modify -> save of the same file: without a lock the last
+// save wins and the other shots' files are lost. One orchestrator process, so
+// an in-memory promise chain per plan id is enough.
+const planLocks = new Map<string, Promise<void>>()
+async function withPlanLock<T>(planFileId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = planLocks.get(planFileId) ?? Promise.resolve()
+  const run = previous.then(fn)
+  const tail = run.then(() => undefined, () => undefined)
+  planLocks.set(planFileId, tail)
+  try {
+    return await run
+  } finally {
+    if (planLocks.get(planFileId) === tail) planLocks.delete(planFileId)
+  }
+}
+
 export async function runPlanTvc(input: PlanTvcInput, deps: PlanTvcDeps): Promise<PlanTvcOutput> {
+  if (input.action === 'check' && !input.planFileId) return runPlanTvcUnlocked(input, deps)
+  if (!input.planFileId) return { refused: true, refusalReason: 'PLAN_FILE_ID_REQUIRED' }
+  return withPlanLock(input.planFileId, () => runPlanTvcUnlocked(input, deps))
+}
+
+async function runPlanTvcUnlocked(input: PlanTvcInput, deps: PlanTvcDeps): Promise<PlanTvcOutput> {
   if (input.action === 'check') {
     if (!input.plan) return { refused: true, refusalReason: 'PLAN_REQUIRED' }
     const { errors, warnings, plan } = validateTvcPlan(input.plan)
@@ -81,13 +117,20 @@ export async function runPlanTvc(input: PlanTvcInput, deps: PlanTvcDeps): Promis
       return { refused: true, refusalReason: 'UNKNOWN_SLICE' }
     }
   }
-  if (!input.shot || (!input.stillFileId && !input.clipFileId)) return { refused: true, refusalReason: 'SHOT_AND_FILE_REQUIRED' }
-  let next: TvcPlan
+  const records = [...(input.records ?? [])]
+  if (input.shot !== undefined) records.push({ shot: input.shot, stillFileId: input.stillFileId, clipFileId: input.clipFileId })
+  else if (input.stillFileId || input.clipFileId) return { refused: true, refusalReason: 'SHOT_AND_FILE_REQUIRED' }
+  if (records.some((r) => !r.stillFileId && !r.clipFileId)) return { refused: true, refusalReason: 'SHOT_AND_FILE_REQUIRED' }
+  if (records.length === 0 && !input.narrationFileIds && !input.songFileId) return { refused: true, refusalReason: 'NOTHING_TO_RECORD' }
+  if (input.narrationFileIds && input.narrationFileIds.length !== doc.plan.voiceover.length) return { refused: true, refusalReason: 'NARRATION_COUNT_MISMATCH' }
+  let next: TvcPlan = doc.plan
   try {
-    next = recordOnPlan(doc.plan, input.shot, { stillFileId: input.stillFileId, clipFileId: input.clipFileId })
+    for (const r of records) next = recordOnPlan(next, r.shot, { stillFileId: r.stillFileId, clipFileId: r.clipFileId })
   } catch {
     return { refused: true, refusalReason: 'NO_SUCH_SHOT' }
   }
+  if (input.narrationFileIds) next = { ...next, narrationFileIds: input.narrationFileIds }
+  if (input.songFileId) next = { ...next, songFileId: input.songFileId }
   const planFileId = await deps.save({ ...doc, plan: next })
   if (!planFileId) return { refused: true, refusalReason: 'STORAGE_FAILED' }
   return { planFileId }
@@ -95,7 +138,7 @@ export async function runPlanTvc(input: PlanTvcInput, deps: PlanTvcDeps): Promis
 
 export const planTvc = createTool({
   id: 'plan-tvc',
-  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches a finished still or clip to its shot. Use only in the TVC ad flow.',
+  description: 'Free. The TVC ad plan: "check" validates the plan against the TVC craft rules and saves it (returns the plan id and cost, or plain errors to fix); "get" returns only the slice one step needs; "record" attaches finished stills or clips to their shots (all of a step\'s files in one call, with records) and the finish narration and song to the plan. Use only in the TVC ad flow.',
   inputSchema: planTvcInputSchema,
   outputSchema: z.object({
     planFileId: z.string().optional(),
