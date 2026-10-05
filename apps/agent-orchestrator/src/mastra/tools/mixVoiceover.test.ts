@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildVoiceoverFilter, inputSchema, voiceoverFitsVideo } from './mixVoiceover.js'
+import { buildVoiceoverFilter, inputSchema, loudnessProbeArgs, voiceoverFitsVideo } from './mixVoiceover.js'
 
 describe('mixVoiceover inputSchema', () => {
   it('needs a video and 1-4 blocks with non-negative starts', () => {
@@ -32,5 +32,14 @@ describe('voiceoverFitsVideo', () => {
   it('refuses a block that runs past the end of the video', () => {
     expect(voiceoverFitsVideo([{ start: 2, duration: 8 }], 15)).toBe(true)
     expect(voiceoverFitsVideo([{ start: 10, duration: 6 }], 15)).toBe(false)
+  })
+})
+
+describe('loudnessProbeArgs', () => {
+  // ffmpeg 5.1 on the VM rejects framelog=quiet (see mix_music_bed, 3f5ec1c5).
+  it('uses framelog=verbose, which ffmpeg 5.1 accepts', () => {
+    const args = loudnessProbeArgs('/tmp/vo.wav')
+    expect(args).toEqual(['-i', '/tmp/vo.wav', '-af', 'ebur128=framelog=verbose', '-f', 'null', '-'])
+    expect(args.join(' ')).not.toContain('quiet')
   })
 })
