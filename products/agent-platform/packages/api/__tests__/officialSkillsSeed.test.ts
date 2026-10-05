@@ -64,6 +64,18 @@ describe('OFFICIAL_SKILLS', () => {
     expect(director).toMatch(/position bottom, size small/);
     expect(director).toMatch(/position center, size large/);
     expect(director).toMatch(/position top, size medium/);
+    // Quality tools pointers (additive section).
+    expect(director).toMatch(/Quality tools \(supersede the matching lines above\)/)
+    expect(director).toContain('check_still')
+    expect(director).toContain('detect_cuts')
+    expect(director).toMatch(/generateSeconds/)
+    expect(director).toMatch(/trimStartSeconds/)
+    expect(director).toMatch(/productFileId/)
+    expect(director).toMatch(/avoidFaces true/)
+    expect(director).toMatch(/keptByUser/)
+    expect(director).toMatch(/roomTone true/)
+    expect(director).toMatch(/one direction and complete/)
+    expect(card).toMatch(/Reference video: <fileId>/)
   });
 
   it('each entry file exists and is non-empty', () => {

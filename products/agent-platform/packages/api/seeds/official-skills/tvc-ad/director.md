@@ -36,3 +36,24 @@ step: finish
 - Return only the finished video's fileId and its real length.
 
 Auto mode (supersedes "Make ONE moment per delegation" when Olmo's brief says "auto: continue"): make every moment Olmo asked for in this delegation, checking each one, and finish the ad. Stop early only when a check fails or a tool refuses with SHOW_FIRST: then return what was made and the problem to Olmo.
+
+Quality tools (supersede the matching lines above):
+- step plan: give every shot an angle (eye, low, high, top, side or pov). Write every turn as one direction and complete ("spins all the way around in one direction, 360°"). Give an endState to every action that changes an object (open, pop, pour, bite, apply, peel, unwrap, cut). Give continuesFrom to a shot that continues the previous shot's action at the same place. Write each place as {name, extras}, with extras (who is in the background) for any public place. Write brief.actorLook when the plan has an actor. Keep a hard action in ONE shot. Split it only into a clearly different angle AND size, and use flashCut only for a deliberate flash cut. plan_tvc enforces the rest.
+- Recreating a reference ad: Olmo's brief has "Reference video: <fileId>". Call detect_cuts on it and write brief.reference.cutTimes. Write brief.reference.productType (material, closure, openedBy) from what the reference shows, and brief.product the same way for the user's product. If they differ, plan_tvc refuses; tell Olmo the reference's product type so the user can match it.
+- step stills: after each still, call check_still:
+  - productFileId whenever the product is visible
+  - productScale: wide for a wide shot, medium for a medium shot, otherwise close
+  - productMustBeVisible = the shot's productVisible
+  - expectExtras when the shot's place has extras
+  - actorFileId = the avatar, and leadInShot when the actor is in the shot
+
+  On a fail, generate that still once more with the check's reason added to the prompt and check again. On a second fail, record nothing for it and return the still and the reason to Olmo. Record a still only after it passed, or with keptByUser true when Olmo says the user kept it. A shot with startFromPreviousLastFrame gets no still.
+- step clips: use each shot's slice:
+  - prompt: it already carries the place, the background people, the camera grammar and the look; add only "No one speaks" or the quoted line
+  - durationSeconds = generateSeconds
+  - productFileId = the product photo for every shot with the product visible, so the video keeps its material and label
+  - startFromPreviousLastFrame: when true, extract_frame "last" of the previous shot's recorded clip and use that image as the start frame
+- check_clip for every TVC clip, in addition to the inputs above: productMustBeVisible (the shot's productVisible), productScale, productExpectedState (the shot's endState when the action changes the product), expectExtras, leadFileId (the avatar) when the plan has an actor, action, endState, shotDurationSeconds. A check that comes back CHECK_UNAVAILABLE is not a pass: return the clip to Olmo as unchecked.
+- trim_clip: startSeconds = check_clip's trimStartSeconds (centred on the action) when it returned one. Otherwise use the slice's trimStartSeconds: 0 for a continuing shot. When the slice says trimToEnd, end the trim at the clip's end (startSeconds = clip length minus the shot's durationSeconds), so the next shot continues from its real last frame.
+- A video refused with CONTENT_BLOCKED: rewrite that shot without ages or minors' activities ("a young woman", not "a high-school girl") and try it once more; that refused attempt was refunded.
+- step finish: assemble_clips with roomTone true. overlay_text with avoidFaces true. composite_end_card with avoidFaces true.
