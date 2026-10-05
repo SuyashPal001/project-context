@@ -76,6 +76,14 @@ describe('groupWordsIntoPhrases', () => {
     ])
   })
 
+  it('ends a phrase at a sentence end and keeps it short enough for one line', () => {
+    const at = (word: string, i: number) => ({ word, startSeconds: i, endSeconds: i + 0.5 })
+    const words = ['and', 'my', 'brain', 'just', 'quit.', 'Deadlines', 'pile', 'up,', 'one', 'crispy', 'strawberry', 'protein', 'wafer.', '10', 'grams'].map(at)
+    expect(groupWordsIntoPhrases(words, 4).map((p) => p.text)).toEqual([
+      'and my brain just', 'quit.', 'Deadlines pile up,', 'one crispy', 'strawberry protein', 'wafer.', '10 grams',
+    ])
+  })
+
   it('throws instead of infinite-looping when groupSize is not positive', () => {
     const words = [{ word: 'hi', startSeconds: 0, endSeconds: 0.2 }]
     expect(() => groupWordsIntoPhrases(words, 0)).toThrow()
