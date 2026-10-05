@@ -29,7 +29,7 @@ vi.mock('node:fs', async (importOriginal) => {
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) }
 })
 
-import { assembleClips, inputSchema } from './assembleClips.js'
+import { assembleClips, inputSchema, chooseFrameRate, parseRate } from './assembleClips.js'
 import { uploadGeneratedFile } from '../../persistence.js'
 
 function ctx(values: Record<string, string>) {
@@ -38,6 +38,7 @@ function ctx(values: Record<string, string>) {
   return { requestContext, agent: { toolCallId: 'call-1' } } as never
 }
 const baseCtx = () => ctx({ tenantId: 't1', agentId: 'a1', conversationId: 'c1', idToken: 'tok' })
+const ffmpegCall = () => execFile.mock.calls.find((c) => c[0] === 'ffmpeg')! as unknown as [string, string[]]
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -82,12 +83,12 @@ describe('assembleClips tool', () => {
     expect(result.success).toBe(true)
   })
 
-  it('rejects a 9th clip id', () => {
+  it('rejects a 13th clip id', () => {
     // Parsed off the exported raw Zod schema, not assembleClips.inputSchema —
     // createTool's wrapped type is StandardSchemaWithJSON, which has no
     // .safeParse (this exact omission broke type-check in an earlier task).
     const result = inputSchema.safeParse({
-      clipFileIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
+      clipFileIds: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm'],
       aspectRatio: '9:16',
     })
     expect(result.success).toBe(false)
@@ -126,7 +127,7 @@ describe('assembleClips tool', () => {
 
     await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], targetDurationSeconds: 12, aspectRatio: '9:16', audioFileId: 'narration1' } as never, baseCtx())
 
-    const args = execFile.mock.calls[0][1] as string[]
+    const args = ffmpegCall()[1] as string[]
     expect(args.filter((a) => a === '-i')).toHaveLength(3)
     expect(args).not.toContain('-an')
     expect(args[args.indexOf('-map', args.indexOf('[outv]')) + 1]).toBe('2:a:0')
@@ -146,7 +147,7 @@ describe('assembleClips tool', () => {
     await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], targetDurationSeconds: 10, aspectRatio: '9:16' } as never, baseCtx())
 
     expect(execFile).toHaveBeenCalled()
-    const args = execFile.mock.calls[0][1] as string[]
+    const args = ffmpegCall()[1] as string[]
     expect(args).not.toContain('-vf')
     const filterComplexIdx = args.indexOf('-filter_complex')
     expect(filterComplexIdx).toBeGreaterThanOrEqual(0)
@@ -167,7 +168,7 @@ describe('assembleClips tool', () => {
     await assembleClips.execute!({ clipFileIds: ['c1', 'c2', 'c3', 'c4'], preserveAudio: true, aspectRatio: '9:16' } as never, baseCtx())
 
     expect(execFile).toHaveBeenCalled()
-    const args = execFile.mock.calls[0][1] as string[]
+    const args = ffmpegCall()[1] as string[]
     const filterComplexIdx = args.indexOf('-filter_complex')
     const filterComplex = args[filterComplexIdx + 1]
     expect(filterComplex).toContain('concat=n=4:v=1:a=1')
@@ -191,7 +192,7 @@ describe('assembleClips tool', () => {
     await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], aspectRatio: '9:16' } as never, baseCtx())
 
     expect(execFile).toHaveBeenCalled()
-    const args = execFile.mock.calls[0][1] as string[]
+    const args = ffmpegCall()[1] as string[]
     expect(args).toContain('-an')
   })
 
@@ -199,10 +200,16 @@ describe('assembleClips tool', () => {
     // Real ffmpeg (8.1.2, confirmed live) fails filtergraph binding with
     // "Stream specifier ':a' in filtergraph description ... matches no
     // streams" when an [i:a] label has no audio stream to bind to.
-    execFile.mockImplementationOnce((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error & { stderr?: string }) => void) => {
-      const err = new Error('Command failed') as Error & { stderr?: string }
-      err.stderr = "[fc#0] Stream specifier ':a' in filtergraph description [0:v]...[0:a]... matches no streams."
-      cb(err)
+    // Matched on cmd, not call position — assembleClips now ffprobes every
+    // clip's frame rate before this call, so the ffmpeg invocation is no
+    // longer necessarily the first execFile call.
+    execFile.mockImplementation((cmd: string, _args: string[], _opts: unknown, cb: (err: (Error & { stderr?: string }) | null, res?: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffmpeg') {
+        const err = new Error('Command failed') as Error & { stderr?: string }
+        err.stderr = "[fc#0] Stream specifier ':a' in filtergraph description [0:v]...[0:a]... matches no streams."
+        return cb(err)
+      }
+      cb(null, { stdout: '', stderr: '' })
     })
     getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
 
@@ -212,8 +219,10 @@ describe('assembleClips tool', () => {
   })
 
   it('refunds the charge when ffmpeg fails after a successful charge', async () => {
-    execFile.mockImplementationOnce((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
-      cb(new Error('ffmpeg exploded'))
+    // Matched on cmd, not call position — see note above.
+    execFile.mockImplementation((cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null, res?: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffmpeg') return cb(new Error('ffmpeg exploded'))
+      cb(null, { stdout: '', stderr: '' })
     })
     getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
 
@@ -232,7 +241,10 @@ describe('assembleClips tool', () => {
 
     expect(result).toMatchObject({ insufficientCredits: true })
     expect(spendCredits).toHaveBeenCalledTimes(1)
-    expect(execFile).not.toHaveBeenCalled()
+    // assembleClips now ffprobes every clip's frame rate before charging
+    // (A1) — local, cost-free, so it's no longer gated on the charge
+    // succeeding. ffmpeg itself must still never run.
+    expect(execFile.mock.calls.map((c) => c[0])).not.toContain('ffmpeg')
   })
 
   it('accepts a valid transitions array matching clipFileIds.length - 1', () => {
@@ -342,13 +354,16 @@ describe('assembleClips tool', () => {
     const fs = await import('node:fs')
     vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'assembled1', name: 'assembled.mp4', type: 'video/mp4', size: 8 })
-    // Three ffprobe duration calls (one per input, 3s each), then the ffmpeg
-    // call itself.
-    execFile
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '', stderr: '' }))
+    // Matched by content, not call position: assembleClips now ffprobes
+    // every clip's frame rate (JSON, A1) before the transitions branch's
+    // own per-clip video-stream-duration ffprobe (plain csv), so the two
+    // probe kinds interleave with the ffmpeg call in a fixed order that
+    // ordered mockImplementationOnce calls can no longer assume.
+    execFile.mockImplementation((cmd: string, args: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffprobe' && args.includes('json')) return cb(null, { stdout: '', stderr: '' })
+      if (cmd === 'ffprobe') return cb(null, { stdout: '3.0', stderr: '' })
+      cb(null, { stdout: '', stderr: '' })
+    })
 
     await assembleClips.execute!({
       clipFileIds: ['c1', 'c2', 'c3'],
@@ -360,8 +375,7 @@ describe('assembleClips tool', () => {
       ],
     } as never, baseCtx())
 
-    const ffmpegCall = execFile.mock.calls.find(c => c[0] === 'ffmpeg')!
-    const args = ffmpegCall[1] as string[]
+    const args = ffmpegCall()[1]
     const filterComplex = args[args.indexOf('-filter_complex') + 1]
     // Matches the spec's live-verified confirmed-correct shape exactly:
     // offset = accumulated duration so far (3) - overlap (1) = 2.
@@ -382,11 +396,12 @@ describe('assembleClips tool', () => {
     const fs = await import('node:fs')
     vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
     ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'assembled1', name: 'assembled.mp4', type: 'video/mp4', size: 8 })
-    execFile
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '', stderr: '' }))
+    // Matched by content, not call position — see note in the test above.
+    execFile.mockImplementation((cmd: string, args: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffprobe' && args.includes('json')) return cb(null, { stdout: '', stderr: '' })
+      if (cmd === 'ffprobe') return cb(null, { stdout: '3.0', stderr: '' })
+      cb(null, { stdout: '', stderr: '' })
+    })
 
     await assembleClips.execute!({
       clipFileIds: ['c1', 'c2', 'c3'],
@@ -398,8 +413,7 @@ describe('assembleClips tool', () => {
       ],
     } as never, baseCtx())
 
-    const ffmpegCall = execFile.mock.calls.find(c => c[0] === 'ffmpeg')!
-    const args = ffmpegCall[1] as string[]
+    const args = ffmpegCall()[1]
     const filterComplex = args[args.indexOf('-filter_complex') + 1]
     // Tightened beyond two independent toContain checks: asserts the
     // settb'd label is the SAME one the following xfade actually reads
@@ -422,9 +436,11 @@ describe('assembleClips tool', () => {
     // accepts silently and turns into a garbled result rather than an
     // error — so this must be caught before ffmpeg ever runs, not
     // discovered via a live ffmpeg failure.
-    execFile
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
+    // Matched by content, not call position — see note above.
+    execFile.mockImplementation((cmd: string, args: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffprobe' && args.includes('json')) return cb(null, { stdout: '', stderr: '' })
+      cb(null, { stdout: '3.0', stderr: '' })
+    })
     getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
 
     const result = await assembleClips.execute!({
@@ -437,8 +453,8 @@ describe('assembleClips tool', () => {
     } as never, baseCtx())
 
     expect(result).toMatchObject({ refused: true, refusalReason: 'INVALID_TRANSITION_OVERLAP' })
-    // Only the two ffprobe calls should have run — the guard must throw
-    // before the ffmpeg execFile call is ever made.
+    // Only ffprobe calls should have run — the guard must throw before the
+    // ffmpeg execFile call is ever made.
     expect(execFile).not.toHaveBeenCalledWith('ffmpeg', expect.anything(), expect.anything(), expect.anything())
     const commands = execFile.mock.calls.map(c => c[0])
     expect(commands).not.toContain('ffmpeg')
@@ -459,14 +475,14 @@ describe('assembleClips tool', () => {
     // isolation (defense in depth for any other real ffmpeg xfade
     // failure that produces this exact error text) by mocking the ffmpeg
     // call to fail with the real captured stderr directly.
-    execFile
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: null, r: { stdout: string; stderr: string }) => void) => cb(null, { stdout: '3.0', stderr: '' }))
-      .mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e: Error & { stderr?: string }) => void) => {
-        const err = new Error('Command failed') as Error & { stderr?: string }
-        err.stderr = "[Parsed_xfade_0] const_values array too small for transition\nError applying option 'transition' to filter 'xfade': Not yet implemented in FFmpeg, patches welcome"
-        cb(err)
-      })
+    // Matched by content, not call position — see note above.
+    execFile.mockImplementation((cmd: string, args: string[], _o: unknown, cb: (e: (Error & { stderr?: string }) | null, r?: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffprobe' && args.includes('json')) return cb(null, { stdout: '', stderr: '' })
+      if (cmd === 'ffprobe') return cb(null, { stdout: '3.0', stderr: '' })
+      const err = new Error('Command failed') as Error & { stderr?: string }
+      err.stderr = "[Parsed_xfade_0] const_values array too small for transition\nError applying option 'transition' to filter 'xfade': Not yet implemented in FFmpeg, patches welcome"
+      cb(err)
+    })
     getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
 
     const result = await assembleClips.execute!({
@@ -477,5 +493,85 @@ describe('assembleClips tool', () => {
     } as never, baseCtx())
 
     expect(result).toMatchObject({ refused: true, refusalReason: 'XFADE_FILTER_FAILED' })
+  })
+})
+
+describe('frame rate (A1)', () => {
+  it('parses ffprobe rates', () => {
+    expect(parseRate('24/1')).toBe(24)
+    expect(parseRate('30000/1001')).toBeCloseTo(29.97, 2)
+    expect(parseRate(undefined)).toBeNaN()
+    expect(parseRate('0/0')).toBeNaN()
+  })
+  it('keeps a shared rate and never upsamples 24 to 30', () => {
+    expect(chooseFrameRate([24, 24, 24])).toBe(24)
+    expect(chooseFrameRate([24, 24, 30])).toBe(24)
+    expect(chooseFrameRate([30, 30, 24])).toBe(30)
+  })
+  it('falls back to 30 when no rate could be read', () => {
+    expect(chooseFrameRate([NaN, NaN])).toBe(30)
+    expect(chooseFrameRate([])).toBe(30)
+  })
+})
+
+describe('assembleClips probe, fades and length check (A1–A3)', () => {
+  const probeJson = (fps: string, dur: string) => JSON.stringify({ streams: [{ codec_type: 'video', r_frame_rate: fps, duration: dur }, { codec_type: 'audio', duration: dur }] })
+
+  it('uses the clips own 24fps, resets timestamps and fades audio at every cut', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'a1', name: 'a.mp4', type: 'video/mp4', size: 8 })
+    execFile.mockImplementation((cmd: string, args: string[], _o: unknown, cb: (e: Error | null, r: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffprobe' && args.includes('format=duration')) return cb(null, { stdout: '4.000\n', stderr: '' })
+      if (cmd === 'ffprobe') return cb(null, { stdout: probeJson('24/1', '2.000'), stderr: '' })
+      cb(null, { stdout: '', stderr: '' })
+    })
+
+    const result = await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], preserveAudio: true, aspectRatio: '16:9' } as never, baseCtx())
+
+    const graph = ffmpegCall()[1][ffmpegCall()[1].indexOf('-filter_complex') + 1]
+    expect(graph).toContain('fps=24')
+    expect(graph).not.toContain('fps=30')
+    expect(graph).toContain('setpts=PTS-STARTPTS')
+    expect(graph).toContain('asetpts=PTS-STARTPTS')
+    expect(graph).toContain('afade=t=in:d=0.04')
+    expect(graph).toContain('afade=t=out:st=1.96:d=0.04')
+    expect(result).toMatchObject({ fileId: 'a1', fps: 24 })
+  })
+
+  it('refuses DURATION_MISMATCH and refunds when the output length is off by more than 0.1s', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    getPool.mockReturnValue({ query: vi.fn().mockResolvedValue({ rows: [{ amount_micro: '-1000', expires_at: null }] }) })
+    execFile.mockImplementation((cmd: string, args: string[], _o: unknown, cb: (e: Error | null, r: { stdout: string; stderr: string }) => void) => {
+      if (cmd === 'ffprobe' && args.includes('format=duration')) return cb(null, { stdout: '5.20\n', stderr: '' })
+      if (cmd === 'ffprobe') return cb(null, { stdout: probeJson('24/1', '2.000'), stderr: '' })
+      cb(null, { stdout: '', stderr: '' })
+    })
+
+    const result = await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], preserveAudio: true, aspectRatio: '16:9' } as never, baseCtx())
+
+    expect(result).toMatchObject({ refused: true, refusalReason: expect.stringMatching(/^DURATION_MISMATCH/) })
+    expect(spendCredits).toHaveBeenCalledWith(expect.objectContaining({ kind: 'refund' }))
+  })
+
+  it('probe garbage falls back to 30fps and skips the length check (never refuses a valid join)', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'a2', name: 'a.mp4', type: 'video/mp4', size: 8 })
+    const result = await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], preserveAudio: true, aspectRatio: '16:9' } as never, baseCtx())
+    const graph = ffmpegCall()[1][ffmpegCall()[1].indexOf('-filter_complex') + 1]
+    expect(graph).toContain('fps=30')
+    expect(result).toMatchObject({ fileId: 'a2' })
+  })
+
+  it('lays a continuous room tone under the joined audio when roomTone is set', async () => {
+    const fs = await import('node:fs')
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from('fake-mp4'))
+    ;(uploadGeneratedFile as ReturnType<typeof vi.fn>).mockResolvedValue({ fileId: 'a3', name: 'a.mp4', type: 'video/mp4', size: 8 })
+    await assembleClips.execute!({ clipFileIds: ['c1', 'c2'], preserveAudio: true, roomTone: true, aspectRatio: '16:9' } as never, baseCtx())
+    const args = ffmpegCall()[1]
+    expect(args.join(' ')).toContain('anoisesrc=color=brown')
+    expect(args[args.indexOf('-filter_complex') + 1]).toContain('lowpass=f=700')
   })
 })

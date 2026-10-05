@@ -34,6 +34,7 @@ const outputSchema = z.object({
   insufficientCredits: z.boolean().optional(),
   creditsUsedMicro: z.string().optional(),
   jobId: z.string().optional(),
+  fps: z.number().optional(),
 })
 
 // A zero-width transition is `type: 'cut'`, never an xfade with
@@ -80,7 +81,7 @@ const transitionEntrySchema = z.object({
 // so callers/tests can .safeParse()/.parse() it directly — omitting this export broke
 // `pnpm type-check` in an earlier task and had to be fixed in review; don't repeat it.
 export const inputSchema = z.object({
-  clipFileIds: z.array(z.string()).min(1).max(8),
+  clipFileIds: z.array(z.string()).min(1).max(12),
   targetDurationSeconds: z.number().positive().optional().describe(
     'When set, the assembled video is trimmed (extra tail dropped) or the final frame held (tpad) to match this length — used to align this clip total to a separate audio track\'s length. Not compatible with preserveAudio (see refine below) — animation-character\'s preserveAudio callers pre-trim every clip upstream and never set this.'
   ),
@@ -94,6 +95,7 @@ export const inputSchema = z.object({
   audioFileId: z.string().optional().describe(
     'A narration/voiceover file to lay under the joined video, so the assembled result is already one finished video with sound. Set it whenever the clips have a separate narration (talking-head: the locked narration fileId, with targetDurationSeconds set to its length). Lip-sync, if it runs afterwards, only improves the mouth; if it fails, this assembled video is still the deliverable. Not compatible with preserveAudio.'
   ),
+  roomTone: z.boolean().optional().describe('With preserveAudio: lay one continuous, very quiet room tone under the joined audio so the sound does not jump at every cut.'),
 }).refine(
   (v) => !(v.preserveAudio && v.audioFileId),
   { message: 'preserveAudio and audioFileId cannot both be set — the clips either keep their own audio or get one narration track, not both' },
@@ -134,6 +136,37 @@ interface TransitionEntry {
 // [cut, xfade(1s), cut] run with this fix produced 11.074s for four 3s
 // clips — matching the arithmetic for four 3-second clips with one
 // 1-second overlap (3+3+3+3-1=11), quantization accounts for the rest.
+// Omni renders at 24fps; forcing 30 duplicated frames and juddered every TVC
+// (2026-10-05 test ads). Keep the clips' own rate; never upsample 24 to 30.
+export function parseRate(r: string | undefined): number {
+  if (!r) return NaN
+  const [n, d] = r.split('/').map(Number)
+  const v = d ? n / d : n
+  return Number.isFinite(v) && v > 0 ? v : NaN
+}
+
+export function chooseFrameRate(rates: number[]): number {
+  const known = rates.filter((r) => Number.isFinite(r) && r > 0).map((r) => Math.round(r * 100) / 100)
+  if (known.length === 0) return 30
+  const counts = new Map<number, number>()
+  for (const r of known) counts.set(r, (counts.get(r) ?? 0) + 1)
+  let best = known[0]
+  for (const [r, c] of counts) if (c > (counts.get(best) ?? 0) || (c === counts.get(best) && r < best)) best = r
+  return best
+}
+
+interface ClipProbe { fps: number; duration: number }
+async function probeClip(path: string): Promise<ClipProbe> {
+  try {
+    const { stdout } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,r_frame_rate,duration', '-of', 'json', path], { timeout: FFMPEG_TIMEOUT_MS })
+    const probe = JSON.parse(stdout) as { streams?: Array<{ codec_type?: string; r_frame_rate?: string; duration?: string }> }
+    const v = probe.streams?.find((s) => s.codec_type === 'video')
+    return { fps: parseRate(v?.r_frame_rate), duration: parseFloat(v?.duration ?? '') }
+  } catch {
+    return { fps: NaN, duration: NaN }
+  }
+}
+
 function buildTransitionsFilterComplex(
   videoLabels: string[], // ['v0', 'v1', ...] — already-normalized per-input labels
   audioLabels: string[], // ['a0', 'a1', ...]
@@ -192,7 +225,7 @@ export const assembleClips = createTool({
   requireApproval: async (_input, ctx) =>
     shouldRequireApproval({ resourceType: 'clip_assembly', subject: ASSEMBLY_SUBJECT }, ctx),
   execute: async (inputData, execContext) => {
-    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio, transitions, audioFileId } = inputData as z.infer<typeof inputSchema>
+    const { clipFileIds, targetDurationSeconds, preserveAudio, aspectRatio, transitions, audioFileId, roomTone } = inputData as z.infer<typeof inputSchema>
 
     const tenantId = execContext?.requestContext?.get('tenantId') as string | undefined ?? ''
     const agentId = execContext?.requestContext?.get('agentId') as string | undefined
@@ -226,6 +259,10 @@ export const assembleClips = createTool({
         return { refused: true, refusalReason: 'SOURCE_UNAVAILABLE', jobId }
       }
     }
+
+    const probes: ClipProbe[] = []
+    for (const p of localPaths) probes.push(await probeClip(p))
+    const fps = chooseFrameRate(probes.map((p) => p.fps))
 
     // Charge BEFORE running ffmpeg — same settled ordering as every other
     // generation tool, even though this is local compute, not a vendor call:
@@ -280,7 +317,7 @@ export const assembleClips = createTool({
       const [w, h] = aspectRatio === '9:16' ? ['1080', '1920'] : ['1920', '1080']
 
       const videoFilterParts = localPaths.map((_, i) =>
-        `[${i}:v]fps=30,scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
+        `[${i}:v]setpts=PTS-STARTPTS,fps=${fps},scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
       )
 
       let filterComplex: string
@@ -318,11 +355,20 @@ export const assembleClips = createTool({
         // untouched -c:a copy from composite_end_card), so each audio
         // stream is resampled/reformatted to one common shape BEFORE
         // concat, not fed in raw.
-        const audioFilterParts = localPaths.map((_, i) =>
-          `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`
-        )
+        // 40ms fades at every cut: each clip has its own room tone, and a
+        // hard audio edge made every cut jump (2026-10-05 test ads).
+        const audioFilterParts = localPaths.map((_, i) => {
+          const d = probes[i].duration
+          const fadeOut = Number.isFinite(d) && d > 0.1 ? `,afade=t=out:st=${Math.round((d - 0.04) * 100) / 100}:d=0.04` : ''
+          return `[${i}:a]asetpts=PTS-STARTPTS,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,afade=t=in:d=0.04${fadeOut}[a${i}]`
+        })
         const concatInputs = localPaths.map((_, i) => `[v${i}][a${i}]`).join('')
-        filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=1[outv][outa]`
+        const joinedLabel = roomTone ? 'joined' : 'outa'
+        filterComplex = `${videoFilterParts.join('; ')}; ${audioFilterParts.join('; ')}; ${concatInputs}concat=n=${localPaths.length}:v=1:a=1[outv][${joinedLabel}]`
+        if (roomTone) {
+          const roomIdx = localPaths.length + (audioPath ? 1 : 0)
+          filterComplex += `; [${roomIdx}:a]lowpass=f=700,volume=0.5,aformat=sample_fmts=fltp:channel_layouts=stereo[room]; [joined][room]amix=inputs=2:duration=first:normalize=0[outa]`
+        }
       } else {
         const concatInputs = localPaths.map((_, i) => `[v${i}]`).join('')
         // tpad must be chained inside the same filter_complex graph, not applied
@@ -344,6 +390,10 @@ export const assembleClips = createTool({
       const args: string[] = ['-y']
       for (const p of localPaths) args.push('-i', p)
       if (audioPath) args.push('-i', audioPath)
+      if (preserveAudio && roomTone) {
+        const total = probes.reduce((s, p) => s + (Number.isFinite(p.duration) ? p.duration : 0), 0) || 60
+        args.push('-f', 'lavfi', '-t', String(Math.ceil(total) + 1), '-i', 'anoisesrc=color=brown:amplitude=0.02:sample_rate=48000')
+      }
       args.push('-filter_complex', filterComplex, '-map', '[outv]')
       if (preserveAudio) {
         args.push('-map', '[outa]')
@@ -361,6 +411,29 @@ export const assembleClips = createTool({
       args.push(outputPath)
 
       await execFile('ffmpeg', args, { timeout: FFMPEG_TIMEOUT_MS })
+
+      // Joining many short pieces once produced 17.9s for 14.8s of pieces
+      // (2026-10-05). Verify the output instead of trusting the exit code.
+      //
+      // Tolerance scales with clip count, not a flat 0.1s: a real ffmpeg
+      // run (RUN_REAL_FFMPEG=1 test) measured that AAC re-encoding pads
+      // EVERY concatenated audio segment up to its own next encoder-frame
+      // boundary (~0.02-0.03s/clip, confirmed directly against 1/2/4-clip
+      // runs) when preserveAudio or audioFileId is set — real, harmless
+      // encoder padding, not desync. A flat 0.1s tolerance false-refused a
+      // valid 4-clip preserveAudio join (measured diff 0.107s) on this
+      // task's own real-ffmpeg test. 0.1s base + 0.03s/clip stays two
+      // orders of magnitude below the 3s+ drift this check exists to
+      // catch, even at the 12-clip max.
+      const expected = probes.reduce((s, p) => s + p.duration, 0)
+      const tolerance = 0.1 + 0.03 * localPaths.length
+      if (!transitions?.length && targetDurationSeconds === undefined && Number.isFinite(expected) && expected > 0) {
+        const { stdout: outDur } = await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', outputPath], { timeout: FFMPEG_TIMEOUT_MS })
+        const actual = parseFloat(outDur.trim())
+        if (Number.isFinite(actual) && Math.abs(actual - expected) > tolerance) {
+          throw Object.assign(new Error(`DURATION_MISMATCH: the joined video is ${actual.toFixed(2)}s but its pieces add up to ${expected.toFixed(2)}s`), { durationMismatch: true })
+        }
+      }
     } catch (err) {
       console.error(`[session:${sessionId}] assembleClips: ffmpeg failed:`, (err as Error).message)
       if (charged) await refundAssemblyCharge(tenantId, agentId, chargeKey, rateId, rateVersion)
@@ -373,6 +446,9 @@ export const assembleClips = createTool({
       // can tell "you gave me a silent clip" apart from any other ffmpeg
       // failure.
       const message = (err as Error).message ?? ''
+      if ((err as { durationMismatch?: boolean }).durationMismatch) {
+        return { refused: true, refusalReason: message, jobId }
+      }
       if (message.startsWith('INVALID_TRANSITION_OVERLAP')) {
         return { refused: true, refusalReason: 'INVALID_TRANSITION_OVERLAP', jobId }
       }
@@ -423,6 +499,7 @@ export const assembleClips = createTool({
       fileId: attachment.fileId, name: attachment.name, fileType: attachment.type, size: attachment.size,
       ...(charged ? { creditsUsedMicro: amountMicro.toString() } : {}),
       jobId,
+      fps,
     }
   },
 })
