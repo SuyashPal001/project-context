@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'http'
 import { GoogleAuth } from 'google-auth-library'
 import { vertexVideoBreaker, geminiVideoBreaker } from './router.js'
 import { requestsTotal, latency } from './metrics.js'
+import { isContentBlocked } from './contentBlocked.js'
 
 const VIDEO_MODEL_ALLOWLIST = new Set(['gemini-omni-1.1-flash'])
 
@@ -397,13 +398,9 @@ async function callVertexVeoModel(req: VideoGenerationRequest): Promise<VideoGen
 // can't get it sees an error, not a Veo result it never asked for.
 // ---------------------------------------------------------------------------
 
-// Omni refuses some prompts outright (2026-10-05: "high-school girl … spin").
-// The same prompt fails the same way on the API-key path, so this is never a
-// reason to fall back or to count a backend failure: it is a plain refusal
-// the agent can act on by rephrasing.
-export function isContentBlocked(message: string): boolean {
-  return /content_blocked|Responsible AI/i.test(message)
-}
+// Omni refuses some prompts outright (2026-10-05: "high-school girl … spin");
+// see contentBlocked.ts.
+export { isContentBlocked }
 
 type VideoBackend = 'gemini-omni' | 'vertex-veo'
 
